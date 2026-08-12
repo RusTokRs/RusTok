@@ -13,11 +13,12 @@ use crate::{
     EntityKey, IndexDriftAuthorizedRepairCommand, IndexDriftRepairAuthorizer,
     IndexDriftRepairEvidence, IndexDriftRepairEvidenceReader, IndexDriftRepairEvidenceState,
     IndexDriftRepairFailure, IndexDriftRepairFinding, IndexDriftRepairOwner,
-    IndexDriftRepairOwnerOutcome, IndexDriftRepairOwnerRegistry, IndexDriftRepairReservationOutcome,
-    IndexDriftRepairService, IndexDriftRepairStore, IndexDriftRepairStoreCompletionOutcome,
-    IndexDriftRepairTarget, IndexDriftRepairTargetKind, IndexDriftRepairTicket, IndexMutation,
-    IndexSourceAbsenceError, IndexSourceError, IndexSourceFailureKind, IndexSourceLoadRequest,
-    LinkName, LinkedEntityKey, SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
+    IndexDriftRepairOwnerOutcome, IndexDriftRepairOwnerRegistry,
+    IndexDriftRepairReservationOutcome, IndexDriftRepairService, IndexDriftRepairStore,
+    IndexDriftRepairStoreCompletionOutcome, IndexDriftRepairTarget, IndexDriftRepairTargetKind,
+    IndexDriftRepairTicket, IndexMutation, IndexSourceAbsenceError, IndexSourceError,
+    IndexSourceFailureKind, IndexSourceLoadRequest, LinkName, LinkedEntityKey,
+    SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
 };
 
 use super::{
@@ -541,18 +542,17 @@ pub fn materialize_postgres_index_drift_orphan_link_repair_service(
         sources,
         absence,
     )?);
-    let base_owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(
-        PostgresIndexDriftOrphanLinkRepairOwner::new(db.clone())?,
-    );
-    let owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(
-        RecoveryAwareIndexDriftRepairOwner::new(db.clone(), base_owner)?,
-    );
+    let base_owner: Arc<dyn IndexDriftRepairOwner> =
+        Arc::new(PostgresIndexDriftOrphanLinkRepairOwner::new(db.clone())?);
+    let owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(RecoveryAwareIndexDriftRepairOwner::new(
+        db.clone(),
+        base_owner,
+    )?);
     let owners = IndexDriftRepairOwnerRegistry::new([owner])
         .map_err(|_| permanent_failure(COMPONENTS_INVALID))?;
     let store = materialize_postgres_index_drift_repair_store(db.clone())?;
-    let recovery_store: Arc<dyn IndexDriftRepairStore> = Arc::new(
-        RecoveryAwareIndexDriftRepairStore::new(db, store)?,
-    );
+    let recovery_store: Arc<dyn IndexDriftRepairStore> =
+        Arc::new(RecoveryAwareIndexDriftRepairStore::new(db, store)?);
     let gated_store: Arc<dyn IndexDriftRepairStore> = Arc::new(OrphanLinkOnlyRepairStore {
         inner: recovery_store,
     });
@@ -658,9 +658,7 @@ fn exact_orphan_link_target<'a>(
             linked_target: target,
             target_absence_source_version: *target_absence_source_version,
         }),
-        IndexDriftRepairTarget::MissingEntity { .. } => {
-            Err(permanent_failure(TARGET_UNSUPPORTED))
-        }
+        IndexDriftRepairTarget::MissingEntity { .. } => Err(permanent_failure(TARGET_UNSUPPORTED)),
     }
 }
 
@@ -682,8 +680,8 @@ fn classify_evidence(
         OrphanTargetAuthority::Absent(version)
             if version == target.target_absence_source_version
     );
-    let source_admitted = materialized.source
-        == OrphanMaterializedSource::Live(target.indexed_source_version);
+    let source_admitted =
+        materialized.source == OrphanMaterializedSource::Live(target.indexed_source_version);
     if !authority_admitted || !source_admitted {
         return IndexDriftRepairEvidenceState::Changed;
     }
@@ -726,7 +724,11 @@ fn evidence_digest(
             hash_component(&mut hasher, &source_version.to_be_bytes());
             hash_component(
                 &mut hasher,
-                if exact_link_present { b"link_present" } else { b"link_absent" },
+                if exact_link_present {
+                    b"link_present"
+                } else {
+                    b"link_absent"
+                },
             );
         }
         OrphanSourceAuthority::Absent => hash_component(&mut hasher, b"source_absent"),
@@ -810,10 +812,7 @@ fn hash_orphan_target(hasher: &mut Sha256, target: OrphanLinkTargetRef<'_>) {
     hash_component(hasher, target.link_name.as_str().as_bytes());
     hash_component(hasher, &target.ordinal.to_be_bytes());
     hash_linked_key(hasher, target.linked_target);
-    hash_component(
-        hasher,
-        &target.target_absence_source_version.to_be_bytes(),
-    );
+    hash_component(hasher, &target.target_absence_source_version.to_be_bytes());
 }
 
 fn record_has_exact_link(
@@ -829,8 +828,8 @@ fn record_has_exact_link(
     if values.next().is_some() {
         return Err(permanent_failure(SOURCE_CONTRACT_INVALID));
     }
-    let ordinal = usize::try_from(ordinal)
-        .map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))?;
+    let ordinal =
+        usize::try_from(ordinal).map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))?;
     Ok(value.targets.get(ordinal) == Some(target))
 }
 
@@ -1006,8 +1005,24 @@ fn link_identity_values(target: OrphanLinkTargetRef<'_>) -> Vec<SqlValue> {
 
 fn exact_link_values(target: OrphanLinkTargetRef<'_>) -> Vec<SqlValue> {
     let mut values = link_identity_values(target);
-    values.push(target.linked_target.schema.module.as_str().to_owned().into());
-    values.push(target.linked_target.schema.entity.as_str().to_owned().into());
+    values.push(
+        target
+            .linked_target
+            .schema
+            .module
+            .as_str()
+            .to_owned()
+            .into(),
+    );
+    values.push(
+        target
+            .linked_target
+            .schema
+            .entity
+            .as_str()
+            .to_owned()
+            .into(),
+    );
     values.push(i64::from(target.linked_target.schema.version.get()).into());
     values.push(target.linked_target.entity_id.into());
     values.push(locale_text(target.linked_target.locale.as_ref()).into());
@@ -1031,10 +1046,7 @@ fn positive_source_version(row: &QueryResult) -> Result<u64, IndexDriftRepairFai
     Ok(parsed)
 }
 
-fn required_text(
-    row: &QueryResult,
-    column: &str,
-) -> Result<String, IndexDriftRepairFailure> {
+fn required_text(row: &QueryResult, column: &str) -> Result<String, IndexDriftRepairFailure> {
     let value = row
         .try_get::<String>("", column)
         .map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))?;
@@ -1131,11 +1143,7 @@ mod tests {
             entity_id: Uuid::from_u128(3),
             locale: Some(LocaleKey::new("en").expect("locale")),
         };
-        (
-            source,
-            linked,
-            LinkName::new("variants").expect("link"),
-        )
+        (source, linked, LinkName::new("variants").expect("link"))
     }
 
     #[test]

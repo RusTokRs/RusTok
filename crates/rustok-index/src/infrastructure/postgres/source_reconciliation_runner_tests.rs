@@ -62,10 +62,7 @@ impl IndexSource for ReconciliationSource {
             });
         }
         if self.inject_on_call == Some(call) && !self.injected.swap(true, Ordering::SeqCst) {
-            self.ids
-                .lock()
-                .expect("source ids lock")
-                .push(50);
+            self.ids.lock().expect("source ids lock").push(50);
         }
         let after = request
             .cursor()
@@ -79,10 +76,7 @@ impl IndexSource for ReconciliationSource {
         let mut ids = self.ids.lock().expect("source ids lock").clone();
         ids.sort_unstable();
         ids.dedup();
-        let visible = ids
-            .into_iter()
-            .filter(|id| *id > after)
-            .collect::<Vec<_>>();
+        let visible = ids.into_iter().filter(|id| *id > after).collect::<Vec<_>>();
         let selected = visible
             .iter()
             .copied()
@@ -262,10 +256,7 @@ fn mutation(tenant_id: Uuid, id: u128) -> IndexMutation {
                 locale: None,
             },
             source_version: 1,
-            fields: BTreeMap::from([(
-                FieldName::new("id").unwrap(),
-                IndexValue::Uuid(entity_id),
-            )]),
+            fields: BTreeMap::from([(FieldName::new("id").unwrap(), IndexValue::Uuid(entity_id))]),
             links: Vec::new(),
         },
     }
@@ -391,7 +382,10 @@ async fn retryable_failure_schedules_due_attempts_and_terminally_exhausts() {
             .run(fixture.request(&worker, 1, 1))
             .await
             .unwrap();
-        assert_eq!(outcome.status(), IndexReconciliationRunStatus::RetryScheduled);
+        assert_eq!(
+            outcome.status(),
+            IndexReconciliationRunStatus::RetryScheduled
+        );
         assert_eq!(outcome.attempt_count(), Some(attempt));
         assert_eq!(outcome.retry_after(), Some(Duration::from_secs(seconds)));
         assert_eq!(outcome.next_attempt(), Some(next_attempt));
@@ -442,7 +436,10 @@ async fn retryable_failure_schedules_due_attempts_and_terminally_exhausts() {
         .run(fixture.request("retry-worker-final", 1, 1))
         .await
         .unwrap();
-    assert_eq!(exhausted.status(), IndexReconciliationRunStatus::FailedExhausted);
+    assert_eq!(
+        exhausted.status(),
+        IndexReconciliationRunStatus::FailedExhausted
+    );
     assert_eq!(exhausted.job_id(), job_id);
     assert_eq!(exhausted.attempt_count(), Some(5));
     assert_eq!(exhausted.retry_after(), None);
@@ -481,7 +478,10 @@ async fn permanent_failure_terminalizes_without_retry_metadata() {
         .await
         .unwrap();
 
-    assert_eq!(outcome.status(), IndexReconciliationRunStatus::FailedPermanent);
+    assert_eq!(
+        outcome.status(),
+        IndexReconciliationRunStatus::FailedPermanent
+    );
     assert_eq!(outcome.attempt_count(), Some(1));
     assert_eq!(outcome.retry_after(), None);
     assert_eq!(outcome.next_attempt(), None);
@@ -514,48 +514,56 @@ async fn permanent_failure_terminalizes_without_retry_metadata() {
 #[test]
 fn reconciliation_request_bounds_pages_passes_and_heartbeat_cadence() {
     let tenant_id = Uuid::parse_str(TENANT).unwrap();
-    assert!(IndexReconciliationRunRequest::new(
-        tenant_id,
-        schema_ref(),
-        "worker-a",
-        10,
-        0,
-        1,
-        2,
-        Duration::from_secs(60),
-    )
-    .is_err());
-    assert!(IndexReconciliationRunRequest::new(
-        tenant_id,
-        schema_ref(),
-        "worker-a",
-        10,
-        2,
-        3,
-        2,
-        Duration::from_secs(60),
-    )
-    .is_err());
-    assert!(IndexReconciliationRunRequest::new(
-        tenant_id,
-        schema_ref(),
-        "worker-a",
-        10,
-        2,
-        1,
-        0,
-        Duration::from_secs(60),
-    )
-    .is_err());
-    assert!(IndexReconciliationRunRequest::new(
-        tenant_id,
-        schema_ref(),
-        "worker-a",
-        10,
-        2,
-        1,
-        9,
-        Duration::from_secs(60),
-    )
-    .is_err());
+    assert!(
+        IndexReconciliationRunRequest::new(
+            tenant_id,
+            schema_ref(),
+            "worker-a",
+            10,
+            0,
+            1,
+            2,
+            Duration::from_secs(60),
+        )
+        .is_err()
+    );
+    assert!(
+        IndexReconciliationRunRequest::new(
+            tenant_id,
+            schema_ref(),
+            "worker-a",
+            10,
+            2,
+            3,
+            2,
+            Duration::from_secs(60),
+        )
+        .is_err()
+    );
+    assert!(
+        IndexReconciliationRunRequest::new(
+            tenant_id,
+            schema_ref(),
+            "worker-a",
+            10,
+            2,
+            1,
+            0,
+            Duration::from_secs(60),
+        )
+        .is_err()
+    );
+    assert!(
+        IndexReconciliationRunRequest::new(
+            tenant_id,
+            schema_ref(),
+            "worker-a",
+            10,
+            2,
+            1,
+            9,
+            Duration::from_secs(60),
+        )
+        .is_err()
+    );
 }

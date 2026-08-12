@@ -1,4 +1,6 @@
-use async_graphql::{Context, ErrorExtensions, FieldError, InputObject, Object, Result, SimpleObject};
+use async_graphql::{
+    Context, ErrorExtensions, FieldError, InputObject, Object, Result, SimpleObject,
+};
 use rustok_api::{
     Action, AuthContext, Permission, Resource, TenantContext,
     graphql::{GraphQLError, require_module_enabled},
@@ -9,14 +11,12 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ActivateRebuiltPageArtifactTransportResult,
-    PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT,
+    ActivateRebuiltPageArtifactTransportResult, PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT,
     PAGE_ARTIFACT_BINDING_REPLACEMENT_IDEMPOTENCY_CONFLICT,
     PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY,
-    PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID,
-    PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT, PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY,
-    PAGE_ARTIFACT_REBUILD_SOURCE_INVALID, PageService, PagesError,
-    RebuildPageArtifactInput, RebuildPageArtifactTransportResult,
+    PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID, PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT,
+    PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY, PAGE_ARTIFACT_REBUILD_SOURCE_INVALID, PageService,
+    PagesError, RebuildPageArtifactInput, RebuildPageArtifactTransportResult,
     ReplacePageArtifactBindingInput, ReviewedPagePublishRuntimeInput,
 };
 
@@ -32,8 +32,7 @@ const PAGE_ARTIFACT_REBUILD_REPRODUCTION_MISMATCH: &str =
 const PAGE_ARTIFACT_REBUILD_FAILED: &str = "PAGE_ARTIFACT_REBUILD_FAILED";
 const PAGE_ARTIFACT_BINDING_REPLACEMENT_VERSION_CONFLICT: &str =
     "PAGE_ARTIFACT_BINDING_REPLACEMENT_VERSION_CONFLICT";
-const PAGE_ARTIFACT_BINDING_REPLACEMENT_FAILED: &str =
-    "PAGE_ARTIFACT_BINDING_REPLACEMENT_FAILED";
+const PAGE_ARTIFACT_BINDING_REPLACEMENT_FAILED: &str = "PAGE_ARTIFACT_BINDING_REPLACEMENT_FAILED";
 
 #[derive(Default)]
 pub(crate) struct PageArtifactRepairMutation;
@@ -181,7 +180,9 @@ impl From<ActivateRebuiltPageArtifactTransportResult> for GqlActivateRebuiltPage
     }
 }
 
-fn reviewed_runtime_input(input: ReviewedGqlPagePublishRuntimeInput) -> ReviewedPagePublishRuntimeInput {
+fn reviewed_runtime_input(
+    input: ReviewedGqlPagePublishRuntimeInput,
+) -> ReviewedPagePublishRuntimeInput {
     ReviewedPagePublishRuntimeInput {
         format: input.format,
         scenario_id: input.scenario_id,

@@ -18,10 +18,11 @@ use rustok_product::{
 use uuid::Uuid;
 
 use super::{
-    ProductStorefrontIndexBudgetedProjectionError, ProductStorefrontIndexBudgetedProjectionExecutor,
-    ProductStorefrontIndexBudgetedStartError, ProductStorefrontIndexBudgetedTagHydrationError,
-    ProductStorefrontIndexProjectionPhases, ProductStorefrontIndexServingBudgetDecision,
-    ProductStorefrontIndexShadowProjectionError, ProductStorefrontIndexTagHydrationError,
+    ProductStorefrontIndexBudgetedProjectionError,
+    ProductStorefrontIndexBudgetedProjectionExecutor, ProductStorefrontIndexBudgetedStartError,
+    ProductStorefrontIndexBudgetedTagHydrationError, ProductStorefrontIndexProjectionPhases,
+    ProductStorefrontIndexServingBudgetDecision, ProductStorefrontIndexShadowProjectionError,
+    ProductStorefrontIndexTagHydrationError,
 };
 
 #[derive(Clone, Copy)]
@@ -169,7 +170,10 @@ fn fake_executor(
     product_id: Uuid,
     index_behavior: IndexBehavior,
     tag_behavior: TagBehavior,
-) -> (ProductStorefrontIndexBudgetedProjectionExecutor, Arc<FakeState>) {
+) -> (
+    ProductStorefrontIndexBudgetedProjectionExecutor,
+    Arc<FakeState>,
+) {
     let state = Arc::new(FakeState::default());
     let phases = FakePhases {
         state: state.clone(),
@@ -184,7 +188,10 @@ fn fake_executor(
     )
 }
 
-fn eligible(index_execution_ms: u64, tag_hydration_ms: u64) -> ProductStorefrontIndexServingBudgetDecision {
+fn eligible(
+    index_execution_ms: u64,
+    tag_hydration_ms: u64,
+) -> ProductStorefrontIndexServingBudgetDecision {
     ProductStorefrontIndexServingBudgetDecision::Eligible {
         index_execution_ms,
         tag_hydration_ms,
@@ -196,7 +203,8 @@ async fn execute(
     executor: &ProductStorefrontIndexBudgetedProjectionExecutor,
     authoritative: StorefrontProductList,
     decision: ProductStorefrontIndexServingBudgetDecision,
-) -> Result<super::ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedStartError> {
+) -> Result<super::ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedStartError>
+{
     executor
         .execute_after_owner(
             authoritative,
@@ -255,7 +263,10 @@ async fn index_timeout_preserves_authoritative_owner_page_and_skips_enrichment()
         .await
         .unwrap();
 
-    assert_eq!(execution.authoritative.items[0].id, authoritative.items[0].id);
+    assert_eq!(
+        execution.authoritative.items[0].id,
+        authoritative.items[0].id
+    );
     assert!(matches!(
         execution.projected,
         Err(ProductStorefrontIndexBudgetedProjectionError::TimedOut { budget_ms: 1 })
@@ -300,12 +311,19 @@ async fn tag_timeout_preserves_raw_public_pages_and_phase_deadlines() {
 
     assert_eq!(execution.authoritative.items[0].id, product_id);
     assert!(execution.projected.is_ok());
-    let public = execution.public_projected.as_ref().unwrap().as_ref().unwrap();
+    let public = execution
+        .public_projected
+        .as_ref()
+        .unwrap()
+        .as_ref()
+        .unwrap();
     assert_eq!(projected_string(public, "title"), Some("Untitled product"));
     assert_eq!(projected_string(public, "handle"), Some(""));
     assert!(matches!(
         execution.tag_hydration,
-        Some(Err(ProductStorefrontIndexBudgetedTagHydrationError::TimedOut { budget_ms: 1 }))
+        Some(Err(
+            ProductStorefrontIndexBudgetedTagHydrationError::TimedOut { budget_ms: 1 }
+        ))
     ));
     assert!(execution.comparison.unwrap().is_match());
     assert_eq!(*state.index_deadlines.lock().unwrap(), vec![Some(40)]);
@@ -321,7 +339,13 @@ async fn eligible_fast_path_preserves_identity_count_and_owner_tag_projection() 
         .unwrap();
 
     let raw = execution.projected.as_ref().unwrap();
-    assert_eq!(raw.items.iter().map(|item| item.entity_id).collect::<Vec<_>>(), vec![product_id]);
+    assert_eq!(
+        raw.items
+            .iter()
+            .map(|item| item.entity_id)
+            .collect::<Vec<_>>(),
+        vec![product_id]
+    );
     assert_eq!(raw.exact_count, Some(1));
     assert!(!raw.has_more);
     assert!(execution.comparison.unwrap().is_match());
@@ -329,7 +353,12 @@ async fn eligible_fast_path_preserves_identity_count_and_owner_tag_projection() 
     assert_eq!(execution.tag_hydration_budget_ms, 30);
     assert_eq!(execution.safety_margin_ms, 1);
 
-    let public = execution.public_projected.as_ref().unwrap().as_ref().unwrap();
+    let public = execution
+        .public_projected
+        .as_ref()
+        .unwrap()
+        .as_ref()
+        .unwrap();
     assert_eq!(projected_string(public, "title"), Some("Untitled product"));
     assert_eq!(projected_string(public, "handle"), Some(""));
 

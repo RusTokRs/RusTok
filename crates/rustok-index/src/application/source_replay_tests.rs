@@ -28,8 +28,10 @@ impl IndexSource for ReplaySource {
         request: IndexSourceScanRequest,
     ) -> Result<IndexSourcePage, IndexSourceFailure> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(IndexSourcePage::new(&request, vec![self.mutation.clone()], None)
-            .expect("bounded replay page"))
+        Ok(
+            IndexSourcePage::new(&request, vec![self.mutation.clone()], None)
+                .expect("bounded replay page"),
+        )
     }
 
     async fn load(
@@ -131,10 +133,7 @@ fn mutation(tenant_id: Uuid, entity_id: Uuid, event_id: Uuid) -> IndexMutation {
                 locale: None,
             },
             source_version: 7,
-            fields: BTreeMap::from([(
-                FieldName::new("id").unwrap(),
-                IndexValue::Uuid(entity_id),
-            )]),
+            fields: BTreeMap::from([(FieldName::new("id").unwrap(), IndexValue::Uuid(entity_id))]),
             links: Vec::new(),
         },
     }
@@ -216,7 +215,10 @@ async fn replay_page_commits_checkpoint_after_mutations() {
     let stored = checkpoint.lock().unwrap().clone().unwrap();
     let expected_delivery_id = event_id.to_string();
     assert!(stored.is_complete());
-    assert_eq!(stored.last_delivery_id(), Some(expected_delivery_id.as_str()));
+    assert_eq!(
+        stored.last_delivery_id(),
+        Some(expected_delivery_id.as_str())
+    );
 }
 
 #[tokio::test]
@@ -316,7 +318,15 @@ async fn checkpoint_watermark_never_regresses() {
         .unwrap();
 
     assert_eq!(outcome.checkpoint().source_version(), Some(9));
-    assert_eq!(checkpoint.lock().unwrap().as_ref().unwrap().source_version(), Some(9));
+    assert_eq!(
+        checkpoint
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .source_version(),
+        Some(9)
+    );
 }
 
 #[tokio::test]

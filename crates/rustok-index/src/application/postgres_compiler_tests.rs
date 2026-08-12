@@ -231,7 +231,11 @@ fn compiles_root_projection_with_bound_scope_and_limit() {
     assert!(compiled.sql.starts_with(
         "SELECT \"t0\".entity_id AS \"__t0_entity_id\", jsonb_extract_path(\"t0\".payload, $6::text) AS \"f0\" FROM index_entities AS \"t0\""
     ));
-    assert!(compiled.sql.ends_with("ORDER BY \"t0\".entity_id ASC LIMIT $7"));
+    assert!(
+        compiled
+            .sql
+            .ends_with("ORDER BY \"t0\".entity_id ASC LIMIT $7")
+    );
     assert!(!compiled.sql.contains(&tenant_id.to_string()));
     assert_eq!(compiled.columns.len(), 2);
     assert!(compiled.many_relations.is_empty());
@@ -242,19 +246,25 @@ fn compiles_root_projection_with_bound_scope_and_limit() {
 fn compiles_one_link_projection_without_interpolating_contract_values() {
     let registry = registry(LinkCardinality::One);
     let mut query = root_query(Uuid::new_v4());
-    query.fields.insert(0, linked_path(&["sales_channel"], "id"));
+    query
+        .fields
+        .insert(0, linked_path(&["sales_channel"], "id"));
 
     let compiled = registry.compile_postgres_query(&query).unwrap();
 
     assert!(compiled.sql.contains("LEFT JOIN index_links AS \"l1\""));
-    assert!(compiled
-        .sql
-        .contains("\"l1\".source_version = \"t0\".source_version"));
+    assert!(
+        compiled
+            .sql
+            .contains("\"l1\".source_version = \"t0\".source_version")
+    );
     assert!(compiled.sql.contains("LEFT JOIN index_entities AS \"t1\""));
     assert!(!compiled.sql.contains("sales_channel"));
-    assert!(compiled
-        .binds
-        .contains(&PostgresBindValue::Text("sales_channel".to_owned())));
+    assert!(
+        compiled
+            .binds
+            .contains(&PostgresBindValue::Text("sales_channel".to_owned()))
+    );
     assert!(compiled.many_relations.is_empty());
 }
 
@@ -287,7 +297,11 @@ fn compiles_typed_filters_order_exact_count_and_bounded_offset() {
     assert!(compiled.sql.contains(" @> "));
     assert!(compiled.sql.contains(" DESC NULLS FIRST"));
     assert!(compiled.sql.contains(" OFFSET $"));
-    assert!(compiled.binds.contains(&PostgresBindValue::Uuid(expected_id)));
+    assert!(
+        compiled
+            .binds
+            .contains(&PostgresBindValue::Uuid(expected_id))
+    );
     assert_eq!(
         compiled
             .columns
@@ -331,9 +345,11 @@ fn compiles_validated_lexicographic_keyset_with_entity_tie_breaker() {
     assert!(compiled.sql.contains(".entity_id > $"));
     assert!(compiled.sql.contains(" ASC NULLS LAST"));
     assert!(compiled.binds.contains(&PostgresBindValue::Integer(42)));
-    assert!(compiled
-        .binds
-        .contains(&PostgresBindValue::Uuid(cursor_entity_id)));
+    assert!(
+        compiled
+            .binds
+            .contains(&PostgresBindValue::Uuid(cursor_entity_id))
+    );
     let plan = registry.plan_query(&query).unwrap();
     assert!(matches!(
         plan.compile_postgres(),
@@ -387,17 +403,23 @@ fn compiles_many_link_filter_as_correlated_exists_without_outer_join() {
 
     let compiled = registry.compile_postgres_query(&query).unwrap();
 
-    assert!(compiled
-        .sql
-        .contains("EXISTS (SELECT 1 FROM index_links AS \"mx_l1\""));
-    assert!(compiled
-        .sql
-        .contains("EXISTS (SELECT 1 FROM index_links AS \"mx_l2\""));
+    assert!(
+        compiled
+            .sql
+            .contains("EXISTS (SELECT 1 FROM index_links AS \"mx_l1\"")
+    );
+    assert!(
+        compiled
+            .sql
+            .contains("EXISTS (SELECT 1 FROM index_links AS \"mx_l2\"")
+    );
     assert!(!compiled.sql.contains("LEFT JOIN index_links AS \"l1\""));
     assert!(!compiled.sql.contains("variants"));
-    assert!(compiled
-        .binds
-        .contains(&PostgresBindValue::Text("variants".to_owned())));
+    assert!(
+        compiled
+            .binds
+            .contains(&PostgresBindValue::Text("variants".to_owned()))
+    );
     let count = compiled.exact_count.expect("many filter count");
     assert!(count.sql.contains("EXISTS (SELECT 1 FROM index_links"));
     assert!(!count.sql.contains("ORDER BY"));
@@ -408,10 +430,7 @@ fn compiles_many_link_ne_and_is_null_with_reference_totality() {
     let registry = many_registry();
     let mut query = root_query(Uuid::new_v4());
     query.filter = Some(FilterExpr::And(vec![
-        FilterExpr::Ne(
-            linked_path(&["variants"], "score"),
-            IndexValue::Integer(7),
-        ),
+        FilterExpr::Ne(linked_path(&["variants"], "score"), IndexValue::Integer(7)),
         FilterExpr::IsNull(linked_path(&["variants"], "title"), true),
         FilterExpr::Contains(
             linked_path(&["variants"], "tags"),
@@ -421,11 +440,13 @@ fn compiles_many_link_ne_and_is_null_with_reference_totality() {
 
     let compiled = registry.compile_postgres_query(&query).unwrap();
 
-    assert!(compiled
-        .sql
-        .matches("EXISTS (SELECT 1 FROM index_links")
-        .count()
-        >= 4);
+    assert!(
+        compiled
+            .sql
+            .matches("EXISTS (SELECT 1 FROM index_links")
+            .count()
+            >= 4
+    );
     assert!(compiled.sql.contains("AND NOT (EXISTS"));
     assert!(compiled.sql.contains("IS NULL OR"));
     assert!(compiled.sql.contains("NOT (EXISTS"));
@@ -495,9 +516,7 @@ fn rejects_tampered_many_traversal_metadata_and_aliases() {
         Err(PostgresQueryCompileError::ManyTraversalMismatch(_))
     ));
 
-    let mut plan = registry
-        .plan_query(&root_query(Uuid::new_v4()))
-        .unwrap();
+    let mut plan = registry.plan_query(&root_query(Uuid::new_v4())).unwrap();
     plan.path_aliases.insert(Vec::new(), "t9".to_owned());
     assert!(matches!(
         plan.compile_postgres(),

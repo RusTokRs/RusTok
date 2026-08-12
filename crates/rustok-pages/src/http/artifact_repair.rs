@@ -14,14 +14,13 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ActivateRebuiltPageArtifactTransportResult,
-    PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT,
+    ActivateRebuiltPageArtifactTransportResult, PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT,
     PAGE_ARTIFACT_BINDING_REPLACEMENT_IDEMPOTENCY_CONFLICT,
     PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_INTEGRITY,
-    PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID,
-    PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT, PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY,
-    PAGE_ARTIFACT_REBUILD_SOURCE_INVALID, PageService, PagesError, RebuildPageArtifactInput,
-    RebuildPageArtifactTransportResult, ReplacePageArtifactBindingInput,
+    PAGE_ARTIFACT_BINDING_REPLACEMENT_TARGET_INVALID, PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT,
+    PAGE_ARTIFACT_REBUILD_OPERATION_INTEGRITY, PAGE_ARTIFACT_REBUILD_SOURCE_INVALID, PageService,
+    PagesError, RebuildPageArtifactInput, RebuildPageArtifactTransportResult,
+    ReplacePageArtifactBindingInput,
 };
 
 const PAGES_PERMISSION_DENIED: &str = "PAGES_PERMISSION_DENIED";
@@ -33,8 +32,7 @@ const PAGE_ARTIFACT_REBUILD_REPRODUCTION_MISMATCH: &str =
 const PAGE_ARTIFACT_REBUILD_FAILED: &str = "PAGE_ARTIFACT_REBUILD_FAILED";
 const PAGE_ARTIFACT_BINDING_REPLACEMENT_VERSION_CONFLICT: &str =
     "PAGE_ARTIFACT_BINDING_REPLACEMENT_VERSION_CONFLICT";
-const PAGE_ARTIFACT_BINDING_REPLACEMENT_FAILED: &str =
-    "PAGE_ARTIFACT_BINDING_REPLACEMENT_FAILED";
+const PAGE_ARTIFACT_BINDING_REPLACEMENT_FAILED: &str = "PAGE_ARTIFACT_BINDING_REPLACEMENT_FAILED";
 
 #[derive(Clone)]
 pub struct PagesArtifactRepairHttpRuntime {
@@ -164,9 +162,7 @@ fn page_security(auth: &AuthContext) -> rustok_core::SecurityContext {
 
 fn map_rebuild_error(error: PagesError) -> HttpError {
     match error {
-        PagesError::PageNotFound(_) => {
-            HttpError::not_found("PAGE_NOT_FOUND", "Page not found")
-        }
+        PagesError::PageNotFound(_) => HttpError::not_found("PAGE_NOT_FOUND", "Page not found"),
         PagesError::Forbidden(_) => {
             HttpError::forbidden(PAGES_PERMISSION_DENIED, "Permission denied")
         }
@@ -218,9 +214,7 @@ fn map_rebuild_error(error: PagesError) -> HttpError {
 
 fn map_activation_error(error: PagesError) -> HttpError {
     match error {
-        PagesError::PageNotFound(_) => {
-            HttpError::not_found("PAGE_NOT_FOUND", "Page not found")
-        }
+        PagesError::PageNotFound(_) => HttpError::not_found("PAGE_NOT_FOUND", "Page not found"),
         PagesError::Forbidden(_) => {
             HttpError::forbidden(PAGES_PERMISSION_DENIED, "Permission denied")
         }

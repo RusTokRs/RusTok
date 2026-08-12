@@ -57,10 +57,7 @@ impl TestDatabase {
             return Ok(None);
         };
         let control = connect(&database_url).await?;
-        let schema_name = format!(
-            "rustok_pages_outbox_cache_{}",
-            Uuid::new_v4().simple()
-        );
+        let schema_name = format!("rustok_pages_outbox_cache_{}", Uuid::new_v4().simple());
         control
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;
@@ -184,12 +181,7 @@ impl PagesCacheReadPort for DurableCachePort {
             .cloned())
     }
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        _ttl: Duration,
-    ) -> Result<(), PageCacheError> {
+    async fn put(&self, key: String, value: Vec<u8>, _ttl: Duration) -> Result<(), PageCacheError> {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -200,8 +192,8 @@ impl PagesCacheReadPort for DurableCachePort {
 }
 
 #[tokio::test]
-async fn publish_and_rollback_receipts_correlate_with_durable_outbox_and_cache_rotation_on_postgres(
-) -> TestResult<()> {
+async fn publish_and_rollback_receipts_correlate_with_durable_outbox_and_cache_rotation_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -215,9 +207,9 @@ async fn publish_and_rollback_receipts_correlate_with_durable_outbox_and_cache_r
 
     let transport: Arc<dyn EventTransport> = Arc::new(OutboxTransport::new(db.clone()));
     let event_bus = TransactionalEventBus::new(transport);
-    let cache_port = Arc::new(DurableCachePort::new(
-        PageCacheGenerationSnapshot::new(3, 5, 7),
-    ));
+    let cache_port = Arc::new(DurableCachePort::new(PageCacheGenerationSnapshot::new(
+        3, 5, 7,
+    )));
     let invalidation_port: Arc<dyn PageCacheInvalidationPort> = cache_port.clone();
     let read_port: Arc<dyn PagesCacheReadPort> = cache_port.clone();
     let handler = PageCacheInvalidationEventHandler::new(PagesCacheInvalidationRuntime::new(
@@ -251,16 +243,14 @@ async fn publish_and_rollback_receipts_correlate_with_durable_outbox_and_cache_r
         expected_receipt_count: 1,
     })
     .await?;
-    assert_eq!(publish_generations, PageCacheGenerationSnapshot::new(4, 6, 8));
+    assert_eq!(
+        publish_generations,
+        PageCacheGenerationSnapshot::new(4, 6, 8)
+    );
 
-    let rolled_back_event_id = persist_conflicting_publish_and_rollback(
-        &db,
-        &event_bus,
-        tenant_id,
-        actor_id,
-        page_id,
-    )
-    .await?;
+    let rolled_back_event_id =
+        persist_conflicting_publish_and_rollback(&db, &event_bus, tenant_id, actor_id, page_id)
+            .await?;
     assert_event_absent(&db, rolled_back_event_id).await?;
     assert_eq!(
         count_publish_receipts_by_idempotency(&db, PUBLISH_IDEMPOTENCY_KEY).await?,
@@ -294,17 +284,16 @@ async fn publish_and_rollback_receipts_correlate_with_durable_outbox_and_cache_r
         expected_receipt_count: 2,
     })
     .await?;
-    assert_eq!(rollback_generations, PageCacheGenerationSnapshot::new(5, 7, 9));
+    assert_eq!(
+        rollback_generations,
+        PageCacheGenerationSnapshot::new(5, 7, 9)
+    );
     assert_eq!(read_page_version(&db, tenant_id, page_id).await?, 3);
 
     database.cleanup().await
 }
 
-async fn insert_page(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    page_id: Uuid,
-) -> TestResult<()> {
+async fn insert_page(db: &DatabaseConnection, tenant_id: Uuid, page_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"
@@ -573,7 +562,10 @@ async fn rotate_and_refill(
         input.reads.get_json::<Value>(&new_storefront_key).await?,
         None
     );
-    assert_eq!(input.reads.get_json::<Value>(&new_artifact_key).await?, None);
+    assert_eq!(
+        input.reads.get_json::<Value>(&new_artifact_key).await?,
+        None
+    );
 
     let refilled_storefront = json!({"operation": input.operation, "generation": "after"});
     let refilled_artifact = json!({"operation": input.operation, "generation": "after"});

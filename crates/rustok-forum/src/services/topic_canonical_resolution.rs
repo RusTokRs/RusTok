@@ -47,13 +47,9 @@ impl ForumTopicCanonicalResolutionService {
         let mut visited = HashSet::from([requested_topic_id]);
 
         loop {
-            let step = load_resolution_step(
-                &self.db,
-                tenant_id,
-                canonical_topic_id,
-                requested_topic_id,
-            )
-            .await?;
+            let step =
+                load_resolution_step(&self.db, tenant_id, canonical_topic_id, requested_topic_id)
+                    .await?;
 
             match step.edges.as_slice() {
                 [] => {
@@ -85,9 +81,8 @@ impl ForumTopicCanonicalResolutionService {
             requested_topic_id,
             canonical_topic_id,
             redirected: requested_topic_id != canonical_topic_id,
-            hop_count: u32::try_from(merge_operation_ids.len()).map_err(|_| {
-                ForumError::TopicCanonicalResolutionConflict(requested_topic_id)
-            })?,
+            hop_count: u32::try_from(merge_operation_ids.len())
+                .map_err(|_| ForumError::TopicCanonicalResolutionConflict(requested_topic_id))?,
             merge_operation_ids,
         })
     }

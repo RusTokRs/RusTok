@@ -17,11 +17,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ReactionSubjects::TenantId)
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ReactionSubjects::TenantId).uuid().not_null())
                     .col(
                         ColumnDef::new(ReactionSubjects::SourceSlug)
                             .string_len(64)
@@ -95,11 +91,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ReactionCatalogs::TenantId)
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ReactionCatalogs::TenantId).uuid().not_null())
                     .col(
                         ColumnDef::new(ReactionCatalogs::ReactionSubjectId)
                             .uuid()
@@ -199,10 +191,7 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_reaction_actor_states_tenant_subject")
-                            .from(
-                                ReactionActorStates::Table,
-                                ReactionActorStates::TenantId,
-                            )
+                            .from(ReactionActorStates::Table, ReactionActorStates::TenantId)
                             .from_col(ReactionActorStates::ReactionSubjectId)
                             .to(ReactionSubjects::Table, ReactionSubjects::TenantId)
                             .to_col(ReactionSubjects::Id)

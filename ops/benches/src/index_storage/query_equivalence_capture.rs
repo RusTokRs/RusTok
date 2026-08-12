@@ -60,14 +60,13 @@ impl QueryEquivalenceCaptureConfig {
             .or_else(|_| env::var("DATABASE_URL"))
             .with_context(|| format!("{DATABASE_ENV} or DATABASE_URL is required"))?;
         ensure!(
-            database_url.starts_with("postgres://")
-                || database_url.starts_with("postgresql://"),
+            database_url.starts_with("postgres://") || database_url.starts_with("postgresql://"),
             "query equivalence capture requires a PostgreSQL URL"
         );
 
-        let workspace_root = env::var(WORKSPACE_ENV)
-            .map(PathBuf::from)
-            .unwrap_or(env::current_dir().context("failed to resolve current workspace directory")?);
+        let workspace_root = env::var(WORKSPACE_ENV).map(PathBuf::from).unwrap_or(
+            env::current_dir().context("failed to resolve current workspace directory")?,
+        );
         let workspace_root = workspace_root
             .canonicalize()
             .with_context(|| format!("failed to canonicalize workspace root {workspace_root:?}"))?;
@@ -424,9 +423,9 @@ fn publish_bundle(
         parent_metadata.is_dir() && !parent_metadata.file_type().is_symlink(),
         "query equivalence output parent must be a regular non-symlink directory"
     );
-    let canonical_parent = parent
-        .canonicalize()
-        .with_context(|| format!("failed to canonicalize query equivalence output parent {parent:?}"))?;
+    let canonical_parent = parent.canonicalize().with_context(|| {
+        format!("failed to canonicalize query equivalence output parent {parent:?}")
+    })?;
     let output_name = config
         .output_root
         .file_name()
@@ -445,10 +444,7 @@ fn publish_bundle(
         let mut descriptor_bytes = serde_json::to_vec_pretty(descriptor)?;
         descriptor_bytes.push(b'\n');
         write_new_file(&final_root.join(DESCRIPTOR_FILE), &descriptor_bytes)?;
-        ensure_exact_files(
-            &final_root,
-            &[DESCRIPTOR_FILE, STDERR_FILE, STDOUT_FILE],
-        )?;
+        ensure_exact_files(&final_root, &[DESCRIPTOR_FILE, STDERR_FILE, STDOUT_FILE])?;
         Ok(final_root.clone())
     })();
     if result.is_err() && final_root.exists() {
@@ -462,7 +458,9 @@ fn write_new_file(path: &Path, bytes: &[u8]) -> Result<()> {
         .write(true)
         .create_new(true)
         .open(path)
-        .with_context(|| format!("failed to create retained query equivalence artifact {path:?}"))?;
+        .with_context(|| {
+            format!("failed to create retained query equivalence artifact {path:?}")
+        })?;
     file.write_all(bytes)
         .with_context(|| format!("failed to write retained query equivalence artifact {path:?}"))?;
     file.sync_all()
@@ -471,7 +469,10 @@ fn write_new_file(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 fn ensure_exact_files(root: &Path, expected: &[&str]) -> Result<()> {
-    let expected = expected.iter().map(|value| (*value).to_owned()).collect::<BTreeSet<_>>();
+    let expected = expected
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<BTreeSet<_>>();
     let mut actual = BTreeSet::new();
     for entry in fs::read_dir(root)
         .with_context(|| format!("failed to inspect query equivalence bundle {root:?}"))?
@@ -509,9 +510,9 @@ fn validate_run_key(value: &str) -> Result<()> {
         "{RUN_KEY_ENV} must contain between 1 and 128 bytes"
     );
     ensure!(
-        value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')
-        }),
+        value
+            .bytes()
+            .all(|byte| { byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.') }),
         "{RUN_KEY_ENV} may contain only ASCII letters, digits, dash, underscore, and dot"
     );
     ensure!(

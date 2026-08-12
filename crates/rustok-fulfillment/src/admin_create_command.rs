@@ -379,10 +379,7 @@ fn map_fulfillment_error(
     let (variant, mapped) = match error {
         FulfillmentError::Validation(_) => (
             "validation",
-            PortError::validation(
-                "fulfillment.validation",
-                "fulfillment request is invalid",
-            ),
+            PortError::validation("fulfillment.validation", "fulfillment request is invalid"),
         ),
         FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
             "not_found",

@@ -4,9 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     unsafe {
         std::env::set_var("PROTOC", protoc);
     }
-    tonic_prost_build::configure().compile_protos(
-        &["proto/rustok/product/product_catalog.proto"],
-        &["proto"],
-    )?;
+    tonic_prost_build::configure()
+        .compile_protos(&["proto/rustok/product/product_catalog.proto"], &["proto"])?;
     Ok(())
 }

@@ -52,10 +52,7 @@ mod tests {
 
     #[test]
     fn delegated_and_service_principals_are_denied() {
-        for principal_kind in [
-            AuthPrincipalKind::DelegatedUser,
-            AuthPrincipalKind::Service,
-        ] {
+        for principal_kind in [AuthPrincipalKind::DelegatedUser, AuthPrincipalKind::Service] {
             let auth = auth_context(Uuid::new_v4());
 
             assert!(

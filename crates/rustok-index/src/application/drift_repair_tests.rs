@@ -24,10 +24,10 @@ fn digest(byte: char) -> String {
 #[test]
 fn repair_command_binds_exact_tenant_and_redacts_operator_text() {
     let tenant_id = Uuid::from_u128(1);
-    let target = IndexDriftRepairTarget::missing_entity(entity_key(tenant_id), 7, 9)
-        .expect("valid target");
-    let actor = IndexDriftFindingLifecycleActor::new("operator", "private-subject")
-        .expect("valid actor");
+    let target =
+        IndexDriftRepairTarget::missing_entity(entity_key(tenant_id), 7, 9).expect("valid target");
+    let actor =
+        IndexDriftFindingLifecycleActor::new("operator", "private-subject").expect("valid actor");
     let command = IndexDriftRepairCommand::new(
         tenant_id,
         Uuid::from_u128(3),
@@ -49,8 +49,7 @@ fn repair_command_binds_exact_tenant_and_redacts_operator_text() {
 fn repair_command_rejects_cross_tenant_target() {
     let target = IndexDriftRepairTarget::missing_entity(entity_key(Uuid::from_u128(1)), 7, 9)
         .expect("valid target");
-    let actor = IndexDriftFindingLifecycleActor::new("operator", "subject")
-        .expect("valid actor");
+    let actor = IndexDriftFindingLifecycleActor::new("operator", "subject").expect("valid actor");
 
     let error = IndexDriftRepairCommand::new(
         Uuid::from_u128(5),

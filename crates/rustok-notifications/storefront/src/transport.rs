@@ -62,8 +62,8 @@ fn selected_storefront_write_transport_path() -> UiTransportPath {
     }
 }
 
-pub fn current_notification_storefront_transport_context(
-) -> NotificationStorefrontTransportContext {
+pub fn current_notification_storefront_transport_context() -> NotificationStorefrontTransportContext
+{
     let auth = use_context::<AuthContext>();
     let access_token = auth.as_ref().and_then(AuthContext::get_token);
     let tenant_slug = auth
@@ -155,8 +155,8 @@ pub async fn apply_notification_group_state_selected(
     .await
 }
 
-pub async fn load_notification_unread_count(
-) -> Result<NotificationStorefrontUnreadCount, NativeNotificationStorefrontError> {
+pub async fn load_notification_unread_count()
+-> Result<NotificationStorefrontUnreadCount, NativeNotificationStorefrontError> {
     load_notification_unread_count_selected(current_storefront_transport_context())
         .await
         .map_err(|error| NativeNotificationStorefrontError(error.to_string()))

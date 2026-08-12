@@ -226,11 +226,8 @@ impl PageService {
         let mut items = Vec::with_capacity(pages.len());
         for page in pages {
             let translations = translations_map.get(&page.id).cloned().unwrap_or_default();
-            let resolved = resolve_translation_record(
-                &translations,
-                &locale,
-                fallback_locale.as_deref(),
-            );
+            let resolved =
+                resolve_translation_record(&translations, &locale, fallback_locale.as_deref());
             items.push(PageListItem {
                 id: page.id,
                 status: storage_to_status(&page.status)?,

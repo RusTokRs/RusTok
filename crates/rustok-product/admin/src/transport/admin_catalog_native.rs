@@ -29,12 +29,8 @@ fn map_product_service_error(
     operation: &'static str,
 ) -> ServerFnError {
     ServerFnError::new(
-        rustok_product::map_product_public_error(
-            &error,
-            operation,
-            "product_admin_catalog_native",
-        )
-        .to_string(),
+        rustok_product::map_product_public_error(&error, operation, "product_admin_catalog_native")
+            .to_string(),
     )
 }
 

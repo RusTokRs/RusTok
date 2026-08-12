@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-    Value as SqlValue,
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value as SqlValue,
 };
 use serde_json::Value as JsonValue;
 
@@ -15,9 +14,7 @@ use super::{
     mutation_store::{
         MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore,
     },
-    source_replay_job::{
-        assert_active_replay_job_lease, IndexReplayJobError, IndexReplayJobLease,
-    },
+    source_replay_job::{IndexReplayJobError, IndexReplayJobLease, assert_active_replay_job_lease},
     source_replay_timeout::{
         bounded_replay_checkpoint_commit, bounded_replay_checkpoint_read, bounded_replay_mutation,
     },
@@ -102,9 +99,8 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
                 let cursor = serde_json::from_value(cursor_json).map_err(|error| {
                     checkpoint_contract_failure("checkpoint_cursor_invalid", error)
                 })?;
-                let source_version_text: Option<String> = row
-                    .try_get("", "source_version_text")
-                    .map_err(|error| {
+                let source_version_text: Option<String> =
+                    row.try_get("", "source_version_text").map_err(|error| {
                         checkpoint_contract_failure("checkpoint_source_version_invalid", error)
                     })?;
                 let source_version = source_version_text
@@ -114,9 +110,10 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
                         })
                     })
                     .transpose()?;
-                let last_delivery_id: Option<String> = row.try_get("", "last_delivery_id").map_err(
-                    |error| checkpoint_contract_failure("checkpoint_delivery_invalid", error),
-                )?;
+                let last_delivery_id: Option<String> =
+                    row.try_get("", "last_delivery_id").map_err(|error| {
+                        checkpoint_contract_failure("checkpoint_delivery_invalid", error)
+                    })?;
 
                 IndexReplayCheckpoint::new(key.clone(), cursor, source_version, last_delivery_id)
                     .map(Some)
@@ -128,19 +125,15 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
 
             match result {
                 Ok(checkpoint) => {
-                    transaction
-                        .commit()
-                        .await
-                        .map_err(|error| checkpoint_storage_failure("checkpoint_read_failed", error))?;
+                    transaction.commit().await.map_err(|error| {
+                        checkpoint_storage_failure("checkpoint_read_failed", error)
+                    })?;
                     Ok(checkpoint)
                 }
                 Err(error) => {
-                    transaction
-                        .rollback()
-                        .await
-                        .map_err(|rollback| {
-                            checkpoint_storage_failure("checkpoint_read_rollback_failed", rollback)
-                        })?;
+                    transaction.rollback().await.map_err(|rollback| {
+                        checkpoint_storage_failure("checkpoint_read_rollback_failed", rollback)
+                    })?;
                     Err(error)
                 }
             }
@@ -154,11 +147,10 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
     ) -> Result<(), IndexReplayFailure> {
         validate_checkpoint_identity(&self.lease, checkpoint.key())?;
         bounded_replay_checkpoint_commit(async {
-            let transaction = self
-                .db
-                .begin()
-                .await
-                .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error))?;
+            let transaction =
+                self.db.begin().await.map_err(|error| {
+                    checkpoint_storage_failure("checkpoint_commit_failed", error)
+                })?;
             let result = async {
                 let backend = transaction.get_database_backend();
                 ensure_supported_backend(backend)?;
@@ -174,12 +166,7 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
                     checkpoint.source_version(),
                     backend,
                 )?);
-                values.push(
-                    checkpoint
-                        .last_delivery_id()
-                        .map(str::to_owned)
-                        .into(),
-                );
+                values.push(checkpoint.last_delivery_id().map(str::to_owned).into());
 
                 transaction
                     .execute(Statement::from_sql_and_values(
@@ -188,7 +175,9 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
                         values,
                     ))
                     .await
-                    .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error))?;
+                    .map_err(|error| {
+                        checkpoint_storage_failure("checkpoint_commit_failed", error)
+                    })?;
                 Ok(())
             }
             .await;
@@ -199,12 +188,9 @@ impl IndexReplayCheckpointStore for PostgresIndexReplayCheckpointStore {
                     .await
                     .map_err(|error| checkpoint_storage_failure("checkpoint_commit_failed", error)),
                 Err(error) => {
-                    transaction
-                        .rollback()
-                        .await
-                        .map_err(|rollback| {
-                            checkpoint_storage_failure("checkpoint_commit_rollback_failed", rollback)
-                        })?;
+                    transaction.rollback().await.map_err(|rollback| {
+                        checkpoint_storage_failure("checkpoint_commit_rollback_failed", rollback)
+                    })?;
                     Err(error)
                 }
             }
@@ -346,10 +332,7 @@ fn optional_source_version_value(
     }
 }
 
-fn checkpoint_key_values(
-    key: &IndexReplayCheckpointKey,
-    backend: DbBackend,
-) -> Vec<SqlValue> {
+fn checkpoint_key_values(key: &IndexReplayCheckpointKey, backend: DbBackend) -> Vec<SqlValue> {
     vec![
         uuid_value(key.tenant_id(), backend),
         "rebuild".into(),

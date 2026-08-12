@@ -32,7 +32,8 @@ const TOPIC_ENDPOINT: &str = "/api/fn/forum/storefront-topic-route";
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test]
-async fn registered_native_host_resolves_forum_canonical_alias_and_missing_routes() -> TestResult<()> {
+async fn registered_native_host_resolves_forum_canonical_alias_and_missing_routes() -> TestResult<()>
+{
     let tenant_id = Uuid::new_v4();
     let admin_id = Uuid::new_v4();
     let db = setup_db(tenant_id, admin_id).await?;
@@ -121,13 +122,7 @@ async fn registered_native_host_resolves_forum_canonical_alias_and_missing_route
         &["canonical", "/en/forum/c/platform-engineering"],
     );
 
-    let category_alias = call(
-        &app,
-        &tenant,
-        CATEGORY_ENDPOINT,
-        "locale=en&slug=platform",
-    )
-    .await?;
+    let category_alias = call(&app, &tenant, CATEGORY_ENDPOINT, "locale=en&slug=platform").await?;
     assert_ok_contains(
         &category_alias,
         &["redirect", "/en/forum/c/platform-engineering"],

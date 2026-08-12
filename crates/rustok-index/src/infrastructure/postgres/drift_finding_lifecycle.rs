@@ -229,7 +229,9 @@ async fn load_existing_event(
         .transpose()
 }
 
-fn decode_event(row: QueryResult) -> Result<StoredLifecycleEvent, IndexDriftFindingLifecycleFailure> {
+fn decode_event(
+    row: QueryResult,
+) -> Result<StoredLifecycleEvent, IndexDriftFindingLifecycleFailure> {
     let finding_id = row
         .try_get::<Uuid>("", "finding_id")
         .map_err(|_| permanent_failure(STORED_CONTRACT_INVALID))?;

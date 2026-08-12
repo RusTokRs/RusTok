@@ -89,9 +89,7 @@ pub enum ForumExportReadError {
         id: Uuid,
         locale: String,
     },
-    #[error(
-        "Forum export {kind} target {requested_id} resolved to different owner id {actual_id}"
-    )]
+    #[error("Forum export {kind} target {requested_id} resolved to different owner id {actual_id}")]
     OwnerIdentityChanged {
         kind: &'static str,
         requested_id: Uuid,
@@ -285,8 +283,8 @@ fn ensure_exact_owner_view(
             actual_id,
         });
     }
-    let effective_locale = normalize_locale_code(effective_locale)
-        .unwrap_or_else(|| effective_locale.to_owned());
+    let effective_locale =
+        normalize_locale_code(effective_locale).unwrap_or_else(|| effective_locale.to_owned());
     if effective_locale != requested_locale {
         return Err(ForumExportReadError::LocaleNotStored {
             kind: kind.label(),
@@ -306,13 +304,7 @@ mod tests {
     fn exact_owner_view_rejects_fallback_and_identity_redirects() {
         let id = Uuid::new_v4();
         assert!(matches!(
-            ensure_exact_owner_view(
-                ForumExportReadTargetKind::Reply,
-                id,
-                "de",
-                id,
-                "en",
-            ),
+            ensure_exact_owner_view(ForumExportReadTargetKind::Reply, id, "de", id, "en",),
             Err(ForumExportReadError::LocaleNotStored { .. })
         ));
 

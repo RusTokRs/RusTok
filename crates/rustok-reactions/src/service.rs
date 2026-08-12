@@ -42,9 +42,8 @@ impl ReactionsService {
         database: DatabaseConnection,
         extensions: &rustok_core::ModuleRuntimeExtensions,
     ) -> Self {
-        let subjects =
-            rustok_reactions_api::reaction_subject_registry_from_extensions(extensions)
-                .unwrap_or_else(|| Arc::new(ReactionSubjectRegistry::default()));
+        let subjects = rustok_reactions_api::reaction_subject_registry_from_extensions(extensions)
+            .unwrap_or_else(|| Arc::new(ReactionSubjectRegistry::default()));
         Self::new(database, subjects)
     }
 
@@ -84,9 +83,7 @@ impl ReactionsService {
         }
 
         let request = ReactionSubjectRequest { subject, access };
-        request
-            .validate()
-            .map_err(contract_error_to_port_error)?;
+        request.validate().map_err(contract_error_to_port_error)?;
         let authorization = provider
             .authorize(context.clone(), request.clone())
             .await
@@ -332,12 +329,7 @@ async fn apply_inside_transaction(
                 row.created_at,
             )
         }
-        None => (
-            Uuid::new_v4(),
-            0,
-            Vec::new(),
-            Utc::now().fixed_offset(),
-        ),
+        None => (Uuid::new_v4(), 0, Vec::new(), Utc::now().fixed_offset()),
     };
 
     if selected.iter().any(|key| !catalog_value.contains(key))
@@ -632,13 +624,8 @@ async fn synchronize_subject(
             ));
         }
     } else {
-        ensure_catalog_accepts_live_aggregates(
-            transaction,
-            tenant_id,
-            stored.id,
-            catalog_value,
-        )
-        .await?;
+        ensure_catalog_accepts_live_aggregates(transaction, tenant_id, stored.id, catalog_value)
+            .await?;
         catalog::Entity::insert(catalog::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
@@ -946,7 +933,11 @@ fn authorize_actor(context: &PortContext, actor_id: Uuid) -> Result<(), PortErro
             }
         }
         PortActorKind::Service | PortActorKind::System => {
-            if !context.claims.iter().any(|claim| claim == ACT_AS_ACTOR_CLAIM) {
+            if !context
+                .claims
+                .iter()
+                .any(|claim| claim == ACT_AS_ACTOR_CLAIM)
+            {
                 return Err(PortError::forbidden(
                     "reactions.actor_delegation_forbidden",
                     "service reaction access requires the act-as-actor claim",
@@ -1007,10 +998,7 @@ fn u64_to_i64(value: u64, label: &'static str) -> Result<i64, PortError> {
 
 fn i64_to_u64(value: i64, label: &'static str) -> Result<u64, PortError> {
     u64::try_from(value).map_err(|_| {
-        PortError::invariant_violation(
-            "reactions.revision_invalid",
-            format!("{label} is negative"),
-        )
+        PortError::invariant_violation("reactions.revision_invalid", format!("{label} is negative"))
     })
 }
 

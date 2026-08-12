@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::import_mapping::{
-    ForumImportCandidateBatch, ForumImportExternalRef, ForumImportMappingError, NodebbExportBatch,
-    NodebbForumImportMapper, MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH,
+    ForumImportCandidateBatch, ForumImportExternalRef, ForumImportMappingError,
+    MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH, NodebbExportBatch, NodebbForumImportMapper,
 };
 
 pub const MAX_FORUM_IMPORT_DEPENDENCY_ISSUES_PER_BATCH: usize =
@@ -123,7 +123,8 @@ impl NodebbForumImportInspector {
                                 owner: candidate.source.clone(),
                                 relation: ForumImportDependencyRelation::TopicMainPost,
                                 target: main_post_source.clone(),
-                                disposition: ForumImportDependencyDisposition::MismatchedBatchRecord,
+                                disposition:
+                                    ForumImportDependencyDisposition::MismatchedBatchRecord,
                             });
                         }
                         Some(_) => {}
@@ -288,17 +289,44 @@ mod tests {
         let inspected = NodebbForumImportInspector.inspect_batch(&batch).unwrap();
         let issues = &inspected.unresolved_dependencies;
         assert_eq!(issues.len(), 7);
-        assert_eq!(issues[0].relation, ForumImportDependencyRelation::CategoryParent);
-        assert_eq!(issues[0].disposition, ForumImportDependencyDisposition::MissingBatchRecord);
-        assert_eq!(issues[1].relation, ForumImportDependencyRelation::TopicCategory);
-        assert_eq!(issues[2].relation, ForumImportDependencyRelation::TopicMainPost);
+        assert_eq!(
+            issues[0].relation,
+            ForumImportDependencyRelation::CategoryParent
+        );
+        assert_eq!(
+            issues[0].disposition,
+            ForumImportDependencyDisposition::MissingBatchRecord
+        );
+        assert_eq!(
+            issues[1].relation,
+            ForumImportDependencyRelation::TopicCategory
+        );
+        assert_eq!(
+            issues[2].relation,
+            ForumImportDependencyRelation::TopicMainPost
+        );
         assert_eq!(issues[2].target.key, "post:101");
-        assert_eq!(issues[3].relation, ForumImportDependencyRelation::AuthorUser);
-        assert_eq!(issues[3].disposition, ForumImportDependencyDisposition::ExternalOwnerResolution);
-        assert_eq!(issues[4].relation, ForumImportDependencyRelation::TopicMainPost);
-        assert_eq!(issues[4].disposition, ForumImportDependencyDisposition::MismatchedBatchRecord);
+        assert_eq!(
+            issues[3].relation,
+            ForumImportDependencyRelation::AuthorUser
+        );
+        assert_eq!(
+            issues[3].disposition,
+            ForumImportDependencyDisposition::ExternalOwnerResolution
+        );
+        assert_eq!(
+            issues[4].relation,
+            ForumImportDependencyRelation::TopicMainPost
+        );
+        assert_eq!(
+            issues[4].disposition,
+            ForumImportDependencyDisposition::MismatchedBatchRecord
+        );
         assert_eq!(issues[5].relation, ForumImportDependencyRelation::PostTopic);
-        assert_eq!(issues[6].relation, ForumImportDependencyRelation::AuthorUser);
+        assert_eq!(
+            issues[6].relation,
+            ForumImportDependencyRelation::AuthorUser
+        );
         assert_eq!(issues[6].target.key, "user:8");
     }
 
@@ -343,15 +371,27 @@ mod tests {
         assert_eq!(issues.len(), 4);
         assert_eq!(issues[0].owner.key, "category:1");
         assert_eq!(issues[0].target.key, "category:1");
-        assert_eq!(issues[0].disposition, ForumImportDependencyDisposition::CyclicBatchRelation);
+        assert_eq!(
+            issues[0].disposition,
+            ForumImportDependencyDisposition::CyclicBatchRelation
+        );
         assert_eq!(issues[1].owner.key, "category:2");
         assert_eq!(issues[1].target.key, "category:3");
-        assert_eq!(issues[1].disposition, ForumImportDependencyDisposition::CyclicBatchRelation);
+        assert_eq!(
+            issues[1].disposition,
+            ForumImportDependencyDisposition::CyclicBatchRelation
+        );
         assert_eq!(issues[2].owner.key, "category:3");
         assert_eq!(issues[2].target.key, "category:2");
-        assert_eq!(issues[2].disposition, ForumImportDependencyDisposition::CyclicBatchRelation);
+        assert_eq!(
+            issues[2].disposition,
+            ForumImportDependencyDisposition::CyclicBatchRelation
+        );
         assert_eq!(issues[3].owner.key, "category:4");
-        assert_eq!(issues[3].disposition, ForumImportDependencyDisposition::MissingBatchRecord);
+        assert_eq!(
+            issues[3].disposition,
+            ForumImportDependencyDisposition::MissingBatchRecord
+        );
         assert!(!inspected.is_dependency_complete());
     }
 

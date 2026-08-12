@@ -163,7 +163,14 @@ async fn exact_group_sparse_pages_exclude_other_groups_and_preserve_progress() {
     );
 
     let first = service
-        .list_page(group_request(tenant_id, recipient_id, GROUP_A, None, None, 2))
+        .list_page(group_request(
+            tenant_id,
+            recipient_id,
+            GROUP_A,
+            None,
+            None,
+            2,
+        ))
         .await
         .expect("first sparse group page should load");
     assert!(first.items.is_empty());
@@ -189,7 +196,12 @@ async fn exact_group_sparse_pages_exclude_other_groups_and_preserve_progress() {
     );
     assert!(!second.has_more);
     assert!(second.next_cursor.is_none());
-    assert!(second.items.iter().all(|item| item.state == NotificationState::Unread));
+    assert!(
+        second
+            .items
+            .iter()
+            .all(|item| item.state == NotificationState::Unread)
+    );
 
     let policy_targets = policy_calls
         .lock()
@@ -228,7 +240,11 @@ async fn exact_group_sparse_pages_exclude_other_groups_and_preserve_progress() {
         .all(&db)
         .await
         .expect("stored notifications should remain readable");
-    assert!(stored.iter().all(|row| row.state == NotificationState::Unread));
+    assert!(
+        stored
+            .iter()
+            .all(|row| row.state == NotificationState::Unread)
+    );
     assert!(stored.iter().all(|row| row.seen_at.is_none()));
     assert!(stored.iter().all(|row| row.read_at.is_none()));
     assert!(stored.iter().all(|row| row.archived_at.is_none()));
@@ -427,13 +443,17 @@ async fn retryable_group_authorization_failure_aborts_without_partial_result_or_
     );
 
     let error = service
-        .list_page(group_request(tenant_id, recipient_id, GROUP_A, None, None, 2))
+        .list_page(group_request(
+            tenant_id,
+            recipient_id,
+            GROUP_A,
+            None,
+            None,
+            2,
+        ))
         .await
         .expect_err("retryable recipient policy failure must abort the group page");
-    assert_eq!(
-        error.stable_code(),
-        "NOTIFICATION_RECIPIENT_POLICY_FAILURE"
-    );
+    assert_eq!(error.stable_code(), "NOTIFICATION_RECIPIENT_POLICY_FAILURE");
     assert!(error.is_retryable());
     assert_eq!(
         source_calls
@@ -450,7 +470,10 @@ async fn retryable_group_authorization_failure_aborts_without_partial_result_or_
         .await
         .expect("notification rows should remain readable");
     assert_eq!(rows.len(), 2);
-    assert!(rows.iter().all(|row| row.state == NotificationState::Unread));
+    assert!(
+        rows.iter()
+            .all(|row| row.state == NotificationState::Unread)
+    );
     assert!(rows.iter().all(|row| row.updated_at == row.created_at));
 }
 
@@ -542,8 +565,7 @@ async fn seed_notification(
     let seen_at = matches!(state, NotificationState::Seen | NotificationState::Read)
         .then_some(created_at.to_owned());
     let read_at = matches!(state, NotificationState::Read).then_some(created_at.to_owned());
-    let archived_at =
-        matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
+    let archived_at = matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
     notification::ActiveModel {
         id: Set(notification_id),
         tenant_id: Set(tenant_id),

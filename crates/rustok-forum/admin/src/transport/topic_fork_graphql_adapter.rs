@@ -4,8 +4,7 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use crate::topic_fork_model::{
-    ForumTopicForkCandidate, ForumTopicForkCommand, ForumTopicForkReceipt,
-    ForumTopicForkReplyPage,
+    ForumTopicForkCandidate, ForumTopicForkCommand, ForumTopicForkReceipt, ForumTopicForkReplyPage,
 };
 
 pub type ApiError = String;

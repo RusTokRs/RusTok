@@ -1,6 +1,6 @@
 use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, DbBackend,
+    Statement, TransactionTrait,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -109,22 +109,23 @@ where
         };
 
         let event = self.factory.locale_event(&record);
-        let refresh_id = match ProductIndexRefreshCanonicalWriter::publish_locale_once_in_transaction(
-            &transaction,
-            &record,
-            event,
-        )
-        .await
-        {
-            Ok(refresh_id) => refresh_id,
-            Err(error) => {
-                transaction
-                    .rollback()
-                    .await
-                    .map_err(|_| ProductIndexRefreshRelayError::Unavailable)?;
-                return Err(error.into());
-            }
-        };
+        let refresh_id =
+            match ProductIndexRefreshCanonicalWriter::publish_locale_once_in_transaction(
+                &transaction,
+                &record,
+                event,
+            )
+            .await
+            {
+                Ok(refresh_id) => refresh_id,
+                Err(error) => {
+                    transaction
+                        .rollback()
+                        .await
+                        .map_err(|_| ProductIndexRefreshRelayError::Unavailable)?;
+                    return Err(error.into());
+                }
+            };
 
         if let Err(error) = advance_cursor(
             &transaction,
@@ -192,22 +193,23 @@ where
         };
 
         let event = self.factory.variant_event(&record);
-        let refresh_id = match ProductIndexRefreshCanonicalWriter::publish_variant_once_in_transaction(
-            &transaction,
-            &record,
-            event,
-        )
-        .await
-        {
-            Ok(refresh_id) => refresh_id,
-            Err(error) => {
-                transaction
-                    .rollback()
-                    .await
-                    .map_err(|_| ProductIndexRefreshRelayError::Unavailable)?;
-                return Err(error.into());
-            }
-        };
+        let refresh_id =
+            match ProductIndexRefreshCanonicalWriter::publish_variant_once_in_transaction(
+                &transaction,
+                &record,
+                event,
+            )
+            .await
+            {
+                Ok(refresh_id) => refresh_id,
+                Err(error) => {
+                    transaction
+                        .rollback()
+                        .await
+                        .map_err(|_| ProductIndexRefreshRelayError::Unavailable)?;
+                    return Err(error.into());
+                }
+            };
 
         if let Err(error) = advance_cursor(
             &transaction,

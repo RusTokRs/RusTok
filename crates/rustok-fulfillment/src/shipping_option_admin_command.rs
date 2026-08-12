@@ -6,13 +6,12 @@ use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::dto::{
-    CreateShippingOptionInput, ShippingOptionResponse, UpdateShippingOptionInput,
-};
+use crate::dto::{CreateShippingOptionInput, ShippingOptionResponse, UpdateShippingOptionInput};
 use crate::error::FulfillmentError;
 use crate::services::FulfillmentService;
 
-const SHIPPING_OPTION_ADMIN_COMMAND_BOUNDARY: &str = "fulfillment_shipping_option_admin_command_port";
+const SHIPPING_OPTION_ADMIN_COMMAND_BOUNDARY: &str =
+    "fulfillment_shipping_option_admin_command_port";
 
 #[async_trait]
 pub trait ShippingOptionAdminCommandPort: Send + Sync {
@@ -162,9 +161,11 @@ fn require_write_admission(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::write()).inspect_err(|error| {
-        log_port_error(context, operation, "policy", error);
-    })
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_port_error(context, operation, "policy", error);
+        })
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {

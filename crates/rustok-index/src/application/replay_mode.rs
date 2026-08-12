@@ -117,11 +117,9 @@ mod tests {
 
     #[test]
     fn targeted_reuses_the_canonical_bounded_load_request() {
-        let selection = IndexReplayModeSelection::targeted(vec![
-            key(10, Some("en-US")),
-            key(11, Some("de")),
-        ])
-        .unwrap();
+        let selection =
+            IndexReplayModeSelection::targeted(vec![key(10, Some("en-US")), key(11, Some("de"))])
+                .unwrap();
         assert_eq!(selection.mode(), IndexReplayMode::Targeted);
         assert_eq!(
             selection.execution_surface(),
@@ -135,9 +133,7 @@ mod tests {
     fn targeted_rejects_empty_duplicate_and_mixed_scope_keys() {
         assert!(IndexReplayModeSelection::targeted(Vec::new()).is_err());
         let duplicate = key(10, None);
-        assert!(
-            IndexReplayModeSelection::targeted(vec![duplicate.clone(), duplicate]).is_err()
-        );
+        assert!(IndexReplayModeSelection::targeted(vec![duplicate.clone(), duplicate]).is_err());
 
         let mut mixed = key(11, None);
         mixed.tenant_id = Uuid::from_u128(2);

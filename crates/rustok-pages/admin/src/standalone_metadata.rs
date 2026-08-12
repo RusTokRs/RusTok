@@ -28,9 +28,7 @@ fn published_metadata_surface_admission(
 }
 
 #[component]
-pub(crate) fn PagesPublishedMetadataSurface(
-    refresh_generation: RwSignal<u64>,
-) -> impl IntoView {
+pub(crate) fn PagesPublishedMetadataSurface(refresh_generation: RwSignal<u64>) -> impl IntoView {
     let selected_page_query = use_route_query_value(AdminQueryKey::PageId.as_str());
     let token = use_token();
     let tenant = use_tenant();

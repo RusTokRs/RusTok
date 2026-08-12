@@ -1,9 +1,4 @@
-use std::{
-    collections::BTreeSet,
-    fmt,
-    future::Future,
-    sync::Arc,
-};
+use std::{collections::BTreeSet, fmt, future::Future, sync::Arc};
 
 use async_trait::async_trait;
 use thiserror::Error;
@@ -78,11 +73,7 @@ pub struct IndexReplayPageRequest {
 }
 
 impl IndexReplayPageRequest {
-    pub fn new(
-        tenant_id: Uuid,
-        schema: SchemaRef,
-        limit: usize,
-    ) -> Result<Self, IndexReplayError> {
+    pub fn new(tenant_id: Uuid, schema: SchemaRef, limit: usize) -> Result<Self, IndexReplayError> {
         IndexSourceScanRequest::new(tenant_id, schema.clone(), None, limit)
             .map_err(IndexReplayError::SourceContract)?;
         Ok(Self {
@@ -209,11 +200,7 @@ impl IndexReplayCheckpoint {
             return Err(IndexReplayError::ZeroCheckpointSourceVersion);
         }
         if let Some(delivery_id) = &last_delivery_id {
-            validate_required_storage_key(
-                "last delivery id",
-                delivery_id,
-                MAX_DELIVERY_ID_BYTES,
-            )?;
+            validate_required_storage_key("last delivery id", delivery_id, MAX_DELIVERY_ID_BYTES)?;
             let parsed = Uuid::parse_str(delivery_id)
                 .map_err(|_| IndexReplayError::InvalidCheckpointDeliveryId(delivery_id.clone()))?;
             if parsed.is_nil() {
@@ -500,10 +487,11 @@ where
                 IndexReplayMutationOutcome::Duplicate => duplicate_count += 1,
                 IndexReplayMutationOutcome::StaleIgnored => stale_count += 1,
             }
-            max_source_version = Some(max_source_version.map_or(
-                mutation.source_version(),
-                |current| current.max(mutation.source_version()),
-            ));
+            max_source_version = Some(
+                max_source_version.map_or(mutation.source_version(), |current| {
+                    current.max(mutation.source_version())
+                }),
+            );
             last_delivery_id = Some(mutation.event_id().to_string());
         }
 
@@ -635,8 +623,6 @@ fn valid_machine_name(value: &str, max_bytes: usize) -> bool {
     !value.is_empty()
         && value.len() <= max_bytes
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }

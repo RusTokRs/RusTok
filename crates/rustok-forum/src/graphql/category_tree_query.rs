@@ -30,7 +30,8 @@ const CATEGORY_TREE_LOCALE_OUTCOME_EXACT: &str = "exact";
 const CATEGORY_TREE_LOCALE_OUTCOME_FALLBACK: &str = "fallback";
 const CATEGORY_TREE_LOCALE_OUTCOME_MISSING: &str = "missing";
 
-static FORUM_GRAPHQL_CATEGORY_TREE_LOCALE_RESOLUTION_TOTAL: OnceLock<IntCounterVec> = OnceLock::new();
+static FORUM_GRAPHQL_CATEGORY_TREE_LOCALE_RESOLUTION_TOTAL: OnceLock<IntCounterVec> =
+    OnceLock::new();
 static FORUM_GRAPHQL_CATEGORY_TREE_LOCALE_RESOLUTION_REGISTERED: AtomicBool =
     AtomicBool::new(false);
 
@@ -161,8 +162,7 @@ fn forum_graphql_category_tree_locale_resolution_counter() -> Option<&'static In
         .is_ok()
         && rustok_telemetry::register_runtime_collector(Box::new(counter.clone())).is_err()
     {
-        FORUM_GRAPHQL_CATEGORY_TREE_LOCALE_RESOLUTION_REGISTERED
-            .store(false, Ordering::Release);
+        FORUM_GRAPHQL_CATEGORY_TREE_LOCALE_RESOLUTION_REGISTERED.store(false, Ordering::Release);
         return None;
     }
 

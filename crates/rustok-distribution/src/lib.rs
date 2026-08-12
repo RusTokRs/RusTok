@@ -330,8 +330,8 @@ mod tests {
     use rustok_core::{MigrationSource, ModuleRegistry, ModuleRuntimeExtensions, RusToKModule};
     use rustok_index::{
         EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema,
-        IndexSchemaSourceCatalog, IndexValueType, LocaleMode, ModuleName, SchemaRef,
-        SchemaVersion, SharedIndexSchemaRegistry, register_index_schema_source,
+        IndexSchemaSourceCatalog, IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
+        SharedIndexSchemaRegistry, register_index_schema_source,
     };
     use sea_orm_migration::MigrationTrait;
 
@@ -415,7 +415,12 @@ mod tests {
                 .any(|module| module.slug == "social_graph")
         );
         #[cfg(feature = "mod-reactions")]
-        assert!(first.modules.iter().any(|module| module.slug == "reactions"));
+        assert!(
+            first
+                .modules
+                .iter()
+                .any(|module| module.slug == "reactions")
+        );
         #[cfg(feature = "mod-ai")]
         assert!(first.modules.iter().any(|module| module.slug == "ai"));
     }

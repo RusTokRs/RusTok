@@ -21,10 +21,8 @@ use crate::{
 use super::PostgresIndexQueryAdmissionCatalog;
 
 const EXACT_COUNT_ALIAS: &str = "__exact_count";
-const READ_ONLY_SNAPSHOT_SQL: &str =
-    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY";
-const SELECT_SCHEMA_READINESS_SQL: &str =
-    "SELECT schema_fingerprint, schema_json, status FROM index_schemas WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4";
+const READ_ONLY_SNAPSHOT_SQL: &str = "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY";
+const SELECT_SCHEMA_READINESS_SQL: &str = "SELECT schema_fingerprint, schema_json, status FROM index_schemas WHERE tenant_id = $1 AND module_name = $2 AND entity_name = $3 AND schema_version = $4";
 
 #[derive(Debug)]
 struct RequiredSchemaContract {
@@ -202,11 +200,10 @@ impl IndexQueryPort for PostgresIndexQueryPort {
         let required_schemas = required_schema_contracts(&self.registry, &query)?;
         let page_query = self.registry.compile_postgres_page_query(&query)?;
         let compiled = self.admitted_compiled_query(&query, &page_query)?;
-        let transaction = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| IndexQueryExecutionError::storage("begin query snapshot", error))?;
+        let transaction =
+            self.db.begin().await.map_err(|error| {
+                IndexQueryExecutionError::storage("begin query snapshot", error)
+            })?;
         let result = self
             .execute_in_transaction(
                 &transaction,
@@ -228,22 +225,17 @@ impl IndexQueryPort for PostgresIndexQueryPort {
         }
 
         let required_schemas = required_schema_contracts(&self.registry, &query.query)?;
-        let page_query = self.registry.compile_postgres_localized_page_query(&query)?;
+        let page_query = self
+            .registry
+            .compile_postgres_localized_page_query(&query)?;
         // Trusted owner/link admission is applied to every physical fold alias before the read-only
         // transaction begins. A malformed admission contract therefore cannot execute page/count SQL.
         let page_query = self.admitted_localized_page_query(&query, page_query)?;
-        let transaction = self
-            .db
-            .begin()
-            .await
-            .map_err(|error| IndexQueryExecutionError::storage("begin localized query snapshot", error))?;
+        let transaction = self.db.begin().await.map_err(|error| {
+            IndexQueryExecutionError::storage("begin localized query snapshot", error)
+        })?;
         let result = self
-            .execute_localized_in_transaction(
-                &transaction,
-                &query,
-                &page_query,
-                &required_schemas,
-            )
+            .execute_localized_in_transaction(&transaction, &query, &page_query, &required_schemas)
             .await;
         Self::finish_transaction(transaction, result).await
     }
@@ -399,11 +391,17 @@ fn map_page_row(
     for column in &compiled.columns {
         match column {
             CompiledQueryColumn::EntityId { output_alias, .. } => {
-                values.push((output_alias.clone(), optional_uuid_cell(&row, output_alias)?));
+                values.push((
+                    output_alias.clone(),
+                    optional_uuid_cell(&row, output_alias)?,
+                ));
             }
             CompiledQueryColumn::Field { output_alias, .. }
             | CompiledQueryColumn::OrderValue { output_alias, .. } => {
-                values.push((output_alias.clone(), optional_json_cell(&row, output_alias)?));
+                values.push((
+                    output_alias.clone(),
+                    optional_json_cell(&row, output_alias)?,
+                ));
             }
         }
     }
@@ -443,9 +441,7 @@ async fn execute_exact_count(
     let row = transaction
         .query_one(count_statement(count))
         .await
-        .map_err(|error| {
-            IndexQueryExecutionError::storage("execute exact-count statement", error)
-        })?
+        .map_err(|error| IndexQueryExecutionError::storage("execute exact-count statement", error))?
         .ok_or(IndexQueryExecutionError::MissingExactCountRow)?;
     let value: i64 = row.try_get("", EXACT_COUNT_ALIAS).map_err(|error| {
         IndexQueryExecutionError::invalid_row_column(

@@ -98,21 +98,17 @@ impl TransactionalEventBus {
         E: EventContract,
     {
         let event_type = event.event_type();
-        let envelope = ContractEventEnvelope::new_with_envelope_id(
-            envelope_id,
-            tenant_id,
-            actor_id,
-            event,
-        )
-        .map_err(|error| {
-            tracing::error!(
-                envelope_id = %envelope_id,
-                event_type,
-                error = %error,
-                "Canonical contract write-once envelope construction failed"
-            );
-            ContractEventWriteOnceError::Unavailable
-        })?;
+        let envelope =
+            ContractEventEnvelope::new_with_envelope_id(envelope_id, tenant_id, actor_id, event)
+                .map_err(|error| {
+                    tracing::error!(
+                        envelope_id = %envelope_id,
+                        event_type,
+                        error = %error,
+                        "Canonical contract write-once envelope construction failed"
+                    );
+                    ContractEventWriteOnceError::Unavailable
+                })?;
 
         OutboxTransport::write_contract_envelope_once_in_tx(txn, envelope).await
     }

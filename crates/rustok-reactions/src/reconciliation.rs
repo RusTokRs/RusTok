@@ -210,13 +210,8 @@ impl ReactionsService {
         command: &RepairReactionSubjectCommand,
     ) -> Result<ReactionReconciliationReceipt, PortError> {
         let transaction = self.database().begin().await.map_err(database_error)?;
-        let receipt = repair_inside_transaction(
-            &transaction,
-            lease.operation_id,
-            actor_id,
-            command,
-        )
-        .await?;
+        let receipt =
+            repair_inside_transaction(&transaction, lease.operation_id, actor_id, command).await?;
         idempotency::complete(&transaction, lease, &receipt).await?;
         transaction.commit().await.map_err(database_error)?;
         Ok(receipt)
@@ -279,7 +274,11 @@ async fn repair_inside_transaction(
     }
 
     let aggregate_rows_after = u64::try_from(
-        analysis.expected.values().filter(|count| **count > 0).count(),
+        analysis
+            .expected
+            .values()
+            .filter(|count| **count > 0)
+            .count(),
     )
     .map_err(|_| {
         PortError::invariant_violation(
@@ -346,7 +345,10 @@ async fn serialize_subject(
     subject_ref: &ReactionSubjectRef,
 ) -> Result<(), PortError> {
     let update = subject::Entity::update_many()
-        .col_expr(subject::Column::UpdatedAt, Expr::value(Utc::now().fixed_offset()))
+        .col_expr(
+            subject::Column::UpdatedAt,
+            Expr::value(Utc::now().fixed_offset()),
+        )
         .filter(subject::Column::TenantId.eq(subject_ref.tenant_id()))
         .filter(subject::Column::SourceSlug.eq(subject_ref.source().as_str()))
         .filter(subject::Column::SubjectKind.eq(subject_ref.kind().as_str()))
@@ -784,10 +786,7 @@ fn u64_to_i64(value: u64, label: &'static str) -> Result<i64, PortError> {
 
 fn i64_to_u64(value: i64, label: &'static str) -> Result<u64, PortError> {
     u64::try_from(value).map_err(|_| {
-        PortError::invariant_violation(
-            "reactions.revision_invalid",
-            format!("{label} is negative"),
-        )
+        PortError::invariant_violation("reactions.revision_invalid", format!("{label} is negative"))
     })
 }
 

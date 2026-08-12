@@ -66,7 +66,9 @@ pub(crate) fn decode_product_visibility(
 
     let mut canonical = BTreeSet::new();
     for value in allowed_channel_slugs {
-        let raw = value.as_str().ok_or(ProductChannelVisibilityError::Invalid)?;
+        let raw = value
+            .as_str()
+            .ok_or(ProductChannelVisibilityError::Invalid)?;
         let normalized = raw.trim().to_ascii_lowercase();
         if normalized.is_empty() || normalized != raw || !canonical.insert(normalized.clone()) {
             return Err(ProductChannelVisibilityError::Invalid);

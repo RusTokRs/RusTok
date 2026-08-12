@@ -25,10 +25,7 @@ pub struct IndexSourceAbsenceWatermark {
 }
 
 impl IndexSourceAbsenceWatermark {
-    pub fn new(
-        key: EntityKey,
-        source_version: u64,
-    ) -> Result<Self, IndexSourceAbsenceError> {
+    pub fn new(key: EntityKey, source_version: u64) -> Result<Self, IndexSourceAbsenceError> {
         validate_key(&key)?;
         if source_version == 0 {
             return Err(IndexSourceAbsenceError::ZeroSourceVersion);
@@ -132,10 +129,7 @@ impl IndexSourceAbsenceCatalog {
         self.providers.get(provider_name)
     }
 
-    pub fn provider_for_schema(
-        &self,
-        schema: &SchemaRef,
-    ) -> Option<&IndexSourceAbsenceDescriptor> {
+    pub fn provider_for_schema(&self, schema: &SchemaRef) -> Option<&IndexSourceAbsenceDescriptor> {
         self.schema_providers
             .get(schema)
             .and_then(|provider_name| self.providers.get(provider_name))
@@ -155,12 +149,7 @@ impl IndexSourceAbsenceCatalog {
     where
         P: IndexSourceAbsenceProvider + 'static,
     {
-        self.register_boxed(
-            owner_module,
-            provider_name,
-            schemas,
-            Arc::new(provider),
-        )
+        self.register_boxed(owner_module, provider_name, schemas, Arc::new(provider))
     }
 
     pub fn register_boxed(
@@ -305,10 +294,7 @@ impl SharedIndexSourceAbsenceRegistry {
         self.0.providers.get(provider_name)
     }
 
-    pub fn provider_for_schema(
-        &self,
-        schema: &SchemaRef,
-    ) -> Option<&IndexSourceAbsenceDescriptor> {
+    pub fn provider_for_schema(&self, schema: &SchemaRef) -> Option<&IndexSourceAbsenceDescriptor> {
         self.0
             .schema_providers
             .get(schema)
@@ -321,9 +307,9 @@ impl SharedIndexSourceAbsenceRegistry {
         key: EntityKey,
     ) -> Result<Option<IndexSourceAbsenceWatermark>, IndexSourceAbsenceError> {
         validate_key(&key)?;
-        let descriptor = self.provider_for_schema(&key.schema).ok_or_else(|| {
-            IndexSourceAbsenceError::UnknownSchemaProvider(key.schema.clone())
-        })?;
+        let descriptor = self
+            .provider_for_schema(&key.schema)
+            .ok_or_else(|| IndexSourceAbsenceError::UnknownSchemaProvider(key.schema.clone()))?;
         let expected = key.clone();
         let watermark = descriptor
             .provider
@@ -355,7 +341,9 @@ pub enum IndexSourceAbsenceError {
     EmptySchemaSet(String),
     #[error("Index source absence provider name is already registered: {0}")]
     DuplicateProviderName(String),
-    #[error("Index source absence provider {provider_name} declares schema {schema} more than once")]
+    #[error(
+        "Index source absence provider {provider_name} declares schema {schema} more than once"
+    )]
     DuplicateSchemaDeclaration {
         provider_name: String,
         schema: SchemaRef,
@@ -378,7 +366,9 @@ pub enum IndexSourceAbsenceError {
         incoming_owner: String,
         incoming_provider: String,
     },
-    #[error("Index source absence provider catalog exists without the shared replay source registry")]
+    #[error(
+        "Index source absence provider catalog exists without the shared replay source registry"
+    )]
     MissingSourceRegistry,
     #[error("Index absence provider {provider_name} has no replay source for schema {schema}")]
     UnpublishedReplaySource {
@@ -462,9 +452,7 @@ fn valid_owner_module(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_PROVIDER_NAME_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
         })
 }
 
@@ -472,9 +460,7 @@ fn valid_machine_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_PROVIDER_NAME_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }
 
@@ -485,9 +471,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        EntityName, FieldCardinality, FieldName, IndexField, IndexSchema, IndexSource,
-        IndexSourceCatalog, IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage,
-        IndexSourceScanRequest, IndexSchemaSourceCatalog, IndexValueType, LocaleMode, ModuleName,
+        EntityName, FieldCardinality, FieldName, IndexField, IndexSchema, IndexSchemaSourceCatalog,
+        IndexSource, IndexSourceCatalog, IndexSourceLoadBatch, IndexSourceLoadRequest,
+        IndexSourcePage, IndexSourceScanRequest, IndexValueType, LocaleMode, ModuleName,
         SchemaVersion,
     };
 

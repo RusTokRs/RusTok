@@ -24,12 +24,10 @@ const RECEIVE_TIMEOUT: Duration = Duration::from_secs(20);
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test]
-async fn deterministic_dlq_uuid_is_physical_iggy_header_and_selects_one_based_partition(
-) -> TestResult<()> {
+async fn deterministic_dlq_uuid_is_physical_iggy_header_and_selects_one_based_partition()
+-> TestResult<()> {
     let Some(config) = external_test_config()? else {
-        eprintln!(
-            "{ADDRESS_ENV} is not set; skipping external Iggy physical DLQ header evidence"
-        );
+        eprintln!("{ADDRESS_ENV} is not set; skipping external Iggy physical DLQ header evidence");
         return Ok(());
     };
 
@@ -63,10 +61,7 @@ async fn deterministic_dlq_uuid_is_physical_iggy_header_and_selects_one_based_pa
     assert_eq!(received.message.payload.as_ref(), payload.as_slice());
 
     probe
-        .store_offset(
-            received.message.header.offset,
-            Some(received.partition_id),
-        )
+        .store_offset(received.message.header.offset, Some(received.partition_id))
         .await?;
     drop(probe);
     client.shutdown().await?;
@@ -91,11 +86,15 @@ fn synthetic_decode_failure(
 
 fn expected_partition(message_id: Uuid, partitions: u32) -> Result<u32, IoError> {
     if partitions == 0 {
-        return Err(invalid_data("physical header evidence requires at least one partition"));
+        return Err(invalid_data(
+            "physical header evidence requires at least one partition",
+        ));
     }
     let partition = (message_id.as_u128() % u128::from(partitions)) as u32 + 1;
     if !(1..=partitions).contains(&partition) {
-        return Err(invalid_data("deterministic Iggy partition is outside the one-based range"));
+        return Err(invalid_data(
+            "deterministic Iggy partition is outside the one-based range",
+        ));
     }
     Ok(partition)
 }

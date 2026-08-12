@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_api::{
-    HostRuntimeContext, PortActorKind, PortCallPolicy, PortContext, PortError,
-};
+use rustok_api::{HostRuntimeContext, PortActorKind, PortCallPolicy, PortContext, PortError};
 use rustok_events::DomainEvent;
 use rustok_moderation_api::{
     ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationDecisionEffectAction,
@@ -147,14 +145,8 @@ impl ForumModerationSubjectAdapter {
         command: &ApplyModerationDecisionCommand,
     ) -> Result<ModerationDecisionApplication, PortError> {
         let transaction = begin_application_transaction(&self.db).await?;
-        let result = apply_inside_transaction(
-            &transaction,
-            tenant_id,
-            actor_id,
-            &self.key,
-            command,
-        )
-        .await;
+        let result =
+            apply_inside_transaction(&transaction, tenant_id, actor_id, &self.key, command).await;
         match result {
             Ok(application) => {
                 idempotency::complete(&transaction, lease, &application).await?;
@@ -176,20 +168,10 @@ async fn apply_inside_transaction(
     key: &ModerationSubjectAdapterKey,
     command: &ApplyModerationDecisionCommand,
 ) -> Result<ModerationDecisionApplication, PortError> {
-    lock_active_subject_and_revision(
-        transaction,
-        tenant_id,
-        key.kind(),
-        command.subject.id,
-    )
-    .await?;
-    let reviewed_revision = current_subject_revision(
-        transaction,
-        tenant_id,
-        key.kind(),
-        command.subject.id,
-    )
-    .await?;
+    lock_active_subject_and_revision(transaction, tenant_id, key.kind(), command.subject.id)
+        .await?;
+    let reviewed_revision =
+        current_subject_revision(transaction, tenant_id, key.kind(), command.subject.id).await?;
     if reviewed_revision != command.subject.revision {
         return Err(PortError::conflict(
             "forum.moderation_subject_revision_conflict",
@@ -211,14 +193,9 @@ async fn apply_inside_transaction(
             if topic.is_locked {
                 false
             } else {
-                TopicService::set_locked_in_tx(
-                    transaction,
-                    tenant_id,
-                    command.subject.id,
-                    true,
-                )
-                .await
-                .map_err(forum_error)?;
+                TopicService::set_locked_in_tx(transaction, tenant_id, command.subject.id, true)
+                    .await
+                    .map_err(forum_error)?;
                 publish_forum_topic_projection_direct_in_tx(
                     transaction,
                     tenant_id,
@@ -246,38 +223,22 @@ async fn apply_inside_transaction(
             ModerationDecisionEffectAction::SetVisibility {
                 state: ModerationVisibilityState::Hidden,
             },
-        ) => apply_reply_hidden_effect_in_tx(
-            transaction,
-            tenant_id,
-            actor_id,
-            command.subject.id,
-        )
-        .await
-        .map_err(forum_error)?,
+        ) => apply_reply_hidden_effect_in_tx(transaction, tenant_id, actor_id, command.subject.id)
+            .await
+            .map_err(forum_error)?,
         (
             ModerationSubjectKind::ForumPost,
             ModerationDecisionEffectAction::SetVisibility {
                 state: ModerationVisibilityState::Removed,
             },
-        ) => apply_reply_removed_effect_in_tx(
-            transaction,
-            tenant_id,
-            actor_id,
-            command.subject.id,
-        )
-        .await
-        .map_err(forum_error)?,
-        (
-            ModerationSubjectKind::ForumPost,
-            ModerationDecisionEffectAction::RejectPublication,
-        ) => apply_reply_rejected_effect_in_tx(
-            transaction,
-            tenant_id,
-            actor_id,
-            command.subject.id,
-        )
-        .await
-        .map_err(forum_error)?,
+        ) => apply_reply_removed_effect_in_tx(transaction, tenant_id, actor_id, command.subject.id)
+            .await
+            .map_err(forum_error)?,
+        (ModerationSubjectKind::ForumPost, ModerationDecisionEffectAction::RejectPublication) => {
+            apply_reply_rejected_effect_in_tx(transaction, tenant_id, actor_id, command.subject.id)
+                .await
+                .map_err(forum_error)?
+        }
         _ => {
             return Err(PortError::validation(
                 "forum.moderation_effect_unsupported",
@@ -286,13 +247,8 @@ async fn apply_inside_transaction(
         }
     };
 
-    let applied_revision = current_subject_revision(
-        transaction,
-        tenant_id,
-        key.kind(),
-        command.subject.id,
-    )
-    .await?;
+    let applied_revision =
+        current_subject_revision(transaction, tenant_id, key.kind(), command.subject.id).await?;
     if changed && applied_revision <= reviewed_revision {
         return Err(PortError::invariant_violation(
             "forum.moderation_subject_revision_not_advanced",
@@ -364,23 +320,12 @@ async fn apply_reply_non_public_status_effect_in_tx(
     ReplyService::set_status_in_tx(transaction, tenant_id, reply_id, target).await?;
 
     let changed_category_id = if reply.status == ReplyStatus::Approved {
-        let topic = TopicService::adjust_reply_count_in_tx(transaction, tenant_id, topic_id, -1)
+        let topic =
+            TopicService::adjust_reply_count_in_tx(transaction, tenant_id, topic_id, -1).await?;
+        CategoryService::adjust_counters_in_tx(transaction, tenant_id, topic.category_id, 0, -1)
             .await?;
-        CategoryService::adjust_counters_in_tx(
-            transaction,
-            tenant_id,
-            topic.category_id,
-            0,
-            -1,
-        )
-        .await?;
-        UserStatsService::adjust_reply_count_in_tx(
-            transaction,
-            tenant_id,
-            reply.author_id,
-            -1,
-        )
-        .await?;
+        UserStatsService::adjust_reply_count_in_tx(transaction, tenant_id, reply.author_id, -1)
+            .await?;
         Some(topic.category_id)
     } else {
         None
@@ -571,12 +516,12 @@ async fn current_subject_revision(
     let backend = transaction.get_database_backend();
     let (table, id_column) = revision_table(kind)?;
     let sql = match backend {
-        DatabaseBackend::Postgres => format!(
-            "SELECT revision FROM {table} WHERE tenant_id = $1 AND {id_column} = $2"
-        ),
-        DatabaseBackend::Sqlite => format!(
-            "SELECT revision FROM {table} WHERE tenant_id = ? AND {id_column} = ?"
-        ),
+        DatabaseBackend::Postgres => {
+            format!("SELECT revision FROM {table} WHERE tenant_id = $1 AND {id_column} = $2")
+        }
+        DatabaseBackend::Sqlite => {
+            format!("SELECT revision FROM {table} WHERE tenant_id = ? AND {id_column} = ?")
+        }
         _ => {
             return Err(PortError::unavailable(
                 "forum.moderation_database_backend_unsupported",
@@ -612,9 +557,7 @@ fn subject_table(kind: ModerationSubjectKind) -> Result<&'static str, PortError>
     }
 }
 
-fn revision_table(
-    kind: ModerationSubjectKind,
-) -> Result<(&'static str, &'static str), PortError> {
+fn revision_table(kind: ModerationSubjectKind) -> Result<(&'static str, &'static str), PortError> {
     match kind {
         ModerationSubjectKind::ForumTopic => {
             Ok(("forum_topic_moderation_subject_revisions", "topic_id"))
@@ -630,7 +573,8 @@ fn validate_command_for_adapter(
     key: &ModerationSubjectAdapterKey,
     command: &ApplyModerationDecisionCommand,
 ) -> Result<(), PortError> {
-    if command.decision_id.is_nil() || command.subject.id.is_nil() || command.subject.revision <= 0 {
+    if command.decision_id.is_nil() || command.subject.id.is_nil() || command.subject.revision <= 0
+    {
         return Err(PortError::validation(
             "forum.moderation_identity_invalid",
             "moderation decision and Forum subject identities must be non-nil and revisioned",
@@ -778,10 +722,8 @@ mod tests {
             },
             decision_kind: ModerationDecisionKind::Warning,
             reason_code: ModerationReasonCode::Other,
-            effect: ModerationDecisionEffect::v1(
-                ModerationDecisionEffectAction::NoDomainMutation,
-            )
-            .expect("valid effect"),
+            effect: ModerationDecisionEffect::v1(ModerationDecisionEffectAction::NoDomainMutation)
+                .expect("valid effect"),
             decision_hash: "a".repeat(64),
         }
     }

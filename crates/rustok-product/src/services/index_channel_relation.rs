@@ -1,6 +1,6 @@
 use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult,
-    Statement, TransactionTrait, Value as SqlValue,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, DbBackend,
+    QueryResult, Statement, TransactionTrait, Value as SqlValue,
 };
 use serde_json::Value as JsonValue;
 use thiserror::Error;
@@ -70,9 +70,7 @@ pub enum ProductSalesChannelIndexRelationError {
     InvalidChannel,
     #[error("Product-SalesChannel relation Channel identities must be unique")]
     DuplicateChannel,
-    #[error(
-        "Product-SalesChannel relation contains {count} channels; maximum is {maximum}"
-    )]
+    #[error("Product-SalesChannel relation contains {count} channels; maximum is {maximum}")]
     TooManyChannels { count: usize, maximum: usize },
     #[error("Product-SalesChannel relation page request is invalid")]
     InvalidPage,
@@ -462,7 +460,10 @@ fn decode_channel_ids(
         if channel_id.is_nil() || channel_id.to_string() != raw {
             return Err(ProductSalesChannelIndexRelationError::InvalidStoredState);
         }
-        if decoded.last().is_some_and(|previous| channel_id <= *previous) {
+        if decoded
+            .last()
+            .is_some_and(|previous| channel_id <= *previous)
+        {
             return Err(ProductSalesChannelIndexRelationError::InvalidStoredState);
         }
         decoded.push(channel_id);
@@ -539,9 +540,7 @@ fn validate_page(
     Ok(())
 }
 
-fn ensure_postgres(
-    db: &DatabaseConnection,
-) -> Result<(), ProductSalesChannelIndexRelationError> {
+fn ensure_postgres(db: &DatabaseConnection) -> Result<(), ProductSalesChannelIndexRelationError> {
     if db.get_database_backend() != DatabaseBackend::Postgres {
         return Err(ProductSalesChannelIndexRelationError::Unavailable);
     }

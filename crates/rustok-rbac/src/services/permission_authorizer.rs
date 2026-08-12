@@ -244,14 +244,10 @@ mod tests {
             fail_resolve: false,
         };
 
-        let decision = authorize_all_permissions(
-            &resolver,
-            &uuid::Uuid::new_v4(),
-            &uuid::Uuid::new_v4(),
-            &[],
-        )
-        .await
-        .unwrap();
+        let decision =
+            authorize_all_permissions(&resolver, &uuid::Uuid::new_v4(), &uuid::Uuid::new_v4(), &[])
+                .await
+                .unwrap();
 
         assert_eq!(decision.engine, AuthzEngine::Policy);
         assert!(decision.allowed);

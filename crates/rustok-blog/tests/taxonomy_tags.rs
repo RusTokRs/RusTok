@@ -255,7 +255,9 @@ async fn post_read_does_not_resurrect_metadata_tags_after_relations_are_removed(
         .filter(blog_post_tag::Column::PostId.eq(post_id))
         .exec(&db)
         .await
-        .expect("test should remove canonical relations while leaving compatibility metadata intact");
+        .expect(
+            "test should remove canonical relations while leaving compatibility metadata intact",
+        );
 
     let post = post_service
         .get_post(tenant_id, security, post_id, "en")
@@ -278,7 +280,9 @@ async fn tag_update_commits_dictionary_change_and_blog_reindex_together() {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Atomic tag update".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                content: rustok_blog::richtext::article_document_from_plain_text(
+                    &"Body".to_string(),
+                ),
                 excerpt: None,
                 slug: Some("atomic-tag-update".to_string()),
                 publish: true,
@@ -353,7 +357,9 @@ async fn tag_update_rolls_back_when_blog_reindex_outbox_write_fails() {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Rollback tag update".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                content: rustok_blog::richtext::article_document_from_plain_text(
+                    &"Body".to_string(),
+                ),
                 excerpt: None,
                 slug: Some("rollback-tag-update".to_string()),
                 publish: true,
@@ -429,7 +435,9 @@ async fn tag_delete_relies_on_taxonomy_fk_cascade_and_retains_reindex() {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Atomic tag delete".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(&"Body".to_string()),
+                content: rustok_blog::richtext::article_document_from_plain_text(
+                    &"Body".to_string(),
+                ),
                 excerpt: None,
                 slug: Some("atomic-tag-delete".to_string()),
                 publish: true,

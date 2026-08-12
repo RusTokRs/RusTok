@@ -80,11 +80,7 @@ impl InventoryTransportErrorContext {
         Self::for_variant_input("release_reservation_quantity", tenant_id, variant_id)
     }
 
-    fn for_variant_input(
-        operation: &'static str,
-        tenant_id: &str,
-        variant_id: &str,
-    ) -> Self {
+    fn for_variant_input(operation: &'static str, tenant_id: &str, variant_id: &str) -> Self {
         let mut context = Self::new(operation);
         context.tenant_id_length = Some(tenant_id.chars().count());
         context.subject_id_length = Some(variant_id.chars().count());

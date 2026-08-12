@@ -2,7 +2,7 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
@@ -226,14 +226,7 @@ impl PostgresIndexDriftFindingWriter {
         let existing = load_existing_finding(transaction, request, backend)
             .await?
             .ok_or(IndexDriftFindingWriteError::Storage)?;
-        refresh_existing_finding(
-            transaction,
-            request,
-            &expected_scope,
-            existing,
-            backend,
-        )
-        .await
+        refresh_existing_finding(transaction, request, &expected_scope, existing, backend).await
     }
 }
 
@@ -481,11 +474,7 @@ fn update_values(
     ]
 }
 
-fn derive_finding_key(
-    tenant_id: Uuid,
-    check_name: &str,
-    scope: &IndexDriftFindingScope,
-) -> String {
+fn derive_finding_key(tenant_id: Uuid, check_name: &str, scope: &IndexDriftFindingScope) -> String {
     let mut hasher = Sha256::new();
     hash_component(&mut hasher, FINDING_KEY_CONTRACT);
     hash_component(&mut hasher, tenant_id.as_bytes());
@@ -548,10 +537,7 @@ fn validate_schema_version(value: u32) -> Result<i64, IndexDriftFindingWriteErro
     Ok(i64::from(value))
 }
 
-fn validate_digest(
-    value: &str,
-    label: &'static str,
-) -> Result<(), IndexDriftFindingWriteError> {
+fn validate_digest(value: &str, label: &'static str) -> Result<(), IndexDriftFindingWriteError> {
     if value.len() != DIGEST_BYTES
         || !value
             .bytes()
@@ -570,9 +556,7 @@ fn severity_value(value: IndexDriftFindingSeverity) -> &'static str {
     }
 }
 
-fn ensure_supported_backend(
-    backend: DbBackend,
-) -> Result<(), IndexDriftFindingWriteError> {
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexDriftFindingWriteError> {
     match backend {
         DbBackend::Postgres => Ok(()),
         DbBackend::Sqlite if cfg!(test) => Ok(()),
@@ -727,7 +711,11 @@ mod tests {
         }
     }
 
-    fn request(tenant_id: Uuid, scope: IndexDriftFindingScope, actual: char) -> IndexDriftDigestFindingRequest {
+    fn request(
+        tenant_id: Uuid,
+        scope: IndexDriftFindingScope,
+        actual: char,
+    ) -> IndexDriftDigestFindingRequest {
         IndexDriftDigestFindingRequest::new(
             tenant_id,
             "source_index_digest_mismatch",
@@ -750,15 +738,17 @@ mod tests {
             first.finding_key(),
             request(Uuid::new_v4(), scope, 'b').finding_key()
         );
-        assert!(IndexDriftDigestFindingRequest::new(
-            tenant_id,
-            "source_index_digest_mismatch",
-            IndexDriftFindingSeverity::Error,
-            IndexDriftFindingScope::Global,
-            "a".repeat(DIGEST_BYTES),
-            "a".repeat(DIGEST_BYTES),
-        )
-        .is_err());
+        assert!(
+            IndexDriftDigestFindingRequest::new(
+                tenant_id,
+                "source_index_digest_mismatch",
+                IndexDriftFindingSeverity::Error,
+                IndexDriftFindingScope::Global,
+                "a".repeat(DIGEST_BYTES),
+                "a".repeat(DIGEST_BYTES),
+            )
+            .is_err()
+        );
     }
 
     #[tokio::test]
@@ -771,14 +761,20 @@ mod tests {
             .record_digest_mismatch(&request(tenant_id, scope.clone(), 'b'))
             .await
             .unwrap();
-        assert!(matches!(first, IndexDriftFindingWriteOutcome::Created { .. }));
+        assert!(matches!(
+            first,
+            IndexDriftFindingWriteOutcome::Created { .. }
+        ));
         let finding_id = first.finding_id();
 
         let refreshed = writer
             .record_digest_mismatch(&request(tenant_id, scope.clone(), 'c'))
             .await
             .unwrap();
-        assert!(matches!(refreshed, IndexDriftFindingWriteOutcome::Refreshed { .. }));
+        assert!(matches!(
+            refreshed,
+            IndexDriftFindingWriteOutcome::Refreshed { .. }
+        ));
         assert_eq!(refreshed.finding_id(), finding_id);
 
         db.execute(Statement::from_sql_and_values(
@@ -792,7 +788,10 @@ mod tests {
             .record_digest_mismatch(&request(tenant_id, scope.clone(), 'd'))
             .await
             .unwrap();
-        assert!(matches!(reopened, IndexDriftFindingWriteOutcome::Reopened { .. }));
+        assert!(matches!(
+            reopened,
+            IndexDriftFindingWriteOutcome::Reopened { .. }
+        ));
         assert_eq!(reopened.finding_id(), finding_id);
 
         db.execute(Statement::from_sql_and_values(
@@ -806,7 +805,10 @@ mod tests {
             .record_digest_mismatch(&request(tenant_id, scope, 'e'))
             .await
             .unwrap();
-        assert!(matches!(suppressed, IndexDriftFindingWriteOutcome::Suppressed { .. }));
+        assert!(matches!(
+            suppressed,
+            IndexDriftFindingWriteOutcome::Suppressed { .. }
+        ));
         assert_eq!(suppressed.finding_id(), finding_id);
 
         let row = db

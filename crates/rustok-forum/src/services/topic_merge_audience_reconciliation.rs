@@ -24,7 +24,8 @@ use crate::audience::{
 use crate::entities::{
     forum_category_audience_user::ForumCategoryAudienceUserEffect, forum_domain_event,
     forum_topic_audience_channel, forum_topic_audience_group, forum_topic_audience_policy,
-    forum_topic_audience_role, forum_topic_audience_user, forum_topic_merge_audience_reconciliation,
+    forum_topic_audience_role, forum_topic_audience_user,
+    forum_topic_merge_audience_reconciliation,
     forum_topic_merge_audience_reconciliation::ForumTopicMergeAudienceOutcome,
     forum_topic_merge_operation,
 };
@@ -139,15 +140,16 @@ impl ForumTopicMergeAudienceReconciliationService {
             ));
         }
 
-        let merge = forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
-            .one(&txn)
-            .await?
-            .ok_or_else(|| {
-                ForumError::Validation(
+        let merge =
+            forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
+                .one(&txn)
+                .await?
+                .ok_or_else(|| {
+                    ForumError::Validation(
                     "Forum topic merge audience reconciliation requires an existing merge receipt"
                         .to_string(),
                 )
-            })?;
+                })?;
         validate_merge_event_in_tx(&txn, &merge).await?;
 
         let topics = lock_topic_rows_for_audience_in_tx(
@@ -561,9 +563,8 @@ async fn insert_local_layer_in_tx(
         .exec(txn)
         .await?;
     }
-    let mut users = Vec::with_capacity(
-        constraints.allow_user_ids.len() + constraints.deny_user_ids.len(),
-    );
+    let mut users =
+        Vec::with_capacity(constraints.allow_user_ids.len() + constraints.deny_user_ids.len());
     users.extend(constraints.allow_user_ids.iter().copied().map(|user_id| {
         forum_topic_audience_user::ActiveModel {
             tenant_id: Set(tenant_id),
@@ -690,9 +691,7 @@ const fn outcome_value(outcome: ForumTopicMergeAudienceOutcome) -> &'static str 
         ForumTopicMergeAudienceOutcome::BothUnrestricted => "both_unrestricted",
         ForumTopicMergeAudienceOutcome::TargetOnlyPreserved => "target_only_preserved",
         ForumTopicMergeAudienceOutcome::SourceOnlyMoved => "source_only_moved",
-        ForumTopicMergeAudienceOutcome::EqualLayersDeduplicated => {
-            "equal_layers_deduplicated"
-        }
+        ForumTopicMergeAudienceOutcome::EqualLayersDeduplicated => "equal_layers_deduplicated",
     }
 }
 

@@ -16,9 +16,9 @@ use crate::candidate::NotificationRecipientPolicy;
 use crate::entities::notification;
 use crate::error::{NotificationError, NotificationResult};
 use crate::inbox::{
-    DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, MAX_NOTIFICATION_INBOX_PAGE_SIZE,
-    NotificationInboxItem, NotificationInboxOpenDecision, NotificationInboxOpenRequest,
-    NotificationInboxOpenService, decode_inbox_cursor, encode_inbox_position_cursor,
+    DEFAULT_NOTIFICATION_INBOX_PAGE_SIZE, MAX_NOTIFICATION_INBOX_PAGE_SIZE, NotificationInboxItem,
+    NotificationInboxOpenDecision, NotificationInboxOpenRequest, NotificationInboxOpenService,
+    decode_inbox_cursor, encode_inbox_position_cursor,
 };
 use crate::inbox_group::MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES;
 use crate::model::{NotificationPriorityValue, NotificationState};

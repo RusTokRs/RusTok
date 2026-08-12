@@ -133,13 +133,8 @@ pub async fn mark_storefront_category_read(
         )
         .await
     } else {
-        graphql_adapter::mark_storefront_category_read_graphql(
-            category_id,
-            cursor,
-            limit,
-            locale,
-        )
-        .await
+        graphql_adapter::mark_storefront_category_read_graphql(category_id, cursor, limit, locale)
+            .await
     }
 }
 

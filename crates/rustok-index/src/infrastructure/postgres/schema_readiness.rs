@@ -250,10 +250,7 @@ fn schema_key(reference: &SchemaRef) -> (String, String, u32) {
     )
 }
 
-fn readiness_values(
-    request: &IndexSchemaReadinessRequest,
-    backend: DbBackend,
-) -> Vec<SqlValue> {
+fn readiness_values(request: &IndexSchemaReadinessRequest, backend: DbBackend) -> Vec<SqlValue> {
     let mut values = Vec::with_capacity(1 + request.schemas.len() * 3);
     values.push(uuid_value(request.tenant_id, backend));
     for reference in &request.schemas {

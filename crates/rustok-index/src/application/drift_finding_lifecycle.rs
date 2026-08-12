@@ -318,11 +318,15 @@ pub struct IndexDriftFindingLifecycleFailure {
 }
 
 impl IndexDriftFindingLifecycleFailure {
-    pub fn retryable(code: impl Into<String>) -> Result<Self, IndexDriftFindingLifecycleFailureError> {
+    pub fn retryable(
+        code: impl Into<String>,
+    ) -> Result<Self, IndexDriftFindingLifecycleFailureError> {
         Self::new(IndexDriftFindingLifecycleFailureKind::Retryable, code)
     }
 
-    pub fn permanent(code: impl Into<String>) -> Result<Self, IndexDriftFindingLifecycleFailureError> {
+    pub fn permanent(
+        code: impl Into<String>,
+    ) -> Result<Self, IndexDriftFindingLifecycleFailureError> {
         Self::new(IndexDriftFindingLifecycleFailureKind::Permanent, code)
     }
 
@@ -387,21 +391,23 @@ impl IndexDriftFindingLifecycleService {
             return Ok(IndexDriftFindingLifecycleOutcome::Denied);
         }
         let authorized = IndexDriftFindingAuthorizedLifecycleCommand::new(command);
-        Ok(match self
-            .store
-            .apply_authorized_lifecycle_command(&authorized)
-            .await?
-        {
-            IndexDriftFindingLifecycleStoreOutcome::Applied(receipt) => {
-                IndexDriftFindingLifecycleOutcome::Applied(receipt)
-            }
-            IndexDriftFindingLifecycleStoreOutcome::AlreadyApplied(receipt) => {
-                IndexDriftFindingLifecycleOutcome::AlreadyApplied(receipt)
-            }
-            IndexDriftFindingLifecycleStoreOutcome::NotApplied(reason) => {
-                IndexDriftFindingLifecycleOutcome::NotApplied(reason)
-            }
-        })
+        Ok(
+            match self
+                .store
+                .apply_authorized_lifecycle_command(&authorized)
+                .await?
+            {
+                IndexDriftFindingLifecycleStoreOutcome::Applied(receipt) => {
+                    IndexDriftFindingLifecycleOutcome::Applied(receipt)
+                }
+                IndexDriftFindingLifecycleStoreOutcome::AlreadyApplied(receipt) => {
+                    IndexDriftFindingLifecycleOutcome::AlreadyApplied(receipt)
+                }
+                IndexDriftFindingLifecycleStoreOutcome::NotApplied(reason) => {
+                    IndexDriftFindingLifecycleOutcome::NotApplied(reason)
+                }
+            },
+        )
     }
 }
 
@@ -417,9 +423,7 @@ fn valid_machine_name(value: &str, max_bytes: usize) -> bool {
     !value.is_empty()
         && value.len() <= max_bytes
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }
 

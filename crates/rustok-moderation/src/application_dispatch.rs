@@ -51,8 +51,7 @@ impl ModerationService {
         })?;
         if operation.attempt_count < 1 {
             return Err(ModerationError::Invariant(
-                "claimed moderation application operation has an invalid attempt count"
-                    .to_string(),
+                "claimed moderation application operation has an invalid attempt count".to_string(),
             ));
         }
 
@@ -96,8 +95,8 @@ impl ModerationService {
                 .finish_adapter_success(tenant_id, decision_id, lease_token, application)
                 .await
                 .map(Some),
-            Err(error) => {
-                self.finish_adapter_error(
+            Err(error) => self
+                .finish_adapter_error(
                     tenant_id,
                     decision_id,
                     lease_token,
@@ -105,8 +104,7 @@ impl ModerationService {
                     error,
                 )
                 .await
-                .map(Some)
-            }
+                .map(Some),
         }
     }
 
@@ -229,11 +227,7 @@ impl ModerationService {
     }
 }
 
-fn application_port_context(
-    tenant_id: Uuid,
-    decision_id: Uuid,
-    lease_token: Uuid,
-) -> PortContext {
+fn application_port_context(tenant_id: Uuid, decision_id: Uuid, lease_token: Uuid) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
         PortActor::service(APPLICATION_DISPATCH_ACTOR),
@@ -242,9 +236,7 @@ fn application_port_context(
     )
     .with_causation_id(decision_id.to_string())
     .with_idempotency_key(decision_id.to_string())
-    .with_deadline(StdDuration::from_secs(
-        APPLICATION_ADAPTER_DEADLINE_SECONDS,
-    ))
+    .with_deadline(StdDuration::from_secs(APPLICATION_ADAPTER_DEADLINE_SECONDS))
 }
 
 pub fn application_retry_delay_seconds(attempt_count: i32) -> i64 {
@@ -280,7 +272,10 @@ mod tests {
         assert_eq!(first.tenant_id, tenant_id.to_string());
         assert_eq!(first.actor.kind, PortActorKind::Service);
         assert_eq!(first.actor.id, APPLICATION_DISPATCH_ACTOR);
-        assert_eq!(first.idempotency_key.as_deref(), Some(decision_id_text.as_str()));
+        assert_eq!(
+            first.idempotency_key.as_deref(),
+            Some(decision_id_text.as_str())
+        );
         assert_eq!(second.idempotency_key, first.idempotency_key);
         assert_ne!(second.correlation_id, first.correlation_id);
         assert_eq!(

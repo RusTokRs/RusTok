@@ -108,7 +108,10 @@ impl ForumMentionReconciliationService {
         );
         let started_at = Instant::now();
         let result = match enforce_operations_scope(security) {
-            Ok(()) => self.report_inner(tenant_id, requested_limit, relation_after).await,
+            Ok(()) => {
+                self.report_inner(tenant_id, requested_limit, relation_after)
+                    .await
+            }
             Err(error) => Err(error),
         };
         rustok_telemetry::metrics::record_span_duration(

@@ -349,9 +349,7 @@ impl PricingReadPort for crate::PricingService {
         let lists = self
             .list_active_price_lists(tenant_id, Some(locale), Some(locale))
             .await
-            .map_err(|error| {
-                pricing_error_to_port_error(&context, owner_operation, error)
-            })?;
+            .map_err(|error| pricing_error_to_port_error(&context, owner_operation, error))?;
         let list = lists
             .into_iter()
             .find(|list| list.id == request.price_list_id)
@@ -399,9 +397,7 @@ impl PricingReadPort for crate::PricingService {
                 request.fallback_locale.as_deref(),
             )
             .await
-            .map_err(|error| {
-                pricing_error_to_port_error(&context, owner_operation, error)
-            })?;
+            .map_err(|error| pricing_error_to_port_error(&context, owner_operation, error))?;
 
         Ok(lists
             .into_iter()
@@ -484,9 +480,7 @@ impl PricingReadPort for crate::PricingService {
             )
             .await
         };
-        preview.map_err(|error| {
-            pricing_error_to_port_error(&context, owner_operation, error)
-        })
+        preview.map_err(|error| pricing_error_to_port_error(&context, owner_operation, error))
     }
 }
 
@@ -574,9 +568,7 @@ impl PricingWritePort for crate::PricingService {
             )
             .await
         };
-        result.map_err(|error| {
-            pricing_error_to_port_error(&context, owner_operation, error)
-        })
+        result.map_err(|error| pricing_error_to_port_error(&context, owner_operation, error))
     }
 
     async fn set_price_list_percentage_rule(
@@ -735,10 +727,7 @@ fn pricing_owner_error_facts(error: &CommerceError) -> PricingOwnerErrorFacts {
         CommerceError::InsufficientInventory {
             requested,
             available,
-        } => PricingOwnerErrorFacts::numbers(
-            "insufficient_inventory",
-            &[*requested, *available],
-        ),
+        } => PricingOwnerErrorFacts::numbers("insufficient_inventory", &[*requested, *available]),
         CommerceError::InvalidOptionCombination => {
             PricingOwnerErrorFacts::empty("invalid_option_combination")
         }
@@ -749,10 +738,7 @@ fn pricing_owner_error_facts(error: &CommerceError) -> PricingOwnerErrorFacts {
             PricingOwnerErrorFacts::uuids("shipping_profile_not_found", &[*value])
         }
         CommerceError::DuplicateShippingProfileSlug(value) => {
-            PricingOwnerErrorFacts::text(
-                "duplicate_shipping_profile_slug",
-                &[value.as_str()],
-            )
+            PricingOwnerErrorFacts::text("duplicate_shipping_profile_slug", &[value.as_str()])
         }
         CommerceError::NoVariants => PricingOwnerErrorFacts::empty("no_variants"),
         CommerceError::CannotDeletePublished => {
@@ -874,17 +860,9 @@ fn log_pricing_context_rejection(
     );
 }
 
-fn parse_port_tenant_id(
-    context: &PortContext,
-    operation: &'static str,
-) -> Result<Uuid, PortError> {
+fn parse_port_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|_| {
-        log_pricing_context_rejection(
-            context,
-            operation,
-            "pricing.tenant_id_invalid",
-            "tenant_id",
-        );
+        log_pricing_context_rejection(context, operation, "pricing.tenant_id_invalid", "tenant_id");
         PortError::validation(
             "pricing.tenant_id_invalid",
             "pricing request context is invalid",
@@ -892,21 +870,10 @@ fn parse_port_tenant_id(
     })
 }
 
-fn parse_port_actor_id(
-    context: &PortContext,
-    operation: &'static str,
-) -> Result<Uuid, PortError> {
+fn parse_port_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
     Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
-        log_pricing_context_rejection(
-            context,
-            operation,
-            "pricing.actor_id_invalid",
-            "actor_id",
-        );
-        PortError::validation(
-            "pricing.actor_id_invalid",
-            "pricing write actor is invalid",
-        )
+        log_pricing_context_rejection(context, operation, "pricing.actor_id_invalid", "actor_id");
+        PortError::validation("pricing.actor_id_invalid", "pricing write actor is invalid")
     })
 }
 
@@ -1087,26 +1054,14 @@ fn pricing_error_to_port_error(
             )
         }
         CommerceError::Rich(_) => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.rich_error",
-                &error_facts,
-                true,
-            );
+            log_pricing_port_failure(context, operation, "pricing.rich_error", &error_facts, true);
             PortError::invariant_violation(
                 "pricing.rich_error",
                 "pricing operation failed an internal invariant",
             )
         }
         CommerceError::Core(_) => {
-            log_pricing_port_failure(
-                context,
-                operation,
-                "pricing.core_error",
-                &error_facts,
-                true,
-            );
+            log_pricing_port_failure(context, operation, "pricing.core_error", &error_facts, true);
             PortError::invariant_violation(
                 "pricing.core_error",
                 "pricing operation failed an internal invariant",

@@ -29,8 +29,7 @@ use super::topic_tag_lock::{lock_topic_rows_for_tags_in_tx, lock_topic_tag_scope
 
 pub const MAX_FORUM_TOPIC_MERGE_TAGS: u64 = 500;
 pub const MAX_FORUM_TOPIC_MERGE_TAG_REASON_LEN: usize = 500;
-const FORUM_TOPIC_MERGE_TAGS_RECONCILED_EVENT_TYPE: &str =
-    "forum.topic.merge_tags_reconciled";
+const FORUM_TOPIC_MERGE_TAGS_RECONCILED_EVENT_TYPE: &str = "forum.topic.merge_tags_reconciled";
 const FORUM_TOPIC_MERGE_TAGS_AGGREGATE_TYPE: &str = "forum_topic";
 const FORUM_TOPIC_MERGED_EVENT_TYPE: &str = "forum.topic.merged";
 
@@ -132,15 +131,16 @@ impl ForumTopicMergeTagReconciliationService {
             ));
         }
 
-        let merge = forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
-            .one(&txn)
-            .await?
-            .ok_or_else(|| {
-                ForumError::Validation(
-                    "Forum topic merge tag reconciliation requires an existing merge receipt"
-                        .to_string(),
-                )
-            })?;
+        let merge =
+            forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
+                .one(&txn)
+                .await?
+                .ok_or_else(|| {
+                    ForumError::Validation(
+                        "Forum topic merge tag reconciliation requires an existing merge receipt"
+                            .to_string(),
+                    )
+                })?;
         validate_merge_event_in_tx(&txn, &merge).await?;
 
         let topics = lock_topic_rows_for_tags_in_tx(
@@ -226,18 +226,16 @@ impl ForumTopicMergeTagReconciliationService {
         for source_row in &source_rows {
             if target_by_term.contains_key(&source_row.term_id) {
                 delete_source_row_in_tx(&txn, source_row).await?;
-                deduplicated_existing_count = deduplicated_existing_count
-                    .checked_add(1)
-                    .ok_or_else(|| {
-                        ForumError::Validation(
-                            "Forum topic merge tag count overflow".to_string(),
-                        )
+                deduplicated_existing_count =
+                    deduplicated_existing_count.checked_add(1).ok_or_else(|| {
+                        ForumError::Validation("Forum topic merge tag count overflow".to_string())
                     })?;
             } else {
                 move_source_row_in_tx(&txn, source_row, merge.target_topic_id).await?;
-                moved_source_only_count = moved_source_only_count.checked_add(1).ok_or_else(
-                    || ForumError::Validation("Forum topic merge tag count overflow".to_string()),
-                )?;
+                moved_source_only_count =
+                    moved_source_only_count.checked_add(1).ok_or_else(|| {
+                        ForumError::Validation("Forum topic merge tag count overflow".to_string())
+                    })?;
             }
         }
 

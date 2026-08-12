@@ -16,7 +16,9 @@ use sea_orm_migration::SchemaManager;
 use tokio::sync::Notify;
 use uuid::Uuid;
 
-use super::{IndexReplayRunError, IndexReplayRunRequest, IndexReplayRunStatus, PostgresIndexReplayRunner};
+use super::{
+    IndexReplayRunError, IndexReplayRunRequest, IndexReplayRunStatus, PostgresIndexReplayRunner,
+};
 use crate::{
     EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexMutation,
     IndexRecord, IndexSchema, IndexSchemaSourceCatalog, IndexSource, IndexSourceCatalog,
@@ -110,7 +112,10 @@ impl Fixture {
         }
 
         let schema = schema();
-        let fingerprint = schema.fingerprint().expect("schema fingerprint").to_string();
+        let fingerprint = schema
+            .fingerprint()
+            .expect("schema fingerprint")
+            .to_string();
         let schema_json = serde_json::to_value(&schema).expect("schema json");
         db.execute(Statement::from_sql_and_values(
             DbBackend::Sqlite,
@@ -154,11 +159,7 @@ impl Fixture {
         registry.register(schema).expect("schema registry");
         let registry = Arc::new(registry);
 
-        let host_a = PostgresIndexReplayRunner::new(
-            db.clone(),
-            sources.clone(),
-            registry.clone(),
-        );
+        let host_a = PostgresIndexReplayRunner::new(db.clone(), sources.clone(), registry.clone());
         let host_b = PostgresIndexReplayRunner::new(db.clone(), sources, registry);
 
         Self {
@@ -279,7 +280,9 @@ async fn expired_host_is_reclaimed_by_second_runner_and_stale_host_cannot_publis
     assert_eq!(second.applied_count(), 1);
     assert_eq!(second.duplicate_count(), 0);
     assert_eq!(fixture.source_calls.load(Ordering::SeqCst), 2);
-    let job_id = second.job_id().expect("completed replay should expose job id");
+    let job_id = second
+        .job_id()
+        .expect("completed replay should expose job id");
 
     fixture.release_first_host_scan.notify_one();
     let first_error = host_a_task

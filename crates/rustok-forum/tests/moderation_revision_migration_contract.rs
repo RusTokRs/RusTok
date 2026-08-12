@@ -63,7 +63,8 @@ impl PostgresHarness {
 }
 
 #[tokio::test]
-async fn sqlite_moderation_revision_migration_backfills_and_tracks_owner_changes() -> TestResult<()> {
+async fn sqlite_moderation_revision_migration_backfills_and_tracks_owner_changes() -> TestResult<()>
+{
     let db = sqlite_database().await?;
     install_prerequisites(&db).await?;
     let revision_migration = install_forum_before_revision_migration(&db).await?;
@@ -90,7 +91,8 @@ async fn sqlite_clean_install_initializes_moderation_revision_clocks() -> TestRe
 }
 
 #[tokio::test]
-async fn postgres_moderation_revision_migration_clean_upgrade_and_trigger_contract() -> TestResult<()> {
+async fn postgres_moderation_revision_migration_clean_upgrade_and_trigger_contract()
+-> TestResult<()> {
     let Some(harness) = PostgresHarness::setup().await? else {
         return Ok(());
     };
@@ -337,12 +339,7 @@ async fn assert_new_subject_initialization(
         VALUES
             ('{}', '{}', '{}', 'approved', 2);
         "#,
-        new_topic,
-        seed.tenant_id,
-        seed.category_id,
-        new_reply,
-        seed.tenant_id,
-        new_topic,
+        new_topic, seed.tenant_id, seed.category_id, new_reply, seed.tenant_id, new_topic,
     ))
     .await?;
     assert_new_subject_revisions(db, new_topic, new_reply).await
@@ -372,7 +369,11 @@ async fn assert_new_subject_revisions(
     Ok(())
 }
 
-async fn topic_revision(db: &DatabaseConnection, tenant_id: Uuid, topic_id: Uuid) -> TestResult<i64> {
+async fn topic_revision(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+) -> TestResult<i64> {
     scalar_i64(
         db,
         &format!(
@@ -382,7 +383,11 @@ async fn topic_revision(db: &DatabaseConnection, tenant_id: Uuid, topic_id: Uuid
     .await
 }
 
-async fn reply_revision(db: &DatabaseConnection, tenant_id: Uuid, reply_id: Uuid) -> TestResult<i64> {
+async fn reply_revision(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    reply_id: Uuid,
+) -> TestResult<i64> {
     scalar_i64(
         db,
         &format!(

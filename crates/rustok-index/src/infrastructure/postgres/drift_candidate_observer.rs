@@ -12,12 +12,9 @@ use crate::{
     SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
 };
 
-const BACKEND_UNSUPPORTED: &str =
-    "index_drift_candidate_confirmation_backend_unsupported";
-const STORAGE_UNAVAILABLE: &str =
-    "index_drift_candidate_confirmation_storage_unavailable";
-const MATERIALIZED_INVALID: &str =
-    "index_drift_candidate_confirmation_materialized_invalid";
+const BACKEND_UNSUPPORTED: &str = "index_drift_candidate_confirmation_backend_unsupported";
+const STORAGE_UNAVAILABLE: &str = "index_drift_candidate_confirmation_storage_unavailable";
+const MATERIALIZED_INVALID: &str = "index_drift_candidate_confirmation_materialized_invalid";
 
 #[derive(Clone)]
 pub struct PostgresIndexDriftCandidateMaterializedObserver {
@@ -130,9 +127,7 @@ impl IndexDriftCandidateMaterializedObserver for PostgresIndexDriftCandidateMate
             IndexDriftCandidate::StaleEntity(candidate) => {
                 self.observe_stale_entity(candidate).await
             }
-            IndexDriftCandidate::OrphanLink(candidate) => {
-                self.observe_orphan_link(candidate).await
-            }
+            IndexDriftCandidate::OrphanLink(candidate) => self.observe_orphan_link(candidate).await,
         }
     }
 }
@@ -167,16 +162,17 @@ pub fn materialize_postgres_index_drift_candidate_confirmer(
     let observer = materialize_postgres_index_drift_candidate_observer(db)?;
     let confirmer = IndexDriftCandidateConfirmer::new(sources, observer);
     Ok(Some(
-        match extensions.get::<SharedIndexSourceAbsenceRegistry>().cloned() {
+        match extensions
+            .get::<SharedIndexSourceAbsenceRegistry>()
+            .cloned()
+        {
             Some(absence) => confirmer.with_absence_registry(absence),
             None => confirmer,
         },
     ))
 }
 
-fn stored_source_version(
-    row: &QueryResult,
-) -> Result<u64, IndexDriftCandidateConfirmationFailure> {
+fn stored_source_version(row: &QueryResult) -> Result<u64, IndexDriftCandidateConfirmationFailure> {
     let value = row
         .try_get::<String>("", "source_version_text")
         .map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;

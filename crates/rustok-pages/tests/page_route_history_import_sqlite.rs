@@ -3,12 +3,12 @@ use std::sync::Arc;
 use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
+use rustok_pages::entities::{page_route_alias, page_route_history_import, page_route_publication};
 use rustok_pages::{
     CreatePageInput, ImportPageRouteHistoryInput, PAGE_ROUTE_HISTORY_IMPORT_CONFLICT,
     PageRouteDisposition, PageRouteHistoryImportItem, PageRouteHistoryImportService,
     PageRouteService, PageService, PageTranslationInput, PagesError, PagesModule,
 };
-use rustok_pages::entities::{page_route_alias, page_route_history_import, page_route_publication};
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
@@ -81,12 +81,14 @@ fn import_input(
         source: source.to_string(),
         items: items
             .into_iter()
-            .map(|(source_record_id, page_id, slug)| PageRouteHistoryImportItem {
-                source_record_id: source_record_id.to_string(),
-                page_id,
-                locale: "en".to_string(),
-                slug: slug.to_string(),
-            })
+            .map(
+                |(source_record_id, page_id, slug)| PageRouteHistoryImportItem {
+                    source_record_id: source_record_id.to_string(),
+                    page_id,
+                    locale: "en".to_string(),
+                    slug: slug.to_string(),
+                },
+            )
             .collect(),
     }
 }

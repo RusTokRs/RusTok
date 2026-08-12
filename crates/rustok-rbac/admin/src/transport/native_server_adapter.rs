@@ -28,13 +28,10 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
     #[cfg(feature = "ssr")]
     {
         use rustok_api::{
-            AuthContext, AuthPrincipalContext, Permission, TenantContext,
-            has_effective_permission,
+            AuthContext, AuthPrincipalContext, Permission, TenantContext, has_effective_permission,
         };
         use rustok_core::{ModuleRegistry, Rbac, UserRole, infer_user_role_from_permissions};
-        use rustok_rbac::{
-            RbacControlPlanePrincipal, require_direct_control_plane_user,
-        };
+        use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
 
         let registry = expect_context::<ModuleRegistry>();
         let auth = leptos_axum::extract::<AuthContext>()

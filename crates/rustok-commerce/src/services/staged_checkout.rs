@@ -11,11 +11,11 @@ use uuid::Uuid;
 use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse};
 
 use super::{
-    BeginCheckoutOperation, CheckoutCompletedState, CheckoutError,
-    CheckoutFulfillmentStageError, CheckoutOperationCheckpoint, CheckoutOperationError,
-    CheckoutOperationJournal, CheckoutOperationStage, CheckoutOperationStatus,
-    CheckoutPaymentStageError, CheckoutPlanBuilder, CheckoutStagePipeline,
-    CheckoutStagePipelineError, DEFAULT_CHECKOUT_LEASE_SECONDS,
+    BeginCheckoutOperation, CheckoutCompletedState, CheckoutError, CheckoutFulfillmentStageError,
+    CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
+    CheckoutOperationStage, CheckoutOperationStatus, CheckoutPaymentStageError,
+    CheckoutPlanBuilder, CheckoutStagePipeline, CheckoutStagePipelineError,
+    DEFAULT_CHECKOUT_LEASE_SECONDS,
 };
 #[cfg(feature = "marketplace-financial")]
 use super::{
@@ -369,12 +369,10 @@ fn checkout_failure_disposition(error: &CheckoutError) -> FailureDisposition {
 
 fn pipeline_failure_disposition(error: &CheckoutStagePipelineError) -> FailureDisposition {
     match error {
-        CheckoutStagePipelineError::FulfillmentStage(
-            CheckoutFulfillmentStageError::Boundary {
-                retryable: true,
-                ..
-            },
-        )
+        CheckoutStagePipelineError::FulfillmentStage(CheckoutFulfillmentStageError::Boundary {
+            retryable: true,
+            ..
+        })
         | CheckoutStagePipelineError::PaymentStage(CheckoutPaymentStageError::Boundary {
             retryable: true,
             ..
@@ -548,14 +546,12 @@ mod tests {
 
     #[test]
     fn retryable_payment_stage_boundary_does_not_force_compensation() {
-        let error = CheckoutStagePipelineError::PaymentStage(
-            CheckoutPaymentStageError::Boundary {
-                stage: "capture",
-                code: "payment.provider_timeout".to_string(),
-                message: "Checkout payment service is temporarily unavailable".to_string(),
-                retryable: true,
-            },
-        );
+        let error = CheckoutStagePipelineError::PaymentStage(CheckoutPaymentStageError::Boundary {
+            stage: "capture",
+            code: "payment.provider_timeout".to_string(),
+            message: "Checkout payment service is temporarily unavailable".to_string(),
+            retryable: true,
+        });
         assert!(matches!(
             pipeline_failure_disposition(&error),
             FailureDisposition::Retryable
@@ -564,15 +560,12 @@ mod tests {
 
     #[test]
     fn non_retryable_payment_stage_boundary_requires_compensation() {
-        let error = CheckoutStagePipelineError::PaymentStage(
-            CheckoutPaymentStageError::Boundary {
-                stage: "capture",
-                code: "payment.capture_conflict".to_string(),
-                message: "Checkout payment state conflicts with the requested operation"
-                    .to_string(),
-                retryable: false,
-            },
-        );
+        let error = CheckoutStagePipelineError::PaymentStage(CheckoutPaymentStageError::Boundary {
+            stage: "capture",
+            code: "payment.capture_conflict".to_string(),
+            message: "Checkout payment state conflicts with the requested operation".to_string(),
+            retryable: false,
+        });
         assert!(matches!(
             pipeline_failure_disposition(&error),
             FailureDisposition::CompensationRequired
@@ -581,14 +574,13 @@ mod tests {
 
     #[test]
     fn retryable_fulfillment_stage_boundary_does_not_force_compensation() {
-        let error = CheckoutStagePipelineError::FulfillmentStage(
-            CheckoutFulfillmentStageError::Boundary {
+        let error =
+            CheckoutStagePipelineError::FulfillmentStage(CheckoutFulfillmentStageError::Boundary {
                 stage: "ensure_fulfillments",
                 code: "fulfillment.storage_unavailable".to_string(),
                 message: "fulfillment service is temporarily unavailable".to_string(),
                 retryable: true,
-            },
-        );
+            });
         assert!(matches!(
             pipeline_failure_disposition(&error),
             FailureDisposition::Retryable
@@ -597,14 +589,13 @@ mod tests {
 
     #[test]
     fn retryable_order_settlement_boundary_does_not_force_compensation() {
-        let error = CheckoutStagePipelineError::FulfillmentStage(
-            CheckoutFulfillmentStageError::Boundary {
+        let error =
+            CheckoutStagePipelineError::FulfillmentStage(CheckoutFulfillmentStageError::Boundary {
                 stage: "settle_order_payment",
                 code: "order.storage_unavailable".to_string(),
                 message: "order service is temporarily unavailable".to_string(),
                 retryable: true,
-            },
-        );
+            });
         assert!(matches!(
             pipeline_failure_disposition(&error),
             FailureDisposition::Retryable
@@ -613,14 +604,13 @@ mod tests {
 
     #[test]
     fn non_retryable_fulfillment_stage_boundary_requires_compensation() {
-        let error = CheckoutStagePipelineError::FulfillmentStage(
-            CheckoutFulfillmentStageError::Boundary {
+        let error =
+            CheckoutStagePipelineError::FulfillmentStage(CheckoutFulfillmentStageError::Boundary {
                 stage: "read_fulfillments",
                 code: "fulfillment.state_conflict".to_string(),
                 message: "fulfillment state conflicts with checkout".to_string(),
                 retryable: false,
-            },
-        );
+            });
         assert!(matches!(
             pipeline_failure_disposition(&error),
             FailureDisposition::CompensationRequired

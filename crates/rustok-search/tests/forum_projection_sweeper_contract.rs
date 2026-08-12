@@ -13,7 +13,10 @@ fn require(source: &str, marker: &str) {
 }
 
 fn reject(source: &str, marker: &str) {
-    assert!(!source.contains(marker), "forbidden source marker: {marker}");
+    assert!(
+        !source.contains(marker),
+        "forbidden source marker: {marker}"
+    );
 }
 
 #[test]
@@ -32,7 +35,10 @@ fn due_tenant_discovery_preserves_oldest_event_retry_barrier() {
     ] {
         require(RECONCILER, marker);
     }
-    reject(RECONCILER, "SELECT DISTINCT tenant_id FROM search_projection_inbox");
+    reject(
+        RECONCILER,
+        "SELECT DISTINCT tenant_id FROM search_projection_inbox",
+    );
 }
 
 #[test]
@@ -96,10 +102,7 @@ fn host_worker_runs_startup_periodic_and_shutdown_aware_sweeps() {
         require(SERVER_WORKER, marker);
     }
     require(SERVER_SERVICES, "pub mod forum_search_inbox_worker;");
-    require(
-        SERVER_BOOTSTRAP,
-        "start_forum_search_inbox_worker_if_ready",
-    );
+    require(SERVER_BOOTSTRAP, "start_forum_search_inbox_worker_if_ready");
     reject(SERVER_WORKER, "search_projection_inbox");
     reject(SERVER_WORKER, "search_projection_watermarks");
     reject(SERVER_WORKER, "ReindexRequested");

@@ -16,9 +16,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::audience::SharedForumAudienceFactsPort;
-use crate::entities::{
-    forum_reply, forum_reply_revision, forum_topic, forum_topic_revision,
-};
+use crate::entities::{forum_reply, forum_reply_revision, forum_topic, forum_topic_revision};
 use crate::error::ForumError;
 use crate::notification_recipient::{
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
@@ -199,8 +197,8 @@ impl ForumReactionSubjectProvider {
                 if context_actor != actor_id {
                     return Err(ReactionProviderError::InvalidRequest);
                 }
-                let security = SecurityContext::try_from_port_context(context)
-                    .map_err(map_port_error)?;
+                let security =
+                    SecurityContext::try_from_port_context(context).map_err(map_port_error)?;
                 ForumTopicAudienceViewer::authenticated(security, context.clone())
                     .map_err(map_forum_error)
             }
@@ -349,12 +347,8 @@ impl ReactionSubjectProvider for ForumReactionSubjectProvider {
 
         let actor_id = actor_id_for_access(&request.access);
         match request.subject.kind().as_str() {
-            FORUM_TOPIC_REACTION_KIND => {
-                self.authorize_topic(&context, &request, actor_id).await
-            }
-            FORUM_REPLY_REACTION_KIND => {
-                self.authorize_reply(&context, &request, actor_id).await
-            }
+            FORUM_TOPIC_REACTION_KIND => self.authorize_topic(&context, &request, actor_id).await,
+            FORUM_REPLY_REACTION_KIND => self.authorize_reply(&context, &request, actor_id).await,
             _ => Err(ReactionProviderError::InvalidRequest),
         }
     }
@@ -381,8 +375,10 @@ fn current_revision_after(latest: Option<i64>) -> ReactionProviderResult<u64> {
 fn forum_reaction_catalog_v1() -> ReactionProviderResult<ReactionCatalog> {
     ReactionCatalog::try_new(
         ReactionSelectionPolicy::Single,
-        vec![ReactionKey::new(FORUM_REACTION_V1_KEY)
-            .map_err(|_| ReactionProviderError::Internal { retryable: false })?],
+        vec![
+            ReactionKey::new(FORUM_REACTION_V1_KEY)
+                .map_err(|_| ReactionProviderError::Internal { retryable: false })?,
+        ],
     )
     .map_err(|_| ReactionProviderError::Internal { retryable: false })
 }
@@ -414,9 +410,7 @@ fn map_port_error(error: PortError) -> ReactionProviderError {
         PortErrorKind::Timeout | PortErrorKind::Unavailable => {
             ReactionProviderError::CapabilityUnavailable { retryable: true }
         }
-        PortErrorKind::InvariantViolation => {
-            ReactionProviderError::Internal { retryable: false }
-        }
+        PortErrorKind::InvariantViolation => ReactionProviderError::Internal { retryable: false },
     }
 }
 
@@ -455,7 +449,10 @@ mod tests {
     #[test]
     fn current_revision_is_positive_and_advances_after_captured_history() {
         assert_eq!(current_revision_after(None).expect("initial revision"), 1);
-        assert_eq!(current_revision_after(Some(41)).expect("advanced revision"), 42);
+        assert_eq!(
+            current_revision_after(Some(41)).expect("advanced revision"),
+            42
+        );
         assert!(current_revision_after(Some(-1)).is_err());
     }
 }

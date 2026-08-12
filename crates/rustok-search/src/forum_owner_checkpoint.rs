@@ -52,7 +52,10 @@ pub async fn resolve_forum_projection_owner_tenant_heads(
 fn validate_tenant_page_request(
     request: ForumProjectionOwnerTenantPageRequest,
 ) -> std::result::Result<(), PortError> {
-    if request.after_tenant_id.is_some_and(|tenant_id| tenant_id.is_nil()) {
+    if request
+        .after_tenant_id
+        .is_some_and(|tenant_id| tenant_id.is_nil())
+    {
         return Err(PortError::validation(
             "forum.search_projection_owner_revision.tenant_cursor_invalid",
             "Forum projection owner tenant cursor must not be nil",
@@ -172,10 +175,7 @@ impl ForumOwnerCheckpointReconciler {
                 Ok(TenantCheckpointOutcome::Blocked) => {
                     report.owner_tenants_blocked += 1;
                 }
-                Ok(TenantCheckpointOutcome::Advanced {
-                    revisions,
-                    rebuilt,
-                }) => {
+                Ok(TenantCheckpointOutcome::Advanced { revisions, rebuilt }) => {
                     report.owner_tenants_reconciled += 1;
                     report.owner_revisions_checkpointed += revisions;
                     if rebuilt {
@@ -455,10 +455,7 @@ async fn try_acquire_tenant_lock(
     row.try_get("", "acquired").map_err(Error::Database)
 }
 
-async fn load_checkpoint(
-    transaction: &DatabaseTransaction,
-    tenant_id: Uuid,
-) -> Result<i64> {
+async fn load_checkpoint(transaction: &DatabaseTransaction, tenant_id: Uuid) -> Result<i64> {
     let row = transaction
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -474,7 +471,10 @@ async fn load_checkpoint(
         .await
         .map_err(Error::Database)?;
     let revision = row
-        .map(|row| row.try_get::<i64>("", "owner_revision").map_err(Error::Database))
+        .map(|row| {
+            row.try_get::<i64>("", "owner_revision")
+                .map_err(Error::Database)
+        })
         .transpose()?
         .unwrap_or(0);
     if revision < 0 {
@@ -581,9 +581,7 @@ async fn advance_checkpoint(
             "Forum owner checkpoint did not advance from the expected revision".to_string(),
         ));
     };
-    let stored_revision: i64 = row
-        .try_get("", "owner_revision")
-        .map_err(Error::Database)?;
+    let stored_revision: i64 = row.try_get("", "owner_revision").map_err(Error::Database)?;
     if stored_revision != owner_revision {
         return Err(Error::External(
             "Forum owner checkpoint stored an unexpected revision".to_string(),

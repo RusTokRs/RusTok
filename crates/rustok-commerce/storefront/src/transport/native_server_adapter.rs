@@ -9,8 +9,7 @@ use crate::model::StorefrontCheckoutWorkspace;
 use crate::model::StorefrontCommerceData;
 
 #[cfg(feature = "ssr")]
-const STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY: &str =
-    "commerce_storefront_native_transport";
+const STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY: &str = "commerce_storefront_native_transport";
 #[cfg(feature = "ssr")]
 const STOREFRONT_COMMERCE_CONSUMER_OPERATION: &str = "fetch_storefront_commerce";
 
@@ -121,9 +120,7 @@ async fn storefront_commerce_native(
             .map_err(map_storefront_native_request_context_error)?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(|error| {
-                map_storefront_native_tenant_context_error(&request_context, error)
-            })?;
+            .map_err(|error| map_storefront_native_tenant_context_error(&request_context, error))?;
         let tenant_id = tenant.id;
         let normalized_locale = shared_adapter::resolve_requested_locale(
             locale,

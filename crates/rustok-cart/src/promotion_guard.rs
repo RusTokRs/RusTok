@@ -130,9 +130,7 @@ impl CartPromotionPort for GuardedCartPromotionPort {
                     .await
             }
         }
-        .map_err(|error| {
-            cart_promotion_error(&context, owner_operation, &request_facts, error)
-        })
+        .map_err(|error| cart_promotion_error(&context, owner_operation, &request_facts, error))
     }
 
     async fn apply_cart_promotion(
@@ -196,9 +194,7 @@ impl CartPromotionPort for GuardedCartPromotionPort {
                     .await
             }
         }
-        .map_err(|error| {
-            cart_promotion_error(&context, owner_operation, &request_facts, error)
-        })
+        .map_err(|error| cart_promotion_error(&context, owner_operation, &request_facts, error))
     }
 }
 

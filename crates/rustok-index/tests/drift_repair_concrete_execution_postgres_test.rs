@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_index::{
-    IndexDriftAuthorizedRepairCommand, IndexDriftRepairEvidence,
-    IndexDriftRepairEvidenceReader, IndexDriftRepairFailure, IndexDriftRepairFinding,
-    IndexDriftRepairOutcome, IndexDriftRepairReceiptOutcome, IndexDriftRepairRecoveryAction,
+    IndexDriftAuthorizedRepairCommand, IndexDriftRepairEvidence, IndexDriftRepairEvidenceReader,
+    IndexDriftRepairFailure, IndexDriftRepairFinding, IndexDriftRepairOutcome,
+    IndexDriftRepairReceiptOutcome, IndexDriftRepairRecoveryAction,
     IndexDriftRepairRecoveryOutcome, IndexMutation,
 };
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
@@ -43,10 +43,10 @@ impl IndexDriftRepairEvidenceReader for FailAfterOwnerEvidence {
         _finding: &IndexDriftRepairFinding,
         _before: &IndexDriftRepairEvidence,
     ) -> Result<IndexDriftRepairEvidence, IndexDriftRepairFailure> {
-        Err(IndexDriftRepairFailure::retryable(
-            "repair_evidence_after_commit_crash",
+        Err(
+            IndexDriftRepairFailure::retryable("repair_evidence_after_commit_crash")
+                .expect("static failure code"),
         )
-        .expect("static failure code"))
     }
 }
 
@@ -229,7 +229,10 @@ async fn missing_and_orphan_crash_windows_resume_exactly() -> TestResult<()> {
         .await
         .expect_err("fixture must stop after exact edge commit");
     assert_eq!(error.code(), "repair_evidence_after_commit_crash");
-    assert_eq!(entity_state(&database, &source_key).await?, Some((7, false)));
+    assert_eq!(
+        entity_state(&database, &source_key).await?,
+        Some((7, false))
+    );
     assert_eq!(
         exact_link_count(
             &database,
@@ -346,7 +349,10 @@ async fn recovery_admission_fences_side_effect_and_completion() -> TestResult<()
     let before_result = before_task.await?;
     let before_error = before_result.expect_err("paused owner admission must fail closed");
     assert_eq!(before_error.code(), "index_drift_repair_recovery_paused");
-    assert_eq!(entity_state(&database, &before_key).await?, Some((7, false)));
+    assert_eq!(
+        entity_state(&database, &before_key).await?,
+        Some((7, false))
+    );
     assert_eq!(
         inbox_state(&database, MISSING_DELIVERY_SOURCE, before_command_id).await?,
         None
@@ -438,10 +444,7 @@ async fn recovery_admission_fences_side_effect_and_completion() -> TestResult<()
     after_release.wait().await;
     let after_result = after_task.await?;
     let after_error = after_result.expect_err("completion must fail after terminal abandon");
-    assert_eq!(
-        after_error.code(),
-        "index_drift_repair_recovery_abandoned"
-    );
+    assert_eq!(after_error.code(), "index_drift_repair_recovery_abandoned");
     assert_eq!(
         repair_command_state(&database, after_command_id).await?,
         "prepared"
@@ -456,10 +459,7 @@ async fn recovery_admission_fences_side_effect_and_completion() -> TestResult<()
         .execute(&after_command)
         .await
         .expect_err("abandoned repair must remain terminally fenced");
-    assert_eq!(
-        retry_error.code(),
-        "index_drift_repair_recovery_abandoned"
-    );
+    assert_eq!(retry_error.code(), "index_drift_repair_recovery_abandoned");
     assert!(
         force_complete_repair(&database, after_command_id)
             .await
@@ -500,11 +500,7 @@ async fn orphan_commitments_and_normal_mutations_fail_closed() -> TestResult<()>
     .await?;
     runtime.authority.set_mutation(IndexMutation::Upsert {
         event_id: Uuid::new_v4(),
-        record: runtime.source_record(
-            substituted.source_key.clone(),
-            7,
-            vec![replacement],
-        ),
+        record: runtime.source_record(substituted.source_key.clone(), 7, vec![replacement]),
     });
     assert_orphan_not_repaired(&database, &runtime, &substituted).await?;
 
@@ -546,11 +542,7 @@ async fn orphan_commitments_and_normal_mutations_fail_closed() -> TestResult<()>
     apply_record(
         &database,
         &runtime,
-        runtime.source_record(
-            concurrent.source_key.clone(),
-            8,
-            vec![replacement.clone()],
-        ),
+        runtime.source_record(concurrent.source_key.clone(), 8, vec![replacement.clone()]),
         "repair-evidence-normal-mutation",
     )
     .await?;
@@ -659,21 +651,13 @@ async fn assert_orphan_not_repaired(
         other => panic!("changed orphan commitment was not rejected: {other:?}"),
     }
     assert_eq!(
-        inbox_state(
-            database,
-            ORPHAN_DELIVERY_SOURCE,
-            case.command.command_id()
-        )
-        .await?,
+        inbox_state(database, ORPHAN_DELIVERY_SOURCE, case.command.command_id()).await?,
         None
     );
     Ok(())
 }
 
-async fn force_complete_repair(
-    database: &TestDatabase,
-    command_id: Uuid,
-) -> TestResult<()> {
+async fn force_complete_repair(database: &TestDatabase, command_id: Uuid) -> TestResult<()> {
     let db = database.connection().await?;
     db.execute(Statement::from_sql_and_values(
         DbBackend::Postgres,

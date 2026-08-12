@@ -109,15 +109,8 @@ async fn explicit_and_name_derived_slug_changes_record_redirects_atomically() ->
     let db = setup().await?;
     let tenant_id = Uuid::new_v4();
     let security = admin();
-    let category_id = create_category(
-        &db,
-        tenant_id,
-        security.clone(),
-        "en",
-        "General",
-        "general",
-    )
-    .await?;
+    let category_id =
+        create_category(&db, tenant_id, security.clone(), "en", "General", "general").await?;
     let service = CategoryService::new(db.clone());
     let routes = ForumCategoryRouteService::new(db.clone());
 
@@ -137,10 +130,11 @@ async fn explicit_and_name_derived_slug_changes_record_redirects_atomically() ->
     assert_eq!(old.canonical.path, "/en/forum/c/community");
     assert!(old.alias_id.is_some());
 
-    let current = routes
-        .resolve(tenant_id, "en", "community", None)
-        .await?;
-    assert_eq!(current.disposition, ForumCategoryRouteDisposition::Canonical);
+    let current = routes.resolve(tenant_id, "en", "community", None).await?;
+    assert_eq!(
+        current.disposition,
+        ForumCategoryRouteDisposition::Canonical
+    );
     assert_eq!(current.alias_id, None);
 
     let derived = service
@@ -152,9 +146,7 @@ async fn explicit_and_name_derived_slug_changes_record_redirects_atomically() ->
         )
         .await?;
     assert_eq!(derived.slug, "support-center");
-    let second_old = routes
-        .resolve(tenant_id, "en", "community", None)
-        .await?;
+    let second_old = routes.resolve(tenant_id, "en", "community", None).await?;
     assert_eq!(
         second_old.disposition,
         ForumCategoryRouteDisposition::Redirect
@@ -181,15 +173,8 @@ async fn historical_route_keys_cannot_be_reclaimed_inside_one_tenant() -> TestRe
     let db = setup().await?;
     let tenant_id = Uuid::new_v4();
     let security = admin();
-    let category_id = create_category(
-        &db,
-        tenant_id,
-        security.clone(),
-        "en",
-        "General",
-        "general",
-    )
-    .await?;
+    let category_id =
+        create_category(&db, tenant_id, security.clone(), "en", "General", "general").await?;
     let service = CategoryService::new(db.clone());
     service
         .update(
@@ -251,15 +236,8 @@ async fn archived_category_hides_current_and_historical_routes() -> TestResult<(
     let db = setup().await?;
     let tenant_id = Uuid::new_v4();
     let security = admin();
-    let category_id = create_category(
-        &db,
-        tenant_id,
-        security.clone(),
-        "en",
-        "General",
-        "general",
-    )
-    .await?;
+    let category_id =
+        create_category(&db, tenant_id, security.clone(), "en", "General", "general").await?;
     let service = CategoryService::new(db.clone());
     service
         .update(
@@ -289,15 +267,8 @@ async fn alias_rows_are_append_only_and_guard_direct_route_reuse() -> TestResult
     let db = setup().await?;
     let tenant_id = Uuid::new_v4();
     let security = admin();
-    let category_id = create_category(
-        &db,
-        tenant_id,
-        security.clone(),
-        "en",
-        "General",
-        "general",
-    )
-    .await?;
+    let category_id =
+        create_category(&db, tenant_id, security.clone(), "en", "General", "general").await?;
     CategoryService::new(db.clone())
         .update(
             tenant_id,
@@ -315,22 +286,13 @@ async fn alias_rows_are_append_only_and_guard_direct_route_reuse() -> TestResult
         .is_err()
     );
     assert!(
-        db.execute_unprepared(
-            "DELETE FROM forum_category_route_aliases WHERE slug = 'general'"
-        )
-        .await
-        .is_err()
+        db.execute_unprepared("DELETE FROM forum_category_route_aliases WHERE slug = 'general'")
+            .await
+            .is_err()
     );
 
-    let bypass_category_id = create_category(
-        &db,
-        tenant_id,
-        admin(),
-        "fr",
-        "Autre",
-        "autre",
-    )
-    .await?;
+    let bypass_category_id =
+        create_category(&db, tenant_id, admin(), "fr", "Autre", "autre").await?;
     assert!(
         db.execute_unprepared(&format!(
             "INSERT INTO forum_category_translations (id, category_id, tenant_id, locale, name, slug, description) \

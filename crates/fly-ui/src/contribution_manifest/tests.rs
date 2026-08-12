@@ -91,9 +91,11 @@ fn target_provider_version_mismatch_is_rejected() {
     );
     assert!(!result.is_valid());
     assert!(result.registry.is_empty());
-    assert!(result.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "contribution_target_provider_version_mismatch"
-    }));
+    assert!(
+        result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "contribution_target_provider_version_mismatch"
+        })
+    );
 }
 
 #[test]
@@ -106,9 +108,12 @@ fn missing_provider_version_is_rejected() {
     );
     assert!(!result.is_valid());
     assert!(result.registry.is_empty());
-    assert!(result.diagnostics.iter().any(|diagnostic| {
-        diagnostic.code == "contribution_provider_version_missing"
-    }));
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| { diagnostic.code == "contribution_provider_version_missing" })
+    );
 }
 
 #[test]
@@ -205,10 +210,7 @@ fn direct_target_lookup_trims_owner_and_versions() {
         module_id: "pages".to_string(),
         owner_provider: " rustok.pages ".to_string(),
         owner_version: " 0.1.0 ".to_string(),
-        target_providers: BTreeMap::from([(
-            "fly.builtin".to_string(),
-            " 1 ".to_string(),
-        )]),
+        target_providers: BTreeMap::from([("fly.builtin".to_string(), " 1 ".to_string())]),
         dependencies: BTreeSet::new(),
         required_permissions: BTreeSet::new(),
         admin: Vec::new(),

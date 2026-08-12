@@ -30,15 +30,13 @@ const REQUIRED_SCHEMA_TABLES: [&str; 3] = ["products", "product_variants", "sys_
 
 const BIND_ENV: &str = "RUSTOK_PRODUCT_CATALOG_SERVICE_BIND";
 const DATABASE_URL_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_URL";
-const DATABASE_CONNECT_TIMEOUT_MS_ENV: &str =
-    "RUSTOK_PRODUCT_CATALOG_DATABASE_CONNECT_TIMEOUT_MS";
+const DATABASE_CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_CONNECT_TIMEOUT_MS";
 const DATABASE_MAX_CONNECTIONS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_MAX_CONNECTIONS";
 const BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN";
 const TRUSTED_SERVICE_ACTOR_ENV: &str = "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR";
 const TLS_CERT_PATH_ENV: &str = "RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH";
 const TLS_KEY_PATH_ENV: &str = "RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_KEY_PATH";
-const ALLOW_INSECURE_LOOPBACK_ENV: &str =
-    "RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK";
+const ALLOW_INSECURE_LOOPBACK_ENV: &str = "RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK";
 
 #[derive(Clone, Eq, PartialEq)]
 struct RedactedSecret(String);
@@ -96,11 +94,8 @@ impl ServiceConfig {
             .parse::<SocketAddr>()
             .with_context(|| format!("{BIND_ENV} must be an IP socket address"))?;
 
-        let database_url = first_required_env(&[
-            DATABASE_URL_ENV,
-            "RUSTOK_DATABASE_URL",
-            "DATABASE_URL",
-        ])?;
+        let database_url =
+            first_required_env(&[DATABASE_URL_ENV, "RUSTOK_DATABASE_URL", "DATABASE_URL"])?;
         let (database_url, database_target) = validate_database_url(database_url)?;
 
         let database_connect_timeout_ms = optional_u64(
@@ -291,9 +286,7 @@ fn validate_service_actor(value: String) -> Result<String> {
         || value != value.trim()
         || !value.bytes().all(|byte| byte.is_ascii_graphic())
     {
-        bail!(
-            "{TRUSTED_SERVICE_ACTOR_ENV} must be 1..=128 visible non-whitespace ASCII bytes"
-        );
+        bail!("{TRUSTED_SERVICE_ACTOR_ENV} must be 1..=128 visible non-whitespace ASCII bytes");
     }
     Ok(value)
 }
@@ -309,15 +302,15 @@ fn validate_transport_security(
             cert_path,
             key_path,
         }),
-        (Some(_), None) | (None, Some(_)) => bail!(
-            "{TLS_CERT_PATH_ENV} and {TLS_KEY_PATH_ENV} must be configured together"
-        ),
+        (Some(_), None) | (None, Some(_)) => {
+            bail!("{TLS_CERT_PATH_ENV} and {TLS_KEY_PATH_ENV} must be configured together")
+        }
         (None, None) if allow_insecure_loopback && bind.ip().is_loopback() => {
             Ok(ServiceTransport::InsecureLoopback)
         }
-        (None, None) if allow_insecure_loopback => bail!(
-            "{ALLOW_INSECURE_LOOPBACK_ENV} is valid only for a loopback bind address"
-        ),
+        (None, None) if allow_insecure_loopback => {
+            bail!("{ALLOW_INSECURE_LOOPBACK_ENV} is valid only for a loopback bind address")
+        }
         (None, None) => bail!(
             "Product catalog service TLS is required unless explicit loopback plaintext is enabled"
         ),
@@ -498,13 +491,8 @@ mod tests {
             }
         );
         assert!(
-            validate_transport_security(
-                bind,
-                Some(PathBuf::from("server.crt")),
-                None,
-                false,
-            )
-            .is_err()
+            validate_transport_security(bind, Some(PathBuf::from("server.crt")), None, false,)
+                .is_err()
         );
     }
 

@@ -214,11 +214,9 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
     .await
     .expect("bounded recovery audit should be accepted");
     assert!(
-        db.execute_unprepared(
-            "UPDATE index_reconciliation_recovery_audits SET reason = 'changed'"
-        )
-        .await
-        .is_err(),
+        db.execute_unprepared("UPDATE index_reconciliation_recovery_audits SET reason = 'changed'")
+            .await
+            .is_err(),
         "recovery audit rows must reject updates"
     );
     assert!(
@@ -255,5 +253,8 @@ async fn canonical_storage_migrations_round_trip_on_sqlite() {
         ))
         .await
         .expect("remaining index tables should be queryable");
-    assert!(remaining.is_empty(), "down migrations must remove all Index tables");
+    assert!(
+        remaining.is_empty(),
+        "down migrations must remove all Index tables"
+    );
 }

@@ -18,12 +18,7 @@ fn schema_ref(entity: &str) -> SchemaRef {
     }
 }
 
-fn field(
-    name: &str,
-    value_type: IndexValueType,
-    nullable: bool,
-    sortable: bool,
-) -> IndexField {
+fn field(name: &str, value_type: IndexValueType, nullable: bool, sortable: bool) -> IndexField {
     IndexField {
         name: FieldName::new(name).unwrap(),
         value_type,

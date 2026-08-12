@@ -21,8 +21,7 @@ const PRICING_OWNER: &str = "rustok_pricing";
 const PRICING_READ_BOUNDARY: &str = "pricing_read_port";
 const RESOLVE_PRODUCT_PRICE_OPERATION: &str = "resolve_product_price";
 const READ_PRICE_LIST_PROJECTION_OPERATION: &str = "read_price_list_projection";
-const LIST_ACTIVE_PRICE_LIST_PROJECTIONS_OPERATION: &str =
-    "list_active_price_list_projections";
+const LIST_ACTIVE_PRICE_LIST_PROJECTIONS_OPERATION: &str = "list_active_price_list_projections";
 const READ_ADMIN_PRODUCT_PRICING_PROJECTION_OPERATION: &str =
     "read_admin_product_pricing_projection";
 const READ_STOREFRONT_PRODUCT_PRICING_PROJECTION_OPERATION: &str =
@@ -202,12 +201,9 @@ impl PricingReadPort for InProcessPricingReadPort {
                 .map(|value| value.chars().count()),
             ..PricingReadDiagnosticFacts::default()
         };
-        let result = PricingReadPort::list_active_price_list_projections(
-            &self.inner,
-            context,
-            request,
-        )
-        .await;
+        let result =
+            PricingReadPort::list_active_price_list_projections(&self.inner, context, request)
+                .await;
         result.map_err(|error| {
             map_pricing_read_local_port_error(
                 &diagnostic_context,
@@ -238,12 +234,9 @@ impl PricingReadPort for InProcessPricingReadPort {
                 .map(|value| value.chars().count()),
             ..PricingReadDiagnosticFacts::default()
         };
-        let result = PricingReadPort::read_admin_product_pricing_projection(
-            &self.inner,
-            context,
-            request,
-        )
-        .await;
+        let result =
+            PricingReadPort::read_admin_product_pricing_projection(&self.inner, context, request)
+                .await;
         result.map_err(|error| {
             map_pricing_read_local_port_error(
                 &diagnostic_context,
@@ -343,14 +336,12 @@ fn classify_pricing_read_local_outcome(
             local_operation: "validate_variant_product_identity",
             sanitized_message: Some("variant does not belong to the requested product"),
         },
-        (
-            RESOLVE_PRODUCT_PRICE_OPERATION,
-            PortErrorKind::NotFound,
-            "pricing.price_not_found",
-        ) => PricingReadLocalOutcome {
-            local_operation: "resolve_variant_price",
-            sanitized_message: Some("price was not found"),
-        },
+        (RESOLVE_PRODUCT_PRICE_OPERATION, PortErrorKind::NotFound, "pricing.price_not_found") => {
+            PricingReadLocalOutcome {
+                local_operation: "resolve_variant_price",
+                sanitized_message: Some("price was not found"),
+            }
+        }
         (
             READ_PRICE_LIST_PROJECTION_OPERATION,
             PortErrorKind::NotFound,
@@ -385,12 +376,10 @@ fn classify_pricing_read_local_outcome(
             local_operation: "validate_owner_request",
             sanitized_message: None,
         },
-        (_, PortErrorKind::Conflict, "pricing.insufficient_inventory") => {
-            PricingReadLocalOutcome {
-                local_operation: "validate_inventory_requirement",
-                sanitized_message: Some("inventory is insufficient for the pricing operation"),
-            }
-        }
+        (_, PortErrorKind::Conflict, "pricing.insufficient_inventory") => PricingReadLocalOutcome {
+            local_operation: "validate_inventory_requirement",
+            sanitized_message: Some("inventory is insufficient for the pricing operation"),
+        },
         (_, PortErrorKind::Validation, "pricing.invalid_option_combination") => {
             PricingReadLocalOutcome {
                 local_operation: "validate_option_combination",
@@ -419,18 +408,14 @@ fn classify_pricing_read_local_outcome(
                 sanitized_message: None,
             }
         }
-        (_, PortErrorKind::InvariantViolation, "pricing.rich_error") => {
-            PricingReadLocalOutcome {
-                local_operation: "owner_rich_invariant",
-                sanitized_message: None,
-            }
-        }
-        (_, PortErrorKind::InvariantViolation, "pricing.core_error") => {
-            PricingReadLocalOutcome {
-                local_operation: "owner_core_invariant",
-                sanitized_message: None,
-            }
-        }
+        (_, PortErrorKind::InvariantViolation, "pricing.rich_error") => PricingReadLocalOutcome {
+            local_operation: "owner_rich_invariant",
+            sanitized_message: None,
+        },
+        (_, PortErrorKind::InvariantViolation, "pricing.core_error") => PricingReadLocalOutcome {
+            local_operation: "owner_core_invariant",
+            sanitized_message: None,
+        },
         _ => return None,
     };
     Some(outcome)

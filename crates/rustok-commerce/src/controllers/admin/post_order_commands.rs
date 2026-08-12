@@ -16,10 +16,7 @@ use rustok_order::{
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-use super::super::{
-    CommerceHttpRuntime,
-    common::ensure_permissions,
-};
+use super::super::{CommerceHttpRuntime, common::ensure_permissions};
 use crate::dto::{
     CancelOrderChangeInput, CancelOrderReturnInput, CreateOrderChangeInput, CreateOrderReturnInput,
     OrderChangeResponse, OrderReturnResponse,

@@ -4,15 +4,18 @@ use std::{env, error::Error};
 
 use rustok_core::{MigrationSource, ModuleRegistry};
 use rustok_index::{
-    EntityKey, EntityName, FieldName, FieldPath, FilterExpr, IndexModule, IndexMutation, IndexQuery,
-    IndexQueryPort, IndexQueryScope, IndexSourceLoadRequest, IndexValue, LinkName, LocaleKey,
-    ModuleName, MutationApplyOutcome, MutationDelivery, Pagination, PostgresMutationStore,
-    PostgresSchemaRegistrationStore, SchemaRef, SchemaVersion, SharedIndexQueryRuntime,
-    SharedIndexSchemaRegistry, SharedIndexSourceRegistry, materialize_index_source_registry,
-    materialize_postgres_index_query_runtime, materialize_postgres_index_sources,
+    EntityKey, EntityName, FieldName, FieldPath, FilterExpr, IndexModule, IndexMutation,
+    IndexQuery, IndexQueryPort, IndexQueryScope, IndexSourceLoadRequest, IndexValue, LinkName,
+    LocaleKey, ModuleName, MutationApplyOutcome, MutationDelivery, Pagination,
+    PostgresMutationStore, PostgresSchemaRegistrationStore, SchemaRef, SchemaVersion,
+    SharedIndexQueryRuntime, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
+    materialize_index_source_registry, materialize_postgres_index_query_runtime,
+    materialize_postgres_index_sources,
 };
 use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistrations, ModuleWorkScheduler};
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -140,8 +143,8 @@ struct Runtime {
 }
 
 #[tokio::test]
-async fn linked_targets_remain_revision_monotonic_and_graph_queries_fail_closed_across_recreate(
-) -> TestResult<()> {
+async fn linked_targets_remain_revision_monotonic_and_graph_queries_fail_closed_across_recreate()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -161,12 +164,7 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     let old_channel_version =
         materialize_current(&runtime, SALES_CHANNEL_SOURCE, channel_key()?).await?;
     assert_scalar_product_visible(&runtime.query, true).await?;
-    assert_graph_payloads(
-        &runtime.query,
-        &[OLD_VARIANT_SKU],
-        &[OLD_CHANNEL_NAME],
-    )
-    .await?;
+    assert_graph_payloads(&runtime.query, &[OLD_VARIANT_SKU], &[OLD_CHANNEL_NAME]).await?;
 
     // ProductVariant delete -> recreate keeps the same UUID but must not reuse an old source version.
     // The target delete/current mutation is intentionally not delivered yet, so old target payload
@@ -202,12 +200,7 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     let applied_variant_version =
         materialize_current(&runtime, PRODUCT_VARIANT_SOURCE, variant_key()?).await?;
     assert_eq!(applied_variant_version, recreated_variant_version);
-    assert_graph_payloads(
-        &runtime.query,
-        &[NEW_VARIANT_SKU],
-        &[OLD_CHANNEL_NAME],
-    )
-    .await?;
+    assert_graph_payloads(&runtime.query, &[NEW_VARIANT_SKU], &[OLD_CHANNEL_NAME]).await?;
 
     // SalesChannel delete -> recreate likewise seeds live index_revision above the retained delete
     // tombstone. Product membership returns to the same Channel UUID before convergence. Product root
@@ -270,12 +263,7 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     let applied_channel_version =
         materialize_current(&runtime, SALES_CHANNEL_SOURCE, channel_key()?).await?;
     assert_eq!(applied_channel_version, recreated_channel_version);
-    assert_graph_payloads(
-        &runtime.query,
-        &[NEW_VARIANT_SKU],
-        &[NEW_CHANNEL_NAME],
-    )
-    .await?;
+    assert_graph_payloads(&runtime.query, &[NEW_VARIANT_SKU], &[NEW_CHANNEL_NAME]).await?;
     Ok(())
 }
 
@@ -446,14 +434,8 @@ fn product_graph_query() -> TestResult<IndexQuery> {
         schema: product_schema_ref()?,
         fields: vec![
             FieldPath::new(FieldName::new("title")?),
-            FieldPath::linked(
-                [LinkName::new("variants")?],
-                FieldName::new("sku")?,
-            ),
-            FieldPath::linked(
-                [LinkName::new("sales_channels")?],
-                FieldName::new("name")?,
-            ),
+            FieldPath::linked([LinkName::new("variants")?], FieldName::new("sku")?),
+            FieldPath::linked([LinkName::new("sales_channels")?], FieldName::new("name")?),
         ],
         filter: Some(FilterExpr::Eq(
             FieldPath::new(FieldName::new("id")?),
@@ -472,7 +454,10 @@ async fn assert_scalar_product_visible(
     query: &SharedIndexQueryRuntime,
     expected: bool,
 ) -> TestResult<()> {
-    assert_query_visibility(query.execute_query(scalar_product_query()?).await?, expected);
+    assert_query_visibility(
+        query.execute_query(scalar_product_query()?).await?,
+        expected,
+    );
     Ok(())
 }
 
@@ -497,7 +482,11 @@ async fn assert_graph_payloads(
     expected_channel_names: &[&str],
 ) -> TestResult<()> {
     let page = query.execute_query(product_graph_query()?).await?;
-    assert_eq!(page.items.len(), 1, "Product graph must be query-admissible");
+    assert_eq!(
+        page.items.len(),
+        1,
+        "Product graph must be query-admissible"
+    );
     assert_eq!(page.exact_count, Some(1));
     let item = &page.items[0];
     let variant_values = nested_strings(item, "variants", "sku")?;
@@ -742,7 +731,8 @@ async fn assert_materialized_target_version(
     expected_source_version: u64,
 ) -> TestResult<()> {
     assert_eq!(
-        materialized_target_version(db, module_name, entity_name, schema_version, entity_id).await?,
+        materialized_target_version(db, module_name, entity_name, schema_version, entity_id)
+            .await?,
         expected_source_version
     );
     Ok(())

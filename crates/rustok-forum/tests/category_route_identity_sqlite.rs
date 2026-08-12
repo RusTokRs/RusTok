@@ -109,15 +109,8 @@ async fn localized_routes_follow_exact_and_shared_fallback_precedence() -> TestR
     let db = setup().await?;
     let tenant_id = Uuid::new_v4();
     let security = admin();
-    let category_id = create_category(
-        &db,
-        tenant_id,
-        security.clone(),
-        "en",
-        "General",
-        "general",
-    )
-    .await?;
+    let category_id =
+        create_category(&db, tenant_id, security.clone(), "en", "General", "general").await?;
     add_translation(
         &db,
         tenant_id,
@@ -147,9 +140,7 @@ async fn localized_routes_follow_exact_and_shared_fallback_precedence() -> TestR
     assert_eq!(canonical_fr.slug, "discussions");
     assert_eq!(canonical_fr.path, "/fr/forum/c/discussions");
 
-    let exact = routes
-        .resolve(tenant_id, "fr", "discussions", None)
-        .await?;
+    let exact = routes.resolve(tenant_id, "fr", "discussions", None).await?;
     assert_eq!(exact.disposition, ForumCategoryRouteDisposition::Canonical);
     assert_eq!(exact.canonical, canonical_fr);
 
@@ -193,15 +184,8 @@ async fn exact_archived_route_does_not_fall_through_to_another_locale() -> TestR
         "general",
     )
     .await?;
-    let exact_category_id = create_category(
-        &db,
-        tenant_id,
-        security.clone(),
-        "fr",
-        "Exact",
-        "general",
-    )
-    .await?;
+    let exact_category_id =
+        create_category(&db, tenant_id, security.clone(), "fr", "Exact", "general").await?;
     let routes = ForumCategoryRouteService::new(db.clone());
 
     let exact = routes.resolve(tenant_id, "fr", "general", None).await?;
@@ -226,28 +210,13 @@ async fn exact_archived_route_does_not_fall_through_to_another_locale() -> TestR
 }
 
 #[tokio::test]
-async fn first_available_reverse_lookup_fails_closed_across_category_identities() -> TestResult<()> {
+async fn first_available_reverse_lookup_fails_closed_across_category_identities() -> TestResult<()>
+{
     let db = setup().await?;
     let tenant_id = Uuid::new_v4();
     let security = admin();
-    create_category(
-        &db,
-        tenant_id,
-        security.clone(),
-        "de",
-        "Deutsch",
-        "shared",
-    )
-    .await?;
-    create_category(
-        &db,
-        tenant_id,
-        security,
-        "it",
-        "Italiano",
-        "shared",
-    )
-    .await?;
+    create_category(&db, tenant_id, security.clone(), "de", "Deutsch", "shared").await?;
+    create_category(&db, tenant_id, security, "it", "Italiano", "shared").await?;
 
     let routes = ForumCategoryRouteService::new(db);
     assert!(matches!(
@@ -267,24 +236,8 @@ async fn identical_locale_slug_routes_are_isolated_by_tenant() -> TestResult<()>
     let db = setup().await?;
     let tenant_a = Uuid::new_v4();
     let tenant_b = Uuid::new_v4();
-    let category_a = create_category(
-        &db,
-        tenant_a,
-        admin(),
-        "en",
-        "Tenant A",
-        "general",
-    )
-    .await?;
-    let category_b = create_category(
-        &db,
-        tenant_b,
-        admin(),
-        "en",
-        "Tenant B",
-        "general",
-    )
-    .await?;
+    let category_a = create_category(&db, tenant_a, admin(), "en", "Tenant A", "general").await?;
+    let category_b = create_category(&db, tenant_b, admin(), "en", "Tenant B", "general").await?;
 
     let routes = ForumCategoryRouteService::new(db);
     assert_eq!(

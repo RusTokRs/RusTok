@@ -10,12 +10,9 @@ use uuid::Uuid;
 use crate::model::{ProductDetail, ProductDraft};
 
 const PRODUCT_ADMIN_GRAPHQL_OWNER: &str = "rustok_product.admin";
-const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY: &str =
-    "product_admin_primary_graphql_mutations";
-const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str =
-    "Product admin service is temporarily unavailable";
-const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str =
-    "Product admin request could not be completed";
+const PRODUCT_ADMIN_MUTATION_GRAPHQL_BOUNDARY: &str = "product_admin_primary_graphql_mutations";
+const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str = "Product admin service is temporarily unavailable";
+const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str = "Product admin request could not be completed";
 
 const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($idempotencyKey: String!, $input: CreateProductInput!) { createProduct(idempotencyKey: $idempotencyKey, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
 const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($idempotencyKey: String!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(idempotencyKey: $idempotencyKey, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug primaryCategoryId tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";

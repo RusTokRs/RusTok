@@ -8,13 +8,12 @@ use std::{
 use chrono::Utc;
 use rustok_api::{PortActor, PortActorKind, PortContext, PortError};
 use rustok_moderation::{
-    APPLICATION_ADAPTER_DEADLINE_SECONDS, AssignModerationCaseCommand,
-    DecideModerationCaseCommand, ModerationApplicationOperationStatus, ModerationCasePriority,
-    ModerationCaseRecord, ModerationCaseStatus, ModerationDecisionEffect,
-    ModerationDecisionEffectAction, ModerationDecisionKind, ModerationDecisionRecord,
-    ModerationReasonCode, ModerationReporterKind, ModerationScopeRef, ModerationService,
-    ModerationSubjectKind, ModerationSubjectRef, OpenModerationCaseCommand,
-    SubmitModerationReportCommand,
+    APPLICATION_ADAPTER_DEADLINE_SECONDS, AssignModerationCaseCommand, DecideModerationCaseCommand,
+    ModerationApplicationOperationStatus, ModerationCasePriority, ModerationCaseRecord,
+    ModerationCaseStatus, ModerationDecisionEffect, ModerationDecisionEffectAction,
+    ModerationDecisionKind, ModerationDecisionRecord, ModerationReasonCode, ModerationReporterKind,
+    ModerationScopeRef, ModerationService, ModerationSubjectKind, ModerationSubjectRef,
+    OpenModerationCaseCommand, SubmitModerationReportCommand,
 };
 use rustok_moderation_api::{
     ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationSubjectAdapterKey,
@@ -197,8 +196,8 @@ fn success_application(command: &ApplyModerationDecisionCommand) -> ModerationDe
 }
 
 #[tokio::test]
-async fn postgres_dispatch_contract_preserves_exact_routing_cas_and_fail_closed_outcomes(
-) -> TestResult<()> {
+async fn postgres_dispatch_contract_preserves_exact_routing_cas_and_fail_closed_outcomes()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -221,10 +220,19 @@ async fn concurrent_dispatch_calls_exact_adapter_once(database: &TestDatabase) -
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let seed = ModerationService::new(database.connection("dispatch_race_seed").await?);
-    let (case, decision) = seed_decided_case(&seed, tenant_id, actor_id, 11, "dispatch-race").await?;
+    let (case, decision) =
+        seed_decided_case(&seed, tenant_id, actor_id, 11, "dispatch-race").await?;
 
-    let exact = RecordingAdapter::new("forum", ModerationSubjectKind::ForumPost, AdapterBehavior::Success);
-    let wrong = RecordingAdapter::new("forum", ModerationSubjectKind::ForumTopic, AdapterBehavior::Success);
+    let exact = RecordingAdapter::new(
+        "forum",
+        ModerationSubjectKind::ForumPost,
+        AdapterBehavior::Success,
+    );
+    let wrong = RecordingAdapter::new(
+        "forum",
+        ModerationSubjectKind::ForumTopic,
+        AdapterBehavior::Success,
+    );
     let mut registry = ModerationSubjectAdapterRegistry::default();
     registry.register(wrong.clone())?;
     registry.register(exact.clone())?;
@@ -255,7 +263,10 @@ async fn concurrent_dispatch_calls_exact_adapter_once(database: &TestDatabase) -
     }
     assert_eq!(winners.len(), 1);
     assert_eq!(losers, 1);
-    assert_eq!(winners[0].status, ModerationApplicationOperationStatus::Applied);
+    assert_eq!(
+        winners[0].status,
+        ModerationApplicationOperationStatus::Applied
+    );
     assert_eq!(winners[0].attempt_count, 1);
     assert!(winners[0].lease_token.is_none());
 
@@ -265,8 +276,14 @@ async fn concurrent_dispatch_calls_exact_adapter_once(database: &TestDatabase) -
     let call = &exact_calls[0];
     assert_eq!(call.actor_kind, PortActorKind::Service);
     assert_eq!(call.actor_id, "rustok-moderation");
-    assert_eq!(call.idempotency_key.as_deref(), Some(decision.id.to_string().as_str()));
-    assert_eq!(call.causation_id.as_deref(), Some(decision.id.to_string().as_str()));
+    assert_eq!(
+        call.idempotency_key.as_deref(),
+        Some(decision.id.to_string().as_str())
+    );
+    assert_eq!(
+        call.causation_id.as_deref(),
+        Some(decision.id.to_string().as_str())
+    );
     assert_eq!(
         call.deadline_ms,
         Some(APPLICATION_ADAPTER_DEADLINE_SECONDS * 1_000)
@@ -307,7 +324,11 @@ async fn missing_exact_adapter_never_falls_back(database: &TestDatabase) -> Test
     let (case, decision) =
         seed_decided_case(&service, tenant_id, actor_id, 21, "dispatch-missing").await?;
 
-    let wrong = RecordingAdapter::new("forum", ModerationSubjectKind::ForumTopic, AdapterBehavior::Success);
+    let wrong = RecordingAdapter::new(
+        "forum",
+        ModerationSubjectKind::ForumTopic,
+        AdapterBehavior::Success,
+    );
     let mut registry = ModerationSubjectAdapterRegistry::default();
     registry.register(wrong.clone())?;
 
@@ -321,7 +342,10 @@ async fn missing_exact_adapter_never_falls_back(database: &TestDatabase) -> Test
         .await?
         .ok_or_else(|| std::io::Error::other("missing-adapter operation was not claimed"))?;
     assert!(wrong.calls().is_empty());
-    assert_eq!(operation.status, ModerationApplicationOperationStatus::Retryable);
+    assert_eq!(
+        operation.status,
+        ModerationApplicationOperationStatus::Retryable
+    );
     assert_eq!(
         operation.last_error_code.as_deref(),
         Some("moderation.application_adapter_missing")
@@ -363,9 +387,15 @@ async fn retryable_attempt_reuses_decision_idempotency_on_next_attempt(
         )
         .await?
         .ok_or_else(|| std::io::Error::other("retry fixture was not claimed"))?;
-    assert_eq!(first.status, ModerationApplicationOperationStatus::Retryable);
+    assert_eq!(
+        first.status,
+        ModerationApplicationOperationStatus::Retryable
+    );
     assert_eq!(first.attempt_count, 1);
-    assert_eq!(first.last_error_code.as_deref(), Some("test.adapter_unavailable"));
+    assert_eq!(
+        first.last_error_code.as_deref(),
+        Some("test.adapter_unavailable")
+    );
 
     let storage = database.connection("dispatch_retry_storage").await?;
     make_operation_due(&storage, tenant_id, decision.id).await?;
@@ -385,10 +415,22 @@ async fn retryable_attempt_reuses_decision_idempotency_on_next_attempt(
     let calls = adapter.calls();
     assert_eq!(calls.len(), 2);
     let expected_key = decision.id.to_string();
-    assert_eq!(calls[0].idempotency_key.as_deref(), Some(expected_key.as_str()));
-    assert_eq!(calls[1].idempotency_key.as_deref(), Some(expected_key.as_str()));
-    assert_eq!(calls[0].causation_id.as_deref(), Some(expected_key.as_str()));
-    assert_eq!(calls[1].causation_id.as_deref(), Some(expected_key.as_str()));
+    assert_eq!(
+        calls[0].idempotency_key.as_deref(),
+        Some(expected_key.as_str())
+    );
+    assert_eq!(
+        calls[1].idempotency_key.as_deref(),
+        Some(expected_key.as_str())
+    );
+    assert_eq!(
+        calls[0].causation_id.as_deref(),
+        Some(expected_key.as_str())
+    );
+    assert_eq!(
+        calls[1].causation_id.as_deref(),
+        Some(expected_key.as_str())
+    );
     assert_ne!(calls[0].correlation_id, calls[1].correlation_id);
     assert_eq!(calls[0].command, calls[1].command);
 
@@ -406,19 +448,18 @@ async fn retryable_attempt_reuses_decision_idempotency_on_next_attempt(
 async fn adapter_errors_and_invalid_success_are_classified_fail_closed(
     database: &TestDatabase,
 ) -> TestResult<()> {
-    let conflict = dispatch_behavior_fixture(
-        database,
-        AdapterBehavior::Conflict,
-        41,
-        "dispatch-conflict",
-    )
-    .await?;
+    let conflict =
+        dispatch_behavior_fixture(database, AdapterBehavior::Conflict, 41, "dispatch-conflict")
+            .await?;
     assert_eq!(
         conflict.operation_status,
         ModerationApplicationOperationStatus::OperatorReview
     );
     assert_eq!(conflict.case_status, ModerationCaseStatus::Escalated);
-    assert_eq!(conflict.error_code.as_deref(), Some("test.adapter_conflict"));
+    assert_eq!(
+        conflict.error_code.as_deref(),
+        Some("test.adapter_conflict")
+    );
 
     let validation = dispatch_behavior_fixture(
         database,

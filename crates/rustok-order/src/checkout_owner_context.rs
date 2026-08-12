@@ -253,13 +253,9 @@ fn checkout_order_payment_settlement_local_operation(code: &str) -> Option<&'sta
     match code {
         "order.checkout_payment_request_invalid" => Some("validate_request"),
         "order.checkout_payment_identity_missing" => Some("require_durable_checkout_identity"),
-        "order.checkout_payment_identity_conflict" => {
-            Some("validate_durable_checkout_identity")
-        }
+        "order.checkout_payment_identity_conflict" => Some("validate_durable_checkout_identity"),
         "order.checkout_payment_state_conflict" => Some("validate_payment_settlement_lifecycle"),
-        "order.checkout_payment_reference_conflict" => {
-            Some("validate_settled_payment_identity")
-        }
+        "order.checkout_payment_reference_conflict" => Some("validate_settled_payment_identity"),
         _ => None,
     }
 }

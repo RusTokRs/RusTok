@@ -124,13 +124,8 @@ async fn publish_once<E>(
 where
     E: ProductIndexRefreshContract,
 {
-    let actor_id = load_product_root_actor(
-        transaction,
-        root_event_id,
-        tenant_id,
-        product_id,
-    )
-    .await?;
+    let actor_id =
+        load_product_root_actor(transaction, root_event_id, tenant_id, product_id).await?;
 
     TransactionalEventBus::publish_contract_once_direct_in_tx_with_envelope_id_and_causation(
         transaction,
@@ -191,6 +186,8 @@ const fn map_write_once_error(
 ) -> ProductIndexRefreshPublicationError {
     match error {
         ContractEventWriteOnceError::Conflict => ProductIndexRefreshPublicationError::Conflict,
-        ContractEventWriteOnceError::Unavailable => ProductIndexRefreshPublicationError::Unavailable,
+        ContractEventWriteOnceError::Unavailable => {
+            ProductIndexRefreshPublicationError::Unavailable
+        }
     }
 }

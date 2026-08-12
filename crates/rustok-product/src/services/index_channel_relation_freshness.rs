@@ -1,6 +1,6 @@
 use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult,
-    Statement, TransactionTrait,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, DbBackend,
+    QueryResult, Statement, TransactionTrait,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -131,9 +131,10 @@ impl ProductSalesChannelIndexRelationFreshnessStore {
             product_source_version,
             ProductSalesChannelIndexRelationFreshnessError::InvalidProductSourceVersion,
         )?;
-        let channel_identity_generation = i64::try_from(channel_identity_generation).map_err(|_| {
-            ProductSalesChannelIndexRelationFreshnessError::InvalidChannelIdentityGeneration
-        })?;
+        let channel_identity_generation =
+            i64::try_from(channel_identity_generation).map_err(|_| {
+                ProductSalesChannelIndexRelationFreshnessError::InvalidChannelIdentityGeneration
+            })?;
         let visibility_key = visibility_key.into();
         if visibility_key.is_empty()
             || visibility_key.len() > MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES
@@ -190,20 +191,8 @@ impl ProductSalesChannelIndexRelationFreshnessStore {
         ProductSalesChannelIndexRelationFreshnessError,
     > {
         require_live_product(transaction, tenant_id, product_id).await?;
-        lock_domain(
-            transaction,
-            tenant_id,
-            product_id,
-            RELATION_LOCK_DOMAIN,
-        )
-        .await?;
-        lock_domain(
-            transaction,
-            tenant_id,
-            product_id,
-            FRESHNESS_LOCK_DOMAIN,
-        )
-        .await?;
+        lock_domain(transaction, tenant_id, product_id, RELATION_LOCK_DOMAIN).await?;
+        lock_domain(transaction, tenant_id, product_id, FRESHNESS_LOCK_DOMAIN).await?;
         require_current_relation_epoch(transaction, tenant_id, product_id, relation_epoch).await?;
         let previous = load_latest(transaction, tenant_id, product_id).await?;
 

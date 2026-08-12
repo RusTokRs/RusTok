@@ -59,22 +59,23 @@ fn native_route_resolution_uses_trusted_context_and_same_owners() {
 
 #[test]
 fn storefront_deep_link_uses_existing_category_list_permission_boundary() {
-    let inline_owner =
-        read("crates/rustok-forum/src/services/category_audience_read_inline.rs");
-    let contract = read(
-        "crates/rustok-forum/contracts/forum-category-route-storefront-transport.json",
+    let inline_owner = read("crates/rustok-forum/src/services/category_audience_read_inline.rs");
+    let contract =
+        read("crates/rustok-forum/contracts/forum-category-route-storefront-transport.json");
+    assert!(
+        inline_owner.contains("enforce_scope(&security, Resource::ForumCategories, Action::List)")
     );
-    assert!(inline_owner.contains("enforce_scope(&security, Resource::ForumCategories, Action::List)"));
-    assert!(inline_owner.contains("get_authenticated_storefront_list_visible_with_audience_context"));
+    assert!(
+        inline_owner.contains("get_authenticated_storefront_list_visible_with_audience_context")
+    );
     assert!(contract.contains("\"authenticated_permission_boundary\": \"forum_categories:list\""));
 }
 
 #[test]
 fn public_dto_and_adapters_have_graphql_native_parity() {
     let model = read("crates/rustok-forum/storefront/src/model.rs");
-    let graphql = read(
-        "crates/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs",
-    );
+    let graphql =
+        read("crates/rustok-forum/storefront/src/transport/category_route_graphql_adapter.rs");
     let native = read(
         "crates/rustok-forum/storefront/src/transport/native_server_adapter_category_route.rs",
     );
@@ -100,9 +101,8 @@ fn public_dto_and_adapters_have_graphql_native_parity() {
 
 #[test]
 fn transport_slice_does_not_mount_or_add_seo_policy() {
-    let contract = read(
-        "crates/rustok-forum/contracts/forum-category-route-storefront-transport.json",
-    );
+    let contract =
+        read("crates/rustok-forum/contracts/forum-category-route-storefront-transport.json");
     let docs = read("crates/rustok-forum/docs/forum-24n-category-route-storefront-transport.md");
     for marker in [
         "\"category_route_mounted_in_host\": false",
@@ -111,7 +111,10 @@ fn transport_slice_does_not_mount_or_add_seo_policy() {
         "\"seo_or_hreflang_changed\": false",
         "\"new_migration\": false",
     ] {
-        assert!(contract.contains(marker), "missing contract marker: {marker}");
+        assert!(
+            contract.contains(marker),
+            "missing contract marker: {marker}"
+        );
     }
     assert!(docs.contains("No tests, verifiers, formatting, Cargo commands"));
     assert!(docs.contains("No host router or UI invokes it in this slice"));

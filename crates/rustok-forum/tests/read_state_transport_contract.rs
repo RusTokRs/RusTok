@@ -82,8 +82,10 @@ fn graphql_schema_exposes_owner_read_state_fields() {
 #[test]
 fn category_and_all_read_transports_use_exact_visibility_owner() {
     for source in [REST_READ_STATE, GRAPHQL_READ_STATE] {
-        assert!(source.contains("ForumVisibilityScopedReadStateService")
-            || source.contains("visibility_scoped_read_state_service"));
+        assert!(
+            source.contains("ForumVisibilityScopedReadStateService")
+                || source.contains("visibility_scoped_read_state_service")
+        );
         assert!(source.contains("MarkCategoryRead"));
         assert!(source.contains("MarkAllRead"));
         assert!(!source.contains(".mark_category_read(\n"));

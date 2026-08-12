@@ -21,9 +21,7 @@ impl PostgresIndexReplayRunner {
             .sources
             .source_for_schema(request.page_request().schema())
             .ok_or_else(|| {
-                IndexReplayRunError::UnknownSchemaSource(
-                    request.page_request().schema().clone(),
-                )
+                IndexReplayRunError::UnknownSchemaSource(request.page_request().schema().clone())
             })?
             .source_name()
             .to_owned();
@@ -79,13 +77,11 @@ impl PostgresIndexReplayRunner {
                 }
             }
 
-            let page_future = worker.run_next_page_interruptible(
-                request.page_request().clone(),
-                || {
+            let page_future =
+                worker.run_next_page_interruptible(request.page_request().clone(), || {
                     let interrupted = should_interrupt();
                     async move { Ok::<bool, crate::IndexReplayFailure>(interrupted) }
-                },
-            );
+                });
             let (page_result, in_page_heartbeat_count) = await_page_with_lease_heartbeats(
                 &job_store,
                 &lease,

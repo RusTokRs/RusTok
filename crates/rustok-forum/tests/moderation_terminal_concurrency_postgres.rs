@@ -37,7 +37,8 @@ struct ReplyRaceSeed {
 
 #[tokio::test]
 async fn postgres_concurrent_reply_edits_fence_reject_and_remove() -> TestResult<()> {
-    let Some(database) = PostgresForumTestDb::setup("moderation_terminal_concurrency").await? else {
+    let Some(database) = PostgresForumTestDb::setup("moderation_terminal_concurrency").await?
+    else {
         return Ok(());
     };
 
@@ -84,11 +85,7 @@ async fn exercise_stale_reply_effect_race(
     database: &PostgresForumTestDb,
     seed: ReplyRaceSeed,
     edited_body: &str,
-    build_command: fn(
-        ReplyRaceSeed,
-        i64,
-        Uuid,
-    ) -> TestResult<ApplyModerationDecisionCommand>,
+    build_command: fn(ReplyRaceSeed, i64, Uuid) -> TestResult<ApplyModerationDecisionCommand>,
     accepted_solution: bool,
 ) -> TestResult<()> {
     let reviewed_revision = reply_revision(&database.db, seed).await?;
@@ -153,7 +150,8 @@ fn spawn_application(
     adapter: Arc<dyn ModerationSubjectCommandPort>,
     tenant_id: Uuid,
     command: ApplyModerationDecisionCommand,
-) -> tokio::task::JoinHandle<Result<rustok_moderation_api::ModerationDecisionApplication, PortError>> {
+) -> tokio::task::JoinHandle<Result<rustok_moderation_api::ModerationDecisionApplication, PortError>>
+{
     tokio::spawn(async move {
         adapter
             .apply_moderation_decision(
@@ -229,10 +227,7 @@ fn assert_overlap_error_is_fail_closed(error: &PortError) -> TestResult<()> {
 }
 
 fn assert_revision_conflict(error: &PortError) -> TestResult<()> {
-    if error.kind != PortErrorKind::Conflict
-        || error.retryable
-        || error.code != REVISION_CONFLICT
-    {
+    if error.kind != PortErrorKind::Conflict || error.retryable || error.code != REVISION_CONFLICT {
         return Err(test_error(format!(
             "expected non-retryable Forum moderation revision conflict, got {error}"
         )));
@@ -480,10 +475,7 @@ async fn reply_revision(db: &DatabaseConnection, seed: ReplyRaceSeed) -> TestRes
     .await
 }
 
-async fn reply_revision_in(
-    db: &DatabaseTransaction,
-    seed: ReplyRaceSeed,
-) -> TestResult<i64> {
+async fn reply_revision_in(db: &DatabaseTransaction, seed: ReplyRaceSeed) -> TestResult<i64> {
     scalar_i64_on(
         db,
         format!(

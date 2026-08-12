@@ -201,7 +201,10 @@ fn sanitize_unknown_fields(
         return;
     };
     let allowed = allowed_fields.iter().copied().collect::<BTreeSet<_>>();
-    for field in object.keys().filter(|field| !allowed.contains(field.as_str())) {
+    for field in object
+        .keys()
+        .filter(|field| !allowed.contains(field.as_str()))
+    {
         issues.push(sanitize_issue(
             field,
             "unknown_field_removed",
@@ -645,13 +648,15 @@ mod tests {
             response
                 .issues
                 .iter()
-                .any(|issue| issue.path.as_deref() == Some("page") && issue.code.ends_with("invalid_type"))
+                .any(|issue| issue.path.as_deref() == Some("page")
+                    && issue.code.ends_with("invalid_type"))
         );
         assert!(
             response
                 .issues
                 .iter()
-                .any(|issue| issue.path.as_deref() == Some("sort") && issue.code.ends_with("invalid_type"))
+                .any(|issue| issue.path.as_deref() == Some("sort")
+                    && issue.code.ends_with("invalid_type"))
         );
         assert!(
             response
@@ -683,14 +688,19 @@ mod tests {
     #[test]
     fn validate_topic_detail_enforces_catalog_locale_bounds_and_type() {
         for locale in [json!("e"), json!("abcdefghijklmnopq"), json!(42)] {
-            let response = ForumWidgetContractService::validate_props(ValidateForumWidgetPropsInput {
-                widget_type: FORUM_WIDGET_TYPE_TOPIC_DETAIL.to_string(),
-                props: json!({
-                    "topic_id": "550e8400-e29b-41d4-a716-446655440000",
-                    "locale": locale
-                }),
-            });
-            assert!(!response.valid, "locale should be rejected: {:?}", response.issues);
+            let response =
+                ForumWidgetContractService::validate_props(ValidateForumWidgetPropsInput {
+                    widget_type: FORUM_WIDGET_TYPE_TOPIC_DETAIL.to_string(),
+                    props: json!({
+                        "topic_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "locale": locale
+                    }),
+                });
+            assert!(
+                !response.valid,
+                "locale should be rejected: {:?}",
+                response.issues
+            );
         }
     }
 

@@ -255,9 +255,10 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             ));
         }
 
-        let txn = self.db.begin().await.map_err(|error| {
-            storage_unavailable_with_context(&context, owner_operation, error)
-        })?;
+        let txn =
+            self.db.begin().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
         let variant = load_tenant_variant(
             &context,
             owner_operation,
@@ -478,9 +479,10 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         request.external_id = normalize_external_id(request.external_id)?;
 
-        let txn = self.db.begin().await.map_err(|error| {
-            storage_unavailable_with_context(&context, owner_operation, error)
-        })?;
+        let txn =
+            self.db.begin().await.map_err(|error| {
+                storage_unavailable_with_context(&context, owner_operation, error)
+            })?;
         let observed = reservation_item::Entity::find_by_id(request.reservation_id)
             .one(&txn)
             .await
@@ -1038,10 +1040,7 @@ fn log_inventory_port_failure(
     }
 }
 
-fn log_inventory_tenant_parse_rejection(
-    context: &PortContext,
-    owner_operation: &'static str,
-) {
+fn log_inventory_tenant_parse_rejection(context: &PortContext, owner_operation: &'static str) {
     let context_facts = inventory_port_context_facts(context);
     tracing::warn!(
         owner = "rustok_inventory",

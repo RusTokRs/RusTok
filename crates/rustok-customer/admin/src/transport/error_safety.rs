@@ -4,8 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const CUSTOMER_ADMIN_CLIENT_OWNER: &str = "rustok_customer.admin";
 const CUSTOMER_ADMIN_CLIENT_BOUNDARY: &str = "customer_admin_client_transport";
-const CUSTOMER_ADMIN_CLIENT_PUBLIC_MESSAGE: &str =
-    "Customer admin request could not be completed";
+const CUSTOMER_ADMIN_CLIENT_PUBLIC_MESSAGE: &str = "Customer admin request could not be completed";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {

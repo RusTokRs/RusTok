@@ -28,8 +28,7 @@ const GROUP_ACTION_PAGE_SIZE: u16 = 64;
 pub fn NotificationsView() -> impl IntoView {
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (refresh_feedback, set_refresh_feedback) = signal(Option::<String>::None);
-    let transport_context =
-        Memo::new(move |_| current_notification_storefront_transport_context());
+    let transport_context = Memo::new(move |_| current_notification_storefront_transport_context());
     Effect::new(move |_| {
         let _ = transport_context.get();
         set_refresh_feedback.set(None);
@@ -175,10 +174,7 @@ fn NotificationInboxWorkspace(
             {
                 match result {
                     Ok(page) => set_group_items.set(Some(
-                        NotificationStorefrontGroupItemsSnapshot::from_page(
-                            requested_group,
-                            page,
-                        ),
+                        NotificationStorefrontGroupItemsSnapshot::from_page(requested_group, page),
                     )),
                     Err(error) => set_items_error.set(Some(error.to_string())),
                 }
@@ -262,8 +258,7 @@ fn NotificationInboxWorkspace(
                             page.changed, page.scanned
                         );
                         set_interaction_feedback.set(Some(feedback.clone()));
-                        set_items_request_nonce
-                            .update(|value| *value = (*value).saturating_add(1));
+                        set_items_request_nonce.update(|value| *value = (*value).saturating_add(1));
                         set_expanded_group.set(None);
                         set_group_items.set(None);
                         set_items_busy.set(false);
@@ -283,10 +278,8 @@ fn NotificationInboxWorkspace(
         set_open_busy_item.set(Some(notification_id.clone()));
         set_interaction_error.set(None);
         spawn_local(async move {
-            match authorize_notification_open(NotificationStorefrontOpenRequest {
-                notification_id,
-            })
-            .await
+            match authorize_notification_open(NotificationStorefrontOpenRequest { notification_id })
+                .await
             {
                 Ok(NotificationStorefrontOpenDecision::Allowed { route }) => {
                     if let Err(error) = navigate_to_route(route.as_str()) {
@@ -669,8 +662,8 @@ fn priority_label(priority: NotificationStorefrontPriority) -> &'static str {
 fn navigate_to_route(route: &str) -> Result<(), String> {
     #[cfg(target_arch = "wasm32")]
     {
-        let window = web_sys::window()
-            .ok_or_else(|| "Browser navigation is unavailable.".to_string())?;
+        let window =
+            web_sys::window().ok_or_else(|| "Browser navigation is unavailable.".to_string())?;
         window
             .location()
             .set_href(route)

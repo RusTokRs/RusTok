@@ -1,8 +1,6 @@
 use axum::{Json, extract::State, http::StatusCode};
 use rustok_api::Permission;
-use rustok_api::{
-    AuthContext, RequestContext, TenantContext, has_any_effective_permission,
-};
+use rustok_api::{AuthContext, RequestContext, TenantContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 
 use crate::{

@@ -4,13 +4,10 @@ use std::env;
 use std::error::Error;
 use std::io::{Error as IoError, ErrorKind};
 
-use iggy::prelude::{
-    Client, Consumer, ConsumerKind, ConsumerOffsetClient, Identifier, IggyClient,
-};
+use iggy::prelude::{Client, Consumer, ConsumerKind, ConsumerOffsetClient, Identifier, IggyClient};
 use rustok_iggy::{
-    DlqEntry, ExternalConfig, IggyConfig, IggyDlqDuplicateScanRequest,
-    IggyDlqDuplicateScanner, IggyMode, IggyTransport, SerializationFormat,
-    TopologyConfig,
+    DlqEntry, ExternalConfig, IggyConfig, IggyDlqDuplicateScanRequest, IggyDlqDuplicateScanner,
+    IggyMode, IggyTransport, SerializationFormat, TopologyConfig,
 };
 use uuid::Uuid;
 
@@ -24,12 +21,10 @@ const PHYSICAL_MESSAGE_COUNT: u32 = 4;
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test]
-async fn bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset(
-) -> TestResult<()> {
+async fn bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset() -> TestResult<()>
+{
     let Some(config) = external_test_config()? else {
-        eprintln!(
-            "{ADDRESS_ENV} is not set; skipping external Iggy DLQ duplicate scan evidence"
-        );
+        eprintln!("{ADDRESS_ENV} is not set; skipping external Iggy DLQ duplicate scan evidence");
         return Ok(());
     };
 
@@ -52,13 +47,7 @@ async fn bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset
         id: consumer_id,
     };
 
-    assert_no_stored_offset(
-        &client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offset(&client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     let ordinary_duplicate_id = Uuid::new_v4();
     let identity_conflict_id = Uuid::new_v4();
@@ -73,48 +62,18 @@ async fn bounded_scan_classifies_duplicates_and_preserves_absent_consumer_offset
         1,
     )
     .await?;
-    publish_physical(
-        &transport,
-        ordinary_duplicate_id,
-        ordinary_payload,
-        2,
-    )
-    .await?;
-    publish_physical(
-        &transport,
-        identity_conflict_id,
-        conflict_payload_first,
-        1,
-    )
-    .await?;
-    publish_physical(
-        &transport,
-        identity_conflict_id,
-        conflict_payload_second,
-        2,
-    )
-    .await?;
+    publish_physical(&transport, ordinary_duplicate_id, ordinary_payload, 2).await?;
+    publish_physical(&transport, identity_conflict_id, conflict_payload_first, 1).await?;
+    publish_physical(&transport, identity_conflict_id, conflict_payload_second, 2).await?;
 
     let first = scanner.summarize(&request).await?;
     assert_summary(&first);
-    assert_no_stored_offset(
-        &client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offset(&client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     let second = scanner.summarize(&request).await?;
     assert_eq!(second, first);
     assert_summary(&second);
-    assert_no_stored_offset(
-        &client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offset(&client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     drop(scanner);
     client.shutdown().await?;
@@ -182,7 +141,9 @@ fn connection_string(config: &ExternalConfig) -> Result<String, IoError> {
         .first()
         .ok_or_else(|| invalid_data("external duplicate scan evidence address is missing"))?;
     if config.protocol != "tcp" {
-        return Err(invalid_data("external duplicate scan evidence requires TCP"));
+        return Err(invalid_data(
+            "external duplicate scan evidence requires TCP",
+        ));
     }
     if config.tls_enabled || config.tls_domain.is_some() || config.tls_ca_file.is_some() {
         return Err(invalid_data(

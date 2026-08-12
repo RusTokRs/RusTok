@@ -52,19 +52,18 @@ mod secondary_index_tests;
 #[cfg(test)]
 mod source_reconciliation_runner_tests;
 #[cfg(test)]
+mod source_replay_graceful_shutdown_tests;
+#[cfg(test)]
 mod source_replay_job_tests;
 #[cfg(test)]
 mod source_replay_locale_job_tests;
 #[cfg(test)]
-mod source_replay_runner_tests;
-#[cfg(test)]
-mod source_replay_graceful_shutdown_tests;
-#[cfg(test)]
 mod source_replay_multihost_restart_tests;
+#[cfg(test)]
+mod source_replay_runner_tests;
 
 pub use drift_candidate_observer::{
-    IndexDriftCandidateObserverCompositionError,
-    PostgresIndexDriftCandidateMaterializedObserver,
+    IndexDriftCandidateObserverCompositionError, PostgresIndexDriftCandidateMaterializedObserver,
     materialize_postgres_index_drift_candidate_confirmer,
     materialize_postgres_index_drift_candidate_observer,
 };
@@ -90,8 +89,7 @@ pub use drift_finding_writer::{
     PostgresIndexDriftFindingWriter,
 };
 pub use drift_missing_entity_repair::{
-    PostgresIndexDriftMissingEntityEvidenceReader,
-    PostgresIndexDriftMissingEntityRepairOwner,
+    PostgresIndexDriftMissingEntityEvidenceReader, PostgresIndexDriftMissingEntityRepairOwner,
     materialize_postgres_index_drift_missing_entity_repair_service,
 };
 pub use drift_orphan_link_repair::{
@@ -103,8 +101,7 @@ pub use drift_repair::{
 };
 pub use drift_repair_recovery::{
     PostgresIndexDriftRepairRecoveryStore, RecoveryAwareIndexDriftRepairOwner,
-    RecoveryAwareIndexDriftRepairStore,
-    materialize_postgres_index_drift_repair_recovery_store,
+    RecoveryAwareIndexDriftRepairStore, materialize_postgres_index_drift_repair_recovery_store,
 };
 pub use drift_snapshot_reader::{
     IndexDriftSnapshotCompositionError, PostgresIndexDriftSnapshotReader,
@@ -171,8 +168,8 @@ pub use source_reconciliation_retry::{
 };
 pub use source_reconciliation_runner::{
     IndexReconciliationCancelOutcome, IndexReconciliationRunError, IndexReconciliationRunOutcome,
-    IndexReconciliationRunRequest, IndexReconciliationRunStatus,
-    IndexReconciliationTerminalState, PostgresIndexReconciliationRunner,
+    IndexReconciliationRunRequest, IndexReconciliationRunStatus, IndexReconciliationTerminalState,
+    PostgresIndexReconciliationRunner,
 };
 pub use source_reconciliation_scheduler::{
     INDEX_RECONCILIATION_WORKER, IndexReconciliationSchedulerCompositionError,

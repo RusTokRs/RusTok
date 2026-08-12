@@ -47,7 +47,10 @@ fn repair_graphql_schema_mounts_separate_bounded_mutations() {
         "replayed:",
         "rebuiltAt:",
     ] {
-        assert!(rebuild.contains(required), "missing rebuild result field {required}");
+        assert!(
+            rebuild.contains(required),
+            "missing rebuild result field {required}"
+        );
     }
     for forbidden in [
         "sourceId:",
@@ -78,7 +81,10 @@ fn repair_graphql_schema_mounts_separate_bounded_mutations() {
         "replayed:",
         "replacedAt:",
     ] {
-        assert!(activation.contains(required), "missing activation result field {required}");
+        assert!(
+            activation.contains(required),
+            "missing activation result field {required}"
+        );
     }
     for forbidden in [
         "sourceId:",
@@ -105,7 +111,10 @@ fn repair_openapi_registers_routes_and_bounded_result_schemas() {
         "/api/admin/pages/{id}/artifacts/rebuild",
         "/api/admin/pages/{id}/artifacts/activate",
     ] {
-        assert!(document["paths"][route]["post"].is_object(), "missing POST {route}");
+        assert!(
+            document["paths"][route]["post"].is_object(),
+            "missing POST {route}"
+        );
     }
 
     let rebuild = schema_properties(&document, "RebuildPageArtifactTransportResult");
@@ -120,7 +129,10 @@ fn repair_openapi_registers_routes_and_bounded_result_schemas() {
         "replayed",
         "rebuilt_at",
     ] {
-        assert!(rebuild.contains_key(required), "missing rebuild OpenAPI field {required}");
+        assert!(
+            rebuild.contains_key(required),
+            "missing rebuild OpenAPI field {required}"
+        );
     }
     for forbidden in [
         "source_id",

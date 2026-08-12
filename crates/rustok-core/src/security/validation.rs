@@ -122,11 +122,12 @@ impl InputValidator {
 
         // Check allowed characters
         if let Some(ref pattern) = self.allowed_chars
-            && !pattern.is_match(input) {
-                return ValidationResult::Invalid {
-                    reason: "Input contains invalid characters".to_string(),
-                };
-            }
+            && !pattern.is_match(input)
+        {
+            return ValidationResult::Invalid {
+                reason: "Input contains invalid characters".to_string(),
+            };
+        }
 
         // Check SQL injection
         for pattern in &self.sql_patterns {
@@ -285,11 +286,12 @@ impl SsrfProtection {
         }
 
         if let Ok(ip) = normalized_host.parse::<std::net::IpAddr>()
-            && self.is_private_ip(&ip) {
-                return ValidationResult::Invalid {
-                    reason: "Private IP addresses are not allowed".to_string(),
-                };
-            }
+            && self.is_private_ip(&ip)
+        {
+            return ValidationResult::Invalid {
+                reason: "Private IP addresses are not allowed".to_string(),
+            };
+        }
 
         if normalized_host == "localhost" {
             return ValidationResult::Invalid {

@@ -10,12 +10,10 @@ const COMMERCE_STOREFRONT_CHECKOUT_OPERATION: &str = "complete_storefront_checko
 const COMMERCE_STOREFRONT_CHECKOUT_BOUNDARY: &str =
     "commerce_storefront_checkout_completion_public_transport";
 const CART_ID_UUID_VALIDATION: &str = "cart_id must be a valid UUID";
-const IDEMPOTENCY_KEY_VALIDATION: &str =
-    "checkout idempotency key must contain 1 to 191 bytes";
+const IDEMPOTENCY_KEY_VALIDATION: &str = "checkout idempotency key must contain 1 to 191 bytes";
 const OWNER_INVALID_CHECKOUT_REQUEST: &str = "Checkout request is invalid";
 const INVALID_CHECKOUT_REQUEST: &str = "Invalid checkout request";
-const CHECKOUT_COMPLETION_UNAVAILABLE: &str =
-    "Checkout completion is temporarily unavailable";
+const CHECKOUT_COMPLETION_UNAVAILABLE: &str = "Checkout completion is temporarily unavailable";
 
 pub(super) struct CheckoutCompletionCommandErrorContext {
     correlation_id: String,
@@ -105,14 +103,17 @@ impl CheckoutCompletionCommandErrorContext {
 }
 
 fn is_invalid_checkout_request(error: &UiTransportError) -> bool {
-    [error.native_error.as_deref(), error.graphql_error.as_deref()]
-        .into_iter()
-        .flatten()
-        .any(|message| {
-            message == CART_ID_UUID_VALIDATION
-                || message == IDEMPOTENCY_KEY_VALIDATION
-                || message == OWNER_INVALID_CHECKOUT_REQUEST
-        })
+    [
+        error.native_error.as_deref(),
+        error.graphql_error.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|message| {
+        message == CART_ID_UUID_VALIDATION
+            || message == IDEMPOTENCY_KEY_VALIDATION
+            || message == OWNER_INVALID_CHECKOUT_REQUEST
+    })
 }
 
 fn configured_tenant_slug_length() -> Option<usize> {

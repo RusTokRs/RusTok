@@ -30,8 +30,8 @@ struct ReplySeed {
 }
 
 #[tokio::test]
-async fn postgres_moderation_effects_preserve_accounting_tombstones_and_unpublished_boundary(
-) -> TestResult<()> {
+async fn postgres_moderation_effects_preserve_accounting_tombstones_and_unpublished_boundary()
+-> TestResult<()> {
     let Some(database) = PostgresForumTestDb::setup("moderation_effect_contract").await? else {
         return Ok(());
     };
@@ -168,7 +168,11 @@ fn reply_adapter(db: DatabaseConnection) -> TestResult<Arc<dyn ModerationSubject
     Ok(ForumModerationSubjectAdapterFactory::reply().build(&HostRuntimeContext::new(db))?)
 }
 
-fn reject_command(seed: ReplySeed, revision: i64, decision_id: Uuid) -> TestResult<ApplyModerationDecisionCommand> {
+fn reject_command(
+    seed: ReplySeed,
+    revision: i64,
+    decision_id: Uuid,
+) -> TestResult<ApplyModerationDecisionCommand> {
     command(
         seed,
         revision,
@@ -179,7 +183,11 @@ fn reject_command(seed: ReplySeed, revision: i64, decision_id: Uuid) -> TestResu
     )
 }
 
-fn removed_command(seed: ReplySeed, revision: i64, decision_id: Uuid) -> TestResult<ApplyModerationDecisionCommand> {
+fn removed_command(
+    seed: ReplySeed,
+    revision: i64,
+    decision_id: Uuid,
+) -> TestResult<ApplyModerationDecisionCommand> {
     command(
         seed,
         revision,
@@ -192,7 +200,11 @@ fn removed_command(seed: ReplySeed, revision: i64, decision_id: Uuid) -> TestRes
     )
 }
 
-fn unpublished_command(seed: ReplySeed, revision: i64, decision_id: Uuid) -> TestResult<ApplyModerationDecisionCommand> {
+fn unpublished_command(
+    seed: ReplySeed,
+    revision: i64,
+    decision_id: Uuid,
+) -> TestResult<ApplyModerationDecisionCommand> {
     command(
         seed,
         revision,
@@ -326,7 +338,11 @@ VALUES
     Ok(seed)
 }
 
-async fn assert_approved_state(db: &DatabaseConnection, seed: ReplySeed, accepted_solution: bool) -> TestResult<()> {
+async fn assert_approved_state(
+    db: &DatabaseConnection,
+    seed: ReplySeed,
+    accepted_solution: bool,
+) -> TestResult<()> {
     let row = reply_state_row(db, seed).await?;
     let expected_solution_count = if accepted_solution { 1 } else { 0 };
     assert_eq!(row.try_get::<String>("", "status")?, "approved");
@@ -334,8 +350,14 @@ async fn assert_approved_state(db: &DatabaseConnection, seed: ReplySeed, accepte
     assert_eq!(row.try_get::<i64>("", "topic_reply_count")?, 1);
     assert_eq!(row.try_get::<i64>("", "category_reply_count")?, 1);
     assert_eq!(row.try_get::<i64>("", "user_reply_count")?, 1);
-    assert_eq!(row.try_get::<i64>("", "solution_rows")?, expected_solution_count);
-    assert_eq!(row.try_get::<i64>("", "user_solution_count")?, expected_solution_count);
+    assert_eq!(
+        row.try_get::<i64>("", "solution_rows")?,
+        expected_solution_count
+    );
+    assert_eq!(
+        row.try_get::<i64>("", "user_solution_count")?,
+        expected_solution_count
+    );
     Ok(())
 }
 
@@ -351,11 +373,17 @@ async fn assert_rejected_state(db: &DatabaseConnection, seed: ReplySeed) -> Test
     Ok(())
 }
 
-async fn assert_removed_solution_tombstone(db: &DatabaseConnection, seed: ReplySeed) -> TestResult<()> {
+async fn assert_removed_solution_tombstone(
+    db: &DatabaseConnection,
+    seed: ReplySeed,
+) -> TestResult<()> {
     let row = reply_state_row(db, seed).await?;
     assert_eq!(row.try_get::<String>("", "status")?, "deleted");
     assert!(row.try_get::<bool>("", "is_deleted")?);
-    assert_eq!(row.try_get::<String>("", "body")?, "Moderation effect fixture");
+    assert_eq!(
+        row.try_get::<String>("", "body")?,
+        "Moderation effect fixture"
+    );
     for field in [
         "topic_reply_count",
         "category_reply_count",
@@ -368,7 +396,10 @@ async fn assert_removed_solution_tombstone(db: &DatabaseConnection, seed: ReplyS
     Ok(())
 }
 
-async fn reply_state_row(db: &DatabaseConnection, seed: ReplySeed) -> TestResult<sea_orm::QueryResult> {
+async fn reply_state_row(
+    db: &DatabaseConnection,
+    seed: ReplySeed,
+) -> TestResult<sea_orm::QueryResult> {
     db.query_one(Statement::from_string(
         DatabaseBackend::Postgres,
         format!(

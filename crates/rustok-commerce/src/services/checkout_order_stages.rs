@@ -12,8 +12,7 @@ mod order_stage_boundary {
     use ::rustok_api::{PortActorKind, PortContext, PortError, PortErrorKind};
     use uuid::Uuid;
 
-    const CHECKOUT_ORDER_STAGE_ADAPTER_BOUNDARY: &str =
-        "commerce_checkout_order_stage_adapter";
+    const CHECKOUT_ORDER_STAGE_ADAPTER_BOUNDARY: &str = "commerce_checkout_order_stage_adapter";
 
     pub(crate) struct BoundaryPortError {
         pub(crate) kind: PortErrorKind,
@@ -196,8 +195,8 @@ mod order_stage_boundary {
 }
 
 mod rustok_api_shim {
-    pub use ::rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind};
     pub(crate) use super::order_stage_boundary::BoundaryPortError as PortError;
+    pub use ::rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind};
 }
 
 mod rustok_order_shim {
@@ -268,9 +267,7 @@ mod rustok_order_shim {
             self.inner
                 .read_checkout_order(context, request)
                 .await
-                .map_err(|error| {
-                    sanitize_owner_error(&error_context, "read_checkout_order", error)
-                })
+                .map_err(|error| sanitize_owner_error(&error_context, "read_checkout_order", error))
         }
     }
 
@@ -345,9 +342,11 @@ impl CheckoutOrderStageExecutor {
         mut self,
         completion_port: Arc<dyn CanonicalCheckoutCompletionPort>,
     ) -> Self {
-        self.inner = self.inner.with_completion_port(
-            rustok_order_shim::wrap_checkout_completion_port(completion_port),
-        );
+        self.inner =
+            self.inner
+                .with_completion_port(rustok_order_shim::wrap_checkout_completion_port(
+                    completion_port,
+                ));
         self
     }
 

@@ -16,9 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use sha2::{Digest, Sha256};
 
-use super::{
-    connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata,
-};
+use super::{connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata};
 
 const MANIFEST_CONTRACT: &str = "index_partition_evidence_manifest_v1";
 const SHADOW_PLAN_VERSION: &str = "tenant_hash_shadow_v1";
@@ -313,7 +311,10 @@ async fn capture_locked_cutover(
         .iter()
         .map(|run| run.name.as_str())
         .collect::<BTreeSet<_>>();
-    ensure!(names.len() == runs.len(), "partition cutover runs contain duplicate names");
+    ensure!(
+        names.len() == runs.len(),
+        "partition cutover runs contain duplicate names"
+    );
     ensure_source_unchanged(db, manifest, &source_before).await?;
     Ok((layout, runs))
 }
@@ -427,11 +428,7 @@ async fn apply_clone_cutover_choreography(
             &layout.shadow_entities,
             &layout.canonical_entities,
         ),
-        rename_statement(
-            &layout.schema,
-            previous_entities,
-            &layout.shadow_entities,
-        ),
+        rename_statement(&layout.schema, previous_entities, &layout.shadow_entities),
         rename_statement(&layout.schema, &layout.canonical_links, previous_links),
         rename_statement(
             &layout.schema,
@@ -463,11 +460,7 @@ async fn create_rehearsal_clones(
 ) -> Result<()> {
     for statement in [
         format!("CREATE SCHEMA {};", quote_identifier(&layout.schema)),
-        clone_statement(
-            &layout.schema,
-            &layout.canonical_entities,
-            "index_entities",
-        ),
+        clone_statement(&layout.schema, &layout.canonical_entities, "index_entities"),
         clone_statement(&layout.schema, &layout.canonical_links, "index_links"),
         clone_statement(
             &layout.schema,
@@ -601,7 +594,9 @@ async fn logical_relation(
     let row = db
         .query_one(Statement::from_string(DbBackend::Postgres, sql))
         .await?
-        .with_context(|| format!("cutover logical digest query returned no row for {relation_sql}"))?;
+        .with_context(|| {
+            format!("cutover logical digest query returned no row for {relation_sql}")
+        })?;
     let rows: i64 = row.try_get("", "rows")?;
     let digest_seed: String = row.try_get("", "digest_seed")?;
     let digest = sha256_hex(
@@ -692,7 +687,11 @@ async fn validate_shadow_relation_catalog(
     plan: &RelationPlan,
 ) -> Result<()> {
     let catalog = relation_catalog(db, &plan.parent).await?;
-    ensure!(catalog.relkind == "p", "shadow parent {} must be partitioned", plan.parent);
+    ensure!(
+        catalog.relkind == "p",
+        "shadow parent {} must be partitioned",
+        plan.parent
+    );
     let expected_comment = format!("rustok-index-partition:{}", manifest.evidence_id);
     ensure!(
         catalog.comment.as_deref() == Some(expected_comment.as_str()),
@@ -705,7 +704,11 @@ async fn validate_shadow_relation_catalog(
         plan.parent
     );
     for (remainder, child) in catalog.children.iter().enumerate() {
-        ensure!(child.name == plan.partitions[remainder], "unexpected shadow child {}", child.name);
+        ensure!(
+            child.name == plan.partitions[remainder],
+            "unexpected shadow child {}",
+            child.name
+        );
         let bound = child.bound.to_ascii_lowercase();
         ensure!(
             bound.contains(&format!("modulus {}", manifest.modulus))
@@ -726,7 +729,8 @@ fn read_manifest(path: &Path) -> Result<(PreparedManifest, JsonValue)> {
         "partition manifest must be a regular non-symlink file"
     );
     let raw: JsonValue = serde_json::from_slice(
-        &fs::read(path).with_context(|| format!("failed to read partition manifest at {path:?}"))?,
+        &fs::read(path)
+            .with_context(|| format!("failed to read partition manifest at {path:?}"))?,
     )
     .context("failed to parse partition manifest JSON")?;
     let manifest = serde_json::from_value(raw.clone())
@@ -735,15 +739,30 @@ fn read_manifest(path: &Path) -> Result<(PreparedManifest, JsonValue)> {
 }
 
 fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()> {
-    ensure!(manifest.contract == MANIFEST_CONTRACT, "unexpected manifest contract");
-    ensure!(manifest.repository == "RusTokRs/RusTok", "unexpected manifest repository");
-    ensure!(is_lower_hex(&manifest.commit, 40), "manifest commit must be a lowercase full SHA-1");
+    ensure!(
+        manifest.contract == MANIFEST_CONTRACT,
+        "unexpected manifest contract"
+    );
+    ensure!(
+        manifest.repository == "RusTokRs/RusTok",
+        "unexpected manifest repository"
+    );
+    ensure!(
+        is_lower_hex(&manifest.commit, 40),
+        "manifest commit must be a lowercase full SHA-1"
+    );
     ensure!(
         !manifest.run_key.is_empty() && manifest.run_key.len() <= 128,
         "manifest run_key must be non-empty and bounded"
     );
-    ensure!(manifest.postgres_image == "postgres:16", "manifest must pin postgres:16");
-    ensure!(manifest.strategy == "tenant_hash", "manifest strategy must be tenant_hash");
+    ensure!(
+        manifest.postgres_image == "postgres:16",
+        "manifest must pin postgres:16"
+    );
+    ensure!(
+        manifest.strategy == "tenant_hash",
+        "manifest strategy must be tenant_hash"
+    );
     ensure!(
         manifest.plan_digest_contract == PLAN_DIGEST_CONTRACT,
         "unexpected plan digest contract"
@@ -765,8 +784,14 @@ fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()>
             && manifest.repetitions.cutover > 0,
         "manifest repetition counts must all be positive"
     );
-    ensure!(manifest.thresholds.is_object(), "manifest thresholds must be an object");
-    ensure!(is_lower_hex(&manifest.evidence_id, 64), "invalid manifest evidence_id");
+    ensure!(
+        manifest.thresholds.is_object(),
+        "manifest thresholds must be an object"
+    );
+    ensure!(
+        is_lower_hex(&manifest.evidence_id, 64),
+        "invalid manifest evidence_id"
+    );
     ensure!(
         manifest.shadow_plan_version == SHADOW_PLAN_VERSION,
         "unexpected shadow plan version"
@@ -777,7 +802,10 @@ fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()>
         .cloned()
         .context("prepared manifest must be a JSON object")?;
     for key in ["evidence_id", "shadow_plan_version", "shadow_relations"] {
-        ensure!(input.remove(key).is_some(), "prepared manifest is missing {key}");
+        ensure!(
+            input.remove(key).is_some(),
+            "prepared manifest is missing {key}"
+        );
     }
     ensure!(
         sha256_hex(&canonical_json_bytes(&JsonValue::Object(input))?) == manifest.evidence_id,
@@ -820,8 +848,14 @@ fn validate_relation_plan(
     expected_parent: &str,
     modulus: u32,
 ) -> Result<()> {
-    ensure!(plan.source == expected_source, "unexpected shadow source relation");
-    ensure!(plan.parent == expected_parent, "unexpected shadow parent relation");
+    ensure!(
+        plan.source == expected_source,
+        "unexpected shadow source relation"
+    );
+    ensure!(
+        plan.parent == expected_parent,
+        "unexpected shadow parent relation"
+    );
     validate_identifier(&plan.parent)?;
     ensure!(
         plan.partitions.len() == modulus as usize,
@@ -851,7 +885,10 @@ async fn ensure_session_setting(
         .await?
         .context("partition cutover session-setting query returned no row")?;
     let actual: String = row.try_get("", "value")?;
-    ensure!(actual == expected, "requires {setting}={expected}, got {actual}");
+    ensure!(
+        actual == expected,
+        "requires {setting}={expected}, got {actual}"
+    );
     Ok(())
 }
 
@@ -865,7 +902,10 @@ async fn ensure_schema_absent(db: &DatabaseConnection, schema: &str) -> Result<(
         .await?
         .context("cutover schema existence query returned no row")?;
     let existing: Option<String> = row.try_get("", "schema")?;
-    ensure!(existing.is_none(), "cutover evidence schema already exists: {schema}");
+    ensure!(
+        existing.is_none(),
+        "cutover evidence schema already exists: {schema}"
+    );
     Ok(())
 }
 
@@ -900,22 +940,28 @@ fn ensure_output_available(path: &Path) -> Result<()> {
 }
 
 fn publish_cutover_artifact(path: &Path, runs: &[PartitionCutoverRunEvidence]) -> Result<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create cutover evidence directory {parent:?}"))?;
     }
     ensure_output_available(path)?;
-    let mut bytes =
-        serde_json::to_vec_pretty(runs).context("failed to serialize partition cutover evidence")?;
+    let mut bytes = serde_json::to_vec_pretty(runs)
+        .context("failed to serialize partition cutover evidence")?;
     bytes.push(b'\n');
     let temporary = temporary_path(path);
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&temporary)
-        .with_context(|| format!("failed to create temporary cutover evidence file {temporary:?}"))?;
-    file.write_all(&bytes)
-        .with_context(|| format!("failed to write temporary cutover evidence file {temporary:?}"))?;
+        .with_context(|| {
+            format!("failed to create temporary cutover evidence file {temporary:?}")
+        })?;
+    file.write_all(&bytes).with_context(|| {
+        format!("failed to write temporary cutover evidence file {temporary:?}")
+    })?;
     file.sync_all()
         .with_context(|| format!("failed to sync temporary cutover evidence file {temporary:?}"))?;
     let publish = fs::hard_link(&temporary, path)
@@ -986,5 +1032,9 @@ fn quote_identifier(value: &str) -> String {
 }
 
 fn qualified(schema: &str, relation: &str) -> String {
-    format!("{}.{}", quote_identifier(schema), quote_identifier(relation))
+    format!(
+        "{}.{}",
+        quote_identifier(schema),
+        quote_identifier(relation)
+    )
 }

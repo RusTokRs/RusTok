@@ -4,9 +4,9 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
 use crate::{
-    CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort, ProductCatalogSchemaReadPort,
-    ProductCatalogSchemaService, ProductCatalogSchemaWritePort, ProductStorefrontHttpReadPort,
-    ProductStorefrontTagReadPort,
+    CatalogService, ProductCatalogCommandPort, ProductCatalogReadPort,
+    ProductCatalogSchemaReadPort, ProductCatalogSchemaService, ProductCatalogSchemaWritePort,
+    ProductStorefrontHttpReadPort, ProductStorefrontTagReadPort,
 };
 
 /// Host-selected execution profile for the Product catalog read boundary.

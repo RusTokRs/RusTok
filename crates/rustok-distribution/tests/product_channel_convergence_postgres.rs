@@ -4,9 +4,9 @@ use std::{env, error::Error, time::Duration};
 
 use rustok_core::{MigrationSource, ModuleRegistry};
 use rustok_index::{
-    EntityKey, EntityName, FieldName, FieldPath, FilterExpr, IndexModule, IndexMutation, IndexQuery,
-    IndexQueryPort, IndexQueryScope, IndexSourceLoadRequest, IndexValue, LocaleKey, ModuleName,
-    MutationApplyOutcome, MutationDelivery, Pagination, PostgresMutationStore,
+    EntityKey, EntityName, FieldName, FieldPath, FilterExpr, IndexModule, IndexMutation,
+    IndexQuery, IndexQueryPort, IndexQueryScope, IndexSourceLoadRequest, IndexValue, LocaleKey,
+    ModuleName, MutationApplyOutcome, MutationDelivery, Pagination, PostgresMutationStore,
     PostgresSchemaRegistrationStore, SchemaRef, SchemaVersion, SharedIndexQueryRuntime,
     SharedIndexSchemaRegistry, SharedIndexSourceRegistry, materialize_index_source_registry,
     materialize_postgres_index_query_runtime, materialize_postgres_index_sources,
@@ -189,9 +189,9 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         }
     };
     let first_sequence = match first_claim.work() {
-        ProductSalesChannelIndexRelationConvergenceWork::VisibilityRequest { sequence_no, .. } => {
-            *sequence_no
-        }
+        ProductSalesChannelIndexRelationConvergenceWork::VisibilityRequest {
+            sequence_no, ..
+        } => *sequence_no,
         other => {
             return Err(std::io::Error::other(format!(
                 "expected first Product visibility request, got {other:?}"
@@ -221,11 +221,15 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     .await?;
 
     assert_eq!(
-        latest_relation_membership(&database.writer, UNRESTRICTED_PRODUCT_ID).await?.1,
+        latest_relation_membership(&database.writer, UNRESTRICTED_PRODUCT_ID)
+            .await?
+            .1,
         vec![ALPHA_CHANNEL_ID, BETA_CHANNEL_ID]
     );
     assert_eq!(
-        latest_relation_membership(&database.writer, RESTRICTED_PRODUCT_ID).await?.1,
+        latest_relation_membership(&database.writer, RESTRICTED_PRODUCT_ID)
+            .await?
+            .1,
         vec![ALPHA_CHANNEL_ID]
     );
 
@@ -278,7 +282,9 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     // query fence hides the already-materialized Product until convergence refreshes the witness.
     // Relation/projection clocks must not move, and the same Index mutation becomes admissible again.
     let unrestricted_relation_before =
-        latest_relation_membership(&database.writer, UNRESTRICTED_PRODUCT_ID).await?.0;
+        latest_relation_membership(&database.writer, UNRESTRICTED_PRODUCT_ID)
+            .await?
+            .0;
     let unrestricted_projection_before =
         latest_projection_epoch(&database.writer, UNRESTRICTED_PRODUCT_ID).await?;
     rename_channel(&database.writer, ALPHA_CHANNEL_ID, "alpha-renamed").await?;
@@ -287,7 +293,9 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     assert_product_visible(&runtime.query, UNRESTRICTED_PRODUCT_ID, false).await?;
     run_scheduler_until_idle(&runtime.scheduler_b, 16).await?;
     assert_eq!(
-        latest_relation_membership(&database.writer, UNRESTRICTED_PRODUCT_ID).await?.0,
+        latest_relation_membership(&database.writer, UNRESTRICTED_PRODUCT_ID)
+            .await?
+            .0,
         unrestricted_relation_before
     );
     assert_eq!(
@@ -313,11 +321,15 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     // advance relation/projection for the restricted Product while leaving unrestricted membership
     // unchanged. The old restricted Index row stays hidden until its new projection is applied.
     let restricted_relation_before_beta =
-        latest_relation_membership(&database.writer, RESTRICTED_PRODUCT_ID).await?.0;
+        latest_relation_membership(&database.writer, RESTRICTED_PRODUCT_ID)
+            .await?
+            .0;
     let restricted_projection_before_beta =
         latest_projection_epoch(&database.writer, RESTRICTED_PRODUCT_ID).await?;
     let unrestricted_relation_before_beta =
-        latest_relation_membership(&database.writer, UNRESTRICTED_PRODUCT_ID).await?.0;
+        latest_relation_membership(&database.writer, UNRESTRICTED_PRODUCT_ID)
+            .await?
+            .0;
     let unrestricted_projection_before_beta =
         latest_projection_epoch(&database.writer, UNRESTRICTED_PRODUCT_ID).await?;
     rename_channel(&database.writer, BETA_CHANNEL_ID, "beta-renamed").await?;
@@ -334,7 +346,9 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     assert!(restricted_projection_after_beta > restricted_projection_before_beta);
     assert!(restricted_membership_after_beta.is_empty());
     assert_eq!(
-        latest_relation_membership(&database.writer, UNRESTRICTED_PRODUCT_ID).await?.0,
+        latest_relation_membership(&database.writer, UNRESTRICTED_PRODUCT_ID)
+            .await?
+            .0,
         unrestricted_relation_before_beta
     );
     assert_eq!(
@@ -351,7 +365,10 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     assert_product_visible(&runtime.query, RESTRICTED_PRODUCT_ID, false).await?;
 
     let current_after_beta = load_product_mutation(&runtime.sources, RESTRICTED_PRODUCT_ID).await?;
-    assert_eq!(current_after_beta.source_version(), restricted_projection_after_beta);
+    assert_eq!(
+        current_after_beta.source_version(),
+        restricted_projection_after_beta
+    );
     apply_product_mutation(&runtime, current_after_beta).await?;
     assert_product_visible(&runtime.query, RESTRICTED_PRODUCT_ID, true).await?;
     assert_state_checkpoint(&database.writer, generation_after_beta_rename).await?;
@@ -384,10 +401,16 @@ async fn build_product_runtime(database: &TestDatabase) -> TestResult<ProductRun
     let scheduler_a = ModuleWorkScheduler::new();
     let scheduler_b = ModuleWorkScheduler::new();
     registrations
-        .register_all(&HostRuntimeContext::new(database.host_a.clone()), &scheduler_a)
+        .register_all(
+            &HostRuntimeContext::new(database.host_a.clone()),
+            &scheduler_a,
+        )
         .await?;
     registrations
-        .register_all(&HostRuntimeContext::new(database.host_b.clone()), &scheduler_b)
+        .register_all(
+            &HostRuntimeContext::new(database.host_b.clone()),
+            &scheduler_b,
+        )
         .await?;
     Ok(ProductRuntime {
         sources,
@@ -433,7 +456,10 @@ async fn load_product_mutation(
     Ok(mutations.remove(0))
 }
 
-async fn apply_product_mutation(runtime: &ProductRuntime, mutation: IndexMutation) -> TestResult<()> {
+async fn apply_product_mutation(
+    runtime: &ProductRuntime,
+    mutation: IndexMutation,
+) -> TestResult<()> {
     let source_version = mutation.source_version();
     let delivery = MutationDelivery::from_event(PRODUCT_SOURCE, mutation)?;
     let outcome = runtime
@@ -456,7 +482,9 @@ async fn assert_product_visible(
     product_id: Uuid,
     expected: bool,
 ) -> TestResult<()> {
-    let page = query.execute_query(product_identity_query(product_id)?).await?;
+    let page = query
+        .execute_query(product_identity_query(product_id)?)
+        .await?;
     let expected_rows = if expected { 1 } else { 0 };
     let expected_count = if expected { 1_u64 } else { 0_u64 };
     assert_eq!(page.items.len(), expected_rows);
@@ -707,7 +735,11 @@ async fn update_restricted_visibility(db: &DatabaseConnection, slug: &str) -> Te
     db.execute(Statement::from_sql_and_values(
         DbBackend::Postgres,
         "UPDATE products SET metadata = $3 WHERE tenant_id = $1 AND id = $2",
-        vec![TENANT_ID.into(), RESTRICTED_PRODUCT_ID.into(), metadata.into()],
+        vec![
+            TENANT_ID.into(),
+            RESTRICTED_PRODUCT_ID.into(),
+            metadata.into(),
+        ],
     ))
     .await?;
     Ok(())

@@ -370,9 +370,7 @@ impl BlogSearchProjector {
             let excerpt = row
                 .try_get::<Option<String>>("", "excerpt")
                 .map_err(Error::Database)?;
-            let body = row
-                .try_get::<String>("", "body")
-                .map_err(Error::Database)?;
+            let body = row.try_get::<String>("", "body").map_err(Error::Database)?;
             let article_text = project_canonical_article_plain_text(&body)?;
             let search_body = compose_search_body(excerpt.as_deref(), &article_text);
 
@@ -481,7 +479,10 @@ mod tests {
             compose_search_body(Some("  Summary  "), "  Article body  "),
             "Summary\n\nArticle body"
         );
-        assert_eq!(compose_search_body(None, "  Article body  "), "Article body");
+        assert_eq!(
+            compose_search_body(None, "  Article body  "),
+            "Article body"
+        );
         assert_eq!(compose_search_body(Some("  "), "  "), "");
     }
 }

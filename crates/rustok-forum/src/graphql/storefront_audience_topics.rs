@@ -122,7 +122,8 @@ fn storefront_topic_list_locale_resolution_outcome(
     }
 }
 
-fn forum_graphql_storefront_topic_list_locale_resolution_counter() -> Option<&'static IntCounterVec> {
+fn forum_graphql_storefront_topic_list_locale_resolution_counter() -> Option<&'static IntCounterVec>
+{
     let counter = FORUM_GRAPHQL_STOREFRONT_TOPIC_LIST_LOCALE_RESOLUTION_TOTAL.get_or_init(|| {
         IntCounterVec::new(
             Opts::new(
@@ -233,8 +234,7 @@ fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopicListItem {
 #[cfg(test)]
 mod tests {
     use super::{
-        STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_EXACT,
-        STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_FALLBACK,
+        STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_EXACT, STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_FALLBACK,
         STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_MISSING,
         storefront_topic_list_locale_resolution_outcome,
     };
@@ -246,19 +246,11 @@ mod tests {
             STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_EXACT
         );
         assert_eq!(
-            storefront_topic_list_locale_resolution_outcome(
-                "tenant-secret",
-                "different-secret",
-                2,
-            ),
+            storefront_topic_list_locale_resolution_outcome("tenant-secret", "different-secret", 2,),
             STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_FALLBACK
         );
         assert_eq!(
-            storefront_topic_list_locale_resolution_outcome(
-                "tenant-secret",
-                "tenant-secret",
-                0,
-            ),
+            storefront_topic_list_locale_resolution_outcome("tenant-secret", "tenant-secret", 0,),
             STOREFRONT_TOPIC_LIST_LOCALE_OUTCOME_MISSING
         );
     }

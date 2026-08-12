@@ -5,10 +5,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_index::{
-    IndexDriftAuthorizedRepairCommand, IndexDriftRepairEvidence,
-    IndexDriftRepairEvidenceReader, IndexDriftRepairFailure, IndexDriftRepairFinding,
-    IndexDriftRepairNotStartedReason, IndexDriftRepairOutcome,
-    IndexDriftRepairRecoveryAction, IndexDriftRepairRecoveryOutcome,
+    IndexDriftAuthorizedRepairCommand, IndexDriftRepairEvidence, IndexDriftRepairEvidenceReader,
+    IndexDriftRepairFailure, IndexDriftRepairFinding, IndexDriftRepairNotStartedReason,
+    IndexDriftRepairOutcome, IndexDriftRepairRecoveryAction, IndexDriftRepairRecoveryOutcome,
 };
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use uuid::Uuid;
@@ -29,8 +28,10 @@ impl IndexDriftRepairEvidenceReader for StopBeforeEvidence {
         _authorized: &IndexDriftAuthorizedRepairCommand,
         _finding: &IndexDriftRepairFinding,
     ) -> Result<IndexDriftRepairEvidence, IndexDriftRepairFailure> {
-        Err(IndexDriftRepairFailure::retryable("repair_evidence_before_stop")
-            .expect("static failure code"))
+        Err(
+            IndexDriftRepairFailure::retryable("repair_evidence_before_stop")
+                .expect("static failure code"),
+        )
     }
 
     async fn capture_after(
@@ -60,8 +61,7 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
     .await?;
     runtime.authority.clear_mutation(&key);
     runtime.authority.set_absence(key.clone(), 9);
-    let (finding_id, target) =
-        create_missing_finding(&database, &runtime, key, 7, 9).await?;
+    let (finding_id, target) = create_missing_finding(&database, &runtime, key, 7, 9).await?;
 
     let command_a = repair_command(
         database.tenant_id,
@@ -89,10 +89,8 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
         recovery_store(&database).await?,
     )?;
 
-    let (outcome_a, outcome_b) = tokio::join!(
-        service_a.execute(&command_a),
-        service_b.execute(&command_b),
-    );
+    let (outcome_a, outcome_b) =
+        tokio::join!(service_a.execute(&command_a), service_b.execute(&command_b),);
     assert_eq!(
         [&outcome_a, &outcome_b]
             .into_iter()
@@ -207,7 +205,10 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
         IndexDriftRepairRecoveryOutcome::Applied(ref receipt)
             if receipt.revision() == 2
     ));
-    assert_eq!(force_complete_repair(&database, winner_command_id).await?, 1);
+    assert_eq!(
+        force_complete_repair(&database, winner_command_id).await?,
+        1
+    );
     assert!(
         mutate_completed_command(&database, winner_command_id)
             .await
@@ -223,20 +224,11 @@ async fn migrations_recovery_guard_and_concurrent_reservation_are_executable() -
         )
         .await?
     );
-    assert!(
-        !table_exists(
-            &database,
-            "index_consistency_finding_repair_commands"
-        )
-        .await?
-    );
+    assert!(!table_exists(&database, "index_consistency_finding_repair_commands").await?);
     database.cleanup().await
 }
 
-async fn reserved_command_id(
-    database: &TestDatabase,
-    finding_id: Uuid,
-) -> TestResult<Uuid> {
+async fn reserved_command_id(database: &TestDatabase, finding_id: Uuid) -> TestResult<Uuid> {
     let db = database.connection().await?;
     let row = db
         .query_one(Statement::from_sql_and_values(
@@ -249,10 +241,7 @@ async fn reserved_command_id(
     Ok(row.try_get("", "command_id")?)
 }
 
-async fn force_complete_repair(
-    database: &TestDatabase,
-    command_id: Uuid,
-) -> TestResult<u64> {
+async fn force_complete_repair(database: &TestDatabase, command_id: Uuid) -> TestResult<u64> {
     let db = database.connection().await?;
     let updated = db
         .execute(Statement::from_sql_and_values(
@@ -270,10 +259,7 @@ async fn force_complete_repair(
     Ok(updated.rows_affected())
 }
 
-async fn mutate_completed_command(
-    database: &TestDatabase,
-    command_id: Uuid,
-) -> TestResult<()> {
+async fn mutate_completed_command(database: &TestDatabase, command_id: Uuid) -> TestResult<()> {
     let db = database.connection().await?;
     db.execute(Statement::from_sql_and_values(
         DbBackend::Postgres,

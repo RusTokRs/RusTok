@@ -53,9 +53,7 @@ pub struct ForumReplyRangeMoveReceipt {
     pub moved_at: String,
 }
 
-pub fn forum_reply_range_move_candidate_label(
-    candidate: &ForumReplyRangeMoveCandidate,
-) -> String {
+pub fn forum_reply_range_move_candidate_label(candidate: &ForumReplyRangeMoveCandidate) -> String {
     format!("{} · {} replies", candidate.title, candidate.reply_count)
 }
 
@@ -89,11 +87,7 @@ pub fn build_forum_reply_range_move_command(
     if start_position > end_position {
         return Err("Start position must not exceed end position".to_string());
     }
-    let reason = validate_text(
-        reason,
-        "Move reason",
-        MAX_FORUM_REPLY_RANGE_MOVE_REASON_LEN,
-    )?;
+    let reason = validate_text(reason, "Move reason", MAX_FORUM_REPLY_RANGE_MOVE_REASON_LEN)?;
 
     Ok(ForumReplyRangeMoveCommand {
         operation_id: operation_id.to_string(),
@@ -169,22 +163,31 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 fn format_uuid(bytes: [u8; 16]) -> String {
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
-        bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13],
-        bytes[14], bytes[15]
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        bytes[6],
+        bytes[7],
+        bytes[8],
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
+        bytes[15]
     )
 }
 
 fn looks_like_uuid(value: &str) -> bool {
     let groups = value.split('-').collect::<Vec<_>>();
     groups.len() == 5
-        && groups
-            .iter()
-            .zip([8, 4, 4, 4, 12])
-            .all(|(group, len)| {
-                group.len() == len
-                    && group.bytes().all(|byte| byte.is_ascii_hexdigit())
-            })
+        && groups.iter().zip([8, 4, 4, 4, 12]).all(|(group, len)| {
+            group.len() == len && group.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
 }
 
 #[cfg(test)]

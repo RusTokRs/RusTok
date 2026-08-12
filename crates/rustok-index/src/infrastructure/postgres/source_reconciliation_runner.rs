@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeSet,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
@@ -272,7 +268,9 @@ impl PostgresIndexReconciliationRunner {
         let source_name = self
             .sources
             .source_for_schema(request.schema())
-            .ok_or_else(|| IndexReconciliationRunError::UnknownSchemaSource(request.schema.clone()))?
+            .ok_or_else(|| {
+                IndexReconciliationRunError::UnknownSchemaSource(request.schema.clone())
+            })?
             .source_name()
             .to_owned();
         validate_source_name(&source_name)?;
@@ -288,7 +286,12 @@ impl PostgresIndexReconciliationRunner {
         let acquired = acquire_reconciliation_job(&self.db, &acquire_request).await?;
         let (lease, mut state) = match acquired {
             ReconciliationAcquireOutcome::Busy => {
-                return Ok(empty_outcome(IndexReconciliationRunStatus::Busy, None, None, 0));
+                return Ok(empty_outcome(
+                    IndexReconciliationRunStatus::Busy,
+                    None,
+                    None,
+                    0,
+                ));
             }
             ReconciliationAcquireOutcome::AlreadyComplete {
                 job_id,
@@ -396,8 +399,7 @@ impl PostgresIndexReconciliationRunner {
                 checked_add_counter(state.applied_count, usize_to_u64(page_applied)?)?;
             state.duplicate_count =
                 checked_add_counter(state.duplicate_count, usize_to_u64(page_duplicates)?)?;
-            state.stale_count =
-                checked_add_counter(state.stale_count, usize_to_u64(page_stale)?)?;
+            state.stale_count = checked_add_counter(state.stale_count, usize_to_u64(page_stale)?)?;
 
             outcome.pages_processed += 1;
             outcome.mutation_count += page_mutations;
@@ -741,9 +743,8 @@ fn stored_job(
             "attempt count is outside the u32 range".to_owned(),
         )
     })?;
-    let last_error_code: Option<String> = row
-        .try_get("", "last_error_code")
-        .map_err(storage_error)?;
+    let last_error_code: Option<String> =
+        row.try_get("", "last_error_code").map_err(storage_error)?;
     if let Some(code) = &last_error_code {
         validate_storage_text(code, MAX_ERROR_CODE_BYTES).map_err(|_| {
             IndexReconciliationRunError::InvalidStoredJob(
@@ -1051,16 +1052,16 @@ fn retry_failure(
     error: &IndexReconciliationRunError,
 ) -> Result<IndexReconciliationRetryFailure, IndexReconciliationRunError> {
     let failure = match error {
-        IndexReconciliationRunError::Source(IndexSourceError::SourceFailure { failure, .. }) => {
-            match failure.kind() {
-                IndexSourceFailureKind::Retryable => {
-                    IndexReconciliationRetryFailure::retryable(failure.code())
-                }
-                IndexSourceFailureKind::Permanent => {
-                    IndexReconciliationRetryFailure::permanent(failure.code())
-                }
+        IndexReconciliationRunError::Source(IndexSourceError::SourceFailure {
+            failure, ..
+        }) => match failure.kind() {
+            IndexSourceFailureKind::Retryable => {
+                IndexReconciliationRetryFailure::retryable(failure.code())
             }
-        }
+            IndexSourceFailureKind::Permanent => {
+                IndexReconciliationRetryFailure::permanent(failure.code())
+            }
+        },
         IndexReconciliationRunError::MutationFailed { failure, .. } => match failure.kind() {
             IndexReplayFailureKind::Retryable => {
                 IndexReconciliationRetryFailure::retryable(failure.code())
@@ -1103,9 +1104,7 @@ fn validate_source_name(source_name: &str) -> Result<(), IndexReconciliationRunE
     if source_name.is_empty()
         || source_name.len() > MAX_SOURCE_NAME_BYTES
         || !source_name.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
     {
         return Err(IndexReconciliationRunError::InvalidSourceName);
@@ -1129,9 +1128,7 @@ fn validate_storage_text(value: &str, max_bytes: usize) -> Result<(), &'static s
     Ok(())
 }
 
-fn validate_lease_duration(
-    lease_duration: Duration,
-) -> Result<u64, IndexReconciliationRunError> {
+fn validate_lease_duration(lease_duration: Duration) -> Result<u64, IndexReconciliationRunError> {
     if lease_duration.subsec_nanos() != 0 {
         return Err(IndexReconciliationRunError::InvalidLeaseDuration);
     }
@@ -1324,9 +1321,9 @@ fn lease_expires_expression(backend: DbBackend, seconds_parameter: usize) -> Str
         DbBackend::Postgres => {
             format!("CURRENT_TIMESTAMP + ({prefix}{seconds_parameter} * INTERVAL '1 second')")
         }
-        DbBackend::Sqlite => format!(
-            "datetime(CURRENT_TIMESTAMP, '+' || {prefix}{seconds_parameter} || ' seconds')"
-        ),
+        DbBackend::Sqlite => {
+            format!("datetime(CURRENT_TIMESTAMP, '+' || {prefix}{seconds_parameter} || ' seconds')")
+        }
         _ => unreachable!("unsupported database backend was validated"),
     }
 }
@@ -1343,7 +1340,9 @@ pub enum IndexReconciliationRunError {
     InvalidPassCount { actual: u32, max: u32 },
     #[error("Index reconciliation worker id is invalid: {reason}")]
     InvalidWorkerId { reason: &'static str },
-    #[error("Index reconciliation lease duration must be a whole number of seconds between 1 and 86400")]
+    #[error(
+        "Index reconciliation lease duration must be a whole number of seconds between 1 and 86400"
+    )]
     InvalidLeaseDuration,
     #[error("Index reconciliation source name is invalid")]
     InvalidSourceName,

@@ -55,16 +55,12 @@ fn product_owner_error_facts(error: &CommerceError) -> ProductOwnerErrorFacts {
             0,
             false,
         ),
-        CommerceError::DuplicateSku(sku) => {
-            ("duplicate_sku", 1, sku.chars().count(), 0, 0, false)
-        }
+        CommerceError::DuplicateSku(sku) => ("duplicate_sku", 1, sku.chars().count(), 0, 0, false),
         CommerceError::Validation(message) => {
             ("validation", 1, message.chars().count(), 0, 0, false)
         }
         CommerceError::NoVariants => ("no_variants", 0, 0, 0, 0, false),
-        CommerceError::CannotDeletePublished => {
-            ("cannot_delete_published", 0, 0, 0, 0, false)
-        }
+        CommerceError::CannotDeletePublished => ("cannot_delete_published", 0, 0, 0, 0, false),
         CommerceError::Core(_) => ("core", 0, 0, 0, 0, true),
     };
 

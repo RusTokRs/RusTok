@@ -9,8 +9,8 @@ mod product;
 #[cfg(test)]
 pub(crate) use product::PRODUCT_INDEX_SOURCE;
 mod query_admission;
-pub(crate) mod relation_admission;
 pub mod refresh_event;
+pub(crate) mod relation_admission;
 #[cfg(test)]
 mod storefront_budgeted_execution;
 #[cfg(test)]
@@ -81,7 +81,8 @@ mod tests {
     };
 
     #[test]
-    fn selected_product_bridge_registers_two_current_schemas_three_factories_and_entity_admissions() {
+    fn selected_product_bridge_registers_two_current_schemas_three_factories_and_entity_admissions()
+    {
         let mut extensions = ModuleRuntimeExtensions::default();
         extensions.insert(rustok_product::ProductRuntimeSelected);
         extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
@@ -101,8 +102,7 @@ mod tests {
             .unwrap();
         assert_eq!(factories.len(), 3);
         assert!(factories.iter().any(|factory| {
-            factory.owner_module() == "product"
-                && factory.factory_name() == PRODUCT_INDEX_SOURCE
+            factory.owner_module() == "product" && factory.factory_name() == PRODUCT_INDEX_SOURCE
         }));
         assert!(factories.iter().any(|factory| {
             factory.owner_module() == "product"

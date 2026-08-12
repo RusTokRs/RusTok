@@ -176,9 +176,7 @@ struct InventoryReservationContextFacts {
     deadline_ms: Option<u64>,
 }
 
-fn inventory_reservation_context_facts(
-    context: &PortContext,
-) -> InventoryReservationContextFacts {
+fn inventory_reservation_context_facts(context: &PortContext) -> InventoryReservationContextFacts {
     let actor_kind = match &context.actor.kind {
         rustok_api::PortActorKind::User => "user",
         rustok_api::PortActorKind::Service => "service",

@@ -4,7 +4,7 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
@@ -485,13 +485,8 @@ impl PostgresSecondaryIndexManager {
     ) -> Result<(), SecondaryIndexError> {
         let error_code = error_code.into();
         validate_error_code(&error_code)?;
-        self.finish(
-            lease,
-            "failed",
-            Some(error_code),
-            Some(error_details),
-        )
-        .await
+        self.finish(lease, "failed", Some(error_code), Some(error_details))
+            .await
     }
 
     async fn claim_in_transaction(
@@ -501,14 +496,10 @@ impl PostgresSecondaryIndexManager {
     ) -> Result<SecondaryIndexClaimOutcome, SecondaryIndexError> {
         let backend = transaction.get_database_backend();
         ensure_supported_backend(backend)?;
-        self.lock_index(transaction, request.spec(), backend).await?;
-        self.verify_schema_registration(
-            transaction,
-            request.spec(),
-            request.operation(),
-            backend,
-        )
-        .await?;
+        self.lock_index(transaction, request.spec(), backend)
+            .await?;
+        self.verify_schema_registration(transaction, request.spec(), request.operation(), backend)
+            .await?;
 
         let rows = transaction
             .query_all(Statement::from_sql_and_values(
@@ -685,9 +676,7 @@ impl PostgresSecondaryIndexManager {
         if let Some(existing) = self.inspect_index(spec, backend).await? {
             verify_index_owner(spec, &existing, backend)?;
             if !existing.ready || !existing.valid {
-                return Err(SecondaryIndexError::IndexNotReady(
-                    spec.index_name.clone(),
-                ));
+                return Err(SecondaryIndexError::IndexNotReady(spec.index_name.clone()));
             }
             if backend == DbBackend::Postgres && existing.comment.is_none() {
                 self.db
@@ -717,9 +706,7 @@ impl PostgresSecondaryIndexManager {
             .ok_or_else(|| SecondaryIndexError::IndexMissing(spec.index_name.clone()))?;
         verify_index_owner(spec, &existing, backend)?;
         if !existing.ready || !existing.valid {
-            return Err(SecondaryIndexError::IndexNotReady(
-                spec.index_name.clone(),
-            ));
+            return Err(SecondaryIndexError::IndexNotReady(spec.index_name.clone()));
         }
         Ok(SecondaryIndexExecutionOutcome::Ready {
             index_name: spec.index_name.clone(),
@@ -753,9 +740,7 @@ impl PostgresSecondaryIndexManager {
             .ok_or_else(|| SecondaryIndexError::IndexMissing(spec.index_name.clone()))?;
         verify_index_owner(spec, &rebuilt, backend)?;
         if !rebuilt.ready || !rebuilt.valid {
-            return Err(SecondaryIndexError::IndexNotReady(
-                spec.index_name.clone(),
-            ));
+            return Err(SecondaryIndexError::IndexNotReady(spec.index_name.clone()));
         }
         Ok(SecondaryIndexExecutionOutcome::Reindexed {
             index_name: spec.index_name.clone(),
@@ -1061,9 +1046,9 @@ fn postgres_scalar_expression(value_type: IndexValueType, field: &str) -> String
         IndexValueType::Decimal => format!("(({value})::numeric)"),
         IndexValueType::String => format!("(({value}) COLLATE \"C\")"),
         IndexValueType::Uuid => format!("(({value})::uuid)"),
-        IndexValueType::Timestamp => format!(
-            "((regexp_replace({value}, '[^0-9]', '', 'g')) COLLATE \"C\")"
-        ),
+        IndexValueType::Timestamp => {
+            format!("((regexp_replace({value}, '[^0-9]', '', 'g')) COLLATE \"C\")")
+        }
     }
 }
 

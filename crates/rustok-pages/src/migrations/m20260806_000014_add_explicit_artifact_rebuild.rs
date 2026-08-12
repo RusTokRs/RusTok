@@ -149,7 +149,10 @@ impl MigrationTrait for Migration {
                                 PageArtifactRebuildOperations::Table,
                                 PageArtifactRebuildOperations::SourceId,
                             )
-                            .to(PagePublishRebuildSources::Table, PagePublishRebuildSources::Id)
+                            .to(
+                                PagePublishRebuildSources::Table,
+                                PagePublishRebuildSources::Id,
+                            )
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )

@@ -147,9 +147,8 @@ pub async fn fetch_payment_collection(
                 .map_err(|error| native_context.map_error(error))
         },
         move || async move {
-            let context = graphql_error_safety::GraphqlCallContext::new(
-                "read_storefront_payment_collection",
-            );
+            let context =
+                graphql_error_safety::GraphqlCallContext::new("read_storefront_payment_collection");
             graphql_adapter::fetch_payment_collection(request)
                 .await
                 .map_err(|error| context.map_error(error))
@@ -175,9 +174,8 @@ pub async fn fetch_refund_summary(
                 .map_err(|error| native_context.map_error(error))
         },
         move || async move {
-            let context = graphql_error_safety::GraphqlCallContext::new(
-                "read_storefront_order_refunds",
-            );
+            let context =
+                graphql_error_safety::GraphqlCallContext::new("read_storefront_order_refunds");
             graphql_adapter::fetch_refund_summary(request)
                 .await
                 .map_err(|error| context.map_error(error))

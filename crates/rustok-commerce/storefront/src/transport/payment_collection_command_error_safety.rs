@@ -6,8 +6,7 @@ use crate::core::PaymentCollectionCommandRequest;
 use super::shared_adapter::ApiError;
 
 const COMMERCE_STOREFRONT_PAYMENT_OWNER: &str = "rustok_commerce.storefront";
-const COMMERCE_STOREFRONT_PAYMENT_OPERATION: &str =
-    "create_storefront_payment_collection";
+const COMMERCE_STOREFRONT_PAYMENT_OPERATION: &str = "create_storefront_payment_collection";
 const COMMERCE_STOREFRONT_PAYMENT_BOUNDARY: &str =
     "commerce_storefront_payment_collection_public_transport";
 const CART_ID_UUID_VALIDATION: &str = "cart_id must be a valid UUID";
@@ -95,10 +94,13 @@ impl PaymentCollectionCommandErrorContext {
 }
 
 fn is_invalid_cart_selection(error: &UiTransportError) -> bool {
-    [error.native_error.as_deref(), error.graphql_error.as_deref()]
-        .into_iter()
-        .flatten()
-        .any(|message| message == CART_ID_UUID_VALIDATION)
+    [
+        error.native_error.as_deref(),
+        error.graphql_error.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|message| message == CART_ID_UUID_VALIDATION)
 }
 
 fn configured_tenant_slug_length() -> Option<usize> {

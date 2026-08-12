@@ -274,9 +274,7 @@ mod tests {
         request
             .extensions_mut()
             .insert(TenantContextExtension(tenant));
-        request
-            .extensions_mut()
-            .insert(AuthContextExtension(auth));
+        request.extensions_mut().insert(AuthContextExtension(auth));
         request
     }
 
@@ -354,11 +352,7 @@ mod tests {
             )
             .with_state(runtime);
         let tenant = tenant_context(tenant_id);
-        let read_auth = auth_context(
-            tenant_id,
-            actor_id,
-            vec![Permission::FORUM_TOPICS_READ],
-        );
+        let read_auth = auth_context(tenant_id, actor_id, vec![Permission::FORUM_TOPICS_READ]);
 
         let source_response = app
             .clone()

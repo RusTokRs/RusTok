@@ -64,12 +64,7 @@ pub async fn load_marketplace_listing_directory(
         context.path(),
         move || native_server_adapter::load_directory(native_filters),
         move || {
-            graphql_adapter::load_directory(
-                graphql_token,
-                graphql_tenant,
-                graphql_locale,
-                filters,
-            )
+            graphql_adapter::load_directory(graphql_token, graphql_tenant, graphql_locale, filters)
         },
     )
     .await
@@ -88,12 +83,7 @@ pub async fn load_marketplace_listing_detail(
         context.path(),
         move || native_server_adapter::load_detail(native_id),
         move || {
-            graphql_adapter::load_detail(
-                graphql_token,
-                graphql_tenant,
-                graphql_locale,
-                listing_id,
-            )
+            graphql_adapter::load_detail(graphql_token, graphql_tenant, graphql_locale, listing_id)
         },
     )
     .await

@@ -31,8 +31,7 @@ pub use partition_cutover::{
     PartitionCutoverCapture, PartitionCutoverConfig, capture_partition_cutover_evidence,
 };
 pub use partition_maintenance::{
-    PartitionMaintenanceCapture, PartitionMaintenanceConfig,
-    capture_partition_maintenance_evidence,
+    PartitionMaintenanceCapture, PartitionMaintenanceConfig, capture_partition_maintenance_evidence,
 };
 pub use partition_mutation::{
     PartitionMutationCapture, PartitionMutationConfig, capture_partition_mutation_evidence,

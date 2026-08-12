@@ -7,18 +7,31 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Postgres {
-            // SQLite is the lightweight development/test profile. Existing SQLite
-            // databases cannot receive composite foreign keys through ALTER TABLE.
-            // Clean SQLite schema parity is handled in FORUM-01B by rebuilding the
-            // affected child tables.
-            return Ok(());
+        match manager.get_database_backend() {
+            DatabaseBackend::Postgres => up_postgres(manager).await,
+            DatabaseBackend::Sqlite => up_sqlite(manager).await,
+            backend => Err(DbErr::Custom(format!(
+                "rustok-forum core tenant migration does not support {backend:?}"
+            ))),
         }
+    }
 
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        match manager.get_database_backend() {
+            DatabaseBackend::Postgres => down_postgres(manager).await,
+            DatabaseBackend::Sqlite => down_sqlite(manager).await,
+            backend => Err(DbErr::Custom(format!(
+                "rustok-forum core tenant migration does not support {backend:?}"
+            ))),
+        }
+    }
+}
+
+async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
 DO $$
 BEGIN
     IF EXISTS (
@@ -172,21 +185,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS
     uq_forum_category_translations_tenant_category_locale
     ON forum_category_translations (tenant_id, category_id, locale);
 "#,
-            )
-            .await?;
+        )
+        .await?;
 
-        Ok(())
-    }
+    Ok(())
+}
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Postgres {
-            return Ok(());
-        }
-
+async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    for statement in [
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_forum_categories_tenant_id ON forum_categories (tenant_id, id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_forum_topics_tenant_id ON forum_topics (tenant_id, id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_forum_replies_tenant_id ON forum_replies (tenant_id, id)",
+    ] {
         manager
             .get_connection()
-            .execute_unprepared(
-                r#"
+            .execute_unprepared(statement)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
 ALTER TABLE forum_categories
     DROP CONSTRAINT IF EXISTS fk_forum_categories_parent_tenant;
 ALTER TABLE forum_category_translations
@@ -260,9 +283,22 @@ ALTER TABLE forum_replies
 -- Locale widths are intentionally not reduced. Existing values may exceed
 -- the former VARCHAR(16) limit after this migration has been deployed.
 "#,
-            )
-            .await?;
+        )
+        .await?;
 
-        Ok(())
+    Ok(())
+}
+
+async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    for name in [
+        "uq_forum_categories_tenant_id",
+        "uq_forum_topics_tenant_id",
+        "uq_forum_replies_tenant_id",
+    ] {
+        manager
+            .get_connection()
+            .execute_unprepared(&format!("DROP INDEX IF EXISTS {name}"))
+            .await?;
     }
+    Ok(())
 }

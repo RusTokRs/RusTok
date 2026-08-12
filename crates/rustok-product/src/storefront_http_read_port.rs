@@ -8,8 +8,7 @@ use crate::ports::{LegacyStorefrontProductList, LegacyStorefrontProductListItem}
 use crate::{CatalogService, CommerceError};
 
 const MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100;
-const LIST_LEGACY_STOREFRONT_HTTP_PRODUCTS_OPERATION: &str =
-    "list_legacy_storefront_http_products";
+const LIST_LEGACY_STOREFRONT_HTTP_PRODUCTS_OPERATION: &str = "list_legacy_storefront_http_products";
 
 /// Optional Product-owned compatibility boundary for the mounted legacy storefront REST list.
 ///
@@ -161,7 +160,10 @@ async fn list_legacy_storefront_http_products(
         .take(per_page as usize)
         .collect::<Vec<_>>();
 
-    let product_ids = products.iter().map(|product| product.id).collect::<Vec<_>>();
+    let product_ids = products
+        .iter()
+        .map(|product| product.id)
+        .collect::<Vec<_>>();
     let translations = if product_ids.is_empty() {
         Vec::new()
     } else {
@@ -227,9 +229,9 @@ fn pick_product_translation<'a>(
         .find(|translation| locale_tags_match(&translation.locale, locale))
         .or_else(|| {
             (!locale_tags_match(fallback_locale, locale)).then(|| {
-                translations.iter().find(|translation| {
-                    locale_tags_match(&translation.locale, fallback_locale)
-                })
+                translations
+                    .iter()
+                    .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
             })?
         })
         .or_else(|| translations.first())
@@ -255,10 +257,7 @@ fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
     (!normalized.is_empty()).then_some(normalized)
 }
 
-fn product_title_search_condition(
-    backend: sea_orm::DbBackend,
-    search: &str,
-) -> sea_orm::Condition {
+fn product_title_search_condition(backend: sea_orm::DbBackend, search: &str) -> sea_orm::Condition {
     let pattern = format!("%{search}%");
     let exists_sql = match backend {
         sea_orm::DbBackend::Sqlite => {

@@ -31,7 +31,10 @@ fn graphql_schema_exposes_idempotent_topic_merge_command() {
         "positionOffset",
         "mergedAt",
     ] {
-        assert!(sdl.contains(marker), "missing GraphQL merge marker {marker}");
+        assert!(
+            sdl.contains(marker),
+            "missing GraphQL merge marker {marker}"
+        );
     }
 }
 

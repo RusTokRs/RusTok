@@ -31,7 +31,11 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
     let (error, set_error) = signal(None::<String>);
     let (receipt, set_receipt) = signal(None::<ForumTopicSplitReceipt>);
 
-    let title = t(ui_locale.as_deref(), "forum.split.title", "Split topic replies");
+    let title = t(
+        ui_locale.as_deref(),
+        "forum.split.title",
+        "Split topic replies",
+    );
     let subtitle = t(
         ui_locale.as_deref(),
         "forum.split.subtitle",
@@ -39,26 +43,50 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
     );
     let source_label = t(ui_locale.as_deref(), "forum.split.source", "Source topic");
     let choose_label = t(ui_locale.as_deref(), "forum.split.choose", "Choose a topic");
-    let replies_label = t(ui_locale.as_deref(), "forum.split.replies", "Replies to move");
+    let replies_label = t(
+        ui_locale.as_deref(),
+        "forum.split.replies",
+        "Replies to move",
+    );
     let no_replies_label = t(
         ui_locale.as_deref(),
         "forum.split.noReplies",
         "Choose a source topic with at least two replies.",
     );
     let locale_label = t(ui_locale.as_deref(), "forum.split.locale", "Target locale");
-    let target_title_label = t(ui_locale.as_deref(), "forum.split.targetTitle", "Target title");
-    let slug_label = t(ui_locale.as_deref(), "forum.split.slug", "Target slug (optional)");
+    let target_title_label = t(
+        ui_locale.as_deref(),
+        "forum.split.targetTitle",
+        "Target title",
+    );
+    let slug_label = t(
+        ui_locale.as_deref(),
+        "forum.split.slug",
+        "Target slug (optional)",
+    );
     let reason_label = t(ui_locale.as_deref(), "forum.split.reason", "Reason");
     let submit_label = t(ui_locale.as_deref(), "forum.split.submit", "Split topic");
     let pending_label = t(ui_locale.as_deref(), "forum.split.pending", "Splitting…");
-    let operation_label = t(ui_locale.as_deref(), "forum.split.operation", "Retry identity");
-    let target_id_label = t(ui_locale.as_deref(), "forum.split.targetId", "New topic identity");
+    let operation_label = t(
+        ui_locale.as_deref(),
+        "forum.split.operation",
+        "Retry identity",
+    );
+    let target_id_label = t(
+        ui_locale.as_deref(),
+        "forum.split.targetId",
+        "New topic identity",
+    );
     let retry_hint = t(
         ui_locale.as_deref(),
         "forum.split.retryHint",
         "Exact retries keep both identities. Editing the source, selection or target fields rotates both.",
     );
-    let complete_label = t(ui_locale.as_deref(), "forum.split.complete", "Split committed");
+    let complete_label = t(
+        ui_locale.as_deref(),
+        "forum.split.complete",
+        "Split committed",
+    );
 
     let candidates = LocalResource::new(move || {
         let _ = refresh_nonce.get();
@@ -80,13 +108,7 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
                     items: Vec::new(),
                 })
             } else {
-                transport::fetch_topic_split_replies(
-                    token,
-                    tenant,
-                    source_topic_id,
-                    locale,
-                )
-                .await
+                transport::fetch_topic_split_replies(token, tenant, source_topic_id, locale).await
             }
         }
     });

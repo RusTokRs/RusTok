@@ -92,9 +92,7 @@ pub use consumer::{ConsumedEvent, PersistentConsumerGroup};
 pub use contract_consumer::{
     ConsumedContractEvent, PersistentContractConsumerGroup, PersistentContractDelivery,
 };
-pub use contract_decode_failure::{
-    ConsumedContractDecodeFailure, ContractDecodeFailureKind,
-};
+pub use contract_decode_failure::{ConsumedContractDecodeFailure, ContractDecodeFailureKind};
 pub use dedup_recovery_window_policy::{
     IggyDedupRecoveryWindowAssessment, IggyDedupRecoveryWindowPolicy,
     IggyDedupRecoveryWindowPolicyError, IggyDedupRecoveryWindowStatus,
@@ -116,8 +114,8 @@ pub use dlq_duplicate_alert_runtime::{
 };
 #[cfg(feature = "iggy")]
 pub use dlq_duplicate_external_scan::{
-    IggyDlqDuplicateScanError, IggyDlqDuplicateScanRequest,
-    IggyDlqDuplicateScanWindowPolicy, IggyDlqDuplicateScanner,
+    IggyDlqDuplicateScanError, IggyDlqDuplicateScanRequest, IggyDlqDuplicateScanWindowPolicy,
+    IggyDlqDuplicateScanner,
 };
 pub use dlq_duplicate_inspection::{
     DlqDuplicateInspectionError, DlqDuplicateObservation, DlqDuplicateSummary,
@@ -130,8 +128,8 @@ pub use dlq_duplicate_moving_window_scan::{
     IggyDlqDuplicateMovingWindowState,
 };
 pub use dlq_duplicate_rolling_window::{
-    DlqDuplicateRollingWindow, DlqDuplicateRollingWindowError,
-    DlqDuplicateRollingWindowPolicy, DlqDuplicateRollingWindowSnapshot,
+    DlqDuplicateRollingWindow, DlqDuplicateRollingWindowError, DlqDuplicateRollingWindowPolicy,
+    DlqDuplicateRollingWindowSnapshot,
 };
 pub use health::{HealthCheckResult, HealthStatus, health_check};
 pub use partitioning::{calculate_partition, partition_key};

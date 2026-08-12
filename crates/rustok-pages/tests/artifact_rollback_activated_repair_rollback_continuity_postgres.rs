@@ -100,8 +100,8 @@ struct RepairedCurrent {
 }
 
 #[tokio::test]
-async fn rollback_continues_after_rollback_activated_physical_loss_repair_on_postgres(
-) -> TestResult<()> {
+async fn rollback_continues_after_rollback_activated_physical_loss_repair_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("success").await? else {
         return Ok(());
     };
@@ -148,8 +148,8 @@ async fn rollback_continues_after_rollback_activated_physical_loss_repair_on_pos
 }
 
 #[tokio::test]
-async fn rollback_rejects_repaired_cursor_when_rollback_activation_anchor_hash_is_corrupted_on_postgres(
-) -> TestResult<()> {
+async fn rollback_rejects_repaired_cursor_when_rollback_activation_anchor_hash_is_corrupted_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("anchor_hash").await? else {
         return Ok(());
     };
@@ -158,15 +158,19 @@ async fn rollback_rejects_repaired_cursor_when_rollback_activation_anchor_hash_i
     let fixture = create_fixture(&db, &service, "rollback-anchor-repair-rollback-hash").await?;
     let repaired = repair_rollback_activated_publish(&db, &service, &fixture, "hash").await?;
 
-    let anchor = page_rollback_operation::Entity::find_by_id(fixture.activation_anchor_operation_id)
-        .one(&db)
-        .await?
-        .ok_or_else(|| std::io::Error::other("rollback activation anchor is missing"))?;
+    let anchor =
+        page_rollback_operation::Entity::find_by_id(fixture.activation_anchor_operation_id)
+            .one(&db)
+            .await?
+            .ok_or_else(|| std::io::Error::other("rollback activation anchor is missing"))?;
     let changed = db
         .execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "UPDATE page_rollback_operations SET request_hash = $1 WHERE id = $2",
-            vec![different_sha256(&anchor.request_hash).into(), anchor.id.into()],
+            vec![
+                different_sha256(&anchor.request_hash).into(),
+                anchor.id.into(),
+            ],
         ))
         .await?;
     assert_eq!(changed.rows_affected(), 1);
@@ -193,7 +197,10 @@ async fn rollback_rejects_repaired_cursor_when_rollback_activation_anchor_hash_i
             },
         )
         .await;
-    assert!(matches!(result, Err(PagesError::RollbackTargetUnavailable(_))));
+    assert!(matches!(
+        result,
+        Err(PagesError::RollbackTargetUnavailable(_))
+    ));
 
     let after_page = page::Entity::find_by_id(fixture.page_id)
         .one(&db)
@@ -208,7 +215,10 @@ async fn rollback_rejects_repaired_cursor_when_rollback_activation_anchor_hash_i
             .await?,
         before_rollbacks
     );
-    assert_eq!(current_binding(&db, &fixture).await?.artifact_id, repaired.rebuilt_artifact_id);
+    assert_eq!(
+        current_binding(&db, &fixture).await?.artifact_id,
+        repaired.rebuilt_artifact_id
+    );
 
     database.cleanup().await
 }
@@ -250,7 +260,9 @@ async fn repair_rollback_activated_publish(
     assert_eq!(activation.version, fixture.activation_anchor_version + 1);
     assert_eq!(
         page_artifact_binding_replacement_operation::Entity::find()
-            .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(fixture.tenant_id))
+            .filter(
+                page_artifact_binding_replacement_operation::Column::TenantId.eq(fixture.tenant_id)
+            )
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(fixture.page_id))
             .count(db)
             .await?,
@@ -397,9 +409,17 @@ async fn create_fixture(
             },
         )
         .await?;
-    assert_eq!(activation_anchor.target_publish_operation_id, middle.operation_id);
+    assert_eq!(
+        activation_anchor.target_publish_operation_id,
+        middle.operation_id
+    );
     assert_eq!(activation_anchor.version, newest.version + 1);
-    assert_eq!(current_binding_raw(db, tenant_id, draft.id).await?.artifact_id, middle_source.artifact_id);
+    assert_eq!(
+        current_binding_raw(db, tenant_id, draft.id)
+            .await?
+            .artifact_id,
+        middle_source.artifact_id
+    );
 
     Ok(Fixture {
         tenant_id,

@@ -87,14 +87,10 @@ mod tests {
     fn explicit_retry_reuses_schema_write_caller_key() {
         let mut identity = ProductAdminSchemaRetryIdentity::default();
         let intent = "product:123/save-values".to_string();
-        let first = identity.idempotency_key_for(
-            ProductAdminSchemaOperation::SaveAttributeValues,
-            &intent,
-        );
-        let retry = identity.idempotency_key_for(
-            ProductAdminSchemaOperation::SaveAttributeValues,
-            &intent,
-        );
+        let first =
+            identity.idempotency_key_for(ProductAdminSchemaOperation::SaveAttributeValues, &intent);
+        let retry =
+            identity.idempotency_key_for(ProductAdminSchemaOperation::SaveAttributeValues, &intent);
         assert_eq!(first, retry);
         assert_eq!(identity.pending_key(), Some(first.as_str()));
     }
@@ -117,15 +113,11 @@ mod tests {
     fn success_releases_schema_retry_identity() {
         let mut identity = ProductAdminSchemaRetryIdentity::default();
         let intent = "product:123/save-values".to_string();
-        let first = identity.idempotency_key_for(
-            ProductAdminSchemaOperation::SaveAttributeValues,
-            &intent,
-        );
+        let first =
+            identity.idempotency_key_for(ProductAdminSchemaOperation::SaveAttributeValues, &intent);
         identity.mark_succeeded();
-        let later = identity.idempotency_key_for(
-            ProductAdminSchemaOperation::SaveAttributeValues,
-            &intent,
-        );
+        let later =
+            identity.idempotency_key_for(ProductAdminSchemaOperation::SaveAttributeValues, &intent);
         assert_ne!(first, later);
     }
 

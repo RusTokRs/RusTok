@@ -17,13 +17,7 @@ pub async fn fetch_bootstrap(
     graphql_adapter::fetch_bootstrap(token, tenant_slug)
         .await
         .map_err(|error| {
-            map_graphql_error(
-                error,
-                operation,
-                &correlation_id,
-                None,
-                tenant_slug_length,
-            )
+            map_graphql_error(error, operation, &correlation_id, None, tenant_slug_length)
         })
 }
 

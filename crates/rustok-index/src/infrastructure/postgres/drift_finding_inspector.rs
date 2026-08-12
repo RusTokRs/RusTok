@@ -19,7 +19,9 @@ pub enum IndexDriftFindingSeverity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IndexDriftFindingScope {
     Global,
-    Schema { schema: SchemaRef },
+    Schema {
+        schema: SchemaRef,
+    },
     Entity {
         schema: SchemaRef,
         entity_id: Uuid,
@@ -110,7 +112,10 @@ impl PostgresIndexDriftFindingInspector {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 select_open_finding_sql(backend),
-                vec![uuid_value(tenant_id, backend), uuid_value(finding_id, backend)],
+                vec![
+                    uuid_value(tenant_id, backend),
+                    uuid_value(finding_id, backend),
+                ],
             ))
             .await
             .map_err(|_| IndexDriftFindingInspectionError::Storage)?;
@@ -231,7 +236,9 @@ fn decode_scope(
         }
         "entity" => {
             let schema = decode_schema(module_name, entity_name, schema_version)?;
-            let entity_id = entity_id.filter(|value| !value.is_nil()).ok_or_else(invalid_scope)?;
+            let entity_id = entity_id
+                .filter(|value| !value.is_nil())
+                .ok_or_else(invalid_scope)?;
             match locale_key {
                 Some(stored_locale) => {
                     let locale = LocaleKey::new(&stored_locale).map_err(|_| invalid_scope())?;
@@ -256,10 +263,10 @@ fn decode_schema(
     entity_name: Option<String>,
     schema_version: Option<i64>,
 ) -> Result<SchemaRef, IndexDriftFindingInspectionError> {
-    let module = ModuleName::new(module_name.ok_or_else(invalid_scope)?)
-        .map_err(|_| invalid_scope())?;
-    let entity = EntityName::new(entity_name.ok_or_else(invalid_scope)?)
-        .map_err(|_| invalid_scope())?;
+    let module =
+        ModuleName::new(module_name.ok_or_else(invalid_scope)?).map_err(|_| invalid_scope())?;
+    let entity =
+        EntityName::new(entity_name.ok_or_else(invalid_scope)?).map_err(|_| invalid_scope())?;
     let version = schema_version.ok_or_else(invalid_scope)?;
     let version = u32::try_from(version).map_err(|_| invalid_scope())?;
     if version == 0 {
@@ -315,9 +322,7 @@ fn invalid_scope() -> IndexDriftFindingInspectionError {
     )
 }
 
-fn ensure_supported_backend(
-    backend: DbBackend,
-) -> Result<(), IndexDriftFindingInspectionError> {
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexDriftFindingInspectionError> {
     match backend {
         DbBackend::Postgres => Ok(()),
         DbBackend::Sqlite if cfg!(test) => Ok(()),
@@ -468,8 +473,14 @@ mod tests {
         assert_eq!(inspection.finding_key(), "a".repeat(DIGEST_BYTES));
         assert_eq!(inspection.check_name(), "entity_digest_mismatch");
         assert_eq!(inspection.severity(), IndexDriftFindingSeverity::Error);
-        assert_eq!(inspection.expected_digest(), Some("b".repeat(DIGEST_BYTES).as_str()));
-        assert_eq!(inspection.actual_digest(), Some("c".repeat(DIGEST_BYTES).as_str()));
+        assert_eq!(
+            inspection.expected_digest(),
+            Some("b".repeat(DIGEST_BYTES).as_str())
+        );
+        assert_eq!(
+            inspection.actual_digest(),
+            Some("c".repeat(DIGEST_BYTES).as_str())
+        );
         match inspection.scope() {
             IndexDriftFindingScope::Entity {
                 schema,
@@ -494,7 +505,13 @@ mod tests {
             &"d".repeat(DIGEST_BYTES),
         )
         .await;
-        assert!(inspector.inspect(tenant_id, resolved_id).await.unwrap().is_none());
+        assert!(
+            inspector
+                .inspect(tenant_id, resolved_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]

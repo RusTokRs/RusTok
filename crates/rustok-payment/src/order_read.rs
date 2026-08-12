@@ -222,11 +222,7 @@ fn map_payment_error(
     PortError::new(kind, code, message, retryable)
 }
 
-fn map_refund_read_error(
-    context: &PortContext,
-    order_id: Uuid,
-    error: PaymentError,
-) -> PortError {
+fn map_refund_read_error(context: &PortContext, order_id: Uuid, error: PaymentError) -> PortError {
     let operation = "list_refunds_by_order";
     let (kind, code, message, retryable, error_variant, technical) = match &error {
         PaymentError::Validation(_) => (

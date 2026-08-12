@@ -70,9 +70,7 @@ impl ForumTopicMergeRouteBackfillService {
             let merged_at: DateTimeWithTimeZone = cursor.merged_at.fixed_offset();
             query = query.filter(
                 Condition::any()
-                    .add(
-                        forum_topic_merge_operation::Column::MergedAt.gt(merged_at.clone()),
-                    )
+                    .add(forum_topic_merge_operation::Column::MergedAt.gt(merged_at.clone()))
                     .add(
                         Condition::all()
                             .add(forum_topic_merge_operation::Column::MergedAt.eq(merged_at))

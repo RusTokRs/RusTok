@@ -276,8 +276,8 @@ pub(crate) fn fulfillment_lifecycle_read_runtime_for_current_graphql_scope(
         .unwrap_or_else(|_| CommerceFulfillmentLifecycleReadRuntime::in_process(db))
 }
 
-pub(crate) fn fulfillment_read_call_context_for_current_graphql_scope(
-) -> CommerceFulfillmentReadCallContext {
+pub(crate) fn fulfillment_read_call_context_for_current_graphql_scope()
+-> CommerceFulfillmentReadCallContext {
     CURRENT_COMMERCE_FULFILLMENT_READ_CALL_CONTEXT
         .try_with(Clone::clone)
         .unwrap_or_default()
@@ -304,8 +304,8 @@ pub(crate) fn payment_read_runtime_for_current_graphql_scope(
     payment_reads::runtime_for_current_graphql_scope(db)
 }
 
-pub(crate) fn payment_read_call_context_for_current_graphql_scope(
-) -> (PortActor, Option<String>, Option<String>) {
+pub(crate) fn payment_read_call_context_for_current_graphql_scope()
+-> (PortActor, Option<String>, Option<String>) {
     let context = payment_reads::call_context_for_current_graphql_scope();
     (
         context.actor(),

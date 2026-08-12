@@ -26,7 +26,10 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(db_url);
-    options.max_connections(5).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(5)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await?;
     db.execute_unprepared(
         "CREATE TABLE users (\
@@ -50,11 +53,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -157,8 +156,8 @@ async fn insert_subscription(
 }
 
 #[tokio::test]
-async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_authoritative(
-) -> TestResult<()> {
+async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_authoritative()
+-> TestResult<()> {
     let (db, event_bus) = setup().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -324,12 +323,7 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
     };
     let service = ForumTopicMergeSubscriptionReconciliationService::new(db.clone());
     let reconciled = service
-        .reconcile_merge_subscriptions(
-            tenant_id,
-            merge_operation_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .reconcile_merge_subscriptions(tenant_id, merge_operation_id, admin.clone(), input.clone())
         .await?;
 
     assert_eq!(reconciled.operation_id, operation_id);
@@ -343,8 +337,14 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
     assert_eq!(reconciled.deduplicated_equal_count, 2);
     assert_eq!(reconciled.target_authority_conflict_count, 1);
 
-    assert_eq!(subscription_count(&db, tenant_id, source_topic_id).await?, 0);
-    assert_eq!(subscription_count(&db, tenant_id, target_topic_id).await?, 5);
+    assert_eq!(
+        subscription_count(&db, tenant_id, source_topic_id).await?,
+        0
+    );
+    assert_eq!(
+        subscription_count(&db, tenant_id, target_topic_id).await?,
+        5
+    );
     assert_subscription(
         &db,
         tenant_id,
@@ -414,16 +414,17 @@ async fn merge_subscription_reconciliation_is_atomic_idempotent_and_target_autho
     assert_eq!(reconciliation_count(&db, tenant_id).await?, 1);
 
     let replay = service
-        .reconcile_merge_subscriptions(
-            tenant_id,
-            merge_operation_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .reconcile_merge_subscriptions(tenant_id, merge_operation_id, admin.clone(), input.clone())
         .await?;
     assert_eq!(replay, reconciled);
-    assert_eq!(subscription_count(&db, tenant_id, source_topic_id).await?, 0);
-    assert_eq!(subscription_count(&db, tenant_id, target_topic_id).await?, 5);
+    assert_eq!(
+        subscription_count(&db, tenant_id, source_topic_id).await?,
+        0
+    );
+    assert_eq!(
+        subscription_count(&db, tenant_id, target_topic_id).await?,
+        5
+    );
     assert_eq!(reconciliation_count(&db, tenant_id).await?, 1);
 
     let drift = service
@@ -511,7 +512,11 @@ async fn assert_archived_subscription_database_guards(
             SET revision = revision + 1, updated_at = CURRENT_TIMESTAMP
             WHERE tenant_id = ? AND topic_id = ? AND user_id = ?
             "#,
-            vec![tenant_id.into(), source_topic_id.into(), existing_user_id.into()],
+            vec![
+                tenant_id.into(),
+                source_topic_id.into(),
+                existing_user_id.into(),
+            ],
         ))
         .await;
     assert!(update.is_err());
@@ -597,10 +602,7 @@ async fn subscription_count(
     .await
 }
 
-async fn reconciliation_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn reconciliation_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(

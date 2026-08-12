@@ -1,8 +1,6 @@
 use crate::editor::{AdminCanvas, AdminShell};
 use crate::i18n::t;
-use crate::{
-    AdminCanvasController, PageBuilderAdminFacade, PageBuilderContributionHostContext,
-};
+use crate::{AdminCanvasController, PageBuilderAdminFacade, PageBuilderContributionHostContext};
 use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
@@ -262,9 +260,7 @@ pub fn PageBuilderAdminWithController(
                 .map(|evaluation| evaluation.effective)
                 .or(editor_capabilities)
                 .unwrap_or_else(CapabilityState::full);
-            let provider_status = facade
-                .as_ref()
-                .and_then(|facade| facade.provider_status());
+            let provider_status = facade.as_ref().and_then(|facade| facade.provider_status());
             let effective = provider_status
                 .as_ref()
                 .map(|status| status.limit_capabilities(host_effective))

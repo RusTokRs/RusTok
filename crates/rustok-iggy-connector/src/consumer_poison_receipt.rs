@@ -365,9 +365,7 @@ impl ConsumerPoisonReceiptStore {
             })?;
         let current = decode_and_validate_receipt(&current, identity, backend)?;
         Ok(match current.state {
-            ConsumerPoisonReceiptState::Published => {
-                ConsumerPoisonPublishClaim::AlreadyPublished
-            }
+            ConsumerPoisonReceiptState::Published => ConsumerPoisonPublishClaim::AlreadyPublished,
             ConsumerPoisonReceiptState::Acknowledged => {
                 ConsumerPoisonPublishClaim::AlreadyAcknowledged
             }
@@ -420,8 +418,7 @@ impl ConsumerPoisonReceiptStore {
         }
         match self.find(identity).await?.map(|receipt| receipt.state) {
             Some(
-                ConsumerPoisonReceiptState::Published
-                | ConsumerPoisonReceiptState::Acknowledged,
+                ConsumerPoisonReceiptState::Published | ConsumerPoisonReceiptState::Acknowledged,
             ) => Ok(()),
             _ => Err(ConsumerPoisonReceiptError::ClaimLost),
         }
@@ -461,9 +458,7 @@ fn decode_and_validate_receipt(
     let stored_group: String = row.try_get("", "consumer_group").map_err(storage_error)?;
     let stored_stream: String = row.try_get("", "source_stream").map_err(storage_error)?;
     let stored_topic: String = row.try_get("", "source_topic").map_err(storage_error)?;
-    let stored_partition: i64 = row
-        .try_get("", "source_partition")
-        .map_err(storage_error)?;
+    let stored_partition: i64 = row.try_get("", "source_partition").map_err(storage_error)?;
     let stored_offset: i64 = row.try_get("", "source_offset").map_err(storage_error)?;
     let stored_payload: Vec<u8> = row.try_get("", "payload").map_err(storage_error)?;
     if stored_delivery_id != identity.delivery_id
@@ -483,11 +478,12 @@ fn decode_and_validate_receipt(
     let first_delivery_attempt_count: i64 = row
         .try_get("", "delivery_attempt_count")
         .map_err(storage_error)?;
-    let first_delivery_attempt_count = u32::try_from(first_delivery_attempt_count).map_err(|_| {
-        ConsumerPoisonReceiptError::Storage(
-            "stored consumer poison delivery attempt count is invalid".to_owned(),
-        )
-    })?;
+    let first_delivery_attempt_count =
+        u32::try_from(first_delivery_attempt_count).map_err(|_| {
+            ConsumerPoisonReceiptError::Storage(
+                "stored consumer poison delivery attempt count is invalid".to_owned(),
+            )
+        })?;
     Ok(ConsumerPoisonReceipt {
         state: ConsumerPoisonReceiptState::parse(&state)?,
         stable_error_code,
@@ -526,9 +522,7 @@ fn validate_identity_part(
     Ok(())
 }
 
-fn validate_lease_duration(
-    lease_duration: Duration,
-) -> Result<u64, ConsumerPoisonReceiptError> {
+fn validate_lease_duration(lease_duration: Duration) -> Result<u64, ConsumerPoisonReceiptError> {
     if lease_duration.subsec_nanos() != 0 {
         return Err(ConsumerPoisonReceiptError::InvalidIdentity {
             field: "lease_duration",
@@ -545,9 +539,7 @@ fn validate_lease_duration(
     Ok(seconds)
 }
 
-fn ensure_supported_backend(
-    backend: DbBackend,
-) -> Result<(), ConsumerPoisonReceiptError> {
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), ConsumerPoisonReceiptError> {
     match backend {
         DbBackend::Postgres => Ok(()),
         DbBackend::Sqlite if cfg!(test) => Ok(()),
@@ -747,16 +739,8 @@ mod tests {
         assert_eq!(identity.source_offset(), 42);
         assert!(identity.payload().is_empty());
         assert!(
-            ConsumerPoisonIdentity::new(
-                Uuid::nil(),
-                "group",
-                "stream",
-                "topic",
-                1,
-                1,
-                vec![1],
-            )
-            .is_err()
+            ConsumerPoisonIdentity::new(Uuid::nil(), "group", "stream", "topic", 1, 1, vec![1],)
+                .is_err()
         );
     }
 

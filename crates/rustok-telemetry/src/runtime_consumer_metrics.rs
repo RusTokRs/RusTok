@@ -360,7 +360,9 @@ pub fn record_position_snapshot(
     RUNTIME_CONSUMER_METRICS
         .position_partition_count
         .with_label_values(&[consumer])
-        .set(metric_value(u64::try_from(partition_count).unwrap_or(u64::MAX)));
+        .set(metric_value(
+            u64::try_from(partition_count).unwrap_or(u64::MAX),
+        ));
 
     let complete = total_lag.is_some() && max_lag.is_some();
     RUNTIME_CONSUMER_METRICS

@@ -93,7 +93,9 @@ pub enum ForumImportTombstonePreparationError {
         created_at_ms: i64,
         deleted_at_ms: i64,
     },
-    #[error("Forum import tombstone timestamp is outside owner range for {source:?}: {deleted_at_ms}")]
+    #[error(
+        "Forum import tombstone timestamp is outside owner range for {source:?}: {deleted_at_ms}"
+    )]
     TombstoneTimestampOutOfRange {
         source: ForumImportExternalRef,
         deleted_at_ms: i64,
@@ -124,9 +126,9 @@ impl NodebbForumReplyTombstoneMapper {
                 });
             }
             if !seen.insert(record.pid) {
-                return Err(ForumImportTombstonePreparationError::DuplicateNodebbPostId {
-                    pid: record.pid,
-                });
+                return Err(
+                    ForumImportTombstonePreparationError::DuplicateNodebbPostId { pid: record.pid },
+                );
             }
             if record.deleted_at_ms < 0 {
                 return Err(
@@ -172,10 +174,12 @@ impl ForumImportTombstonePreparer {
             });
         }
         if request.relations.replies.len() != request.relations.writes.replies.len() {
-            return Err(ForumImportTombstonePreparationError::RelationCountMismatch {
-                writes: request.relations.writes.replies.len(),
-                relations: request.relations.replies.len(),
-            });
+            return Err(
+                ForumImportTombstonePreparationError::RelationCountMismatch {
+                    writes: request.relations.writes.replies.len(),
+                    relations: request.relations.replies.len(),
+                },
+            );
         }
 
         let mut reply_sources = BTreeSet::new();

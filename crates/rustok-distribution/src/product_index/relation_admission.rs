@@ -132,9 +132,7 @@ impl ProductSalesChannelRelationSnapshot {
         }
         if next.epoch == previous.epoch {
             if next.channel_ids != previous.channel_ids || next.event_id != previous.event_id {
-                return Err(
-                    ProductSalesChannelRelationAdmissionError::SameEpochMembershipChanged,
-                );
+                return Err(ProductSalesChannelRelationAdmissionError::SameEpochMembershipChanged);
             }
             return Ok(ProductSalesChannelRelationAdmission::Retry);
         }
@@ -156,9 +154,7 @@ pub(crate) enum ProductSalesChannelRelationAdmissionError {
     DuplicateChannelId,
     #[error("Product-SalesChannel relation admission cannot change tenant, product, or locale")]
     ScopeChanged,
-    #[error(
-        "Product-SalesChannel relation epoch regressed: previous={previous}, next={next}"
-    )]
+    #[error("Product-SalesChannel relation epoch regressed: previous={previous}, next={next}")]
     EpochRegressed { previous: u64, next: u64 },
     #[error("Product-SalesChannel membership changed without advancing its relation epoch")]
     SameEpochMembershipChanged,
@@ -207,16 +203,8 @@ mod tests {
 
     #[test]
     fn product_sales_channel_relation_canonical_membership_and_retry_identity_are_stable() {
-        let first = snapshot(
-            7,
-            "en-US",
-            [Uuid::from_u128(4), Uuid::from_u128(3)],
-        );
-        let retry = snapshot(
-            7,
-            "en-US",
-            [Uuid::from_u128(3), Uuid::from_u128(4)],
-        );
+        let first = snapshot(7, "en-US", [Uuid::from_u128(4), Uuid::from_u128(3)]);
+        let retry = snapshot(7, "en-US", [Uuid::from_u128(3), Uuid::from_u128(4)]);
 
         assert_eq!(first, retry);
         assert_eq!(
@@ -311,20 +299,8 @@ mod tests {
     fn product_sales_channel_relation_empty_membership_is_valid_but_scope_cannot_change() {
         let previous = snapshot(1, "en-US", []);
         let other_locale = snapshot(2, "fr-FR", []);
-        let other_tenant = scoped_snapshot(
-            Uuid::from_u128(9),
-            Uuid::from_u128(2),
-            2,
-            "en-US",
-            [],
-        );
-        let other_product = scoped_snapshot(
-            Uuid::from_u128(1),
-            Uuid::from_u128(9),
-            2,
-            "en-US",
-            [],
-        );
+        let other_tenant = scoped_snapshot(Uuid::from_u128(9), Uuid::from_u128(2), 2, "en-US", []);
+        let other_product = scoped_snapshot(Uuid::from_u128(1), Uuid::from_u128(9), 2, "en-US", []);
 
         assert!(previous.channel_ids().is_empty());
         for changed_scope in [&other_locale, &other_tenant, &other_product] {

@@ -61,8 +61,8 @@ pub use engine::{
 pub use engine::{SearchResult, SearchResultItem};
 pub use forum_contract_ingress::{
     FORUM_SEARCH_CONTRACT_CONSUMER_GROUP, FORUM_SEARCH_CONTRACT_EVENT_TYPE,
-    FORUM_SEARCH_CONTRACT_TOPIC, ForumSearchContractIngress,
-    ForumSearchContractIngressError, ForumSearchContractIngressOutcome,
+    FORUM_SEARCH_CONTRACT_TOPIC, ForumSearchContractIngress, ForumSearchContractIngressError,
+    ForumSearchContractIngressOutcome,
 };
 pub use forum_document_filters::ForumStorefrontDocumentFilters;
 pub use forum_owner_checkpoint::{
@@ -73,9 +73,9 @@ pub use forum_reconciliation::{
     DEFAULT_FORUM_OWNER_REVISION_PAGE_LIMIT, DEFAULT_FORUM_SWEEP_EVENT_LIMIT,
     DEFAULT_FORUM_SWEEP_TENANT_LIMIT, ForumProjectionOwnerRevisionImpact,
     ForumProjectionOwnerRevisionRecord, ForumProjectionOwnerRevisionRequest,
-    ForumProjectionOwnerRevisionSourcePort, ForumProjectionReconciler,
-    ForumProjectionSweepReport, MAX_FORUM_OWNER_REVISION_PAGE_LIMIT,
-    SharedForumProjectionOwnerRevisionSourcePort, resolve_forum_projection_owner_revisions,
+    ForumProjectionOwnerRevisionSourcePort, ForumProjectionReconciler, ForumProjectionSweepReport,
+    MAX_FORUM_OWNER_REVISION_PAGE_LIMIT, SharedForumProjectionOwnerRevisionSourcePort,
+    resolve_forum_projection_owner_revisions,
 };
 pub use forum_storefront_execution::{
     ForumStorefrontSearchAttributeFilter, ForumStorefrontSearchExecution,

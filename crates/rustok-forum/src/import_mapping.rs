@@ -157,10 +157,7 @@ impl NodebbForumImportMapper {
         batch: &NodebbExportBatch,
     ) -> Result<ForumImportCandidateBatch, ForumImportMappingError> {
         ensure_batch_bound(batch)?;
-        ensure_unique_positive_ids(
-            "category",
-            batch.categories.iter().map(|record| record.cid),
-        )?;
+        ensure_unique_positive_ids("category", batch.categories.iter().map(|record| record.cid))?;
         ensure_unique_positive_ids("topic", batch.topics.iter().map(|record| record.tid))?;
         ensure_unique_positive_ids("post", batch.posts.iter().map(|record| record.pid))?;
 

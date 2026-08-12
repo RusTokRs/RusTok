@@ -33,23 +33,15 @@ impl CommercePaymentCommandRuntime {
         }
     }
 
-    pub fn in_process(
-        db: DatabaseConnection,
-        provider_registry: PaymentProviderRegistry,
-    ) -> Self {
+    pub fn in_process(db: DatabaseConnection, provider_registry: PaymentProviderRegistry) -> Self {
         Self::new(
             PaymentCollectionRuntime::in_process(db.clone()),
-            PaymentAdminCollectionCommandRuntime::in_process(
-                db.clone(),
-                provider_registry.clone(),
-            ),
+            PaymentAdminCollectionCommandRuntime::in_process(db.clone(), provider_registry.clone()),
             PaymentAdminRefundCommandRuntime::in_process(db, provider_registry),
         )
     }
 
-    pub(crate) fn from_graphql_inputs(
-        inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
-    ) -> Self {
+    pub(crate) fn from_graphql_inputs(inputs: &rustok_api::graphql::GraphqlRuntimeInputs) -> Self {
         let provider_registry = inputs
             .shared_get::<PaymentProviderRegistry>()
             .unwrap_or_else(PaymentProviderRegistry::with_manual_provider);

@@ -84,8 +84,8 @@ impl TestDatabase {
 }
 
 #[tokio::test]
-async fn postgres_application_operation_contract_preserves_due_claim_and_lease_fences(
-) -> TestResult<()> {
+async fn postgres_application_operation_contract_preserves_due_claim_and_lease_fences()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -118,11 +118,15 @@ async fn due_reads_are_ordered_and_bounded(database: &TestDatabase) -> TestResul
     set_next_attempt_offset(&storage, tenant_id, future.id, 30).await?;
 
     assert_eq!(MAX_DUE_APPLICATION_OPERATIONS, 100);
-    let minimum_bounded = service.list_due_application_operations(tenant_id, 0).await?;
+    let minimum_bounded = service
+        .list_due_application_operations(tenant_id, 0)
+        .await?;
     assert_eq!(minimum_bounded.len(), 1);
     assert_eq!(minimum_bounded[0].decision_id, oldest.id);
 
-    let ordered = service.list_due_application_operations(tenant_id, 2).await?;
+    let ordered = service
+        .list_due_application_operations(tenant_id, 2)
+        .await?;
     assert_eq!(ordered.len(), 2);
     assert_eq!(ordered[0].decision_id, oldest.id);
     assert_eq!(ordered[1].decision_id, newer.id);
@@ -141,18 +145,13 @@ async fn concurrent_claim_has_exactly_one_winner(database: &TestDatabase) -> Tes
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let seed = ModerationService::new(database.connection("application_claim_seed").await?);
-    let (case, decision) =
-        seed_decided_case(&seed, tenant_id, actor_id, 21, "claim-race").await?;
+    let (case, decision) = seed_decided_case(&seed, tenant_id, actor_id, 21, "claim-race").await?;
 
     let first_service = ModerationService::new(database.connection("application_claim_one").await?);
     let second_service =
         ModerationService::new(database.connection("application_claim_two").await?);
-    let first = first_service.claim_application_operation(
-        tenant_id,
-        decision.id,
-        "postgres-claim-one",
-        60,
-    );
+    let first =
+        first_service.claim_application_operation(tenant_id, decision.id, "postgres-claim-one", 60);
     let second = second_service.claim_application_operation(
         tenant_id,
         decision.id,
@@ -172,7 +171,10 @@ async fn concurrent_claim_has_exactly_one_winner(database: &TestDatabase) -> Tes
     assert_eq!(winners.len(), 1);
     assert_eq!(losers, 1);
     let winner = &winners[0];
-    assert_eq!(winner.status, ModerationApplicationOperationStatus::Applying);
+    assert_eq!(
+        winner.status,
+        ModerationApplicationOperationStatus::Applying
+    );
     assert_eq!(winner.attempt_count, 1);
     assert!(winner.lease_token.is_some());
     assert!(winner.lease_expires_at.is_some());
@@ -236,7 +238,10 @@ async fn expired_lease_reclaims_without_second_case_revision_and_fences_stale_wo
         .get_case(tenant_id, case.id)
         .await?
         .ok_or_else(|| std::io::Error::other("case after first application claim is missing"))?;
-    assert_eq!(after_first_claim.status, ModerationCaseStatus::ApplyingDecision);
+    assert_eq!(
+        after_first_claim.status,
+        ModerationCaseStatus::ApplyingDecision
+    );
     assert_eq!(after_first_claim.revision, case.revision + 1);
 
     let storage = database.connection("application_reclaim_storage").await?;
@@ -248,7 +253,9 @@ async fn expired_lease_reclaims_without_second_case_revision_and_fences_stale_wo
         ))
         .await?;
 
-    let due_after_expiry = service.list_due_application_operations(tenant_id, 10).await?;
+    let due_after_expiry = service
+        .list_due_application_operations(tenant_id, 10)
+        .await?;
     assert!(
         due_after_expiry
             .iter()
@@ -264,7 +271,10 @@ async fn expired_lease_reclaims_without_second_case_revision_and_fences_stale_wo
         .lease_token
         .ok_or_else(|| std::io::Error::other("reclaimed application has no lease token"))?;
     assert_ne!(live_token, stale_token);
-    assert_eq!(reclaimed.status, ModerationApplicationOperationStatus::Applying);
+    assert_eq!(
+        reclaimed.status,
+        ModerationApplicationOperationStatus::Applying
+    );
     assert_eq!(reclaimed.attempt_count, 2);
     assert_eq!(reclaimed.lease_owner.as_deref(), Some("postgres-reclaimer"));
 
@@ -294,10 +304,16 @@ async fn expired_lease_reclaims_without_second_case_revision_and_fences_stale_wo
         .get_application_operation(tenant_id, decision.id)
         .await?
         .ok_or_else(|| std::io::Error::other("reclaimed application operation disappeared"))?;
-    assert_eq!(still_owned.status, ModerationApplicationOperationStatus::Applying);
+    assert_eq!(
+        still_owned.status,
+        ModerationApplicationOperationStatus::Applying
+    );
     assert_eq!(still_owned.attempt_count, 2);
     assert_eq!(still_owned.lease_token, Some(live_token));
-    assert_eq!(still_owned.lease_owner.as_deref(), Some("postgres-reclaimer"));
+    assert_eq!(
+        still_owned.lease_owner.as_deref(),
+        Some("postgres-reclaimer")
+    );
 
     let retryable = reclaimer
         .mark_application_retryable(
@@ -309,7 +325,10 @@ async fn expired_lease_reclaims_without_second_case_revision_and_fences_stale_wo
             60,
         )
         .await?;
-    assert_eq!(retryable.status, ModerationApplicationOperationStatus::Retryable);
+    assert_eq!(
+        retryable.status,
+        ModerationApplicationOperationStatus::Retryable
+    );
     assert_eq!(retryable.attempt_count, 2);
     assert!(retryable.lease_token.is_none());
     assert!(retryable.lease_owner.is_none());
@@ -349,9 +368,14 @@ async fn retryable_deadline_controls_due_visibility(database: &TestDatabase) -> 
             60,
         )
         .await?;
-    assert_eq!(retryable.status, ModerationApplicationOperationStatus::Retryable);
+    assert_eq!(
+        retryable.status,
+        ModerationApplicationOperationStatus::Retryable
+    );
 
-    let before_deadline = service.list_due_application_operations(tenant_id, 10).await?;
+    let before_deadline = service
+        .list_due_application_operations(tenant_id, 10)
+        .await?;
     assert!(
         before_deadline
             .iter()
@@ -360,7 +384,9 @@ async fn retryable_deadline_controls_due_visibility(database: &TestDatabase) -> 
 
     let storage = database.connection("application_retry_storage").await?;
     set_next_attempt_offset(&storage, tenant_id, decision.id, -1).await?;
-    let after_deadline = service.list_due_application_operations(tenant_id, 10).await?;
+    let after_deadline = service
+        .list_due_application_operations(tenant_id, 10)
+        .await?;
     assert!(
         after_deadline
             .iter()

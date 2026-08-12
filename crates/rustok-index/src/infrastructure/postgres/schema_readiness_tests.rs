@@ -4,8 +4,8 @@ use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 use super::{
-    IndexSchemaReadinessError, IndexSchemaReadinessRequest, PostgresIndexSchemaReadinessStore,
-    PostgresSchemaRegistrationStore, MAX_INDEX_SCHEMA_READINESS_SCHEMAS,
+    IndexSchemaReadinessError, IndexSchemaReadinessRequest, MAX_INDEX_SCHEMA_READINESS_SCHEMAS,
+    PostgresIndexSchemaReadinessStore, PostgresSchemaRegistrationStore,
 };
 use crate::{
     EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema, IndexValueType,
@@ -103,7 +103,10 @@ async fn readiness_requires_the_complete_exact_tenant_schema_set() {
         registration.register(tenant(), schema).await.unwrap();
     }
 
-    let receipt = readiness.require(&request(&schemas), &registry).await.unwrap();
+    let receipt = readiness
+        .require(&request(&schemas), &registry)
+        .await
+        .unwrap();
     assert_eq!(receipt.tenant_id(), tenant());
     assert_eq!(receipt.schemas().len(), schemas.len());
     assert_eq!(
@@ -166,7 +169,10 @@ async fn readiness_rejects_inactive_or_contract_drifted_rows() {
     .await
     .unwrap();
 
-    let error = readiness.require(&request(&schemas), &registry).await.unwrap_err();
+    let error = readiness
+        .require(&request(&schemas), &registry)
+        .await
+        .unwrap_err();
     match error {
         IndexSchemaReadinessError::NotReady { failures } => {
             assert_eq!(failures.len(), 2);
@@ -201,7 +207,10 @@ async fn readiness_rejects_schema_json_drift_even_with_the_expected_fingerprint(
     .await
     .unwrap();
 
-    let error = readiness.require(&request(&schemas), &registry).await.unwrap_err();
+    let error = readiness
+        .require(&request(&schemas), &registry)
+        .await
+        .unwrap_err();
     match error {
         IndexSchemaReadinessError::NotReady { failures } => {
             assert_eq!(failures.len(), 1);

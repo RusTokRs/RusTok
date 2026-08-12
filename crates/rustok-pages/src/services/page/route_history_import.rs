@@ -109,8 +109,7 @@ impl PageRouteHistoryImportService {
                 .filter(page_route_history_import::Column::TenantId.eq(tenant_id))
                 .filter(page_route_history_import::Column::Source.eq(&source))
                 .filter(
-                    page_route_history_import::Column::SourceRecordId
-                        .eq(&item.source_record_id),
+                    page_route_history_import::Column::SourceRecordId.eq(&item.source_record_id),
                 )
                 .all(&txn)
                 .await?;
@@ -193,9 +192,8 @@ impl PageRouteHistoryImportService {
             }
         }
 
-        let processed_item_count = u32::try_from(items.len()).map_err(|_| {
-            PagesError::validation("Historical route import item count overflow")
-        })?;
+        let processed_item_count = u32::try_from(items.len())
+            .map_err(|_| PagesError::validation("Historical route import item count overflow"))?;
         txn.commit().await?;
 
         Ok(PageRouteHistoryImportResult {
@@ -240,13 +238,8 @@ fn prepare_input(
         }
         let locale = normalize_locale(&item.locale)?;
         let slug = normalize_slug(&item.slug)?;
-        let request_hash = import_request_hash(
-            &source,
-            &source_record_id,
-            item.page_id,
-            &locale,
-            &slug,
-        );
+        let request_hash =
+            import_request_hash(&source, &source_record_id, item.page_id, &locale, &slug);
         prepared.push(PreparedImportItem {
             source_record_id,
             page_id: item.page_id,

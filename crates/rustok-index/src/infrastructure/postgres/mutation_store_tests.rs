@@ -9,11 +9,10 @@ use uuid::Uuid;
 
 use super::{MutationApplyOutcome, MutationDelivery, MutationStorageError, PostgresMutationStore};
 use crate::{
-    EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexLink,
-    IndexLinkValue, IndexModule, IndexMutation, IndexRecord, IndexSchema, IndexValue,
-    IndexValueType,
-    LinkedEntityKey, LinkCardinality, LinkName, LocaleKey, LocaleMode, ModuleName,
-    SchemaRef, SchemaRegistry, SchemaVersion,
+    EntityKey, EntityName, FieldCardinality, FieldName, IndexField, IndexLink, IndexLinkValue,
+    IndexModule, IndexMutation, IndexRecord, IndexSchema, IndexValue, IndexValueType,
+    LinkCardinality, LinkName, LinkedEntityKey, LocaleKey, LocaleMode, ModuleName, SchemaRef,
+    SchemaRegistry, SchemaVersion,
 };
 
 const TENANT_A: &str = "11111111-1111-1111-1111-111111111111";
@@ -91,13 +90,7 @@ impl Fixture {
         }
     }
 
-    fn record(
-        &self,
-        tenant: &str,
-        entity_id: Uuid,
-        version: u64,
-        channel_id: Uuid,
-    ) -> IndexRecord {
+    fn record(&self, tenant: &str, entity_id: Uuid, version: u64, channel_id: Uuid) -> IndexRecord {
         IndexRecord {
             key: EntityKey {
                 tenant_id: Uuid::parse_str(tenant).unwrap(),
@@ -196,7 +189,11 @@ async fn atomically_upserts_entity_links_and_terminal_inbox_state() {
         fixture.record(TENANT_A, entity_id, 1, first_channel),
     );
     assert_eq!(
-        fixture.store.apply(&fixture.registry, &first).await.unwrap(),
+        fixture
+            .store
+            .apply(&fixture.registry, &first)
+            .await
+            .unwrap(),
         MutationApplyOutcome::Applied { source_version: 1 }
     );
 
@@ -207,7 +204,11 @@ async fn atomically_upserts_entity_links_and_terminal_inbox_state() {
         fixture.record(TENANT_A, entity_id, 2, second_channel),
     );
     assert_eq!(
-        fixture.store.apply(&fixture.registry, &second).await.unwrap(),
+        fixture
+            .store
+            .apply(&fixture.registry, &second)
+            .await
+            .unwrap(),
         MutationApplyOutcome::Applied { source_version: 2 }
     );
 
@@ -260,9 +261,17 @@ async fn exact_redelivery_is_duplicate_but_payload_reuse_conflicts() {
         },
     )
     .unwrap();
-    fixture.store.apply(&fixture.registry, &delivery).await.unwrap();
+    fixture
+        .store
+        .apply(&fixture.registry, &delivery)
+        .await
+        .unwrap();
     assert_eq!(
-        fixture.store.apply(&fixture.registry, &delivery).await.unwrap(),
+        fixture
+            .store
+            .apply(&fixture.registry, &delivery)
+            .await
+            .unwrap(),
         MutationApplyOutcome::Duplicate { source_version: 1 }
     );
 
@@ -327,7 +336,11 @@ async fn tombstone_and_source_version_guards_prevent_stale_resurrection() {
         },
     )
     .unwrap();
-    fixture.store.apply(&fixture.registry, &delete).await.unwrap();
+    fixture
+        .store
+        .apply(&fixture.registry, &delete)
+        .await
+        .unwrap();
     let resurrection = upsert_delivery(
         "catalog-source",
         "upsert-3-replayed",
@@ -397,9 +410,21 @@ async fn tenant_and_locale_identity_do_not_collide() {
     let mut localized_record = fixture.record(TENANT_A, entity_id, 1, Uuid::new_v4());
     localized_record.key.locale = Some(LocaleKey::new("fr-FR").unwrap());
     let third = upsert_delivery("catalog-source", "locale-fr", localized_record);
-    fixture.store.apply(&fixture.registry, &first).await.unwrap();
-    fixture.store.apply(&fixture.registry, &second).await.unwrap();
-    fixture.store.apply(&fixture.registry, &third).await.unwrap();
+    fixture
+        .store
+        .apply(&fixture.registry, &first)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .apply(&fixture.registry, &second)
+        .await
+        .unwrap();
+    fixture
+        .store
+        .apply(&fixture.registry, &third)
+        .await
+        .unwrap();
     assert_eq!(
         scalar_i64(&fixture.db, "SELECT COUNT(*) AS value FROM index_entities").await,
         3

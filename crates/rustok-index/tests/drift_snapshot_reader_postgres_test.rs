@@ -13,10 +13,9 @@ use rustok_index::{
     IndexModule, IndexMutation, IndexRecord, IndexSchema, IndexSource, IndexSourceFailure,
     IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
     IndexValue, IndexValueType, LocaleMode, ModuleName, MutationDelivery, PostgresMutationStore,
-    PostgresSchemaRegistrationStore, SchemaRef, SchemaVersion,
-    materialize_index_schema_registry, materialize_index_source_registry,
-    materialize_postgres_index_drift_snapshot_reader, register_index_schema_source,
-    register_index_source,
+    PostgresSchemaRegistrationStore, SchemaRef, SchemaVersion, materialize_index_schema_registry,
+    materialize_index_source_registry, materialize_postgres_index_drift_snapshot_reader,
+    register_index_schema_source, register_index_source,
 };
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
@@ -81,10 +80,7 @@ impl TestDatabase {
             return Ok(None);
         };
         let control = connect(&database_url).await?;
-        let schema_name = format!(
-            "rustok_index_drift_snapshot_{}",
-            Uuid::new_v4().simple()
-        );
+        let schema_name = format!("rustok_index_drift_snapshot_{}", Uuid::new_v4().simple());
         control
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;
@@ -92,10 +88,8 @@ impl TestDatabase {
         db.execute_unprepared("CREATE TABLE tenants (id UUID NOT NULL PRIMARY KEY)")
             .await?;
         let tenant_id = Uuid::new_v4();
-        db.execute_unprepared(&format!(
-            "INSERT INTO tenants (id) VALUES ('{tenant_id}')"
-        ))
-        .await?;
+        db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES ('{tenant_id}')"))
+            .await?;
         let manager = SchemaManager::new(&db);
         for migration in IndexModule.migrations() {
             migration.up(&manager).await?;
@@ -135,10 +129,7 @@ async fn source_version_fence_captures_and_rejects_unstable_postgres_snapshots()
     let (stable_reader, stable_schemas) = reader(
         database.db.clone(),
         schema.clone(),
-        SequencedSource::new([
-            vec![stable_source.clone()],
-            vec![stable_source.clone()],
-        ]),
+        SequencedSource::new([vec![stable_source.clone()], vec![stable_source.clone()]]),
     )?;
     PostgresMutationStore::new(database.db.clone())
         .apply(
@@ -269,7 +260,10 @@ fn upsert(key: &EntityKey, source_version: u64, name: &str, event_id: Uuid) -> I
             key: key.clone(),
             source_version,
             fields: BTreeMap::from([
-                (FieldName::new("id").unwrap(), IndexValue::Uuid(key.entity_id)),
+                (
+                    FieldName::new("id").unwrap(),
+                    IndexValue::Uuid(key.entity_id),
+                ),
                 (
                     FieldName::new("name").unwrap(),
                     IndexValue::String(name.to_owned()),

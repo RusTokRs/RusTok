@@ -860,7 +860,8 @@ mod tests {
 
     #[test]
     fn category_filter_preserves_product_and_adds_exact_forum_scope() {
-        let filters = build_filter_clause(&query_with_categories(vec![Uuid::from_u128(7)]), 4, None);
+        let filters =
+            build_filter_clause(&query_with_categories(vec![Uuid::from_u128(7)]), 4, None);
 
         for marker in [
             "entity_type = 'product'",

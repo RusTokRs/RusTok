@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    fmt,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, fmt, sync::Arc};
 
 use async_trait::async_trait;
 use rustok_core::ModuleRuntimeExtensions;
@@ -256,11 +252,7 @@ impl<T> IndexMutationEventDelivery<T> {
     }
 
     pub fn into_parts(self) -> (String, IndexMutation, T) {
-        (
-            self.event_domain,
-            self.mutation,
-            self.acknowledgement_token,
-        )
+        (self.event_domain, self.mutation, self.acknowledgement_token)
     }
 }
 
@@ -312,10 +304,8 @@ impl IndexMutationAcknowledgeFailure {
 pub trait IndexMutationEventAcknowledger: Send + Sync {
     type Token: Send + Sync;
 
-    async fn acknowledge(
-        &self,
-        token: &Self::Token,
-    ) -> Result<(), IndexMutationAcknowledgeFailure>;
+    async fn acknowledge(&self, token: &Self::Token)
+    -> Result<(), IndexMutationAcknowledgeFailure>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -423,9 +413,7 @@ pub enum IndexMutationEventError {
     },
     #[error("Index mutation event catalog exists without an Index replay source catalog")]
     MissingSourceCatalog,
-    #[error(
-        "Index mutation event {event_domain} references unknown replay source {source_name}"
-    )]
+    #[error("Index mutation event {event_domain} references unknown replay source {source_name}")]
     UnknownReplaySource {
         event_domain: String,
         source_name: String,
@@ -461,9 +449,7 @@ pub enum IndexMutationEventError {
 pub enum IndexMutationEventProcessError {
     #[error("Unknown Index mutation event domain: {0}")]
     UnknownEventDomain(String),
-    #[error(
-        "Index mutation event {event_domain} carries schema {actual}, expected {expected}"
-    )]
+    #[error("Index mutation event {event_domain} carries schema {actual}, expected {expected}")]
     MutationSchemaMismatch {
         event_domain: String,
         expected: SchemaRef,
@@ -906,7 +892,12 @@ mod tests {
         assert!(matches!(
             IndexMutationEventDelivery::new(
                 "rustok-product.product-v1",
-                make(Uuid::from_u128(4), Uuid::from_u128(1), Uuid::from_u128(2), 0),
+                make(
+                    Uuid::from_u128(4),
+                    Uuid::from_u128(1),
+                    Uuid::from_u128(2),
+                    0
+                ),
                 (),
             ),
             Err(IndexMutationEventError::ZeroSourceVersion)

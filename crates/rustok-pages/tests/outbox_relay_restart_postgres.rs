@@ -43,10 +43,7 @@ impl TestDatabase {
             return Ok(None);
         };
         let control = connect(&database_url).await?;
-        let schema_name = format!(
-            "rustok_pages_relay_restart_{}",
-            Uuid::new_v4().simple()
-        );
+        let schema_name = format!("rustok_pages_relay_restart_{}", Uuid::new_v4().simple());
         control
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;
@@ -191,8 +188,8 @@ impl EventTransport for RestartTarget {
 }
 
 #[tokio::test]
-async fn restarted_relay_dispatches_pending_node_published_before_acknowledging_row(
-) -> TestResult<()> {
+async fn restarted_relay_dispatches_pending_node_published_before_acknowledging_row()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -232,9 +229,8 @@ async fn restarted_relay_dispatches_pending_node_published_before_acknowledging_
     ));
     let target = Arc::new(RestartTarget::new(handler, 1));
     let first_target: Arc<dyn EventTransport> = target.clone();
-    let first_relay = OutboxRelay::new(db.clone(), first_target).with_config(relay_config(
-        "pages-relay-before-restart",
-    ));
+    let first_relay = OutboxRelay::new(db.clone(), first_target)
+        .with_config(relay_config("pages-relay-before-restart"));
 
     assert_eq!(first_relay.process_pending_once(Some(1)).await?, 1);
     let retrying = SysEvents::find_by_id(event_id)
@@ -249,16 +245,18 @@ async fn restarted_relay_dispatches_pending_node_published_before_acknowledging_
     assert!(retrying.claimed_at.is_none());
     assert!(retrying.dispatched_at.is_none());
     assert!(target.delivered_event_ids().is_empty());
-    assert_eq!(cache_port.recorded().0, PageCacheGenerationSnapshot::default());
+    assert_eq!(
+        cache_port.recorded().0,
+        PageCacheGenerationSnapshot::default()
+    );
     let first_metrics = first_relay.metrics();
     assert_eq!(first_metrics.failure_total, 1);
     assert_eq!(first_metrics.success_total, 0);
     assert_eq!(first_metrics.processed_total, 1);
 
     let restarted_target: Arc<dyn EventTransport> = target.clone();
-    let restarted_relay = OutboxRelay::new(db.clone(), restarted_target).with_config(
-        relay_config("pages-relay-after-restart"),
-    );
+    let restarted_relay = OutboxRelay::new(db.clone(), restarted_target)
+        .with_config(relay_config("pages-relay-after-restart"));
     assert_eq!(restarted_relay.process_pending_once(Some(1)).await?, 1);
 
     let dispatched = SysEvents::find_by_id(event_id)

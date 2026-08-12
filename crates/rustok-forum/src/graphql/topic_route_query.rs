@@ -33,10 +33,8 @@ impl ForumTopicRouteQuery {
         short_id: String,
         slug: String,
     ) -> Result<Option<GqlForumStorefrontTopicRouteResolution>> {
-        let Some(resolution) = resolve_authorized_public_route(
-            ctx, tenant_id, locale, short_id, slug, false,
-        )
-        .await?
+        let Some(resolution) =
+            resolve_authorized_public_route(ctx, tenant_id, locale, short_id, slug, false).await?
         else {
             return Ok(None);
         };
@@ -53,10 +51,8 @@ impl ForumTopicRouteQuery {
         short_id: String,
         slug: String,
     ) -> Result<Option<GqlForumStorefrontTopicRouteDecision>> {
-        let Some(resolution) = resolve_authorized_public_route(
-            ctx, tenant_id, locale, short_id, slug, true,
-        )
-        .await?
+        let Some(resolution) =
+            resolve_authorized_public_route(ctx, tenant_id, locale, short_id, slug, true).await?
         else {
             return Ok(None);
         };
@@ -115,10 +111,10 @@ async fn resolve_authorized_public_route(
         forum_channel_enabled(ctx).await?
     };
     if !anonymous_channel_enabled {
-        return Err(async_graphql::Error::new(
-            "Forum module is not enabled for this channel",
-        )
-        .extend_with(|_, extension| extension.set("code", "FORBIDDEN")));
+        return Err(
+            async_graphql::Error::new("Forum module is not enabled for this channel")
+                .extend_with(|_, extension| extension.set("code", "FORBIDDEN")),
+        );
     }
 
     let resolution = match ForumTopicRouteService::new(db.clone())
@@ -145,14 +141,12 @@ async fn resolve_authorized_public_route(
             return Ok(None);
         }
         let topic_id = resolution.requested_topic_id.ok_or_else(|| {
-            internal_error("Forum gone route resolution did not provide its historical topic identity")
+            internal_error(
+                "Forum gone route resolution did not provide its historical topic identity",
+            )
         })?;
         let disclose = ForumTopicRouteTombstoneVisibilityService::new(db.clone())
-            .can_disclose_public_gone(
-                tenant_id,
-                topic_id,
-                public_channel_slug(ctx).as_deref(),
-            )
+            .can_disclose_public_gone(tenant_id, topic_id, public_channel_slug(ctx).as_deref())
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         return Ok(disclose.then_some(resolution));
@@ -212,12 +206,8 @@ fn map_legacy_public_route_resolution(
     resolution: ForumTopicRouteResolution,
 ) -> Result<Option<GqlForumStorefrontTopicRouteResolution>> {
     let disposition = match resolution.disposition {
-        ForumTopicRouteDisposition::Canonical => {
-            GqlForumStorefrontTopicRouteDisposition::Canonical
-        }
-        ForumTopicRouteDisposition::Redirect => {
-            GqlForumStorefrontTopicRouteDisposition::Redirect
-        }
+        ForumTopicRouteDisposition::Canonical => GqlForumStorefrontTopicRouteDisposition::Canonical,
+        ForumTopicRouteDisposition::Redirect => GqlForumStorefrontTopicRouteDisposition::Redirect,
         ForumTopicRouteDisposition::Gone => return Ok(None),
     };
     let canonical = resolution.canonical.ok_or_else(|| {
@@ -269,10 +259,7 @@ fn map_public_route_decision(
                     "Forum gone route resolution unexpectedly provided a canonical target",
                 ));
             }
-            (
-                GqlForumStorefrontTopicRouteDecisionDisposition::Gone,
-                None,
-            )
+            (GqlForumStorefrontTopicRouteDecisionDisposition::Gone, None)
         }
     };
 
@@ -331,8 +318,7 @@ mod tests {
 
     fn descriptor() -> ForumTopicRouteDescriptor {
         ForumTopicRouteDescriptor {
-            topic_id: Uuid::parse_str("00000000-0000-4000-8000-000000000001")
-                .expect("topic id"),
+            topic_id: Uuid::parse_str("00000000-0000-4000-8000-000000000001").expect("topic id"),
             locale: "en".to_string(),
             short_id: "000000000000".to_string(),
             slug: "welcome".to_string(),
@@ -349,8 +335,7 @@ mod tests {
             requested_short_id: "000000000000".to_string(),
             requested_slug: "old-welcome".to_string(),
             requested_topic_id: Some(
-                Uuid::parse_str("00000000-0000-4000-8000-000000000001")
-                    .expect("topic id"),
+                Uuid::parse_str("00000000-0000-4000-8000-000000000001").expect("topic id"),
             ),
             disposition,
             canonical,
@@ -372,12 +357,9 @@ mod tests {
         );
 
         assert!(
-            map_legacy_public_route_resolution(resolution(
-                ForumTopicRouteDisposition::Gone,
-                None,
-            ))
-            .expect("gone mapping")
-            .is_none()
+            map_legacy_public_route_resolution(resolution(ForumTopicRouteDisposition::Gone, None,))
+                .expect("gone mapping")
+                .is_none()
         );
     }
 
@@ -395,11 +377,8 @@ mod tests {
     #[test]
     fn disclosed_nonterminal_decisions_require_canonical_target() {
         assert!(
-            map_public_route_decision(resolution(
-                ForumTopicRouteDisposition::Redirect,
-                None,
-            ))
-            .is_err()
+            map_public_route_decision(resolution(ForumTopicRouteDisposition::Redirect, None,))
+                .is_err()
         );
     }
 }

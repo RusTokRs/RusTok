@@ -1,10 +1,10 @@
 use std::{cmp::Ordering, collections::BTreeMap};
 
 use crate::{
-    CursorCodec, EntityKey, ExecutableQueryPlan, FieldPath, FilterExpr,
-    IndexNestedRelationItem, IndexNestedRelationProjection, IndexProjectedValue, IndexQuery,
-    IndexQueryItem, IndexQueryPage, IndexRecord, IndexRelationIdentity, IndexValue, LinkName,
-    OrderDirection, Pagination, PlannedField, SchemaRegistry,
+    CursorCodec, EntityKey, ExecutableQueryPlan, FieldPath, FilterExpr, IndexNestedRelationItem,
+    IndexNestedRelationProjection, IndexProjectedValue, IndexQuery, IndexQueryItem, IndexQueryPage,
+    IndexRecord, IndexRelationIdentity, IndexValue, LinkName, OrderDirection, Pagination,
+    PlannedField, SchemaRegistry,
 };
 
 pub(super) struct ReferenceFixture<'a> {
@@ -56,7 +56,10 @@ impl<'a> ReferenceFixture<'a> {
         {
             let cursor = CursorCodec::decode_scoped_for_query(encoded, query, self.registry)
                 .expect("production cursor should decode in the reference fixture");
-            records.retain(|record| self.compare_record_to_cursor(record, &cursor, query).is_gt());
+            records.retain(|record| {
+                self.compare_record_to_cursor(record, &cursor, query)
+                    .is_gt()
+            });
         }
 
         let (page_size, offset) = match &query.pagination {
@@ -225,7 +228,11 @@ impl<'a> ReferenceFixture<'a> {
         }
         self.relation_chains(root, path.links())
             .into_iter()
-            .filter_map(|chain| chain.last().and_then(|record| record.fields.get(path.field())))
+            .filter_map(|chain| {
+                chain
+                    .last()
+                    .and_then(|record| record.fields.get(path.field()))
+            })
             .collect()
     }
 
@@ -256,21 +263,19 @@ impl<'a> ReferenceFixture<'a> {
             FilterExpr::Gt(path, expected) => {
                 self.matches_ordered(record, path, expected, Ordering::is_gt)
             }
-            FilterExpr::Gte(path, expected) => self.matches_ordered(
-                record,
-                path,
-                expected,
-                |ordering| ordering.is_gt() || ordering.is_eq(),
-            ),
+            FilterExpr::Gte(path, expected) => {
+                self.matches_ordered(record, path, expected, |ordering| {
+                    ordering.is_gt() || ordering.is_eq()
+                })
+            }
             FilterExpr::Lt(path, expected) => {
                 self.matches_ordered(record, path, expected, Ordering::is_lt)
             }
-            FilterExpr::Lte(path, expected) => self.matches_ordered(
-                record,
-                path,
-                expected,
-                |ordering| ordering.is_lt() || ordering.is_eq(),
-            ),
+            FilterExpr::Lte(path, expected) => {
+                self.matches_ordered(record, path, expected, |ordering| {
+                    ordering.is_lt() || ordering.is_eq()
+                })
+            }
             FilterExpr::Contains(path, expected) => self
                 .values_for_path(record, path)
                 .into_iter()
@@ -335,7 +340,9 @@ impl<'a> ReferenceFixture<'a> {
     ) -> Ordering {
         for (order, cursor_value) in query.order_by.iter().zip(&cursor.order_values) {
             let comparison = compare_optional_to_cursor(
-                self.values_for_path(record, &order.field).into_iter().next(),
+                self.values_for_path(record, &order.field)
+                    .into_iter()
+                    .next(),
                 cursor_value,
             );
             if comparison != Ordering::Equal {

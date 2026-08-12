@@ -87,12 +87,10 @@ impl ForumTopicMoveService {
         let txn = self.db.begin().await?;
         lock_topic_move_tenant_in_tx(&txn, tenant_id).await?;
 
-        if let Some(existing) = forum_topic_move_operation::Entity::find_by_id((
-            tenant_id,
-            input.operation_id,
-        ))
-        .one(&txn)
-        .await?
+        if let Some(existing) =
+            forum_topic_move_operation::Entity::find_by_id((tenant_id, input.operation_id))
+                .one(&txn)
+                .await?
         {
             if existing.topic_id != topic_id
                 || existing.target_category_id != input.target_category_id

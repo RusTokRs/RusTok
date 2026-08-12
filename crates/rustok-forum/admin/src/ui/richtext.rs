@@ -14,9 +14,8 @@ pub fn ForumRichTextEditor(
 ) -> impl IntoView {
     let route_context = use_context::<rustok_ui_core::UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale;
-    let copy = localized_richtext_frame_copy(|key, fallback| {
-        t(ui_locale.as_deref(), key, fallback)
-    });
+    let copy =
+        localized_richtext_frame_copy(|key, fallback| t(ui_locale.as_deref(), key, fallback));
 
     view! {
         <RichTextEditorFrame

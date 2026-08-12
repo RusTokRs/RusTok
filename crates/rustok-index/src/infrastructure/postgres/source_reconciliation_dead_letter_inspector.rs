@@ -72,8 +72,10 @@ impl PostgresIndexReconciliationDeadLetterInspector {
         &self,
         tenant_id: Uuid,
         job_id: Uuid,
-    ) -> Result<Option<IndexReconciliationDeadLetterInspection>, IndexReconciliationDeadLetterInspectionError>
-    {
+    ) -> Result<
+        Option<IndexReconciliationDeadLetterInspection>,
+        IndexReconciliationDeadLetterInspectionError,
+    > {
         if tenant_id.is_nil() {
             return Err(IndexReconciliationDeadLetterInspectionError::NilTenantId);
         }
@@ -92,8 +94,7 @@ impl PostgresIndexReconciliationDeadLetterInspector {
             ))
             .await
             .map_err(|_| IndexReconciliationDeadLetterInspectionError::Storage)?;
-        row.map(|row| decode_failed_job(&row, job_id))
-            .transpose()
+        row.map(|row| decode_failed_job(&row, job_id)).transpose()
     }
 }
 
@@ -110,9 +111,11 @@ fn decode_failed_job(
         )
     })?;
     if attempt_count == 0 {
-        return Err(IndexReconciliationDeadLetterInspectionError::InvalidStoredJob(
-            "attempt count must be positive",
-        ));
+        return Err(
+            IndexReconciliationDeadLetterInspectionError::InvalidStoredJob(
+                "attempt count must be positive",
+            ),
+        );
     }
 
     let error_code: Option<String> = row
@@ -135,9 +138,11 @@ fn decode_failed_job(
         )
     })?;
     if details.contract != RECONCILIATION_FAILURE_CONTRACT {
-        return Err(IndexReconciliationDeadLetterInspectionError::InvalidStoredJob(
-            "last_error_details contract is unsupported",
-        ));
+        return Err(
+            IndexReconciliationDeadLetterInspectionError::InvalidStoredJob(
+                "last_error_details contract is unsupported",
+            ),
+        );
     }
     validate_machine_code(&details.dependency_code).map_err(|_| {
         IndexReconciliationDeadLetterInspectionError::InvalidStoredJob(
@@ -159,9 +164,7 @@ fn validate_machine_code(value: &str) -> Result<(), ()> {
         || value.len() > MAX_ERROR_CODE_BYTES
         || value.trim() != value
         || !value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'.' | b'_' | b'-')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
         })
     {
         return Err(());
@@ -280,7 +283,13 @@ mod tests {
         .await;
         let inspector = PostgresIndexReconciliationDeadLetterInspector::new(db);
 
-        assert!(inspector.inspect(Uuid::new_v4(), job_id).await.unwrap().is_none());
+        assert!(
+            inspector
+                .inspect(Uuid::new_v4(), job_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
         let inspection = inspector
             .inspect(tenant_id, job_id)
             .await

@@ -28,7 +28,6 @@ pub use widget_preview_transport::{
 pub use widget_property_transport::{
     ForumWidgetPropertySchemaTransportRequest, ForumWidgetPropertySchemaTransportResponse,
     ForumWidgetPropertyValidationIssueTransport, ForumWidgetPropertyValidationTransportRequest,
-    ForumWidgetPropertyValidationTransportResponse,
-    load_forum_page_builder_widget_property_schema,
+    ForumWidgetPropertyValidationTransportResponse, load_forum_page_builder_widget_property_schema,
     validate_forum_page_builder_widget_properties,
 };

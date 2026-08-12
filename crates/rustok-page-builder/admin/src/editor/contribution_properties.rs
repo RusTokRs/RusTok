@@ -45,9 +45,16 @@ struct ContributionPropertyField {
 
 #[derive(Debug, Clone)]
 enum ContributionPropertyFieldKind {
-    Text { format: Option<String> },
-    Select { options: Vec<String> },
-    Integer { minimum: Option<u64>, maximum: Option<u64> },
+    Text {
+        format: Option<String>,
+    },
+    Select {
+        options: Vec<String>,
+    },
+    Integer {
+        minimum: Option<u64>,
+        maximum: Option<u64>,
+    },
     Boolean,
 }
 
@@ -166,11 +173,15 @@ pub fn ContributionPropertiesPanel(
             return;
         }
         let Some(current) = loaded.get_untracked() else {
-            error.set(Some("Load the owner property schema before applying values".to_string()));
+            error.set(Some(
+                "Load the owner property schema before applying values".to_string(),
+            ));
             return;
         };
         let Some(selected) = selected_request.get_untracked() else {
-            error.set(Some("The selected contribution property contract is unavailable".to_string()));
+            error.set(Some(
+                "The selected contribution property contract is unavailable".to_string(),
+            ));
             return;
         };
         if selected.component_id != current.component_id
@@ -213,10 +224,13 @@ pub fn ContributionPropertiesPanel(
                 Ok(validation) => {
                     issues.set(validation.issues.clone());
                     if !validation.valid {
-                        error.set(Some("Owner validation rejected the current widget properties".to_string()));
+                        error.set(Some(
+                            "Owner validation rejected the current widget properties".to_string(),
+                        ));
                     } else if !validation.normalized_props.is_object() {
                         error.set(Some(
-                            "Owner validation returned non-object normalized properties".to_string(),
+                            "Owner validation returned non-object normalized properties"
+                                .to_string(),
                         ));
                     } else {
                         let selection_still_matches = runtime.controller.with(|controller| {
@@ -246,7 +260,9 @@ pub fn ContributionPropertiesPanel(
                                     });
                                 }
                                 saved.set(true);
-                                runtime.announce("Owner-normalized component properties applied to Fly draft");
+                                runtime.announce(
+                                    "Owner-normalized component properties applied to Fly draft",
+                                );
                             }
                         }
                     }
@@ -515,7 +531,10 @@ fn selected_property_request(
         let component = controller.editor().document().component(component_id)?;
         let provider = component.provider.as_deref()?.trim();
         let component_type = component.component_type().trim();
-        if provider.is_empty() || component_type.is_empty() || host.property_port(provider).is_none() {
+        if provider.is_empty()
+            || component_type.is_empty()
+            || host.property_port(provider).is_none()
+        {
             return None;
         }
         let property_editor = assembly.registry.iter().find_map(|(_, contribution)| {
@@ -552,7 +571,9 @@ fn parse_owner_property_schema(
         return Err("Owner property schema must describe an object".to_string());
     }
     if object.get("additionalProperties").and_then(Value::as_bool) != Some(false) {
-        return Err("Owner property schema must explicitly forbid additional properties".to_string());
+        return Err(
+            "Owner property schema must explicitly forbid additional properties".to_string(),
+        );
     }
     let properties = object
         .get("properties")
@@ -599,9 +620,9 @@ fn parse_owner_property_schema(
         let kind = match property_type {
             "string" => {
                 if let Some(raw_options) = definition.get("enum") {
-                    let options = raw_options.as_array().ok_or_else(|| {
-                        format!("Owner property `{id}` enum must be an array")
-                    })?;
+                    let options = raw_options
+                        .as_array()
+                        .ok_or_else(|| format!("Owner property `{id}` enum must be an array"))?;
                     let options = options
                         .iter()
                         .map(|value| {
@@ -637,7 +658,10 @@ fn parse_owner_property_schema(
             "integer" => {
                 let minimum = optional_u64_constraint(definition, id, "minimum")?;
                 let maximum = optional_u64_constraint(definition, id, "maximum")?;
-                if minimum.zip(maximum).is_some_and(|(minimum, maximum)| maximum < minimum) {
+                if minimum
+                    .zip(maximum)
+                    .is_some_and(|(minimum, maximum)| maximum < minimum)
+                {
                     return Err(format!(
                         "Owner property `{id}` maximum must be greater than or equal to minimum"
                     ));
@@ -699,9 +723,7 @@ fn optional_u64_constraint(
     match definition.get(constraint) {
         None => Ok(None),
         Some(value) => value.as_u64().map(Some).ok_or_else(|| {
-            format!(
-                "Owner property `{field_id}` {constraint} must be an unsigned integer"
-            )
+            format!("Owner property `{field_id}` {constraint} must be an unsigned integer")
         }),
     }
 }
@@ -713,9 +735,8 @@ fn optional_usize_constraint(
 ) -> Result<Option<usize>, String> {
     optional_u64_constraint(definition, field_id, constraint)?
         .map(|value| {
-            usize::try_from(value).map_err(|_| {
-                format!("Owner property `{field_id}` {constraint} is too large")
-            })
+            usize::try_from(value)
+                .map_err(|_| format!("Owner property `{field_id}` {constraint} is too large"))
         })
         .transpose()
 }

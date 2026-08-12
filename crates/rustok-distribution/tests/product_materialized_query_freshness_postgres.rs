@@ -136,8 +136,8 @@ struct ProductIndexRuntime {
 }
 
 #[tokio::test]
-async fn product_materialized_freshness_fences_delayed_mutations_before_query_semantics(
-) -> TestResult<()> {
+async fn product_materialized_freshness_fences_delayed_mutations_before_query_semantics()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -162,12 +162,8 @@ async fn run_materialized_freshness_scenarios(database: &TestDatabase) -> TestRe
     let delayed = load_product_mutation(&runtime.sources, STALE_PRODUCT_ID, "en").await?;
     let delayed_source_version = delayed.source_version();
     bump_stale_product_owner_revision(&database.writer).await?;
-    assert_owner_projection_advanced(
-        &database.writer,
-        STALE_PRODUCT_ID,
-        delayed_source_version,
-    )
-    .await?;
+    assert_owner_projection_advanced(&database.writer, STALE_PRODUCT_ID, delayed_source_version)
+        .await?;
     apply_product_mutation(&runtime, delayed).await?;
     assert_materialized_source_version(
         &database.mutation,
@@ -267,9 +263,7 @@ async fn product_runtime(database: &TestDatabase) -> TestResult<ProductIndexRunt
         .ok_or_else(|| std::io::Error::other("Product schema registry is missing"))?;
     let schema_store = PostgresSchemaRegistrationStore::new(database.query.clone());
     for registered in schemas.registry().iter() {
-        schema_store
-            .register(TENANT_ID, &registered.schema)
-            .await?;
+        schema_store.register(TENANT_ID, &registered.schema).await?;
     }
 
     materialize_postgres_index_sources(&mut extensions, database.source.clone())?;
@@ -315,7 +309,10 @@ async fn apply_product_mutation(
         .await?;
     match outcome {
         MutationApplyOutcome::Applied { source_version }
-            if source_version == expected_source_version => Ok(()),
+            if source_version == expected_source_version =>
+        {
+            Ok(())
+        }
         other => Err(std::io::Error::other(format!(
             "expected Product mutation version {expected_source_version} to apply, got {other:?}"
         ))
@@ -461,7 +458,11 @@ WHERE tenant_id = $1
   AND locale_key = $3
   AND is_deleted = FALSE
 "#,
-            vec![TENANT_ID.into(), product_id.into(), locale.to_owned().into()],
+            vec![
+                TENANT_ID.into(),
+                product_id.into(),
+                locale.to_owned().into(),
+            ],
         ))
         .await?
         .ok_or_else(|| std::io::Error::other("expected stale Product row to be materialized"))?;

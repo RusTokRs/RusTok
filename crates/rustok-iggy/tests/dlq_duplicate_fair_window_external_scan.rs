@@ -4,11 +4,9 @@ use std::env;
 use std::error::Error;
 use std::io::{Error as IoError, ErrorKind};
 
-use iggy::prelude::{
-    Client, Consumer, ConsumerKind, ConsumerOffsetClient, Identifier, IggyClient,
-};
+use iggy::prelude::{Client, Consumer, ConsumerKind, ConsumerOffsetClient, Identifier, IggyClient};
 use rustok_iggy::{
-    DlqEntry, DlqDuplicateSummary, ExternalConfig, IggyConfig, IggyDlqDuplicateScanRequest,
+    DlqDuplicateSummary, DlqEntry, ExternalConfig, IggyConfig, IggyDlqDuplicateScanRequest,
     IggyDlqDuplicateScanWindowPolicy, IggyDlqDuplicateScanner, IggyMode, IggyTransport,
     SerializationFormat, TopologyConfig,
 };
@@ -45,12 +43,8 @@ async fn fair_window_scans_each_partition_and_differs_from_global_budget() -> Te
         FAIR_PER_PARTITION_MESSAGES,
         BATCH_SIZE,
     )?;
-    let global_request = IggyDlqDuplicateScanRequest::new(
-        PARTITIONS.to_vec(),
-        0,
-        GLOBAL_MESSAGES,
-        BATCH_SIZE,
-    )?;
+    let global_request =
+        IggyDlqDuplicateScanRequest::new(PARTITIONS.to_vec(), 0, GLOBAL_MESSAGES, BATCH_SIZE)?;
 
     let stream_id: Identifier = stream.clone().try_into()?;
     let topic_id: Identifier = "dlq".to_string().try_into()?;
@@ -60,13 +54,7 @@ async fn fair_window_scans_each_partition_and_differs_from_global_budget() -> Te
         id: consumer_id,
     };
 
-    assert_no_stored_offsets(
-        &client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offsets(&client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     let partition_one_duplicate_id = broker_message_id_for_partition(2, 1);
     let partition_one_overflow_id = broker_message_id_for_partition(4, 1);
@@ -115,35 +103,17 @@ async fn fair_window_scans_each_partition_and_differs_from_global_budget() -> Te
 
     let first_fair = scanner.summarize_window(&fair_policy).await?;
     assert_fair_summary(&first_fair);
-    assert_no_stored_offsets(
-        &client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offsets(&client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     let global = scanner.summarize(&global_request).await?;
     assert_global_summary(&global);
     assert_ne!(global, first_fair);
-    assert_no_stored_offsets(
-        &client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offsets(&client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     let second_fair = scanner.summarize_window(&fair_policy).await?;
     assert_eq!(second_fair, first_fair);
     assert_fair_summary(&second_fair);
-    assert_no_stored_offsets(
-        &client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offsets(&client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     drop(scanner);
     client.shutdown().await?;

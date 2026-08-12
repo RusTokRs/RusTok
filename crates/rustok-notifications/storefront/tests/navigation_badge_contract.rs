@@ -41,7 +41,10 @@ fn navigation_uses_context_route_and_best_effort_exact_count() {
         "unread_count > 0",
         "data-notification-navigation=\"unavailable\"",
     ] {
-        assert!(NAVIGATION.contains(marker), "navigation is missing `{marker}`");
+        assert!(
+            NAVIGATION.contains(marker),
+            "navigation is missing `{marker}`"
+        );
     }
     assert!(!NAVIGATION.contains("localStorage"));
     assert!(!NAVIGATION.contains("window.location"));
@@ -59,7 +62,10 @@ fn unread_count_transport_is_dual_path_without_identity_payload() {
         "graphql_adapter::load_navigation_unread_count",
         "notifications.storefront.unread_count",
     ] {
-        assert!(TRANSPORT.contains(marker), "transport is missing `{marker}`");
+        assert!(
+            TRANSPORT.contains(marker),
+            "transport is missing `{marker}`"
+        );
     }
     for marker in [
         "notificationInboxUnreadCount",
@@ -67,7 +73,10 @@ fn unread_count_transport_is_dual_path_without_identity_payload() {
         "access_token",
         "tenant_slug",
     ] {
-        assert!(GRAPHQL_ADAPTER.contains(marker), "GraphQL adapter is missing `{marker}`");
+        assert!(
+            GRAPHQL_ADAPTER.contains(marker),
+            "GraphQL adapter is missing `{marker}`"
+        );
     }
     let production = GRAPHQL_ADAPTER
         .split("#[cfg(test)]")
@@ -97,7 +106,10 @@ fn owner_graphql_derives_scope_and_sanitizes_failures() {
         "PUBLIC_UNAVAILABLE_MESSAGE",
         "other.is_retryable()",
     ] {
-        assert!(OWNER_GRAPHQL.contains(marker), "owner GraphQL is missing `{marker}`");
+        assert!(
+            OWNER_GRAPHQL.contains(marker),
+            "owner GraphQL is missing `{marker}`"
+        );
     }
     assert!(!OWNER_GRAPHQL.contains("async_graphql::Error::new(error.to_string())"));
     assert!(!OWNER_GRAPHQL.contains("format!(\"{error}\")"));

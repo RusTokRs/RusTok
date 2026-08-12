@@ -74,7 +74,11 @@ pub(crate) async fn lock_topic_rows_for_votes_in_tx(
         .map(|topic| (topic.id, topic))
         .collect::<std::collections::HashMap<_, _>>();
     ids.into_iter()
-        .map(|topic_id| by_id.remove(&topic_id).ok_or(ForumError::TopicNotFound(topic_id)))
+        .map(|topic_id| {
+            by_id
+                .remove(&topic_id)
+                .ok_or(ForumError::TopicNotFound(topic_id))
+        })
         .collect()
 }
 

@@ -97,10 +97,9 @@ where
             }
         };
 
-        let registered = self
-            .schemas
-            .get(request.schema())
-            .ok_or_else(|| IndexReplayTargetedError::SchemaNotRegistered(request.schema().clone()))?;
+        let registered = self.schemas.get(request.schema()).ok_or_else(|| {
+            IndexReplayTargetedError::SchemaNotRegistered(request.schema().clone())
+        })?;
         for (position, key) in request.keys().iter().enumerate() {
             let source = if key.entity_id.is_nil() {
                 Some(RecordValidationError::NilEntityId)
@@ -123,7 +122,9 @@ where
         let descriptor = self
             .sources
             .source_for_schema(request.schema())
-            .ok_or_else(|| IndexReplayTargetedError::UnknownSchemaSource(request.schema().clone()))?;
+            .ok_or_else(|| {
+                IndexReplayTargetedError::UnknownSchemaSource(request.schema().clone())
+            })?;
         let source_name = descriptor.source_name().to_owned();
         let requested_count = request.keys().len();
         let batch = self
@@ -145,9 +146,9 @@ where
             if !event_ids.insert(event_id) {
                 return Err(IndexReplayTargetedError::DuplicateEventId { position, event_id });
             }
-            self.schemas.validate_mutation(mutation).map_err(|source| {
-                IndexReplayTargetedError::InvalidMutation { position, source }
-            })?;
+            self.schemas
+                .validate_mutation(mutation)
+                .map_err(|source| IndexReplayTargetedError::InvalidMutation { position, source })?;
         }
 
         let mutation_count = mutations.len();
@@ -206,9 +207,7 @@ pub enum IndexReplayTargetedError {
     Source(#[source] IndexSourceError),
     #[error("Index replay Targeted mutation at position {position} has a nil event id")]
     NilEventId { position: usize },
-    #[error(
-        "Index replay Targeted mutation at position {position} duplicates event id {event_id}"
-    )]
+    #[error("Index replay Targeted mutation at position {position} duplicates event id {event_id}")]
     DuplicateEventId { position: usize, event_id: Uuid },
     #[error("Index replay Targeted mutation at position {position} violates the registered schema")]
     InvalidMutation {
@@ -462,9 +461,7 @@ mod tests {
     async fn targeted_rejects_invalid_requested_entity_and_locale_scope_before_load() {
         let none_executor = executor_with_locale_mode(SourceMode::Valid, LocaleMode::None);
         let forbidden_locale = none_executor
-            .run(
-                IndexReplayModeSelection::targeted(vec![localized_key(10, "en-US")]).unwrap(),
-            )
+            .run(IndexReplayModeSelection::targeted(vec![localized_key(10, "en-US")]).unwrap())
             .await
             .expect_err("non-localized schema must reject locale Targeted key");
         assert!(matches!(
@@ -474,7 +471,14 @@ mod tests {
                 source: RecordValidationError::LocaleForbidden(_),
             }
         ));
-        assert!(none_executor.mutation_sink.event_ids.lock().unwrap().is_empty());
+        assert!(
+            none_executor
+                .mutation_sink
+                .event_ids
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
 
         let required_executor = executor_with_locale_mode(SourceMode::Valid, LocaleMode::Required);
         let missing_locale = required_executor
@@ -488,7 +492,14 @@ mod tests {
                 source: RecordValidationError::LocaleRequired(_),
             }
         ));
-        assert!(required_executor.mutation_sink.event_ids.lock().unwrap().is_empty());
+        assert!(
+            required_executor
+                .mutation_sink
+                .event_ids
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
 
         let optional_executor = executor(SourceMode::Valid);
         let mut nil_key = key(10);
@@ -504,7 +515,14 @@ mod tests {
                 source: RecordValidationError::NilEntityId,
             }
         ));
-        assert!(optional_executor.mutation_sink.event_ids.lock().unwrap().is_empty());
+        assert!(
+            optional_executor
+                .mutation_sink
+                .event_ids
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

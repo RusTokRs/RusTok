@@ -1,6 +1,4 @@
-use rustok_benchmarks::index_storage::{
-    QueryEquivalenceCaptureConfig, capture_query_equivalence,
-};
+use rustok_benchmarks::index_storage::{QueryEquivalenceCaptureConfig, capture_query_equivalence};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

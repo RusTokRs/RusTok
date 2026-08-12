@@ -5,8 +5,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    IndexMutation, IndexSourceCursor, IndexSourceError, IndexSourceScanRequest, LocaleKey, LocaleMode,
-    RecordValidationError, SchemaRef, SchemaRegistry, SharedIndexSchemaRegistry,
+    IndexMutation, IndexSourceCursor, IndexSourceError, IndexSourceScanRequest, LocaleKey,
+    LocaleMode, RecordValidationError, SchemaRef, SchemaRegistry, SharedIndexSchemaRegistry,
     SharedIndexSourceRegistry,
 };
 
@@ -72,12 +72,9 @@ impl IndexReplayDryRunRequest {
                 cursor.clone(),
                 page_limit,
             ),
-            None => IndexSourceScanRequest::new(
-                tenant_id,
-                schema.clone(),
-                cursor.clone(),
-                page_limit,
-            ),
+            None => {
+                IndexSourceScanRequest::new(tenant_id, schema.clone(), cursor.clone(), page_limit)
+            }
         }
         .map_err(IndexReplayDryRunError::InvalidRequest)?;
         if !(1..=MAX_DRY_RUN_PAGES).contains(&max_pages) {
@@ -266,10 +263,9 @@ impl SharedIndexReplayDryRunRuntime {
                     IndexMutation::Delete { .. } => delete_count += 1,
                 }
                 max_source_version = Some(
-                    max_source_version
-                        .map_or(mutation.source_version(), |current| {
-                            current.max(mutation.source_version())
-                        }),
+                    max_source_version.map_or(mutation.source_version(), |current| {
+                        current.max(mutation.source_version())
+                    }),
                 );
             }
 
@@ -329,10 +325,7 @@ pub enum IndexReplayDryRunError {
     #[error(
         "Index replay dry-run mutation at page {page_index} position {position} has a nil event id"
     )]
-    NilEventId {
-        page_index: usize,
-        position: usize,
-    },
+    NilEventId { page_index: usize, position: usize },
     #[error(
         "Index replay dry-run mutation at page {page_index} position {position} duplicates event id {event_id}"
     )]
@@ -415,10 +408,7 @@ mod tests {
             let fields = if self.invalid_record {
                 BTreeMap::new()
             } else {
-                BTreeMap::from([(
-                    FieldName::new("id").unwrap(),
-                    IndexValue::Uuid(entity_id),
-                )])
+                BTreeMap::from([(FieldName::new("id").unwrap(), IndexValue::Uuid(entity_id))])
             };
             let mutation = IndexMutation::Upsert {
                 event_id: Uuid::from_u128(1_000 + page_index as u128),
@@ -631,21 +621,25 @@ mod tests {
     #[test]
     fn dry_run_request_bounds_page_budget() {
         let tenant_id = Uuid::from_u128(1);
-        assert!(IndexReplayDryRunRequest::new(
-            tenant_id,
-            schema(LocaleMode::Optional).reference,
-            None,
-            10,
-            0,
-        )
-        .is_err());
-        assert!(IndexReplayDryRunRequest::new(
-            tenant_id,
-            schema(LocaleMode::Optional).reference,
-            None,
-            10,
-            MAX_DRY_RUN_PAGES + 1,
-        )
-        .is_err());
+        assert!(
+            IndexReplayDryRunRequest::new(
+                tenant_id,
+                schema(LocaleMode::Optional).reference,
+                None,
+                10,
+                0,
+            )
+            .is_err()
+        );
+        assert!(
+            IndexReplayDryRunRequest::new(
+                tenant_id,
+                schema(LocaleMode::Optional).reference,
+                None,
+                10,
+                MAX_DRY_RUN_PAGES + 1,
+            )
+            .is_err()
+        );
     }
 }

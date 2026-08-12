@@ -3,8 +3,8 @@ use thiserror::Error;
 
 use crate::config::{ExternalConfig, IggyConfig, IggyMode};
 use crate::dlq_duplicate_external_scan::{
-    IggyDlqDuplicateScanError, IggyDlqDuplicateScanRequest,
-    IggyDlqDuplicateScanWindowPolicy, IggyDlqDuplicateScanner,
+    IggyDlqDuplicateScanError, IggyDlqDuplicateScanRequest, IggyDlqDuplicateScanWindowPolicy,
+    IggyDlqDuplicateScanner,
 };
 use crate::dlq_duplicate_inspection::DlqDuplicateSummary;
 use crate::dlq_duplicate_moving_window_scan::{
@@ -69,9 +69,7 @@ impl IggyDlqDuplicateAlertMovingWindowConfig {
     }
 
     pub const fn rolling_max_observations_per_cycle(&self) -> u32 {
-        self.policy
-            .rolling_policy()
-            .max_observations_per_cycle()
+        self.policy.rolling_policy().max_observations_per_cycle()
     }
 
     pub const fn progress_persisted(&self) -> bool {
@@ -140,13 +138,9 @@ impl IggyDlqDuplicateAlertObserver {
         batch_size: u32,
     ) -> Result<Self, IggyDlqDuplicateAlertObserverError> {
         let partitions = configured_partitions(config)?;
-        let request = IggyDlqDuplicateScanRequest::new(
-            partitions,
-            start_offset,
-            max_messages,
-            batch_size,
-        )
-        .map_err(|_| IggyDlqDuplicateAlertObserverError::InvalidConfiguration)?;
+        let request =
+            IggyDlqDuplicateScanRequest::new(partitions, start_offset, max_messages, batch_size)
+                .map_err(|_| IggyDlqDuplicateAlertObserverError::InvalidConfiguration)?;
         Self::connect_with_scan(config, IggyDlqDuplicateAlertScan::Global(request)).await
     }
 
@@ -240,10 +234,7 @@ impl IggyDlqDuplicateAlertObserver {
             }
             IggyDlqDuplicateAlertScan::FairWindow(policy) => {
                 let scanner = IggyDlqDuplicateScanner::new(client, stream_name)?;
-                scanner
-                    .summarize_window(policy)
-                    .await
-                    .map_err(Into::into)
+                scanner.summarize_window(policy).await.map_err(Into::into)
             }
             IggyDlqDuplicateAlertScan::MovingWindow(state) => {
                 let scanner = IggyDlqDuplicateMovingWindowScanner::new(client, stream_name)?;
@@ -268,10 +259,7 @@ impl std::fmt::Debug for IggyDlqDuplicateAlertObserver {
             IggyDlqDuplicateAlertScan::FairWindow(policy) => {
                 debug
                     .field("partition_count", &policy.partitions().len())
-                    .field(
-                        "per_partition_messages",
-                        &policy.per_partition_messages(),
-                    )
+                    .field("per_partition_messages", &policy.per_partition_messages())
                     .field("total_message_budget", &policy.total_message_budget())
                     .field("batch_size", &policy.batch_size());
             }
@@ -308,9 +296,7 @@ pub enum IggyDlqDuplicateAlertObserverError {
 impl IggyDlqDuplicateAlertObserverError {
     pub const fn stable_code(self) -> &'static str {
         match self {
-            Self::InvalidConfiguration => {
-                "iggy.dlq_duplicate.alert_observer_configuration_invalid"
-            }
+            Self::InvalidConfiguration => "iggy.dlq_duplicate.alert_observer_configuration_invalid",
             Self::ConnectionUnavailable => {
                 "iggy.dlq_duplicate.alert_observer_connection_unavailable"
             }
@@ -337,10 +323,7 @@ fn read_only_connection_config(
         if external.protocol != "tcp"
             || external.tls_enabled
             || external.addresses.len() != 1
-            || !is_bundled_loopback_address(
-                &external.addresses[0],
-                config.bundled.tcp_port,
-            )
+            || !is_bundled_loopback_address(&external.addresses[0], config.bundled.tcp_port)
         {
             return Err(IggyDlqDuplicateAlertObserverError::InvalidConfiguration);
         }
@@ -379,10 +362,18 @@ fn connection_strings(
     if config.tls_enabled {
         options.push("tls=true".to_string());
     }
-    if let Some(domain) = config.tls_domain.as_deref().filter(|value| !value.is_empty()) {
+    if let Some(domain) = config
+        .tls_domain
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
         options.push(format!("tls_domain={domain}"));
     }
-    if let Some(ca_file) = config.tls_ca_file.as_deref().filter(|value| !value.is_empty()) {
+    if let Some(ca_file) = config
+        .tls_ca_file
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
         options.push(format!("tls_ca_file={ca_file}"));
     }
 
@@ -412,7 +403,10 @@ fn validate_component(
     value: &str,
     forbidden: &[char],
 ) -> Result<(), IggyDlqDuplicateAlertObserverError> {
-    if value.chars().any(|character| forbidden.contains(&character)) {
+    if value
+        .chars()
+        .any(|character| forbidden.contains(&character))
+    {
         return Err(IggyDlqDuplicateAlertObserverError::InvalidConfiguration);
     }
     Ok(())
@@ -454,10 +448,7 @@ mod tests {
         );
         let mut config = IggyConfig::default();
         config.topology.domain_partitions = 2;
-        let moving = IggyDlqDuplicateAlertMovingWindowConfig::new(
-            &config, 0, 2, 1, 3, 4,
-        )
-        .unwrap();
+        let moving = IggyDlqDuplicateAlertMovingWindowConfig::new(&config, 0, 2, 1, 3, 4).unwrap();
         let moving = IggyDlqDuplicateAlertScan::MovingWindow(
             IggyDlqDuplicateMovingWindowState::new(moving.policy),
         );
@@ -474,13 +465,10 @@ mod tests {
         let mut config = IggyConfig::default();
         config.topology.domain_partitions = 2;
         assert_eq!(
-            IggyDlqDuplicateAlertMovingWindowConfig::new(&config, 0, 2, 1, 3, 3)
-                .unwrap_err(),
+            IggyDlqDuplicateAlertMovingWindowConfig::new(&config, 0, 2, 1, 3, 3).unwrap_err(),
             IggyDlqDuplicateAlertObserverError::InvalidConfiguration
         );
-        let valid =
-            IggyDlqDuplicateAlertMovingWindowConfig::new(&config, 0, 2, 1, 3, 4)
-                .unwrap();
+        let valid = IggyDlqDuplicateAlertMovingWindowConfig::new(&config, 0, 2, 1, 3, 4).unwrap();
         assert_eq!(valid.partition_count(), 2);
         assert_eq!(valid.total_message_budget(), 4);
         assert!(!valid.progress_persisted());

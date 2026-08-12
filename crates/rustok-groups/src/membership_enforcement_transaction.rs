@@ -126,7 +126,9 @@ pub(crate) async fn lock_membership_enforcement_target_by_id_for_update(
     let Some(locked_membership) = locked_membership else {
         return Ok(None);
     };
-    if locked_membership.group_id != locator.group_id || locked_membership.user_id != locator.user_id {
+    if locked_membership.group_id != locator.group_id
+        || locked_membership.user_id != locator.user_id
+    {
         return Err(GroupsError::Invariant(
             "membership subject aggregate identity changed while owner locks were acquired"
                 .to_string(),

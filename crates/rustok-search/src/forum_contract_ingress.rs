@@ -11,10 +11,8 @@ use rustok_events::{
 
 use crate::forum_inbox::{ForumProjectionInbox, ForumProjectionScope};
 
-pub const FORUM_SEARCH_CONTRACT_EVENT_TYPE: &str =
-    "forum.search_projection.invalidation_issued";
-pub const FORUM_SEARCH_CONTRACT_CONSUMER_GROUP: &str =
-    "rustok-search-forum-projection-v1";
+pub const FORUM_SEARCH_CONTRACT_EVENT_TYPE: &str = "forum.search_projection.invalidation_issued";
+pub const FORUM_SEARCH_CONTRACT_CONSUMER_GROUP: &str = "rustok-search-forum-projection-v1";
 pub const FORUM_SEARCH_CONTRACT_TOPIC: &str = "domain";
 
 const FORUM_SOURCE_MODULE: &str = "forum";
@@ -46,12 +44,8 @@ pub enum ForumSearchContractIngressError {
 impl ForumSearchContractIngressError {
     pub const fn stable_code(&self) -> &'static str {
         match self {
-            Self::BackendUnsupported => {
-                "forum.search_projection.contract_backend_unsupported"
-            }
-            Self::MissingCausation => {
-                "forum.search_projection.contract_causation_required"
-            }
+            Self::BackendUnsupported => "forum.search_projection.contract_backend_unsupported",
+            Self::MissingCausation => "forum.search_projection.contract_causation_required",
             Self::EnvelopeInvalid => "forum.search_projection.contract_envelope_invalid",
             Self::InboxIdentityConflict => {
                 "forum.search_projection.contract_inbox_identity_conflict"

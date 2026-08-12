@@ -34,8 +34,8 @@ impl IndexSourceCursor {
         if value.is_null() {
             return Err(IndexSourceError::NullCursor);
         }
-        let encoded = serde_json::to_vec(&value)
-            .map_err(|_| IndexSourceError::CursorSerializationFailed)?;
+        let encoded =
+            serde_json::to_vec(&value).map_err(|_| IndexSourceError::CursorSerializationFailed)?;
         if encoded.len() > MAX_CURSOR_BYTES {
             return Err(IndexSourceError::CursorTooLarge {
                 actual: encoded.len(),
@@ -556,9 +556,9 @@ impl SharedIndexSourceRegistry {
         &self,
         request: IndexSourceScanRequest,
     ) -> Result<IndexSourcePage, IndexSourceError> {
-        let descriptor = self.source_for_schema(request.schema()).ok_or_else(|| {
-            IndexSourceError::UnknownSchemaSource(request.schema().clone())
-        })?;
+        let descriptor = self
+            .source_for_schema(request.schema())
+            .ok_or_else(|| IndexSourceError::UnknownSchemaSource(request.schema().clone()))?;
         let page = descriptor
             .source
             .scan(request.clone())
@@ -575,9 +575,9 @@ impl SharedIndexSourceRegistry {
         &self,
         request: IndexSourceLoadRequest,
     ) -> Result<IndexSourceLoadBatch, IndexSourceError> {
-        let descriptor = self.source_for_schema(request.schema()).ok_or_else(|| {
-            IndexSourceError::UnknownSchemaSource(request.schema().clone())
-        })?;
+        let descriptor = self
+            .source_for_schema(request.schema())
+            .ok_or_else(|| IndexSourceError::UnknownSchemaSource(request.schema().clone()))?;
         let batch = descriptor
             .source
             .load(request.clone())
@@ -664,7 +664,9 @@ pub enum IndexSourceError {
     UnknownSchemaSource(SchemaRef),
     #[error("Index source scan batch exceeds its request: actual={actual}, max={max}")]
     ScanBatchTooLarge { actual: usize, max: usize },
-    #[error("Index source scan mutation at position {position} escapes the requested tenant/schema")]
+    #[error(
+        "Index source scan mutation at position {position} escapes the requested tenant/schema"
+    )]
     ScanMutationScopeMismatch { position: usize },
     #[error("Index source scan mutation at position {position} escapes the requested locale")]
     ScanMutationLocaleMismatch { position: usize },
@@ -894,18 +896,22 @@ mod tests {
         assert!(IndexSourceCursor::new(JsonValue::Null).is_err());
         assert!(IndexSourceCursor::new(JsonValue::String("x".repeat(MAX_CURSOR_BYTES))).is_err());
         assert!(serde_json::from_value::<IndexSourceCursor>(JsonValue::Null).is_err());
-        assert!(serde_json::from_value::<IndexSourceCursor>(JsonValue::String(
-            "x".repeat(MAX_CURSOR_BYTES)
-        ))
-        .is_err());
+        assert!(
+            serde_json::from_value::<IndexSourceCursor>(JsonValue::String(
+                "x".repeat(MAX_CURSOR_BYTES)
+            ))
+            .is_err()
+        );
         assert!(IndexSourceScanRequest::new(Uuid::new_v4(), schema_ref(1), None, 0).is_err());
-        assert!(IndexSourceScanRequest::new(
-            Uuid::new_v4(),
-            schema_ref(1),
-            None,
-            MAX_SCAN_BATCH_SIZE + 1,
-        )
-        .is_err());
+        assert!(
+            IndexSourceScanRequest::new(
+                Uuid::new_v4(),
+                schema_ref(1),
+                None,
+                MAX_SCAN_BATCH_SIZE + 1,
+            )
+            .is_err()
+        );
     }
 
     #[test]

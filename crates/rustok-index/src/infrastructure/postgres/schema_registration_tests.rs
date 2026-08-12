@@ -126,10 +126,7 @@ async fn same_version_contract_reuse_fails_closed() {
 #[tokio::test]
 async fn unregistered_lower_version_is_rejected_after_newer_version() {
     let (_, store) = fixture().await;
-    store
-        .register(tenant(TENANT_A), &schema(2))
-        .await
-        .unwrap();
+    store.register(tenant(TENANT_A), &schema(2)).await.unwrap();
     assert!(matches!(
         store.register(tenant(TENANT_A), &schema(1)).await,
         Err(SchemaRegistrationError::NonMonotonicVersion { .. })
@@ -143,9 +140,7 @@ async fn retired_schema_cannot_be_reactivated_by_registration() {
     store.register(tenant(TENANT_A), &contract).await.unwrap();
     db.execute(Statement::from_string(
         DbBackend::Sqlite,
-        format!(
-            "UPDATE index_schemas SET status = 'retired' WHERE tenant_id = '{TENANT_A}'"
-        ),
+        format!("UPDATE index_schemas SET status = 'retired' WHERE tenant_id = '{TENANT_A}'"),
     ))
     .await
     .unwrap();

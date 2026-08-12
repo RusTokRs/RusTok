@@ -12,15 +12,14 @@ fn manifest_composes_owner_runtime_data_without_host_registry_code() {
         "query = \"graphql::NotificationsQuery\"",
         "runtime_data_factory = \"graphql::attach_schema_data\"",
     ] {
-        assert!(OWNER_MANIFEST.contains(marker), "manifest is missing `{marker}`");
+        assert!(
+            OWNER_MANIFEST.contains(marker),
+            "manifest is missing `{marker}`"
+        );
     }
     assert!(OWNER_CARGO.contains("default = []"));
-    assert!(OWNER_CARGO.contains(
-        "server = [\"rustok-api/server\", \"dep:async-graphql\"]"
-    ));
-    assert!(OWNER_CARGO.contains(
-        "async-graphql = { workspace = true, optional = true }"
-    ));
+    assert!(OWNER_CARGO.contains("server = [\"rustok-api/server\", \"dep:async-graphql\"]"));
+    assert!(OWNER_CARGO.contains("async-graphql = { workspace = true, optional = true }"));
     assert!(SERVER_CARGO.contains("rustok-notifications/server"));
     assert!(OWNER_GRAPHQL.contains("pub fn attach_schema_data("));
     assert!(OWNER_GRAPHQL.contains("inputs.shared_get::<Arc<NotificationSourceRegistry>>()"));
@@ -45,18 +44,29 @@ fn grouped_owner_queries_derive_identity_and_delegate_to_storefront_port() {
         ".with_deadline(GRAPHQL_READ_DEADLINE)",
         ".with_channel(\"storefront\")",
     ] {
-        assert!(OWNER_GRAPHQL.contains(marker), "owner GraphQL is missing `{marker}`");
+        assert!(
+            OWNER_GRAPHQL.contains(marker),
+            "owner GraphQL is missing `{marker}`"
+        );
     }
 
     let summaries_signature = OWNER_GRAPHQL
         .split("async fn notification_inbox_group_summaries")
         .nth(1)
-        .and_then(|source| source.split(") -> Result<GqlNotificationInboxGroupSummaryPage>").next())
+        .and_then(|source| {
+            source
+                .split(") -> Result<GqlNotificationInboxGroupSummaryPage>")
+                .next()
+        })
         .expect("summary signature should exist");
     let items_signature = OWNER_GRAPHQL
         .split("async fn notification_inbox_group_items")
         .nth(1)
-        .and_then(|source| source.split(") -> Result<GqlNotificationInboxGroupItemsPage>").next())
+        .and_then(|source| {
+            source
+                .split(") -> Result<GqlNotificationInboxGroupItemsPage>")
+                .next()
+        })
         .expect("items signature should exist");
     for forbidden in ["tenant_id", "recipient_id", "user_id"] {
         assert!(!summaries_signature.contains(forbidden));
@@ -77,14 +87,20 @@ fn grouped_graphql_wire_is_bounded_and_transport_neutral() {
         "load_group_summaries",
         "load_group_items",
     ] {
-        assert!(STOREFRONT_GRAPHQL.contains(marker), "GraphQL adapter is missing `{marker}`");
+        assert!(
+            STOREFRONT_GRAPHQL.contains(marker),
+            "GraphQL adapter is missing `{marker}`"
+        );
     }
     let production = STOREFRONT_GRAPHQL
         .split("#[cfg(test)]")
         .next()
         .expect("production GraphQL adapter section should exist");
     for forbidden in ["tenantId", "recipientId", "userId", "serde_json::Value"] {
-        assert!(!production.contains(forbidden), "GraphQL adapter exposes `{forbidden}`");
+        assert!(
+            !production.contains(forbidden),
+            "GraphQL adapter exposes `{forbidden}`"
+        );
     }
 }
 
@@ -99,7 +115,10 @@ fn existing_grouped_ui_calls_selected_read_wrappers_only() {
         "UiTransportPath::Graphql",
         "current_storefront_transport_context",
     ] {
-        assert!(STOREFRONT_TRANSPORT.contains(marker), "transport is missing `{marker}`");
+        assert!(
+            STOREFRONT_TRANSPORT.contains(marker),
+            "transport is missing `{marker}`"
+        );
     }
     for marker in [
         "load_notification_unread_count_selected",
@@ -108,7 +127,10 @@ fn existing_grouped_ui_calls_selected_read_wrappers_only() {
         "authorize_notification_open",
         "apply_notification_group_state",
     ] {
-        assert!(STOREFRONT_UI.contains(marker), "grouped UI is missing `{marker}`");
+        assert!(
+            STOREFRONT_UI.contains(marker),
+            "grouped UI is missing `{marker}`"
+        );
     }
     assert!(!STOREFRONT_TRANSPORT.contains("fallback_failed"));
     assert!(STOREFRONT_TRANSPORT.contains("authorize_notification_open_selected"));

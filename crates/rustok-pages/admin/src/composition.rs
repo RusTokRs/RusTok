@@ -85,13 +85,13 @@ pub fn PagesAdmin() -> impl IntoView {
             )
             .await
             .map_err(|error| error.to_string())?;
-            let provider_status = crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
-                token,
-                tenant,
-            )
-            .await
-            .map_err(|error| error.to_string())?
-            .provider_status();
+            let provider_status =
+                crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
+                    token, tenant,
+                )
+                .await
+                .map_err(|error| error.to_string())?
+                .provider_status();
             Ok(Some((page, baseline, release_status, provider_status)))
         }
     });

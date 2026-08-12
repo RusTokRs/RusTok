@@ -37,15 +37,19 @@ async fn ensure_search_admin_permission(
             boundary = "search_graphql_admin",
             "Search GraphQL admin authority cannot cross the resolved tenant boundary"
         );
-        return Err(<async_graphql::FieldError as GraphQLError>::permission_denied(
-            "Search administration access is denied",
-        ));
+        return Err(
+            <async_graphql::FieldError as GraphQLError>::permission_denied(
+                "Search administration access is denied",
+            ),
+        );
     }
 
     if !rustok_api::has_effective_permission(&auth.permissions, permission) {
-        return Err(<async_graphql::FieldError as GraphQLError>::permission_denied(
-            &format!("{permission} required"),
-        ));
+        return Err(
+            <async_graphql::FieldError as GraphQLError>::permission_denied(&format!(
+                "{permission} required"
+            )),
+        );
     }
 
     Ok(())

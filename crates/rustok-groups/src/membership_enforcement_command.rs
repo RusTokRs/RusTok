@@ -173,9 +173,9 @@ impl GroupMembershipEnforcementCommandService {
         )
         .await?;
 
-        let target = locked
-            .membership(request.target_user_id)
-            .ok_or_else(|| GroupsError::Conflict("target group membership is required".to_string()))?;
+        let target = locked.membership(request.target_user_id).ok_or_else(|| {
+            GroupsError::Conflict("target group membership is required".to_string())
+        })?;
         let result = apply_membership_suspension_in_tx(
             &transaction,
             context,
@@ -270,9 +270,9 @@ impl GroupMembershipEnforcementCommandService {
         )
         .await?;
 
-        let target = locked
-            .membership(request.target_user_id)
-            .ok_or_else(|| GroupsError::Conflict("target group membership is required".to_string()))?;
+        let target = locked.membership(request.target_user_id).ok_or_else(|| {
+            GroupsError::Conflict("target group membership is required".to_string())
+        })?;
         let result = revoke_membership_suspension_in_tx(
             &transaction,
             context,
@@ -309,7 +309,9 @@ impl GroupMembershipEnforcementCommandPort for GroupMembershipEnforcementCommand
         request: SuspendGroupMembershipRequest,
     ) -> Result<GroupMembershipEnforcementMutationResult, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.suspend_owned(&context, request).await.map_err(Into::into)
+        self.suspend_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 
     async fn revoke_membership_suspension(
@@ -318,7 +320,9 @@ impl GroupMembershipEnforcementCommandPort for GroupMembershipEnforcementCommand
         request: RevokeGroupMembershipSuspensionRequest,
     ) -> Result<GroupMembershipEnforcementMutationResult, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.revoke_owned(&context, request).await.map_err(Into::into)
+        self.revoke_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -662,7 +666,9 @@ pub(crate) async fn revoke_membership_suspension_in_tx(
     }
 
     let previous_reason_code = existing.reason_code.clone();
-    let previous_effective_until = existing.effective_until.map(|value| value.with_timezone(&Utc));
+    let previous_effective_until = existing
+        .effective_until
+        .map(|value| value.with_timezone(&Utc));
     let previous_moderation_decision_id = existing.moderation_decision_id;
     let previous_moderation_decision_hash = existing.moderation_decision_hash.clone();
     let fixed_now = now.fixed_offset();
@@ -767,8 +773,10 @@ fn validate_mutation_identity(
 }
 
 fn validate_provenance(provenance: &MembershipEnforcementProvenance) -> GroupsResult<()> {
-    if !matches!(provenance.actor_kind.as_str(), "user" | "service" | "system")
-        || provenance.actor_id.trim().is_empty()
+    if !matches!(
+        provenance.actor_kind.as_str(),
+        "user" | "service" | "system"
+    ) || provenance.actor_id.trim().is_empty()
     {
         return Err(GroupsError::Invariant(
             "membership enforcement provenance actor is invalid".to_string(),
@@ -841,7 +849,9 @@ fn mutation_result(
         GroupsError::Invariant("membership disappeared during enforcement mutation".to_string())
     })?;
     let membership_revision = state.membership_revision.ok_or_else(|| {
-        GroupsError::Invariant("membership revision disappeared during enforcement mutation".to_string())
+        GroupsError::Invariant(
+            "membership revision disappeared during enforcement mutation".to_string(),
+        )
     })?;
     if membership_revision < 1 || group_model.version < 1 || group_model.member_count < 0 {
         return Err(GroupsError::Invariant(
@@ -849,7 +859,9 @@ fn mutation_result(
         ));
     }
     let enforcement = state.enforcement.as_ref().ok_or_else(|| {
-        GroupsError::Invariant("enforcement row disappeared during enforcement mutation".to_string())
+        GroupsError::Invariant(
+            "enforcement row disappeared during enforcement mutation".to_string(),
+        )
     })?;
     Ok(GroupMembershipEnforcementMutationResult {
         group_id: state.group_id,
@@ -979,7 +991,11 @@ async fn append_domain_event(
     Ok(())
 }
 
-fn validate_identity(group_id: Uuid, target_user_id: Uuid, expected_revision: i64) -> GroupsResult<()> {
+fn validate_identity(
+    group_id: Uuid,
+    target_user_id: Uuid,
+    expected_revision: i64,
+) -> GroupsResult<()> {
     if group_id.is_nil() || target_user_id.is_nil() || expected_revision < 1 {
         return Err(GroupsError::Validation(
             "group, target membership identity and positive expected revision are required"

@@ -52,9 +52,10 @@ where
 
     for item in items {
         if futures.len() >= concurrency
-            && let Some(result) = futures.next().await {
-                results.push(Ok(result));
-            }
+            && let Some(result) = futures.next().await
+        {
+            results.push(Ok(result));
+        }
         futures.push(f(item));
     }
 

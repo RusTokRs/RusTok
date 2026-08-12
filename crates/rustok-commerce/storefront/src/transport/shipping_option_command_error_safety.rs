@@ -114,10 +114,13 @@ impl ShippingOptionCommandErrorContext {
 }
 
 fn is_invalid_shipping_selection(error: &UiTransportError) -> bool {
-    [error.native_error.as_deref(), error.graphql_error.as_deref()]
-        .into_iter()
-        .flatten()
-        .any(is_shipping_selection_validation_message)
+    [
+        error.native_error.as_deref(),
+        error.graphql_error.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(is_shipping_selection_validation_message)
 }
 
 fn is_shipping_selection_validation_message(message: &str) -> bool {

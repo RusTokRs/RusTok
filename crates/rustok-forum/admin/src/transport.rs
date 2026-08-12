@@ -16,8 +16,7 @@ use crate::model::{
     TopicDraft, TopicListItem,
 };
 use crate::topic_fork_model::{
-    ForumTopicForkCandidate, ForumTopicForkCommand, ForumTopicForkReceipt,
-    ForumTopicForkReplyPage,
+    ForumTopicForkCandidate, ForumTopicForkCommand, ForumTopicForkReceipt, ForumTopicForkReplyPage,
 };
 use crate::topic_merge_model::{
     ForumTopicMergeCandidate, ForumTopicMergeCommand, ForumTopicMergeReceipt,

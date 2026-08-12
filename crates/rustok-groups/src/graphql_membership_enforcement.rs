@@ -177,7 +177,10 @@ fn port_context(
         tenant.id.to_string(),
         PortActor::user(auth.user_id.to_string()),
         locale,
-        format!("graphql-groups-membership-enforcement-{operation}-{}", Uuid::new_v4()),
+        format!(
+            "graphql-groups-membership-enforcement-{operation}-{}",
+            Uuid::new_v4()
+        ),
     )
     .with_deadline(PORT_DEADLINE)
     .with_idempotency_key(idempotency_key);
@@ -231,7 +234,9 @@ mod tests {
             "stale membership revision",
         ))
         .extend();
-        let extensions = error.extensions.expect("mapped GraphQL error should carry extensions");
+        let extensions = error
+            .extensions
+            .expect("mapped GraphQL error should carry extensions");
         let json = |key: &str| {
             extensions
                 .get(key)
@@ -259,7 +264,9 @@ mod tests {
             "private database diagnostic",
         ))
         .extend();
-        let extensions = error.extensions.expect("mapped GraphQL error should carry extensions");
+        let extensions = error
+            .extensions
+            .expect("mapped GraphQL error should carry extensions");
         let json = |key: &str| {
             extensions
                 .get(key)

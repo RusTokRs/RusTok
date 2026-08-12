@@ -19,8 +19,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use super::{
-    PRODUCT_SCHEMA_ROUTING_KEY,
-    attribute_terms::PRODUCT_ATTRIBUTE_TERMS_CTE,
+    PRODUCT_SCHEMA_ROUTING_KEY, attribute_terms::PRODUCT_ATTRIBUTE_TERMS_CTE,
     channel_visibility::decode_product_visibility,
 };
 
@@ -306,8 +305,7 @@ fn product_schema_ref() -> Result<SchemaRef, ProductIndexBridgeError> {
     Ok(SchemaRef {
         module: ModuleName::new("rustok-product")
             .map_err(ProductIndexBridgeError::InvalidContract)?,
-        entity: EntityName::new("product")
-            .map_err(ProductIndexBridgeError::InvalidContract)?,
+        entity: EntityName::new("product").map_err(ProductIndexBridgeError::InvalidContract)?,
         version: SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY),
     })
 }
@@ -513,8 +511,8 @@ impl IndexSource for ProductPostgresIndexSource {
         let mut mutations = Vec::with_capacity(rows.len().min(request.limit()));
         let mut next_cursor = None;
         for row in rows.into_iter().take(request.limit()) {
-            let decoded = ProductRow::decode(row, request.tenant_id())
-                .map_err(map_product_decode_error)?;
+            let decoded =
+                ProductRow::decode(row, request.tenant_id()).map_err(map_product_decode_error)?;
             if has_more {
                 next_cursor = Some(
                     decoded
@@ -558,7 +556,9 @@ impl IndexSource for ProductPostgresIndexSource {
 
 fn map_product_decode_error(error: ProductIndexBridgeError) -> IndexSourceFailure {
     match error {
-        ProductIndexBridgeError::FreshnessPending => retryable(PRODUCT_RELATION_FRESHNESS_PENDING_CODE),
+        ProductIndexBridgeError::FreshnessPending => {
+            retryable(PRODUCT_RELATION_FRESHNESS_PENDING_CODE)
+        }
         ProductIndexBridgeError::InvalidContract(_)
         | ProductIndexBridgeError::InvalidCursor
         | ProductIndexBridgeError::InvalidRow => permanent("product_index_record_invalid"),
@@ -588,7 +588,8 @@ impl ProductCursor {
     }
 
     fn encode(&self) -> Result<IndexSourceCursor, ProductIndexBridgeError> {
-        let value = serde_json::to_value(self).map_err(|_| ProductIndexBridgeError::InvalidCursor)?;
+        let value =
+            serde_json::to_value(self).map_err(|_| ProductIndexBridgeError::InvalidCursor)?;
         IndexSourceCursor::new(value).map_err(|_| ProductIndexBridgeError::InvalidCursor)
     }
 }
@@ -641,7 +642,8 @@ impl ProductRow {
             .try_get::<Uuid>("", "product_id")
             .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
         let source_version = positive_u64(&row, "source_version")?;
-        let observed_product_source_version = positive_u64(&row, "observed_product_source_version")?;
+        let observed_product_source_version =
+            positive_u64(&row, "observed_product_source_version")?;
         let projected_product_source_version =
             positive_u64(&row, "projected_product_source_version")?;
         let _relation_epoch = positive_u64(&row, "relation_epoch")?;
@@ -689,25 +691,19 @@ impl ProductRow {
         let current_visibility_key = decode_product_visibility(&metadata)
             .map_err(|_| ProductIndexBridgeError::InvalidRow)?
             .freshness_key();
-        let freshness_product_source_version = optional_positive_u64(
-            &row,
-            "freshness_product_source_version",
-        )?
-        .ok_or(ProductIndexBridgeError::FreshnessPending)?;
+        let freshness_product_source_version =
+            optional_positive_u64(&row, "freshness_product_source_version")?
+                .ok_or(ProductIndexBridgeError::FreshnessPending)?;
         let freshness_visibility_key = row
             .try_get::<Option<String>>("", "freshness_visibility_key")
             .map_err(|_| ProductIndexBridgeError::InvalidRow)?
             .filter(|value| !value.is_empty())
             .ok_or(ProductIndexBridgeError::FreshnessPending)?;
-        let freshness_channel_identity_generation = optional_non_negative_u64(
-            &row,
-            "freshness_channel_identity_generation",
-        )?
-        .ok_or(ProductIndexBridgeError::FreshnessPending)?;
-        let current_channel_identity_generation = non_negative_u64(
-            &row,
-            "current_channel_identity_generation",
-        )?;
+        let freshness_channel_identity_generation =
+            optional_non_negative_u64(&row, "freshness_channel_identity_generation")?
+                .ok_or(ProductIndexBridgeError::FreshnessPending)?;
+        let current_channel_identity_generation =
+            non_negative_u64(&row, "current_channel_identity_generation")?;
 
         if freshness_product_source_version > observed_product_source_version
             || freshness_channel_identity_generation > current_channel_identity_generation
@@ -812,15 +808,12 @@ impl ProductRow {
             ),
             (
                 field_name("tag_ids")?,
-                IndexValue::List(
-                    live.tag_ids
-                        .iter()
-                        .copied()
-                        .map(IndexValue::Uuid)
-                        .collect(),
-                ),
+                IndexValue::List(live.tag_ids.iter().copied().map(IndexValue::Uuid).collect()),
             ),
-            (field_name("created_at")?, IndexValue::Timestamp(live.created_at)),
+            (
+                field_name("created_at")?,
+                IndexValue::Timestamp(live.created_at),
+            ),
             (
                 field_name("published_at")?,
                 live.published_at
@@ -905,7 +898,9 @@ fn decode_uuid_json_list(
     let value = row
         .try_get::<JsonValue>("", column)
         .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
-    let values = value.as_array().ok_or(ProductIndexBridgeError::InvalidRow)?;
+    let values = value
+        .as_array()
+        .ok_or(ProductIndexBridgeError::InvalidRow)?;
     let mut unique = BTreeSet::new();
     for value in values {
         let raw = value.as_str().ok_or(ProductIndexBridgeError::InvalidRow)?;
@@ -924,7 +919,9 @@ fn decode_string_json_list(
     let value = row
         .try_get::<JsonValue>("", column)
         .map_err(|_| ProductIndexBridgeError::InvalidRow)?;
-    let values = value.as_array().ok_or(ProductIndexBridgeError::InvalidRow)?;
+    let values = value
+        .as_array()
+        .ok_or(ProductIndexBridgeError::InvalidRow)?;
     let mut unique = BTreeSet::new();
     for value in values {
         let raw = value.as_str().ok_or(ProductIndexBridgeError::InvalidRow)?;
@@ -1076,7 +1073,12 @@ mod tests {
             "variant_ids",
             "sales_channel_ids",
         ] {
-            assert!(schema.fields.iter().any(|candidate| candidate.name.as_str() == field));
+            assert!(
+                schema
+                    .fields
+                    .iter()
+                    .any(|candidate| candidate.name.as_str() == field)
+            );
         }
         let attribute_terms = schema
             .fields

@@ -24,8 +24,7 @@ pub(crate) fn build_product_admin_list_input(
         search: normalize_optional_ui_text(search),
         status: normalize_optional_ui_text(status),
         category_id: normalize_optional_ui_text(category_id),
-        sort_by: normalize_optional_ui_text(sort_by)
-            .or_else(|| Some("published_at".to_string())),
+        sort_by: normalize_optional_ui_text(sort_by).or_else(|| Some("published_at".to_string())),
         sort_direction: normalize_optional_ui_text(sort_direction)
             .or_else(|| Some("desc".to_string())),
         attribute_filters: normalize_attribute_filters(attribute_filters),
@@ -66,11 +65,7 @@ pub(crate) fn build_product_admin_catalog_controls_labels(
         ),
         category: t(locale, "product.list.category", "Primary category"),
         all_categories: t(locale, "product.list.allCategories", "All categories"),
-        attribute_filters: t(
-            locale,
-            "product.list.attributeFilters",
-            "Attribute filters",
-        ),
+        attribute_filters: t(locale, "product.list.attributeFilters", "Attribute filters"),
         attribute_filters_placeholder: t(
             locale,
             "product.list.attributeFiltersPlaceholder",

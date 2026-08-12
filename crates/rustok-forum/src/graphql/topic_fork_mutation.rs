@@ -199,16 +199,13 @@ mod tests {
 
     #[test]
     fn fork_transport_requires_topic_manage_permission() {
-        let denied = require_topic_manage_permission(&auth_context(vec![
-            Permission::FORUM_TOPICS_READ,
-        ]))
-        .expect_err("read-only actor must not fork reply branches");
+        let denied =
+            require_topic_manage_permission(&auth_context(vec![Permission::FORUM_TOPICS_READ]))
+                .expect_err("read-only actor must not fork reply branches");
         assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
 
-        require_topic_manage_permission(&auth_context(vec![
-            Permission::FORUM_TOPICS_MANAGE,
-        ]))
-        .expect("manager permission must be accepted");
+        require_topic_manage_permission(&auth_context(vec![Permission::FORUM_TOPICS_MANAGE]))
+            .expect("manager permission must be accepted");
     }
 
     #[test]

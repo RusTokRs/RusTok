@@ -81,9 +81,7 @@ pub enum CursorValidationError {
     OrderArityMismatch { expected: usize, actual: usize },
     #[error("cursor order field contract is missing at position {index}")]
     OrderFieldContractMissing { index: usize },
-    #[error(
-        "cursor order value at position {index} has type {actual:?}, expected {expected:?}"
-    )]
+    #[error("cursor order value at position {index} has type {actual:?}, expected {expected:?}")]
     OrderValueTypeMismatch {
         index: usize,
         expected: IndexValueType,
@@ -233,12 +231,7 @@ fn validate_cursor(
         });
     }
 
-    for (index, (order, value)) in query
-        .order_by
-        .iter()
-        .zip(&cursor.order_values)
-        .enumerate()
-    {
+    for (index, (order, value)) in query.order_by.iter().zip(&cursor.order_values).enumerate() {
         if matches!(value, IndexValue::Null) {
             continue;
         }

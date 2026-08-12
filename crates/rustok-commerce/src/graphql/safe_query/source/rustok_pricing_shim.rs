@@ -4,9 +4,8 @@ use ::rustok_api::{PortContext, PortError, PortErrorKind};
 use ::rustok_outbox::TransactionalEventBus;
 use ::rustok_pricing::PricingReadPort as OwnerPricingReadPort;
 pub(crate) use ::rustok_pricing::{
-    ActivePriceListProjectionRequest, AdminProductPricingProjectionRequest,
-    PriceResolutionContext, ResolveProductPriceRequest, ResolvedPrice,
-    StorefrontProductPricingProjectionRequest,
+    ActivePriceListProjectionRequest, AdminProductPricingProjectionRequest, PriceResolutionContext,
+    ResolveProductPriceRequest, ResolvedPrice, StorefrontProductPricingProjectionRequest,
 };
 use ::sea_orm::DatabaseConnection;
 
@@ -229,7 +228,8 @@ impl PricingReadPort for PricingQueryReadPort {
         &self,
         context: PortContext,
         request: ActivePriceListProjectionRequest,
-    ) -> Result<Vec<::rustok_pricing::ActivePriceListProjectionSnapshot>, PricingQueryPortError> {
+    ) -> Result<Vec<::rustok_pricing::ActivePriceListProjectionSnapshot>, PricingQueryPortError>
+    {
         self.inner
             .list_active_price_list_projections(context, request)
             .await
@@ -251,7 +251,8 @@ impl PricingReadPort for PricingQueryReadPort {
         &self,
         context: PortContext,
         request: StorefrontProductPricingProjectionRequest,
-    ) -> Result<Option<::rustok_pricing::StorefrontPricingProductDetail>, PricingQueryPortError> {
+    ) -> Result<Option<::rustok_pricing::StorefrontPricingProductDetail>, PricingQueryPortError>
+    {
         self.inner
             .read_storefront_product_pricing_projection(context, request)
             .await

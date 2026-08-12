@@ -17,15 +17,15 @@ use crate::services::catalog::types::validate_product_attribute_filters;
 use crate::services::catalog_attribute_terms::{
     ProductAttributeFilterValue, parse_product_attribute_filter_value,
 };
+use crate::services::write_transaction::{
+    ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
+};
 use crate::services::{
     ProductAttributeFilter, ProductAttributeTermError, ProductAttributeTermExpr,
     ProductResolvedAttributeFilter, product_attribute_boolean_term, product_attribute_date_term,
     product_attribute_datetime_term, product_attribute_decimal_term,
     product_attribute_integer_term, product_attribute_localized_text_expr,
     product_attribute_option_term, product_attribute_text_term,
-};
-use crate::services::write_transaction::{
-    ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
 };
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
@@ -304,8 +304,7 @@ impl ProductCatalogSchemaService {
             return Ok(Vec::new());
         }
 
-        let definitions =
-            load_storefront_filter_definitions(&self.db, tenant_id, filters).await?;
+        let definitions = load_storefront_filter_definitions(&self.db, tenant_id, filters).await?;
         let mut resolved = Vec::with_capacity(filters.len());
         for filter in filters {
             let definition = definitions
@@ -407,11 +406,8 @@ async fn resolve_storefront_filter_predicate(
     requested_locale: &str,
     fallback_locale: &str,
 ) -> CommerceResult<ProductAttributeTermExpr> {
-    let value = parse_product_attribute_filter_value(
-        definition.code.as_str(),
-        value_type,
-        raw_value,
-    )?;
+    let value =
+        parse_product_attribute_filter_value(definition.code.as_str(), value_type, raw_value)?;
     let term = match value {
         ProductAttributeFilterValue::Text(value) if definition.is_localized => {
             return product_attribute_localized_text_expr(
@@ -445,13 +441,9 @@ async fn resolve_storefront_filter_predicate(
                 Ok(option_id) if option_id.is_nil() => return Ok(ProductAttributeTermExpr::Never),
                 Ok(option_id) => option_id,
                 Err(_) => {
-                    let Some(option_id) = load_active_option_id(
-                        db,
-                        tenant_id,
-                        definition.id,
-                        raw_value.as_str(),
-                    )
-                    .await?
+                    let Some(option_id) =
+                        load_active_option_id(db, tenant_id, definition.id, raw_value.as_str())
+                            .await?
                     else {
                         return Ok(ProductAttributeTermExpr::Never);
                     };
@@ -476,10 +468,11 @@ async fn load_active_option_id(
     let tenant = storefront_sql_placeholder(backend, 1);
     let attribute = storefront_sql_placeholder(backend, 2);
     let code_placeholder = storefront_sql_placeholder(backend, 3);
-    let row = StorefrontAttributeFilterOptionRow::find_by_statement(Statement::from_sql_and_values(
-        backend,
-        format!(
-            r#"
+    let row =
+        StorefrontAttributeFilterOptionRow::find_by_statement(Statement::from_sql_and_values(
+            backend,
+            format!(
+                r#"
             SELECT id
             FROM product_attribute_options
             WHERE tenant_id = {tenant}
@@ -488,11 +481,15 @@ async fn load_active_option_id(
               AND code = {code_placeholder}
             LIMIT 1
             "#
-        ),
-        vec![tenant_id.into(), attribute_id.into(), code.to_string().into()],
-    ))
-    .one(db)
-    .await?;
+            ),
+            vec![
+                tenant_id.into(),
+                attribute_id.into(),
+                code.to_string().into(),
+            ],
+        ))
+        .one(db)
+        .await?;
     Ok(row.map(|row| row.id))
 }
 

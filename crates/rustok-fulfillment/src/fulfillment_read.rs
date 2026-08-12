@@ -253,14 +253,9 @@ fn fulfillment_lifecycle_owner_error_facts(
         uuid_non_nil_count,
         opaque_payload_present,
     ) = match error {
-        FulfillmentError::Validation(value) => (
-            "validation",
-            1,
-            value.chars().count(),
-            0,
-            0,
-            false,
-        ),
+        FulfillmentError::Validation(value) => {
+            ("validation", 1, value.chars().count(), 0, 0, false)
+        }
         FulfillmentError::ShippingOptionNotFound(id) => (
             "shipping_option_not_found",
             0,
@@ -305,15 +300,11 @@ fn fulfillment_lifecycle_read_request_facts(
 ) -> FulfillmentLifecycleReadRequestFacts {
     FulfillmentLifecycleReadRequestFacts {
         fulfillment_id_present: fulfillment_id.is_some(),
-        fulfillment_id_non_nil: fulfillment_id
-            .map(|value| !value.is_nil())
-            .unwrap_or(false),
+        fulfillment_id_non_nil: fulfillment_id.map(|value| !value.is_nil()).unwrap_or(false),
         order_id_present: order_id.is_some(),
         order_id_non_nil: order_id.map(|value| !value.is_nil()).unwrap_or(false),
         customer_id_present: customer_id.is_some(),
-        customer_id_non_nil: customer_id
-            .map(|value| !value.is_nil())
-            .unwrap_or(false),
+        customer_id_non_nil: customer_id.map(|value| !value.is_nil()).unwrap_or(false),
         status_present: status_length.is_some(),
         status_length,
     }

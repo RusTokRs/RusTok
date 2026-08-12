@@ -1,8 +1,8 @@
+use rust_decimal::Decimal;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
 };
-use rust_decimal::Decimal;
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -60,8 +60,12 @@ impl MutationDelivery {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MutationApplyOutcome {
-    Applied { source_version: u64 },
-    Duplicate { source_version: u64 },
+    Applied {
+        source_version: u64,
+    },
+    Duplicate {
+        source_version: u64,
+    },
     StaleIgnored {
         incoming_source_version: u64,
         current_source_version: u64,
@@ -270,8 +274,12 @@ impl PostgresMutationStore {
                 )
             })?;
 
-        let stored_hash: String = existing.try_get("", "payload_hash").map_err(storage_error)?;
-        let stored_kind: String = existing.try_get("", "mutation_kind").map_err(storage_error)?;
+        let stored_hash: String = existing
+            .try_get("", "payload_hash")
+            .map_err(storage_error)?;
+        let stored_kind: String = existing
+            .try_get("", "mutation_kind")
+            .map_err(storage_error)?;
         let stored_module: String = existing.try_get("", "module_name").map_err(storage_error)?;
         let stored_entity: String = existing.try_get("", "entity_name").map_err(storage_error)?;
         let stored_schema_version: i64 = existing
@@ -470,11 +478,13 @@ impl PostgresMutationStore {
                             source_locale.clone().into(),
                             source_version_value(record.source_version, backend)?,
                             link.name.as_str().to_owned().into(),
-                            i64::try_from(ordinal).map_err(|_| {
-                                MutationStorageError::Storage(
-                                    "link ordinal exceeds database integer range".to_owned(),
-                                )
-                            })?.into(),
+                            i64::try_from(ordinal)
+                                .map_err(|_| {
+                                    MutationStorageError::Storage(
+                                        "link ordinal exceeds database integer range".to_owned(),
+                                    )
+                                })?
+                                .into(),
                             target.schema.module.as_str().to_owned().into(),
                             target.schema.entity.as_str().to_owned().into(),
                             i64::from(target.schema.version.get()).into(),

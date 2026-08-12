@@ -16,8 +16,8 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
 use crate::entities::{
-    forum_domain_event, forum_topic_merge_operation,
-    forum_topic_merge_subscription_reconciliation, forum_topic_subscription,
+    forum_domain_event, forum_topic_merge_operation, forum_topic_merge_subscription_reconciliation,
+    forum_topic_subscription,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
@@ -91,21 +91,20 @@ impl ForumTopicMergeSubscriptionReconciliationService {
         let txn = self.db.begin().await?;
         lock_reconciliation_tenant_in_tx(&txn, tenant_id).await?;
 
-        if let Some(existing) =
-            forum_topic_merge_subscription_reconciliation::Entity::find_by_id((
-                tenant_id,
-                input.operation_id,
-            ))
-            .one(&txn)
-            .await?
+        if let Some(existing) = forum_topic_merge_subscription_reconciliation::Entity::find_by_id((
+            tenant_id,
+            input.operation_id,
+        ))
+        .one(&txn)
+        .await?
         {
             if existing.merge_operation_id != merge_operation_id
                 || existing.actor_id != actor_id
                 || existing.reason != reason
             {
-                return Err(
-                    ForumError::TopicMergeSubscriptionReconciliationConflict(input.operation_id),
-                );
+                return Err(ForumError::TopicMergeSubscriptionReconciliationConflict(
+                    input.operation_id,
+                ));
             }
             validate_reconciliation_event_in_tx(&txn, &existing).await?;
             lock_topic_subscription_scopes_in_tx(
@@ -114,20 +113,14 @@ impl ForumTopicMergeSubscriptionReconciliationService {
                 &[existing.source_topic_id, existing.target_topic_id],
             )
             .await?;
-            ensure_source_subscriptions_empty_in_tx(
-                &txn,
-                tenant_id,
-                existing.source_topic_id,
-            )
-            .await?;
+            ensure_source_subscriptions_empty_in_tx(&txn, tenant_id, existing.source_topic_id)
+                .await?;
             txn.commit().await?;
             return Ok(operation_to_result(existing));
         }
 
         if forum_topic_merge_subscription_reconciliation::Entity::find()
-            .filter(
-                forum_topic_merge_subscription_reconciliation::Column::TenantId.eq(tenant_id),
-            )
+            .filter(forum_topic_merge_subscription_reconciliation::Column::TenantId.eq(tenant_id))
             .filter(
                 forum_topic_merge_subscription_reconciliation::Column::MergeOperationId
                     .eq(merge_operation_id),
@@ -136,20 +129,21 @@ impl ForumTopicMergeSubscriptionReconciliationService {
             .await?
             .is_some()
         {
-            return Err(
-                ForumError::TopicMergeSubscriptionReconciliationConflict(input.operation_id),
-            );
+            return Err(ForumError::TopicMergeSubscriptionReconciliationConflict(
+                input.operation_id,
+            ));
         }
 
-        let merge = forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
-            .one(&txn)
-            .await?
-            .ok_or_else(|| {
-                ForumError::Validation(
-                    "Forum topic merge subscription reconciliation requires an existing merge receipt"
-                        .to_string(),
-                )
-            })?;
+        let merge =
+            forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
+                .one(&txn)
+                .await?
+                .ok_or_else(|| {
+                    ForumError::Validation(
+                "Forum topic merge subscription reconciliation requires an existing merge receipt"
+                    .to_string(),
+            )
+                })?;
         validate_merge_event_in_tx(&txn, &merge).await?;
 
         let topics = lock_topic_rows_for_subscription_in_tx(
@@ -236,13 +230,12 @@ impl ForumTopicMergeSubscriptionReconciliationService {
         for source_row in &source_rows {
             if let Some(target_row) = target_by_user.get(&source_row.user_id) {
                 if delivery_state_equal(source_row, target_row) {
-                    deduplicated_equal_count = deduplicated_equal_count.checked_add(1).ok_or_else(
-                        || {
+                    deduplicated_equal_count =
+                        deduplicated_equal_count.checked_add(1).ok_or_else(|| {
                             ForumError::Validation(
                                 "Forum topic merge subscription count overflow".to_string(),
                             )
-                        },
-                    )?;
+                        })?;
                 } else {
                     target_authority_conflict_count = target_authority_conflict_count
                         .checked_add(1)
@@ -255,13 +248,12 @@ impl ForumTopicMergeSubscriptionReconciliationService {
                 delete_source_row_in_tx(&txn, source_row).await?;
             } else {
                 move_source_row_in_tx(&txn, source_row, merge.target_topic_id).await?;
-                moved_source_only_count = moved_source_only_count.checked_add(1).ok_or_else(
-                    || {
+                moved_source_only_count =
+                    moved_source_only_count.checked_add(1).ok_or_else(|| {
                         ForumError::Validation(
                             "Forum topic merge subscription count overflow".to_string(),
                         )
-                    },
-                )?;
+                    })?;
             }
         }
 

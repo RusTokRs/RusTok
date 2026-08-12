@@ -189,20 +189,16 @@ fn region_read_context_facts(context: &PortContext) -> RegionReadContextFacts {
 }
 
 fn region_read_request_facts(request: &RegionReadRequest) -> RegionReadRequestFacts {
-    let (
-        selector_kind,
-        selector_uuid_non_nil,
-        country_code_present,
-        country_code_length,
-    ) = match &request.selector {
-        RegionReadSelector::Id(region_id) => ("id", Some(!region_id.is_nil()), false, None),
-        RegionReadSelector::CountryCode(country_code) => (
-            "country_code",
-            None,
-            true,
-            Some(country_code.chars().count()),
-        ),
-    };
+    let (selector_kind, selector_uuid_non_nil, country_code_present, country_code_length) =
+        match &request.selector {
+            RegionReadSelector::Id(region_id) => ("id", Some(!region_id.is_nil()), false, None),
+            RegionReadSelector::CountryCode(country_code) => (
+                "country_code",
+                None,
+                true,
+                Some(country_code.chars().count()),
+            ),
+        };
     RegionReadRequestFacts {
         selector_kind,
         selector_uuid_non_nil,

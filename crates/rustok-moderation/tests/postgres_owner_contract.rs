@@ -83,7 +83,8 @@ impl TestDatabase {
 }
 
 #[tokio::test]
-async fn postgres_owner_contract_preserves_dedup_effect_enqueue_and_revision_cas() -> TestResult<()> {
+async fn postgres_owner_contract_preserves_dedup_effect_enqueue_and_revision_cas() -> TestResult<()>
+{
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -379,7 +380,11 @@ async fn scalar_i64(
     values: Vec<sea_orm::Value>,
 ) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            values,
+        ))
         .await?
         .ok_or_else(|| std::io::Error::other("scalar PostgreSQL query returned no row"))?;
     Ok(row.try_get("", "value")?)

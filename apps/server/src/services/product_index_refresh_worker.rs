@@ -128,7 +128,8 @@ impl IndexMutationEventAcknowledger for ProductIndexRefreshAcknowledger {
 
 struct ProductIndexRefreshRuntime {
     group: Arc<PersistentContractConsumerGroup>,
-    worker: ProductIndexRefreshDeliveryWorker<PostgresMutationStore, ProductIndexRefreshAcknowledger>,
+    worker:
+        ProductIndexRefreshDeliveryWorker<PostgresMutationStore, ProductIndexRefreshAcknowledger>,
     schemas: SharedIndexSchemaRegistry,
     sources: SharedIndexSourceRegistry,
     events: SharedIndexMutationEventRegistry,
@@ -186,11 +187,15 @@ pub async fn start_product_index_refresh_worker_if_enabled(
     let schemas = extensions
         .get::<SharedIndexSchemaRegistry>()
         .cloned()
-        .ok_or_else(|| Error::Message("Product Index schema registry is unavailable".to_string()))?;
+        .ok_or_else(|| {
+            Error::Message("Product Index schema registry is unavailable".to_string())
+        })?;
     let sources = extensions
         .get::<SharedIndexSourceRegistry>()
         .cloned()
-        .ok_or_else(|| Error::Message("Product Index source registry is unavailable".to_string()))?;
+        .ok_or_else(|| {
+            Error::Message("Product Index source registry is unavailable".to_string())
+        })?;
     let events = extensions
         .get::<SharedIndexMutationEventRegistry>()
         .cloned()
@@ -441,11 +446,12 @@ async fn process_consumed_delivery(
 
 fn delivery_from_consumed(
     consumed: &ConsumedContractEvent,
-) -> std::result::Result<ProductIndexRefreshDelivery<ConsumedContractEvent>, EventContractEnvelopeError>
-{
-    product_index_refresh_delivery_from_envelope(&consumed.envelope, consumed.clone()).map(|value| {
-        value.expect("caller established canonical Product Index refresh payload")
-    })
+) -> std::result::Result<
+    ProductIndexRefreshDelivery<ConsumedContractEvent>,
+    EventContractEnvelopeError,
+> {
+    product_index_refresh_delivery_from_envelope(&consumed.envelope, consumed.clone())
+        .map(|value| value.expect("caller established canonical Product Index refresh payload"))
 }
 
 fn product_index_refresh_delivery_from_envelope<T>(
@@ -503,10 +509,7 @@ async fn acknowledge_unrelated(
                     STAGE_ACKNOWLEDGEMENT,
                     ACK_FAILURE_CODE,
                 );
-                runtime_consumer_metrics::record_retry(
-                    METRICS_CONSUMER,
-                    STAGE_ACKNOWLEDGEMENT,
-                );
+                runtime_consumer_metrics::record_retry(METRICS_CONSUMER, STAGE_ACKNOWLEDGEMENT);
                 tracing::warn!(
                     worker = METRICS_CONSUMER,
                     event_id = %consumed.envelope.id(),

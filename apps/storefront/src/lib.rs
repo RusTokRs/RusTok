@@ -135,15 +135,8 @@ pub async fn render_module_page(
     query_params: std::collections::HashMap<String, String>,
     seo_context: Option<&ResolvedSeoPageContext>,
 ) -> String {
-    render_module_page_with_nonce(
-        locale,
-        route_segment,
-        query_params,
-        seo_context,
-        None,
-        None,
-    )
-    .await
+    render_module_page_with_nonce(locale, route_segment, query_params, seo_context, None, None)
+        .await
 }
 
 #[cfg(feature = "ssr")]
@@ -681,15 +674,11 @@ mod tests {
         header::{CACHE_CONTROL, ETAG, LOCATION},
     };
     use axum::response::IntoResponse;
-    use rustok_pages_storefront::{
-        StorefrontPageRouteDecision, StorefrontPageRouteDisposition,
-    };
+    use rustok_pages_storefront::{StorefrontPageRouteDecision, StorefrontPageRouteDisposition};
     use rustok_web::CspNonce;
     use std::collections::HashMap;
 
-    fn route_decision(
-        disposition: StorefrontPageRouteDisposition,
-    ) -> StorefrontPageRouteDecision {
+    fn route_decision(disposition: StorefrontPageRouteDisposition) -> StorefrontPageRouteDecision {
         StorefrontPageRouteDecision {
             disposition,
             canonical_path: Some("/en/modules/pages?slug=about".to_string()),
@@ -745,9 +734,7 @@ mod tests {
     #[test]
     fn exact_localized_canonical_page_route_continues_ssr() {
         let decision = route_decision(StorefrontPageRouteDisposition::Canonical);
-        assert!(
-            pages_route_response_from_decision("en", Some("en"), "about", &decision).is_none()
-        );
+        assert!(pages_route_response_from_decision("en", Some("en"), "about", &decision).is_none());
     }
 
     #[test]
@@ -758,7 +745,10 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
         assert_eq!(
-            response.headers().get(LOCATION).and_then(|value| value.to_str().ok()),
+            response
+                .headers()
+                .get(LOCATION)
+                .and_then(|value| value.to_str().ok()),
             Some("/en/modules/pages?slug=about")
         );
         assert_eq!(
@@ -773,19 +763,24 @@ mod tests {
     #[test]
     fn alias_gone_missing_and_conflict_stop_before_ssr() {
         for (disposition, status) in [
-            (StorefrontPageRouteDisposition::Redirect, StatusCode::PERMANENT_REDIRECT),
+            (
+                StorefrontPageRouteDisposition::Redirect,
+                StatusCode::PERMANENT_REDIRECT,
+            ),
             (StorefrontPageRouteDisposition::Gone, StatusCode::GONE),
-            (StorefrontPageRouteDisposition::NotFound, StatusCode::NOT_FOUND),
-            (StorefrontPageRouteDisposition::Conflict, StatusCode::CONFLICT),
+            (
+                StorefrontPageRouteDisposition::NotFound,
+                StatusCode::NOT_FOUND,
+            ),
+            (
+                StorefrontPageRouteDisposition::Conflict,
+                StatusCode::CONFLICT,
+            ),
         ] {
             let decision = route_decision(disposition);
-            let response = pages_route_response_from_decision(
-                "en",
-                Some("en"),
-                "historical",
-                &decision,
-            )
-            .expect("terminal route decision must return a response");
+            let response =
+                pages_route_response_from_decision("en", Some("en"), "historical", &decision)
+                    .expect("terminal route decision must return a response");
             assert_eq!(response.status(), status);
             assert_eq!(
                 response

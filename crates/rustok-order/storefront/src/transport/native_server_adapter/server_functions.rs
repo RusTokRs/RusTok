@@ -4,10 +4,10 @@ use serde_json::{Value, json};
 #[cfg(feature = "ssr")]
 use uuid::Uuid;
 
-use super::native_client_error_safety::NativeClientDiagnosticContext;
 #[cfg(feature = "ssr")]
 use super::super::CheckoutAdjustment;
 use super::super::{CheckoutCompletion, CheckoutCompletionTransportError, CompleteCheckoutRequest};
+use super::native_client_error_safety::NativeClientDiagnosticContext;
 
 #[cfg(feature = "ssr")]
 const ORDER_STOREFRONT_NATIVE_OWNER: &str = "rustok_order.storefront";
@@ -88,30 +88,31 @@ async fn storefront_order_complete_checkout_native(
         let metadata = request.metadata;
         let correlation_id = Uuid::new_v4();
 
-        let completion = storefront_staged_checkout_runtime::complete_storefront_checkout_with_product_port(
-            &runtime,
-            payment_provider_registry,
-            product_catalog_read_port,
-            &tenant,
-            &request_context,
-            auth,
-            idempotency_key,
-            StorefrontCheckoutCompletionCommand {
-                cart_id,
-                create_fulfillment: metadata.create_fulfillment,
-                metadata: json!({
-                    "source_module": metadata.source_module,
-                    "source_surface": metadata.source_surface,
-                    "command": metadata.command,
-                    "owner_module": metadata.owner_module,
-                    "create_fulfillment": metadata.create_fulfillment,
-                }),
-            },
-        )
-        .await
-        .map_err(|error| {
-            native_checkout_runtime_error(&request_context, tenant.id, correlation_id, error)
-        })?;
+        let completion =
+            storefront_staged_checkout_runtime::complete_storefront_checkout_with_product_port(
+                &runtime,
+                payment_provider_registry,
+                product_catalog_read_port,
+                &tenant,
+                &request_context,
+                auth,
+                idempotency_key,
+                StorefrontCheckoutCompletionCommand {
+                    cart_id,
+                    create_fulfillment: metadata.create_fulfillment,
+                    metadata: json!({
+                        "source_module": metadata.source_module,
+                        "source_surface": metadata.source_surface,
+                        "command": metadata.command,
+                        "owner_module": metadata.owner_module,
+                        "create_fulfillment": metadata.create_fulfillment,
+                    }),
+                },
+            )
+            .await
+            .map_err(|error| {
+                native_checkout_runtime_error(&request_context, tenant.id, correlation_id, error)
+            })?;
 
         Ok(map_checkout_completion(completion))
     }

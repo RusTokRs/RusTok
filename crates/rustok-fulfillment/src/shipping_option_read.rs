@@ -272,14 +272,9 @@ fn shipping_option_owner_error_facts(error: &FulfillmentError) -> ShippingOption
         uuid_non_nil_count,
         opaque_payload_present,
     ) = match error {
-        FulfillmentError::Validation(value) => (
-            "validation",
-            1,
-            value.chars().count(),
-            0,
-            0,
-            false,
-        ),
+        FulfillmentError::Validation(value) => {
+            ("validation", 1, value.chars().count(), 0, 0, false)
+        }
         FulfillmentError::ShippingOptionNotFound(id) => (
             "shipping_option_not_found",
             0,

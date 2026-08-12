@@ -18,20 +18,15 @@ use uuid::Uuid;
 
 use crate::entities::relation;
 use crate::index::{
-    SocialGraphIndexError, social_graph_relation_index_mutation,
-    social_graph_relation_index_schema,
+    SocialGraphIndexError, social_graph_relation_index_mutation, social_graph_relation_index_schema,
 };
 
-pub const SOCIAL_GRAPH_RELATION_INDEX_SOURCE: &str =
-    "social_graph.relation.state_changed.v1";
-pub const SOCIAL_GRAPH_RELATION_INDEX_EVENT_DOMAIN: &str =
-    "social_graph.relation.state_changed.v1";
-pub const SOCIAL_GRAPH_RELATION_INDEX_SOURCE_FACTORY: &str =
-    "social-graph-relation-index-source";
+pub const SOCIAL_GRAPH_RELATION_INDEX_SOURCE: &str = "social_graph.relation.state_changed.v1";
+pub const SOCIAL_GRAPH_RELATION_INDEX_EVENT_DOMAIN: &str = "social_graph.relation.state_changed.v1";
+pub const SOCIAL_GRAPH_RELATION_INDEX_SOURCE_FACTORY: &str = "social-graph-relation-index-source";
 
 const SOCIAL_GRAPH_INDEX_OWNER: &str = "social_graph";
-const SOCIAL_GRAPH_RELATION_REPLAY_EVENT_DOMAIN: &str =
-    "rustok-social-graph.relation-replay-v1";
+const SOCIAL_GRAPH_RELATION_REPLAY_EVENT_DOMAIN: &str = "rustok-social-graph.relation-replay-v1";
 
 #[derive(Debug, Error)]
 pub enum SocialGraphIndexSourceRegistrationError {
@@ -102,8 +97,8 @@ impl SocialGraphRelationPostgresIndexSource {
         if self.db.get_database_backend() != DbBackend::Postgres {
             return Err(permanent("social_graph_index_postgres_required"));
         }
-        let expected = relation_schema_ref()
-            .map_err(|_| permanent("social_graph_index_schema_invalid"))?;
+        let expected =
+            relation_schema_ref().map_err(|_| permanent("social_graph_index_schema_invalid"))?;
         if schema != &expected {
             return Err(permanent("social_graph_index_schema_mismatch"));
         }
@@ -159,16 +154,10 @@ impl IndexSource for SocialGraphRelationPostgresIndexSource {
         request: IndexSourceScanRequest,
     ) -> Result<IndexSourcePage, IndexSourceFailure> {
         self.validate_schema(request.schema())?;
-        let cursor = request
-            .cursor()
-            .map(RelationCursor::decode)
-            .transpose()?;
+        let cursor = request.cursor().map(RelationCursor::decode).transpose()?;
         let models = self.scan_models(&request, cursor.as_ref()).await?;
         let has_more = models.len() > request.limit();
-        let selected = models
-            .into_iter()
-            .take(request.limit())
-            .collect::<Vec<_>>();
+        let selected = models.into_iter().take(request.limit()).collect::<Vec<_>>();
         let next_cursor = if has_more {
             let relation_id = selected
                 .last()
@@ -224,8 +213,7 @@ impl RelationCursor {
         }
         let value = serde_json::to_value(self)
             .map_err(|_| permanent("social_graph_index_cursor_invalid"))?;
-        IndexSourceCursor::new(value)
-            .map_err(|_| permanent("social_graph_index_cursor_invalid"))
+        IndexSourceCursor::new(value).map_err(|_| permanent("social_graph_index_cursor_invalid"))
     }
 }
 
@@ -296,7 +284,10 @@ mod tests {
         assert_eq!(factories.len(), 1);
         let factory = factories.iter().next().unwrap();
         assert_eq!(factory.owner_module(), SOCIAL_GRAPH_INDEX_OWNER);
-        assert_eq!(factory.factory_name(), SOCIAL_GRAPH_RELATION_INDEX_SOURCE_FACTORY);
+        assert_eq!(
+            factory.factory_name(),
+            SOCIAL_GRAPH_RELATION_INDEX_SOURCE_FACTORY
+        );
 
         let routes = extensions
             .get::<IndexMutationEventCatalog>()
@@ -313,12 +304,17 @@ mod tests {
     fn replay_cursor_is_bounded_and_rejects_nil_identity() {
         let relation_id = Uuid::from_u128(42);
         let encoded = RelationCursor { relation_id }.encode().unwrap();
-        assert_eq!(RelationCursor::decode(&encoded).unwrap().relation_id, relation_id);
-        assert!(RelationCursor {
-            relation_id: Uuid::nil(),
-        }
-        .encode()
-        .is_err());
+        assert_eq!(
+            RelationCursor::decode(&encoded).unwrap().relation_id,
+            relation_id
+        );
+        assert!(
+            RelationCursor {
+                relation_id: Uuid::nil(),
+            }
+            .encode()
+            .is_err()
+        );
     }
 
     #[cfg(feature = "index-consumer")]

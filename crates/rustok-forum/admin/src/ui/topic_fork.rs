@@ -7,8 +7,8 @@ use rustok_ui_core::UiRouteContext;
 use crate::i18n::t;
 use crate::topic_fork_model::{
     ForumTopicForkIdentity, ForumTopicForkReceipt, ForumTopicForkReplyPage,
-    build_forum_topic_fork_command, forum_topic_fork_candidate_label,
-    forum_topic_fork_reply_label, new_forum_topic_fork_identity,
+    build_forum_topic_fork_command, forum_topic_fork_candidate_label, forum_topic_fork_reply_label,
+    new_forum_topic_fork_identity,
 };
 use crate::transport;
 
@@ -33,7 +33,11 @@ pub fn ForumTopicForkAdmin() -> impl IntoView {
     let (error, set_error) = signal(None::<String>);
     let (receipt, set_receipt) = signal(None::<ForumTopicForkReceipt>);
 
-    let title = t(ui_locale.as_deref(), "forum.fork.title", "Fork reply branch");
+    let title = t(
+        ui_locale.as_deref(),
+        "forum.fork.title",
+        "Fork reply branch",
+    );
     let subtitle = t(
         ui_locale.as_deref(),
         "forum.fork.subtitle",
@@ -48,8 +52,16 @@ pub fn ForumTopicForkAdmin() -> impl IntoView {
         "Choose a source topic with at least one reply.",
     );
     let locale_label = t(ui_locale.as_deref(), "forum.fork.locale", "Target locale");
-    let target_title_label = t(ui_locale.as_deref(), "forum.fork.targetTitle", "Target title");
-    let slug_label = t(ui_locale.as_deref(), "forum.fork.slug", "Target slug (optional)");
+    let target_title_label = t(
+        ui_locale.as_deref(),
+        "forum.fork.targetTitle",
+        "Target title",
+    );
+    let slug_label = t(
+        ui_locale.as_deref(),
+        "forum.fork.slug",
+        "Target slug (optional)",
+    );
     let reason_label = t(ui_locale.as_deref(), "forum.fork.reason", "Reason");
     let warning = t(
         ui_locale.as_deref(),
@@ -58,14 +70,26 @@ pub fn ForumTopicForkAdmin() -> impl IntoView {
     );
     let submit_label = t(ui_locale.as_deref(), "forum.fork.submit", "Fork branch");
     let pending_label = t(ui_locale.as_deref(), "forum.fork.pending", "Forking…");
-    let operation_label = t(ui_locale.as_deref(), "forum.fork.operation", "Retry identity");
-    let target_id_label = t(ui_locale.as_deref(), "forum.fork.targetId", "New topic identity");
+    let operation_label = t(
+        ui_locale.as_deref(),
+        "forum.fork.operation",
+        "Retry identity",
+    );
+    let target_id_label = t(
+        ui_locale.as_deref(),
+        "forum.fork.targetId",
+        "New topic identity",
+    );
     let retry_hint = t(
         ui_locale.as_deref(),
         "forum.fork.retryHint",
         "Exact retries keep both identities. Editing the source, root or target fields rotates both.",
     );
-    let complete_label = t(ui_locale.as_deref(), "forum.fork.complete", "Fork committed");
+    let complete_label = t(
+        ui_locale.as_deref(),
+        "forum.fork.complete",
+        "Fork committed",
+    );
 
     let candidates = LocalResource::new(move || {
         let _ = refresh_nonce.get();

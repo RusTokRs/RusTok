@@ -32,10 +32,16 @@ mod tests {
         assert!(ReactionKey::new("thumbs-up").is_ok());
 
         for invalid in ["Forum", " forum", "forum ", "forum/reply", "forum.reply"] {
-            assert!(ReactionSourceSlug::new(invalid).is_err(), "accepted {invalid:?}");
+            assert!(
+                ReactionSourceSlug::new(invalid).is_err(),
+                "accepted {invalid:?}"
+            );
         }
         for invalid in ["Reply", "reply-kind", "reply/kind", "reply kind"] {
-            assert!(ReactionSubjectKind::new(invalid).is_err(), "accepted {invalid:?}");
+            assert!(
+                ReactionSubjectKind::new(invalid).is_err(),
+                "accepted {invalid:?}"
+            );
         }
     }
 
@@ -64,14 +70,16 @@ mod tests {
     #[test]
     fn identities_require_non_nil_ids_and_positive_subject_revision() {
         assert!(ReactionCommandIdentity::new(Uuid::nil(), Uuid::new_v4()).is_err());
-        assert!(ReactionSubjectRef::new(
-            Uuid::new_v4(),
-            ReactionSourceSlug::new("forum").expect("source"),
-            ReactionSubjectKind::new("reply").expect("kind"),
-            Uuid::new_v4(),
-            0,
-        )
-        .is_err());
+        assert!(
+            ReactionSubjectRef::new(
+                Uuid::new_v4(),
+                ReactionSourceSlug::new("forum").expect("source"),
+                ReactionSubjectKind::new("reply").expect("kind"),
+                Uuid::new_v4(),
+                0,
+            )
+            .is_err()
+        );
     }
 
     #[test]

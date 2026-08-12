@@ -112,11 +112,7 @@ fn main() {
         .iter()
         .cloned()
         .collect::<Vec<_>>();
-    push_str_slice_const(
-        &mut generated,
-        "FORUM_REQUIRED_PERMISSIONS",
-        &permissions,
-    );
+    push_str_slice_const(&mut generated, "FORUM_REQUIRED_PERMISSIONS", &permissions);
     push_str_slice_const(
         &mut generated,
         "FORUM_WIDGET_COMPONENT_TYPES",
@@ -169,19 +165,25 @@ fn validate_widget_contracts(catalog: &Value, preview: &Value, blocks: &[String]
     let editors = catalog
         .get("property_editors")
         .and_then(Value::as_array)
-        .unwrap_or_else(|| panic!("Forum widget catalog contribution must declare property editors"));
+        .unwrap_or_else(|| {
+            panic!("Forum widget catalog contribution must declare property editors")
+        });
     let editor_types = editors
         .iter()
         .map(|editor| required_json_string(editor, "component_type", "property editor"))
         .collect::<BTreeSet<_>>();
     if editor_types != block_types {
-        panic!("Forum property-editor component types must exactly match canonical widget block ids");
+        panic!(
+            "Forum property-editor component types must exactly match canonical widget block ids"
+        );
     }
     for editor in editors {
         let schema = editor
             .get("property_schema")
             .and_then(Value::as_object)
-            .unwrap_or_else(|| panic!("Forum property editor must declare an owner schema reference"));
+            .unwrap_or_else(|| {
+                panic!("Forum property editor must declare an owner schema reference")
+            });
         if schema.get("format").and_then(Value::as_str) != Some(OWNER_SCHEMA_REF_FORMAT) {
             panic!("Forum property editor schema must use {OWNER_SCHEMA_REF_FORMAT}");
         }
@@ -247,7 +249,9 @@ fn validate_widget_contracts(catalog: &Value, preview: &Value, blocks: &[String]
             .map(ToString::to_string)
             .collect::<BTreeSet<_>>();
         if presentations != expected {
-            panic!("Forum widget renderer must support full/inline/preview/read_only presentations");
+            panic!(
+                "Forum widget renderer must support full/inline/preview/read_only presentations"
+            );
         }
     }
 }

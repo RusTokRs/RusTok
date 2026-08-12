@@ -5,8 +5,8 @@ use crate::{EntityKey, IndexMutation, SchemaRef, SchemaRegistry};
 
 use super::{
     IndexMutationAcknowledgeFailure, IndexMutationEventAcknowledger, IndexReplayFailure,
-    IndexReplayMutationOutcome, IndexReplayMutationSink, IndexSourceError,
-    IndexSourceLoadRequest, SharedIndexMutationEventRegistry, SharedIndexSourceRegistry,
+    IndexReplayMutationOutcome, IndexReplayMutationSink, IndexSourceError, IndexSourceLoadRequest,
+    SharedIndexMutationEventRegistry, SharedIndexSourceRegistry,
 };
 
 const MAX_EVENT_DOMAIN_BYTES: usize = 128;
@@ -164,9 +164,11 @@ where
 
         let source = source_registry
             .source_for_schema(&key.schema)
-            .ok_or_else(|| IndexSourceRefreshEventProcessError::MissingReplaySource {
-                schema: key.schema.clone(),
-            })?;
+            .ok_or_else(
+                || IndexSourceRefreshEventProcessError::MissingReplaySource {
+                    schema: key.schema.clone(),
+                },
+            )?;
         if source.source_name() != expected_source_name {
             return Err(IndexSourceRefreshEventProcessError::ReplaySourceMismatch {
                 event_domain,
@@ -191,10 +193,12 @@ where
             }
             1 => mutations.pop().expect("single source mutation"),
             actual => {
-                return Err(IndexSourceRefreshEventProcessError::AmbiguousSourceMutation {
-                    event_domain,
-                    actual,
-                });
+                return Err(
+                    IndexSourceRefreshEventProcessError::AmbiguousSourceMutation {
+                        event_domain,
+                        actual,
+                    },
+                );
             }
         };
         let source_version = mutation.source_version();
@@ -245,7 +249,9 @@ pub enum IndexSourceRefreshEventError {
 pub enum IndexSourceRefreshEventProcessError {
     #[error("Unknown Index source refresh event domain: {0}")]
     UnknownEventDomain(String),
-    #[error("Index source refresh event {event_domain} carries schema {actual}, expected {expected}")]
+    #[error(
+        "Index source refresh event {event_domain} carries schema {actual}, expected {expected}"
+    )]
     EventSchemaMismatch {
         event_domain: String,
         expected: SchemaRef,
@@ -269,10 +275,7 @@ pub enum IndexSourceRefreshEventProcessError {
         key: EntityKey,
     },
     #[error("Index source refresh event {event_domain} returned {actual} mutations for one key")]
-    AmbiguousSourceMutation {
-        event_domain: String,
-        actual: usize,
-    },
+    AmbiguousSourceMutation { event_domain: String, actual: usize },
     #[error(
         "Index source refresh event {event_domain} source version is behind: minimum={minimum}, actual={actual}"
     )]
@@ -306,8 +309,6 @@ fn valid_machine_name(value: &str, max_bytes: usize) -> bool {
     !value.is_empty()
         && value.len() <= max_bytes
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }

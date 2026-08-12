@@ -67,11 +67,7 @@ impl PagesBuilderFacade {
         }
     }
 
-
-    pub fn with_provider_status(
-        mut self,
-        provider_status: PageBuilderAdminProviderStatus,
-    ) -> Self {
+    pub fn with_provider_status(mut self, provider_status: PageBuilderAdminProviderStatus) -> Self {
         self.provider_status = Some(provider_status);
         self
     }

@@ -127,7 +127,14 @@ fn parse_provider_health(
 pub async fn fetch(
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<(String, BuilderCapabilityFlags, Option<ProviderHealthSnapshot>), GraphqlHttpError> {
+) -> Result<
+    (
+        String,
+        BuilderCapabilityFlags,
+        Option<ProviderHealthSnapshot>,
+    ),
+    GraphqlHttpError,
+> {
     let response: PageBuilderRolloutResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(PAGE_BUILDER_ROLLOUT_QUERY, Some(json!({}))),
@@ -137,10 +144,8 @@ pub async fn fetch(
     )
     .await?;
     let payload = response.page_builder_rollout_snapshot;
-    let provider_health = parse_provider_health(
-        payload.provider_health_observed,
-        payload.provider_health,
-    )?;
+    let provider_health =
+        parse_provider_health(payload.provider_health_observed, payload.provider_health)?;
     let flags = BuilderCapabilityFlags {
         builder_enabled: payload.builder_enabled,
         preview_enabled: payload.preview_enabled,
@@ -163,7 +168,10 @@ mod tests {
     ) -> PageBuilderProviderHealthPayload {
         PageBuilderProviderHealthPayload {
             state: state.to_string(),
-            degradation_reasons: degradation_reasons.into_iter().map(str::to_string).collect(),
+            degradation_reasons: degradation_reasons
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
             preview_p95_ms: 1_600,
             publish_p95_ms: 2_000,
             sanitize_failure_rate: 0.0,
@@ -174,7 +182,13 @@ mod tests {
     #[test]
     fn provider_health_transport_requires_boolean_payload_consistency() {
         assert!(parse_provider_health(false, None).unwrap().is_none());
-        assert!(parse_provider_health(false, Some(health_payload("degraded", vec!["provider_unhealthy"]))).is_err());
+        assert!(
+            parse_provider_health(
+                false,
+                Some(health_payload("degraded", vec!["provider_unhealthy"]))
+            )
+            .is_err()
+        );
         assert!(parse_provider_health(true, None).is_err());
     }
 
@@ -188,10 +202,6 @@ mod tests {
         .expect("observed health");
         assert_eq!(snapshot.state.as_str(), "degraded");
 
-        assert!(parse_provider_health(
-            true,
-            Some(health_payload("ready", vec![])),
-        )
-        .is_err());
+        assert!(parse_provider_health(true, Some(health_payload("ready", vec![])),).is_err());
     }
 }

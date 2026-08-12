@@ -104,9 +104,7 @@ fn validate_domain(domain: &str) -> Result<(), IndexSourceEventIdError> {
     let valid = !domain.is_empty()
         && domain.len() <= MAX_SOURCE_EVENT_DOMAIN_BYTES
         && domain.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         });
     if valid {
         Ok(())
@@ -268,23 +266,11 @@ mod tests {
             Err(IndexSourceEventIdError::InvalidDomain(_))
         ));
         assert_eq!(
-            derive_index_source_event_id(
-                "source.v1",
-                Uuid::nil(),
-                Uuid::from_u128(2),
-                None,
-                1,
-            ),
+            derive_index_source_event_id("source.v1", Uuid::nil(), Uuid::from_u128(2), None, 1,),
             Err(IndexSourceEventIdError::NilTenantId)
         );
         assert_eq!(
-            derive_index_source_event_id(
-                "source.v1",
-                Uuid::from_u128(1),
-                Uuid::nil(),
-                None,
-                1,
-            ),
+            derive_index_source_event_id("source.v1", Uuid::from_u128(1), Uuid::nil(), None, 1,),
             Err(IndexSourceEventIdError::NilEntityId)
         );
         assert_eq!(

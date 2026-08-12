@@ -122,9 +122,9 @@ impl GroupGovernanceService {
             !platform_manage,
         )
         .await?;
-        let target_membership = locked
-            .membership(request.target_user_id)
-            .ok_or_else(|| GroupsError::Conflict("an active group membership is required".to_string()))?;
+        let target_membership = locked.membership(request.target_user_id).ok_or_else(|| {
+            GroupsError::Conflict("an active group membership is required".to_string())
+        })?;
         validate_owner_identity(&group_model, &target_membership)?;
         if target_membership.user_id == group_model.owner_user_id {
             return Err(GroupsError::Invariant(
@@ -285,7 +285,9 @@ impl GroupGovernanceService {
 
         let new_owner = locked
             .membership(request.new_owner_user_id)
-            .ok_or_else(|| GroupsError::Conflict("an active group membership is required".to_string()))?;
+            .ok_or_else(|| {
+                GroupsError::Conflict("an active group membership is required".to_string())
+            })?;
         validate_owner_identity(&group_model, &new_owner)?;
         if new_owner.user_id == previous_owner_id {
             return Err(GroupsError::Conflict(
@@ -528,14 +530,17 @@ async fn effective_manager_role(
     user_id: Uuid,
     now: chrono::DateTime<Utc>,
 ) -> GroupsResult<GroupRole> {
-    let state = resolve_group_membership_enforcement(transaction, tenant_id, group_id, user_id, now)
-        .await?;
+    let state =
+        resolve_group_membership_enforcement(transaction, tenant_id, group_id, user_id, now)
+            .await?;
     match state.effective_status {
         GroupMembershipEffectiveStatus::Suspended => Err(GroupsError::MembershipSuspended),
         GroupMembershipEffectiveStatus::LegacyBanned => Err(GroupsError::MembershipBanned),
         GroupMembershipEffectiveStatus::Active => {
             let role = state.role.ok_or_else(|| {
-                GroupsError::Invariant("active group membership is missing a local role".to_string())
+                GroupsError::Invariant(
+                    "active group membership is missing a local role".to_string(),
+                )
             })?;
             if role.can_manage_settings() {
                 Ok(role)
@@ -558,8 +563,9 @@ async fn effective_governance_role(
     user_id: Uuid,
     now: chrono::DateTime<Utc>,
 ) -> GroupsResult<GroupRole> {
-    let state = resolve_group_membership_enforcement(transaction, tenant_id, group_id, user_id, now)
-        .await?;
+    let state =
+        resolve_group_membership_enforcement(transaction, tenant_id, group_id, user_id, now)
+            .await?;
     match state.effective_status {
         GroupMembershipEffectiveStatus::Suspended => Err(GroupsError::MembershipSuspended),
         GroupMembershipEffectiveStatus::LegacyBanned => Err(GroupsError::MembershipBanned),
@@ -579,16 +585,13 @@ async fn validate_platform_recovery_owner_state(
     owner_user_id: Uuid,
     now: chrono::DateTime<Utc>,
 ) -> GroupsResult<()> {
-    let state = resolve_group_membership_enforcement(
-        transaction,
-        tenant_id,
-        group_id,
-        owner_user_id,
-        now,
-    )
-    .await?;
+    let state =
+        resolve_group_membership_enforcement(transaction, tenant_id, group_id, owner_user_id, now)
+            .await?;
     match state.effective_status {
-        GroupMembershipEffectiveStatus::Active | GroupMembershipEffectiveStatus::Suspended => Ok(()),
+        GroupMembershipEffectiveStatus::Active | GroupMembershipEffectiveStatus::Suspended => {
+            Ok(())
+        }
         GroupMembershipEffectiveStatus::LegacyBanned => Err(GroupsError::MembershipBanned),
         _ => Err(GroupsError::Invariant(
             "current group owner effective membership is not recoverable".to_string(),

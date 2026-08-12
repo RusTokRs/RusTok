@@ -9,9 +9,9 @@ use crate::import_inspection::{
     NodebbForumImportInspection,
 };
 use crate::import_mapping::{
-    ForumImportCategoryCandidate, ForumImportEntityKind, ForumImportExternalRef,
-    ForumImportPostCandidate, ForumImportPostRole, ForumImportTopicCandidate,
-    FORUM_IMPORT_SOURCE_NODEBB, MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH,
+    FORUM_IMPORT_SOURCE_NODEBB, ForumImportCategoryCandidate, ForumImportEntityKind,
+    ForumImportExternalRef, ForumImportPostCandidate, ForumImportPostRole,
+    ForumImportTopicCandidate, MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH,
 };
 
 pub const MAX_FORUM_IMPORT_RESOLUTION_BINDINGS_PER_BATCH: usize =
@@ -229,10 +229,8 @@ struct BindingIndex {
 impl BindingIndex {
     fn new(bindings: &[ForumImportIdentityBinding]) -> Result<Self, ForumImportResolutionError> {
         let mut by_source = BTreeMap::new();
-        let mut by_target = BTreeMap::<
-            (ForumImportTargetIdentityKind, Uuid),
-            ForumImportExternalRef,
-        >::new();
+        let mut by_target =
+            BTreeMap::<(ForumImportTargetIdentityKind, Uuid), ForumImportExternalRef>::new();
 
         for binding in bindings {
             validate_external_ref(&binding.source, binding.source.kind)?;
@@ -556,7 +554,9 @@ fn resolve_topic(
             topic: candidate.source.clone(),
             post: body_source.clone(),
         })?;
-    if body_post.role != ForumImportPostRole::TopicBody || body_post.topic_source != candidate.source {
+    if body_post.role != ForumImportPostRole::TopicBody
+        || body_post.topic_source != candidate.source
+    {
         return Err(ForumImportResolutionError::TopicBodyRoleMismatch {
             topic: candidate.source.clone(),
             post: body_post.source.clone(),
@@ -569,7 +569,8 @@ fn resolve_topic(
         });
     }
     let body_author = resolve_author(body_post.author_source.as_ref(), bindings)?;
-    if author.as_ref().map(|value| value.user_id) != body_author.as_ref().map(|value| value.user_id) {
+    if author.as_ref().map(|value| value.user_id) != body_author.as_ref().map(|value| value.user_id)
+    {
         return Err(ForumImportResolutionError::TopicBodyAuthorMismatch {
             topic: candidate.source.clone(),
             post: body_post.source.clone(),
@@ -615,7 +616,10 @@ fn resolve_reply(
     bindings: &mut BindingIndex,
 ) -> Result<ForumResolvedImportReply, ForumImportResolutionError> {
     let id = bindings.require(&candidate.source, ForumImportTargetIdentityKind::Reply)?;
-    let topic_id = bindings.require(&candidate.topic_source, ForumImportTargetIdentityKind::Topic)?;
+    let topic_id = bindings.require(
+        &candidate.topic_source,
+        ForumImportTargetIdentityKind::Topic,
+    )?;
     let author = resolve_author(candidate.author_source.as_ref(), bindings)?;
     Ok(ForumResolvedImportReply {
         source: candidate.source.clone(),

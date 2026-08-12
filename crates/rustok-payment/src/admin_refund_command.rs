@@ -102,10 +102,7 @@ impl PaymentAdminRefundCommandRuntime {
         Self { command_port }
     }
 
-    pub fn in_process(
-        db: DatabaseConnection,
-        provider_registry: PaymentProviderRegistry,
-    ) -> Self {
+    pub fn in_process(db: DatabaseConnection, provider_registry: PaymentProviderRegistry) -> Self {
         Self::new(in_process_payment_admin_refund_command_port(
             db,
             provider_registry,
@@ -181,13 +178,8 @@ impl PaymentAdminRefundCommandPort for InProcessPaymentAdminRefundCommandPort {
                 provider_request,
             )
             .await?;
-        self.mark_refund_journal_committed(
-            &context,
-            OPERATION,
-            refund.id,
-            journaled.operation_id,
-        )
-        .await?;
+        self.mark_refund_journal_committed(&context, OPERATION, refund.id, journaled.operation_id)
+            .await?;
         Ok(refund)
     }
 
@@ -310,7 +302,11 @@ impl InProcessPaymentAdminRefundCommandPort {
             ));
         }
 
-        let provider_result = match self.provider_registry.execute_refund(provider_id, request).await {
+        let provider_result = match self
+            .provider_registry
+            .execute_refund(provider_id, request)
+            .await
+        {
             Ok(result) => result,
             Err(error) => {
                 let checkpoint = if error.requires_provider_reconciliation() {
@@ -471,7 +467,12 @@ impl InProcessPaymentAdminRefundCommandPort {
         refund_id: Uuid,
         operation_id: Uuid,
     ) -> Result<(), PortError> {
-        if self.operation_journal.mark_committed(operation_id).await.is_err() {
+        if self
+            .operation_journal
+            .mark_committed(operation_id)
+            .await
+            .is_err()
+        {
             let _ = self
                 .operation_journal
                 .mark_reconciliation_required(
@@ -503,9 +504,11 @@ fn require_refund_write_admission(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::write()).inspect_err(|error| {
-        log_port_error(context, operation, "policy", error);
-    })
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_port_error(context, operation, "policy", error);
+        })
 }
 
 fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
@@ -531,7 +534,12 @@ fn map_reserved_refund_error(
                 "payment.refund_reserved_reconciliation_required",
                 "refund remains reserved while provider outcome is reconciled",
             );
-            log_mapped_error(context, operation, "reserved_refund_provider_outcome", &mapped);
+            log_mapped_error(
+                context,
+                operation,
+                "reserved_refund_provider_outcome",
+                &mapped,
+            );
             mapped
         }
         PaymentError::ProviderUnavailable { .. } => {
@@ -539,7 +547,12 @@ fn map_reserved_refund_error(
                 "payment.refund_reserved_provider_unavailable",
                 "refund remains reserved and provider operation may be retried safely",
             );
-            log_mapped_error(context, operation, "reserved_refund_provider_unavailable", &mapped);
+            log_mapped_error(
+                context,
+                operation,
+                "reserved_refund_provider_unavailable",
+                &mapped,
+            );
             mapped
         }
         other => map_payment_error(context, operation, other),
@@ -685,17 +698,19 @@ fn persisted_provider_result(
             journal_operation.operation.as_str(),
         ));
     };
-    serde_json::from_value(value)
-        .map(Some)
-        .map_err(|_| {
-            PaymentError::provider_outcome_unknown(
-                journal_operation.provider_id.as_str(),
-                journal_operation.operation.as_str(),
-            )
-        })
+    serde_json::from_value(value).map(Some).map_err(|_| {
+        PaymentError::provider_outcome_unknown(
+            journal_operation.provider_id.as_str(),
+            journal_operation.operation.as_str(),
+        )
+    })
 }
 
-fn insert_metadata_string(metadata: &mut Value, key: &str, value: String) -> Result<(), PaymentError> {
+fn insert_metadata_string(
+    metadata: &mut Value,
+    key: &str,
+    value: String,
+) -> Result<(), PaymentError> {
     if !metadata.is_object() {
         if metadata.is_null() {
             *metadata = serde_json::json!({});
@@ -706,7 +721,9 @@ fn insert_metadata_string(metadata: &mut Value, key: &str, value: String) -> Res
         }
     }
     let object = metadata.as_object_mut().ok_or_else(|| {
-        PaymentError::Validation("payment provider operation metadata must be an object".to_string())
+        PaymentError::Validation(
+            "payment provider operation metadata must be an object".to_string(),
+        )
     })?;
     if let Some(existing) = object.get(key).and_then(Value::as_str) {
         if existing != value {

@@ -24,12 +24,10 @@ const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 const STOREFRONT_CHECKOUT_OWNER: &str = "rustok_commerce.storefront_staged_checkout_runtime";
 const STOREFRONT_CHECKOUT_BOUNDARY: &str = "commerce_storefront_checkout_http";
 const STOREFRONT_PAYMENT_COLLECTION_OWNER: &str = "rustok_payment.payment_collection_ports";
-const STOREFRONT_PAYMENT_COLLECTION_BOUNDARY: &str =
-    "commerce_storefront_payment_collection_http";
+const STOREFRONT_PAYMENT_COLLECTION_BOUNDARY: &str = "commerce_storefront_payment_collection_http";
 
 type StorefrontCheckoutHttpPolicy = (StatusCode, &'static str);
-type StorefrontPaymentCollectionHttpPolicy =
-    (StatusCode, &'static str, &'static str, &'static str);
+type StorefrontPaymentCollectionHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 #[derive(Clone, Copy)]
 struct StorefrontCheckoutErrorContext {

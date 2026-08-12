@@ -1,9 +1,7 @@
 use thiserror::Error;
 use tokio::sync::watch;
 
-use crate::dlq_duplicate_alert_policy::{
-    DlqDuplicateAlertEvaluation, DlqDuplicateAlertPolicy,
-};
+use crate::dlq_duplicate_alert_policy::{DlqDuplicateAlertEvaluation, DlqDuplicateAlertPolicy};
 use crate::dlq_duplicate_inspection::DlqDuplicateSummary;
 
 /// Identifier-free latest-value snapshot for duplicate alert telemetry and health consumers.
@@ -26,10 +24,7 @@ impl DlqDuplicateAlertRuntimeSnapshot {
         }
     }
 
-    const fn available(
-        generation: u64,
-        evaluation: DlqDuplicateAlertEvaluation,
-    ) -> Self {
+    const fn available(generation: u64, evaluation: DlqDuplicateAlertEvaluation) -> Self {
         Self {
             generation,
             available: true,
@@ -61,12 +56,7 @@ pub struct DlqDuplicateAlertRuntimePublisher {
 }
 
 impl DlqDuplicateAlertRuntimePublisher {
-    pub fn new(
-        policy: DlqDuplicateAlertPolicy,
-    ) -> (
-        Self,
-        DlqDuplicateAlertRuntimeSubscriber,
-    ) {
+    pub fn new(policy: DlqDuplicateAlertPolicy) -> (Self, DlqDuplicateAlertRuntimeSubscriber) {
         let (sender, receiver) = watch::channel(DlqDuplicateAlertRuntimeSnapshot::unavailable(0));
         (
             Self {
@@ -90,10 +80,8 @@ impl DlqDuplicateAlertRuntimePublisher {
         summary: &DlqDuplicateSummary,
     ) -> Result<DlqDuplicateAlertRuntimeSnapshot, DlqDuplicateAlertRuntimeError> {
         let generation = self.advance_generation()?;
-        let snapshot = DlqDuplicateAlertRuntimeSnapshot::available(
-            generation,
-            self.policy.evaluate(summary),
-        );
+        let snapshot =
+            DlqDuplicateAlertRuntimeSnapshot::available(generation, self.policy.evaluate(summary));
         self.sender.send_replace(snapshot);
         Ok(snapshot)
     }
@@ -149,9 +137,7 @@ pub enum DlqDuplicateAlertRuntimeError {
 impl DlqDuplicateAlertRuntimeError {
     pub const fn stable_code(self) -> &'static str {
         match self {
-            Self::GenerationOverflow => {
-                "iggy.dlq_duplicate.alert_runtime_generation_overflow"
-            }
+            Self::GenerationOverflow => "iggy.dlq_duplicate.alert_runtime_generation_overflow",
             Self::PublisherClosed => "iggy.dlq_duplicate.alert_runtime_publisher_closed",
         }
     }

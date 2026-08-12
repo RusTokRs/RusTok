@@ -4,7 +4,7 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -114,7 +114,11 @@ impl IndexReplayJobLeaseRequest {
     }
 
     fn scope_kind(&self) -> &'static str {
-        if self.locale.is_some() { "locale" } else { "schema" }
+        if self.locale.is_some() {
+            "locale"
+        } else {
+            "schema"
+        }
     }
 }
 
@@ -184,9 +188,7 @@ pub enum IndexReplayJobError {
     SchemaRetired(SchemaRef),
     #[error("Index replay schema does not support locale-scoped jobs: {0}")]
     LocaleScopeUnsupported(SchemaRef),
-    #[error(
-        "Index replay scope is blocked by failed job {job_id} after attempt {attempt_count}"
-    )]
+    #[error("Index replay scope is blocked by failed job {job_id} after attempt {attempt_count}")]
     DeadLettered {
         job_id: Uuid,
         attempt_count: u32,
@@ -438,15 +440,17 @@ impl PostgresIndexReplayJobStore {
                 .map_err(storage_error)?;
         }
 
-        Ok(IndexReplayJobAcquireOutcome::Acquired(IndexReplayJobLease {
-            tenant_id: request.tenant_id,
-            job_id,
-            schema: request.schema.clone(),
-            locale: request.locale.clone(),
-            source_name: request.source_name.clone(),
-            worker_id: request.worker_id.clone(),
-            attempt_count,
-        }))
+        Ok(IndexReplayJobAcquireOutcome::Acquired(
+            IndexReplayJobLease {
+                tenant_id: request.tenant_id,
+                job_id,
+                schema: request.schema.clone(),
+                locale: request.locale.clone(),
+                source_name: request.source_name.clone(),
+                worker_id: request.worker_id.clone(),
+                attempt_count,
+            },
+        ))
     }
 }
 
@@ -514,9 +518,7 @@ fn stored_job(row: &QueryResult, backend: DbBackend) -> Result<StoredJob, IndexR
         .get("source_name")
         .and_then(JsonValue::as_str)
         .ok_or_else(|| {
-            IndexReplayJobError::InvalidStoredJob(
-                "request.source_name must be a string".to_owned(),
-            )
+            IndexReplayJobError::InvalidStoredJob("request.source_name must be a string".to_owned())
         })?
         .to_owned();
     validate_source_name(&source_name).map_err(|_| {
@@ -555,9 +557,8 @@ fn stored_job(row: &QueryResult, backend: DbBackend) -> Result<StoredJob, IndexR
     let attempt_count = u32::try_from(attempt_count).map_err(|_| {
         IndexReplayJobError::InvalidStoredJob("attempt count is outside the u32 range".to_owned())
     })?;
-    let last_error_code: Option<String> = row
-        .try_get("", "last_error_code")
-        .map_err(storage_error)?;
+    let last_error_code: Option<String> =
+        row.try_get("", "last_error_code").map_err(storage_error)?;
     if let Some(code) = &last_error_code {
         validate_error_code(code).map_err(|_| {
             IndexReplayJobError::InvalidStoredJob(
@@ -676,11 +677,7 @@ async fn lock_replay_scope(
     if backend == DbBackend::Sqlite {
         return Ok(());
     }
-    let locale = request
-        .locale
-        .as_ref()
-        .map(LocaleKey::as_str)
-        .unwrap_or("");
+    let locale = request.locale.as_ref().map(LocaleKey::as_str).unwrap_or("");
     let lock_key = format!(
         "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
         request.tenant_id,
@@ -748,9 +745,7 @@ fn validate_source_name(source_name: &str) -> Result<(), IndexReplayJobError> {
         });
     }
     if !source_name.bytes().all(|byte| {
-        byte.is_ascii_lowercase()
-            || byte.is_ascii_digit()
-            || matches!(byte, b'-' | b'_' | b'.')
+        byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
     }) {
         return Err(IndexReplayJobError::InvalidSourceName {
             reason: "must be a lowercase machine name",
@@ -841,10 +836,7 @@ fn stored_uuid(
     }
 }
 
-fn schema_scope_values(
-    request: &IndexReplayJobLeaseRequest,
-    backend: DbBackend,
-) -> Vec<SqlValue> {
+fn schema_scope_values(request: &IndexReplayJobLeaseRequest, backend: DbBackend) -> Vec<SqlValue> {
     vec![
         uuid_value(request.tenant_id, backend),
         request.schema.module.as_str().to_owned().into(),
@@ -853,10 +845,7 @@ fn schema_scope_values(
     ]
 }
 
-fn replay_scope_values(
-    request: &IndexReplayJobLeaseRequest,
-    backend: DbBackend,
-) -> Vec<SqlValue> {
+fn replay_scope_values(request: &IndexReplayJobLeaseRequest, backend: DbBackend) -> Vec<SqlValue> {
     let mut values = schema_scope_values(request, backend);
     values.push(request.scope_kind().to_owned().into());
     values.push(

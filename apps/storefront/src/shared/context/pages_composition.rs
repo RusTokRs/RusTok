@@ -233,8 +233,14 @@ mod tests {
     fn conditional_request_accepts_strong_weak_and_list_matches() {
         let etag = "\"pages_storefront_composition_v1-deadbeef\"";
         assert!(if_none_match_matches(Some(etag), etag));
-        assert!(if_none_match_matches(Some("W/\"pages_storefront_composition_v1-deadbeef\""), etag));
-        assert!(if_none_match_matches(Some("\"other\", W/\"pages_storefront_composition_v1-deadbeef\""), etag));
+        assert!(if_none_match_matches(
+            Some("W/\"pages_storefront_composition_v1-deadbeef\""),
+            etag
+        ));
+        assert!(if_none_match_matches(
+            Some("\"other\", W/\"pages_storefront_composition_v1-deadbeef\""),
+            etag
+        ));
         assert!(!if_none_match_matches(Some("\"other\""), etag));
     }
 }

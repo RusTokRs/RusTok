@@ -8,9 +8,9 @@ use crate::core::{
     NotificationStorefrontGroupStateAction, NotificationStorefrontGroupStateCommand,
     NotificationStorefrontGroupStatePage, NotificationStorefrontGroupSummary,
     NotificationStorefrontGroupSummaryPage, NotificationStorefrontGroupSummaryRequest,
-    NotificationStorefrontItem, NotificationStorefrontItemState, NotificationStorefrontOpenDecision,
-    NotificationStorefrontOpenRequest, NotificationStorefrontPriority,
-    NotificationStorefrontUnreadCount,
+    NotificationStorefrontItem, NotificationStorefrontItemState,
+    NotificationStorefrontOpenDecision, NotificationStorefrontOpenRequest,
+    NotificationStorefrontPriority, NotificationStorefrontUnreadCount,
 };
 
 pub type GraphqlNotificationStorefrontError = String;
@@ -516,8 +516,8 @@ fn graphql_url() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        GROUP_ITEMS_QUERY, GROUP_STATE_MUTATION, GROUP_SUMMARIES_QUERY,
-        OPEN_AUTHORIZATION_QUERY, UNREAD_COUNT_QUERY,
+        GROUP_ITEMS_QUERY, GROUP_STATE_MUTATION, GROUP_SUMMARIES_QUERY, OPEN_AUTHORIZATION_QUERY,
+        UNREAD_COUNT_QUERY,
     };
 
     #[test]

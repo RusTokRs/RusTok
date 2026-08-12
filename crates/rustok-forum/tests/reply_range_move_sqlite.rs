@@ -78,11 +78,7 @@ async fn row(
     .ok_or_else(|| std::io::Error::other("expected row").into())
 }
 
-async fn count(
-    db: &DatabaseConnection,
-    sql: &str,
-    values: Vec<sea_orm::Value>,
-) -> TestResult<i64> {
+async fn count(db: &DatabaseConnection, sql: &str, values: Vec<sea_orm::Value>) -> TestResult<i64> {
     Ok(row(db, sql, values).await?.try_get("", "value")?)
 }
 
@@ -356,20 +352,10 @@ async fn reply_range_move_is_atomic_idempotent_and_preserves_identity() -> TestR
     };
     let service = ForumReplyRangeMoveService::new(db.clone(), event_bus);
     let first = service
-        .move_reply_range(
-            tenant_id,
-            source_topic_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .move_reply_range(tenant_id, source_topic_id, admin.clone(), input.clone())
         .await?;
     let replay = service
-        .move_reply_range(
-            tenant_id,
-            source_topic_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .move_reply_range(tenant_id, source_topic_id, admin.clone(), input.clone())
         .await?;
 
     assert_eq!(first, replay);

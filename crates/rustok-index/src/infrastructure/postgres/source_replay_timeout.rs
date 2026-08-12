@@ -14,8 +14,7 @@ const DEFAULT_INDEX_REPLAY_STORAGE_FUTURE_TIMEOUT: Duration = Duration::from_sec
 
 const INDEX_REPLAY_MUTATION_TIMEOUT_CODE: &str = "index_replay_mutation_timeout";
 const INDEX_REPLAY_CHECKPOINT_READ_TIMEOUT_CODE: &str = "index_replay_checkpoint_read_timeout";
-const INDEX_REPLAY_CHECKPOINT_COMMIT_TIMEOUT_CODE: &str =
-    "index_replay_checkpoint_commit_timeout";
+const INDEX_REPLAY_CHECKPOINT_COMMIT_TIMEOUT_CODE: &str = "index_replay_checkpoint_commit_timeout";
 
 pub(super) async fn bounded_replay_mutation<T, F>(future: F) -> Result<T, IndexReplayFailure>
 where
@@ -30,9 +29,7 @@ where
     .await
 }
 
-pub(super) async fn bounded_replay_checkpoint_read<T, F>(
-    future: F,
-) -> Result<T, IndexReplayFailure>
+pub(super) async fn bounded_replay_checkpoint_read<T, F>(future: F) -> Result<T, IndexReplayFailure>
 where
     F: Future<Output = Result<T, IndexReplayFailure>>,
 {
@@ -135,10 +132,7 @@ mod tests {
         .expect_err("pending replay checkpoint commit should hit the outer timeout");
 
         assert_eq!(failure.kind(), IndexReplayFailureKind::Retryable);
-        assert_eq!(
-            failure.code(),
-            INDEX_REPLAY_CHECKPOINT_COMMIT_TIMEOUT_CODE
-        );
+        assert_eq!(failure.code(), INDEX_REPLAY_CHECKPOINT_COMMIT_TIMEOUT_CODE);
     }
 
     #[tokio::test]

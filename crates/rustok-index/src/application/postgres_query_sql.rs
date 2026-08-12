@@ -224,18 +224,14 @@ fn compile_many_projection(
         terminal_alias = Some(target_alias_name);
     }
 
-    let terminal_alias = terminal_alias.ok_or(
-        PostgresQueryCompileError::ManyProjectionPlanMismatch,
-    )?;
+    let terminal_alias =
+        terminal_alias.ok_or(PostgresQueryCompileError::ManyProjectionPlanMismatch)?;
     let field_values = projection
         .fields
         .iter()
         .map(|field| {
             let sql = field_sql_for_alias(field, &terminal_alias, bindings);
-            format!(
-                "COALESCE({}, jsonb_build_object('type', 'null'))",
-                sql.raw
-            )
+            format!("COALESCE({}, jsonb_build_object('type', 'null'))", sql.raw)
         })
         .collect::<Vec<_>>();
     let item = format!(
@@ -258,10 +254,7 @@ fn compile_filter(
     match filter {
         FilterExpr::And(children) => compile_logical(plan, children, "AND", bindings),
         FilterExpr::Or(children) => compile_logical(plan, children, "OR", bindings),
-        FilterExpr::Not(child) => Ok(format!(
-            "NOT ({})",
-            compile_filter(plan, child, bindings)?
-        )),
+        FilterExpr::Not(child) => Ok(format!("NOT ({})", compile_filter(plan, child, bindings)?)),
         FilterExpr::Eq(path, value) => compile_eq(plan, path, value, bindings),
         FilterExpr::Ne(path, value) => compile_ne(plan, path, value, bindings),
         FilterExpr::In(path, values) => compile_in(plan, path, values, bindings),
@@ -419,9 +412,8 @@ fn compile_is_null(
 ) -> Result<String, PostgresQueryCompileError> {
     let field = planned_field(plan, path)?;
     if field.traverses_many {
-        let non_null = compile_many_exists(plan, field, bindings, |sql, _| {
-            Ok(sql.non_null_predicate())
-        })?;
+        let non_null =
+            compile_many_exists(plan, field, bindings, |sql, _| Ok(sql.non_null_predicate()))?;
         if expected_null {
             Ok(format!("NOT ({non_null})"))
         } else {
@@ -789,15 +781,11 @@ fn field_sql_for_alias(
     let field_name = bindings.push(PostgresBindValue::Text(
         field.path.field().as_str().to_owned(),
     ));
-    let raw = format!(
-        "jsonb_extract_path({relation_alias}.payload, {field_name}::text)"
-    );
-    let scalar_text = format!(
-        "jsonb_extract_path_text({relation_alias}.payload, {field_name}::text, 'value')"
-    );
-    let type_text = format!(
-        "jsonb_extract_path_text({relation_alias}.payload, {field_name}::text, 'type')"
-    );
+    let raw = format!("jsonb_extract_path({relation_alias}.payload, {field_name}::text)");
+    let scalar_text =
+        format!("jsonb_extract_path_text({relation_alias}.payload, {field_name}::text, 'value')");
+    let type_text =
+        format!("jsonb_extract_path_text({relation_alias}.payload, {field_name}::text, 'type')");
     let scalar = match field.value_type {
         IndexValueType::Boolean => format!("({scalar_text})::boolean"),
         IndexValueType::Integer => format!("({scalar_text})::bigint"),
@@ -806,9 +794,7 @@ fn field_sql_for_alias(
         IndexValueType::Uuid => format!("({scalar_text})::uuid"),
         IndexValueType::Timestamp => format!("({scalar_text})::timestamptz"),
     };
-    let null_predicate = format!(
-        "{raw} IS NULL OR {type_text} IS NULL OR {type_text} = 'null'"
-    );
+    let null_predicate = format!("{raw} IS NULL OR {type_text} IS NULL OR {type_text} = 'null'");
     FieldSql {
         raw,
         scalar,
@@ -842,9 +828,9 @@ fn scalar_bind(
         IndexValue::String(value) => Ok(PostgresBindValue::Text(value.clone())),
         IndexValue::Uuid(value) => Ok(PostgresBindValue::Uuid(*value)),
         IndexValue::Timestamp(value) => Ok(PostgresBindValue::Timestamp(value.to_owned())),
-        IndexValue::Null | IndexValue::List(_) => Err(
-            PostgresQueryCompileError::InvalidScalarValue(path.clone()),
-        ),
+        IndexValue::Null | IndexValue::List(_) => {
+            Err(PostgresQueryCompileError::InvalidScalarValue(path.clone()))
+        }
     }
 }
 

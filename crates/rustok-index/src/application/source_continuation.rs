@@ -247,14 +247,12 @@ impl IndexSourceContinuationCodec {
             });
         }
 
-        let key = self
-            .keys
-            .get(&self.active_key_id)
-            .ok_or_else(|| {
-                IndexSourceContinuationError::ActiveKeyUnavailable(self.active_key_id.clone())
-            })?;
-        let cipher = Aes256Gcm::new_from_slice(key)
-            .map_err(|_| IndexSourceContinuationError::InvalidKeyMaterial(self.active_key_id.clone()))?;
+        let key = self.keys.get(&self.active_key_id).ok_or_else(|| {
+            IndexSourceContinuationError::ActiveKeyUnavailable(self.active_key_id.clone())
+        })?;
+        let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| {
+            IndexSourceContinuationError::InvalidKeyMaterial(self.active_key_id.clone())
+        })?;
         let mut nonce = [0_u8; NONCE_BYTES];
         OsRng.fill_bytes(&mut nonce);
         let aad = associated_data(&self.active_key_id);
@@ -268,9 +266,8 @@ impl IndexSourceContinuationCodec {
             )
             .map_err(|_| IndexSourceContinuationError::EncryptionFailed)?;
         let key_id_bytes = self.active_key_id.as_bytes();
-        let mut decoded = Vec::with_capacity(
-            1 + key_id_bytes.len() + NONCE_BYTES + ciphertext.len(),
-        );
+        let mut decoded =
+            Vec::with_capacity(1 + key_id_bytes.len() + NONCE_BYTES + ciphertext.len());
         decoded.push(key_id_bytes.len() as u8);
         decoded.extend_from_slice(key_id_bytes);
         decoded.extend_from_slice(&nonce);
@@ -485,9 +482,7 @@ fn validate_key_id(key_id: &str) -> Result<(), IndexSourceContinuationError> {
     if key_id.is_empty()
         || key_id.len() > MAX_KEY_ID_BYTES
         || !key_id.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
     {
         return Err(IndexSourceContinuationError::InvalidKeyId(
@@ -630,7 +625,8 @@ mod tests {
             .unwrap();
         let mut decoded = URL_SAFE_NO_PAD.decode(token.as_str()).unwrap();
         *decoded.last_mut().unwrap() ^= 1;
-        let tampered = IndexSourceContinuationToken::parse(URL_SAFE_NO_PAD.encode(decoded)).unwrap();
+        let tampered =
+            IndexSourceContinuationToken::parse(URL_SAFE_NO_PAD.encode(decoded)).unwrap();
 
         assert!(matches!(
             codec.open(&scope, &tampered, now()),
@@ -646,11 +642,7 @@ mod tests {
             .seal(&scope, &cursor(), now(), Duration::from_secs(60))
             .unwrap();
         assert!(matches!(
-            codec.open(
-                &scope,
-                &token,
-                now() + chrono::Duration::seconds(60)
-            ),
+            codec.open(&scope, &token, now() + chrono::Duration::seconds(60)),
             Err(IndexSourceContinuationError::Expired)
         ));
 

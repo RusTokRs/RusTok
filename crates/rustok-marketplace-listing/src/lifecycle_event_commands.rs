@@ -4,9 +4,10 @@ use sea_orm::{ActiveModelTrait, Set};
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::MarketplaceListingService;
 use crate::command_receipts::{
-    admit, complete, normalize_idempotency_key, replay, request_hash, rollback,
-    ListingCommandAdmission, NewListingCommandReceipt,
+    ListingCommandAdmission, NewListingCommandReceipt, admit, complete, normalize_idempotency_key,
+    replay, request_hash, rollback,
 };
 use crate::dto::{
     MarketplaceListingApprovalStatus, MarketplaceListingEventKind, MarketplaceListingResponse,
@@ -16,7 +17,6 @@ use crate::entities::{listing, listing_terms};
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
 use crate::listing_events::{append_listing_event, normalize_listing_event_locale};
 use crate::service::{find_listing, load_response_for_model, map_listing};
-use crate::MarketplaceListingService;
 
 impl MarketplaceListingService {
     pub async fn update_terms_evented(

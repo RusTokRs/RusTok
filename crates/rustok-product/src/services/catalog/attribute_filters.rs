@@ -107,11 +107,8 @@ fn build_attribute_filter_condition(
     locale: &str,
     fallback_locale: &str,
 ) -> CommerceResult<Condition> {
-    let value = parse_product_attribute_filter_value(
-        definition.code.as_str(),
-        value_type,
-        raw_value,
-    )?;
+    let value =
+        parse_product_attribute_filter_value(definition.code.as_str(), value_type, raw_value)?;
     let condition = match value {
         ProductAttributeFilterValue::Text(value) if definition.is_localized => {
             localized_text_condition(

@@ -182,10 +182,7 @@ pub struct NotificationStorefrontInboxSnapshot {
 }
 
 impl NotificationStorefrontInboxSnapshot {
-    pub fn new(
-        unread_count: u64,
-        page: NotificationStorefrontGroupSummaryPage,
-    ) -> Self {
+    pub fn new(unread_count: u64, page: NotificationStorefrontGroupSummaryPage) -> Self {
         Self {
             unread_count,
             groups: page.groups,

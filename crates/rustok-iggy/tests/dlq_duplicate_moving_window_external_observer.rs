@@ -4,14 +4,11 @@ use std::env;
 use std::error::Error;
 use std::io::{Error as IoError, ErrorKind};
 
-use iggy::prelude::{
-    Client, Consumer, ConsumerKind, ConsumerOffsetClient, Identifier, IggyClient,
-};
+use iggy::prelude::{Client, Consumer, ConsumerKind, ConsumerOffsetClient, Identifier, IggyClient};
 use rustok_iggy::{
-    DlqEntry, DlqDuplicateSummary, ExternalConfig, IggyConfig,
+    DlqDuplicateSummary, DlqEntry, ExternalConfig, IggyConfig,
     IggyDlqDuplicateAlertMovingWindowConfig, IggyDlqDuplicateAlertObserver,
-    IggyDlqDuplicateAlertScanMode, IggyMode, IggyTransport, SerializationFormat,
-    TopologyConfig,
+    IggyDlqDuplicateAlertScanMode, IggyMode, IggyTransport, SerializationFormat, TopologyConfig,
 };
 use uuid::Uuid;
 
@@ -51,17 +48,15 @@ async fn moving_observer_retains_duplicate_across_advancing_cycles() -> TestResu
         id: consumer_id,
     };
 
-    assert_no_stored_offset(
-        &offset_client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offset(&offset_client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     let moving = moving_config(&config)?;
-    let mut observer = IggyDlqDuplicateAlertObserver::connect_moving_window(&config, moving).await?;
-    assert_eq!(observer.scan_mode(), IggyDlqDuplicateAlertScanMode::MovingWindow);
+    let mut observer =
+        IggyDlqDuplicateAlertObserver::connect_moving_window(&config, moving).await?;
+    assert_eq!(
+        observer.scan_mode(),
+        IggyDlqDuplicateAlertScanMode::MovingWindow
+    );
     assert!(observer.preserves_process_local_state_after_scan_error());
 
     let broker_message_id = broker_message_id_for_partition(1, PARTITION);
@@ -70,34 +65,16 @@ async fn moving_observer_retains_duplicate_across_advancing_cycles() -> TestResu
     publish_physical(&transport, broker_message_id, payload.clone(), 1).await?;
     let first = observer.summarize().await?;
     assert_first_summary(&first);
-    assert_no_stored_offset(
-        &offset_client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offset(&offset_client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     publish_physical(&transport, broker_message_id, payload, 2).await?;
     let second = observer.summarize().await?;
     assert_second_summary(&second);
-    assert_no_stored_offset(
-        &offset_client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offset(&offset_client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     let third = observer.summarize().await?;
     assert_eq!(third, second);
-    assert_no_stored_offset(
-        &offset_client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offset(&offset_client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     let replacement = moving_config(&config)?;
     let mut replacement_observer =
@@ -105,13 +82,7 @@ async fn moving_observer_retains_duplicate_across_advancing_cycles() -> TestResu
     let replacement_first = replacement_observer.summarize().await?;
     assert_eq!(replacement_first, first);
     assert_first_summary(&replacement_first);
-    assert_no_stored_offset(
-        &offset_client,
-        &read_only_consumer,
-        &stream_id,
-        &topic_id,
-    )
-    .await?;
+    assert_no_stored_offset(&offset_client, &read_only_consumer, &stream_id, &topic_id).await?;
 
     println!("{EVIDENCE_MARKER}");
 
@@ -217,7 +188,9 @@ fn connection_string(config: &ExternalConfig) -> Result<String, IoError> {
         .first()
         .ok_or_else(|| invalid_data("external moving observer evidence address is missing"))?;
     if config.protocol != "tcp" {
-        return Err(invalid_data("external moving observer evidence requires TCP"));
+        return Err(invalid_data(
+            "external moving observer evidence requires TCP",
+        ));
     }
     if config.tls_enabled || config.tls_domain.is_some() || config.tls_ca_file.is_some() {
         return Err(invalid_data(

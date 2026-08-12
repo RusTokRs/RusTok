@@ -124,7 +124,9 @@ impl ForumSearchProjectionReconciliationQuery {
         let owner_source = extensions
             .get::<SharedForumProjectionOwnerRevisionSourcePort>()
             .cloned()
-            .ok_or_else(|| FieldError::new("Forum Search projection reconciliation is unavailable"))?;
+            .ok_or_else(|| {
+                FieldError::new("Forum Search projection reconciliation is unavailable")
+            })?;
 
         let status = ForumSearchProjectionReconciliationStatusService::new(db, owner_source)
             .report(tenant.id)
@@ -136,10 +138,8 @@ impl ForumSearchProjectionReconciliationQuery {
 
 fn require_reconciliation_permissions(auth: &AuthContext) -> Result<()> {
     let settings_read = has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ);
-    let categories_manage = has_effective_permission(
-        &auth.permissions,
-        &Permission::FORUM_CATEGORIES_MANAGE,
-    );
+    let categories_manage =
+        has_effective_permission(&auth.permissions, &Permission::FORUM_CATEGORIES_MANAGE);
     let topics_manage =
         has_effective_permission(&auth.permissions, &Permission::FORUM_TOPICS_MANAGE);
     if settings_read && categories_manage && topics_manage {
@@ -162,9 +162,7 @@ fn map_status(
         owner_checkpoint_event_id: status.owner_checkpoint_event_id,
         next_owner_revision: status.next_owner_revision.map(|value| value.to_string()),
         next_owner_event_id: status.next_owner_event_id,
-        non_terminal_inbox_count: status
-            .non_terminal_inbox_count
-            .min(i32::MAX as u64) as i32,
+        non_terminal_inbox_count: status.non_terminal_inbox_count.min(i32::MAX as u64) as i32,
         drift_count: status.drifts.len().min(i32::MAX as usize) as i32,
         clean,
         drifts: status.drifts.into_iter().map(map_drift).collect(),
@@ -384,9 +382,7 @@ async fn load_local_status(
 
     let (checkpoint_revision, checkpoint_event_id, checkpoint_outcome) = match checkpoint {
         Some(row) => {
-            let revision: i64 = row
-                .try_get("", "owner_revision")
-                .map_err(Error::Database)?;
+            let revision: i64 = row.try_get("", "owner_revision").map_err(Error::Database)?;
             if revision <= 0 {
                 return Err(Error::External(
                     "Forum Search projection checkpoint must be positive".to_string(),

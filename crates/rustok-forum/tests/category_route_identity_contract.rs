@@ -71,7 +71,10 @@ fn resolver_is_bounded_lifecycle_safe_and_fail_closed_on_ambiguity() {
         "CategoryRouteResolutionConflict",
         "FORUM_CATEGORY_ROUTE_RESOLUTION_CONFLICT",
     ] {
-        assert!(ERROR.contains(marker), "missing typed error marker {marker}");
+        assert!(
+            ERROR.contains(marker),
+            "missing typed error marker {marker}"
+        );
     }
 }
 
@@ -84,7 +87,10 @@ fn owner_is_exported_without_transport_storage_or_visibility_policy() {
         "ForumCategoryRouteResolution",
         "ForumCategoryRouteService",
     ] {
-        assert!(SERVICES_MOD.contains(marker), "missing service export {marker}");
+        assert!(
+            SERVICES_MOD.contains(marker),
+            "missing service export {marker}"
+        );
     }
 
     for forbidden in [

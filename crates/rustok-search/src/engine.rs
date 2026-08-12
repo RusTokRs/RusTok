@@ -231,9 +231,7 @@ fn canonical_forum_category_route(route: &str, expected_locale: &str) -> Option<
     }
     let segments = forum_route_segments(path)?;
     match segments.as_slice() {
-        [locale, "forum", "c", slug]
-            if *locale == expected_locale && valid_forum_slug(slug) =>
-        {
+        [locale, "forum", "c", slug] if *locale == expected_locale && valid_forum_slug(slug) => {
             Some(())
         }
         _ => None,
@@ -485,9 +483,7 @@ mod tests {
         );
         assert_eq!(
             canonical_search_result_url(&reply).as_deref(),
-            Some(
-                "/en/forum/t/222222222222/welcome?reply=33333333-3333-4333-8333-333333333333"
-            )
+            Some("/en/forum/t/222222222222/welcome?reply=33333333-3333-4333-8333-333333333333")
         );
     }
 
@@ -497,65 +493,149 @@ mod tests {
         let topic_id = "22222222-2222-4222-8222-222222222222";
         let reply_id = "33333333-3333-4333-8333-333333333333";
         let cases = [
-            item_with_id(category_id, "forum_category", "content", Some("en"), json!({
-                "category_id": category_id,
-                "route": "/en/forum/c/general"
-            })),
-            item_with_id(category_id, "forum_category", "forum", Some("en"), json!({
-                "category_id": category_id,
-                "route": format!("/modules/forum?category={category_id}")
-            })),
-            item_with_id(category_id, "forum_category", "forum", Some("en"), json!({
-                "category_id": topic_id,
-                "route": "/en/forum/c/general"
-            })),
-            item_with_id(category_id, "forum_category", "forum", Some("ru"), json!({
-                "category_id": category_id,
-                "route": "/en/forum/c/general"
-            })),
-            item_with_id(category_id, "forum_category", "forum", Some(" en "), json!({
-                "category_id": category_id,
-                "route": "/en/forum/c/general"
-            })),
-            item_with_id(category_id, "forum_category", "forum", Some("en"), json!({
-                "category_id": category_id,
-                "route": "/en/forum/c/general "
-            })),
-            item_with_id(topic_id, "forum_topic", "forum", Some("en"), json!({
-                "topic_id": topic_id,
-                "route": "/en/forum/t/111111111111/welcome"
-            })),
-            item_with_id(topic_id, "forum_topic", "forum", Some("en"), json!({
-                "topic_id": topic_id,
-                "route": "/en/forum/t/222222222222/Welcome"
-            })),
-            item_with_id(topic_id, "forum_topic", "forum", Some("en"), json!({
-                "topic_id": topic_id,
-                "route": "https://example.invalid/en/forum/t/222222222222/welcome"
-            })),
-            item_with_id(topic_id, "forum_topic", "forum", Some("en"), json!({
-                "topic_id": topic_id,
-                "route": "//example.invalid/en/forum/t/222222222222/welcome"
-            })),
-            item_with_id(topic_id, "forum_topic", "forum", Some("en"), json!({
-                "topic_id": topic_id,
-                "route": "/en/forum/t/222222222222/welcome#fragment"
-            })),
-            item_with_id(reply_id, "forum_reply", "forum", Some("en"), json!({
-                "reply_id": reply_id,
-                "topic_id": topic_id,
-                "route": "/en/forum/t/222222222222/welcome"
-            })),
-            item_with_id(reply_id, "forum_reply", "forum", Some("en"), json!({
-                "reply_id": reply_id,
-                "topic_id": topic_id,
-                "route": "/en/forum/t/222222222222/welcome?reply=44444444-4444-4444-8444-444444444444"
-            })),
-            item_with_id(reply_id, "forum_reply", "forum", None, json!({
-                "reply_id": reply_id,
-                "topic_id": topic_id,
-                "route": format!("/en/forum/t/222222222222/welcome?reply={reply_id}")
-            })),
+            item_with_id(
+                category_id,
+                "forum_category",
+                "content",
+                Some("en"),
+                json!({
+                    "category_id": category_id,
+                    "route": "/en/forum/c/general"
+                }),
+            ),
+            item_with_id(
+                category_id,
+                "forum_category",
+                "forum",
+                Some("en"),
+                json!({
+                    "category_id": category_id,
+                    "route": format!("/modules/forum?category={category_id}")
+                }),
+            ),
+            item_with_id(
+                category_id,
+                "forum_category",
+                "forum",
+                Some("en"),
+                json!({
+                    "category_id": topic_id,
+                    "route": "/en/forum/c/general"
+                }),
+            ),
+            item_with_id(
+                category_id,
+                "forum_category",
+                "forum",
+                Some("ru"),
+                json!({
+                    "category_id": category_id,
+                    "route": "/en/forum/c/general"
+                }),
+            ),
+            item_with_id(
+                category_id,
+                "forum_category",
+                "forum",
+                Some(" en "),
+                json!({
+                    "category_id": category_id,
+                    "route": "/en/forum/c/general"
+                }),
+            ),
+            item_with_id(
+                category_id,
+                "forum_category",
+                "forum",
+                Some("en"),
+                json!({
+                    "category_id": category_id,
+                    "route": "/en/forum/c/general "
+                }),
+            ),
+            item_with_id(
+                topic_id,
+                "forum_topic",
+                "forum",
+                Some("en"),
+                json!({
+                    "topic_id": topic_id,
+                    "route": "/en/forum/t/111111111111/welcome"
+                }),
+            ),
+            item_with_id(
+                topic_id,
+                "forum_topic",
+                "forum",
+                Some("en"),
+                json!({
+                    "topic_id": topic_id,
+                    "route": "/en/forum/t/222222222222/Welcome"
+                }),
+            ),
+            item_with_id(
+                topic_id,
+                "forum_topic",
+                "forum",
+                Some("en"),
+                json!({
+                    "topic_id": topic_id,
+                    "route": "https://example.invalid/en/forum/t/222222222222/welcome"
+                }),
+            ),
+            item_with_id(
+                topic_id,
+                "forum_topic",
+                "forum",
+                Some("en"),
+                json!({
+                    "topic_id": topic_id,
+                    "route": "//example.invalid/en/forum/t/222222222222/welcome"
+                }),
+            ),
+            item_with_id(
+                topic_id,
+                "forum_topic",
+                "forum",
+                Some("en"),
+                json!({
+                    "topic_id": topic_id,
+                    "route": "/en/forum/t/222222222222/welcome#fragment"
+                }),
+            ),
+            item_with_id(
+                reply_id,
+                "forum_reply",
+                "forum",
+                Some("en"),
+                json!({
+                    "reply_id": reply_id,
+                    "topic_id": topic_id,
+                    "route": "/en/forum/t/222222222222/welcome"
+                }),
+            ),
+            item_with_id(
+                reply_id,
+                "forum_reply",
+                "forum",
+                Some("en"),
+                json!({
+                    "reply_id": reply_id,
+                    "topic_id": topic_id,
+                    "route": "/en/forum/t/222222222222/welcome?reply=44444444-4444-4444-8444-444444444444"
+                }),
+            ),
+            item_with_id(
+                reply_id,
+                "forum_reply",
+                "forum",
+                None,
+                json!({
+                    "reply_id": reply_id,
+                    "topic_id": topic_id,
+                    "route": format!("/en/forum/t/222222222222/welcome?reply={reply_id}")
+                }),
+            ),
         ];
 
         for value in cases {

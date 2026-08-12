@@ -91,7 +91,9 @@ impl ProductStorefrontIndexServingBudgetDecision {
 pub(crate) enum ProductStorefrontIndexServingBudgetError {
     #[error("Product Storefront Index serving budget requires a positive Index execution phase")]
     ZeroIndexExecutionBudget,
-    #[error("Product Storefront Index serving budget requires a positive Product tag hydration phase")]
+    #[error(
+        "Product Storefront Index serving budget requires a positive Product tag hydration phase"
+    )]
     ZeroTagHydrationBudget,
     #[error("Product Storefront Index serving budget exceeds the supported millisecond range")]
     BudgetOverflow,
@@ -280,6 +282,9 @@ mod tests {
             safety_margin_ms: 5,
         };
         assert!(eligible.is_eligible());
-        assert!(!ProductStorefrontIndexServingBudgetDecision::OwnerNativeTagHydrationUnavailable.is_eligible());
+        assert!(
+            !ProductStorefrontIndexServingBudgetDecision::OwnerNativeTagHydrationUnavailable
+                .is_eligible()
+        );
     }
 }

@@ -170,8 +170,7 @@ async fn run_collation_matrix(db: &DatabaseConnection) -> TestResult<()> {
         let owner_ids = title_like_ids(db, case.search, false).await?;
         let index_c_ids = title_like_ids(db, case.search, true).await?;
         assert_eq!(
-            index_c_ids,
-            case.expected_c_ids,
+            index_c_ids, case.expected_c_ids,
             "retained C-collation expectation changed for {}",
             case.label
         );
@@ -267,7 +266,11 @@ async fn seed_titles(db: &DatabaseConnection) -> TestResult<()> {
         (PRODUCT_UNDERSCORE, "A_B", "underscore-literal"),
         (PRODUCT_UNDERSCORE_WILDCARD, "AxB", "underscore-wildcard"),
         (PRODUCT_PERCENT, "100% real", "percent-literal"),
-        (PRODUCT_PERCENT_WILDCARD, "100 percent real", "percent-wildcard"),
+        (
+            PRODUCT_PERCENT_WILDCARD,
+            "100 percent real",
+            "percent-wildcard",
+        ),
         (PRODUCT_STRASSE_SHARP_S, "straße", "strasse-sharp-s"),
         (PRODUCT_STRASSE_ASCII, "STRASSE", "strasse-ascii"),
     ];

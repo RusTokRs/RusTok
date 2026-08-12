@@ -80,14 +80,12 @@ impl RbacRoleMutationPlan {
         }
 
         Ok(match self.change {
-            RbacRoleMutationChange::RoleReplaced => {
-                RbacRoleMutationEvent::user_role_replaced(
-                    self.target_user_id,
-                    self.previous_role.to_string(),
-                    self.new_role.to_string(),
-                    durable_generation,
-                )
-            }
+            RbacRoleMutationChange::RoleReplaced => RbacRoleMutationEvent::user_role_replaced(
+                self.target_user_id,
+                self.previous_role.to_string(),
+                self.new_role.to_string(),
+                durable_generation,
+            ),
             RbacRoleMutationChange::AssignmentRepaired => {
                 RbacRoleMutationEvent::user_role_assignment_repaired(
                     self.target_user_id,
@@ -168,10 +166,7 @@ pub fn plan_user_role_mutation(
     }))
 }
 
-fn validate_identity(
-    field: &'static str,
-    value: Uuid,
-) -> Result<(), RbacRoleMutationPolicyError> {
+fn validate_identity(field: &'static str, value: Uuid) -> Result<(), RbacRoleMutationPolicyError> {
     if value.is_nil() {
         Err(RbacRoleMutationPolicyError::NilIdentity(field))
     } else {
@@ -182,9 +177,7 @@ fn validate_identity(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_events::{
-        RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED, RBAC_EVENT_USER_ROLE_REPLACED,
-    };
+    use rustok_events::{RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED, RBAC_EVENT_USER_ROLE_REPLACED};
 
     fn facts() -> RbacRoleMutationFacts {
         let tenant_id = Uuid::new_v4();

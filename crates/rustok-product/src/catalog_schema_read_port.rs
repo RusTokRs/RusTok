@@ -5,9 +5,10 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
 use crate::services::{
-    AttributeValueType, CatalogCategoryListRecord, EffectiveAttributeSource, ProductAttributeFilter,
-    ProductAttributeListRecord, ProductAttributeOptionListRecord, ProductAttributeSchemaListRecord,
-    ProductAttributeValueRecord, ProductCatalogSchemaService, ProductResolvedAttributeFilter,
+    AttributeValueType, CatalogCategoryListRecord, EffectiveAttributeSource,
+    ProductAttributeFilter, ProductAttributeListRecord, ProductAttributeOptionListRecord,
+    ProductAttributeSchemaListRecord, ProductAttributeValueRecord, ProductCatalogSchemaService,
+    ProductResolvedAttributeFilter,
 };
 
 const LIST_ATTRIBUTES_OPERATION: &str = "list_catalog_attributes";
@@ -15,8 +16,7 @@ const LIST_CATEGORIES_OPERATION: &str = "list_catalog_categories";
 const LIST_SCHEMAS_OPERATION: &str = "list_attribute_schemas";
 const READ_EFFECTIVE_FORM_OPERATION: &str = "read_effective_product_form";
 const READ_PRODUCT_ATTRIBUTE_VALUES_OPERATION: &str = "read_product_attribute_values";
-const RESOLVE_STOREFRONT_ATTRIBUTE_FILTERS_OPERATION: &str =
-    "resolve_storefront_attribute_filters";
+const RESOLVE_STOREFRONT_ATTRIBUTE_FILTERS_OPERATION: &str = "resolve_storefront_attribute_filters";
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -200,16 +200,13 @@ impl ProductCatalogSchemaReadPort for ProductCatalogSchemaService {
         )
         .await
         .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))?;
-        let definitions = ProductCatalogSchemaService::list_attributes(
-            self,
-            tenant_id,
-            context.locale.as_str(),
-        )
-        .await
-        .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))?
-        .into_iter()
-        .map(|attribute| (attribute.id, attribute))
-        .collect::<HashMap<_, _>>();
+        let definitions =
+            ProductCatalogSchemaService::list_attributes(self, tenant_id, context.locale.as_str())
+                .await
+                .map_err(|error| schema_error_to_port_error(&context, owner_operation, error))?
+                .into_iter()
+                .map(|attribute| (attribute.id, attribute))
+                .collect::<HashMap<_, _>>();
         let effective_attribute_ids = form
             .attributes
             .iter()
@@ -356,7 +353,10 @@ fn require_schema_read_context(
         })
 }
 
-fn parse_tenant_id(context: &PortContext, owner_operation: &'static str) -> Result<Uuid, PortError> {
+fn parse_tenant_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|error| {
         tracing::warn!(
             error = ?error,

@@ -132,11 +132,15 @@ pub struct IndexDriftCandidateConfirmationFailure {
 }
 
 impl IndexDriftCandidateConfirmationFailure {
-    pub fn retryable(code: impl Into<String>) -> Result<Self, IndexDriftCandidateConfirmationError> {
+    pub fn retryable(
+        code: impl Into<String>,
+    ) -> Result<Self, IndexDriftCandidateConfirmationError> {
         Self::new(IndexDriftCandidateConfirmationFailureKind::Retryable, code)
     }
 
-    pub fn permanent(code: impl Into<String>) -> Result<Self, IndexDriftCandidateConfirmationError> {
+    pub fn permanent(
+        code: impl Into<String>,
+    ) -> Result<Self, IndexDriftCandidateConfirmationError> {
         Self::new(IndexDriftCandidateConfirmationFailureKind::Permanent, code)
     }
 
@@ -146,7 +150,9 @@ impl IndexDriftCandidateConfirmationFailure {
     ) -> Result<Self, IndexDriftCandidateConfirmationError> {
         let code = code.into();
         if !valid_machine_name(&code) {
-            return Err(IndexDriftCandidateConfirmationError::InvalidFailureCode(code));
+            return Err(IndexDriftCandidateConfirmationError::InvalidFailureCode(
+                code,
+            ));
         }
         Ok(Self { kind, code })
     }
@@ -204,7 +210,8 @@ impl IndexDriftCandidateConfirmer {
     pub async fn confirm_candidate(
         &self,
         candidate: &IndexDriftCandidate,
-    ) -> Result<IndexDriftCandidateConfirmationOutcome, IndexDriftCandidateConfirmationFailure> {
+    ) -> Result<IndexDriftCandidateConfirmationOutcome, IndexDriftCandidateConfirmationFailure>
+    {
         if self.materialized.observe_candidate(candidate).await?
             != IndexDriftCandidateMaterializedObservation::Unchanged
         {
@@ -238,7 +245,8 @@ impl IndexDriftCandidateConfirmer {
     async fn confirm_stale_entity(
         &self,
         candidate: &IndexDriftStaleEntityCandidate,
-    ) -> Result<IndexDriftCandidateConfirmationOutcome, IndexDriftCandidateConfirmationFailure> {
+    ) -> Result<IndexDriftCandidateConfirmationOutcome, IndexDriftCandidateConfirmationFailure>
+    {
         let first = self.load_entity_authority(candidate.key()).await?;
         let first_absence = match first {
             EntityAuthoritySummary::Present => {
@@ -278,7 +286,8 @@ impl IndexDriftCandidateConfirmer {
     async fn confirm_orphan_link(
         &self,
         candidate: &IndexDriftOrphanLinkCandidate,
-    ) -> Result<IndexDriftCandidateConfirmationOutcome, IndexDriftCandidateConfirmationFailure> {
+    ) -> Result<IndexDriftCandidateConfirmationOutcome, IndexDriftCandidateConfirmationFailure>
+    {
         let first_source = self.load_source_link_authority(candidate).await?;
         match &first_source {
             SourceLinkAuthoritySummary::Absent => {
@@ -396,9 +405,7 @@ impl IndexDriftCandidateConfirmer {
             }
             None => match self.load_retained_absence(candidate.source_key()).await? {
                 EntityAuthoritySummary::Absent { .. } => Ok(SourceLinkAuthoritySummary::Absent),
-                EntityAuthoritySummary::Present => {
-                    Err(permanent_failure(SOURCE_CONTRACT_INVALID))
-                }
+                EntityAuthoritySummary::Present => Err(permanent_failure(SOURCE_CONTRACT_INVALID)),
             },
         }
     }
@@ -446,7 +453,10 @@ impl fmt::Debug for IndexDriftCandidateConfirmer {
         formatter
             .debug_struct("IndexDriftCandidateConfirmer")
             .field("source_count", &self.sources.len())
-            .field("absence_provider_count", &self.absence.as_ref().map(|value| value.len()))
+            .field(
+                "absence_provider_count",
+                &self.absence.as_ref().map(|value| value.len()),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -545,8 +555,6 @@ fn valid_machine_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_FAILURE_CODE_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }

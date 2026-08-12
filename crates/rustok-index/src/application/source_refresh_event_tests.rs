@@ -40,14 +40,12 @@ impl IndexSource for ExactSource {
         request: IndexSourceLoadRequest,
     ) -> Result<IndexSourceLoadBatch, IndexSourceFailure> {
         *self.calls.lock().expect("source call lock") += 1;
-        IndexSourceLoadBatch::new(
-            &request,
-            self.mutation.clone().into_iter().collect(),
+        IndexSourceLoadBatch::new(&request, self.mutation.clone().into_iter().collect()).map_err(
+            |_| {
+                IndexSourceFailure::permanent("source_refresh_fixture_invalid")
+                    .expect("static failure code")
+            },
         )
-        .map_err(|_| {
-            IndexSourceFailure::permanent("source_refresh_fixture_invalid")
-                .expect("static failure code")
-        })
     }
 }
 
@@ -66,10 +64,7 @@ impl IndexReplayMutationSink for RecordingSink {
         mutation: &IndexMutation,
     ) -> Result<IndexReplayMutationOutcome, IndexReplayFailure> {
         self.calls.lock().expect("sink call lock").push("apply");
-        *self
-            .observed_event_id
-            .lock()
-            .expect("observed event lock") = Some(mutation.event_id());
+        *self.observed_event_id.lock().expect("observed event lock") = Some(mutation.event_id());
         Ok(IndexReplayMutationOutcome::Applied)
     }
 }
@@ -198,19 +193,17 @@ async fn canonical_source_mutation_is_rebound_committed_and_then_acknowledged() 
     );
 
     let outcome = worker
-        .process(
-            &SchemaRegistry::default(),
-            &sources,
-            &events,
-            delivery(7),
-        )
+        .process(&SchemaRegistry::default(), &sources, &events, delivery(7))
         .await
         .expect("source refresh should commit and acknowledge");
 
     assert_eq!(outcome.event_id(), Uuid::from_u128(7));
     assert_eq!(outcome.source_name(), SOURCE_NAME);
     assert_eq!(outcome.source_version(), 9);
-    assert_eq!(outcome.mutation_outcome(), IndexReplayMutationOutcome::Applied);
+    assert_eq!(
+        outcome.mutation_outcome(),
+        IndexReplayMutationOutcome::Applied
+    );
     assert_eq!(*source_calls.lock().expect("source call lock"), 1);
     assert_eq!(*calls.lock().expect("call lock"), vec!["apply", "ack"]);
     assert_eq!(
@@ -236,12 +229,7 @@ async fn missing_or_behind_source_state_suppresses_apply_and_ack() {
         );
 
         let result = worker
-            .process(
-                &SchemaRegistry::default(),
-                &sources,
-                &events,
-                delivery(7),
-            )
+            .process(&SchemaRegistry::default(), &sources, &events, delivery(7))
             .await;
 
         assert!(result.is_err());
@@ -293,13 +281,7 @@ async fn schema_mismatch_fails_before_source_load_apply_or_ack() {
 #[test]
 fn delivery_rejects_invalid_identity_and_revision() {
     assert!(matches!(
-        IndexSourceRefreshEventDelivery::new(
-            "BAD DOMAIN",
-            Uuid::from_u128(7),
-            key(),
-            1,
-            (),
-        ),
+        IndexSourceRefreshEventDelivery::new("BAD DOMAIN", Uuid::from_u128(7), key(), 1, (),),
         Err(IndexSourceRefreshEventError::InvalidEventDomain(_))
     ));
     assert!(matches!(
@@ -307,13 +289,7 @@ fn delivery_rejects_invalid_identity_and_revision() {
         Err(IndexSourceRefreshEventError::NilEventId)
     ));
     assert!(matches!(
-        IndexSourceRefreshEventDelivery::new(
-            EVENT_DOMAIN,
-            Uuid::from_u128(7),
-            key(),
-            0,
-            (),
-        ),
+        IndexSourceRefreshEventDelivery::new(EVENT_DOMAIN, Uuid::from_u128(7), key(), 0, (),),
         Err(IndexSourceRefreshEventError::ZeroMinimumSourceVersion)
     ));
 }

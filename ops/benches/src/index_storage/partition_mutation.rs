@@ -275,7 +275,8 @@ async fn capture_locked_mutations(
     let rollback_result = transaction.rollback().await;
     match capture_result {
         Ok(runs) => {
-            rollback_result.context("failed to roll back partition mutation evidence transaction")?;
+            rollback_result
+                .context("failed to roll back partition mutation evidence transaction")?;
             Ok(runs)
         }
         Err(error) => {
@@ -339,33 +340,46 @@ fn read_manifest(path: &Path) -> Result<(PreparedManifest, JsonValue)> {
         metadata.file_type().is_file() && !metadata.file_type().is_symlink(),
         "partition manifest must be a regular non-symlink file"
     );
-    let bytes = fs::read(path)
-        .with_context(|| format!("failed to read partition manifest at {path:?}"))?;
-    let raw: JsonValue = serde_json::from_slice(&bytes)
-        .context("failed to parse partition manifest JSON")?;
+    let bytes =
+        fs::read(path).with_context(|| format!("failed to read partition manifest at {path:?}"))?;
+    let raw: JsonValue =
+        serde_json::from_slice(&bytes).context("failed to parse partition manifest JSON")?;
     let manifest = serde_json::from_value(raw.clone())
         .context("failed to deserialize prepared partition manifest")?;
     Ok((manifest, raw))
 }
 
 fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()> {
-    ensure!(manifest.contract == MANIFEST_CONTRACT, "unexpected manifest contract");
-    ensure!(manifest.repository == "RusTokRs/RusTok", "unexpected manifest repository");
-    ensure!(is_lower_hex(&manifest.commit, 40), "manifest commit must be a lowercase full SHA-1");
+    ensure!(
+        manifest.contract == MANIFEST_CONTRACT,
+        "unexpected manifest contract"
+    );
+    ensure!(
+        manifest.repository == "RusTokRs/RusTok",
+        "unexpected manifest repository"
+    );
+    ensure!(
+        is_lower_hex(&manifest.commit, 40),
+        "manifest commit must be a lowercase full SHA-1"
+    );
     ensure!(
         !manifest.run_key.is_empty() && manifest.run_key.len() <= 128,
         "manifest run_key must be non-empty and bounded"
     );
-    ensure!(manifest.postgres_image == "postgres:16", "manifest must pin postgres:16");
-    ensure!(manifest.strategy == "tenant_hash", "manifest strategy must be tenant_hash");
+    ensure!(
+        manifest.postgres_image == "postgres:16",
+        "manifest must pin postgres:16"
+    );
+    ensure!(
+        manifest.strategy == "tenant_hash",
+        "manifest strategy must be tenant_hash"
+    );
     ensure!(
         manifest.plan_digest_contract == PLAN_DIGEST_CONTRACT,
         "unexpected plan digest contract"
     );
     ensure!(
-        manifest.modulus >= 2
-            && manifest.modulus <= 128
-            && manifest.modulus.is_power_of_two(),
+        manifest.modulus >= 2 && manifest.modulus <= 128 && manifest.modulus.is_power_of_two(),
         "manifest modulus must be a power of two between 2 and 128"
     );
     ensure!(
@@ -381,8 +395,14 @@ fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()>
             && manifest.repetitions.cutover > 0,
         "manifest repetition counts must all be positive"
     );
-    ensure!(manifest.thresholds.is_object(), "manifest thresholds must be an object");
-    ensure!(is_lower_hex(&manifest.evidence_id, 64), "invalid manifest evidence_id");
+    ensure!(
+        manifest.thresholds.is_object(),
+        "manifest thresholds must be an object"
+    );
+    ensure!(
+        is_lower_hex(&manifest.evidence_id, 64),
+        "invalid manifest evidence_id"
+    );
     ensure!(
         manifest.shadow_plan_version == SHADOW_PLAN_VERSION,
         "unexpected shadow plan version"
@@ -393,7 +413,10 @@ fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()>
         .cloned()
         .context("prepared manifest must be a JSON object")?;
     for key in ["evidence_id", "shadow_plan_version", "shadow_relations"] {
-        ensure!(input.remove(key).is_some(), "prepared manifest is missing {key}");
+        ensure!(
+            input.remove(key).is_some(),
+            "prepared manifest is missing {key}"
+        );
     }
     let expected_evidence_id = sha256_hex(&canonical_json_bytes(&JsonValue::Object(input))?);
     ensure!(
@@ -437,8 +460,14 @@ fn validate_relation_plan(
     expected_parent: &str,
     modulus: u32,
 ) -> Result<()> {
-    ensure!(plan.source == expected_source, "unexpected shadow source relation");
-    ensure!(plan.parent == expected_parent, "unexpected shadow parent relation");
+    ensure!(
+        plan.source == expected_source,
+        "unexpected shadow source relation"
+    );
+    ensure!(
+        plan.parent == expected_parent,
+        "unexpected shadow parent relation"
+    );
     validate_identifier(&plan.parent)?;
     ensure!(
         plan.partitions.len() == modulus as usize,
@@ -468,7 +497,10 @@ async fn ensure_session_setting(
         .await?
         .context("partition mutation session-setting query returned no row")?;
     let actual: String = row.try_get("", "value")?;
-    ensure!(actual == expected, "requires {setting}={expected}, got {actual}");
+    ensure!(
+        actual == expected,
+        "requires {setting}={expected}, got {actual}"
+    );
     Ok(())
 }
 
@@ -523,7 +555,11 @@ async fn validate_shadow_relation_catalog(
     let relkind: String = row.try_get("", "relkind")?;
     let comment: Option<String> = row.try_get("", "comment")?;
     let expected_comment = format!("rustok-index-partition:{}", manifest.evidence_id);
-    ensure!(relkind == "p", "shadow parent {} must be partitioned", plan.parent);
+    ensure!(
+        relkind == "p",
+        "shadow parent {} must be partitioned",
+        plan.parent
+    );
     ensure!(
         comment.as_deref() == Some(expected_comment.as_str()),
         "shadow parent {} is not bound to the evidence identity",
@@ -711,7 +747,10 @@ fn build_mutation_cases(
     entities: &[EntityAnchor],
     links: &[LinkAnchor],
 ) -> Result<Vec<MutationCase>> {
-    ensure!(!entities.is_empty(), "entity mutation anchors must not be empty");
+    ensure!(
+        !entities.is_empty(),
+        "entity mutation anchors must not be empty"
+    );
     let mut cases = Vec::with_capacity(manifest.repetitions.mutation);
     for index in 0..manifest.repetitions.mutation {
         let ordinal = index + 1;
@@ -733,7 +772,10 @@ fn build_mutation_cases(
         .iter()
         .map(|case| case.name.as_str())
         .collect::<BTreeSet<_>>();
-    ensure!(names.len() == cases.len(), "partition mutation cases contain duplicate names");
+    ensure!(
+        names.len() == cases.len(),
+        "partition mutation cases contain duplicate names"
+    );
     Ok(cases)
 }
 
@@ -805,7 +847,8 @@ async fn capture_mutation_case(
     case: &MutationCase,
     samples: usize,
 ) -> Result<PartitionMutationRunEvidence> {
-    let baseline_affected = validate_mutation_side(transaction, case, MutationSide::Baseline).await?;
+    let baseline_affected =
+        validate_mutation_side(transaction, case, MutationSide::Baseline).await?;
     let shadow_affected = validate_mutation_side(transaction, case, MutationSide::Shadow).await?;
     ensure!(
         baseline_affected == 1 && shadow_affected == baseline_affected,
@@ -818,8 +861,14 @@ async fn capture_mutation_case(
     for sample in 1..=samples {
         if sample % 2 == 1 {
             baseline_samples.push(
-                explain_mutation_sample(transaction, manifest, case, MutationSide::Baseline, sample)
-                    .await?,
+                explain_mutation_sample(
+                    transaction,
+                    manifest,
+                    case,
+                    MutationSide::Baseline,
+                    sample,
+                )
+                .await?,
             );
             shadow_samples.push(
                 explain_mutation_sample(transaction, manifest, case, MutationSide::Shadow, sample)
@@ -831,16 +880,21 @@ async fn capture_mutation_case(
                     .await?,
             );
             baseline_samples.push(
-                explain_mutation_sample(transaction, manifest, case, MutationSide::Baseline, sample)
-                    .await?,
+                explain_mutation_sample(
+                    transaction,
+                    manifest,
+                    case,
+                    MutationSide::Baseline,
+                    sample,
+                )
+                .await?,
             );
         }
     }
 
     ensure_stable_affected_rows(&baseline_samples, &case.name, "baseline")?;
     ensure_stable_affected_rows(&shadow_samples, &case.name, "shadow")?;
-    let baseline_relation_reads =
-        stable_relation_reads(&baseline_samples, &case.name, "baseline")?;
+    let baseline_relation_reads = stable_relation_reads(&baseline_samples, &case.name, "baseline")?;
     let shadow_relation_reads = stable_relation_reads(&shadow_samples, &case.name, "shadow")?;
     let baseline_p95_ms = percentile_95(
         &baseline_samples
@@ -894,7 +948,11 @@ async fn validate_mutation_side(
             cleanup?;
             for row in &rows {
                 let affected: i64 = row.try_get("", "affected")?;
-                ensure!(affected == 1, "mutation {} returned an invalid affected marker", case.name);
+                ensure!(
+                    affected == 1,
+                    "mutation {} returned an invalid affected marker",
+                    case.name
+                );
             }
             u64::try_from(rows.len()).context("mutation affected-row count exceeds u64")
         }
@@ -947,7 +1005,11 @@ async fn explain_mutation_sample(
         "partition mutation EXPLAIN must report positive WAL bytes"
     );
     let affected_rows = explain_affected_rows(&explain)?;
-    ensure!(affected_rows == 1, "mutation {} EXPLAIN affected {affected_rows} rows", case.name);
+    ensure!(
+        affected_rows == 1,
+        "mutation {} EXPLAIN affected {affected_rows} rows",
+        case.name
+    );
     let relation_reads = validate_plan_relations(&explain, manifest, case, side)?;
     Ok(MutationExplainSample {
         sample,
@@ -1011,7 +1073,10 @@ fn non_negative_integer(value: Option<&JsonValue>, label: &str) -> Result<u64> {
         number.is_finite() && number >= 0.0 && number.fract() == 0.0,
         "partition mutation EXPLAIN {label} must be a non-negative integer"
     );
-    ensure!(number <= u64::MAX as f64, "partition mutation EXPLAIN {label} exceeds u64");
+    ensure!(
+        number <= u64::MAX as f64,
+        "partition mutation EXPLAIN {label} exceeds u64"
+    );
     Ok(number as u64)
 }
 
@@ -1171,7 +1236,10 @@ fn maximum_wal_bytes(samples: &[MutationExplainSample]) -> Result<u64> {
         .map(|sample| sample.maximum_node_wal_bytes)
         .max()
         .context("partition mutation WAL sample set must not be empty")?;
-    ensure!(maximum > 0, "partition mutation WAL evidence must be positive");
+    ensure!(
+        maximum > 0,
+        "partition mutation WAL evidence must be positive"
+    );
     Ok(maximum)
 }
 
@@ -1180,11 +1248,11 @@ fn ensure_output_available(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn publish_mutation_artifact(
-    path: &Path,
-    runs: &[PartitionMutationRunEvidence],
-) -> Result<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+fn publish_mutation_artifact(path: &Path, runs: &[PartitionMutationRunEvidence]) -> Result<()> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create mutation evidence directory {parent:?}"))?;
     }
@@ -1197,11 +1265,15 @@ fn publish_mutation_artifact(
         .write(true)
         .create_new(true)
         .open(&temporary)
-        .with_context(|| format!("failed to create temporary mutation evidence file {temporary:?}"))?;
-    file.write_all(&bytes)
-        .with_context(|| format!("failed to write temporary mutation evidence file {temporary:?}"))?;
-    file.sync_all()
-        .with_context(|| format!("failed to sync temporary mutation evidence file {temporary:?}"))?;
+        .with_context(|| {
+            format!("failed to create temporary mutation evidence file {temporary:?}")
+        })?;
+    file.write_all(&bytes).with_context(|| {
+        format!("failed to write temporary mutation evidence file {temporary:?}")
+    })?;
+    file.sync_all().with_context(|| {
+        format!("failed to sync temporary mutation evidence file {temporary:?}")
+    })?;
     let publish = fs::hard_link(&temporary, path)
         .with_context(|| format!("failed to publish mutation evidence to {path:?}"));
     let _ = fs::remove_file(&temporary);

@@ -248,7 +248,9 @@ impl Write for BoundedByteCounter {
         let next = self.bytes.saturating_add(buffer.len());
         if next > self.maximum {
             self.exceeded = true;
-            return Err(io::Error::other("static publish project byte limit exceeded"));
+            return Err(io::Error::other(
+                "static publish project byte limit exceeded",
+            ));
         }
         self.bytes = next;
         Ok(buffer.len())
@@ -358,7 +360,9 @@ mod tests {
         assert_eq!(first.observed.page_count, 1);
         assert_eq!(first.observed.component_count, 2);
         assert_eq!(first.observed.max_component_depth, 2);
-        first.verify_integrity().expect("resource evidence integrity");
+        first
+            .verify_integrity()
+            .expect("resource evidence integrity");
     }
 
     #[test]
@@ -367,8 +371,8 @@ mod tests {
             .map(|index| json!({ "id": format!("page-{index}") }))
             .collect::<Vec<_>>();
         let document = document(json!({ "pages": pages }));
-        let error = validate_static_publish_resource_limits(&document)
-            .expect_err("page limit rejection");
+        let error =
+            validate_static_publish_resource_limits(&document).expect_err("page limit rejection");
         assert!(
             error
                 .diagnostics()
@@ -391,8 +395,8 @@ mod tests {
         let document = document(json!({
             "pages": [{ "id": "home", "component": component }]
         }));
-        let error = validate_static_publish_resource_limits(&document)
-            .expect_err("depth limit rejection");
+        let error =
+            validate_static_publish_resource_limits(&document).expect_err("depth limit rejection");
         assert!(
             error
                 .diagnostics()

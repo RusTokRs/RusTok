@@ -49,11 +49,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -106,9 +102,7 @@ async fn create_topic(
                 category_id,
                 title: title.to_string(),
                 slug: Some(slug.to_string()),
-                body: rustok_api::RichTextDocument::single_paragraph(format!(
-                    "{title} body"
-                )),
+                body: rustok_api::RichTextDocument::single_paragraph(format!("{title} body")),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -142,9 +136,7 @@ async fn merge_topic(
     Ok(())
 }
 
-async fn remove_composed_aliases_for_historical_fixture(
-    db: &DatabaseConnection,
-) -> TestResult<()> {
+async fn remove_composed_aliases_for_historical_fixture(db: &DatabaseConnection) -> TestResult<()> {
     db.execute_unprepared(
         "DROP TRIGGER IF EXISTS forum_topic_route_alias_delete;\
          DELETE FROM forum_topic_route_aliases;\

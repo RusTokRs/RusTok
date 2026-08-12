@@ -5,9 +5,7 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{
-    FieldPath, IndexQuery, IndexValueType, LinkCardinality, LinkName, Pagination,
-};
+use crate::domain::{FieldPath, IndexQuery, IndexValueType, LinkCardinality, LinkName, Pagination};
 
 use super::{
     CursorCodec, CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField,
@@ -123,9 +121,7 @@ impl SchemaRegistry {
             Pagination::Cursor {
                 after: Some(encoded),
                 ..
-            } => Some(CursorCodec::decode_scoped_for_query(
-                encoded, query, self,
-            )?),
+            } => Some(CursorCodec::decode_scoped_for_query(encoded, query, self)?),
             _ => None,
         };
         Ok(plan.compile_postgres_with_cursor(cursor.as_ref())?)
@@ -139,13 +135,7 @@ impl ExecutableQueryPlan {
     /// cursor checksum, query fingerprint, scope, schema fingerprint, arity,
     /// and value types are validated before keyset SQL is emitted.
     pub fn compile_postgres(&self) -> Result<CompiledPostgresQuery, PostgresQueryCompileError> {
-        if matches!(
-            &self.pagination,
-            Pagination::Cursor {
-                after: Some(_),
-                ..
-            }
-        ) {
+        if matches!(&self.pagination, Pagination::Cursor { after: Some(_), .. }) {
             return Err(PostgresQueryCompileError::CursorContextRequired);
         }
         self.compile_postgres_with_cursor(None)
@@ -164,8 +154,7 @@ impl ExecutableQueryPlan {
         cursor: Option<&IndexCursor>,
     ) -> Result<(), PostgresQueryCompileError> {
         validate_alias(&self.root_alias)?;
-        if self.path_aliases.get(&Vec::new()).map(String::as_str)
-            != Some(self.root_alias.as_str())
+        if self.path_aliases.get(&Vec::new()).map(String::as_str) != Some(self.root_alias.as_str())
         {
             return Err(PostgresQueryCompileError::AliasMappingMismatch);
         }
@@ -188,9 +177,7 @@ impl ExecutableQueryPlan {
                 false
             } else {
                 self.join_for_path(&parent_path)
-                    .ok_or_else(|| {
-                        PostgresQueryCompileError::MissingJoinPlan(parent_path.clone())
-                    })?
+                    .ok_or_else(|| PostgresQueryCompileError::MissingJoinPlan(parent_path.clone()))?
                     .traverses_many
             };
             let expected_traverses_many =
@@ -258,11 +245,9 @@ impl ExecutableQueryPlan {
                     ));
                 }
                 (false, Some(_)) => {
-                    return Err(
-                        PostgresQueryCompileError::AggregateOrderingWithoutManyLink(
-                            order.field.path.clone(),
-                        ),
-                    );
+                    return Err(PostgresQueryCompileError::AggregateOrderingWithoutManyLink(
+                        order.field.path.clone(),
+                    ));
                 }
                 (true, Some(_)) if !aggregate_type_supported(order.field.value_type) => {
                     return Err(PostgresQueryCompileError::AggregateOrderingUnsupportedType(
@@ -282,33 +267,16 @@ impl ExecutableQueryPlan {
                 .into_iter()
                 .find(|path| !self.referenced_fields.contains_key(*path))
             {
-                return Err(PostgresQueryCompileError::MissingFieldPlan(
-                    (*path).clone(),
-                ));
+                return Err(PostgresQueryCompileError::MissingFieldPlan((*path).clone()));
             }
         }
 
         match (&self.pagination, cursor) {
-            (
-                Pagination::Cursor {
-                    after: Some(_),
-                    ..
-                },
-                None,
-            ) => Err(PostgresQueryCompileError::CursorContextRequired),
-            (
-                Pagination::Cursor {
-                    after: Some(_),
-                    ..
-                },
-                Some(_),
-            )
-            | (
-                Pagination::Cursor {
-                    after: None, ..
-                },
-                None,
-            )
+            (Pagination::Cursor { after: Some(_), .. }, None) => {
+                Err(PostgresQueryCompileError::CursorContextRequired)
+            }
+            (Pagination::Cursor { after: Some(_), .. }, Some(_))
+            | (Pagination::Cursor { after: None, .. }, None)
             | (Pagination::Offset { .. }, None) => Ok(()),
             _ => Err(PostgresQueryCompileError::CursorContextMismatch),
         }

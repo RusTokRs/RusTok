@@ -197,13 +197,9 @@ impl ForumError {
                 "FORUM_TOPIC_CANONICAL_RESOLUTION_CONFLICT"
             }
             Self::TopicRouteNotFound => "FORUM_TOPIC_ROUTE_NOT_FOUND",
-            Self::TopicRouteResolutionConflict => {
-                "FORUM_TOPIC_ROUTE_RESOLUTION_CONFLICT"
-            }
+            Self::TopicRouteResolutionConflict => "FORUM_TOPIC_ROUTE_RESOLUTION_CONFLICT",
             Self::CategoryRouteNotFound => "FORUM_CATEGORY_ROUTE_NOT_FOUND",
-            Self::CategoryRouteResolutionConflict => {
-                "FORUM_CATEGORY_ROUTE_RESOLUTION_CONFLICT"
-            }
+            Self::CategoryRouteResolutionConflict => "FORUM_CATEGORY_ROUTE_RESOLUTION_CONFLICT",
             Self::TopicMergeAudienceReconciliationConflict(_) => {
                 "FORUM_TOPIC_MERGE_AUDIENCE_RECONCILIATION_CONFLICT"
             }

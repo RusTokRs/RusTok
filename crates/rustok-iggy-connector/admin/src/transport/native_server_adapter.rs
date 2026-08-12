@@ -32,9 +32,7 @@ pub async fn iggy_connector_configuration_native()
 -> Result<IggyConnectorConfiguration, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{
-            HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext,
-        };
+        use rustok_api::{HOST_AUTHORITY_REQUIRED, HostAuthority, HostAuthorityContext};
         use rustok_iggy_connector::SharedIggyConnectorControl;
 
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();

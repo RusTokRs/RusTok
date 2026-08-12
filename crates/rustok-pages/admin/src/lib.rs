@@ -2,9 +2,9 @@ mod access;
 mod browser_intent;
 mod browser_problem;
 mod builder;
-mod builder_rollout_settings;
 #[cfg(test)]
 mod builder_contract;
+mod builder_rollout_settings;
 mod composition;
 mod contribution_browser_intent;
 mod contributions;

@@ -34,7 +34,6 @@ pub(crate) struct ProductStorefrontIndexShadowExecution {
     pub(crate) comparison: Option<ProductStorefrontIndexShadowComparison>,
 }
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ProductStorefrontIndexShadowComparison {
     pub(crate) identities_match: bool,
@@ -66,9 +65,13 @@ pub(crate) enum ProductStorefrontIndexShadowProjectionError {
     SchemaReadPortUnavailable,
     #[error("Product Storefront shadow request tenant identity is invalid")]
     InvalidTenant,
-    #[error("Product Storefront channel-less requests remain owner-native for the current Index key-4 contract")]
+    #[error(
+        "Product Storefront channel-less requests remain owner-native for the current Index key-4 contract"
+    )]
     ChannelLessOwnerNative,
-    #[error("Product Storefront deep page at offset {offset} remains owner-native beyond the Index offset bound")]
+    #[error(
+        "Product Storefront deep page at offset {offset} remains owner-native beyond the Index offset bound"
+    )]
     DeepPageOwnerNative { offset: u64 },
     #[error("Product Storefront shadow requires a trusted public channel slug/id pair")]
     PublicChannelIdentityUnavailable,
@@ -91,8 +94,11 @@ pub(crate) enum ProductStorefrontIndexTagHydrationError {
 pub(crate) fn classify_product_storefront_index_channel_scope(
     public_channel_slug: Option<&str>,
     public_channel_id: Option<Uuid>,
-) -> Result<ProductStorefrontIndexChannelScopeDecision, ProductStorefrontIndexShadowProjectionError> {
-    let public_channel_slug = public_channel_slug.map(str::trim).filter(|slug| !slug.is_empty());
+) -> Result<ProductStorefrontIndexChannelScopeDecision, ProductStorefrontIndexShadowProjectionError>
+{
+    let public_channel_slug = public_channel_slug
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty());
     match (public_channel_slug, public_channel_id) {
         (None, None) => Ok(ProductStorefrontIndexChannelScopeDecision::OwnerNativeChannelLess),
         (Some(_), Some(public_channel_id)) if !public_channel_id.is_nil() => {
@@ -131,10 +137,7 @@ pub(crate) struct ProductStorefrontIndexShadowExecutor {
 }
 
 impl ProductStorefrontIndexShadowExecutor {
-    pub(crate) fn new(
-        product: ProductCatalogReadRuntime,
-        index: SharedIndexQueryRuntime,
-    ) -> Self {
+    pub(crate) fn new(product: ProductCatalogReadRuntime, index: SharedIndexQueryRuntime) -> Self {
         Self { product, index }
     }
 
@@ -244,9 +247,9 @@ impl ProductStorefrontIndexShadowExecutor {
         match classify_product_storefront_index_page_scope(&query)? {
             ProductStorefrontIndexPageScopeDecision::ShadowEligible { .. } => {}
             ProductStorefrontIndexPageScopeDecision::OwnerNativeDeepPage { offset } => {
-                return Err(ProductStorefrontIndexShadowProjectionError::DeepPageOwnerNative {
-                    offset,
-                });
+                return Err(
+                    ProductStorefrontIndexShadowProjectionError::DeepPageOwnerNative { offset },
+                );
             }
         }
         let tenant_id = Uuid::parse_str(context.tenant_id.as_str())
@@ -334,7 +337,9 @@ mod tests {
         assert_eq!(
             classify_product_storefront_index_channel_scope(Some(" web "), Some(channel_id))
                 .unwrap(),
-            ProductStorefrontIndexChannelScopeDecision::ShadowEligible { public_channel_id: channel_id }
+            ProductStorefrontIndexChannelScopeDecision::ShadowEligible {
+                public_channel_id: channel_id
+            }
         );
         assert!(matches!(
             classify_product_storefront_index_channel_scope(Some("web"), None),

@@ -237,8 +237,8 @@ fn require_secure_resource_urls(document: &ProjectDocument) -> LandingProjectRes
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::static_publish_resource_limits::PageBuilderStaticPublishResourceLimits;
+    use super::*;
     use serde_json::json;
 
     fn project() -> Value {

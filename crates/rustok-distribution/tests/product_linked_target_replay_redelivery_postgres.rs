@@ -12,18 +12,20 @@ use std::{
 use async_trait::async_trait;
 use rustok_core::{MigrationSource, ModuleRegistry};
 use rustok_index::{
-    EntityKey, EntityName, FieldName, FieldPath, FilterExpr, IndexModule, IndexMutation, IndexQuery,
-    IndexQueryPort, IndexQueryScope, IndexReplayCheckpoint, IndexReplayCheckpointKey,
+    EntityKey, EntityName, FieldName, FieldPath, FilterExpr, IndexModule, IndexMutation,
+    IndexQuery, IndexQueryPort, IndexQueryScope, IndexReplayCheckpoint, IndexReplayCheckpointKey,
     IndexReplayCheckpointStore, IndexReplayError, IndexReplayFailure, IndexReplayMutationOutcome,
     IndexReplayMutationSink, IndexReplayPageRequest, IndexReplayPageStatus, IndexReplayWorker,
     IndexSourceLoadRequest, IndexValue, LinkName, LocaleKey, ModuleName, MutationApplyOutcome,
-    MutationDelivery, Pagination, PostgresMutationStore, PostgresSchemaRegistrationStore, SchemaRef,
-    SchemaVersion, SharedIndexQueryRuntime, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
-    materialize_index_source_registry, materialize_postgres_index_query_runtime,
-    materialize_postgres_index_sources,
+    MutationDelivery, Pagination, PostgresMutationStore, PostgresSchemaRegistrationStore,
+    SchemaRef, SchemaVersion, SharedIndexQueryRuntime, SharedIndexSchemaRegistry,
+    SharedIndexSourceRegistry, materialize_index_source_registry,
+    materialize_postgres_index_query_runtime, materialize_postgres_index_sources,
 };
 use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistrations, ModuleWorkScheduler};
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -219,8 +221,8 @@ struct Runtime {
 }
 
 #[tokio::test]
-async fn replay_checkpoint_failure_duplicate_retry_and_late_stale_target_keep_graph_authoritative(
-) -> TestResult<()> {
+async fn replay_checkpoint_failure_duplicate_retry_and_late_stale_target_keep_graph_authoritative()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -239,12 +241,7 @@ async fn run_scenario(database: &TestDatabase) -> TestResult<()> {
     let initial_version = initial_variant.source_version();
     assert_eq!(initial_version, 1);
     assert_eq!(
-        apply_mutation(
-            &runtime,
-            PRODUCT_VARIANT_SOURCE,
-            initial_variant.clone(),
-        )
-        .await?,
+        apply_mutation(&runtime, PRODUCT_VARIANT_SOURCE, initial_variant.clone(),).await?,
         MutationApplyOutcome::Applied {
             source_version: initial_version,
         }
@@ -286,7 +283,10 @@ async fn run_scenario(database: &TestDatabase) -> TestResult<()> {
         Err(IndexReplayError::CheckpointCommitFailed(_))
     ));
     assert!(checkpoint_store.checkpoint().is_none());
-    assert_eq!(materialized_variant_version(&database.mutation).await?, current_version);
+    assert_eq!(
+        materialized_variant_version(&database.mutation).await?,
+        current_version
+    );
     assert_graph_payload(&runtime.query, CURRENT_SKU).await?;
 
     // A separately composed query runtime observes the durable current target immediately even though
@@ -315,7 +315,10 @@ async fn run_scenario(database: &TestDatabase) -> TestResult<()> {
     assert!(checkpoint.is_complete());
     assert_eq!(checkpoint.source_version(), Some(current_version));
     let current_delivery_id = current.event_id().to_string();
-    assert_eq!(checkpoint.last_delivery_id(), Some(current_delivery_id.as_str()));
+    assert_eq!(
+        checkpoint.last_delivery_id(),
+        Some(current_delivery_id.as_str())
+    );
 
     // Deliver the never-before-applied intermediate canonical mutation after current v3 is durable.
     // The replay sink must classify it as stale rather than regressing target payload or source version.
@@ -330,7 +333,10 @@ async fn run_scenario(database: &TestDatabase) -> TestResult<()> {
             .await?,
         IndexReplayMutationOutcome::StaleIgnored
     );
-    assert_eq!(materialized_variant_version(&database.mutation).await?, current_version);
+    assert_eq!(
+        materialized_variant_version(&database.mutation).await?,
+        current_version
+    );
     assert_graph_payload(&runtime.query, CURRENT_SKU).await?;
     assert_graph_payload(&restarted_query, CURRENT_SKU).await?;
 
@@ -338,15 +344,14 @@ async fn run_scenario(database: &TestDatabase) -> TestResult<()> {
     assert_eq!(
         runtime
             .mutations
-            .apply_replay_mutation(
-                runtime.schemas.registry(),
-                PRODUCT_VARIANT_SOURCE,
-                &current,
-            )
+            .apply_replay_mutation(runtime.schemas.registry(), PRODUCT_VARIANT_SOURCE, &current,)
             .await?,
         IndexReplayMutationOutcome::Duplicate
     );
-    assert_eq!(materialized_variant_version(&database.mutation).await?, current_version);
+    assert_eq!(
+        materialized_variant_version(&database.mutation).await?,
+        current_version
+    );
     assert_graph_payload(&runtime.query, CURRENT_SKU).await?;
     Ok(())
 }
@@ -515,10 +520,7 @@ fn variant_graph_query() -> TestResult<IndexQuery> {
         schema: product_schema_ref()?,
         fields: vec![
             FieldPath::new(FieldName::new("title")?),
-            FieldPath::linked(
-                [LinkName::new("variants")?],
-                FieldName::new("sku")?,
-            ),
+            FieldPath::linked([LinkName::new("variants")?], FieldName::new("sku")?),
         ],
         filter: Some(FilterExpr::Eq(
             FieldPath::new(FieldName::new("id")?),
@@ -554,7 +556,10 @@ async fn assert_graph_visible(query: &SharedIndexQueryRuntime, expected: bool) -
     Ok(())
 }
 
-async fn assert_graph_payload(query: &SharedIndexQueryRuntime, expected_sku: &str) -> TestResult<()> {
+async fn assert_graph_payload(
+    query: &SharedIndexQueryRuntime,
+    expected_sku: &str,
+) -> TestResult<()> {
     let page = query.execute_query(variant_graph_query()?).await?;
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.exact_count, Some(1));
@@ -565,10 +570,7 @@ async fn assert_graph_payload(query: &SharedIndexQueryRuntime, expected_sku: &st
         .find(|projection| projection.path == vec![variants_link.clone()])
         .ok_or_else(|| std::io::Error::other("variants nested projection is missing"))?;
     assert_eq!(variants.items.len(), 1);
-    let sku_path = FieldPath::linked(
-        [variants_link],
-        FieldName::new("sku")?,
-    );
+    let sku_path = FieldPath::linked([variants_link], FieldName::new("sku")?);
     let sku = variants.items[0]
         .fields
         .iter()

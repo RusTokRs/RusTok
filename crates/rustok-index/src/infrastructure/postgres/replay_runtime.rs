@@ -163,9 +163,7 @@ mod tests {
         register_index_schema_source, register_index_source,
     };
 
-    use super::{
-        IndexReplayRuntimeCompositionError, materialize_postgres_index_replay_runtime,
-    };
+    use super::{IndexReplayRuntimeCompositionError, materialize_postgres_index_replay_runtime};
 
     struct NoopSource;
 
@@ -304,6 +302,9 @@ mod tests {
 
         let error = materialize_postgres_index_replay_runtime(&mut extensions, connection().await)
             .expect_err("duplicate materialization must fail");
-        assert_eq!(error, IndexReplayRuntimeCompositionError::AlreadyMaterialized);
+        assert_eq!(
+            error,
+            IndexReplayRuntimeCompositionError::AlreadyMaterialized
+        );
     }
 }

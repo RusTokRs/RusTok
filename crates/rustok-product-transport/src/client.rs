@@ -4,8 +4,7 @@ use async_trait::async_trait;
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
-    StorefrontProductList, VariantProductProjectionRequest,
-    dto::ProductResponse,
+    StorefrontProductList, VariantProductProjectionRequest, dto::ProductResponse,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::metadata::{Ascii, MetadataValue};
@@ -162,9 +161,7 @@ fn grpc_request<T>(
     request
         .metadata_mut()
         .insert(AUTHORIZATION_METADATA, authentication.authorization_value());
-    request
-        .metadata_mut()
-        .insert(TENANT_ID_METADATA, tenant_id);
+    request.metadata_mut().insert(TENANT_ID_METADATA, tenant_id);
     Ok(request)
 }
 
@@ -211,8 +208,8 @@ fn status_to_port_error(status: Status) -> PortError {
 #[cfg(test)]
 mod tests {
     use super::{grpc_request, status_to_port_error};
-    use crate::auth::{AUTHORIZATION_METADATA, TENANT_ID_METADATA};
     use crate::ProductCatalogGrpcBearerToken;
+    use crate::auth::{AUTHORIZATION_METADATA, TENANT_ID_METADATA};
     use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
     use tonic::{Code, Status};
     use uuid::Uuid;

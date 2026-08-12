@@ -27,8 +27,7 @@ use super::topic_vote_lock::{lock_topic_rows_for_votes_in_tx, lock_topic_vote_sc
 
 pub const MAX_FORUM_TOPIC_MERGE_VOTES: u64 = 10_000;
 pub const MAX_FORUM_TOPIC_MERGE_VOTE_REASON_LEN: usize = 500;
-const FORUM_TOPIC_MERGE_VOTES_RECONCILED_EVENT_TYPE: &str =
-    "forum.topic.merge_votes_reconciled";
+const FORUM_TOPIC_MERGE_VOTES_RECONCILED_EVENT_TYPE: &str = "forum.topic.merge_votes_reconciled";
 const FORUM_TOPIC_MERGE_VOTES_AGGREGATE_TYPE: &str = "forum_topic";
 const FORUM_TOPIC_MERGED_EVENT_TYPE: &str = "forum.topic.merged";
 
@@ -131,15 +130,16 @@ impl ForumTopicMergeVoteReconciliationService {
             ));
         }
 
-        let merge = forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
-            .one(&txn)
-            .await?
-            .ok_or_else(|| {
-                ForumError::Validation(
-                    "Forum topic merge vote reconciliation requires an existing merge receipt"
-                        .to_string(),
-                )
-            })?;
+        let merge =
+            forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
+                .one(&txn)
+                .await?
+                .ok_or_else(|| {
+                    ForumError::Validation(
+                        "Forum topic merge vote reconciliation requires an existing merge receipt"
+                            .to_string(),
+                    )
+                })?;
         validate_merge_event_in_tx(&txn, &merge).await?;
 
         let topics = lock_topic_rows_for_votes_in_tx(
@@ -226,9 +226,12 @@ impl ForumTopicMergeVoteReconciliationService {
         for source_row in &source_rows {
             if let Some(target_row) = target_by_user.get(&source_row.user_id) {
                 if source_row.value == target_row.value {
-                    deduplicated_equal_count = deduplicated_equal_count.checked_add(1).ok_or_else(
-                        || ForumError::Validation("Forum topic merge vote count overflow".to_string()),
-                    )?;
+                    deduplicated_equal_count =
+                        deduplicated_equal_count.checked_add(1).ok_or_else(|| {
+                            ForumError::Validation(
+                                "Forum topic merge vote count overflow".to_string(),
+                            )
+                        })?;
                 } else {
                     target_authority_conflict_count = target_authority_conflict_count
                         .checked_add(1)
@@ -241,9 +244,10 @@ impl ForumTopicMergeVoteReconciliationService {
                 delete_source_row_in_tx(&txn, source_row).await?;
             } else {
                 move_source_row_in_tx(&txn, source_row, merge.target_topic_id).await?;
-                moved_source_only_count = moved_source_only_count.checked_add(1).ok_or_else(
-                    || ForumError::Validation("Forum topic merge vote count overflow".to_string()),
-                )?;
+                moved_source_only_count =
+                    moved_source_only_count.checked_add(1).ok_or_else(|| {
+                        ForumError::Validation("Forum topic merge vote count overflow".to_string())
+                    })?;
             }
         }
 

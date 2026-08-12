@@ -119,10 +119,7 @@ pub struct InProcessOrderReadPort {
 }
 
 impl InProcessOrderReadPort {
-    pub fn new(
-        db: sea_orm::DatabaseConnection,
-        event_bus: TransactionalEventBus,
-    ) -> Self {
+    pub fn new(db: sea_orm::DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             inner: OrderService::new(db, event_bus),
         }
@@ -472,9 +469,7 @@ fn order_read_owner_error_facts(error: &OrderError) -> OrderReadOwnerErrorFacts 
         uuid_non_nil_count,
         opaque_payload_present,
     ) = match error {
-        OrderError::Validation(value) => {
-            ("validation", 1, value.chars().count(), 0, 0, false)
-        }
+        OrderError::Validation(value) => ("validation", 1, value.chars().count(), 0, 0, false),
         OrderError::OrderNotFound(id) => (
             "order_not_found",
             0,
@@ -547,16 +542,19 @@ fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uui
             boundary = ORDER_READ_BOUNDARY,
             "order read context was rejected with bounded diagnostics"
         );
-        PortError::validation(
-            "order.context_invalid",
-            "order request context is invalid",
-        )
+        PortError::validation("order.context_invalid", "order request context is invalid")
     })
 }
 
 fn order_read_owner_error_policy(
     error: &OrderError,
-) -> (PortErrorKind, &'static str, &'static str, bool, &'static str) {
+) -> (
+    PortErrorKind,
+    &'static str,
+    &'static str,
+    bool,
+    &'static str,
+) {
     match error {
         OrderError::Validation(_) => (
             PortErrorKind::Validation,

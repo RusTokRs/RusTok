@@ -48,11 +48,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -155,33 +151,9 @@ async fn merged_topic_ids_resolve_to_one_visible_canonical_target() -> TestResul
     insert_user(&db, tenant_id, actor_id).await?;
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
     let category_id = create_category(&db, tenant_id, admin.clone()).await?;
-    let topic_a = create_topic(
-        &db,
-        &event_bus,
-        tenant_id,
-        category_id,
-        admin.clone(),
-        "a",
-    )
-    .await?;
-    let topic_b = create_topic(
-        &db,
-        &event_bus,
-        tenant_id,
-        category_id,
-        admin.clone(),
-        "b",
-    )
-    .await?;
-    let topic_c = create_topic(
-        &db,
-        &event_bus,
-        tenant_id,
-        category_id,
-        admin.clone(),
-        "c",
-    )
-    .await?;
+    let topic_a = create_topic(&db, &event_bus, tenant_id, category_id, admin.clone(), "a").await?;
+    let topic_b = create_topic(&db, &event_bus, tenant_id, category_id, admin.clone(), "b").await?;
+    let topic_c = create_topic(&db, &event_bus, tenant_id, category_id, admin.clone(), "c").await?;
     let active_topic = create_topic(
         &db,
         &event_bus,
@@ -282,29 +254,33 @@ async fn merged_topic_ids_resolve_to_one_visible_canonical_target() -> TestResul
         Err(ForumError::TopicNotFound(id)) if id == missing_id
     ));
 
-    assert!(insert_direct_merge_receipt(
-        &db,
-        tenant_id,
-        Uuid::new_v4(),
-        topic_a,
-        topic_c,
-        category_id,
-        actor_id,
-    )
-    .await
-    .is_err());
+    assert!(
+        insert_direct_merge_receipt(
+            &db,
+            tenant_id,
+            Uuid::new_v4(),
+            topic_a,
+            topic_c,
+            category_id,
+            actor_id,
+        )
+        .await
+        .is_err()
+    );
 
-    assert!(insert_direct_merge_receipt(
-        &db,
-        tenant_id,
-        Uuid::new_v4(),
-        active_topic,
-        topic_c,
-        category_id,
-        actor_id,
-    )
-    .await
-    .is_err());
+    assert!(
+        insert_direct_merge_receipt(
+            &db,
+            tenant_id,
+            Uuid::new_v4(),
+            active_topic,
+            topic_c,
+            category_id,
+            actor_id,
+        )
+        .await
+        .is_err()
+    );
 
     Ok(())
 }

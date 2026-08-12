@@ -22,27 +22,21 @@ impl ReactionSubjectUiRef {
         let source = source.into();
         let kind = kind.into();
         let subject_revision = subject_revision.into();
-        if !valid_segment(
-            source.as_str(),
-            MAX_REACTION_SOURCE_SLUG_BYTES,
-            true,
-            true,
-        ) || !valid_segment(
-            kind.as_str(),
-            MAX_REACTION_SUBJECT_KIND_BYTES,
-            false,
-            true,
-        ) {
+        if !valid_segment(source.as_str(), MAX_REACTION_SOURCE_SLUG_BYTES, true, true)
+            || !valid_segment(kind.as_str(), MAX_REACTION_SUBJECT_KIND_BYTES, false, true)
+        {
             return Err("reaction subject source or kind is invalid".to_string());
         }
         if subject_id.is_nil() {
             return Err("reaction subject id must be non-nil".to_string());
         }
-        let revision = subject_revision
-            .parse::<u64>()
-            .map_err(|_| "reaction subject revision must be a positive canonical u64 string".to_string())?;
+        let revision = subject_revision.parse::<u64>().map_err(|_| {
+            "reaction subject revision must be a positive canonical u64 string".to_string()
+        })?;
         if revision == 0 || revision.to_string() != subject_revision {
-            return Err("reaction subject revision must be a positive canonical u64 string".to_string());
+            return Err(
+                "reaction subject revision must be a positive canonical u64 string".to_string(),
+            );
         }
         Ok(Self {
             source,

@@ -15,11 +15,11 @@ use rustok_payment::{
 };
 use uuid::Uuid;
 
+use crate::FulfillmentOrchestrationError;
 use crate::graphql_runtime::{
     fulfillment_command_runtime_from_context, fulfillment_orchestration_from_context,
     manual_fulfillment_owner_orchestration_from_context, payment_command_runtime_from_context,
 };
-use crate::FulfillmentOrchestrationError;
 
 use super::super::{MODULE_SLUG, require_commerce_permission, types::*};
 use super::helpers::*;
@@ -323,10 +323,12 @@ fn payment_collection_command_context(
         "graphql-payment-collection:{collection_id}:{operation}"
     ))
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    })
+    Ok(
+        match request.and_then(|request| request.channel_slug.as_deref()) {
+            Some(channel) => context.with_channel(channel),
+            None => context,
+        },
+    )
 }
 
 fn payment_refund_create_context(
@@ -349,10 +351,12 @@ fn payment_refund_create_context(
     )
     .with_idempotency_key(creation_key.to_string())
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    })
+    Ok(
+        match request.and_then(|request| request.channel_slug.as_deref()) {
+            Some(channel) => context.with_channel(channel),
+            None => context,
+        },
+    )
 }
 
 fn payment_refund_transition_context(
@@ -375,10 +379,12 @@ fn payment_refund_transition_context(
     )
     .with_idempotency_key(format!("graphql-refund:{refund_id}:{operation}"))
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    })
+    Ok(
+        match request.and_then(|request| request.channel_slug.as_deref()) {
+            Some(channel) => context.with_channel(channel),
+            None => context,
+        },
+    )
 }
 
 fn fulfillment_command_context(
@@ -399,14 +405,14 @@ fn fulfillment_command_context(
         locale,
         format!("commerce-graphql-fulfillment-command:{operation}:{fulfillment_id}"),
     )
-    .with_idempotency_key(format!(
-        "graphql-fulfillment:{fulfillment_id}:{operation}"
-    ))
+    .with_idempotency_key(format!("graphql-fulfillment:{fulfillment_id}:{operation}"))
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    })
+    Ok(
+        match request.and_then(|request| request.channel_slug.as_deref()) {
+            Some(channel) => context.with_channel(channel),
+            None => context,
+        },
+    )
 }
 
 fn fulfillment_create_read_context(
@@ -427,10 +433,12 @@ fn fulfillment_create_read_context(
         format!("commerce-graphql-fulfillment-create-read:{order_id}"),
     )
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    })
+    Ok(
+        match request.and_then(|request| request.channel_slug.as_deref()) {
+            Some(channel) => context.with_channel(channel),
+            None => context,
+        },
+    )
 }
 
 fn fulfillment_create_command_context(
@@ -467,10 +475,12 @@ fn fulfillment_create_command_context(
         input.order_id
     ))
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    })
+    Ok(
+        match request.and_then(|request| request.channel_slug.as_deref()) {
+            Some(channel) => context.with_channel(channel),
+            None => context,
+        },
+    )
 }
 
 fn fnv1a64(bytes: &[u8], offset_basis: u64) -> u64 {
@@ -690,13 +700,7 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| {
-                payment_provider_graphql_error(
-                    tenant_id,
-                    id,
-                    "complete_refund",
-                    &context,
-                    error,
-                )
+                payment_provider_graphql_error(tenant_id, id, "complete_refund", &context, error)
             })?;
         Ok(refund.into())
     }
@@ -731,13 +735,7 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| {
-                payment_provider_graphql_error(
-                    tenant_id,
-                    id,
-                    "cancel_refund",
-                    &context,
-                    error,
-                )
+                payment_provider_graphql_error(tenant_id, id, "cancel_refund", &context, error)
             })?;
         Ok(refund.into())
     }
@@ -782,8 +780,7 @@ impl CommerceProviderMutation {
             manual_fulfillment_owner_orchestration_from_context(ctx)
         {
             let read_context = fulfillment_create_read_context(ctx, tenant_id, order_id)?;
-            let write_context =
-                fulfillment_create_command_context(ctx, tenant_id, &create_input)?;
+            let write_context = fulfillment_create_command_context(ctx, tenant_id, &create_input)?;
             service
                 .create_manual_fulfillment(read_context, write_context.clone(), create_input)
                 .await
@@ -852,13 +849,7 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| {
-                fulfillment_owner_graphql_error(
-                    tenant_id,
-                    id,
-                    "ship_fulfillment",
-                    &context,
-                    error,
-                )
+                fulfillment_owner_graphql_error(tenant_id, id, "ship_fulfillment", &context, error)
             })?;
         Ok(fulfillment.into())
     }

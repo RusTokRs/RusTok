@@ -221,7 +221,11 @@ impl SalesChannelPostgresIndexSource {
             ),
         };
         self.db
-            .query_all(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                sql,
+                values,
+            ))
             .await
             .map_err(|_| retryable("sales_channel_index_storage_unavailable"))
     }
@@ -246,7 +250,11 @@ impl SalesChannelPostgresIndexSource {
             rows.join(", ")
         );
         self.db
-            .query_all(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                sql,
+                values,
+            ))
             .await
             .map_err(|_| retryable("sales_channel_index_storage_unavailable"))
     }
@@ -326,8 +334,8 @@ impl SalesChannelCursor {
     }
 
     fn encode(&self) -> Result<IndexSourceCursor, SalesChannelIndexBridgeError> {
-        let value = serde_json::to_value(self)
-            .map_err(|_| SalesChannelIndexBridgeError::InvalidCursor)?;
+        let value =
+            serde_json::to_value(self).map_err(|_| SalesChannelIndexBridgeError::InvalidCursor)?;
         IndexSourceCursor::new(value).map_err(|_| SalesChannelIndexBridgeError::InvalidCursor)
     }
 }
@@ -507,14 +515,18 @@ mod tests {
         assert_eq!(schema.locale_mode, LocaleMode::None);
         assert_eq!(schema.fields.len(), 6);
         assert!(schema.links.is_empty());
-        assert!(schema
-            .fields
-            .iter()
-            .any(|field| field.name.as_str() == "id"));
-        assert!(schema
-            .fields
-            .iter()
-            .any(|field| field.name.as_str() == "slug"));
+        assert!(
+            schema
+                .fields
+                .iter()
+                .any(|field| field.name.as_str() == "id")
+        );
+        assert!(
+            schema
+                .fields
+                .iter()
+                .any(|field| field.name.as_str() == "slug")
+        );
         assert!(schema.fingerprint().is_ok());
     }
 
@@ -574,14 +586,18 @@ mod tests {
         extensions.insert(rustok_index::IndexSchemaSourceCatalog::new());
         extensions.insert(rustok_index::PostgresIndexSourceFactoryCatalog::new());
         register(&mut extensions).unwrap();
-        assert!(extensions
-            .get::<rustok_index::IndexSchemaSourceCatalog>()
-            .unwrap()
-            .is_empty());
-        assert!(extensions
-            .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
-            .unwrap()
-            .is_empty());
+        assert!(
+            extensions
+                .get::<rustok_index::IndexSchemaSourceCatalog>()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            extensions
+                .get::<rustok_index::PostgresIndexSourceFactoryCatalog>()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

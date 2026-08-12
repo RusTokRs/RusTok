@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule,
-    ForumTopicMergeService, ForumTopicRouteDisposition, ForumTopicRouteService,
-    MergeForumTopicInput, TopicService,
+    CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, ForumTopicMergeService,
+    ForumTopicRouteDisposition, ForumTopicRouteService, MergeForumTopicInput, TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
@@ -49,11 +48,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -107,9 +102,7 @@ async fn create_topic(
                 category_id,
                 title: title.to_string(),
                 slug: Some(slug.to_string()),
-                body: rustok_api::RichTextDocument::single_paragraph(format!(
-                    "{title} body"
-                )),
+                body: rustok_api::RichTextDocument::single_paragraph(format!("{title} body")),
                 metadata: serde_json::json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,

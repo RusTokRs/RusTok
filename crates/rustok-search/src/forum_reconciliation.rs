@@ -208,11 +208,8 @@ impl ForumProjectionReconciler {
         owner_source: SharedForumProjectionOwnerRevisionSourcePort,
     ) -> Self {
         let forum_projector = ForumSearchProjector::new(db.clone(), forum_source);
-        let owner_checkpoint = ForumOwnerCheckpointReconciler::new(
-            db.clone(),
-            forum_projector.clone(),
-            owner_source,
-        );
+        let owner_checkpoint =
+            ForumOwnerCheckpointReconciler::new(db.clone(), forum_projector.clone(), owner_source);
         Self {
             projector: SearchProjector::new(db.clone()),
             blog_projector: BlogSearchProjector::new(db.clone()),
@@ -422,8 +419,7 @@ mod owner_revision_tests {
     use super::{
         ForumProjectionOwnerRevisionImpact, ForumProjectionOwnerRevisionRecord,
         ForumProjectionOwnerRevisionRequest, ForumProjectionOwnerRevisionSourcePort,
-        SharedForumProjectionOwnerRevisionSourcePort,
-        resolve_forum_projection_owner_revisions,
+        SharedForumProjectionOwnerRevisionSourcePort, resolve_forum_projection_owner_revisions,
     };
 
     struct FixedRevisionSource {
@@ -467,10 +463,9 @@ mod owner_revision_tests {
 
     #[tokio::test]
     async fn owner_revision_page_accepts_contiguous_tenant_ledger_sequence() {
-        let port: SharedForumProjectionOwnerRevisionSourcePort =
-            Arc::new(FixedRevisionSource {
-                revisions: vec![record(4), record(5)],
-            });
+        let port: SharedForumProjectionOwnerRevisionSourcePort = Arc::new(FixedRevisionSource {
+            revisions: vec![record(4), record(5)],
+        });
         let revisions = resolve_forum_projection_owner_revisions(Some(port), request(3))
             .await
             .expect("valid owner revisions should resolve");
@@ -480,10 +475,9 @@ mod owner_revision_tests {
 
     #[tokio::test]
     async fn owner_revision_page_rejects_gap_or_replay() {
-        let port: SharedForumProjectionOwnerRevisionSourcePort =
-            Arc::new(FixedRevisionSource {
-                revisions: vec![record(8), record(10)],
-            });
+        let port: SharedForumProjectionOwnerRevisionSourcePort = Arc::new(FixedRevisionSource {
+            revisions: vec![record(8), record(10)],
+        });
         let error = resolve_forum_projection_owner_revisions(Some(port), request(7))
             .await
             .expect_err("owner revision gaps must fail closed");

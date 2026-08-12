@@ -158,14 +158,8 @@ impl SocialGraphPrivacyReadPort for IndexSocialGraphPrivacyReadPort {
                         ),
                     ]),
                     FilterExpr::And(vec![
-                        FilterExpr::Eq(
-                            contract.source,
-                            IndexValue::Uuid(request.target_user_id),
-                        ),
-                        FilterExpr::Eq(
-                            contract.target,
-                            IndexValue::Uuid(request.source_user_id),
-                        ),
+                        FilterExpr::Eq(contract.source, IndexValue::Uuid(request.target_user_id)),
+                        FilterExpr::Eq(contract.target, IndexValue::Uuid(request.source_user_id)),
                     ]),
                 ]),
             ]),
@@ -185,14 +179,8 @@ impl SocialGraphPrivacyReadPort for IndexSocialGraphPrivacyReadPort {
         self.relation_exists(
             tenant_id,
             FilterExpr::And(vec![
-                FilterExpr::Eq(
-                    contract.source,
-                    IndexValue::Uuid(request.source_user_id),
-                ),
-                FilterExpr::Eq(
-                    contract.target,
-                    IndexValue::Uuid(request.target_user_id),
-                ),
+                FilterExpr::Eq(contract.source, IndexValue::Uuid(request.source_user_id)),
+                FilterExpr::Eq(contract.target, IndexValue::Uuid(request.target_user_id)),
                 FilterExpr::Eq(
                     contract.kind,
                     IndexValue::String(SocialRelationKind::Mute.as_str().to_owned()),
@@ -215,14 +203,8 @@ impl SocialGraphPrivacyReadPort for IndexSocialGraphPrivacyReadPort {
         self.relation_exists(
             tenant_id,
             FilterExpr::And(vec![
-                FilterExpr::Eq(
-                    contract.source,
-                    IndexValue::Uuid(request.source_user_id),
-                ),
-                FilterExpr::Eq(
-                    contract.target,
-                    IndexValue::Uuid(request.target_user_id),
-                ),
+                FilterExpr::Eq(contract.source, IndexValue::Uuid(request.source_user_id)),
+                FilterExpr::Eq(contract.target, IndexValue::Uuid(request.target_user_id)),
                 FilterExpr::Eq(
                     contract.kind,
                     IndexValue::String(SocialRelationKind::Follow.as_str().to_owned()),
@@ -246,10 +228,7 @@ impl SocialGraphPrivacyReadPort for IndexSocialGraphPrivacyReadPort {
             ));
         }
         let tenant_id = parse_tenant_id(&context)?;
-        let target_user_ids = request
-            .target_user_ids
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+        let target_user_ids = request.target_user_ids.into_iter().collect::<BTreeSet<_>>();
         for target_user_id in &target_user_ids {
             validate_pair(request.source_user_id, *target_user_id)?;
         }
@@ -434,16 +413,18 @@ mod tests {
         let left = Uuid::from_u128(2);
         let right = Uuid::from_u128(3);
 
-        assert!(!port
-            .blocks_between(
-                context(tenant_id),
-                SocialGraphPairRequest {
-                    source_user_id: left,
-                    target_user_id: right,
-                },
-            )
-            .await
-            .unwrap());
+        assert!(
+            !port
+                .blocks_between(
+                    context(tenant_id),
+                    SocialGraphPairRequest {
+                        source_user_id: left,
+                        target_user_id: right,
+                    },
+                )
+                .await
+                .unwrap()
+        );
 
         let query = fake.query();
         let contract = relation_contract().unwrap();
@@ -453,10 +434,7 @@ mod tests {
         assert_eq!(
             query.filter,
             Some(FilterExpr::And(vec![
-                FilterExpr::Eq(
-                    contract.kind,
-                    IndexValue::String("block".to_owned()),
-                ),
+                FilterExpr::Eq(contract.kind, IndexValue::String("block".to_owned()),),
                 FilterExpr::Or(vec![
                     FilterExpr::And(vec![
                         FilterExpr::Eq(contract.source.clone(), IndexValue::Uuid(left)),

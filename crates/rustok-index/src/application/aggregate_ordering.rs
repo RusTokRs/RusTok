@@ -37,9 +37,7 @@ impl SchemaRegistry {
         &self,
         query: &IndexQuery,
     ) -> Result<(), AggregateOrderValidationError> {
-        query
-            .validate_shape()
-            .map_err(QueryValidationError::from)?;
+        query.validate_shape().map_err(QueryValidationError::from)?;
 
         let has_aggregate = query
             .order_by
@@ -118,9 +116,9 @@ fn resolve_order_field(
                 link: link_name.clone(),
             })?;
         traverses_many |= link.cardinality == LinkCardinality::Many;
-        registered = registry.get(&link.target_schema).ok_or_else(|| {
-            SchemaRegistryError::SchemaNotFound(link.target_schema.clone())
-        })?;
+        registered = registry
+            .get(&link.target_schema)
+            .ok_or_else(|| SchemaRegistryError::SchemaNotFound(link.target_schema.clone()))?;
     }
 
     let field = registered
@@ -270,8 +268,7 @@ mod tests {
     fn aggregate_mode_is_rejected_on_singular_path() {
         let registry = registry(IndexValueType::Integer, true);
         assert!(matches!(
-            registry
-                .validate_query_with_aggregate_ordering(&query(OrderDirection::MinAsc, false)),
+            registry.validate_query_with_aggregate_ordering(&query(OrderDirection::MinAsc, false)),
             Err(AggregateOrderValidationError::AggregateRequiresManyLink(_))
         ));
     }

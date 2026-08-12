@@ -517,15 +517,8 @@ pub async fn delete_product(
     headers: HeaderMap,
     path: Path<Uuid>,
 ) -> HttpResult<StatusCode> {
-    super::super::products::delete_product(
-        state,
-        tenant,
-        auth,
-        request_context,
-        headers,
-        path,
-    )
-    .await
+    super::super::products::delete_product(state, tenant, auth, request_context, headers, path)
+        .await
 }
 
 /// Publish admin ecommerce product
@@ -551,15 +544,8 @@ pub async fn publish_product(
     headers: HeaderMap,
     path: Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
-    super::super::products::publish_product(
-        state,
-        tenant,
-        auth,
-        request_context,
-        headers,
-        path,
-    )
-    .await
+    super::super::products::publish_product(state, tenant, auth, request_context, headers, path)
+        .await
 }
 
 /// Unpublish admin ecommerce product
@@ -585,13 +571,6 @@ pub async fn unpublish_product(
     headers: HeaderMap,
     path: Path<Uuid>,
 ) -> HttpResult<Json<ProductResponse>> {
-    super::super::products::unpublish_product(
-        state,
-        tenant,
-        auth,
-        request_context,
-        headers,
-        path,
-    )
-    .await
+    super::super::products::unpublish_product(state, tenant, auth, request_context, headers, path)
+        .await
 }

@@ -4,17 +4,15 @@ use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_blog::{
     BlogCategory, BlogCategoryTranslation, BlogCategoryTranslationTargetProvider, BlogModule,
     BlogTranslationChange, CategoryService, CreateCategoryInput,
-    entities::{
-        blog_category, blog_category_translation, translation_change,
-    },
+    entities::{blog_category, blog_category_translation, translation_change},
 };
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxModule, OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use rustok_translation_targets::{
-    FieldKey, ReadTranslationResourceRequest, TranslationFieldPatch,
-    TranslationPatchRequest, TranslationResourceLifecycle, TranslationResourceSnapshot,
-    TranslationTargetChangesRequest, TranslationTargetProgressRequest, TranslationTargetProvider,
+    FieldKey, ReadTranslationResourceRequest, TranslationFieldPatch, TranslationPatchRequest,
+    TranslationResourceLifecycle, TranslationResourceSnapshot, TranslationTargetChangesRequest,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
 };
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
@@ -144,7 +142,10 @@ async fn category_translation_target_migration_supports_postgres_up_down_up() ->
         .await?;
     assert_eq!(changes.changes.len(), 1);
     assert_eq!(changes.changes[0].resource_revision.as_str(), "1");
-    assert_eq!(changes.changes[0].lifecycle, TranslationResourceLifecycle::Active);
+    assert_eq!(
+        changes.changes[0].lifecycle,
+        TranslationResourceLifecycle::Active
+    );
     assert!(changes.next_cursor.is_some());
 
     test_db.cleanup().await
@@ -158,11 +159,7 @@ async fn concurrent_same_revision_translation_applies_commit_once() -> TestResul
     let tenant_id = Uuid::new_v4();
     let service = category_service(test_db.db.clone());
     let category_id = service
-        .create(
-            tenant_id,
-            admin(),
-            category_input("Systems", "systems"),
-        )
+        .create(tenant_id, admin(), category_input("Systems", "systems"))
         .await?;
     let provider = BlogCategoryTranslationTargetProvider::new(service);
     let snapshot = provider
@@ -204,7 +201,11 @@ async fn concurrent_same_revision_translation_applies_commit_once() -> TestResul
             Err(error) => failures.push(error),
         }
     }
-    assert_eq!(successes.len(), 1, "exactly one same-revision apply must commit");
+    assert_eq!(
+        successes.len(),
+        1,
+        "exactly one same-revision apply must commit"
+    );
     assert_eq!(failures.len(), 1, "the competing stale apply must close");
     assert_eq!(failures[0].kind, PortErrorKind::Conflict);
 
@@ -234,9 +235,17 @@ async fn concurrent_same_revision_translation_applies_commit_once() -> TestResul
         .filter(translation_change::Column::TenantId.eq(tenant_id))
         .all(&test_db.db)
         .await?;
-    assert_eq!(changes.len(), 2, "source create plus one winning apply only");
+    assert_eq!(
+        changes.len(),
+        2,
+        "source create plus one winning apply only"
+    );
     let outbox = SysEvents::find().all(&test_db.db).await?;
-    assert_eq!(outbox.len(), 1, "only the winning apply may publish reindex");
+    assert_eq!(
+        outbox.len(),
+        1,
+        "only the winning apply may publish reindex"
+    );
     assert_eq!(outbox[0].event_type, "index.reindex_requested");
 
     test_db.cleanup().await
@@ -250,11 +259,7 @@ async fn change_cursor_resumes_after_provider_reconstruction_and_delete() -> Tes
     let tenant_id = Uuid::new_v4();
     let service = category_service(test_db.db.clone());
     let category_id = service
-        .create(
-            tenant_id,
-            admin(),
-            category_input("Recovery", "recovery"),
-        )
+        .create(tenant_id, admin(), category_input("Recovery", "recovery"))
         .await?;
     let provider = BlogCategoryTranslationTargetProvider::new(service);
     let first_page = provider
@@ -311,7 +316,10 @@ async fn change_cursor_resumes_after_provider_reconstruction_and_delete() -> Tes
         .await?;
     assert_eq!(second_page.changes.len(), 1);
     assert_eq!(second_page.changes[0].resource_revision.as_str(), "2");
-    assert_eq!(second_page.changes[0].lifecycle, TranslationResourceLifecycle::Active);
+    assert_eq!(
+        second_page.changes[0].lifecycle,
+        TranslationResourceLifecycle::Active
+    );
     let second_cursor = second_page
         .next_cursor
         .expect("translation apply must advance the resume cursor");
@@ -339,7 +347,10 @@ async fn change_cursor_resumes_after_provider_reconstruction_and_delete() -> Tes
         .await?;
     assert_eq!(deleted_page.changes.len(), 1);
     assert_eq!(deleted_page.changes[0].resource_revision.as_str(), "3");
-    assert_eq!(deleted_page.changes[0].lifecycle, TranslationResourceLifecycle::Deleted);
+    assert_eq!(
+        deleted_page.changes[0].lifecycle,
+        TranslationResourceLifecycle::Deleted
+    );
     let deleted_cursor = deleted_page
         .next_cursor
         .expect("delete must advance the durable Blog change cursor");
@@ -474,10 +485,7 @@ fn field_patch(
     }
 }
 
-fn exact_target_value<'a>(
-    snapshot: &'a TranslationResourceSnapshot,
-    key: &str,
-) -> Option<&'a str> {
+fn exact_target_value<'a>(snapshot: &'a TranslationResourceSnapshot, key: &str) -> Option<&'a str> {
     snapshot
         .fields
         .iter()

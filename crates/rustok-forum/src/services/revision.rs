@@ -156,7 +156,10 @@ mod tests {
     #[test]
     fn owner_revision_is_positive_and_advances_after_captured_history() {
         assert_eq!(current_revision_after(None).expect("initial revision"), 1);
-        assert_eq!(current_revision_after(Some(41)).expect("advanced revision"), 42);
+        assert_eq!(
+            current_revision_after(Some(41)).expect("advanced revision"),
+            42
+        );
         assert!(current_revision_after(Some(-1)).is_err());
         assert!(current_revision_after(Some(i64::MAX)).is_ok());
     }

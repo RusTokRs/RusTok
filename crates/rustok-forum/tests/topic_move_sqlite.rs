@@ -55,11 +55,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -154,10 +150,8 @@ async fn topic_move_is_atomic_idempotent_and_append_only() -> TestResult<()> {
     insert_user(&db, tenant_id, actor_id).await?;
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
 
-    let source_category_id =
-        create_category(&db, tenant_id, admin.clone(), "move-source").await?;
-    let target_category_id =
-        create_category(&db, tenant_id, admin.clone(), "move-target").await?;
+    let source_category_id = create_category(&db, tenant_id, admin.clone(), "move-source").await?;
+    let target_category_id = create_category(&db, tenant_id, admin.clone(), "move-target").await?;
     let topic_id = create_topic(
         &db,
         &event_bus,
@@ -166,14 +160,8 @@ async fn topic_move_is_atomic_idempotent_and_append_only() -> TestResult<()> {
         admin.clone(),
     )
     .await?;
-    let _reply_id = create_approved_reply(
-        &db,
-        &event_bus,
-        tenant_id,
-        topic_id,
-        admin.clone(),
-    )
-    .await?;
+    let _reply_id =
+        create_approved_reply(&db, &event_bus, tenant_id, topic_id, admin.clone()).await?;
 
     assert_category_counters(&db, tenant_id, source_category_id, 1, 1).await?;
     assert_category_counters(&db, tenant_id, target_category_id, 0, 0).await?;
@@ -198,7 +186,10 @@ async fn topic_move_is_atomic_idempotent_and_append_only() -> TestResult<()> {
     assert_eq!(moved.published_reply_count, 1);
     assert_eq!(moved.reason, input.reason);
 
-    assert_eq!(topic_category_id(&db, tenant_id, topic_id).await?, target_category_id);
+    assert_eq!(
+        topic_category_id(&db, tenant_id, topic_id).await?,
+        target_category_id
+    );
     assert_category_counters(&db, tenant_id, source_category_id, 0, 0).await?;
     assert_category_counters(&db, tenant_id, target_category_id, 1, 1).await?;
     assert_eq!(move_operation_count(&db, tenant_id).await?, 1);
@@ -225,7 +216,10 @@ async fn topic_move_is_atomic_idempotent_and_append_only() -> TestResult<()> {
         .await?;
     assert_eq!(replay, moved);
     assert_eq!(move_operation_count(&db, tenant_id).await?, 1);
-    assert_eq!(projection_root_ids(&db, tenant_id).await?, projection_ids_after_move);
+    assert_eq!(
+        projection_root_ids(&db, tenant_id).await?,
+        projection_ids_after_move
+    );
     assert_category_counters(&db, tenant_id, source_category_id, 0, 0).await?;
     assert_category_counters(&db, tenant_id, target_category_id, 1, 1).await?;
 
@@ -291,17 +285,11 @@ async fn topic_move_rejects_foreign_and_archived_targets_without_partial_state()
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
     let foreign_admin = SecurityContext::new(UserRole::Admin, Some(foreign_actor_id));
 
-    let source_category_id =
-        create_category(&db, tenant_id, admin.clone(), "guard-source").await?;
+    let source_category_id = create_category(&db, tenant_id, admin.clone(), "guard-source").await?;
     let archived_target_id =
         create_category(&db, tenant_id, admin.clone(), "guard-archived").await?;
-    let foreign_target_id = create_category(
-        &db,
-        foreign_tenant_id,
-        foreign_admin,
-        "guard-foreign",
-    )
-    .await?;
+    let foreign_target_id =
+        create_category(&db, foreign_tenant_id, foreign_admin, "guard-foreign").await?;
     let topic_id = create_topic(
         &db,
         &event_bus,
@@ -355,11 +343,17 @@ async fn topic_move_rejects_foreign_and_archived_targets_without_partial_state()
         Err(ForumError::CategoryNotFound(id)) if id == foreign_target_id
     ));
 
-    assert_eq!(topic_category_id(&db, tenant_id, topic_id).await?, source_category_id);
+    assert_eq!(
+        topic_category_id(&db, tenant_id, topic_id).await?,
+        source_category_id
+    );
     assert_category_counters(&db, tenant_id, source_category_id, 1, 0).await?;
     assert_category_counters(&db, tenant_id, archived_target_id, 0, 0).await?;
     assert_eq!(move_operation_count(&db, tenant_id).await?, 0);
-    assert_eq!(projection_root_ids(&db, tenant_id).await?, baseline_projection_ids);
+    assert_eq!(
+        projection_root_ids(&db, tenant_id).await?,
+        baseline_projection_ids
+    );
     Ok(())
 }
 
@@ -399,10 +393,7 @@ async fn assert_category_counters(
     Ok(())
 }
 
-async fn move_operation_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn move_operation_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -435,9 +426,15 @@ async fn assert_semantic_event(
     assert_eq!(row.try_get::<Uuid>("", "event_id")?, moved.event_id);
     assert_eq!(row.try_get::<String>("", "aggregate_type")?, "forum_topic");
     assert_eq!(row.try_get::<Uuid>("", "aggregate_id")?, moved.topic_id);
-    assert_eq!(row.try_get::<String>("", "event_type")?, "forum.topic.moved");
+    assert_eq!(
+        row.try_get::<String>("", "event_type")?,
+        "forum.topic.moved"
+    );
     assert_eq!(row.try_get::<i16>("", "schema_version")?, 1);
-    assert_eq!(row.try_get::<Option<Uuid>>("", "actor_id")?, Some(moved.actor_id));
+    assert_eq!(
+        row.try_get::<Option<Uuid>>("", "actor_id")?,
+        Some(moved.actor_id)
+    );
     let payload: JsonValue = row.try_get("", "payload")?;
     assert_eq!(payload["operation_id"], moved.operation_id.to_string());
     assert_eq!(payload["topic_id"], moved.topic_id.to_string());
@@ -449,7 +446,10 @@ async fn assert_semantic_event(
         payload["target_category_id"],
         moved.target_category_id.to_string()
     );
-    assert_eq!(payload["published_reply_count"], moved.published_reply_count);
+    assert_eq!(
+        payload["published_reply_count"],
+        moved.published_reply_count
+    );
     assert_eq!(payload["reason"], moved.reason);
     Ok(())
 }

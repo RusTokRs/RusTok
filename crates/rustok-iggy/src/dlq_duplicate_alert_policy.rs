@@ -48,10 +48,7 @@ impl DlqDuplicateAlertPolicy {
         })
     }
 
-    pub const fn evaluate(
-        &self,
-        summary: &DlqDuplicateSummary,
-    ) -> DlqDuplicateAlertEvaluation {
+    pub const fn evaluate(&self, summary: &DlqDuplicateSummary) -> DlqDuplicateAlertEvaluation {
         let identity_conflict = summary.has_identity_conflicts();
         let critical_duplicate_messages =
             summary.duplicate_messages() >= self.critical_duplicate_messages;
@@ -77,8 +74,7 @@ impl DlqDuplicateAlertPolicy {
 
         let warning_duplicate_messages =
             summary.duplicate_messages() >= self.warning_duplicate_messages;
-        let warning_duplicate_groups =
-            summary.duplicate_groups() >= self.warning_duplicate_groups;
+        let warning_duplicate_groups = summary.duplicate_groups() >= self.warning_duplicate_groups;
         let warning_max_copies =
             summary.max_copies_per_message_id() >= self.warning_max_copies_per_message_id;
 
@@ -224,7 +220,10 @@ mod tests {
         ] {
             let error = candidate.unwrap_err();
             assert_eq!(error, DlqDuplicateAlertPolicyError::InvalidThresholds);
-            assert_eq!(error.stable_code(), "iggy.dlq_duplicate.alert_policy_invalid");
+            assert_eq!(
+                error.stable_code(),
+                "iggy.dlq_duplicate.alert_policy_invalid"
+            );
         }
     }
 

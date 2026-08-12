@@ -6,12 +6,10 @@ use iggy::prelude::{
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::dlq_duplicate_inspection::{
-    DlqDuplicateInspectionError, DlqDuplicateObservation,
-};
+use crate::dlq_duplicate_inspection::{DlqDuplicateInspectionError, DlqDuplicateObservation};
 use crate::dlq_duplicate_rolling_window::{
-    DlqDuplicateRollingWindow, DlqDuplicateRollingWindowError,
-    DlqDuplicateRollingWindowPolicy, DlqDuplicateRollingWindowSnapshot,
+    DlqDuplicateRollingWindow, DlqDuplicateRollingWindowError, DlqDuplicateRollingWindowPolicy,
+    DlqDuplicateRollingWindowSnapshot,
 };
 
 const DLQ_TOPIC: &str = "dlq";
@@ -208,10 +206,7 @@ impl IggyDlqDuplicateMovingWindowState {
         Ok(snapshot)
     }
 
-    fn next_offset(
-        &self,
-        partition_id: u32,
-    ) -> Result<u64, IggyDlqDuplicateMovingWindowError> {
+    fn next_offset(&self, partition_id: u32) -> Result<u64, IggyDlqDuplicateMovingWindowError> {
         self.cursors
             .get(&partition_id)
             .copied()
@@ -227,19 +222,15 @@ impl IggyDlqDuplicateMovingWindowState {
         }
 
         let mut candidate_cursors = self.cursors.clone();
-        let mut observations =
-            Vec::with_capacity(self.policy.total_message_budget as usize);
+        let mut observations = Vec::with_capacity(self.policy.total_message_budget as usize);
         let mut advanced_partitions = 0_u32;
 
-        for (&expected_partition, partition) in
-            self.policy.partitions.iter().zip(partitions)
-        {
+        for (&expected_partition, partition) in self.policy.partitions.iter().zip(partitions) {
             let expected_offset = self.next_offset(expected_partition)?;
             if partition.partition_id != expected_partition
                 || partition.start_offset != expected_offset
                 || partition.next_offset < partition.start_offset
-                || partition.observations.len()
-                    > self.policy.per_partition_messages as usize
+                || partition.observations.len() > self.policy.per_partition_messages as usize
             {
                 return Err(IggyDlqDuplicateMovingWindowError::InvalidCycle);
             }
@@ -393,8 +384,8 @@ impl<'a> IggyDlqDuplicateMovingWindowScanner<'a> {
                 previous_offset = Some(offset);
             }
 
-            let last_offset = previous_offset
-                .ok_or(IggyDlqDuplicateMovingWindowError::InvalidBrokerResponse)?;
+            let last_offset =
+                previous_offset.ok_or(IggyDlqDuplicateMovingWindowError::InvalidBrokerResponse)?;
             next_offset = last_offset
                 .checked_add(1)
                 .ok_or(IggyDlqDuplicateMovingWindowError::OffsetOverflow)?;
@@ -447,24 +438,18 @@ impl IggyDlqDuplicateMovingWindowError {
         match self {
             Self::InvalidPolicy => "iggy.dlq_duplicate.moving_window_policy_invalid",
             Self::PollFailed => "iggy.dlq_duplicate.moving_window_poll_failed",
-            Self::InvalidBrokerResponse => {
-                "iggy.dlq_duplicate.moving_window_response_invalid"
-            }
+            Self::InvalidBrokerResponse => "iggy.dlq_duplicate.moving_window_response_invalid",
             Self::OffsetOverflow => "iggy.dlq_duplicate.moving_window_offset_overflow",
             Self::InvalidCycle => "iggy.dlq_duplicate.moving_window_cycle_invalid",
             Self::CountOverflow => "iggy.dlq_duplicate.moving_window_count_overflow",
-            Self::ResetGenerationOverflow => {
-                "iggy.dlq_duplicate.moving_window_reset_overflow"
-            }
+            Self::ResetGenerationOverflow => "iggy.dlq_duplicate.moving_window_reset_overflow",
             Self::Inspection(error) => error.stable_code(),
             Self::Rolling(error) => error.stable_code(),
         }
     }
 }
 
-fn initial_cursors(
-    policy: &IggyDlqDuplicateMovingWindowPolicy,
-) -> BTreeMap<u32, u64> {
+fn initial_cursors(policy: &IggyDlqDuplicateMovingWindowPolicy) -> BTreeMap<u32, u64> {
     policy
         .partitions
         .iter()
@@ -472,9 +457,7 @@ fn initial_cursors(
         .collect()
 }
 
-fn validate_partitions(
-    partitions: &[u32],
-) -> Result<(), IggyDlqDuplicateMovingWindowError> {
+fn validate_partitions(partitions: &[u32]) -> Result<(), IggyDlqDuplicateMovingWindowError> {
     if partitions.is_empty() || partitions.len() > MAX_SCAN_PARTITIONS {
         return Err(IggyDlqDuplicateMovingWindowError::InvalidPolicy);
     }
@@ -502,9 +485,7 @@ fn validate_message_bounds(
     Ok(())
 }
 
-fn validate_stream_name(
-    stream_name: &str,
-) -> Result<(), IggyDlqDuplicateMovingWindowError> {
+fn validate_stream_name(stream_name: &str) -> Result<(), IggyDlqDuplicateMovingWindowError> {
     if stream_name.is_empty()
         || stream_name.trim() != stream_name
         || stream_name.len() > MAX_STREAM_NAME_BYTES
@@ -527,8 +508,7 @@ mod tests {
 
     fn policy() -> IggyDlqDuplicateMovingWindowPolicy {
         let rolling = DlqDuplicateRollingWindowPolicy::new(3, 4).unwrap();
-        IggyDlqDuplicateMovingWindowPolicy::new(vec![1, 2], 10, 2, 1, rolling)
-            .unwrap()
+        IggyDlqDuplicateMovingWindowPolicy::new(vec![1, 2], 10, 2, 1, rolling).unwrap()
     }
 
     fn partition(

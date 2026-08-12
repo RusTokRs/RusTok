@@ -45,11 +45,7 @@ pub fn ForumTopicSlugRenameAdmin() -> impl IntoView {
         "forum.slugRename.choose",
         "Choose a topic",
     );
-    let slug_label = t(
-        ui_locale.as_deref(),
-        "forum.slugRename.slug",
-        "New slug",
-    );
+    let slug_label = t(ui_locale.as_deref(), "forum.slugRename.slug", "New slug");
     let slug_hint = t(
         ui_locale.as_deref(),
         "forum.slugRename.slugHint",
@@ -96,9 +92,7 @@ pub fn ForumTopicSlugRenameAdmin() -> impl IntoView {
         let token = token.get();
         let tenant = tenant.get();
         let locale = requested_locale.clone();
-        async move {
-            transport::fetch_topic_slug_rename_candidates(token, tenant, locale).await
-        }
+        async move { transport::fetch_topic_slug_rename_candidates(token, tenant, locale).await }
     });
 
     let submit = {

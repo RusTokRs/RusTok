@@ -295,8 +295,8 @@ mod tests {
 
     #[test]
     fn category_route_payload_uses_graphql_enum_and_field_names() {
-        let route: StorefrontForumCategoryRouteResolution = serde_json::from_value(
-            serde_json::json!({
+        let route: StorefrontForumCategoryRouteResolution =
+            serde_json::from_value(serde_json::json!({
                 "requestedLocale": "en",
                 "requestedSlug": "old-general",
                 "disposition": "REDIRECT",
@@ -306,9 +306,8 @@ mod tests {
                     "slug": "general",
                     "path": "/en/forum/c/general"
                 }
-            }),
-        )
-        .expect("category route payload");
+            }))
+            .expect("category route payload");
         assert_eq!(
             route.disposition,
             StorefrontForumCategoryRouteDisposition::Redirect
@@ -318,8 +317,8 @@ mod tests {
 
     #[test]
     fn route_payload_uses_graphql_enum_and_field_names() {
-        let route: StorefrontForumTopicRouteResolution = serde_json::from_value(
-            serde_json::json!({
+        let route: StorefrontForumTopicRouteResolution =
+            serde_json::from_value(serde_json::json!({
                 "requestedLocale": "en",
                 "requestedShortId": "123456789abc",
                 "requestedSlug": "old-welcome",
@@ -331,31 +330,32 @@ mod tests {
                     "slug": "welcome",
                     "path": "/en/forum/t/123456789abc/welcome"
                 }
-            }),
-        )
-        .expect("route payload");
+            }))
+            .expect("route payload");
         assert_eq!(
             route.disposition,
             StorefrontForumTopicRouteDisposition::Redirect
         );
         assert_eq!(
-            route.canonical.as_ref().map(|canonical| canonical.slug.as_str()),
+            route
+                .canonical
+                .as_ref()
+                .map(|canonical| canonical.slug.as_str()),
             Some("welcome")
         );
     }
 
     #[test]
     fn gone_route_payload_has_no_canonical_target() {
-        let route: StorefrontForumTopicRouteResolution = serde_json::from_value(
-            serde_json::json!({
+        let route: StorefrontForumTopicRouteResolution =
+            serde_json::from_value(serde_json::json!({
                 "requestedLocale": "en",
                 "requestedShortId": "123456789abc",
                 "requestedSlug": "retired-topic",
                 "disposition": "GONE",
                 "canonical": null
-            }),
-        )
-        .expect("gone route payload");
+            }))
+            .expect("gone route payload");
         assert_eq!(
             route.disposition,
             StorefrontForumTopicRouteDisposition::Gone

@@ -24,8 +24,9 @@ pub(crate) struct ProductStorefrontIndexBudgetedExecution {
     pub(crate) projected: Result<IndexQueryPage, ProductStorefrontIndexBudgetedProjectionError>,
     pub(crate) public_projected:
         Option<Result<IndexQueryPage, ProductStorefrontIndexPublicProjectionError>>,
-    pub(crate) tag_hydration:
-        Option<Result<ProductStorefrontTagHydration, ProductStorefrontIndexBudgetedTagHydrationError>>,
+    pub(crate) tag_hydration: Option<
+        Result<ProductStorefrontTagHydration, ProductStorefrontIndexBudgetedTagHydrationError>,
+    >,
     pub(crate) comparison: Option<ProductStorefrontIndexShadowComparison>,
     pub(crate) index_execution_budget_ms: u64,
     pub(crate) tag_hydration_budget_ms: u64,
@@ -34,7 +35,9 @@ pub(crate) struct ProductStorefrontIndexBudgetedExecution {
 
 #[derive(Debug, Error)]
 pub(crate) enum ProductStorefrontIndexBudgetedStartError {
-    #[error("Product Storefront budgeted projection requires an eligible serving-budget decision: {0:?}")]
+    #[error(
+        "Product Storefront budgeted projection requires an eligible serving-budget decision: {0:?}"
+    )]
     BudgetNotEligible(ProductStorefrontIndexServingBudgetDecision),
 }
 
@@ -141,14 +144,20 @@ impl ProductStorefrontIndexBudgetedProjectionExecutor {
         public_channel_id: Option<Uuid>,
         query: StorefrontProductListQuery,
         decision: ProductStorefrontIndexServingBudgetDecision,
-    ) -> Result<ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedStartError> {
-        let (index_execution_budget_ms, tag_hydration_budget_ms, safety_margin_ms) = match decision {
+    ) -> Result<ProductStorefrontIndexBudgetedExecution, ProductStorefrontIndexBudgetedStartError>
+    {
+        let (index_execution_budget_ms, tag_hydration_budget_ms, safety_margin_ms) = match decision
+        {
             ProductStorefrontIndexServingBudgetDecision::Eligible {
                 index_execution_ms,
                 tag_hydration_ms,
                 safety_margin_ms,
             } => (index_execution_ms, tag_hydration_ms, safety_margin_ms),
-            other => return Err(ProductStorefrontIndexBudgetedStartError::BudgetNotEligible(other)),
+            other => {
+                return Err(ProductStorefrontIndexBudgetedStartError::BudgetNotEligible(
+                    other,
+                ));
+            }
         };
 
         let mut index_context = context.clone();
@@ -253,7 +262,11 @@ mod tests {
                 remaining_ms: 139,
             },
         );
-        assert!(error.to_string().contains("requires an eligible serving-budget decision"));
+        assert!(
+            error
+                .to_string()
+                .contains("requires an eligible serving-budget decision")
+        );
     }
 
     #[test]

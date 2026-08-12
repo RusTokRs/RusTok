@@ -16,9 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use sha2::{Digest, Sha256};
 
-use super::{
-    connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata,
-};
+use super::{connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata};
 
 const MANIFEST_CONTRACT: &str = "index_partition_evidence_manifest_v1";
 const SHADOW_PLAN_VERSION: &str = "tenant_hash_shadow_v1";
@@ -360,16 +358,20 @@ async fn capture_locked_maintenance(
 
     let mut runs = Vec::with_capacity(manifest.repetitions.maintenance);
     for index in 0..manifest.repetitions.maintenance {
-        runs.push(
-            capture_maintenance_run(db, &layout, config, index + 1).await?,
-        );
+        runs.push(capture_maintenance_run(db, &layout, config, index + 1).await?);
     }
     ensure!(
         runs.len() == manifest.repetitions.maintenance,
         "partition maintenance runner did not produce the exact manifest maintenance run count"
     );
-    let names = runs.iter().map(|run| run.name.as_str()).collect::<BTreeSet<_>>();
-    ensure!(names.len() == runs.len(), "partition maintenance runs contain duplicate names");
+    let names = runs
+        .iter()
+        .map(|run| run.name.as_str())
+        .collect::<BTreeSet<_>>();
+    ensure!(
+        names.len() == runs.len(),
+        "partition maintenance runs contain duplicate names"
+    );
     ensure_source_unchanged(db, manifest, &source_before).await?;
     Ok((layout, runs))
 }
@@ -395,18 +397,16 @@ async fn capture_maintenance_run(
     let mut expected_effect: Option<ChurnEffect> = None;
     for cycle in 0..config.churn_cycles {
         let baseline_first = (ordinal + cycle) % 2 == 1;
-        let (baseline, shadow) = commit_churn_cycle(
-            db,
-            layout,
-            config.churn_batch,
-            baseline_first,
-        )
-        .await?;
+        let (baseline, shadow) =
+            commit_churn_cycle(db, layout, config.churn_batch, baseline_first).await?;
         ensure!(
             baseline == shadow,
             "baseline/shadow maintenance churn effects diverged: baseline={baseline:?}, shadow={shadow:?}"
         );
-        ensure!(baseline.entities > 0, "maintenance churn must update at least one entity");
+        ensure!(
+            baseline.entities > 0,
+            "maintenance churn must update at least one entity"
+        );
         if let Some(expected) = &expected_effect {
             ensure!(
                 expected == &baseline,
@@ -494,16 +494,16 @@ async fn commit_churn_cycle(
         .context("failed to start partition maintenance churn transaction")?;
     let result = async {
         if baseline_first {
-            let baseline = apply_churn_side(&transaction, layout, MaintenanceSide::Baseline, batch)
-                .await?;
-            let shadow = apply_churn_side(&transaction, layout, MaintenanceSide::Shadow, batch)
-                .await?;
+            let baseline =
+                apply_churn_side(&transaction, layout, MaintenanceSide::Baseline, batch).await?;
+            let shadow =
+                apply_churn_side(&transaction, layout, MaintenanceSide::Shadow, batch).await?;
             Ok::<_, anyhow::Error>((baseline, shadow))
         } else {
-            let shadow = apply_churn_side(&transaction, layout, MaintenanceSide::Shadow, batch)
-                .await?;
-            let baseline = apply_churn_side(&transaction, layout, MaintenanceSide::Baseline, batch)
-                .await?;
+            let shadow =
+                apply_churn_side(&transaction, layout, MaintenanceSide::Shadow, batch).await?;
+            let baseline =
+                apply_churn_side(&transaction, layout, MaintenanceSide::Baseline, batch).await?;
             Ok::<_, anyhow::Error>((baseline, shadow))
         }
     }
@@ -608,13 +608,10 @@ async fn vacuum_side(
     };
     let started = Instant::now();
     for relation in relations {
-        let statement = format!(
-            "VACUUM (ANALYZE) {};",
-            qualified(&layout.schema, &relation)
-        );
-        db.execute_unprepared(&statement)
-            .await
-            .with_context(|| format!("failed to execute ordinary maintenance evidence VACUUM: {statement}"))?;
+        let statement = format!("VACUUM (ANALYZE) {};", qualified(&layout.schema, &relation));
+        db.execute_unprepared(&statement).await.with_context(|| {
+            format!("failed to execute ordinary maintenance evidence VACUUM: {statement}")
+        })?;
     }
     let elapsed = started.elapsed().as_secs_f64() * 1_000.0;
     ensure!(
@@ -652,7 +649,10 @@ async fn create_maintenance_clones_in_transaction(
     layout: &MaintenanceLayout,
 ) -> Result<()> {
     transaction
-        .execute_unprepared(&format!("CREATE SCHEMA {};", quote_identifier(&layout.schema)))
+        .execute_unprepared(&format!(
+            "CREATE SCHEMA {};",
+            quote_identifier(&layout.schema)
+        ))
         .await
         .context("failed to create partition maintenance evidence schema")?;
     transaction
@@ -708,7 +708,9 @@ async fn create_maintenance_clones_in_transaction(
                 qualified(&layout.schema, &relation)
             ))
             .await
-            .with_context(|| format!("failed to disable autovacuum for maintenance clone {relation}"))?;
+            .with_context(|| {
+                format!("failed to disable autovacuum for maintenance clone {relation}")
+            })?;
     }
 
     copy_relation(
@@ -790,7 +792,9 @@ async fn copy_relation(
     target_sql: &str,
 ) -> Result<()> {
     transaction
-        .execute_unprepared(&format!("INSERT INTO {target_sql} SELECT * FROM {source_sql};"))
+        .execute_unprepared(&format!(
+            "INSERT INTO {target_sql} SELECT * FROM {source_sql};"
+        ))
         .await
         .with_context(|| format!("failed to copy maintenance evidence source {source_sql}"))?;
     Ok(())
@@ -869,7 +873,9 @@ async fn side_stats(
         "maintenance statistics did not contain every expected physical relation"
     );
     ensure!(
-        tables.iter().all(|table| expected.contains(&table.relation)),
+        tables
+            .iter()
+            .all(|table| expected.contains(&table.relation)),
         "maintenance statistics contained an unexpected relation"
     );
     ensure!(
@@ -990,7 +996,9 @@ async fn logical_relation(
     let row = db
         .query_one(Statement::from_string(DbBackend::Postgres, sql))
         .await?
-        .with_context(|| format!("maintenance logical digest query returned no row for {relation_sql}"))?;
+        .with_context(|| {
+            format!("maintenance logical digest query returned no row for {relation_sql}")
+        })?;
     let rows: i64 = row.try_get("", "rows")?;
     let digest_seed: String = row.try_get("", "digest_seed")?;
     let digest = sha256_hex(
@@ -1010,8 +1018,8 @@ fn read_manifest(path: &Path) -> Result<(PreparedManifest, JsonValue)> {
         metadata.file_type().is_file() && !metadata.file_type().is_symlink(),
         "partition manifest must be a regular non-symlink file"
     );
-    let bytes = fs::read(path)
-        .with_context(|| format!("failed to read partition manifest at {path:?}"))?;
+    let bytes =
+        fs::read(path).with_context(|| format!("failed to read partition manifest at {path:?}"))?;
     let raw: JsonValue =
         serde_json::from_slice(&bytes).context("failed to parse partition manifest JSON")?;
     let manifest = serde_json::from_value(raw.clone())
@@ -1020,23 +1028,36 @@ fn read_manifest(path: &Path) -> Result<(PreparedManifest, JsonValue)> {
 }
 
 fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()> {
-    ensure!(manifest.contract == MANIFEST_CONTRACT, "unexpected manifest contract");
-    ensure!(manifest.repository == "RusTokRs/RusTok", "unexpected manifest repository");
-    ensure!(is_lower_hex(&manifest.commit, 40), "manifest commit must be a lowercase full SHA-1");
+    ensure!(
+        manifest.contract == MANIFEST_CONTRACT,
+        "unexpected manifest contract"
+    );
+    ensure!(
+        manifest.repository == "RusTokRs/RusTok",
+        "unexpected manifest repository"
+    );
+    ensure!(
+        is_lower_hex(&manifest.commit, 40),
+        "manifest commit must be a lowercase full SHA-1"
+    );
     ensure!(
         !manifest.run_key.is_empty() && manifest.run_key.len() <= 128,
         "manifest run_key must be non-empty and bounded"
     );
-    ensure!(manifest.postgres_image == "postgres:16", "manifest must pin postgres:16");
-    ensure!(manifest.strategy == "tenant_hash", "manifest strategy must be tenant_hash");
+    ensure!(
+        manifest.postgres_image == "postgres:16",
+        "manifest must pin postgres:16"
+    );
+    ensure!(
+        manifest.strategy == "tenant_hash",
+        "manifest strategy must be tenant_hash"
+    );
     ensure!(
         manifest.plan_digest_contract == PLAN_DIGEST_CONTRACT,
         "unexpected plan digest contract"
     );
     ensure!(
-        manifest.modulus >= 2
-            && manifest.modulus <= 128
-            && manifest.modulus.is_power_of_two(),
+        manifest.modulus >= 2 && manifest.modulus <= 128 && manifest.modulus.is_power_of_two(),
         "manifest modulus must be a power of two between 2 and 128"
     );
     ensure!(
@@ -1052,8 +1073,14 @@ fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()>
             && manifest.repetitions.cutover > 0,
         "manifest repetition counts must all be positive"
     );
-    ensure!(manifest.thresholds.is_object(), "manifest thresholds must be an object");
-    ensure!(is_lower_hex(&manifest.evidence_id, 64), "invalid manifest evidence_id");
+    ensure!(
+        manifest.thresholds.is_object(),
+        "manifest thresholds must be an object"
+    );
+    ensure!(
+        is_lower_hex(&manifest.evidence_id, 64),
+        "invalid manifest evidence_id"
+    );
     ensure!(
         manifest.shadow_plan_version == SHADOW_PLAN_VERSION,
         "unexpected shadow plan version"
@@ -1064,7 +1091,10 @@ fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()>
         .cloned()
         .context("prepared manifest must be a JSON object")?;
     for key in ["evidence_id", "shadow_plan_version", "shadow_relations"] {
-        ensure!(input.remove(key).is_some(), "prepared manifest is missing {key}");
+        ensure!(
+            input.remove(key).is_some(),
+            "prepared manifest is missing {key}"
+        );
     }
     let expected_evidence_id = sha256_hex(&canonical_json_bytes(&JsonValue::Object(input))?);
     ensure!(
@@ -1108,8 +1138,14 @@ fn validate_relation_plan(
     expected_parent: &str,
     modulus: u32,
 ) -> Result<()> {
-    ensure!(plan.source == expected_source, "unexpected shadow source relation");
-    ensure!(plan.parent == expected_parent, "unexpected shadow parent relation");
+    ensure!(
+        plan.source == expected_source,
+        "unexpected shadow source relation"
+    );
+    ensure!(
+        plan.parent == expected_parent,
+        "unexpected shadow parent relation"
+    );
     validate_identifier(&plan.parent)?;
     ensure!(
         plan.partitions.len() == modulus as usize,
@@ -1139,7 +1175,10 @@ async fn ensure_session_setting(
         .await?
         .context("partition maintenance session-setting query returned no row")?;
     let actual: String = row.try_get("", "value")?;
-    ensure!(actual == expected, "requires {setting}={expected}, got {actual}");
+    ensure!(
+        actual == expected,
+        "requires {setting}={expected}, got {actual}"
+    );
     Ok(())
 }
 
@@ -1194,7 +1233,11 @@ async fn validate_shadow_relation_catalog(
     let relkind: String = row.try_get("", "relkind")?;
     let comment: Option<String> = row.try_get("", "comment")?;
     let expected_comment = format!("rustok-index-partition:{}", manifest.evidence_id);
-    ensure!(relkind == "p", "shadow parent {} must be partitioned", plan.parent);
+    ensure!(
+        relkind == "p",
+        "shadow parent {} must be partitioned",
+        plan.parent
+    );
     ensure!(
         comment.as_deref() == Some(expected_comment.as_str()),
         "shadow parent {} is not bound to the evidence identity",
@@ -1224,7 +1267,10 @@ async fn validate_shadow_relation_catalog(
         let relispartition: bool = row.try_get("", "relispartition")?;
         let bound: String = row.try_get("", "bound")?;
         ensure!(relispartition, "shadow child {name} is not a partition");
-        ensure!(name == plan.partitions[remainder], "unexpected shadow child {name}");
+        ensure!(
+            name == plan.partitions[remainder],
+            "unexpected shadow child {name}"
+        );
         let bound = bound.to_ascii_lowercase();
         ensure!(
             bound.contains(&format!("modulus {}", manifest.modulus))
@@ -1286,24 +1332,32 @@ fn publish_maintenance_artifact(
     path: &Path,
     runs: &[PartitionMaintenanceRunEvidence],
 ) -> Result<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create maintenance evidence directory {parent:?}"))?;
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).with_context(|| {
+            format!("failed to create maintenance evidence directory {parent:?}")
+        })?;
     }
     ensure_output_available(path)?;
-    let mut bytes =
-        serde_json::to_vec_pretty(runs).context("failed to serialize partition maintenance evidence")?;
+    let mut bytes = serde_json::to_vec_pretty(runs)
+        .context("failed to serialize partition maintenance evidence")?;
     bytes.push(b'\n');
     let temporary = temporary_path(path);
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&temporary)
-        .with_context(|| format!("failed to create temporary maintenance evidence file {temporary:?}"))?;
-    file.write_all(&bytes)
-        .with_context(|| format!("failed to write temporary maintenance evidence file {temporary:?}"))?;
-    file.sync_all()
-        .with_context(|| format!("failed to sync temporary maintenance evidence file {temporary:?}"))?;
+        .with_context(|| {
+            format!("failed to create temporary maintenance evidence file {temporary:?}")
+        })?;
+    file.write_all(&bytes).with_context(|| {
+        format!("failed to write temporary maintenance evidence file {temporary:?}")
+    })?;
+    file.sync_all().with_context(|| {
+        format!("failed to sync temporary maintenance evidence file {temporary:?}")
+    })?;
     let publish = fs::hard_link(&temporary, path)
         .with_context(|| format!("failed to publish maintenance evidence to {path:?}"));
     let _ = fs::remove_file(&temporary);
@@ -1372,7 +1426,11 @@ fn quote_identifier(value: &str) -> String {
 }
 
 fn qualified(schema: &str, relation: &str) -> String {
-    format!("{}.{}", quote_identifier(schema), quote_identifier(relation))
+    format!(
+        "{}.{}",
+        quote_identifier(schema),
+        quote_identifier(relation)
+    )
 }
 
 #[cfg(test)]

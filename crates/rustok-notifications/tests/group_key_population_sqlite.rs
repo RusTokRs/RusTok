@@ -1,8 +1,8 @@
 use chrono::{DateTime, FixedOffset, Utc};
 use rustok_core::MigrationSource;
+use rustok_notifications::NotificationsModule;
 use rustok_notifications::entities::{delivery_attempt, notification};
 use rustok_notifications::model::{NotificationPriorityValue, NotificationState};
-use rustok_notifications::NotificationsModule;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
     DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,

@@ -4,8 +4,7 @@ use super::super::CompleteCheckoutRequest;
 
 const ORDER_STOREFRONT_NATIVE_CLIENT_OWNER: &str = "rustok_order.storefront";
 const ORDER_STOREFRONT_NATIVE_CLIENT_OPERATION: &str = "complete_storefront_checkout";
-const ORDER_STOREFRONT_NATIVE_CLIENT_BOUNDARY: &str =
-    "order_storefront_native_client_transport";
+const ORDER_STOREFRONT_NATIVE_CLIENT_BOUNDARY: &str = "order_storefront_native_client_transport";
 
 pub(super) struct NativeClientDiagnosticContext {
     correlation_id: String,

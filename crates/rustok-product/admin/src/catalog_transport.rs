@@ -1,17 +1,17 @@
-#[path = "transport.rs"]
-mod legacy;
 #[path = "transport/admin_catalog_graphql.rs"]
 mod admin_catalog_graphql;
 #[path = "transport/admin_catalog_native.rs"]
 mod admin_catalog_native;
 #[path = "transport/graphql_error_safety.rs"]
 mod graphql_error_safety;
+#[path = "transport.rs"]
+mod legacy;
 
 use crate::catalog_controls::{ProductAdminListInput, build_product_admin_list_input};
 use crate::model::{
-    CatalogCategoryList, ProductAdminBootstrap,
-    ProductAttributeValueItem, ProductCatalogSearchOptions, ProductDetail,
-    ProductEffectiveForm, ProductList, ProductPricingDetail, ShippingProfileList,
+    CatalogCategoryList, ProductAdminBootstrap, ProductAttributeValueItem,
+    ProductCatalogSearchOptions, ProductDetail, ProductEffectiveForm, ProductList,
+    ProductPricingDetail, ShippingProfileList,
 };
 use rustok_graphql::GraphqlHttpError;
 
@@ -102,7 +102,8 @@ pub(crate) async fn fetch_products(
     search: Option<String>,
     status: Option<String>,
 ) -> Result<ProductList, GraphqlHttpError> {
-    let route_controls = leptos::prelude::use_context::<ProductAdminListInput>().unwrap_or_default();
+    let route_controls =
+        leptos::prelude::use_context::<ProductAdminListInput>().unwrap_or_default();
     let attribute_filters = if route_controls.attribute_filters.is_empty() {
         None
     } else {
@@ -117,12 +118,8 @@ pub(crate) async fn fetch_products(
         attribute_filters,
     );
     let native_controls = controls.clone();
-    match admin_catalog_native::fetch_products(
-        tenant_id.clone(),
-        locale.clone(),
-        native_controls,
-    )
-    .await
+    match admin_catalog_native::fetch_products(tenant_id.clone(), locale.clone(), native_controls)
+        .await
     {
         Ok(value) => Ok(value),
         Err(_) => {
@@ -134,15 +131,9 @@ pub(crate) async fn fetch_products(
                 controls.search.as_deref(),
                 controls.status.as_deref(),
             );
-            admin_catalog_graphql::fetch_products(
-                token,
-                tenant_slug,
-                tenant_id,
-                locale,
-                controls,
-            )
-            .await
-            .map_err(|error| context.map_error(error))
+            admin_catalog_graphql::fetch_products(token, tenant_slug, tenant_id, locale, controls)
+                .await
+                .map_err(|error| context.map_error(error))
         }
     }
 }
@@ -182,16 +173,9 @@ pub(crate) async fn fetch_product_pricing(
         locale.as_deref(),
         currency_code.as_deref(),
     );
-    legacy::fetch_product_pricing(
-        token,
-        tenant_slug,
-        tenant_id,
-        id,
-        locale,
-        currency_code,
-    )
-    .await
-    .map_err(|error| context.map_error(error))
+    legacy::fetch_product_pricing(token, tenant_slug, tenant_id, id, locale, currency_code)
+        .await
+        .map_err(|error| context.map_error(error))
 }
 
 pub(crate) async fn fetch_shipping_profiles(
@@ -209,7 +193,6 @@ pub(crate) async fn fetch_shipping_profiles(
         .map_err(|error| context.map_error(error))
 }
 
-
 pub(crate) async fn fetch_catalog_categories(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -226,7 +209,6 @@ pub(crate) async fn fetch_catalog_categories(
         .await
         .map_err(|failure| context.map_error(failure))
 }
-
 
 pub(crate) async fn fetch_effective_product_form(
     token: Option<String>,

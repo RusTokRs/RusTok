@@ -11,7 +11,10 @@ fn require(source: &str, marker: &str) {
 }
 
 fn reject(source: &str, marker: &str) {
-    assert!(!source.contains(marker), "forbidden source marker: {marker}");
+    assert!(
+        !source.contains(marker),
+        "forbidden source marker: {marker}"
+    );
 }
 
 #[test]
@@ -77,7 +80,10 @@ fn handler_has_no_direct_forum_projection_bypass() {
     ] {
         require(INGESTION, marker);
     }
-    require(INGESTION, "projector.rebuild_tenant(envelope.tenant_id).await");
+    require(
+        INGESTION,
+        "projector.rebuild_tenant(envelope.tenant_id).await",
+    );
     require(INGESTION, "projector.delete_tenant(tenant_id).await");
     reject(
         INGESTION,

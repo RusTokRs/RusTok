@@ -27,7 +27,9 @@ use crate::controllers::{CommerceHttpRuntime, products::ProductListItem};
 use crate::{
     CommerceError,
     dto::{ProductResponse, RegionResponse, ShippingOptionResponse},
-    storefront_channel::{is_metadata_visible_for_public_channel, public_channel_slug_from_request},
+    storefront_channel::{
+        is_metadata_visible_for_public_channel, public_channel_slug_from_request,
+    },
     storefront_shipping::{
         is_shipping_option_compatible_with_profiles, load_cart_shipping_profile_slugs,
         shipping_profile_slug_from_product_metadata,

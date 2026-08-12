@@ -60,18 +60,22 @@ impl From<StorefrontLineItemFailureSource> for StorefrontLineItemDiagnosticSourc
 impl std::fmt::Debug for StorefrontLineItemDiagnosticSource {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
-            StorefrontLineItemFailureSource::Database(error) => {
-                formatter.debug_tuple("Database").field(&error.to_string()).finish()
-            }
-            StorefrontLineItemFailureSource::Pricing(error) => {
-                formatter.debug_tuple("Pricing").field(&error.to_string()).finish()
-            }
-            StorefrontLineItemFailureSource::Inventory(error) => {
-                formatter.debug_tuple("Inventory").field(&error.to_string()).finish()
-            }
-            StorefrontLineItemFailureSource::Metadata(error) => {
-                formatter.debug_tuple("Metadata").field(&error.to_string()).finish()
-            }
+            StorefrontLineItemFailureSource::Database(error) => formatter
+                .debug_tuple("Database")
+                .field(&error.to_string())
+                .finish(),
+            StorefrontLineItemFailureSource::Pricing(error) => formatter
+                .debug_tuple("Pricing")
+                .field(&error.to_string())
+                .finish(),
+            StorefrontLineItemFailureSource::Inventory(error) => formatter
+                .debug_tuple("Inventory")
+                .field(&error.to_string())
+                .finish(),
+            StorefrontLineItemFailureSource::Metadata(error) => formatter
+                .debug_tuple("Metadata")
+                .field(&error.to_string())
+                .finish(),
             StorefrontLineItemFailureSource::Local(reason) => {
                 formatter.debug_tuple("Local").field(reason).finish()
             }

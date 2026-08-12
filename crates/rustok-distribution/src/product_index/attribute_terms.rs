@@ -157,10 +157,7 @@ product_attribute_terms AS (
 )
 "#;
 
-pub fn text_term(
-    attribute_id: Uuid,
-    value: &str,
-) -> Result<String, ProductAttributeTermError> {
+pub fn text_term(attribute_id: Uuid, value: &str) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_text_term(attribute_id, value)
 }
 
@@ -179,10 +176,7 @@ pub fn localized_presence_term(
     rustok_product::product_attribute_localized_presence_term(attribute_id, locale.as_str())
 }
 
-pub fn integer_term(
-    attribute_id: Uuid,
-    value: i64,
-) -> Result<String, ProductAttributeTermError> {
+pub fn integer_term(attribute_id: Uuid, value: i64) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_integer_term(attribute_id, value)
 }
 
@@ -193,10 +187,7 @@ pub fn decimal_term(
     rustok_product::product_attribute_decimal_term(attribute_id, value)
 }
 
-pub fn boolean_term(
-    attribute_id: Uuid,
-    value: bool,
-) -> Result<String, ProductAttributeTermError> {
+pub fn boolean_term(attribute_id: Uuid, value: bool) -> Result<String, ProductAttributeTermError> {
     rustok_product::product_attribute_boolean_term(attribute_id, value)
 }
 
@@ -233,24 +224,15 @@ pub fn localized_text_filter(
     fallback_locale: &LocaleKey,
     value: &str,
 ) -> Result<FilterExpr, ProductAttributeTermError> {
-    let requested = contains_term_filter(localized_text_term(
-        attribute_id,
-        requested_locale,
-        value,
-    )?);
+    let requested =
+        contains_term_filter(localized_text_term(attribute_id, requested_locale, value)?);
     if requested_locale == fallback_locale {
         return Ok(requested);
     }
 
-    let requested_present = contains_term_filter(localized_presence_term(
-        attribute_id,
-        requested_locale,
-    )?);
-    let fallback = contains_term_filter(localized_text_term(
-        attribute_id,
-        fallback_locale,
-        value,
-    )?);
+    let requested_present =
+        contains_term_filter(localized_presence_term(attribute_id, requested_locale)?);
+    let fallback = contains_term_filter(localized_text_term(attribute_id, fallback_locale, value)?);
     Ok(FilterExpr::Or(vec![
         requested,
         FilterExpr::And(vec![FilterExpr::Not(Box::new(requested_present)), fallback]),
@@ -316,11 +298,9 @@ mod tests {
         let attribute_id = Uuid::from_u128(1);
         let option_id = Uuid::from_u128(2);
         let timestamp = DateTime::<Utc>::from_timestamp_micros(1_725_000_123_456_789).unwrap();
-        assert!(
-            option_term(attribute_id, option_id)
-                .unwrap()
-                .ends_with("|option||30303030303030302d303030302d303030302d303030302d303030303030303030303032")
-        );
+        assert!(option_term(attribute_id, option_id).unwrap().ends_with(
+            "|option||30303030303030302d303030302d303030302d303030302d303030303030303030303032"
+        ));
         assert!(
             datetime_term(attribute_id, timestamp)
                 .unwrap()

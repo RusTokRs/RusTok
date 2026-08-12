@@ -207,17 +207,15 @@ impl ForumTopicRouteService {
         let short_id = normalize_short_identity(short_id)?;
         let slug = normalize_route_slug(slug)?;
 
-        let current = load_current_routes_by_short_id(&self.db, tenant_id, &locale, &short_id).await?;
+        let current =
+            load_current_routes_by_short_id(&self.db, tenant_id, &locale, &short_id).await?;
         match current.as_slice() {
             [route] => {
                 let canonical = self
-                    .canonical_descriptor_with_locale_fallback(
-                        tenant_id,
-                        route.topic_id,
-                        &locale,
-                    )
+                    .canonical_descriptor_with_locale_fallback(tenant_id, route.topic_id, &locale)
                     .await?;
-                let disposition = if route.topic_id == canonical.topic_id && slug == canonical.slug {
+                let disposition = if route.topic_id == canonical.topic_id && slug == canonical.slug
+                {
                     ForumTopicRouteDisposition::Canonical
                 } else {
                     ForumTopicRouteDisposition::Redirect
@@ -318,14 +316,7 @@ impl ForumTopicRouteService {
         }
         let previous_slug = normalize_route_slug(&current.slug)?;
         let short_id = Self::short_identity(topic_id);
-        ensure_unambiguous_current_short_id(
-            txn,
-            tenant_id,
-            &locale,
-            &short_id,
-            topic_id,
-        )
-        .await?;
+        ensure_unambiguous_current_short_id(txn, tenant_id, &locale, &short_id, topic_id).await?;
         let previous_path = forum_topic_route_path(&locale, &short_id, &previous_slug);
         let canonical = ForumTopicRouteDescriptor {
             topic_id,
@@ -805,7 +796,12 @@ async fn update_topic_route_slug_in_tx(
             SET slug = $1, updated_at = CURRENT_TIMESTAMP
             WHERE tenant_id = $2 AND topic_id = $3 AND locale = $4
             "#,
-            vec![slug.into(), tenant_id.into(), topic_id.into(), locale.into()],
+            vec![
+                slug.into(),
+                tenant_id.into(),
+                topic_id.into(),
+                locale.into(),
+            ],
         ),
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
@@ -814,7 +810,12 @@ async fn update_topic_route_slug_in_tx(
             SET slug = ?, updated_at = CURRENT_TIMESTAMP
             WHERE tenant_id = ? AND topic_id = ? AND locale = ?
             "#,
-            vec![slug.into(), tenant_id.into(), topic_id.into(), locale.into()],
+            vec![
+                slug.into(),
+                tenant_id.into(),
+                topic_id.into(),
+                locale.into(),
+            ],
         ),
         backend => return Err(unsupported_backend(backend)),
     };
@@ -981,7 +982,12 @@ where
             ORDER BY alias_id
             LIMIT 2
             "#,
-            vec![tenant_id.into(), locale.into(), short_id.into(), slug.into()],
+            vec![
+                tenant_id.into(),
+                locale.into(),
+                short_id.into(),
+                slug.into(),
+            ],
         ),
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
@@ -995,7 +1001,12 @@ where
             ORDER BY alias_id
             LIMIT 2
             "#,
-            vec![tenant_id.into(), locale.into(), short_id.into(), slug.into()],
+            vec![
+                tenant_id.into(),
+                locale.into(),
+                short_id.into(),
+                slug.into(),
+            ],
         ),
         backend => return Err(unsupported_backend(backend)),
     };

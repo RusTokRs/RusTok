@@ -248,8 +248,8 @@ async fn resolve_fence(
         },
         CONTRACT_INVALID,
     )?;
-    let fence = IndexDriftCandidateFence::new(encoded)
-        .map_err(|_| permanent_failure(CONTRACT_INVALID))?;
+    let fence =
+        IndexDriftCandidateFence::new(encoded).map_err(|_| permanent_failure(CONTRACT_INVALID))?;
     Ok((fence, snapshot))
 }
 
@@ -442,14 +442,9 @@ fn decode_orphan_row(
         entity_id: target_entity_id,
         locale: decode_locale(target_locale_key.as_str())?,
     };
-    let candidate = IndexDriftCandidate::orphan_link(
-        source_key,
-        source_version,
-        link_name,
-        ordinal,
-        target,
-    )
-    .map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
+    let candidate =
+        IndexDriftCandidate::orphan_link(source_key, source_version, link_name, ordinal, target)
+            .map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
     Ok(OrphanCandidateRow {
         candidate,
         position: OrphanPositionWire {
@@ -473,10 +468,7 @@ fn validate_wire_scope(
     expected: &IndexDriftCandidateScope,
     code: &'static str,
 ) -> Result<(), IndexDriftCandidateFailure> {
-    if version != WIRE_VERSION
-        || tenant_id != expected.tenant_id()
-        || schema != expected.schema()
-    {
+    if version != WIRE_VERSION || tenant_id != expected.tenant_id() || schema != expected.schema() {
         return Err(permanent_failure(code));
     }
     Ok(())
@@ -534,9 +526,7 @@ fn validate_snapshot_token(value: &str) -> Result<(), IndexDriftCandidateFailure
     Ok(())
 }
 
-fn validate_stale_position(
-    position: &StalePositionWire,
-) -> Result<(), IndexDriftCandidateFailure> {
+fn validate_stale_position(position: &StalePositionWire) -> Result<(), IndexDriftCandidateFailure> {
     if position.entity_id.is_nil() {
         return Err(permanent_failure(CURSOR_INVALID));
     }
@@ -605,10 +595,7 @@ fn row_u32(row: &QueryResult, column: &str) -> Result<u32, IndexDriftCandidateFa
     u32::try_from(value).map_err(|_| permanent_failure(MATERIALIZED_INVALID))
 }
 
-fn row_positive_u32(
-    row: &QueryResult,
-    column: &str,
-) -> Result<u32, IndexDriftCandidateFailure> {
+fn row_positive_u32(row: &QueryResult, column: &str) -> Result<u32, IndexDriftCandidateFailure> {
     row_u32(row, column).and_then(|value| {
         if value == 0 {
             Err(permanent_failure(MATERIALIZED_INVALID))

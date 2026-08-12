@@ -150,10 +150,9 @@ fn product_command_port_error(
             "Published products must be archived before removal",
             "CANNOT_DELETE_PUBLISHED",
         ),
-        (PortErrorKind::Validation, "product.no_variants") => (
-            "Product requires at least one variant",
-            "NO_VARIANTS",
-        ),
+        (PortErrorKind::Validation, "product.no_variants") => {
+            ("Product requires at least one variant", "NO_VARIANTS")
+        }
         (PortErrorKind::Validation, _) => ("Product request is invalid", "PRODUCT_VALIDATION"),
         (PortErrorKind::Forbidden, _) => ("Product access is denied", "PRODUCT_ACCESS_DENIED"),
         (PortErrorKind::Conflict | PortErrorKind::InvariantViolation, _) => (
@@ -419,7 +418,9 @@ impl CommerceCatalogMutation {
         product_schema_write_port(ctx, &port_context)?
             .create_attribute(port_context.clone(), domain_input)
             .await
-            .map_err(|error| product_command_port_error(&port_context, error, "create_attribute"))?;
+            .map_err(|error| {
+                product_command_port_error(&port_context, error, "create_attribute")
+            })?;
         Ok(true)
     }
 

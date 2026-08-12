@@ -10,17 +10,13 @@ use crate::model::{
 };
 use crate::model::{CommerceCartPromotionKind, CommerceCartPromotionScope};
 
-const COMMERCE_ADMIN_PROMOTION_CONSUMER: &str =
-    "rustok_commerce.admin_promotion_transport";
-const COMMERCE_ADMIN_PROMOTION_BOUNDARY: &str =
-    "commerce_admin_promotion_native_transport";
+const COMMERCE_ADMIN_PROMOTION_CONSUMER: &str = "rustok_commerce.admin_promotion_transport";
+const COMMERCE_ADMIN_PROMOTION_BOUNDARY: &str = "commerce_admin_promotion_native_transport";
 const PREVIEW_CART_PROMOTION_OPERATION: &str = "preview_cart_promotion";
 const APPLY_CART_PROMOTION_OPERATION: &str = "apply_cart_promotion";
 
-const COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER: &str =
-    "rustok_commerce.admin_order_change_transport";
-const COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY: &str =
-    "commerce_admin_order_change_native_transport";
+const COMMERCE_ADMIN_ORDER_CHANGE_CONSUMER: &str = "rustok_commerce.admin_order_change_transport";
+const COMMERCE_ADMIN_ORDER_CHANGE_BOUNDARY: &str = "commerce_admin_order_change_native_transport";
 const LIST_ORDER_CHANGES_OPERATION: &str = "list_order_changes";
 const APPLY_ORDER_CHANGE_OPERATION: &str = "apply_order_change";
 const CANCEL_ORDER_CHANGE_OPERATION: &str = "cancel_order_change";
@@ -190,7 +186,9 @@ fn promotion_request_context_facts(
     PromotionRequestContextFacts {
         request_context_present: request_context.is_some(),
         request_tenant_id_non_nil: request_context.map(|context| !context.tenant_id.is_nil()),
-        request_user_id_present: request_context.and_then(|context| context.user_id).is_some(),
+        request_user_id_present: request_context
+            .and_then(|context| context.user_id)
+            .is_some(),
         request_user_id_non_nil: request_context
             .and_then(|context| context.user_id)
             .map(|value| !value.is_nil()),
@@ -556,13 +554,7 @@ async fn preview_cart_promotion_native_with_context(
     let request = cart_promotion_request(cart_id, &payload, line_item_id, serde_json::Value::Null)?;
     let preview = in_process_cart_promotion_port(app_ctx.db_clone())
         .read_cart_promotion_preview(
-            cart_promotion_port_context(
-                tenant,
-                auth,
-                request_context,
-                correlation_id,
-                false,
-            ),
+            cart_promotion_port_context(tenant, auth, request_context, correlation_id, false),
             request,
         )
         .await
@@ -606,13 +598,7 @@ async fn apply_cart_promotion_native_with_context(
     let request = cart_promotion_request(cart_id, &payload, line_item_id, metadata)?;
     let cart = in_process_cart_promotion_port(app_ctx.db_clone())
         .apply_cart_promotion(
-            cart_promotion_port_context(
-                tenant,
-                auth,
-                request_context,
-                correlation_id,
-                true,
-            ),
+            cart_promotion_port_context(tenant, auth, request_context, correlation_id, true),
             request,
         )
         .await
@@ -655,7 +641,9 @@ fn order_change_request_context_facts(
     OrderChangeRequestContextFacts {
         request_context_present: request_context.is_some(),
         request_tenant_id_non_nil: request_context.map(|context| !context.tenant_id.is_nil()),
-        request_user_id_present: request_context.and_then(|context| context.user_id).is_some(),
+        request_user_id_present: request_context
+            .and_then(|context| context.user_id)
+            .is_some(),
         request_user_id_non_nil: request_context
             .and_then(|context| context.user_id)
             .map(|value| !value.is_nil()),
@@ -703,18 +691,16 @@ fn order_change_owner_error_facts(
         },
         rustok_order::error::OrderError::OrderNotFound(id)
         | rustok_order::error::OrderError::OrderReturnNotFound(id)
-        | rustok_order::error::OrderError::OrderChangeNotFound(id) => {
-            OrderChangeOwnerErrorFacts {
-                validation_detail_present: false,
-                validation_detail_length: None,
-                resource_id_present: true,
-                resource_id_non_nil: Some(!id.is_nil()),
-                transition_from_length: None,
-                transition_to_length: None,
-                database_cause_present: false,
-                core_cause_present: false,
-            }
-        }
+        | rustok_order::error::OrderError::OrderChangeNotFound(id) => OrderChangeOwnerErrorFacts {
+            validation_detail_present: false,
+            validation_detail_length: None,
+            resource_id_present: true,
+            resource_id_non_nil: Some(!id.is_nil()),
+            transition_from_length: None,
+            transition_to_length: None,
+            database_cause_present: false,
+            core_cause_present: false,
+        },
         rustok_order::error::OrderError::InvalidTransition { from, to } => {
             OrderChangeOwnerErrorFacts {
                 validation_detail_present: false,

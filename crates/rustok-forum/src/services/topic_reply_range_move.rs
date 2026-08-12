@@ -159,17 +159,9 @@ impl ForumReplyRangeMoveService {
 
         let txn = self.db.begin().await?;
         lock_range_move_tenant_in_tx(&txn, tenant_id).await?;
-        if let Some(existing) =
-            load_operation_in_tx(&txn, tenant_id, prepared.operation_id).await?
+        if let Some(existing) = load_operation_in_tx(&txn, tenant_id, prepared.operation_id).await?
         {
-            validate_replay_in_tx(
-                &txn,
-                &existing,
-                source_topic_id,
-                actor_id,
-                &prepared,
-            )
-            .await?;
+            validate_replay_in_tx(&txn, &existing, source_topic_id, actor_id, &prepared).await?;
             txn.commit().await?;
             return Ok(operation_to_result(existing));
         }
@@ -219,15 +211,12 @@ impl ForumReplyRangeMoveService {
             prepared.end_position,
         )
         .await?;
-        let selected_ids = selected.iter().map(|reply| reply.id).collect::<HashSet<_>>();
-        validate_parent_boundary_in_tx(
-            &txn,
-            tenant_id,
-            source_topic_id,
-            &selected,
-            &selected_ids,
-        )
-        .await?;
+        let selected_ids = selected
+            .iter()
+            .map(|reply| reply.id)
+            .collect::<HashSet<_>>();
+        validate_parent_boundary_in_tx(&txn, tenant_id, source_topic_id, &selected, &selected_ids)
+            .await?;
 
         let source_total = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
@@ -283,8 +272,7 @@ impl ForumReplyRangeMoveService {
                 )
             })?;
 
-        let source_solution =
-            load_valid_solution_in_tx(&txn, tenant_id, source_topic_id).await?;
+        let source_solution = load_valid_solution_in_tx(&txn, tenant_id, source_topic_id).await?;
         let target_solution =
             load_valid_solution_in_tx(&txn, tenant_id, prepared.target_topic_id).await?;
         let moved_solution = source_solution
@@ -297,16 +285,10 @@ impl ForumReplyRangeMoveService {
             ));
         }
 
-        let target_max_position = maximum_reply_position_in_tx(
-            &txn,
-            tenant_id,
-            prepared.target_topic_id,
-        )
-        .await?;
+        let target_max_position =
+            maximum_reply_position_in_tx(&txn, tenant_id, prepared.target_topic_id).await?;
         let target_start_position = target_max_position.checked_add(1).ok_or_else(|| {
-            ForumError::Validation(
-                "Forum reply range move target position overflow".to_string(),
-            )
+            ForumError::Validation("Forum reply range move target position overflow".to_string())
         })?;
         let now = Utc::now();
         let audit = move_replies_in_tx(
@@ -319,12 +301,13 @@ impl ForumReplyRangeMoveService {
             now,
         )
         .await?;
-        let target_end_position = audit
-            .last()
-            .map(|item| item.target_position)
-            .ok_or_else(|| {
-                ForumError::Validation("Forum reply range move audit is empty".to_string())
-            })?;
+        let target_end_position =
+            audit
+                .last()
+                .map(|item| item.target_position)
+                .ok_or_else(|| {
+                    ForumError::Validation("Forum reply range move audit is empty".to_string())
+                })?;
 
         let actual_source_published =
             approved_reply_count_in_tx(&txn, tenant_id, source_topic_id).await?;
@@ -593,7 +576,10 @@ fn fingerprint_command(
     Ok(hex::encode(Sha256::digest(canonical)))
 }
 
-fn validate_topic_pair(source: &forum_topic::Model, target: &forum_topic::Model) -> ForumResult<()> {
+fn validate_topic_pair(
+    source: &forum_topic::Model,
+    target: &forum_topic::Model,
+) -> ForumResult<()> {
     if source.status == TopicStatus::Archived {
         return Err(ForumError::TopicArchived);
     }
@@ -791,8 +777,7 @@ async fn validate_equal_access_in_tx(
         || source_visibility.configured_constraints != target_visibility.configured_constraints
     {
         return Err(ForumError::Validation(
-            "Forum reply range move requires exactly equal effective visibility policy"
-                .to_string(),
+            "Forum reply range move requires exactly equal effective visibility policy".to_string(),
         ));
     }
     let source_reply_create =
@@ -801,8 +786,7 @@ async fn validate_equal_access_in_tx(
         load_topic_reply_create_audience_policy_for_topic(txn, tenant_id, target).await?;
     if source_reply_create.inherited_category_layers
         != target_reply_create.inherited_category_layers
-        || source_reply_create.configured_constraints
-            != target_reply_create.configured_constraints
+        || source_reply_create.configured_constraints != target_reply_create.configured_constraints
     {
         return Err(ForumError::Validation(
             "Forum reply range move requires exactly equal effective reply-create policy"
@@ -862,8 +846,12 @@ async fn load_range_replies_in_tx(
             "Forum reply range move must not exceed {MAX_FORUM_REPLY_RANGE_MOVE_REPLIES} replies"
         )));
     }
-    if replies.first().is_none_or(|reply| reply.position != start_position)
-        || replies.last().is_none_or(|reply| reply.position != end_position)
+    if replies
+        .first()
+        .is_none_or(|reply| reply.position != start_position)
+        || replies
+            .last()
+            .is_none_or(|reply| reply.position != end_position)
     {
         return Err(ForumError::Validation(
             "Forum reply range move endpoints must identify occupied source positions".to_string(),
@@ -1388,14 +1376,15 @@ async fn load_operation_in_tx(
             )));
         }
     };
-    Ok(txn.query_one(Statement::from_sql_and_values(
-        backend,
-        sql,
-        vec![tenant_id.into(), operation_id.into()],
-    ))
-    .await?
-    .map(stored_operation_from_row)
-    .transpose()?)
+    Ok(txn
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![tenant_id.into(), operation_id.into()],
+        ))
+        .await?
+        .map(stored_operation_from_row)
+        .transpose()?)
 }
 
 fn stored_operation_from_row(row: QueryResult) -> Result<StoredRangeMoveOperation, sea_orm::DbErr> {
@@ -1451,7 +1440,8 @@ async fn validate_replay_in_tx(
             prepared.operation_id,
         ));
     }
-    let item_count = count_audit_items_in_tx(txn, existing.tenant_id, existing.operation_id).await?;
+    let item_count =
+        count_audit_items_in_tx(txn, existing.tenant_id, existing.operation_id).await?;
     if item_count != i64::from(existing.moved_reply_count) {
         return Err(ForumError::TopicReplyRangeMoveOperationConflict(
             prepared.operation_id,
@@ -1531,10 +1521,8 @@ fn operation_to_result(operation: StoredRangeMoveOperation) -> ForumReplyRangeMo
         target_end_position: operation.target_end_position,
         moved_reply_count: operation.moved_reply_count,
         moved_published_reply_count: operation.moved_published_reply_count,
-        source_resulting_published_reply_count: operation
-            .source_resulting_published_reply_count,
-        target_resulting_published_reply_count: operation
-            .target_resulting_published_reply_count,
+        source_resulting_published_reply_count: operation.source_resulting_published_reply_count,
+        target_resulting_published_reply_count: operation.target_resulting_published_reply_count,
         moved_solution_reply_id: operation.moved_solution_reply_id,
         source_resulting_solution_reply_id: operation.source_resulting_solution_reply_id,
         target_resulting_solution_reply_id: operation.target_resulting_solution_reply_id,

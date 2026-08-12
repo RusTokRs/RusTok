@@ -173,9 +173,7 @@ async fn fetch_storefront_regions_server(
                 Some(tenant.default_locale.as_str()),
             )
             .await
-            .map_err(|error| {
-                map_region_runtime_error(&tenant, request_context.as_ref(), error)
-            })?
+            .map_err(|error| map_region_runtime_error(&tenant, request_context.as_ref(), error))?
             .into_iter()
             .map(map_region)
             .collect();

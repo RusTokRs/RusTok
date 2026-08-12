@@ -1,6 +1,4 @@
-use rustok_benchmarks::index_storage::{
-    PartitionQueryConfig, capture_partition_query_evidence,
-};
+use rustok_benchmarks::index_storage::{PartitionQueryConfig, capture_partition_query_evidence};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

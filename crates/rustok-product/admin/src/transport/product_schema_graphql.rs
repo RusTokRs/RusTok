@@ -6,12 +6,8 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Mutex, OnceLock};
 
-use crate::model::{
-    ProductAttributeValueItem, ProductAttributeValuePatchDraft,
-};
-use crate::schema_retry_identity::{
-    ProductAdminSchemaOperation, ProductAdminSchemaRetryIdentity,
-};
+use crate::model::{ProductAttributeValueItem, ProductAttributeValuePatchDraft};
+use crate::schema_retry_identity::{ProductAdminSchemaOperation, ProductAdminSchemaRetryIdentity};
 
 pub type ApiError = GraphqlHttpError;
 
@@ -231,6 +227,9 @@ mod tests {
     #[test]
     fn mutation_query_strings_contain_expected_operations() {
         assert!(SAVE_ATTRIBUTE_VALUES_MUTATION.contains("saveProductAttributeValues"));
-        assert!(CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION.contains("clearDetachedProductAttributeValues"));
+        assert!(
+            CLEAR_DETACHED_ATTRIBUTE_VALUES_MUTATION
+                .contains("clearDetachedProductAttributeValues")
+        );
     }
 }

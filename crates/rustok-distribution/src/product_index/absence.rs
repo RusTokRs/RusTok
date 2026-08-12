@@ -10,13 +10,10 @@ use serde_json::Value as JsonValue;
 
 use super::{PRODUCT_SCHEMA_ROUTING_KEY, channel_visibility::decode_product_visibility};
 
-pub(crate) const PRODUCT_ABSENCE_WATERMARK_FACTORY: &str =
-    "product-locale-absence-watermark";
+pub(crate) const PRODUCT_ABSENCE_WATERMARK_FACTORY: &str = "product-locale-absence-watermark";
 const PRODUCT_ABSENCE_PROVIDER: &str = "product-locale-absence-postgres";
 
-pub(crate) fn register(
-    extensions: &mut ModuleRuntimeExtensions,
-) -> rustok_core::Result<()> {
+pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
     if !extensions.contains::<rustok_product::ProductRuntimeSelected>() {
         return Ok(());
     }
@@ -199,10 +196,7 @@ LIMIT 1
     }
 }
 
-fn require_product_key(
-    db: &DatabaseConnection,
-    key: &EntityKey,
-) -> Result<(), IndexSourceFailure> {
+fn require_product_key(db: &DatabaseConnection, key: &EntityKey) -> Result<(), IndexSourceFailure> {
     if db.get_database_backend() != DbBackend::Postgres {
         return Err(permanent("product_index_absence_backend_unsupported"));
     }

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use ::rustok_api::{PortContext, PortError, PortErrorKind};
-use ::rustok_customer::{CustomerReadPort, CustomerResponse};
 pub(crate) use ::rustok_customer::CustomerUserProjectionRequest;
+use ::rustok_customer::{CustomerReadPort, CustomerResponse};
 use ::sea_orm::DatabaseConnection;
 
 use super::super::query_error_boundary::{BoundaryError, QueryGraphqlMessage};

@@ -182,7 +182,10 @@ async fn run_lost_response_contract(database: &TestDatabase) -> TestResult<()> {
         .get_application_operation(seed.tenant_id, decision.id)
         .await?
         .ok_or_else(|| test_error("Moderation operation disappeared after Forum-only commit"))?;
-    assert_eq!(pending.status, ModerationApplicationOperationStatus::Pending);
+    assert_eq!(
+        pending.status,
+        ModerationApplicationOperationStatus::Pending
+    );
     assert_eq!(pending.attempt_count, 0);
     assert_eq!(
         moderation
@@ -206,9 +209,14 @@ async fn run_lost_response_contract(database: &TestDatabase) -> TestResult<()> {
             "postgres-forum-lost-response-replay",
         )
         .await?
-        .ok_or_else(|| test_error("pending Moderation operation was not claimable after response loss"))?;
+        .ok_or_else(|| {
+            test_error("pending Moderation operation was not claimable after response loss")
+        })?;
 
-    assert_eq!(dispatched.status, ModerationApplicationOperationStatus::Applied);
+    assert_eq!(
+        dispatched.status,
+        ModerationApplicationOperationStatus::Applied
+    );
     assert_eq!(dispatched.attempt_count, 1);
     assert_eq!(
         dispatched.applied_revision,
@@ -225,7 +233,10 @@ async fn run_lost_response_contract(database: &TestDatabase) -> TestResult<()> {
 
     // Replay must not execute the producer mutation twice.
     assert_reply_state(&database.db, &seed, 0, "hidden").await?;
-    assert_eq!(reply_revision(&database.db, &seed).await?, revision_after_first);
+    assert_eq!(
+        reply_revision(&database.db, &seed).await?,
+        revision_after_first
+    );
     assert_eq!(count_status_events(&database.db).await?, 1);
     assert_completed_receipt(&database.db, seed.tenant_id, decision.id).await?;
     Ok(())
@@ -382,9 +393,7 @@ fn application_context(tenant_id: Uuid, decision_id: Uuid, correlation: &str) ->
     )
     .with_causation_id(id.clone())
     .with_idempotency_key(id)
-    .with_deadline(Duration::from_secs(
-        APPLICATION_ADAPTER_DEADLINE_SECONDS,
-    ))
+    .with_deadline(Duration::from_secs(APPLICATION_ADAPTER_DEADLINE_SECONDS))
 }
 
 fn write_context(tenant_id: Uuid, actor_id: Uuid, key: &str) -> PortContext {

@@ -105,8 +105,7 @@ async fn native_context() -> Result<NativeContext, ServerFnError> {
         .ok_or_else(|| {
             ServerFnError::new("blog/admin requires TransactionalEventBus in host runtime context")
         })?;
-    let comments_thread_port =
-        runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>();
+    let comments_thread_port = runtime.shared_get::<Arc<dyn rustok_blog::CommentsThreadPort>>();
 
     Ok(NativeContext {
         db: runtime.db_clone(),

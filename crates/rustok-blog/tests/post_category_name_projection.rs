@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use rustok_blog::{
-    BlogModule, BlogPostStatus, CategoryService, CreateCategoryInput, CreatePostInput, PostListQuery,
-    PostService,
+    BlogModule, BlogPostStatus, CategoryService, CreateCategoryInput, CreatePostInput,
+    PostListQuery, PostService,
 };
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
@@ -102,13 +102,7 @@ async fn post_category_name_projects_across_detail_and_list_paths() {
         .expect("post should be created");
 
     let detail = post_service
-        .get_post_with_locale_fallback(
-            tenant_id,
-            admin.clone(),
-            post_id,
-            "fr",
-            Some("de"),
-        )
+        .get_post_with_locale_fallback(tenant_id, admin.clone(), post_id, "fr", Some("de"))
         .await
         .expect("detail should resolve category name through fallback");
     assert_eq!(detail.category_id, Some(category_id));

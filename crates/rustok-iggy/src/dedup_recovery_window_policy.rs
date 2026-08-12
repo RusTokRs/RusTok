@@ -339,12 +339,18 @@ mod tests {
             IggyDeduplicationConfiguration::enabled(500, Duration::from_secs(120)).unwrap(),
         );
 
-        assert_eq!(assessment.status(), IggyDedupRecoveryWindowStatus::Sufficient);
+        assert_eq!(
+            assessment.status(),
+            IggyDedupRecoveryWindowStatus::Sufficient
+        );
         assert!(assessment.is_sufficient());
         assert!(!assessment.requires_operator_action());
         assert_eq!(assessment.required_max_entries_per_partition(), 500);
         assert_eq!(assessment.configured_max_entries(), Some(500));
-        assert_eq!(assessment.configured_expiry(), Some(Duration::from_secs(120)));
+        assert_eq!(
+            assessment.configured_expiry(),
+            Some(Duration::from_secs(120))
+        );
         assert_eq!(
             assessment.status().stable_code(),
             "iggy.dedup_recovery.sufficient"

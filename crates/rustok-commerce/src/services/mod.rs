@@ -165,11 +165,11 @@ pub use context::{StoreContextError, StoreContextResult, StoreContextService};
 pub use fulfillment_create_label_recovery::FulfillmentCreateLabelRecoveryService;
 pub use fulfillment_orchestration::FulfillmentOrchestrationError;
 pub use fulfillment_orchestration_facade::FulfillmentOrchestrationService;
-pub use journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
 pub use fulfillment_reconciliation::FulfillmentReconciliationService;
 pub use journaled_checkout::{
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
 };
+pub use journaled_fulfillment_orchestration::JournaledFulfillmentOrchestrationService;
 #[cfg(feature = "marketplace-financial")]
 pub use marketplace_financial_operator::{
     MarketplaceFinancialOperationOperatorView, MarketplaceFinancialOperatorError,

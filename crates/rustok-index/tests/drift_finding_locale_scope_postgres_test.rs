@@ -9,7 +9,9 @@ use rustok_index::{
         PostgresIndexDriftFindingWriter,
     },
 };
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -38,9 +40,7 @@ async fn migration_writer_and_inspector_support_locale_free_entity_findings() ->
 
     let result = run_scenario(&database_url, &schema_name).await;
     let cleanup = control
-        .execute_unprepared(&format!(
-            r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#
-        ))
+        .execute_unprepared(&format!(r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#))
         .await;
     result?;
     cleanup?;
@@ -87,7 +87,10 @@ async fn run_scenario(database_url: &str, schema_name: &str) -> TestResult<()> {
         },
         'c',
     );
-    assert_ne!(locale_request.finding_key(), no_locale_request.finding_key());
+    assert_ne!(
+        locale_request.finding_key(),
+        no_locale_request.finding_key()
+    );
 
     let writer = PostgresIndexDriftFindingWriter::new(db.clone());
     let locale_created = writer.record_digest_mismatch(&locale_request).await?;

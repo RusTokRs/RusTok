@@ -4,7 +4,7 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -118,7 +118,9 @@ pub enum SchemaLeaseError {
     NilTenantId,
     #[error("invalid schema application worker id: {reason}")]
     InvalidWorkerId { reason: &'static str },
-    #[error("schema application lease duration must be a whole number of seconds between 1 and 86400")]
+    #[error(
+        "schema application lease duration must be a whole number of seconds between 1 and 86400"
+    )]
     InvalidLeaseDuration,
     #[error("invalid schema application error code: {reason}")]
     InvalidErrorCode { reason: &'static str },
@@ -209,13 +211,8 @@ impl PostgresSchemaLeaseStore {
     ) -> Result<(), SchemaLeaseError> {
         let error_code = error_code.into();
         validate_error_code(&error_code)?;
-        self.finish(
-            lease,
-            "failed",
-            Some(error_code),
-            Some(error_details),
-        )
-        .await
+        self.finish(lease, "failed", Some(error_code), Some(error_details))
+            .await
     }
 
     async fn acquire_in_transaction(

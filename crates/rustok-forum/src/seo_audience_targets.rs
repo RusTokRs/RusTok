@@ -12,8 +12,8 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::{
-    ForumCategoryRouteService, ForumError, ForumPublicDiscoveryService,
-    ForumTopicRouteDisposition, ForumTopicRouteService,
+    ForumCategoryRouteService, ForumError, ForumPublicDiscoveryService, ForumTopicRouteDisposition,
+    ForumTopicRouteService,
 };
 
 const MAX_FORUM_SEO_ALTERNATE_ROUTES: usize = 64;
@@ -309,12 +309,7 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 slug,
             }) => {
                 let resolution = match ForumTopicRouteService::new(runtime.db.clone())
-                    .resolve(
-                        tenant_id,
-                        locale.as_str(),
-                        short_id.as_str(),
-                        slug.as_str(),
-                    )
+                    .resolve(tenant_id, locale.as_str(), short_id.as_str(), slug.as_str())
                     .await
                 {
                     Ok(resolution) => resolution,
@@ -440,11 +435,7 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
                 continue;
             }
             let descriptor = route_service
-                .canonical_descriptor(
-                    tenant_id,
-                    candidate.target_id,
-                    candidate.locale.as_str(),
-                )
+                .canonical_descriptor(tenant_id, candidate.target_id, candidate.locale.as_str())
                 .await?;
             candidate.locale = descriptor.locale;
             candidate.route = descriptor.path;
@@ -627,9 +618,11 @@ mod tests {
             })
         );
         assert!(
-            parse_canonical_forum_route("/en/modules/forum?category=00000000-0000-0000-0000-000000000000")
-                .unwrap()
-                .is_none()
+            parse_canonical_forum_route(
+                "/en/modules/forum?category=00000000-0000-0000-0000-000000000000"
+            )
+            .unwrap()
+            .is_none()
         );
         assert!(
             parse_canonical_forum_route("/en/forum/c/general/extra")

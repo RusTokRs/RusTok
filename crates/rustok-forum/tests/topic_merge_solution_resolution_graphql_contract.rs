@@ -6,9 +6,8 @@ const TOPIC_MERGE_GRAPHQL: &str = include_str!("../src/graphql/topic_merge_mutat
 const TOPIC_MERGE_OWNER: &str = include_str!("../src/services/topic_merge.rs");
 const RESOLUTION_ENTITY: &str =
     include_str!("../src/entities/forum_topic_merge_solution_resolution.rs");
-const RESOLUTION_MIGRATION: &str = include_str!(
-    "../src/migrations/m20260803_000018_add_forum_topic_merge_solution_resolution.rs"
-);
+const RESOLUTION_MIGRATION: &str =
+    include_str!("../src/migrations/m20260803_000018_add_forum_topic_merge_solution_resolution.rs");
 
 #[test]
 fn graphql_schema_exposes_explicit_solution_resolution_command() {
@@ -33,7 +32,10 @@ fn graphql_schema_exposes_explicit_solution_resolution_command() {
         "reason",
         "merge",
     ] {
-        assert!(sdl.contains(marker), "missing GraphQL resolution marker {marker}");
+        assert!(
+            sdl.contains(marker),
+            "missing GraphQL resolution marker {marker}"
+        );
     }
 }
 
@@ -100,7 +102,10 @@ fn ordinary_and_resolved_commands_share_one_private_transaction_owner() {
         );
     }
 
-    assert_eq!(TOPIC_MERGE_OWNER.matches("self.db.begin().await?").count(), 1);
+    assert_eq!(
+        TOPIC_MERGE_OWNER.matches("self.db.begin().await?").count(),
+        1
+    );
     assert_eq!(TOPIC_MERGE_OWNER.matches("txn.commit().await?").count(), 2);
     assert!(!TOPIC_MERGE_OWNER.contains("FORUM_TOPIC_MERGED_SOLUTION_RESOLUTION_SCHEMA_VERSION"));
 }

@@ -1,16 +1,15 @@
 use std::{env, time::Duration};
 
 use super::{
-    PageInlineEditConfigError, PageInlineEditKeyId, PageInlineEditKeyring,
-    PageInlineEditSecret,
+    PageInlineEditConfigError, PageInlineEditKeyId, PageInlineEditKeyring, PageInlineEditSecret,
 };
 
 pub const PAGES_INLINE_EDIT_HMAC_KEY_ENV: &str = "RUSTOK_PAGES_INLINE_EDIT_HMAC_KEY";
 pub const PAGES_INLINE_EDIT_HMAC_KEY_ID_ENV: &str = "RUSTOK_PAGES_INLINE_EDIT_HMAC_KEY_ID";
 pub const PAGES_INLINE_EDIT_GRANT_TTL_MS_ENV: &str = "RUSTOK_PAGES_INLINE_EDIT_GRANT_TTL_MS";
 
-pub fn page_inline_edit_keyring_from_environment(
-) -> Result<Option<PageInlineEditKeyring>, PageInlineEditConfigError> {
+pub fn page_inline_edit_keyring_from_environment()
+-> Result<Option<PageInlineEditKeyring>, PageInlineEditConfigError> {
     let secret = match env::var(PAGES_INLINE_EDIT_HMAC_KEY_ENV) {
         Ok(secret) => PageInlineEditSecret::new(secret)?,
         Err(env::VarError::NotPresent) => return Ok(None),

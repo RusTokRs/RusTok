@@ -205,18 +205,13 @@ fn require_requested_manage_scopes(
                 PermissionScope::None
             )
         {
-            return Err(ForumExportTargetPlanError::ManagePermissionRequired {
-                resource: label,
-            });
+            return Err(ForumExportTargetPlanError::ManagePermissionRequired { resource: label });
         }
     }
     Ok(())
 }
 
-fn validate_source_ids(
-    kind: &'static str,
-    ids: &[Uuid],
-) -> Result<(), ForumExportTargetPlanError> {
+fn validate_source_ids(kind: &'static str, ids: &[Uuid]) -> Result<(), ForumExportTargetPlanError> {
     let mut seen = BTreeSet::new();
     for id in ids {
         if id.is_nil() {

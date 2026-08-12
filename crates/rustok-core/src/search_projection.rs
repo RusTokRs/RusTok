@@ -120,10 +120,9 @@ pub fn register_search_projection_source<F>(
 where
     F: SearchProjectionSourceFactory + 'static,
 {
-    let registry = extensions
-        .get_or_insert_with::<Arc<SearchProjectionSourceRegistry>, _>(|| {
-            Arc::new(SearchProjectionSourceRegistry::default())
-        });
+    let registry = extensions.get_or_insert_with::<Arc<SearchProjectionSourceRegistry>, _>(|| {
+        Arc::new(SearchProjectionSourceRegistry::default())
+    });
     Arc::make_mut(registry).register(factory)
 }
 

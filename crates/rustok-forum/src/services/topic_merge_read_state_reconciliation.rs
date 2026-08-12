@@ -16,8 +16,8 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
 use crate::entities::{
-    forum_domain_event, forum_topic_merge_operation,
-    forum_topic_merge_read_state_reconciliation, forum_topic_read_state,
+    forum_domain_event, forum_topic_merge_operation, forum_topic_merge_read_state_reconciliation,
+    forum_topic_read_state,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
@@ -110,12 +110,8 @@ impl ForumTopicMergeReadStateReconciliationService {
                 &[existing.source_topic_id, existing.target_topic_id],
             )
             .await?;
-            ensure_source_read_states_empty_in_tx(
-                &txn,
-                tenant_id,
-                existing.source_topic_id,
-            )
-            .await?;
+            ensure_source_read_states_empty_in_tx(&txn, tenant_id, existing.source_topic_id)
+                .await?;
             txn.commit().await?;
             return Ok(operation_to_result(existing));
         }
@@ -135,15 +131,16 @@ impl ForumTopicMergeReadStateReconciliationService {
             ));
         }
 
-        let merge = forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
-            .one(&txn)
-            .await?
-            .ok_or_else(|| {
-                ForumError::Validation(
+        let merge =
+            forum_topic_merge_operation::Entity::find_by_id((tenant_id, merge_operation_id))
+                .one(&txn)
+                .await?
+                .ok_or_else(|| {
+                    ForumError::Validation(
                     "Forum topic merge read-state reconciliation requires an existing merge receipt"
                         .to_string(),
                 )
-            })?;
+                })?;
         validate_merge_event_in_tx(&txn, &merge).await?;
 
         let topics = lock_topic_rows_for_read_state_in_tx(

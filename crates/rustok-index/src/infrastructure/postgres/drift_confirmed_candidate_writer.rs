@@ -111,7 +111,9 @@ impl PostgresIndexDriftConfirmedCandidateWriter {
                     .rollback()
                     .await
                     .map_err(|_| IndexDriftConfirmedCandidateRecordError::Storage)?;
-                Ok(IndexDriftConfirmedCandidateRecordOutcome::NotRecorded(reason))
+                Ok(IndexDriftConfirmedCandidateRecordOutcome::NotRecorded(
+                    reason,
+                ))
             }
             Err(error) => {
                 let _ = transaction.rollback().await;
@@ -305,7 +307,8 @@ fn hash_locale(hasher: &mut Sha256, locale: Option<&crate::LocaleKey>) {
 }
 
 fn hash_component(hasher: &mut Sha256, value: &[u8]) {
-    let length = u64::try_from(value.len()).expect("bounded confirmed-candidate evidence component");
+    let length =
+        u64::try_from(value.len()).expect("bounded confirmed-candidate evidence component");
     hasher.update(length.to_be_bytes());
     hasher.update(value);
 }
