@@ -257,7 +257,7 @@ fn placeholder_sql(backend: DbBackend, template: &str, value_count: usize) -> St
     sql
 }
 
-#[derive(DeriveIden)]
+#[derive(Iden)]
 enum OAuthAppTranslations {
     #[iden = "oauth_app_translations"]
     Table,
