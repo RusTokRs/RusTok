@@ -291,8 +291,18 @@ function validateTerminalEvidenceInventoryGuard(contract) {
   if (guard.pages_ffa_pending_marker_must_be_present === true && !pagesPending) {
     fail("Pages FFA pending marker is gone; terminal inventory source must be actualized");
   }
-  if (guard.complete_terminal_evidence_inventory_source_defined !== false) {
-    fail("terminal inventory guard must not claim a complete inventory source exists yet");
+  if (guard.complete_terminal_evidence_inventory_source_defined !== true) {
+    fail("terminal inventory guard must point to the defined inventory source");
+  }
+  const inventorySource = repoJson(
+    guard.complete_terminal_evidence_inventory_source,
+    "terminal evidence inventory source",
+  );
+  if (
+    inventorySource.document.format !== guard.complete_terminal_evidence_inventory_source_format ||
+    inventorySource.document.output?.format !== guard.complete_terminal_evidence_inventory_format
+  ) {
+    fail("terminal evidence inventory source identity does not match the admission guard");
   }
 
   return {
@@ -314,7 +324,9 @@ function validateTerminalEvidenceInventoryGuard(contract) {
       parity_verified_blocked: true,
     },
     required_future_inventory_format: guard.complete_terminal_evidence_inventory_format,
-    future_inventory_source_defined: false,
+    future_inventory_source_defined: true,
+    future_inventory_source_path: guard.complete_terminal_evidence_inventory_source,
+    future_inventory_source_sha256: inventorySource.sha256,
   };
 }
 

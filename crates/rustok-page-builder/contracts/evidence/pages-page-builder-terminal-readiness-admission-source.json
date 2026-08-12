@@ -97,7 +97,9 @@
     "pages_ffa_pending_marker_blocks_parity_verified": true,
     "complete_terminal_evidence_inventory_required_before_owner_platform_review": true,
     "complete_terminal_evidence_inventory_format": "pages_page_builder_terminal_evidence_inventory_v1",
-    "complete_terminal_evidence_inventory_source_defined": false
+    "complete_terminal_evidence_inventory_source": "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json",
+    "complete_terminal_evidence_inventory_source_format": "pages_page_builder_terminal_evidence_inventory_source_v1",
+    "complete_terminal_evidence_inventory_source_defined": true
   },
   "admission": {
     "runner": "scripts/evidence/admit-pages-page-builder-terminal-readiness.mjs",
@@ -146,6 +148,7 @@
     "scripts/evidence/admit-pages-page-builder-terminal-readiness.mjs",
     "scripts/evidence/admit-pages-page-builder-terminal-readiness.test.mjs",
     "scripts/verify/verify-pages-page-builder-terminal-readiness-admission.mjs",
+    "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json",
     "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json",
     "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json",
     "scripts/evidence/execute-forum-page-builder-ffa-fba-promotion.mjs",
@@ -178,7 +181,7 @@
   },
   "next_cursor": {
     "rollout_accessibility_prerequisite_admission": "source_ready_blocked_on_successful_execution_and_accessibility_packets",
-    "terminal_evidence_inventory": "source_definition_pending",
+    "terminal_evidence_inventory": "source_ready_maintainer_execution_pending",
     "owner_platform_readiness_review": "blocked_on_complete_terminal_evidence_inventory",
     "readiness_source_change": "blocked_on_explicit_owner_and_platform_approval_after_complete_inventory"
   }
