@@ -1,6 +1,6 @@
 # Pages / Page Builder parity and generic editor accessibility actualization — 2026-08-12
 
-Status: `source-parity-rechecked / generic-editor-accessibility-source-ready / focused-ci-gate-ready / browser-accessibility-evidence-pending / rollout-execution-pending`.
+Status: `source-parity-rechecked / generic-editor-accessibility-source-ready / focused-ci-gate-ready / rendered-dom-accessibility-evidence-partial / browser-accessibility-evidence-pending / rollout-execution-pending`.
 
 Base rechecked: `main@389fa1acdb1bbe7f554380ecb5ea178c5f73bda9`.
 
@@ -21,7 +21,7 @@ The shared, local and central plans must expose the same boundary:
 - generic typed editor controls and programmatic accessibility semantics: **source-ready**;
 - static accessibility anti-drift verification: **source-ready**;
 - keyboard navigation and focus behavior: **execution pending**;
-- built-surface accessible-name/state inspection: **execution pending**;
+- built-surface accessible-name/state inspection: **partial native SSR evidence retained; browser/accessibility-tree execution pending**;
 - browser and screen-reader evidence: **execution pending**;
 - provider-health, Pages gate, Forum Wave and FFA/FBA acceptance: **unchanged and execution/owner-decision pending**.
 
@@ -43,7 +43,7 @@ The workflow has `contents: read` only and does not build, publish, deploy, muta
 
 ## Rendered accessibility evidence continuation
 
-The next implementation slice adds `crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs` to the ordinary `rustok-page-builder-admin` unit-test target. Unlike the static source guard, these tests render the real Leptos `PageBuilderAdmin` with a concrete `AdminCanvasController` and assert facts in the generated HTML.
+PR #3453 adds `crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs` to the ordinary `rustok-page-builder-admin` unit-test target. Unlike the static source guard, these tests render the real Leptos `PageBuilderAdmin` with a concrete `AdminCanvasController` and assert facts in the generated HTML. The focused `cargo test -p rustok-page-builder-admin --lib` execution is retained green for this slice.
 
 The retained SSR evidence covers only a bounded subset of the open execution cursor:
 
