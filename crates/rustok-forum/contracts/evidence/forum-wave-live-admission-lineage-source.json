@@ -1,0 +1,54 @@
+{
+  "format": "forum_wave_live_admission_lineage_source_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "module": "forum",
+  "wave": "1",
+  "purpose": "Fail closed before Forum Wave owner review unless live observed Wave evidence is bound to the exact retained Forum Wave admission packet and current checkout source.",
+  "runner": "scripts/verify/verify-forum-wave-admission-lineage.mjs",
+  "tests": "scripts/verify/verify-forum-wave-admission-lineage.test.mjs",
+  "required_gate": "node scripts/verify/verify-forum-wave-admission-lineage.mjs",
+  "wave_evidence": {
+    "default_path": "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
+    "environment": "RUSTOK_FORUM_WAVE_EVIDENCE_PATH",
+    "source_ready_requires_admission_file": false,
+    "live_requires_admission_file": true
+  },
+  "required_live_environment": {
+    "admission_path": "RUSTOK_FORUM_WAVE_ADMISSION_PATH"
+  },
+  "live_requirements": {
+    "wave_source_commit_must_equal_checkout_head": true,
+    "admission_source_commit_must_equal_checkout_head_and_wave": true,
+    "admission_packet_sha256_must_equal_retained_file": true,
+    "admission_repo_digest_must_equal_wave": true,
+    "admission_pass_flags_must_remain_true": true,
+    "admission_non_promotion_boundaries_must_remain_false": true,
+    "admission_privacy_boundaries_must_remain_false": true,
+    "latest_refresh_must_retain_lineage_verifier_gate": true
+  },
+  "not_claimed": [
+    "live Pages gate execution",
+    "live Forum browser/runtime/server-function execution",
+    "observed control-plane Wave execution",
+    "owner approval",
+    "current provider health",
+    "cryptographic origin-to-RepoDigest binding",
+    "Forum Wave acceptance",
+    "FFA/FBA promotion"
+  ],
+  "required_source_files": [
+    "crates/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json",
+    "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json",
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
+    "scripts/evidence/admit-forum-page-builder-wave.mjs",
+    "scripts/verify/verify-forum-wave-evidence-freshness.mjs",
+    "scripts/verify/verify-forum-wave-admission-lineage.mjs",
+    "scripts/verify/verify-forum-wave-admission-lineage.test.mjs",
+    "docs/modules/forum-page-builder-wave-live-admission-lineage-actualization-2026-08-12.md"
+  ],
+  "next_cursor": {
+    "live_pages_and_forum_inputs": "maintainer_execution_pending",
+    "observed_control_plane_wave": "pending_after_exact_retained_admission_binding",
+    "forum_wave_owner_review": "pending_after_observed_control_plane_wave"
+  }
+}
