@@ -20,7 +20,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-const repoRoot = path.resolve(process.cwd(), "../..");
+const repoRoot = path.resolve(__dirname, "../../../..");
 const contractPath =
   "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json";
 const contract = JSON.parse(
