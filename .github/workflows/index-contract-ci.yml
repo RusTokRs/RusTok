@@ -11,6 +11,7 @@ on:
       - "crates/rustok-index/**"
       - "crates/rustok-distribution/src/product_index/**"
       - "crates/rustok-distribution/src/product_variant_index.rs"
+      - "crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
       - "apps/server/src/services/product_index_refresh_worker.rs"
       - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
@@ -19,9 +20,11 @@ on:
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
       - "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
+      - "scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
       - ".github/workflows/index-product-refresh-redelivery-evidence.yml"
+      - ".github/workflows/index-product-current-schema-promotion-evidence.yml"
       - ".github/workflows/index-contract-ci.yml"
   push:
     branches:
@@ -35,6 +38,7 @@ on:
       - "crates/rustok-index/**"
       - "crates/rustok-distribution/src/product_index/**"
       - "crates/rustok-distribution/src/product_variant_index.rs"
+      - "crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
       - "apps/server/src/services/product_index_refresh_worker.rs"
       - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
@@ -43,9 +47,11 @@ on:
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
       - "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
+      - "scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
       - ".github/workflows/index-product-refresh-redelivery-evidence.yml"
+      - ".github/workflows/index-product-current-schema-promotion-evidence.yml"
       - ".github/workflows/index-contract-ci.yml"
 
 permissions:
@@ -84,6 +90,8 @@ jobs:
         run: node scripts/verify/verify-index-product-refresh-host-consumer.mjs
       - name: Verify Product Index refresh redelivery evidence source
         run: node scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
+      - name: Verify Product current-schema promotion evidence runner
+        run: node scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs
 
   canonical-digest:
     name: Canonical event digest drift
@@ -123,6 +131,8 @@ jobs:
         run: cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
       - name: Check selected Product distribution bridge
         run: cargo check --locked -p rustok-distribution --features mod-product --lib
+      - name: Check Product current-schema promotion PostgreSQL evidence harness
+        run: cargo check --locked -p rustok-distribution --features mod-product --test product_current_schema_promotion_postgres
       - name: Check Product refresh host consumer composition
         run: cargo check --locked -p rustok-server --no-default-features --features mod-product --lib
       - name: Check Product refresh PostgreSQL/Iggy evidence harness
