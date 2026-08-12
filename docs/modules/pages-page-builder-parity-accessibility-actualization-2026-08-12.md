@@ -1,8 +1,8 @@
 # Pages / Page Builder parity and generic editor accessibility actualization — 2026-08-12
 
-Status: `source-parity-rechecked / generic-editor-accessibility-source-ready / focused-ci-gate-ready / browser-accessibility-evidence-pending / rollout-execution-pending`.
+Status: `source-parity-rechecked / generic-editor-accessibility-source-ready / focused-ci-gate-ready / rendered-dom-accessibility-evidence-partial / browser-accessibility-evidence-pending / rollout-execution-pending`.
 
-Base rechecked: `main@ac36c04c732e9fdf23f2de3d917faf79e0552f3f`.
+Base rechecked: `main@389fa1acdb1bbe7f554380ecb5ea178c5f73bda9`.
 
 ## Recheck result
 
@@ -21,7 +21,7 @@ The shared, local and central plans must expose the same boundary:
 - generic typed editor controls and programmatic accessibility semantics: **source-ready**;
 - static accessibility anti-drift verification: **source-ready**;
 - keyboard navigation and focus behavior: **execution pending**;
-- built-surface accessible-name/state inspection: **execution pending**;
+- built-surface accessible-name/state inspection: **partial native SSR evidence retained; browser/accessibility-tree execution pending**;
 - browser and screen-reader evidence: **execution pending**;
 - provider-health, Pages gate, Forum Wave and FFA/FBA acceptance: **unchanged and execution/owner-decision pending**.
 
@@ -40,6 +40,19 @@ node scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs
 The workflow has `contents: read` only and does not build, publish, deploy, mutate tenant state, accept provider health, accept the Pages reference-consumer gate, execute Forum Wave admission or promote FFA/FBA.
 
 `verify-pages-page-builder-accessibility-plan-sync.mjs` prevents the three active plans from drifting back to the pre-#3444 source cursor and requires the dated accessibility actualization plus source guard to remain wired into the verification programme.
+
+## Rendered accessibility evidence continuation
+
+PR #3453 adds `crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs` to the ordinary `rustok-page-builder-admin` unit-test target. Unlike the static source guard, these tests render the real Leptos `PageBuilderAdmin` with a concrete `AdminCanvasController` and assert facts in the generated HTML. The focused `cargo test -p rustok-page-builder-admin --lib` execution is retained green for this slice.
+
+The retained SSR evidence covers only a bounded subset of the open execution cursor:
+
+- the active and inactive page controls render explicit `aria-pressed="true"` / `aria-pressed="false"` state;
+- the new-page control renders a programmatic `Add page: Page name` name;
+- visible `Page name` and `Page id` labels survive the actual SSR render path;
+- denied `edit` and `properties` capability fieldsets render both native `disabled` semantics and `aria-disabled="true"`.
+
+This is executable rendered-DOM evidence, not a browser accessibility-tree, keyboard/focus or screen-reader result. WASM-only asset/property/style controls are also outside this native SSR subset. Therefore the shared Phase 9 checkbox remains open and browser/WCAG claims remain prohibited.
 
 ## Current execution cursor
 
