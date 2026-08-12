@@ -23,10 +23,14 @@ for (const marker of [
   'RUST_TOOLCHAIN: "1.96.0"',
   'node scripts/verify/verify-event-contract-digest-admission.mjs',
   'node scripts/verify/verify-index-product-refresh-event-family.mjs',
+  'node scripts/verify/verify-index-product-refresh-delivery.mjs',
   'cargo run --locked -p rustok-events --example event_contract_digests -- --write',
   'git diff --exit-code -- crates/rustok-events/contracts/event-contract-digests.json',
   'cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets',
+  'cargo check --locked -p rustok-distribution --features mod-product --lib',
   'cargo test --locked -p rustok-events --test canonical_contracts',
+  'cargo test --locked -p rustok-index source_refresh_event --lib',
+  'cargo test --locked -p rustok-distribution --features mod-product product_index::refresh_event::tests --lib',
   'name: Index Contract Gate',
 ]) {
   if (!workflow.includes(marker)) fail(`${workflowPath} is missing ${marker}`);
@@ -50,6 +54,9 @@ for (const pathMarker of [
   '"crates/rustok-events/**"',
   '"crates/rustok-product/**"',
   '"crates/rustok-index/**"',
+  '"crates/rustok-distribution/src/product_index/**"',
+  '"crates/rustok-distribution/src/product_variant_index.rs"',
+  '"scripts/verify/verify-index-product-refresh-delivery.mjs"',
   '"scripts/verify/verify-index-contract-ci.mjs"',
   '".github/workflows/index-contract-ci.yml"',
 ]) {

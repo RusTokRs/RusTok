@@ -8,8 +8,8 @@ use rustok_order::{
     OrderReturnResponse,
 };
 use rustok_payment::{
-    PaymentService,
-    dto::{CreateRefundInput, ListPaymentCollectionsInput, RefundResponse},
+    ListPaymentCollectionProjectionsRequest, PaymentAdminReadPort,
+    dto::{CreateRefundInput, RefundResponse},
     providers::PaymentProviderRegistry,
 };
 use sea_orm::DatabaseConnection;
@@ -30,6 +30,8 @@ use super::{
 pub enum ReturnDecisionOwnerOrchestrationError {
     #[error("order command owner port error: {0}")]
     OrderCommand(#[from] PortError),
+    #[error("payment read owner port error: {0}")]
+    PaymentRead(PortError),
     #[error(transparent)]
     PostOrder(#[from] PostOrderOrchestrationError),
 }
@@ -37,13 +39,14 @@ pub enum ReturnDecisionOwnerOrchestrationError {
 pub type ReturnDecisionOwnerOrchestrationResult<T> =
     Result<T, ReturnDecisionOwnerOrchestrationError>;
 
-/// Mounted return-decision orchestration with Order-owned writes behind a host-selected port.
+/// Mounted return-decision orchestration with owner-local reads/writes behind host-selected ports.
 ///
-/// Payment lookup/refund execution deliberately retains the existing Payment compatibility path in
-/// this bounded slice. That dependency remains a separate topology gap.
+/// Payment refund execution deliberately remains in the existing Payment orchestration path in this
+/// bounded slice; only the captured-collection lookup is moved behind the Payment owner read port.
 pub struct ReturnDecisionOwnerOrchestrationService {
     db: DatabaseConnection,
     order_commands: Arc<dyn OrderPostOrderCommandPort>,
+    payment_reads: Arc<dyn PaymentAdminReadPort>,
     payment_provider_registry: PaymentProviderRegistry,
 }
 
@@ -51,10 +54,12 @@ impl ReturnDecisionOwnerOrchestrationService {
     pub fn new(
         db: DatabaseConnection,
         order_commands: Arc<dyn OrderPostOrderCommandPort>,
+        payment_reads: Arc<dyn PaymentAdminReadPort>,
     ) -> Self {
         Self {
             db,
             order_commands,
+            payment_reads,
             payment_provider_registry: PaymentProviderRegistry::with_manual_provider(),
         }
     }
@@ -124,7 +129,13 @@ impl ReturnDecisionOwnerOrchestrationService {
                     )
                 })?;
                 let refund = self
-                    .create_refund_for_return(tenant_id, order_id, &order_return, refund_input)
+                    .create_refund_for_return(
+                        &base_context,
+                        tenant_id,
+                        order_id,
+                        &order_return,
+                        refund_input,
+                    )
                     .await?;
                 let order_return = self
                     .complete_return_decision(
@@ -251,19 +262,22 @@ impl ReturnDecisionOwnerOrchestrationService {
 
     async fn create_refund_for_return(
         &self,
+        base_context: &PortContext,
         tenant_id: Uuid,
         order_id: Uuid,
         order_return: &OrderReturnResponse,
         input: &ReturnRefundDecisionInput,
-    ) -> PostOrderOrchestrationResult<RefundResponse> {
-        let payment_service = PaymentService::new(self.db.clone());
+    ) -> ReturnDecisionOwnerOrchestrationResult<RefundResponse> {
         let collection_id = match input.payment_collection_id {
             Some(id) => id,
             None => {
-                let (collections, _) = payment_service
-                    .list_collections(
-                        tenant_id,
-                        ListPaymentCollectionsInput {
+                let read_context =
+                    payment_read_context_for(base_context, "list_captured_collections", order_id);
+                let page = self
+                    .payment_reads
+                    .list_payment_collection_projections(
+                        read_context,
+                        ListPaymentCollectionProjectionsRequest {
                             page: 1,
                             per_page: 1,
                             status: Some("captured".to_string()),
@@ -272,8 +286,9 @@ impl ReturnDecisionOwnerOrchestrationService {
                             customer_id: None,
                         },
                     )
-                    .await?;
-                collections
+                    .await
+                    .map_err(ReturnDecisionOwnerOrchestrationError::PaymentRead)?;
+                page.items
                     .into_iter()
                     .next()
                     .map(|collection| collection.id)
@@ -292,7 +307,8 @@ impl ReturnDecisionOwnerOrchestrationService {
         if amount <= Decimal::ZERO {
             return Err(PostOrderOrchestrationError::Validation(
                 "refund decision requires a positive amount or priced return items".to_string(),
-            ));
+            )
+            .into());
         }
 
         PaymentOrchestrationService::new(self.db.clone())
@@ -307,8 +323,20 @@ impl ReturnDecisionOwnerOrchestrationService {
                 },
             )
             .await
-            .map_err(Into::into)
+            .map_err(PostOrderOrchestrationError::from)
+            .map_err(ReturnDecisionOwnerOrchestrationError::PostOrder)
     }
+}
+
+fn payment_read_context_for(
+    base: &PortContext,
+    operation: &'static str,
+    resource_id: Uuid,
+) -> PortContext {
+    let mut context = base.clone();
+    context.correlation_id = format!("{}:{operation}:{resource_id}", base.correlation_id);
+    context.idempotency_key = None;
+    context
 }
 
 fn command_context_for(
@@ -328,9 +356,7 @@ fn command_context_for(
     };
     let mut context = base.clone();
     context.correlation_id = format!("{}:{operation}:{resource_id}", base.correlation_id);
-    context.idempotency_key = Some(format!(
-        "{root_idempotency_key}:{operation}:{resource_id}"
-    ));
+    context.idempotency_key = Some(format!("{root_idempotency_key}:{operation}:{resource_id}"));
     Ok(context)
 }
 
@@ -427,7 +453,9 @@ fn normalize_object_or_empty(value: Value, field: &str) -> PostOrderOrchestratio
     }
 }
 
-fn return_items_amount(order_return: &OrderReturnResponse) -> PostOrderOrchestrationResult<Decimal> {
+fn return_items_amount(
+    order_return: &OrderReturnResponse,
+) -> PostOrderOrchestrationResult<Decimal> {
     order_return
         .items
         .iter()
