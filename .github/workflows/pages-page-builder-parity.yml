@@ -12,7 +12,12 @@ on:
       - "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md"
       - "crates/rustok-page-builder/docs/implementation-plan.md"
       - "crates/rustok-page-builder/admin/src/editor/**"
+      - "crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
+      - "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json"
+      - "apps/next-admin/playwright.page-builder-accessibility.config.ts"
+      - "apps/next-admin/tests/page-builder-accessibility/**"
       - "scripts/verify/verify-page-builder-admin-accessibility.mjs"
+      - "scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs"
       - "scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs"
       - "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
   pull_request:
@@ -26,7 +31,12 @@ on:
       - "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md"
       - "crates/rustok-page-builder/docs/implementation-plan.md"
       - "crates/rustok-page-builder/admin/src/editor/**"
+      - "crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
+      - "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json"
+      - "apps/next-admin/playwright.page-builder-accessibility.config.ts"
+      - "apps/next-admin/tests/page-builder-accessibility/**"
       - "scripts/verify/verify-page-builder-admin-accessibility.mjs"
+      - "scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs"
       - "scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs"
       - "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
   workflow_dispatch:
@@ -46,6 +56,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: Verify generic editor accessibility source
         run: node scripts/verify/verify-page-builder-admin-accessibility.mjs
+      - name: Verify generic editor accessibility browser evidence harness
+        run: node scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs
       - name: Verify Pages and Page Builder plan parity
         run: node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
       - name: Verify accessibility plan synchronization
