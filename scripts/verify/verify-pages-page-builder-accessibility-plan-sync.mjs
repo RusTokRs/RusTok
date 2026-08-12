@@ -94,7 +94,7 @@ for (const marker of [
   "browser-accessibility-evidence-pending",
   "PR #3444",
   ".github/workflows/pages-page-builder-parity.yml",
-  "static source markers do not establish WCAG conformance",
+  "It does not establish WCAG conformance",
 ]) requireText(actualization, marker, paths.actualization);
 
 for (const marker of [
