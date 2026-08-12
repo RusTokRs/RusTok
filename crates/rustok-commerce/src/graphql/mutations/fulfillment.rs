@@ -19,11 +19,12 @@ use uuid::Uuid;
 
 use crate::graphql_runtime::{
     order_admin_command_runtime_from_context, order_change_orchestration_from_context,
-    order_post_order_command_runtime_from_context, post_order_orchestration_from_context,
-    return_completion_orchestration_from_context,
+    order_post_order_command_runtime_from_context, return_completion_orchestration_from_context,
+    return_decision_owner_orchestration_from_context,
 };
 use crate::{
     OrderChangeOrchestrationError, PaymentOrchestrationError, PostOrderOrchestrationError,
+    ReturnDecisionOwnerOrchestrationError,
 };
 
 use super::super::{MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::*};
@@ -163,6 +164,72 @@ fn payment_orchestration_error_envelope(
     }
 }
 
+fn payment_port_error_envelope(
+    error: &PortError,
+) -> (&'static str, &'static str, bool, &'static str) {
+    match &error.kind {
+        PortErrorKind::Validation | PortErrorKind::Forbidden => (
+            "Payment request is invalid",
+            "PAYMENT_REQUEST_INVALID",
+            false,
+            "validation",
+        ),
+        PortErrorKind::NotFound => (
+            "Payment resource was not found",
+            "PAYMENT_RESOURCE_NOT_FOUND",
+            false,
+            "not_found",
+        ),
+        PortErrorKind::Conflict => (
+            "Payment operation conflicts with the current state",
+            "PAYMENT_STATE_CONFLICT",
+            false,
+            "state_conflict",
+        ),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => (
+            "Payment service is temporarily unavailable",
+            "PAYMENT_TEMPORARILY_UNAVAILABLE",
+            true,
+            "temporarily_unavailable",
+        ),
+        PortErrorKind::InvariantViolation => (
+            "Payment operation could not be completed safely",
+            "PAYMENT_OPERATION_FAILED",
+            false,
+            "invariant_violation",
+        ),
+    }
+}
+
+fn payment_owner_graphql_error(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    resource_id: Uuid,
+    owner_operation: &'static str,
+    consumer_operation: &'static str,
+    context: &PortContext,
+    error: PortError,
+) -> async_graphql::Error {
+    let (message, code, retryable, error_kind) = payment_port_error_envelope(&error);
+    tracing::error!(
+        owner = "rustok_payment.admin_read",
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        resource_id_non_nil = !resource_id.is_nil(),
+        owner_operation,
+        consumer_operation,
+        correlation_id = %context.correlation_id,
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
+        error_kind,
+        public_code = code,
+        retryable,
+        boundary = "commerce_graphql_payment_read",
+        "commerce GraphQL Payment owner read failed with bounded diagnostics"
+    );
+    public_fulfillment_graphql_error(message, code, retryable)
+}
+
 fn order_owner_graphql_error(
     tenant_id: Uuid,
     resource_id: Uuid,
@@ -267,6 +334,41 @@ fn post_order_graphql_error(
         ),
     };
     public_fulfillment_graphql_error(message, code, retryable)
+}
+
+fn return_decision_graphql_error(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    resource_id: Uuid,
+    context: &PortContext,
+    error: ReturnDecisionOwnerOrchestrationError,
+) -> async_graphql::Error {
+    match error {
+        ReturnDecisionOwnerOrchestrationError::OrderCommand(source) => {
+            post_order_owner_graphql_error(
+                tenant_id,
+                resource_id,
+                "create_order_return_decision",
+                context,
+                source,
+            )
+        }
+        ReturnDecisionOwnerOrchestrationError::PaymentRead(source) => payment_owner_graphql_error(
+            tenant_id,
+            actor_id,
+            resource_id,
+            "list_payment_collection_projections",
+            "create_order_return_decision",
+            context,
+            source,
+        ),
+        ReturnDecisionOwnerOrchestrationError::PostOrder(source) => post_order_graphql_error(
+            tenant_id,
+            resource_id,
+            "create_order_return_decision",
+            source,
+        ),
+    }
 }
 
 fn order_change_graphql_error(
@@ -802,17 +904,30 @@ impl CommerceFulfillmentMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
-        let decision = post_order_orchestration_from_context(ctx, db.clone(), event_bus.clone())
-            .create_return_decision(
-                tenant_id,
-                auth.user_id,
-                order_id,
-                build_create_return_decision_input(input)?,
-            )
-            .await
-            .map_err(|error| {
-                post_order_graphql_error(tenant_id, order_id, "create_order_return_decision", error)
-            })?;
+        let context = order_post_order_command_context(
+            ctx,
+            tenant_id,
+            order_id,
+            "create_order_return_decision",
+        )?;
+        let decision =
+            return_decision_owner_orchestration_from_context(ctx, db.clone(), event_bus.clone())
+                .create_return_decision(
+                    context.clone(),
+                    tenant_id,
+                    order_id,
+                    build_create_return_decision_input(input)?,
+                )
+                .await
+                .map_err(|error| {
+                    return_decision_graphql_error(
+                        tenant_id,
+                        auth.user_id,
+                        order_id,
+                        &context,
+                        error,
+                    )
+                })?;
 
         Ok(decision.into())
     }
