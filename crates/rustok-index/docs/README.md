@@ -26,7 +26,8 @@ This directory contains the detailed technical architecture documentation for `r
 
 ## Reference Documents
 
-- [Current Implementation Plan — 2026-08-09](./implementation-plan-current-2026-08-09.md)
+- [Current Implementation Plan — 2026-08-12](./implementation-plan-current-2026-08-12.md)
+- [Previous Current Plan — 2026-08-09](./implementation-plan-current-2026-08-09.md)
 - [Maintainer Unblock Handoff — 2026-08-09](./maintainer-unblock-handoff-2026-08-09.md)
 - [Historical Milestone Plan](./implementation-plan.md)
 - [Source Module Integration Contract](./module-source-integration.md)
@@ -70,7 +71,7 @@ This directory contains the detailed technical architecture documentation for `r
 - [M6 Reconciliation Host Scheduler](./m6-reconciliation-host-scheduler.md)
 - [M6 Drift Finding Inspection](./m6-drift-finding-inspection.md)
 - [M6 Drift Digest Finding Writer](./m6-drift-finding-writer.md)
-- [M6 Bounded Drift Digest Producer](./m6-drift-digest-producer.md)
+- [M6 Bounded Drift Digest Producer](./m6-bounded-drift-digest-producer.md)
 - [M6 Locale-Optional Drift-Finding Scope](./m6-drift-finding-locale-scope.md)
 - [M6 PostgreSQL Drift Snapshot Reader](./m6-postgres-drift-snapshot-reader.md)
 - [M6 Reconciliation Dead-letter Admission](./m6-reconciliation-dead-letter-admission.md)
