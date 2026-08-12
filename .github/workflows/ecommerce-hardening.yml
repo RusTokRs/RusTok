@@ -24,32 +24,6 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  format-fix:
-    if: github.event_name == 'push' && github.ref_name == 'agent/commerce-return-decision-payment-owner-read-20260812'
-    name: Apply rustfmt to ecommerce slice
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - name: Format and push bounded Rust changes
-        run: |
-          cargo fmt --all
-          git add \
-            crates/rustok-commerce/src/controllers/admin/returns.rs \
-            crates/rustok-commerce/src/services/return_decision_owner_orchestration.rs
-          if git diff --cached --quiet; then
-            echo "No formatting changes required"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "style(commerce): apply rustfmt"
-          git push
-
   public-error-contracts:
     name: Checkout public error contracts
     runs-on: ubuntu-latest
