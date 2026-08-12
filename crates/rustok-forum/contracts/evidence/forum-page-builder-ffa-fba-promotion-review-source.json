@@ -1,0 +1,90 @@
+{
+  "format": "forum_page_builder_ffa_fba_promotion_review_source_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "module": "forum",
+  "wave": "1",
+  "predecessor": {
+    "format": "forum_page_builder_wave_observed_acceptance_v1",
+    "accepted_status": "owner_accepted_observed_control_plane_wave_promotion_review_pending",
+    "must_be_regular_non_symlink_file": true,
+    "maximum_bytes": 1048576,
+    "source_commit_must_equal_checkout_head": true,
+    "deployment_image_digest_must_be_canonical_repo_digest": true,
+    "owner_decision_must_equal": "accept_observed_wave_evidence",
+    "freshness_verifier_passed_at_owner_review_must_be_true": true,
+    "admission_lineage_verifier_passed_at_owner_review_must_be_true": true,
+    "wave_next_due_at_must_still_be_future_at_promotion_review": true,
+    "retrospective_review_must_not_have_mutated_rollout": true,
+    "retrospective_review_must_not_have_promoted_ffa_or_fba": true
+  },
+  "promotion_review": {
+    "runner": "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.mjs",
+    "owner_id_pattern": "^[A-Za-z0-9._-]{1,64}$",
+    "decisions": [
+      "approve_ffa_fba_promotion_review",
+      "reject"
+    ],
+    "targets": [
+      "ffa",
+      "fba"
+    ],
+    "approval_meaning": "approve_explicit_ffa_fba_control_plane_change_for_separate_execution",
+    "approval_is_not_control_plane_execution": true,
+    "approval_does_not_mutate_rollout": true,
+    "approval_does_not_promote_ffa_or_fba": true,
+    "owner_identity_is_operator_assertion": true,
+    "cryptographic_signature_required": false,
+    "free_text_reason_retained": false
+  },
+  "output": {
+    "format": "forum_page_builder_ffa_fba_promotion_review_v1",
+    "approved_status": "owner_approved_ffa_fba_promotion_review_execution_pending",
+    "rejected_status": "owner_rejected_ffa_fba_promotion_review",
+    "default_path": "target/forum-page-builder-ffa-fba-promotion-review.json",
+    "atomic_replace": true,
+    "observed_acceptance_sha256_retained": true,
+    "source_commit_retained": true,
+    "deployment_image_digest_retained": true,
+    "wave_created_at_retained": true,
+    "wave_next_due_at_retained": true,
+    "promotion_owner_id_retained": true,
+    "promotion_decision_retained": true,
+    "raw_input_path_retained": false,
+    "raw_metrics_traces_or_forum_content_retained": false
+  },
+  "execution_boundary": {
+    "approved_review_is_required_before_ffa_fba_control_plane_change": true,
+    "approved_review_does_not_execute_control_plane_change": true,
+    "approved_review_does_not_mutate_pages_or_forum_persistence": true,
+    "approved_review_does_not_assert_current_provider_health": true,
+    "approved_review_does_not_claim_cryptographic_origin_to_repo_digest_binding": true,
+    "actual_ffa_fba_promotion_remains_separate_maintainer_execution": true
+  },
+  "non_claims": {
+    "live_pages_gate_executed_by_this_slice": false,
+    "live_forum_browser_runtime_serverfn_executed_by_this_slice": false,
+    "observed_control_plane_wave_executed_by_this_slice": false,
+    "observed_wave_owner_acceptance_executed_by_this_slice": false,
+    "promotion_review_executed": false,
+    "control_plane_or_rollout_mutated": false,
+    "current_provider_health_asserted": false,
+    "cryptographic_deployment_binding_claimed": false,
+    "forum_wave_promoted": false,
+    "ffa_promoted": false,
+    "fba_promoted": false
+  },
+  "required_source_files": [
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json",
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json",
+    "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.mjs",
+    "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.test.mjs",
+    "scripts/verify/verify-forum-page-builder-ffa-fba-promotion-review.mjs",
+    "docs/modules/forum-page-builder-ffa-fba-promotion-review-actualization-2026-08-12.md"
+  ],
+  "next_cursor": {
+    "live_pages_forum_and_observed_wave_evidence": "maintainer_execution_pending",
+    "forum_wave_owner_acceptance": "maintainer_execution_pending",
+    "ffa_fba_promotion_review": "source_ready_blocked_on_accepted_observed_wave_evidence",
+    "ffa_fba_control_plane_promotion": "blocked_on_approved_promotion_review"
+  }
+}
