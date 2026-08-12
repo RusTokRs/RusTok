@@ -100,7 +100,7 @@ for (const key of [
   "reference_candidate_live_execution_claimed",
   "observed_health_live_execution_claimed",
   "owner_gate_decision_from_live_evidence_claimed",
-  "rollback_action_executed": false,
+  "rollback_action_executed",
   "canonical_source_mutated",
   "current_provider_health_asserted",
   "pages_reference_consumer_gate_accepted_in_source",
@@ -152,7 +152,7 @@ for (const marker of [
   "reference candidate provider_health must remain unobserved",
   "observed-health acceptance deployment digest differs from reference candidate",
   "observed-health acceptance must remain retrospective",
-  "observed-health aceptance gate boundary drifted",
+  "observed-health acceptance gate boundary drifted",
   "rmSync(testRoot, { recursive: true, force: true })",
 ]) {
   need(sources.test, marker, "gate owner-runner synthetic test");
