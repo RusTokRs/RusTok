@@ -185,7 +185,7 @@ for (const forbidden of [
   'pull-requests: write',
   'persist-credentials: true',
   'RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED',
-  'DATABASE_URL:',
+  'secrets.DATABASE_URL',
   '127.0.0.1:8090',
 ]) {
   if (runner.includes(forbidden)) {
