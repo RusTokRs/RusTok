@@ -52,6 +52,8 @@ pub enum ModuleOperationStoreError {
     Database(String),
     #[error("module `{0}` is not enabled for this tenant")]
     ModuleNotEnabled(String),
+    #[error("module `{0}` settings changed since the expected snapshot")]
+    SettingsConflict(String),
     #[error("module operation idempotency key was reused for a different command")]
     IdempotencyConflict,
     #[error("module operation idempotency key is required")]
@@ -86,6 +88,15 @@ pub struct TenantModuleSettingsRequest {
     pub settings: serde_json::Value,
     pub is_core: bool,
     pub is_effectively_enabled: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TenantModuleSettingsCompareAndSwapRequest {
+    pub tenant_id: Uuid,
+    pub module_slug: String,
+    pub expected_enabled: bool,
+    pub expected_settings: serde_json::Value,
+    pub settings: serde_json::Value,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -576,6 +587,66 @@ impl TenantModuleStateStore {
             settings,
         })
     }
+
+    /// Atomically replaces one existing tenant module settings value only while both the
+    /// enablement bit and complete settings snapshot still equal the caller's reviewed state.
+    /// This owner primitive is intended for durable control-plane transitions that must not
+    /// overwrite a concurrent toggle or settings mutation.
+    pub(crate) async fn persist_settings_if_current<C: ConnectionTrait>(
+        db: &C,
+        request: TenantModuleSettingsCompareAndSwapRequest,
+    ) -> Result<TenantModuleSettingsRecord, ModuleOperationStoreError> {
+        let backend = db.get_database_backend();
+        let select = match backend {
+            DbBackend::Postgres => {
+                "SELECT id FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
+            }
+            _ => {
+                "SELECT id FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+            }
+        };
+        let Some(row) = db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                select,
+                vec![request.tenant_id.into(), request.module_slug.clone().into()],
+            ))
+            .await
+            .map_err(database_error)?
+        else {
+            return Err(ModuleOperationStoreError::ModuleNotEnabled(
+                request.module_slug,
+            ));
+        };
+        let id: Uuid = row.try_get("", "id").map_err(database_error)?;
+        let result = db
+            .execute(Statement::from_sql_and_values(
+                backend,
+                render_parameters(
+                    "UPDATE tenant_modules SET settings = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2} AND enabled = {3} AND settings = {4}",
+                    backend,
+                ),
+                vec![
+                    json_value(request.settings.clone()),
+                    id.into(),
+                    request.expected_enabled.into(),
+                    json_value(request.expected_settings),
+                ],
+            ))
+            .await
+            .map_err(database_error)?;
+        if result.rows_affected() != 1 {
+            return Err(ModuleOperationStoreError::SettingsConflict(
+                request.module_slug,
+            ));
+        }
+        Ok(TenantModuleSettingsRecord {
+            id,
+            module_slug: request.module_slug,
+            enabled: request.expected_enabled,
+            settings: request.settings,
+        })
+    }
 }
 
 fn json_value(value: serde_json::Value) -> sea_orm::Value {
@@ -637,6 +708,24 @@ mod tests {
         database
     }
 
+    async fn stored_settings(
+        database: &sea_orm::DatabaseConnection,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> serde_json::Value {
+        database
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT settings FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2",
+                vec![tenant_id.into(), module_slug.into()],
+            ))
+            .await
+            .expect("read settings")
+            .expect("settings row")
+            .try_get("", "settings")
+            .expect("settings json")
+    }
+
     #[tokio::test]
     async fn settings_persistence_enforces_effective_enablement_and_keeps_core_enabled() {
         let database = database().await;
@@ -690,5 +779,142 @@ mod tests {
         assert_eq!(updated.module_slug, "modules");
         assert!(updated.enabled);
         assert_eq!(updated.settings, json!({ "value": 3 }));
+    }
+
+    #[tokio::test]
+    async fn settings_compare_and_swap_updates_exact_snapshot() {
+        let database = database().await;
+        let tenant_id = Uuid::new_v4();
+        let initial = json!({ "builder": { "enabled": false }, "other": 1 });
+        let promoted = json!({ "builder": { "enabled": true }, "other": 1 });
+        let seeded = TenantModuleStateStore::persist_settings(
+            &database,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "pages".to_string(),
+                settings: initial.clone(),
+                is_core: false,
+                is_effectively_enabled: true,
+            },
+        )
+        .await
+        .expect("seed pages settings");
+
+        let updated = TenantModuleStateStore::persist_settings_if_current(
+            &database,
+            TenantModuleSettingsCompareAndSwapRequest {
+                tenant_id,
+                module_slug: "pages".to_string(),
+                expected_enabled: true,
+                expected_settings: initial,
+                settings: promoted.clone(),
+            },
+        )
+        .await
+        .expect("compare-and-swap settings");
+
+        assert_eq!(updated.id, seeded.id);
+        assert!(updated.enabled);
+        assert_eq!(updated.settings, promoted);
+        assert_eq!(stored_settings(&database, tenant_id, "pages").await, promoted);
+    }
+
+    #[tokio::test]
+    async fn settings_compare_and_swap_rejects_stale_settings_without_overwrite() {
+        let database = database().await;
+        let tenant_id = Uuid::new_v4();
+        let initial = json!({ "builder": { "enabled": false }, "other": 1 });
+        let concurrent = json!({ "builder": { "enabled": false }, "other": 2 });
+        let promoted = json!({ "builder": { "enabled": true }, "other": 1 });
+        TenantModuleStateStore::persist_settings(
+            &database,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "pages".to_string(),
+                settings: initial.clone(),
+                is_core: false,
+                is_effectively_enabled: true,
+            },
+        )
+        .await
+        .expect("seed pages settings");
+        TenantModuleStateStore::persist_settings(
+            &database,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "pages".to_string(),
+                settings: concurrent.clone(),
+                is_core: false,
+                is_effectively_enabled: true,
+            },
+        )
+        .await
+        .expect("concurrent settings write");
+
+        let result = TenantModuleStateStore::persist_settings_if_current(
+            &database,
+            TenantModuleSettingsCompareAndSwapRequest {
+                tenant_id,
+                module_slug: "pages".to_string(),
+                expected_enabled: true,
+                expected_settings: initial,
+                settings: promoted,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(ModuleOperationStoreError::SettingsConflict(module_slug)) if module_slug == "pages"
+        ));
+        assert_eq!(stored_settings(&database, tenant_id, "pages").await, concurrent);
+    }
+
+    #[tokio::test]
+    async fn settings_compare_and_swap_rejects_enabled_drift_without_overwrite() {
+        let database = database().await;
+        let tenant_id = Uuid::new_v4();
+        let initial = json!({ "builder": { "enabled": false }, "other": 1 });
+        let promoted = json!({ "builder": { "enabled": true }, "other": 1 });
+        TenantModuleStateStore::persist_settings(
+            &database,
+            TenantModuleSettingsRequest {
+                tenant_id,
+                module_slug: "pages".to_string(),
+                settings: initial.clone(),
+                is_core: false,
+                is_effectively_enabled: true,
+            },
+        )
+        .await
+        .expect("seed pages settings");
+        TenantModuleStateStore::persist(
+            &database,
+            TenantModuleStateRequest {
+                tenant_id,
+                module_slug: "pages".to_string(),
+                enabled: false,
+            },
+        )
+        .await
+        .expect("concurrent disable");
+
+        let result = TenantModuleStateStore::persist_settings_if_current(
+            &database,
+            TenantModuleSettingsCompareAndSwapRequest {
+                tenant_id,
+                module_slug: "pages".to_string(),
+                expected_enabled: true,
+                expected_settings: initial.clone(),
+                settings: promoted,
+            },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(ModuleOperationStoreError::SettingsConflict(module_slug)) if module_slug == "pages"
+        ));
+        assert_eq!(stored_settings(&database, tenant_id, "pages").await, initial);
     }
 }
