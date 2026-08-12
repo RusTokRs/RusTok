@@ -37,6 +37,7 @@ try {
   const tooling = read('scripts/verify/index-storage-tooling.mjs');
   const runbook = read('crates/rustok-index/docs/partition-full-capture.md');
   const plan = read('crates/rustok-index/docs/implementation-plan.md');
+  const normalizedPlan = plan.replace(/\s+/gu, ' ');
   const readme = read('crates/rustok-index/README.md');
   const m3Start = plan.indexOf('### M3 - PostgreSQL storage engine');
   const retainedStart = plan.indexOf('#### Retained repository contract wording');
@@ -62,7 +63,7 @@ try {
     'refusing to overwrite',
   ], 'capture finalizer');
   requireMarkers(binary, [
-    'PartitionCaptureFinalizeConfig::from_env()',
+    'PartitionSnapshotConfig::from_env()',
     'finalize_partition_capture',
   ], 'capture finalizer binary');
   requireMarkers(cargo, [
@@ -309,8 +310,10 @@ try {
     '14. The retained bundle review inspects exactly nine authoritative files,',
     '15. The archive tooling emits a deterministic admitted-only manifest outside the',
     '16. Retained verification binds every authoritative file and required directory',
-    'one retained admitted packet, server/consumer query-port composition',
   ], 'Index implementation plan');
+  if (!normalizedPlan.includes('one retained admitted packet, live PostgreSQL/reference equivalence')) {
+    throw new Error('Index implementation plan must keep retained packet and live PostgreSQL/reference equivalence open');
+  }
   requireExactlyOnce(
     primaryM3Checklist,
     '- [ ] Execute one fresh full PostgreSQL capture and retain all six raw artifacts,',
