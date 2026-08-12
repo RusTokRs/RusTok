@@ -11,6 +11,23 @@ Term identity is locale-independent. Locale normalization and fallback use the
 shared content contract. New consumers must attach terms through an explicit
 owner-module relation table.
 
+Localized public route keys have one lookup namespace per
+`tenant + kind + scope + locale`: a translation slug on one term cannot be
+shadowed by an alias on another term, and vice versa. Public module lookup
+prefers the module scope over the global scope, follows requested locale ->
+explicit fallback -> platform fallback, and does not resolve deprecated terms.
+The transaction-aware owner helper may still reuse an existing deprecated term
+identity; reactivation/replacement is an owner lifecycle decision rather than a
+public-route lookup side effect.
+
+Category hierarchy is deliberately outside the shared dictionary contract.
+Parent/child category edges, ordering, cycle rules, and domain-specific category
+metadata belong to the module that owns the category aggregate and its public
+contract. Taxonomy must not acquire a generic `parent_id`, category tree, or
+polymorphic relation table merely to centralize hierarchy. If a future domain
+needs a shared hierarchical vocabulary, that requires a separate demonstrated
+kind/ownership decision and explicit migration contract.
+
 `TaxonomyTranslationTargetProvider` is registered by server composition as
 `taxonomy/term`. It exposes exact source/target snapshots for `name`, `slug`,
 and optional `description`; applies one target locale through resource/source/
@@ -40,9 +57,13 @@ not claim a global `translation.target.changed` event contract.
 
 2. **Expand kinds and lookup semantics only for demonstrated domain pressure.**
    Do not add speculative vocabulary kinds or polymorphic attachment storage.
+   The current tag lookup baseline requires locale-aware slug/alias uniqueness,
+   module-before-global precedence, shared locale fallback, and active-only
+   public resolution. Category parent/child hierarchy remains owner-domain
+   state rather than an implicit taxonomy kind.
    **Depends on:** a concrete domain requirement and scope decision.
-   **Done when:** canonical-key, alias/slug, tenant, module-scope, and locale
-   fallback semantics are defined and tested.
+   **Done when:** canonical-key, alias/slug, tenant, module-scope, locale,
+   lifecycle, and any newly demonstrated kind semantics are defined and tested.
 
 3. **Maintain dictionary operational guidance.** Add documentation and runbooks
    when a changed vocabulary contract introduces drift or integration recovery
@@ -62,13 +83,16 @@ not claim a global `translation.target.changed` event contract.
 
 - `cargo xtask module validate taxonomy`
 - `cargo xtask module test taxonomy`
-- Targeted term CRUD, alias lookup, scope restriction, locale fallback, and
-  consumer-integration tests.
+- Targeted term CRUD, cross slug/alias collision, scope restriction, active-only
+  route resolution, locale fallback, and consumer-integration tests.
 - `cargo test -p rustok-taxonomy --lib`
 
 ## Change rules
 
 1. Keep dictionary terms and scope policy in this module.
-2. Update local docs, `rustok-module.toml`, and consumer docs with a taxonomy
+2. Keep parent/child category hierarchy, ordering, cycle validation, and
+   domain-specific category metadata with the owning module unless an explicit
+   shared-hierarchy ADR changes ownership.
+3. Update local docs, `rustok-module.toml`, and consumer docs with a taxonomy
    contract change.
-3. Update `docs/modules/registry.md` with any ownership or module-status change.
+4. Update `docs/modules/registry.md` with any ownership or module-status change.
