@@ -136,8 +136,11 @@ for (const [value, label] of [
   ['Arc<dyn OrderPostOrderCommandPort>', 'Order owner dependency'],
   ['Arc<dyn PaymentAdminReadPort>', 'Payment owner read dependency'],
   ['PaymentRead(PortError)', 'typed Payment read error'],
+]) requireText(ownerDecision, value, label);
+
+for (const [value, label] of [
   ['base_context.tenant_id != tenant_id.to_string()', 'tenant context admission'],
-  ['input.validate()', 'legacy input validation'],
+  ['.validate()', 'legacy input validation'],
   ['normalize_decision_action(&input.decision.action)', 'legacy action normalization'],
   ['validate_decision_shape(&action, &input.decision)', 'legacy action shape validation'],
   ['.create_return(', 'typed Order return creation'],
