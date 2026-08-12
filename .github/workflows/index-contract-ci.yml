@@ -13,10 +13,12 @@ on:
       - "crates/rustok-distribution/src/product_variant_index.rs"
       - "apps/server/src/services/product_index_refresh_worker.rs"
       - "apps/server/src/services/server_bootstrap.rs"
+      - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
       - "scripts/verify/verify-event-contract-digest-admission.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
+      - "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
       - ".github/workflows/index-contract-ci.yml"
@@ -34,10 +36,12 @@ on:
       - "crates/rustok-distribution/src/product_variant_index.rs"
       - "apps/server/src/services/product_index_refresh_worker.rs"
       - "apps/server/src/services/server_bootstrap.rs"
+      - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
       - "scripts/verify/verify-event-contract-digest-admission.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
+      - "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
       - ".github/workflows/index-contract-ci.yml"
@@ -76,6 +80,8 @@ jobs:
         run: node scripts/verify/verify-index-product-refresh-delivery.mjs
       - name: Verify Product Index refresh host consumer
         run: node scripts/verify/verify-index-product-refresh-host-consumer.mjs
+      - name: Verify Product Index refresh redelivery evidence source
+        run: node scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
 
   canonical-digest:
     name: Canonical event digest drift
@@ -117,6 +123,8 @@ jobs:
         run: cargo check --locked -p rustok-distribution --features mod-product --lib
       - name: Check Product refresh host consumer composition
         run: cargo check --locked -p rustok-server --no-default-features --features mod-product --lib
+      - name: Check Product refresh PostgreSQL/Iggy evidence harness
+        run: cargo check --locked -p rustok-server --no-default-features --features mod-product --test product_index_refresh_redelivery_postgres_iggy
       - name: Verify canonical event contract test
         run: cargo test --locked -p rustok-events --test canonical_contracts
       - name: Verify generic source refresh commit-before-ack contract

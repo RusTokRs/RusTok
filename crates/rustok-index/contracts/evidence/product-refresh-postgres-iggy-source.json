@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "module": "rustok-index",
+  "packet": "product-refresh-postgres-iggy-source",
+  "status": "source_ready_maintainer_execution_pending",
+  "execution_scope": "opt_in_external_iggy_postgresql_runtime_execution_pending",
+  "test": "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs",
+  "verifier": "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs",
+  "database_url_env": "RUSTOK_INDEX_PRODUCT_REFRESH_TEST_DATABASE_URL",
+  "iggy_address_env": "RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_ADDRESS",
+  "iggy_username_env": "RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_USERNAME",
+  "iggy_password_env": "RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD",
+  "database_url_fallback": null,
+  "consumer_group": "rustok-product-index-refresh",
+  "topic": "domain",
+  "delivery_profile": "outbox_iggy",
+  "runtime_flag": "RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED",
+  "runtime_flag_default": "off",
+  "commands": [
+    {
+      "program": "node",
+      "args": [
+        "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
+      ]
+    },
+    {
+      "program": "cargo",
+      "args": [
+        "test",
+        "--locked",
+        "-p",
+        "rustok-server",
+        "--no-default-features",
+        "--features",
+        "mod-product",
+        "--test",
+        "product_index_refresh_redelivery_postgres_iggy",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ]
+    }
+  ],
+  "required_cases": [
+    {
+      "case": "locale_postgres_commit_precedes_broker_ack_and_restart_deduplicates",
+      "assertions": [
+        "canonical_locale_contract_published_through_iggy_transport",
+        "production_product_source_loaded",
+        "postgres_index_entity_and_applied_inbox_visible_after_injected_ack_failure",
+        "same_iggy_offset_and_raw_payload_redelivered_after_restart",
+        "redelivery_returns_durable_inbox_duplicate",
+        "one_applied_inbox_identity_remains"
+      ]
+    },
+    {
+      "case": "variant_follows_acknowledged_locale_on_same_group",
+      "assertions": [
+        "variant_delivery_offset_advances_after_locale_ack",
+        "production_product_variant_source_loaded",
+        "nonlocalized_product_variant_entity_materialized",
+        "variant_inbox_identity_applied_once"
+      ]
+    },
+    {
+      "case": "behind_authoritative_source_remains_unacknowledged_across_restart",
+      "assertions": [
+        "event_minimum_source_version_exceeds_current_owner_source",
+        "source_version_behind_fails_before_index_inbox_insert",
+        "same_iggy_offset_and_raw_payload_redelivered_after_restart"
+      ]
+    }
+  ],
+  "non_claims": [
+    "no_postgresql_iggy_distributed_transaction",
+    "no_physical_exactly_once_broker_delivery",
+    "no_product_specific_dlq_protocol",
+    "no_partition_wide_replay_or_storefront_cutover",
+    "no_multi_replica_rebalance_evidence",
+    "no_tls_auth_or_failover_evidence",
+    "source_ready_is_not_runtime_execution"
+  ],
+  "evidence_status": "runtime_execution_pending"
+}
