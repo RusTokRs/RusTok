@@ -692,7 +692,7 @@ fn is_managed_link(metadata: &std::fs::Metadata) -> bool {
         // Directory junctions are reparse points but are not guaranteed to be
         // reported as symbolic links by every Windows filesystem/provider.
         const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
-        return metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
     }
     #[cfg(not(windows))]
     false
