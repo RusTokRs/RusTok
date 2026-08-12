@@ -49,6 +49,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
+      - name: Compile-list Page Builder accessibility evidence harness
+        if: matrix.app == 'apps/next-admin'
+        run: npx --no-install playwright test --config=playwright.page-builder-accessibility.config.ts --list
       - name: Run Playwright smoke tests
         run: npm run test:e2e
       - name: Verify Fly GrapesJS browser captures
