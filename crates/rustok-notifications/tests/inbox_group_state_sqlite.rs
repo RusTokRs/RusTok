@@ -3,8 +3,8 @@ use rustok_core::MigrationSource;
 use rustok_notifications::entities::{delivery_attempt, notification};
 use rustok_notifications::model::{NotificationPriorityValue, NotificationState};
 use rustok_notifications::{
-    MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES, MAX_NOTIFICATION_INBOX_PAGE_SIZE,
-    NotificationError, NotificationInboxGroupStateAction, NotificationInboxGroupStateRequest,
+    MAX_NOTIFICATION_INBOX_GROUP_KEY_BYTES, MAX_NOTIFICATION_INBOX_PAGE_SIZE, NotificationError,
+    NotificationInboxGroupStateAction, NotificationInboxGroupStateRequest,
     NotificationInboxGroupStateService, NotificationsModule,
 };
 use sea_orm::{
@@ -434,8 +434,7 @@ async fn seed_notification(
     let seen_at = matches!(state, NotificationState::Seen | NotificationState::Read)
         .then_some(created_at.to_owned());
     let read_at = matches!(state, NotificationState::Read).then_some(created_at.to_owned());
-    let archived_at =
-        matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
+    let archived_at = matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
     notification::ActiveModel {
         id: Set(notification_id),
         tenant_id: Set(tenant_id),

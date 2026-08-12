@@ -482,9 +482,10 @@ impl SecurityAudit {
 
         // Flush remaining events when channel closes
         if let Some(ref exp) = exporter
-            && !batch.is_empty() {
-                exp.send_batch(&batch).await;
-            }
+            && !batch.is_empty()
+        {
+            exp.send_batch(&batch).await;
+        }
     }
 
     /// Run processor for a single event (for testing)

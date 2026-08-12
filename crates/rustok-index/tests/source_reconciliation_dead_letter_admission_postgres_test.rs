@@ -11,9 +11,9 @@ use std::{
 use async_trait::async_trait;
 use rustok_core::MigrationSource;
 use rustok_index::{
-    EntityName, FieldCardinality, FieldName, IndexField, IndexModule,
-    IndexReconciliationRunError, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
-    IndexSchema, IndexSchemaSourceCatalog, IndexSource, IndexSourceCatalog, IndexSourceFailure,
+    EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexReconciliationRunError,
+    IndexReconciliationRunRequest, IndexReconciliationRunStatus, IndexSchema,
+    IndexSchemaSourceCatalog, IndexSource, IndexSourceCatalog, IndexSourceFailure,
     IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
     IndexValueType, LocaleMode, ModuleName, PostgresIndexReconciliationRunner, SchemaRef,
     SchemaRegistry, SchemaVersion,
@@ -47,10 +47,8 @@ impl IndexSource for CountedFailingSource {
         _request: IndexSourceScanRequest,
     ) -> Result<IndexSourcePage, IndexSourceFailure> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        Err(
-            IndexSourceFailure::permanent(DEPENDENCY_CODE)
-                .expect("fixture dependency code must be valid"),
-        )
+        Err(IndexSourceFailure::permanent(DEPENDENCY_CODE)
+            .expect("fixture dependency code must be valid"))
     }
 
     async fn load(
@@ -214,7 +212,10 @@ async fn failed_reconciliation_scope_blocks_new_jobs_without_exposing_details() 
     assert_eq!(retained.state, "failed");
     assert_eq!(retained.attempt_count, 1);
     assert_eq!(retained.last_error_code, PAGE_FAILURE_CODE);
-    assert_eq!(retained.last_error_details, json!({ "private": PRIVATE_MARKER }));
+    assert_eq!(
+        retained.last_error_details,
+        json!({ "private": PRIVATE_MARKER })
+    );
     assert!(retained.lease_released);
     assert!(retained.completed);
     assert_eq!(count(&evidence_db, "index_jobs").await?, 1);
@@ -224,10 +225,7 @@ async fn failed_reconciliation_scope_blocks_new_jobs_without_exposing_details() 
     database.cleanup().await
 }
 
-fn runner(
-    db: DatabaseConnection,
-    calls: Arc<AtomicUsize>,
-) -> PostgresIndexReconciliationRunner {
+fn runner(db: DatabaseConnection, calls: Arc<AtomicUsize>) -> PostgresIndexReconciliationRunner {
     let schema = schema();
     let mut schema_catalog = IndexSchemaSourceCatalog::new();
     schema_catalog
@@ -356,7 +354,9 @@ async fn replace_private_failure_details(
         ))
         .await?;
     if updated.rows_affected() != 1 {
-        return Err(std::io::Error::other("failed reconciliation details update lost scope").into());
+        return Err(
+            std::io::Error::other("failed reconciliation details update lost scope").into(),
+        );
     }
     Ok(())
 }

@@ -215,8 +215,8 @@ mod owner_execution_boundary {
 }
 
 mod rustok_api_shim {
-    pub use ::rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind};
     pub(crate) use super::owner_execution_boundary::BoundaryPortError as PortError;
+    pub use ::rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind};
 }
 
 mod rustok_fulfillment_shim {

@@ -10,7 +10,9 @@ use rustok_api::{
 use rustok_core::{PermissionScope, security_context_from_access_token};
 use rustok_pages::{PagesMutation, PagesQuery};
 use rustok_test_utils::mock_transactional_event_bus;
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -245,13 +247,12 @@ async fn graphql_repair_requests_enforce_tenant_manage_and_static_validation() -
 
     for (query, variables) in [
         (REBUILD_MUTATION, rebuild_variables(Uuid::new_v4(), None)),
-        (ACTIVATE_MUTATION, activation_variables(Uuid::new_v4(), None)),
+        (
+            ACTIVATE_MUTATION,
+            activation_variables(Uuid::new_v4(), None),
+        ),
     ] {
-        let schema = graphql_schema(
-            db.clone(),
-            tenant(tenant_id),
-            auth(tenant_id, Vec::new()),
-        );
+        let schema = graphql_schema(db.clone(), tenant(tenant_id), auth(tenant_id, Vec::new()));
         let (code, message) = graphql_error(
             schema
                 .execute(GraphqlRequest::new(query).variables(variables))
@@ -294,8 +295,7 @@ async fn graphql_repair_requests_enforce_tenant_manage_and_static_validation() -
 async fn http_repair_requests_enforce_tenant_manage_and_static_validation() -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_graphql_db(tenant_id).await?;
-    let host = HostRuntimeContext::new(db)
-        .with_shared_value(mock_transactional_event_bus());
+    let host = HostRuntimeContext::new(db).with_shared_value(mock_transactional_event_bus());
     let app = rustok_pages::http::axum_router(&host)?;
 
     for (path, body) in [

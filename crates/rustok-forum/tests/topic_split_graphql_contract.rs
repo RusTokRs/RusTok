@@ -33,7 +33,10 @@ fn graphql_schema_exposes_idempotent_topic_split_command() {
         "solutionReplyId",
         "splitAt",
     ] {
-        assert!(sdl.contains(marker), "missing GraphQL split marker {marker}");
+        assert!(
+            sdl.contains(marker),
+            "missing GraphQL split marker {marker}"
+        );
     }
 }
 

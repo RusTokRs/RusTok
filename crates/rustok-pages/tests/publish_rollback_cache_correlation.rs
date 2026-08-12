@@ -101,12 +101,7 @@ impl PagesCacheReadPort for CorrelatingCachePort {
             .cloned())
     }
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        _ttl: Duration,
-    ) -> Result<(), PageCacheError> {
+    async fn put(&self, key: String, value: Vec<u8>, _ttl: Duration) -> Result<(), PageCacheError> {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -152,10 +147,7 @@ async fn published_event_rotates_generations_and_forces_storefront_and_artifact_
         .await
         .unwrap();
     assert_eq!(
-        reads
-            .get_json::<Value>(&old_storefront_key)
-            .await
-            .unwrap(),
+        reads.get_json::<Value>(&old_storefront_key).await.unwrap(),
         Some(old_storefront.clone())
     );
     assert_eq!(
@@ -213,10 +205,7 @@ async fn published_event_rotates_generations_and_forces_storefront_and_artifact_
     assert_ne!(new_storefront_key, old_storefront_key);
     assert_ne!(new_artifact_key, old_artifact_key);
     assert_eq!(
-        reads
-            .get_json::<Value>(&new_storefront_key)
-            .await
-            .unwrap(),
+        reads.get_json::<Value>(&new_storefront_key).await.unwrap(),
         None
     );
     assert_eq!(
@@ -235,10 +224,7 @@ async fn published_event_rotates_generations_and_forces_storefront_and_artifact_
         .await
         .unwrap();
     assert_eq!(
-        reads
-            .get_json::<Value>(&new_storefront_key)
-            .await
-            .unwrap(),
+        reads.get_json::<Value>(&new_storefront_key).await.unwrap(),
         Some(refilled_storefront)
     );
     assert_eq!(
@@ -247,10 +233,7 @@ async fn published_event_rotates_generations_and_forces_storefront_and_artifact_
     );
 
     assert_eq!(
-        reads
-            .get_json::<Value>(&old_storefront_key)
-            .await
-            .unwrap(),
+        reads.get_json::<Value>(&old_storefront_key).await.unwrap(),
         Some(old_storefront)
     );
     assert_eq!(

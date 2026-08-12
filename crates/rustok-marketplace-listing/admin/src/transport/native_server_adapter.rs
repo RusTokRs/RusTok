@@ -442,9 +442,7 @@ async fn native_request(
     let module_enabled =
         rustok_api::is_tenant_module_enabled(host.db(), tenant.id, "marketplace_listing")
             .await
-            .map_err(|error| {
-                map_module_availability_error(action, tenant.id, &request, error)
-            })?;
+            .map_err(|error| map_module_availability_error(action, tenant.id, &request, error))?;
     if !module_enabled {
         return Err(ServerFnError::new(
             "Marketplace listing module is not enabled for this tenant",

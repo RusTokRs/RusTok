@@ -185,8 +185,7 @@ fn normalize_route_slug(value: &str) -> Option<String> {
         }
     }
     let normalized = normalized.trim_matches('-').to_string();
-    (!normalized.is_empty() && normalized.len() <= MAX_FORUM_ROUTE_SLUG_LEN)
-        .then_some(normalized)
+    (!normalized.is_empty() && normalized.len() <= MAX_FORUM_ROUTE_SLUG_LEN).then_some(normalized)
 }
 
 pub fn topic_status_class(status: &str) -> &'static str {
@@ -225,11 +224,7 @@ mod tests {
         assert_eq!(category_href("en", "---"), None);
         assert_eq!(topic_href("topic-1", "en", "welcome"), None);
         assert_eq!(
-            topic_href(
-                "12345678-9abc-4def-8123-456789abcdef",
-                "en",
-                "---"
-            ),
+            topic_href("12345678-9abc-4def-8123-456789abcdef", "en", "---"),
             None
         );
     }

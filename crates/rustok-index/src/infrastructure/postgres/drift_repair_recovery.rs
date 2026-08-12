@@ -13,11 +13,10 @@ use crate::{
     IndexDriftRepairCommand, IndexDriftRepairCompletion, IndexDriftRepairFailure,
     IndexDriftRepairFinding, IndexDriftRepairOwner, IndexDriftRepairOwnerOutcome,
     IndexDriftRepairRecoveryAction, IndexDriftRepairRecoveryFailure,
-    IndexDriftRepairRecoveryReceipt, IndexDriftRepairRecoveryState,
-    IndexDriftRepairRecoveryStore, IndexDriftRepairRecoveryStoreOutcome,
-    IndexDriftRepairReservationOutcome, IndexDriftRepairStore,
-    IndexDriftRepairStoreCompletionOutcome, IndexDriftRepairTarget, IndexDriftRepairTargetKind,
-    IndexDriftRepairTicket, LinkedEntityKey, LocaleKey, SchemaRef,
+    IndexDriftRepairRecoveryReceipt, IndexDriftRepairRecoveryState, IndexDriftRepairRecoveryStore,
+    IndexDriftRepairRecoveryStoreOutcome, IndexDriftRepairReservationOutcome,
+    IndexDriftRepairStore, IndexDriftRepairStoreCompletionOutcome, IndexDriftRepairTarget,
+    IndexDriftRepairTargetKind, IndexDriftRepairTicket, LinkedEntityKey, LocaleKey, SchemaRef,
 };
 
 const COMMAND_TABLE: &str = "index_consistency_finding_repair_commands";
@@ -50,12 +49,8 @@ impl PostgresIndexDriftRepairRecoveryStore {
     ) -> Result<IndexDriftRepairRecoveryStoreOutcome, IndexDriftRepairRecoveryFailure> {
         let command = authorized.command();
         lock_command_recovery(transaction, command.tenant_id(), command.command_id()).await?;
-        let Some(stored_command) = load_command_identity(
-            transaction,
-            command.tenant_id(),
-            command.command_id(),
-        )
-        .await?
+        let Some(stored_command) =
+            load_command_identity(transaction, command.tenant_id(), command.command_id()).await?
         else {
             return Ok(IndexDriftRepairRecoveryStoreOutcome::NotFound);
         };
@@ -87,17 +82,11 @@ impl PostgresIndexDriftRepairRecoveryStore {
             ));
         }
 
-        let latest = load_latest_decision(
-            transaction,
-            command.tenant_id(),
-            command.command_id(),
-        )
-        .await?;
+        let latest =
+            load_latest_decision(transaction, command.tenant_id(), command.command_id()).await?;
         let current_revision = latest.as_ref().map(|value| value.revision);
         if current_revision != command.expected_revision() {
-            return Ok(IndexDriftRepairRecoveryStoreOutcome::StaleRevision {
-                current_revision,
-            });
+            return Ok(IndexDriftRepairRecoveryStoreOutcome::StaleRevision { current_revision });
         }
         let current_state = latest.as_ref().map(|value| value.state);
         let next_state = match (command.action(), current_state) {
@@ -262,8 +251,7 @@ impl RecoveryAwareIndexDriftRepairStore {
             else {
                 return Ok(());
             };
-            if stored.finding_id != command.finding_id()
-                || stored.payload_digest != payload_digest
+            if stored.finding_id != command.finding_id() || stored.payload_digest != payload_digest
             {
                 return Err(permanent_repair_failure(COMMAND_ID_CONFLICT));
             }
@@ -273,12 +261,8 @@ impl RecoveryAwareIndexDriftRepairStore {
             if stored.state != "prepared" {
                 return Err(permanent_repair_failure(STORED_CONTRACT_INVALID));
             }
-            require_active_repair_state(
-                &transaction,
-                command.tenant_id(),
-                command.command_id(),
-            )
-            .await
+            require_active_repair_state(&transaction, command.tenant_id(), command.command_id())
+                .await
         }
         .await;
         finish_repair_transaction(transaction, result).await
@@ -313,12 +297,9 @@ impl RecoveryAwareIndexDriftRepairStore {
             {
                 return Err(permanent_repair_failure(STORED_CONTRACT_INVALID));
             }
-            if let Some(latest) = load_latest_decision_repair(
-                &transaction,
-                command.tenant_id(),
-                command.command_id(),
-            )
-            .await?
+            if let Some(latest) =
+                load_latest_decision_repair(&transaction, command.tenant_id(), command.command_id())
+                    .await?
             {
                 return match latest.state {
                     IndexDriftRepairRecoveryState::Active => Ok(()),
@@ -367,13 +348,10 @@ impl RecoveryAwareIndexDriftRepairStore {
             .map_err(|_| retryable_repair_failure(STORAGE_UNAVAILABLE))?;
         let result = async {
             lock_command_repair(&transaction, ticket.tenant_id(), ticket.command_id()).await?;
-            let stored = load_command_identity_repair(
-                &transaction,
-                ticket.tenant_id(),
-                ticket.command_id(),
-            )
-            .await?
-            .ok_or_else(|| permanent_repair_failure(STORED_CONTRACT_INVALID))?;
+            let stored =
+                load_command_identity_repair(&transaction, ticket.tenant_id(), ticket.command_id())
+                    .await?
+                    .ok_or_else(|| permanent_repair_failure(STORED_CONTRACT_INVALID))?;
             if stored.finding_id != ticket.finding_id()
                 || stored.payload_digest != ticket.reservation_digest()
             {
@@ -385,12 +363,7 @@ impl RecoveryAwareIndexDriftRepairStore {
             if stored.state != "prepared" {
                 return Err(permanent_repair_failure(STORED_CONTRACT_INVALID));
             }
-            require_active_repair_state(
-                &transaction,
-                ticket.tenant_id(),
-                ticket.command_id(),
-            )
-            .await
+            require_active_repair_state(&transaction, ticket.tenant_id(), ticket.command_id()).await
         }
         .await;
         finish_repair_transaction(transaction, result).await
@@ -490,12 +463,8 @@ impl IndexDriftRepairOwner for RecoveryAwareIndexDriftRepairOwner {
             {
                 return Err(permanent_repair_failure(COMMAND_ID_CONFLICT));
             }
-            require_active_repair_state(
-                &transaction,
-                command.tenant_id(),
-                command.command_id(),
-            )
-            .await?;
+            require_active_repair_state(&transaction, command.tenant_id(), command.command_id())
+                .await?;
             self.inner.repair(authorized, finding, before).await
         }
         .await;
@@ -554,10 +523,7 @@ struct StoredDecision {
 }
 
 impl StoredDecision {
-    fn matches_operator_command(
-        &self,
-        command: &crate::IndexDriftRepairRecoveryCommand,
-    ) -> bool {
+    fn matches_operator_command(&self, command: &crate::IndexDriftRepairRecoveryCommand) -> bool {
         self.command_id == command.command_id()
             && self.decision_id == command.decision_id()
             && self.finding_id == command.finding_id()
@@ -975,9 +941,7 @@ fn decode_stored_decision(
     })
 }
 
-fn decode_revision_recovery(
-    row: &QueryResult,
-) -> Result<u64, IndexDriftRepairRecoveryFailure> {
+fn decode_revision_recovery(row: &QueryResult) -> Result<u64, IndexDriftRepairRecoveryFailure> {
     let raw = row
         .try_get::<i64>("", "revision")
         .map_err(|_| permanent_recovery_failure(STORED_CONTRACT_INVALID))?;
@@ -1099,10 +1063,7 @@ fn hash_repair_target(hasher: &mut Sha256, target: &IndexDriftRepairTarget) {
             hash_component(hasher, link_name.as_str().as_bytes());
             hash_component(hasher, &ordinal.to_be_bytes());
             hash_linked_key(hasher, target);
-            hash_component(
-                hasher,
-                &target_absence_source_version.to_be_bytes(),
-            );
+            hash_component(hasher, &target_absence_source_version.to_be_bytes());
         }
     }
 }

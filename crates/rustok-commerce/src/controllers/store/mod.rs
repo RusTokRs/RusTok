@@ -2,10 +2,10 @@ pub mod carts;
 pub mod checkout;
 pub(crate) mod line_item_resolution;
 pub mod orders;
-#[path = "products.rs"]
-pub mod products_legacy;
 #[path = "products_owner_list.rs"]
 pub mod products;
+#[path = "products.rs"]
+pub mod products_legacy;
 
 pub use carts::*;
 pub use checkout::*;
@@ -40,9 +40,7 @@ use uuid::Uuid;
 use super::common::PaginationParams;
 use crate::{
     StoreContextError, StoreContextService,
-    dto::{
-        AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse,
-    },
+    dto::{AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse},
     storefront_channel::{
         is_module_enabled_for_request_channel, normalize_public_channel_slug,
         public_channel_slug_from_request,
@@ -392,7 +390,6 @@ pub(crate) fn checkout_actor_id(auth: Option<&rustok_api::AuthContext>) -> Uuid 
     auth.map(|auth| auth.user_id).unwrap_or_else(Uuid::nil)
 }
 
-
 pub(crate) async fn reprice_storefront_cart_line_items_for_db(
     db: &DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
@@ -569,7 +566,6 @@ pub(crate) struct ResolvedStoreLineItemInput {
     pub(crate) add_line_item: AddCartLineItemInput,
     pub(crate) pricing_adjustment: Option<rustok_cart::services::cart::CartPricingAdjustmentUpdate>,
 }
-
 
 pub(crate) fn requested_cart_context(
     cart: &CartResponse,

@@ -609,8 +609,16 @@ impl InProcessFulfillmentAdminCommandPort {
         }
 
         let provider_result = match operation {
-            "ship" | "reship" => self.provider_registry.execute_ship(provider_id, request).await,
-            "cancel" => self.provider_registry.execute_cancel(provider_id, request).await,
+            "ship" | "reship" => {
+                self.provider_registry
+                    .execute_ship(provider_id, request)
+                    .await
+            }
+            "cancel" => {
+                self.provider_registry
+                    .execute_cancel(provider_id, request)
+                    .await
+            }
             _ => Err(FulfillmentError::Validation(
                 "unsupported fulfillment provider operation".to_string(),
             )),
@@ -743,9 +751,11 @@ fn require_write_admission(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::write()).inspect_err(|error| {
-        log_port_error(context, operation, "policy", error);
-    })?;
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_port_error(context, operation, "policy", error);
+        })?;
     context.require_write_semantics().inspect_err(|error| {
         log_port_error(context, operation, "write_semantics", error);
     })
@@ -776,10 +786,9 @@ fn map_fulfillment_error(
             "fulfillment.shipping_option_not_found",
             "shipping option was not found",
         ),
-        FulfillmentError::FulfillmentNotFound(_) => PortError::not_found(
-            "fulfillment.not_found",
-            "fulfillment was not found",
-        ),
+        FulfillmentError::FulfillmentNotFound(_) => {
+            PortError::not_found("fulfillment.not_found", "fulfillment was not found")
+        }
         FulfillmentError::InvalidTransition { .. } => PortError::conflict(
             "fulfillment.invalid_transition",
             "fulfillment lifecycle conflicts with the requested operation",

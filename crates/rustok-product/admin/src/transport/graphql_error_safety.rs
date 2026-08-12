@@ -3,12 +3,9 @@ use uuid::Uuid;
 
 const PRODUCT_ADMIN_GRAPHQL_OWNER: &str = "rustok_product.admin";
 const PRODUCT_ADMIN_GRAPHQL_BOUNDARY: &str = "product_admin_primary_graphql_reads";
-const PRODUCT_ADMIN_CATEGORY_GRAPHQL_BOUNDARY: &str =
-    "product_admin_category_graphql_reads";
-const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str =
-    "Product admin service is temporarily unavailable";
-const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str =
-    "Product admin request could not be completed";
+const PRODUCT_ADMIN_CATEGORY_GRAPHQL_BOUNDARY: &str = "product_admin_category_graphql_reads";
+const PRODUCT_ADMIN_HTTP_PUBLIC_MESSAGE: &str = "Product admin service is temporarily unavailable";
+const PRODUCT_ADMIN_GRAPHQL_PUBLIC_MESSAGE: &str = "Product admin request could not be completed";
 
 pub(super) struct GraphqlReadContext {
     operation: &'static str,

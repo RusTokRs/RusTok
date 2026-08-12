@@ -137,7 +137,8 @@ impl ModerationSubjectCommandPort for CountingAdapter {
 }
 
 #[tokio::test]
-async fn postgres_scheduler_contract_preserves_multi_host_stop_and_crash_recovery() -> TestResult<()> {
+async fn postgres_scheduler_contract_preserves_multi_host_stop_and_crash_recovery() -> TestResult<()>
+{
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -165,7 +166,11 @@ async fn two_schedulers_converge_on_one_domain_call(database: &TestDatabase) -> 
 
     let adapter = CountingAdapter::forum_post();
     let registry = registry_with(adapter.clone())?;
-    let first = scheduler(database.connection("scheduler_race_one").await?, registry.clone()).await?;
+    let first = scheduler(
+        database.connection("scheduler_race_one").await?,
+        registry.clone(),
+    )
+    .await?;
     let second = scheduler(database.connection("scheduler_race_two").await?, registry).await?;
     let (first_run, second_run) = tokio::join!(first.run_once(), second.run_once());
     let executed = first_run? + second_run?;
@@ -176,7 +181,10 @@ async fn two_schedulers_converge_on_one_domain_call(database: &TestDatabase) -> 
         .get_application_operation(tenant_id, decision.id)
         .await?
         .ok_or_else(|| test_error("scheduler race operation disappeared"))?;
-    assert_eq!(operation.status, ModerationApplicationOperationStatus::Applied);
+    assert_eq!(
+        operation.status,
+        ModerationApplicationOperationStatus::Applied
+    );
     assert_eq!(operation.attempt_count, 1);
     assert_eq!(
         owner
@@ -188,9 +196,32 @@ async fn two_schedulers_converge_on_one_domain_call(database: &TestDatabase) -> 
     );
 
     let observer = database.connection("scheduler_race_observer").await?;
-    assert_eq!(count_events(&observer, tenant_id, "application", decision.id, "application_attempt_claimed").await?, 1);
-    assert_eq!(count_events(&observer, tenant_id, "case", case.id, "case_application_started").await?, 1);
-    assert_eq!(count_events(&observer, tenant_id, "case", case.id, "case_closed").await?, 1);
+    assert_eq!(
+        count_events(
+            &observer,
+            tenant_id,
+            "application",
+            decision.id,
+            "application_attempt_claimed"
+        )
+        .await?,
+        1
+    );
+    assert_eq!(
+        count_events(
+            &observer,
+            tenant_id,
+            "case",
+            case.id,
+            "case_application_started"
+        )
+        .await?,
+        1
+    );
+    assert_eq!(
+        count_events(&observer, tenant_id, "case", case.id, "case_closed").await?,
+        1
+    );
     Ok(())
 }
 
@@ -208,13 +239,19 @@ async fn expired_claim_is_recovered_by_scheduler_without_duplicate_start_transit
         .claim_application_operation(tenant_id, decision.id, "crashed-host", 60)
         .await?
         .ok_or_else(|| test_error("crash fixture was not claimable"))?;
-    assert_eq!(claimed.status, ModerationApplicationOperationStatus::Applying);
+    assert_eq!(
+        claimed.status,
+        ModerationApplicationOperationStatus::Applying
+    );
     assert_eq!(claimed.attempt_count, 1);
     let after_first_claim = owner
         .get_case(tenant_id, case.id)
         .await?
         .ok_or_else(|| test_error("case after crashed claim disappeared"))?;
-    assert_eq!(after_first_claim.status, ModerationCaseStatus::ApplyingDecision);
+    assert_eq!(
+        after_first_claim.status,
+        ModerationCaseStatus::ApplyingDecision
+    );
     assert_eq!(after_first_claim.revision, case.revision + 1);
 
     let storage = database.connection("scheduler_crash_storage").await?;
@@ -239,7 +276,10 @@ async fn expired_claim_is_recovered_by_scheduler_without_duplicate_start_transit
         .get_application_operation(tenant_id, decision.id)
         .await?
         .ok_or_else(|| test_error("recovered scheduler operation disappeared"))?;
-    assert_eq!(operation.status, ModerationApplicationOperationStatus::Applied);
+    assert_eq!(
+        operation.status,
+        ModerationApplicationOperationStatus::Applied
+    );
     assert_eq!(operation.attempt_count, 2);
     let closed = owner
         .get_case(tenant_id, case.id)
@@ -249,9 +289,32 @@ async fn expired_claim_is_recovered_by_scheduler_without_duplicate_start_transit
     assert_eq!(closed.revision, after_first_claim.revision + 1);
 
     let observer = database.connection("scheduler_crash_observer").await?;
-    assert_eq!(count_events(&observer, tenant_id, "application", decision.id, "application_attempt_claimed").await?, 2);
-    assert_eq!(count_events(&observer, tenant_id, "case", case.id, "case_application_started").await?, 1);
-    assert_eq!(count_events(&observer, tenant_id, "case", case.id, "case_closed").await?, 1);
+    assert_eq!(
+        count_events(
+            &observer,
+            tenant_id,
+            "application",
+            decision.id,
+            "application_attempt_claimed"
+        )
+        .await?,
+        2
+    );
+    assert_eq!(
+        count_events(
+            &observer,
+            tenant_id,
+            "case",
+            case.id,
+            "case_application_started"
+        )
+        .await?,
+        1
+    );
+    assert_eq!(
+        count_events(&observer, tenant_id, "case", case.id, "case_closed").await?,
+        1
+    );
     Ok(())
 }
 
@@ -281,7 +344,10 @@ async fn stop_signal_prevents_new_moderation_claim(database: &TestDatabase) -> T
         .get_application_operation(tenant_id, decision.id)
         .await?
         .ok_or_else(|| test_error("stopped scheduler operation disappeared"))?;
-    assert_eq!(operation.status, ModerationApplicationOperationStatus::Pending);
+    assert_eq!(
+        operation.status,
+        ModerationApplicationOperationStatus::Pending
+    );
     assert_eq!(operation.attempt_count, 0);
     assert!(operation.lease_token.is_none());
     let stored_case = owner
@@ -353,7 +419,9 @@ async fn seed_decided_case(
                 expected_revision: assigned.revision,
                 decision_kind: ModerationDecisionKind::Warning,
                 reason_code: ModerationReasonCode::Other,
-                effect: ModerationDecisionEffect::v1(ModerationDecisionEffectAction::NoDomainMutation)?,
+                effect: ModerationDecisionEffect::v1(
+                    ModerationDecisionEffectAction::NoDomainMutation,
+                )?,
                 policy_snapshot: json!({"policy": "postgres-scheduler-contract", "version": 1}),
             },
         )
@@ -377,7 +445,11 @@ fn write_context(tenant_id: Uuid, actor_id: Uuid, key: &str) -> PortContext {
     .with_deadline(Duration::from_secs(5))
 }
 
-fn report_command(actor_id: Uuid, subject_id: Uuid, revision: i64) -> SubmitModerationReportCommand {
+fn report_command(
+    actor_id: Uuid,
+    subject_id: Uuid,
+    revision: i64,
+) -> SubmitModerationReportCommand {
     SubmitModerationReportCommand {
         scope: ModerationScopeRef::platform(),
         subject: ModerationSubjectRef {
@@ -394,7 +466,11 @@ fn report_command(actor_id: Uuid, subject_id: Uuid, revision: i64) -> SubmitMode
     }
 }
 
-fn case_command(subject_id: Uuid, revision: i64, report_ids: Vec<Uuid>) -> OpenModerationCaseCommand {
+fn case_command(
+    subject_id: Uuid,
+    revision: i64,
+    report_ids: Vec<Uuid>,
+) -> OpenModerationCaseCommand {
     OpenModerationCaseCommand {
         scope: ModerationScopeRef::platform(),
         subject: ModerationSubjectRef {

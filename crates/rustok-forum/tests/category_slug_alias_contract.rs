@@ -17,11 +17,12 @@ fn migration_reserves_one_append_only_historical_route_namespace() {
         "forum_category_translation_route_alias_guard",
         "forum_category_route_alias_insert_guard",
     ] {
-        assert!(MIGRATION.contains(marker), "missing migration marker {marker}");
+        assert!(
+            MIGRATION.contains(marker),
+            "missing migration marker {marker}"
+        );
     }
-    assert!(MIGRATIONS_MOD.contains(
-        "m20260806_000026_add_forum_category_route_aliases"
-    ));
+    assert!(MIGRATIONS_MOD.contains("m20260806_000026_add_forum_category_route_aliases"));
 }
 
 #[test]
@@ -65,7 +66,10 @@ fn alias_owner_is_bounded_idempotent_and_never_reuses_history() {
         "load_exact_category_route_aliases",
         "ForumError::CategoryRouteResolutionConflict",
     ] {
-        assert!(ALIAS.contains(marker), "missing alias owner marker {marker}");
+        assert!(
+            ALIAS.contains(marker),
+            "missing alias owner marker {marker}"
+        );
     }
 }
 
@@ -80,7 +84,10 @@ fn resolver_combines_current_and_alias_candidates_without_authorizing_visibility
         "Archived categories are never route candidates",
         "exact_alias_precedes_fallback_current_route",
     ] {
-        assert!(ROUTE.contains(marker), "missing alias resolution marker {marker}");
+        assert!(
+            ROUTE.contains(marker),
+            "missing alias resolution marker {marker}"
+        );
     }
 
     for forbidden in [

@@ -15,8 +15,8 @@ use rustok_search::{
     ForumProjectionOwnerRevisionImpact, ForumProjectionOwnerRevisionRecord,
     ForumProjectionOwnerRevisionRequest, ForumProjectionOwnerRevisionSourcePort,
     ForumProjectionOwnerTenantHead, ForumProjectionOwnerTenantPageRequest,
-    ForumProjectionReconciler, SearchModule, SearchProjectionDocument,
-    SearchProjectionPage, SearchProjectionSource,
+    ForumProjectionReconciler, SearchModule, SearchProjectionDocument, SearchProjectionPage,
+    SearchProjectionSource,
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -157,8 +157,7 @@ impl SearchProjectionSource for ControlledForumSource {
         self.list_calls.fetch_add(1, Ordering::SeqCst);
         if tenant_id != self.tenant_id || after.is_some() {
             return Err(CoreError::Validation(
-                "missing-delivery proof received an unexpected projection page request"
-                    .to_string(),
+                "missing-delivery proof received an unexpected projection page request".to_string(),
             ));
         }
         if self.fail_next_rebuild.swap(false, Ordering::SeqCst) {
@@ -197,10 +196,7 @@ struct FixedOwnerRevisionSource {
 }
 
 impl FixedOwnerRevisionSource {
-    fn new(
-        tenant_id: Uuid,
-        revisions: Vec<ForumProjectionOwnerRevisionRecord>,
-    ) -> Self {
+    fn new(tenant_id: Uuid, revisions: Vec<ForumProjectionOwnerRevisionRecord>) -> Self {
         Self {
             tenant_id,
             revisions,
@@ -287,8 +283,8 @@ struct RepairEvidenceArtifact {
 }
 
 #[tokio::test]
-async fn missing_owner_delivery_rebuilds_once_and_advances_checkpoint_contiguously(
-) -> TestResult<()> {
+async fn missing_owner_delivery_rebuilds_once_and_advances_checkpoint_contiguously()
+-> TestResult<()> {
     let Some(evidence) = PostgresSearchEvidence::setup("missing_delivery").await? else {
         return Ok(());
     };
@@ -329,10 +325,7 @@ async fn run_missing_delivery_repair_proof(
         owner_revision(2, missing_revision_event_id),
         owner_revision(3, revision_three_event_id),
     ];
-    let projection_source = Arc::new(ControlledForumSource::new(
-        tenant_id,
-        repaired_document_id,
-    ));
+    let projection_source = Arc::new(ControlledForumSource::new(tenant_id, repaired_document_id));
     let owner_source = Arc::new(FixedOwnerRevisionSource::new(tenant_id, revisions));
     let reconciler = ForumProjectionReconciler::with_owner_revision_source(
         db.clone(),
@@ -363,10 +356,9 @@ async fn run_missing_delivery_repair_proof(
     if count_forum_document(db, tenant_id, stale_document_id).await? != 1
         || count_forum_document(db, tenant_id, repaired_document_id).await? != 0
     {
-        return Err(invalid_data(
-            "failed rebuild changed Search projection state before commit",
-        )
-        .into());
+        return Err(
+            invalid_data("failed rebuild changed Search projection state before commit").into(),
+        );
     }
 
     let repaired = reconciler.sweep_due(8, 8).await?;
@@ -402,9 +394,9 @@ async fn run_missing_delivery_repair_proof(
         .map(|row| row.owner_revision)
         .collect::<Vec<_>>();
     if audited_revisions != [1, 2, 3]
-        || audit.iter().any(|row| {
-            row.outcome != "rebuild_repaired" || row.observed_forum_documents != 1
-        })
+        || audit
+            .iter()
+            .any(|row| row.outcome != "rebuild_repaired" || row.observed_forum_documents != 1)
         || audit[0].event_id != revision_one_event_id
         || audit[1].event_id != missing_revision_event_id
         || audit[2].event_id != revision_three_event_id
@@ -465,10 +457,7 @@ async fn run_missing_delivery_repair_proof(
     })
 }
 
-fn owner_revision(
-    owner_revision: i64,
-    event_id: Uuid,
-) -> ForumProjectionOwnerRevisionRecord {
+fn owner_revision(owner_revision: i64, event_id: Uuid) -> ForumProjectionOwnerRevisionRecord {
     ForumProjectionOwnerRevisionRecord {
         owner_revision,
         event_id,
@@ -686,9 +675,7 @@ fn postgres_database_url() -> Option<String> {
 
 fn database_url_in_schema(database_url: &str, schema_name: &str) -> String {
     let separator = if database_url.contains('?') { '&' } else { '?' };
-    format!(
-        "{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic"
-    )
+    format!("{database_url}{separator}options=-c%20search_path%3D{schema_name}%2Cpublic")
 }
 
 async fn connect(database_url: &str, max_connections: u32) -> TestResult<DatabaseConnection> {

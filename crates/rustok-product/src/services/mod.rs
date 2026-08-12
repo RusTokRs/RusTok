@@ -1,7 +1,7 @@
 pub mod catalog;
+mod catalog_attribute_terms;
 pub mod catalog_schema;
 pub mod catalog_schema_service;
-mod catalog_attribute_terms;
 mod index_channel_relation;
 mod index_channel_relation_convergence;
 mod index_channel_relation_freshness;
@@ -42,8 +42,7 @@ pub use index_channel_relation_convergence::{
     ProductSalesChannelIndexRelationConvergenceWork,
 };
 pub use index_channel_relation_freshness::{
-    MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES,
-    ProductSalesChannelIndexRelationFreshnessError,
+    MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES, ProductSalesChannelIndexRelationFreshnessError,
     ProductSalesChannelIndexRelationFreshnessRecord,
     ProductSalesChannelIndexRelationFreshnessStore,
     ProductSalesChannelIndexRelationFreshnessWriteOutcome,
@@ -59,8 +58,8 @@ pub use index_refresh_publication::{
     ProductIndexRefreshContractTarget, ProductIndexRefreshPublicationError,
 };
 pub use index_refresh_relay::{
-    ProductIndexRefreshEventFactory, ProductIndexRefreshRelayError,
-    ProductIndexRefreshRelayStep, ProductIndexRefreshRelayStepOutcome,
+    ProductIndexRefreshEventFactory, ProductIndexRefreshRelayError, ProductIndexRefreshRelayStep,
+    ProductIndexRefreshRelayStepOutcome,
 };
 
 pub(crate) use write_transaction::with_product_operation_receipt;

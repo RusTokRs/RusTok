@@ -1,9 +1,7 @@
 use serde_json::{Value as JsonValue, json};
 use uuid::Uuid;
 
-use super::{
-    CompiledPostgresCell, CompiledPostgresRow, PostgresQueryDecodeError, SchemaRegistry,
-};
+use super::{CompiledPostgresCell, CompiledPostgresRow, PostgresQueryDecodeError, SchemaRegistry};
 use crate::domain::{
     EntityName, FieldCardinality, FieldName, FieldPath, IndexField, IndexLink, IndexQuery,
     IndexQueryScope, IndexSchema, IndexValue, IndexValueType, LinkCardinality, LinkName, LocaleKey,
@@ -99,10 +97,7 @@ fn row(root_id: Uuid, nested: JsonValue) -> CompiledPostgresRow {
             "f0".to_owned(),
             CompiledPostgresCell::Json(tagged(IndexValue::Uuid(root_id))),
         ),
-        (
-            "__many_0".to_owned(),
-            CompiledPostgresCell::Json(nested),
-        ),
+        ("__many_0".to_owned(), CompiledPostgresCell::Json(nested)),
     ])
 }
 
@@ -212,7 +207,12 @@ fn rejects_nil_and_duplicate_nested_identity_chains() {
         }
     ]);
     assert!(matches!(
-        registry.decode_postgres_query_page(&query, &page_query, vec![row(root_id, duplicate)], None),
+        registry.decode_postgres_query_page(
+            &query,
+            &page_query,
+            vec![row(root_id, duplicate)],
+            None
+        ),
         Err(PostgresQueryDecodeError::DuplicateNestedIdentity { .. })
     ));
 }

@@ -1,8 +1,6 @@
 use fly_ui::{CapabilityState, EditorProviderState};
 use rustok_page_builder::health::{ProviderHealthSnapshot, ProviderHealthState};
-use rustok_page_builder::rollout::{
-    BuilderCapabilityFlags, effective_provider_runtime_flags,
-};
+use rustok_page_builder::rollout::{BuilderCapabilityFlags, effective_provider_runtime_flags};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageBuilderAdminProviderState {
@@ -117,9 +115,7 @@ impl PageBuilderAdminProviderStatus {
         if !self.flags.properties_enabled {
             effective.properties = false;
         }
-        if !self.flags.publish_enabled
-            || self.state() == PageBuilderAdminProviderState::Degraded
-        {
+        if !self.flags.publish_enabled || self.state() == PageBuilderAdminProviderState::Degraded {
             effective.publish = false;
         }
         effective.normalized()
@@ -137,21 +133,31 @@ mod tests {
         let status = PageBuilderAdminProviderStatus::unobserved(BuilderCapabilityFlags::default());
         assert_eq!(status.state(), PageBuilderAdminProviderState::Unobserved);
         assert_eq!(status.editor_provider_state(), None);
-        assert_eq!(status.limit_capabilities(CapabilityState::full()), CapabilityState::full());
+        assert_eq!(
+            status.limit_capabilities(CapabilityState::full()),
+            CapabilityState::full()
+        );
         assert!(status.preview_enabled());
-        assert_eq!(status.effective_runtime_flags(), BuilderCapabilityFlags::default());
+        assert_eq!(
+            status.effective_runtime_flags(),
+            BuilderCapabilityFlags::default()
+        );
     }
 
     #[test]
     fn rollout_publish_off_is_degraded_and_removes_publish_only() {
-        let status = PageBuilderAdminProviderStatus::unobserved(BuilderToggleProfile::PublishOff.flags());
+        let status =
+            PageBuilderAdminProviderStatus::unobserved(BuilderToggleProfile::PublishOff.flags());
         let effective = status.limit_capabilities(CapabilityState::full());
         assert_eq!(status.state(), PageBuilderAdminProviderState::Degraded);
         assert!(effective.edit);
         assert!(effective.properties);
         assert!(!effective.publish);
         assert!(status.preview_enabled());
-        assert_eq!(status.effective_runtime_flags(), BuilderToggleProfile::PublishOff.flags());
+        assert_eq!(
+            status.effective_runtime_flags(),
+            BuilderToggleProfile::PublishOff.flags()
+        );
     }
 
     #[test]
@@ -164,16 +170,26 @@ mod tests {
         assert!(effective.properties);
         assert!(!effective.publish);
         assert!(!status.preview_enabled());
-        assert_eq!(status.effective_runtime_flags(), BuilderToggleProfile::PreviewOff.flags());
+        assert_eq!(
+            status.effective_runtime_flags(),
+            BuilderToggleProfile::PreviewOff.flags()
+        );
     }
 
     #[test]
     fn rollout_builder_off_is_unavailable_and_forces_read_only() {
-        let status = PageBuilderAdminProviderStatus::unobserved(BuilderToggleProfile::BuilderOff.flags());
+        let status =
+            PageBuilderAdminProviderStatus::unobserved(BuilderToggleProfile::BuilderOff.flags());
         assert_eq!(status.state(), PageBuilderAdminProviderState::Unavailable);
-        assert_eq!(status.limit_capabilities(CapabilityState::full()), CapabilityState::read_only());
+        assert_eq!(
+            status.limit_capabilities(CapabilityState::full()),
+            CapabilityState::read_only()
+        );
         assert!(!status.preview_enabled());
-        assert_eq!(status.effective_runtime_flags(), BuilderToggleProfile::BuilderOff.flags());
+        assert_eq!(
+            status.effective_runtime_flags(),
+            BuilderToggleProfile::BuilderOff.flags()
+        );
     }
 
     #[test]
@@ -184,10 +200,14 @@ mod tests {
             sanitize_failure_rate: 0.0,
             runtime_error_rate: 0.0,
         });
-        let status = PageBuilderAdminProviderStatus::observed(BuilderCapabilityFlags::default(), degraded);
+        let status =
+            PageBuilderAdminProviderStatus::observed(BuilderCapabilityFlags::default(), degraded);
         assert_eq!(status.state(), PageBuilderAdminProviderState::Degraded);
         assert!(!status.limit_capabilities(CapabilityState::full()).publish);
-        assert_eq!(status.effective_runtime_flags(), BuilderToggleProfile::PublishOff.flags());
+        assert_eq!(
+            status.effective_runtime_flags(),
+            BuilderToggleProfile::PublishOff.flags()
+        );
 
         let unavailable = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
             preview_p95_ms: 1_000,
@@ -195,9 +215,18 @@ mod tests {
             sanitize_failure_rate: 0.0,
             runtime_error_rate: 0.03,
         });
-        let status = PageBuilderAdminProviderStatus::observed(BuilderCapabilityFlags::default(), unavailable);
+        let status = PageBuilderAdminProviderStatus::observed(
+            BuilderCapabilityFlags::default(),
+            unavailable,
+        );
         assert_eq!(status.state(), PageBuilderAdminProviderState::Unavailable);
-        assert_eq!(status.limit_capabilities(CapabilityState::full()), CapabilityState::read_only());
-        assert_eq!(status.effective_runtime_flags(), BuilderToggleProfile::BuilderOff.flags());
+        assert_eq!(
+            status.limit_capabilities(CapabilityState::full()),
+            CapabilityState::read_only()
+        );
+        assert_eq!(
+            status.effective_runtime_flags(),
+            BuilderToggleProfile::BuilderOff.flags()
+        );
     }
 }

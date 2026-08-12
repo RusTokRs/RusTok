@@ -514,11 +514,7 @@ fn hash_json(
 ) -> Result<String, PortError> {
     let canonical = canonicalize_json(value);
     let bytes = serde_json::to_vec(&canonical).map_err(|_| {
-        log_checkout_order_recovery_encoding_failure(
-            context,
-            operation,
-            "canonical_checkout_json",
-        );
+        log_checkout_order_recovery_encoding_failure(context, operation, "canonical_checkout_json");
         PortError::invariant_violation(
             "order.checkout_request_encoding_failed",
             "checkout completion request could not be encoded",
@@ -880,9 +876,7 @@ fn checkout_order_recovery_owner_error_facts(
             if id.is_nil() { 0 } else { 1 },
             false,
         ),
-        OrderError::Validation(value) => {
-            ("validation", 1, value.chars().count(), 0, 0, false)
-        }
+        OrderError::Validation(value) => ("validation", 1, value.chars().count(), 0, 0, false),
         OrderError::InvalidTransition { from, to } => (
             "invalid_transition",
             2,

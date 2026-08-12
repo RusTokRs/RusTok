@@ -209,7 +209,8 @@ pub fn product_attribute_localized_text_expr(
 
 fn canonical_locale(locale: &str) -> Result<String, ProductAttributeTermError> {
     let trimmed = locale.trim();
-    let normalized = normalize_locale_tag(trimmed).ok_or(ProductAttributeTermError::InvalidLocale)?;
+    let normalized =
+        normalize_locale_tag(trimmed).ok_or(ProductAttributeTermError::InvalidLocale)?;
     if normalized != trimmed {
         return Err(ProductAttributeTermError::InvalidLocale);
     }
@@ -292,13 +293,9 @@ mod tests {
 
     #[test]
     fn localized_expression_preserves_requested_presence_fallback() {
-        let expr = product_attribute_localized_text_expr(
-            Uuid::from_u128(1),
-            "de-DE",
-            "en-US",
-            "Red",
-        )
-        .unwrap();
+        let expr =
+            product_attribute_localized_text_expr(Uuid::from_u128(1), "de-DE", "en-US", "Red")
+                .unwrap();
         let ProductAttributeTermExpr::Or(branches) = expr else {
             panic!("localized fallback must be an OR expression");
         };

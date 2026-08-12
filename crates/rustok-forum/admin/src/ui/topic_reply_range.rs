@@ -6,10 +6,8 @@ use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
 use crate::topic_reply_range_model::{
-    ForumReplyRangeMoveIdentity, ForumReplyRangeMoveReceipt,
-    build_forum_reply_range_move_command,
-    forum_reply_range_move_candidate_label,
-    new_forum_reply_range_move_identity,
+    ForumReplyRangeMoveIdentity, ForumReplyRangeMoveReceipt, build_forum_reply_range_move_command,
+    forum_reply_range_move_candidate_label, new_forum_reply_range_move_identity,
 };
 use crate::transport;
 
@@ -66,11 +64,7 @@ pub fn ForumTopicReplyRangeAdmin() -> impl IntoView {
         "forum.replyRange.end",
         "Inclusive end position",
     );
-    let reason_label = t(
-        ui_locale.as_deref(),
-        "forum.replyRange.reason",
-        "Reason",
-    );
+    let reason_label = t(ui_locale.as_deref(), "forum.replyRange.reason", "Reason");
     let warning = t(
         ui_locale.as_deref(),
         "forum.replyRange.warning",
@@ -91,11 +85,7 @@ pub fn ForumTopicReplyRangeAdmin() -> impl IntoView {
         "forum.replyRange.submit",
         "Move reply range",
     );
-    let pending_label = t(
-        ui_locale.as_deref(),
-        "forum.replyRange.pending",
-        "Moving…",
-    );
+    let pending_label = t(ui_locale.as_deref(), "forum.replyRange.pending", "Moving…");
     let complete_label = t(
         ui_locale.as_deref(),
         "forum.replyRange.complete",
@@ -107,9 +97,7 @@ pub fn ForumTopicReplyRangeAdmin() -> impl IntoView {
         let token = token.get();
         let tenant = tenant.get();
         let locale = requested_locale.clone();
-        async move {
-            transport::fetch_reply_range_move_candidates(token, tenant, locale).await
-        }
+        async move { transport::fetch_reply_range_move_candidates(token, tenant, locale).await }
     });
 
     let submit = move |event: SubmitEvent| {

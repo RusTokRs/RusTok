@@ -7,8 +7,8 @@ use rustok_index::{
     IndexRecord, IndexSchema, IndexSource, IndexSourceCursor, IndexSourceFailure,
     IndexSourceLoadBatch, IndexSourceLoadRequest, IndexSourcePage, IndexSourceScanRequest,
     IndexValue, IndexValueType, LocaleMode, ModuleName, PostgresIndexSourceFactory, SchemaRef,
-    SchemaVersion, derive_index_source_event_id, register_index_schema_source, register_index_source,
-    register_postgres_index_source_factory,
+    SchemaVersion, derive_index_source_event_id, register_index_schema_source,
+    register_index_source, register_postgres_index_source_factory,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, Value};
 use serde::{Deserialize, Serialize};
@@ -396,8 +396,8 @@ impl ProductVariantCursor {
     }
 
     fn encode(&self) -> Result<IndexSourceCursor, ProductVariantIndexBridgeError> {
-        let value =
-            serde_json::to_value(self).map_err(|_| ProductVariantIndexBridgeError::InvalidCursor)?;
+        let value = serde_json::to_value(self)
+            .map_err(|_| ProductVariantIndexBridgeError::InvalidCursor)?;
         IndexSourceCursor::new(value).map_err(|_| ProductVariantIndexBridgeError::InvalidCursor)
     }
 }
@@ -581,10 +581,7 @@ impl ProductVariantRow {
                 field_name("option3")?,
                 optional_string_value(live.option3.take()),
             ),
-            (
-                field_name("position")?,
-                IndexValue::Integer(live.position),
-            ),
+            (field_name("position")?, IndexValue::Integer(live.position)),
         ]);
         Ok(IndexMutation::Upsert {
             event_id,
@@ -653,7 +650,12 @@ mod tests {
         let schema = product_variant_schema().unwrap();
         assert_eq!(schema.reference, product_variant_schema_ref().unwrap());
         assert_eq!(schema.fields.len(), 15);
-        assert!(schema.fields.iter().any(|field| field.name.as_str() == "id"));
+        assert!(
+            schema
+                .fields
+                .iter()
+                .any(|field| field.name.as_str() == "id")
+        );
         assert!(schema.links.is_empty());
     }
 

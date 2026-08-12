@@ -21,8 +21,7 @@ use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-async fn setup_before_forum_21g(
-) -> TestResult<(
+async fn setup_before_forum_21g() -> TestResult<(
     DatabaseConnection,
     TransactionalEventBus,
     Box<dyn MigrationTrait>,
@@ -32,7 +31,10 @@ async fn setup_before_forum_21g(
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(db_url);
-    options.max_connections(5).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(5)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await?;
     db.execute_unprepared(
         "CREATE TABLE users (\
@@ -74,11 +76,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -159,8 +157,8 @@ fn source_constraints(
 }
 
 #[tokio::test]
-async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent(
-) -> TestResult<()> {
+async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is_idempotent()
+-> TestResult<()> {
     let (db, event_bus, forum_21g_migration) = setup_before_forum_21g().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -190,8 +188,8 @@ async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is
     )
     .await?;
 
-    let constraints = source_constraints(allow_user_id, deny_user_id, Uuid::new_v4())
-        .normalize()?;
+    let constraints =
+        source_constraints(allow_user_id, deny_user_id, Uuid::new_v4()).normalize()?;
     ForumTopicAudiencePolicyService::new(db.clone())
         .set(
             tenant_id,
@@ -240,17 +238,9 @@ async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is
         operation_id,
         reason: "Repair the historical source-only audience layer".to_string(),
     };
-    let service = ForumTopicMergeAudienceReconciliationService::new(
-        db.clone(),
-        event_bus.clone(),
-    );
+    let service = ForumTopicMergeAudienceReconciliationService::new(db.clone(), event_bus.clone());
     let reconciled = service
-        .reconcile_merge_audience(
-            tenant_id,
-            merge_operation_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .reconcile_merge_audience(tenant_id, merge_operation_id, admin.clone(), input.clone())
         .await?;
 
     assert_eq!(reconciled.operation_id, operation_id);
@@ -268,7 +258,10 @@ async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is
     let target_policy = ForumTopicAudiencePolicyService::new(db.clone())
         .get(tenant_id, target_topic_id, admin.clone())
         .await?;
-    assert_eq!(target_policy.configured_constraints, Some(constraints.clone()));
+    assert_eq!(
+        target_policy.configured_constraints,
+        Some(constraints.clone())
+    );
     assert_eq!(
         policy_updated_at(&db, tenant_id, target_topic_id).await?,
         Some(source_updated_at)
@@ -293,16 +286,14 @@ async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is
     );
 
     let replay = service
-        .reconcile_merge_audience(
-            tenant_id,
-            merge_operation_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .reconcile_merge_audience(tenant_id, merge_operation_id, admin.clone(), input.clone())
         .await?;
     assert_eq!(replay, reconciled);
     assert_eq!(reconciliation_count(&db, tenant_id).await?, 1);
-    assert_eq!(projection_root_ids(&db, tenant_id).await?, projection_ids_after);
+    assert_eq!(
+        projection_root_ids(&db, tenant_id).await?,
+        projection_ids_after
+    );
 
     let drift = service
         .reconcile_merge_audience(
@@ -353,8 +344,8 @@ async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is
 }
 
 #[tokio::test]
-async fn historical_merge_audience_reconciliation_rejects_different_dual_layers_atomically(
-) -> TestResult<()> {
+async fn historical_merge_audience_reconciliation_rejects_different_dual_layers_atomically()
+-> TestResult<()> {
     let (db, event_bus, forum_21g_migration) = setup_before_forum_21g().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -453,7 +444,10 @@ async fn historical_merge_audience_reconciliation_rejects_different_dual_layers_
         reconciliation_event_count(&db, tenant_id).await?,
         event_count_before
     );
-    assert_eq!(projection_root_ids(&db, tenant_id).await?, baseline_projection_ids);
+    assert_eq!(
+        projection_root_ids(&db, tenant_id).await?,
+        baseline_projection_ids
+    );
 
     let source_after = ForumTopicAudiencePolicyService::new(db.clone())
         .get(tenant_id, source_topic_id, admin.clone())
@@ -461,8 +455,14 @@ async fn historical_merge_audience_reconciliation_rejects_different_dual_layers_
     let target_after = ForumTopicAudiencePolicyService::new(db.clone())
         .get(tenant_id, target_topic_id, admin)
         .await?;
-    assert_eq!(source_after.configured_constraints, Some(source_constraints));
-    assert_eq!(target_after.configured_constraints, Some(target_constraints));
+    assert_eq!(
+        source_after.configured_constraints,
+        Some(source_constraints)
+    );
+    assert_eq!(
+        target_after.configured_constraints,
+        Some(target_constraints)
+    );
     Ok(())
 }
 
@@ -531,9 +531,18 @@ async fn topic_merge_rejects_incompatible_source_audience_before_commit() -> Tes
         Err(ForumError::TopicMergeAudiencePolicyConflict(_))
     ));
 
-    assert_eq!(merge_receipt_count(&db, tenant_id, merge_operation_id).await?, 0);
-    assert_eq!(merge_event_count(&db, tenant_id).await?, merge_event_count_before);
-    assert_eq!(projection_root_ids(&db, tenant_id).await?, baseline_projection_ids);
+    assert_eq!(
+        merge_receipt_count(&db, tenant_id, merge_operation_id).await?,
+        0
+    );
+    assert_eq!(
+        merge_event_count(&db, tenant_id).await?,
+        merge_event_count_before
+    );
+    assert_eq!(
+        projection_root_ids(&db, tenant_id).await?,
+        baseline_projection_ids
+    );
     assert_eq!(topic_status(&db, tenant_id, source_topic_id).await?, "open");
     assert_eq!(topic_status(&db, tenant_id, target_topic_id).await?, "open");
 
@@ -543,7 +552,10 @@ async fn topic_merge_rejects_incompatible_source_audience_before_commit() -> Tes
     let target_after = ForumTopicAudiencePolicyService::new(db)
         .get(tenant_id, target_topic_id, admin)
         .await?;
-    assert_eq!(source_after.configured_constraints, Some(source_constraints));
+    assert_eq!(
+        source_after.configured_constraints,
+        Some(source_constraints)
+    );
     assert_eq!(target_after.configured_constraints, None);
     Ok(())
 }
@@ -661,10 +673,7 @@ async fn merge_receipt_count(
     .await
 }
 
-async fn merge_event_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn merge_event_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -676,10 +685,7 @@ async fn merge_event_count(
     .await
 }
 
-async fn reconciliation_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn reconciliation_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -691,10 +697,7 @@ async fn reconciliation_count(
     .await
 }
 
-async fn reconciliation_event_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn reconciliation_event_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -797,7 +800,10 @@ async fn projection_targets(
             continue;
         }
         match envelope.event {
-            DomainEvent::ReindexRequested { target_type, target_id } => {
+            DomainEvent::ReindexRequested {
+                target_type,
+                target_id,
+            } => {
                 targets.insert((target_type, target_id));
             }
             event => panic!("unexpected projection root event: {event:?}"),

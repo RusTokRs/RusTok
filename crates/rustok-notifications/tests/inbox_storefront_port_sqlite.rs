@@ -62,8 +62,10 @@ impl NotificationSourceProvider for AllowSource {
     }
 
     fn supported_types(&self) -> Vec<NotificationTypeKey> {
-        vec![NotificationTypeKey::new(NOTIFICATION_TYPE)
-            .expect("notification type should remain valid")]
+        vec![
+            NotificationTypeKey::new(NOTIFICATION_TYPE)
+                .expect("notification type should remain valid"),
+        ]
     }
 
     async fn describe_event(
@@ -110,9 +112,33 @@ async fn storefront_reads_derive_exact_scope_and_delegate_authorized_owners() {
 
     let base = fixed_time();
     for (id, row_tenant, row_recipient, group, target, state, seconds) in [
-        (11_u128, tenant_id, recipient_id, GROUP_A, 101_u128, NotificationState::Unread, 3_i64),
-        (12, tenant_id, recipient_id, GROUP_A, 102, NotificationState::Read, 2),
-        (13, tenant_id, other_recipient_id, GROUP_A, 103, NotificationState::Unread, 4),
+        (
+            11_u128,
+            tenant_id,
+            recipient_id,
+            GROUP_A,
+            101_u128,
+            NotificationState::Unread,
+            3_i64,
+        ),
+        (
+            12,
+            tenant_id,
+            recipient_id,
+            GROUP_A,
+            102,
+            NotificationState::Read,
+            2,
+        ),
+        (
+            13,
+            tenant_id,
+            other_recipient_id,
+            GROUP_A,
+            103,
+            NotificationState::Unread,
+            4,
+        ),
         (
             14,
             other_tenant_id,
@@ -258,14 +284,20 @@ async fn storefront_writes_require_idempotency_and_preserve_exact_state_invarian
         )
         .await
         .expect("idempotent exact-group write should succeed");
-    assert_eq!((result.scanned, result.changed, result.has_more), (2, 2, false));
+    assert_eq!(
+        (result.scanned, result.changed, result.has_more),
+        (2, 2, false)
+    );
 
     let unread = load_notification(&db, Uuid::from_u128(31)).await;
     assert_eq!(unread.state, NotificationState::Read);
     assert_eq!(unread.seen_at, unread.read_at);
     let seen = load_notification(&db, Uuid::from_u128(32)).await;
     assert_eq!(seen.state, NotificationState::Read);
-    assert_eq!(seen.seen_at, Some(fixed_time() + ChronoDuration::seconds(2)));
+    assert_eq!(
+        seen.seen_at,
+        Some(fixed_time() + ChronoDuration::seconds(2))
+    );
     assert!(seen.read_at.is_some());
     assert_eq!(
         load_notification(&db, Uuid::from_u128(33)).await.state,
@@ -370,7 +402,10 @@ async fn storefront_scope_policy_and_owner_errors_fail_closed_without_mutation()
         .expect_err("owner validation must map to a safe transport validation error");
     assert_eq!(invalid_cursor.kind, PortErrorKind::Validation);
     assert_eq!(invalid_cursor.code, "NOTIFICATION_VALIDATION_ERROR");
-    assert_eq!(invalid_cursor.message, "notification inbox request is invalid");
+    assert_eq!(
+        invalid_cursor.message,
+        "notification inbox request is invalid"
+    );
 
     let stored = load_notification(&db, Uuid::from_u128(42)).await;
     assert_eq!(stored.state, NotificationState::Unread);
@@ -418,8 +453,7 @@ async fn seed_notification(
     let seen_at = matches!(state, NotificationState::Seen | NotificationState::Read)
         .then_some(created_at.to_owned());
     let read_at = matches!(state, NotificationState::Read).then_some(created_at.to_owned());
-    let archived_at =
-        matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
+    let archived_at = matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
     notification::ActiveModel {
         id: Set(notification_id),
         tenant_id: Set(tenant_id),

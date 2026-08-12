@@ -58,10 +58,7 @@ fn graphql_keeps_legacy_field_and_adds_authorized_decision() {
 
 #[test]
 fn owner_export_reveals_service_not_snapshot_payload() {
-    require(
-        SERVICES_MOD,
-        &["ForumTopicRouteTombstoneVisibilityService"],
-    );
+    require(SERVICES_MOD, &["ForumTopicRouteTombstoneVisibilityService"]);
     forbid(
         SERVICES_MOD,
         &[

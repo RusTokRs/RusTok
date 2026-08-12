@@ -327,7 +327,9 @@ fn authenticated_scope(ctx: &Context<'_>) -> Result<AuthenticatedInboxScope> {
             false,
         ));
     }
-    let tenant = ctx.data_opt::<TenantContext>().ok_or_else(capability_unavailable)?;
+    let tenant = ctx
+        .data_opt::<TenantContext>()
+        .ok_or_else(capability_unavailable)?;
     if auth.tenant_id != tenant.id {
         return Err(public_error(
             "NOTIFICATION_INBOX_TENANT_MISMATCH",
@@ -344,18 +346,12 @@ fn authenticated_scope(ctx: &Context<'_>) -> Result<AuthenticatedInboxScope> {
         tenant_id: tenant.id,
         recipient_id: auth.user_id,
         actor: auth.port_actor(),
-        claims: auth
-            .permissions
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
+        claims: auth.permissions.iter().map(ToString::to_string).collect(),
         locale,
     })
 }
 
-fn grouped_storefront_port(
-    ctx: &Context<'_>,
-) -> Result<Arc<dyn NotificationInboxStorefrontPort>> {
+fn grouped_storefront_port(ctx: &Context<'_>) -> Result<Arc<dyn NotificationInboxStorefrontPort>> {
     ctx.data_opt::<NotificationsGraphqlRuntimeData>()
         .and_then(|runtime| runtime.storefront.clone())
         .ok_or_else(capability_unavailable)
@@ -447,9 +443,7 @@ fn map_group_action_to_owner(
         GqlNotificationInboxGroupStateAction::MarkUnread => {
             NotificationInboxGroupStateAction::MarkUnread
         }
-        GqlNotificationInboxGroupStateAction::Archive => {
-            NotificationInboxGroupStateAction::Archive
-        }
+        GqlNotificationInboxGroupStateAction::Archive => NotificationInboxGroupStateAction::Archive,
     }
 }
 
@@ -504,9 +498,7 @@ fn map_item(item: NotificationInboxItem) -> GqlNotificationInboxItem {
     }
 }
 
-fn map_state_to_owner(
-    state: GqlNotificationInboxItemState,
-) -> crate::model::NotificationState {
+fn map_state_to_owner(state: GqlNotificationInboxItemState) -> crate::model::NotificationState {
     match state {
         GqlNotificationInboxItemState::Unread => crate::model::NotificationState::Unread,
         GqlNotificationInboxItemState::Seen => crate::model::NotificationState::Seen,
@@ -658,7 +650,10 @@ mod tests {
     #[test]
     fn unavailable_open_decision_never_exposes_a_route() {
         let decision = map_open_decision(NotificationInboxStorefrontOpenDecision::Unavailable);
-        assert_eq!(decision.decision, GqlNotificationInboxOpenDecision::Unavailable);
+        assert_eq!(
+            decision.decision,
+            GqlNotificationInboxOpenDecision::Unavailable
+        );
         assert_eq!(decision.route, None);
     }
 

@@ -61,9 +61,8 @@ pub fn AdminCanvas(
     let evaluated_capabilities = editor_capability_evaluation
         .as_ref()
         .map(|evaluation| evaluation.effective);
-    let provider_status: Option<PageBuilderAdminProviderStatus> = facade
-        .as_ref()
-        .and_then(|facade| facade.provider_status());
+    let provider_status: Option<PageBuilderAdminProviderStatus> =
+        facade.as_ref().and_then(|facade| facade.provider_status());
     let consumer_properties = facade
         .as_ref()
         .and_then(|facade| facade.consumer_properties())

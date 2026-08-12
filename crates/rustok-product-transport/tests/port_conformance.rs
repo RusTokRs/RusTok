@@ -6,8 +6,7 @@ use rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKin
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
     StorefrontProductList, StorefrontProductListItem, VariantProductProjectionRequest,
-    dto::ProductResponse,
-    entities::product::ProductStatus,
+    dto::ProductResponse, entities::product::ProductStatus,
 };
 use rustok_product_transport::{
     GrpcProductCatalogReadProvider, ProductCatalogGrpcOperation, ProductCatalogGrpcService,
@@ -266,5 +265,7 @@ async fn loopback_grpc_provider_executes_the_product_catalog_port_contract() {
     assert_eq!(deadline_error.code, "port.deadline_required");
 
     let _ = shutdown_tx.send(());
-    server.await.expect("loopback Product gRPC server task should stop");
+    server
+        .await
+        .expect("loopback Product gRPC server task should stop");
 }

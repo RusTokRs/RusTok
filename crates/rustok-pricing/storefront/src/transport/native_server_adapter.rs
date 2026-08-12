@@ -364,12 +364,7 @@ async fn storefront_pricing_native(
             .list_channels(tenant.id, 1, 250)
             .await
             .map_err(|error| {
-                map_owner_runtime_error(
-                    "list_channels",
-                    tenant.id,
-                    request_context.as_ref(),
-                    error,
-                )
+                map_owner_runtime_error("list_channels", tenant.id, request_context.as_ref(), error)
             })?;
         let active_price_lists = service
             .list_active_price_lists_for_channel(

@@ -21,12 +21,8 @@ async fn repair_evidence_environment_reports_postgres_version() -> TestResult<()
     let server_version: String = row.try_get("", "server_version")?;
     let server_version_num: String = row.try_get("", "server_version_num")?;
 
-    println!(
-        "RUSTOK_INDEX_REPAIR_EVIDENCE postgres_server_version={server_version}"
-    );
-    println!(
-        "RUSTOK_INDEX_REPAIR_EVIDENCE postgres_server_version_num={server_version_num}"
-    );
+    println!("RUSTOK_INDEX_REPAIR_EVIDENCE postgres_server_version={server_version}");
+    println!("RUSTOK_INDEX_REPAIR_EVIDENCE postgres_server_version_num={server_version_num}");
 
     database.cleanup().await
 }

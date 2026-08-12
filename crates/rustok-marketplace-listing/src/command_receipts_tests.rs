@@ -7,7 +7,7 @@ use sea_orm::{
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
-use crate::command_receipts::{admit, complete, replay_existing, ListingCommandAdmission};
+use crate::command_receipts::{ListingCommandAdmission, admit, complete, replay_existing};
 use crate::dto::{
     MarketplaceListingApprovalStatus, MarketplaceListingResponse, MarketplaceListingStatus,
     MarketplaceListingTermsResponse,

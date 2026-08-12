@@ -352,8 +352,8 @@ impl ProductCatalogSchemaService {
             )
             .await?;
         }
-        let result = Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale)
-            .await?;
+        let result =
+            Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale).await?;
         record_product_operation_result(&result)?;
         txn.commit().await?;
         Ok(result)
@@ -437,8 +437,8 @@ impl ProductCatalogSchemaService {
             )
             .await?;
         }
-        let result = Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale)
-            .await?;
+        let result =
+            Self::load_product_attribute_values_in(&txn, tenant_id, product_id, locale).await?;
         record_product_operation_result(&result)?;
         txn.commit().await?;
         Ok(result)

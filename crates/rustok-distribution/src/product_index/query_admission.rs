@@ -96,12 +96,8 @@ pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core:
         PRODUCT_QUERY_MATERIALIZED_FRESHNESS,
         "Product",
     )?;
-    register_postgres_index_query_link_target_availability(
-        extensions,
-        "product",
-        product_schema,
-    )
-    .map_err(|error| {
+    register_postgres_index_query_link_target_availability(extensions, "product", product_schema)
+        .map_err(|error| {
         rustok_core::Error::Validation(format!(
             "selected Product Index linked-target availability registration failed: {error}"
         ))

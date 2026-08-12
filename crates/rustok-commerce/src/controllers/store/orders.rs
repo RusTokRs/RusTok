@@ -3,9 +3,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use rustok_api::{
-    PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext,
-};
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind, RequestContext, TenantContext};
 use rustok_customer::dto::CustomerResponse;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_order::{
@@ -687,7 +685,11 @@ pub async fn list_order_returns(
 
     Ok(Json(PaginatedResponse {
         data: page.items,
-        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
+        meta: PaginationMeta::new(
+            params.pagination.page,
+            params.pagination.limit(),
+            page.total,
+        ),
     }))
 }
 
@@ -759,7 +761,11 @@ pub async fn list_order_refunds(
 
     Ok(Json(PaginatedResponse {
         data: page.items,
-        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
+        meta: PaginationMeta::new(
+            params.pagination.page,
+            params.pagination.limit(),
+            page.total,
+        ),
     }))
 }
 
@@ -835,6 +841,10 @@ pub async fn list_order_changes(
 
     Ok(Json(PaginatedResponse {
         data: page.items,
-        meta: PaginationMeta::new(params.pagination.page, params.pagination.limit(), page.total),
+        meta: PaginationMeta::new(
+            params.pagination.page,
+            params.pagination.limit(),
+            page.total,
+        ),
     }))
 }

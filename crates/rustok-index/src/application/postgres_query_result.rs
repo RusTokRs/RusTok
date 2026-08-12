@@ -5,15 +5,13 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::domain::{
-    FieldCardinality, FieldPath, IndexQuery, IndexValue, LinkName, Pagination,
-};
+use crate::domain::{FieldCardinality, FieldPath, IndexQuery, IndexValue, LinkName, Pagination};
 
 use super::{
     CompiledManyRelationColumn, CompiledPostgresQuery, CompiledQueryColumn, CursorCodec,
-    CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField,
-    PlannedManyProjection, PostgresBindValue, PostgresQueryBuildError, QueryPlanError,
-    QueryPlanFingerprint, SchemaRegistry, SchemaRegistryError,
+    CursorValidationError, ExecutableQueryPlan, IndexCursor, PlannedField, PlannedManyProjection,
+    PostgresBindValue, PostgresQueryBuildError, QueryPlanError, QueryPlanFingerprint,
+    SchemaRegistry, SchemaRegistryError,
 };
 
 const EXACT_COUNT_ALIAS: &str = "__exact_count";
@@ -37,9 +35,7 @@ impl CompiledPostgresRow {
         Self::default()
     }
 
-    pub fn from_values(
-        values: impl IntoIterator<Item = (String, CompiledPostgresCell)>,
-    ) -> Self {
+    pub fn from_values(values: impl IntoIterator<Item = (String, CompiledPostgresCell)>) -> Self {
         Self {
             values: values.into_iter().collect(),
         }
@@ -287,9 +283,7 @@ impl SchemaRegistry {
                 .last()
                 .ok_or(PostgresQueryDecodeError::MissingCursorItem)?;
             let registered = self.get(&query.schema).ok_or_else(|| {
-                QueryPlanError::Registry(SchemaRegistryError::SchemaNotFound(
-                    query.schema.clone(),
-                ))
+                QueryPlanError::Registry(SchemaRegistryError::SchemaNotFound(query.schema.clone()))
             })?;
             let cursor = IndexCursor {
                 tenant_id: query.scope.tenant_id,
@@ -366,10 +360,13 @@ fn expected_columns(plan: &ExecutableQueryPlan) -> Vec<CompiledQueryColumn> {
         output_alias: identity_alias(&plan.root_alias),
         relation_alias: plan.root_alias.clone(),
     });
-    columns.extend(plan.outer_joins().map(|join| CompiledQueryColumn::EntityId {
-        output_alias: identity_alias(&join.alias),
-        relation_alias: join.alias.clone(),
-    }));
+    columns.extend(
+        plan.outer_joins()
+            .map(|join| CompiledQueryColumn::EntityId {
+                output_alias: identity_alias(&join.alias),
+                relation_alias: join.alias.clone(),
+            }),
+    );
     columns.extend(
         plan.projection
             .iter()
@@ -380,15 +377,12 @@ fn expected_columns(plan: &ExecutableQueryPlan) -> Vec<CompiledQueryColumn> {
                 field: field.clone(),
             }),
     );
-    columns.extend(
-        plan.order_by
-            .iter()
-            .enumerate()
-            .map(|(index, order)| CompiledQueryColumn::OrderValue {
-                output_alias: format!("__order_{index}"),
-                field: order.field.clone(),
-            }),
-    );
+    columns.extend(plan.order_by.iter().enumerate().map(|(index, order)| {
+        CompiledQueryColumn::OrderValue {
+            output_alias: format!("__order_{index}"),
+            field: order.field.clone(),
+        }
+    }));
     columns
 }
 
@@ -464,9 +458,8 @@ fn decode_row(
         }
     }
 
-    let root_entity_id = root_entity_id.ok_or_else(|| {
-        PostgresQueryDecodeError::MissingColumn(identity_alias(&plan.root_alias))
-    })?;
+    let root_entity_id = root_entity_id
+        .ok_or_else(|| PostgresQueryDecodeError::MissingColumn(identity_alias(&plan.root_alias)))?;
     let mut fields = Vec::with_capacity(plan.outer_projection().count());
     let mut order_values = Vec::with_capacity(plan.order_by.len());
 
@@ -489,9 +482,7 @@ fn decode_row(
     let nested_relations = compiled
         .many_relations
         .iter()
-        .map(|column| {
-            decode_nested_relation(row, &column.output_alias, &column.projection)
-        })
+        .map(|column| decode_nested_relation(row, &column.output_alias, &column.projection))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(DecodedRow {
@@ -567,12 +558,13 @@ fn decode_nested_relation(
             });
         }
     };
-    let wire_items = serde_json::from_value::<Vec<CompiledNestedRelationItem>>(payload).map_err(
-        |source| PostgresQueryDecodeError::InvalidNestedRelation {
-            alias: output_alias.to_owned(),
-            source,
-        },
-    )?;
+    let wire_items =
+        serde_json::from_value::<Vec<CompiledNestedRelationItem>>(payload).map_err(|source| {
+            PostgresQueryDecodeError::InvalidNestedRelation {
+                alias: output_alias.to_owned(),
+                source,
+            }
+        })?;
     let mut identity_chains = BTreeSet::new();
     let mut items = Vec::with_capacity(wire_items.len());
 
@@ -698,7 +690,11 @@ fn decode_exact_count(
     compiled: &CompiledPostgresQuery,
     row: Option<&CompiledPostgresRow>,
 ) -> Result<Option<u64>, PostgresQueryDecodeError> {
-    match (query.include_exact_count, compiled.exact_count.is_some(), row) {
+    match (
+        query.include_exact_count,
+        compiled.exact_count.is_some(),
+        row,
+    ) {
         (false, false, None) => Ok(None),
         (true, true, Some(row)) => match required_cell(row, EXACT_COUNT_ALIAS)? {
             CompiledPostgresCell::Integer(value) if *value >= 0 => Ok(Some(*value as u64)),

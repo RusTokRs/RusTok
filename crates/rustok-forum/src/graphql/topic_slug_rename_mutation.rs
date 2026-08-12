@@ -9,8 +9,7 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumTopicRouteDescriptor, ForumTopicSlugRenameResult, RenameForumTopicSlugInput,
-    TopicService,
+    ForumTopicRouteDescriptor, ForumTopicSlugRenameResult, RenameForumTopicSlugInput, TopicService,
 };
 
 const MODULE_SLUG: &str = "forum";
@@ -36,16 +35,8 @@ impl ForumTopicSlugRenameMutation {
             .clone();
         let tenant = ctx.data::<TenantContext>()?;
 
-        execute_rename_forum_topic_slug(
-            db,
-            event_bus,
-            tenant,
-            &auth,
-            tenant_id,
-            topic_id,
-            input,
-        )
-        .await
+        execute_rename_forum_topic_slug(db, event_bus, tenant, &auth, tenant_id, topic_id, input)
+            .await
     }
 }
 
@@ -197,16 +188,13 @@ mod tests {
 
     #[test]
     fn rename_transport_requires_topic_update_permission() {
-        let denied = require_topic_update_permission(&auth_context(vec![
-            Permission::FORUM_TOPICS_READ,
-        ]))
-        .expect_err("read-only actor must not rename a topic slug");
+        let denied =
+            require_topic_update_permission(&auth_context(vec![Permission::FORUM_TOPICS_READ]))
+                .expect_err("read-only actor must not rename a topic slug");
         assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
 
-        require_topic_update_permission(&auth_context(vec![
-            Permission::FORUM_TOPICS_UPDATE,
-        ]))
-        .expect("topic update permission must be accepted");
+        require_topic_update_permission(&auth_context(vec![Permission::FORUM_TOPICS_UPDATE]))
+            .expect("topic update permission must be accepted");
     }
 
     #[test]

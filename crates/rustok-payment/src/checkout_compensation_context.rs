@@ -5,12 +5,12 @@ use rustok_api::{PortContext, PortError, PortErrorKind};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 
+use crate::PaymentCollectionStatusSnapshot;
 use crate::checkout_compensation_persistent::{
     CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,
     InProcessCheckoutPaymentCompensationPort as PersistentCheckoutPaymentCompensationPort,
 };
 use crate::providers::PaymentProviderRegistry;
-use crate::PaymentCollectionStatusSnapshot;
 
 const PAYMENT_OWNER: &str = "rustok_payment";
 const COMPENSATE_CHECKOUT_PAYMENT_OPERATION: &str = "compensate_checkout_payment";
@@ -191,9 +191,7 @@ fn checkout_payment_compensation_local_operation(code: &str) -> Option<&'static 
     match code {
         "port.idempotency_key_required" => Some("admit_write_idempotency"),
         "port.deadline_required" => Some("admit_deadline"),
-        "payment.checkout_compensation_identity_invalid" => {
-            Some("validate_compensation_identity")
-        }
+        "payment.checkout_compensation_identity_invalid" => Some("validate_compensation_identity"),
         "payment.collection_not_found" => Some("load_collection"),
         "payment.checkout_compensation_manual_reconciliation" => {
             Some("require_manual_reconciliation")
@@ -206,9 +204,7 @@ fn checkout_payment_compensation_local_operation(code: &str) -> Option<&'static 
         "payment.checkout_compensation_provider_identity_conflict" => {
             Some("validate_provider_identity")
         }
-        "payment.checkout_compensation_encoding_failed" => {
-            Some("encode_provider_cancel_request")
-        }
+        "payment.checkout_compensation_encoding_failed" => Some("encode_provider_cancel_request"),
         "payment.database_unavailable" => Some("owner_storage"),
         "payment.checkout_compensation_validation" => Some("validate_owner_request"),
         "payment.payment_not_found" => Some("load_payment"),
@@ -227,8 +223,7 @@ fn map_checkout_payment_compensation_local_port_error(
     facts: &CheckoutPaymentCompensationDiagnosticFacts,
     error: PortError,
 ) -> PortError {
-    let Some(local_operation) =
-        checkout_payment_compensation_local_operation(error.code.as_str())
+    let Some(local_operation) = checkout_payment_compensation_local_operation(error.code.as_str())
     else {
         return error;
     };

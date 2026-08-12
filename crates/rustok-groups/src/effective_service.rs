@@ -15,9 +15,7 @@ use crate::domain::{
     GroupMembershipStatus, GroupRole, GroupStatus, GroupVisibility, normalize_feature_key,
 };
 use crate::dto::*;
-use crate::effective_membership_guard::{
-    GroupManagerCapability, require_effective_manager_owned,
-};
+use crate::effective_membership_guard::{GroupManagerCapability, require_effective_manager_owned};
 use crate::entities::{feature_binding, group, membership};
 use crate::error::{GroupsError, GroupsResult};
 use crate::membership_enforcement::resolve_group_membership_enforcement;
@@ -392,7 +390,11 @@ impl GroupsService {
         };
 
         let mut group_active: group::ActiveModel = group_model.into();
-        group_active.version = Set(group_active.version.take().unwrap_or_default().saturating_add(1));
+        group_active.version = Set(group_active
+            .version
+            .take()
+            .unwrap_or_default()
+            .saturating_add(1));
         group_active.updated_at = Set(now);
         group_active.update(&transaction).await?;
 

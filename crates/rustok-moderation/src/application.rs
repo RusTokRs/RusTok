@@ -115,11 +115,7 @@ impl ModerationService {
         lease_owner: impl Into<String>,
         lease_seconds: i64,
     ) -> ModerationResult<Option<ModerationApplicationOperationRecord>> {
-        let lease_owner = normalize_text(
-            lease_owner.into(),
-            "lease_owner",
-            MAX_LEASE_OWNER_BYTES,
-        )?;
+        let lease_owner = normalize_text(lease_owner.into(), "lease_owner", MAX_LEASE_OWNER_BYTES)?;
         let lease_seconds = normalize_seconds(
             lease_seconds,
             DEFAULT_APPLICATION_LEASE_SECONDS,
@@ -367,7 +363,9 @@ impl ModerationService {
             .await?;
         if result.rows_affected != 1 {
             transaction.rollback().await?;
-            return Err(self.application_cas_conflict(tenant_id, decision_id).await?);
+            return Err(self
+                .application_cas_conflict(tenant_id, decision_id)
+                .await?);
         }
 
         let operation = find_application_operation_model(&transaction, tenant_id, decision_id)
@@ -435,7 +433,8 @@ impl ModerationService {
         next_attempt_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     ) -> ModerationResult<ModerationApplicationOperationRecord> {
         let error_code = normalize_text(error_code, "error_code", MAX_ERROR_CODE_BYTES)?;
-        let error_message = normalize_text(error_message, "error_message", MAX_ERROR_MESSAGE_BYTES)?;
+        let error_message =
+            normalize_text(error_message, "error_message", MAX_ERROR_MESSAGE_BYTES)?;
         match next_status {
             ModerationApplicationOperationStatus::Retryable if next_attempt_at.is_none() => {
                 return Err(ModerationError::Invariant(
@@ -508,7 +507,9 @@ impl ModerationService {
         let result = update.exec(&transaction).await?;
         if result.rows_affected != 1 {
             transaction.rollback().await?;
-            return Err(self.application_cas_conflict(tenant_id, decision_id).await?);
+            return Err(self
+                .application_cas_conflict(tenant_id, decision_id)
+                .await?);
         }
 
         let operation = find_application_operation_model(&transaction, tenant_id, decision_id)
@@ -549,13 +550,12 @@ impl ModerationService {
                     now,
                 )
                 .await?;
-                let application_event_type = if next_status
-                    == ModerationApplicationOperationStatus::Rejected
-                {
-                    "application_rejected"
-                } else {
-                    "application_operator_review"
-                };
+                let application_event_type =
+                    if next_status == ModerationApplicationOperationStatus::Rejected {
+                        "application_rejected"
+                    } else {
+                        "application_operator_review"
+                    };
                 append_event(
                     &transaction,
                     tenant_id,
@@ -642,20 +642,14 @@ async fn transition_case_status_in_transaction(
             moderation_case::Column::Revision,
             Expr::value(next_revision),
         )
-        .col_expr(
-            moderation_case::Column::UpdatedAt,
-            Expr::value(now),
-        )
+        .col_expr(moderation_case::Column::UpdatedAt, Expr::value(now))
         .filter(moderation_case::Column::TenantId.eq(tenant_id))
         .filter(moderation_case::Column::Id.eq(case.id))
         .filter(moderation_case::Column::Revision.eq(case.revision))
         .filter(moderation_case::Column::Status.eq(from.as_str()));
     if to == ModerationCaseStatus::Closed {
         update = update
-            .col_expr(
-                moderation_case::Column::ClosedAt,
-                Expr::value(Some(now)),
-            )
+            .col_expr(moderation_case::Column::ClosedAt, Expr::value(Some(now)))
             .col_expr(
                 moderation_case::Column::ActiveDeduplicationKey,
                 Expr::value(Option::<String>::None),
@@ -711,9 +705,10 @@ fn validate_application_evidence(
     operation: &moderation_application_operation::Model,
     application: &ModerationDecisionApplication,
 ) -> ModerationResult<()> {
-    let stored_kind = ModerationSubjectKind::parse(operation.subject_kind.as_str()).ok_or_else(|| {
-        ModerationError::Invariant("unknown stored application subject kind".to_string())
-    })?;
+    let stored_kind =
+        ModerationSubjectKind::parse(operation.subject_kind.as_str()).ok_or_else(|| {
+            ModerationError::Invariant("unknown stored application subject kind".to_string())
+        })?;
     if application.decision_id != operation.decision_id
         || application.subject.module != operation.subject_module
         || application.subject.kind != stored_kind
@@ -731,12 +726,14 @@ fn validate_application_evidence(
 fn map_application_operation(
     model: moderation_application_operation::Model,
 ) -> ModerationResult<ModerationApplicationOperationRecord> {
-    let subject_kind = ModerationSubjectKind::parse(model.subject_kind.as_str()).ok_or_else(|| {
-        ModerationError::Invariant("unknown stored application subject kind".to_string())
-    })?;
-    let status = ModerationApplicationOperationStatus::parse(model.status.as_str()).ok_or_else(|| {
-        ModerationError::Invariant("unknown stored application status".to_string())
-    })?;
+    let subject_kind =
+        ModerationSubjectKind::parse(model.subject_kind.as_str()).ok_or_else(|| {
+            ModerationError::Invariant("unknown stored application subject kind".to_string())
+        })?;
+    let status =
+        ModerationApplicationOperationStatus::parse(model.status.as_str()).ok_or_else(|| {
+            ModerationError::Invariant("unknown stored application status".to_string())
+        })?;
     Ok(ModerationApplicationOperationRecord {
         decision_id: model.decision_id,
         tenant_id: model.tenant_id,
@@ -753,7 +750,9 @@ fn map_application_operation(
         next_attempt_at: model.next_attempt_at.with_timezone(&Utc),
         lease_token: model.lease_token,
         lease_owner: model.lease_owner,
-        lease_expires_at: model.lease_expires_at.map(|value| value.with_timezone(&Utc)),
+        lease_expires_at: model
+            .lease_expires_at
+            .map(|value| value.with_timezone(&Utc)),
         last_error_code: model.last_error_code,
         last_error_message: model.last_error_message,
         applied_revision: model.applied_revision,
@@ -763,12 +762,7 @@ fn map_application_operation(
     })
 }
 
-fn normalize_seconds(
-    value: i64,
-    default: i64,
-    max: i64,
-    field: &str,
-) -> ModerationResult<i64> {
+fn normalize_seconds(value: i64, default: i64, max: i64, field: &str) -> ModerationResult<i64> {
     let value = if value == 0 { default } else { value };
     if !(1..=max).contains(&value) {
         return Err(ModerationError::Validation(format!(

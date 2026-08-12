@@ -12,12 +12,8 @@ fn active_tenant_rebuild_never_calls_the_destructive_legacy_tenant_rebuild() {
     assert!(ACTIVE_PROJECTOR.contains("self.legacy.rebuild_content_scope(tenant_id).await?"));
     assert!(ACTIVE_PROJECTOR.contains("self.legacy.rebuild_product_scope(tenant_id).await"));
     assert!(!ACTIVE_PROJECTOR.contains("self.legacy.rebuild_tenant"));
-    assert!(!ACTIVE_PROJECTOR.contains(
-        "DELETE FROM search_documents WHERE tenant_id = $1\""
-    ));
-    assert!(LEGACY_PROJECTOR.contains(
-        "DELETE FROM search_documents WHERE tenant_id = $1\""
-    ));
+    assert!(!ACTIVE_PROJECTOR.contains("DELETE FROM search_documents WHERE tenant_id = $1\""));
+    assert!(LEGACY_PROJECTOR.contains("DELETE FROM search_documents WHERE tenant_id = $1\""));
 }
 
 #[test]
@@ -45,7 +41,10 @@ fn full_ingestion_rebuild_keeps_source_order_and_atomic_external_replacements() 
         "self.delete_tenant_documents_in(&tx, tenant_id).await?",
         "self.commit_transaction(tx).await",
     ] {
-        assert!(BLOG_PROJECTOR.contains(marker), "missing Blog atomic marker {marker}");
+        assert!(
+            BLOG_PROJECTOR.contains(marker),
+            "missing Blog atomic marker {marker}"
+        );
     }
     for marker in [
         "let tx = self.db.begin().await.map_err(Error::Database)?",
@@ -53,7 +52,10 @@ fn full_ingestion_rebuild_keeps_source_order_and_atomic_external_replacements() 
         "delete_forum_scope(&tx, tenant_id).await?",
         "tx.commit().await.map_err(Error::Database)",
     ] {
-        assert!(FORUM_PROJECTOR.contains(marker), "missing Forum atomic marker {marker}");
+        assert!(
+            FORUM_PROJECTOR.contains(marker),
+            "missing Forum atomic marker {marker}"
+        );
     }
 }
 

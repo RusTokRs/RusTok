@@ -90,11 +90,8 @@ impl PageService {
                 .await?;
             match existing {
                 Some(existing) => {
-                    let revision = next_page_translation_revision(
-                        page_id,
-                        &locale,
-                        existing.revision,
-                    )?;
+                    let revision =
+                        next_page_translation_revision(page_id, &locale, existing.revision)?;
                     let mut active: page_translation::ActiveModel = existing.into();
                     active.title = Set(translation.title.clone());
                     active.slug = Set(slug);
@@ -111,10 +108,10 @@ impl PageService {
                         locale: Set(locale),
                         title: Set(translation.title.clone()),
                         slug: Set(slug),
-                    meta_title: Set(translation.meta_title.clone()),
-                    meta_description: Set(translation.meta_description.clone()),
-                    revision: Set(1),
-                }
+                        meta_title: Set(translation.meta_title.clone()),
+                        meta_description: Set(translation.meta_description.clone()),
+                        revision: Set(1),
+                    }
                     .insert(txn)
                     .await?;
                 }

@@ -16,7 +16,7 @@ use crate::{
     IndexDriftEntityState, IndexDriftSnapshotBoundary, IndexDriftSnapshotPair,
     IndexDriftSnapshotReader, IndexDriftSnapshotView, IndexLinkValue, IndexRecord,
     IndexSourceAbsenceError, IndexSourceError, IndexSourceFailureKind, IndexSourceLoadRequest,
-    IndexValue, LinkedEntityKey, LinkName, LocaleKey, ModuleName, SchemaRef, SchemaVersion,
+    IndexValue, LinkName, LinkedEntityKey, LocaleKey, ModuleName, SchemaRef, SchemaVersion,
     SharedIndexSchemaRegistry, SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
 };
 
@@ -84,10 +84,7 @@ impl PostgresIndexDriftSnapshotReader {
         }
     }
 
-    pub fn with_absence_registry(
-        mut self,
-        absence: SharedIndexSourceAbsenceRegistry,
-    ) -> Self {
+    pub fn with_absence_registry(mut self, absence: SharedIndexSourceAbsenceRegistry) -> Self {
         self.absence = Some(absence);
         self
     }
@@ -310,7 +307,10 @@ pub fn materialize_postgres_index_drift_snapshot_reader(
     }
     let reader = PostgresIndexDriftSnapshotReader::new(db, sources, schemas);
     Ok(Some(
-        match extensions.get::<SharedIndexSourceAbsenceRegistry>().cloned() {
+        match extensions
+            .get::<SharedIndexSourceAbsenceRegistry>()
+            .cloned()
+        {
             Some(absence) => reader.with_absence_registry(absence),
             None => reader,
         },
@@ -349,8 +349,8 @@ async fn load_links(
         let ordinal = row
             .try_get::<i64>("", "ordinal")
             .map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
-        let ordinal = usize::try_from(ordinal)
-            .map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
+        let ordinal =
+            usize::try_from(ordinal).map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
         let target_version = row
             .try_get::<i64>("", "target_schema_version")
             .map_err(|_| permanent_failure(MATERIALIZED_INVALID))?;
@@ -451,8 +451,8 @@ fn derive_boundary(
     snapshot: &str,
     source: &IndexDriftSourceObservation,
 ) -> Result<IndexDriftSnapshotBoundary, IndexDriftDependencyFailure> {
-    let encoded = postcard::to_allocvec(&source.state)
-        .map_err(|_| permanent_failure(BOUNDARY_INVALID))?;
+    let encoded =
+        postcard::to_allocvec(&source.state).map_err(|_| permanent_failure(BOUNDARY_INVALID))?;
     let mut hasher = Sha256::new();
     hash_component(&mut hasher, SNAPSHOT_BOUNDARY_DOMAIN);
     hash_component(&mut hasher, snapshot.as_bytes());

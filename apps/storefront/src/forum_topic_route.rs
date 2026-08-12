@@ -226,9 +226,7 @@ mod tests {
                     requested_path,
                     &resolution(disposition, Some(descriptor())),
                 ),
-                ForumTopicHostAction::Redirect(
-                    "/en/forum/t/123456789abc/welcome".to_string()
-                )
+                ForumTopicHostAction::Redirect("/en/forum/t/123456789abc/welcome".to_string())
             );
         }
     }
@@ -274,10 +272,16 @@ mod tests {
         invalid_slug.path = "/en/forum/t/123456789abc/../admin".to_string();
 
         for resolution in [
-            resolution(StorefrontForumTopicRouteDisposition::Gone, Some(descriptor())),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Gone,
+                Some(descriptor()),
+            ),
             resolution(StorefrontForumTopicRouteDisposition::Canonical, None),
             resolution(StorefrontForumTopicRouteDisposition::Redirect, None),
-            resolution(StorefrontForumTopicRouteDisposition::Redirect, Some(external)),
+            resolution(
+                StorefrontForumTopicRouteDisposition::Redirect,
+                Some(external),
+            ),
             resolution(
                 StorefrontForumTopicRouteDisposition::Redirect,
                 Some(protocol_relative),
@@ -320,10 +324,7 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                forum_topic_host_action(
-                    "/en/forum/t/123456789abc/welcome",
-                    &resolution,
-                ),
+                forum_topic_host_action("/en/forum/t/123456789abc/welcome", &resolution,),
                 ForumTopicHostAction::Invalid
             );
         }

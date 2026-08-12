@@ -75,8 +75,7 @@ impl ProductSalesChannelRelationResolver {
         &self,
         tenant_id: Uuid,
         product_id: Uuid,
-    ) -> Result<(), ProductSalesChannelRelationResolverError>
-    {
+    ) -> Result<(), ProductSalesChannelRelationResolverError> {
         validate_scope(tenant_id, product_id)?;
         self.ensure_postgres()?;
         let owner = ProductSalesChannelIndexRelationStore::new(self.db.clone());
@@ -115,7 +114,9 @@ impl ProductSalesChannelRelationResolver {
                         return Err(ProductSalesChannelRelationResolverError::ProductNotFound);
                     }
                     Err(error) => {
-                        return Err(ProductSalesChannelRelationResolverError::FreshnessOwner(error));
+                        return Err(ProductSalesChannelRelationResolverError::FreshnessOwner(
+                            error,
+                        ));
                     }
                 }
             }
@@ -131,8 +132,7 @@ impl ProductSalesChannelRelationResolver {
         tenant_id: Uuid,
         after_product_id: Option<Uuid>,
         limit: usize,
-    ) -> Result<Option<Uuid>, ProductSalesChannelRelationResolverError>
-    {
+    ) -> Result<Option<Uuid>, ProductSalesChannelRelationResolverError> {
         if tenant_id.is_nil() {
             return Err(ProductSalesChannelRelationResolverError::InvalidTenant);
         }
@@ -218,7 +218,8 @@ impl ProductSalesChannelRelationResolver {
         after_product_id: Option<Uuid>,
         limit: usize,
     ) -> Result<Vec<Uuid>, ProductSalesChannelRelationResolverError> {
-        let limit = i64::try_from(limit).expect("resolver page lookahead is bounded below i64::MAX");
+        let limit =
+            i64::try_from(limit).expect("resolver page lookahead is bounded below i64::MAX");
         let (sql, values) = match after_product_id {
             Some(after_product_id) => (
                 "SELECT id FROM products WHERE tenant_id = $1 AND id > $2 ORDER BY id ASC LIMIT $3",
@@ -231,7 +232,11 @@ impl ProductSalesChannelRelationResolver {
         };
 
         self.db
-            .query_all(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                sql,
+                values,
+            ))
             .await
             .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?
             .into_iter()
@@ -438,10 +443,8 @@ mod tests {
     #[test]
     fn restricted_resolution_matches_normalized_channel_slug_without_active_filter() {
         let tenant_id = Uuid::from_u128(1);
-        let visibility = ProductChannelVisibility::Restricted(vec![
-            "mobile".to_owned(),
-            "web".to_owned(),
-        ]);
+        let visibility =
+            ProductChannelVisibility::Restricted(vec!["mobile".to_owned(), "web".to_owned()]);
         let (sql, values) = channel_resolution_query(tenant_id, &visibility, 1025);
         assert!(sql.contains("lower(btrim(slug)) IN ($2, $3)"));
         assert!(!sql.contains("is_active"));

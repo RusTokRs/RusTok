@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 const MAX_FORUM_PAGE_BUILDER_ATTESTATION_CHALLENGE_BYTES: usize = 128;
-const FORUM_PAGE_BUILDER_ATTESTATION_CONTRACT: &str =
-    "forum_page_builder_server_fn_attestation_v1";
+const FORUM_PAGE_BUILDER_ATTESTATION_CONTRACT: &str = "forum_page_builder_server_fn_attestation_v1";
 const FORUM_PAGE_BUILDER_PREVIEW_ENDPOINT: &str = "/api/fn/forum/page-builder-widget-preview";
 const FORUM_PAGE_BUILDER_PROPERTY_SCHEMA_ENDPOINT: &str =
     "/api/fn/forum/page-builder-widget-property-schema";
@@ -42,7 +41,9 @@ pub(crate) fn require_tenant_scope(
     if auth.tenant_id == tenant.id {
         Ok(())
     } else {
-        Err(ServerFnError::new("Forum Page Builder tenant scope mismatch"))
+        Err(ServerFnError::new(
+            "Forum Page Builder tenant scope mismatch",
+        ))
     }
 }
 
@@ -114,9 +115,10 @@ fn validate_attestation_challenge(challenge: &str) -> Result<(), ServerFnError> 
             "Forum Page Builder attestation challenge is outside the bounded size",
         ));
     }
-    if !bytes.iter().all(|byte| {
-        byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b':')
-    }) {
+    if !bytes
+        .iter()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b':'))
+    {
         return Err(ServerFnError::new(
             "Forum Page Builder attestation challenge contains unsupported characters",
         ));
@@ -179,7 +181,10 @@ fn build_transport_attestation(
 /// Forum-owned widget contract catalog. It returns only stable contract identity plus the caller's
 /// bounded challenge and canonical runtime source revision; it never reads or returns Forum
 /// topic/reply data. Images without a canonical deployed source revision fail closed.
-#[server(prefix = "/api/fn", endpoint = "forum/page-builder-transport-attestation")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "forum/page-builder-transport-attestation"
+)]
 pub async fn attest_forum_page_builder_transport(
     challenge: String,
 ) -> Result<ForumPageBuilderTransportAttestationResponse, ServerFnError> {
@@ -297,19 +302,23 @@ mod tests {
     fn transport_authorization_accepts_exact_read_and_effective_manage() {
         let tenant_id = Uuid::new_v4();
         let tenant = tenant(tenant_id);
-        assert!(require_forum_transport_authorization(
-            &auth(tenant_id, vec![Permission::FORUM_TOPICS_READ]),
-            &tenant,
-        )
-        .is_ok());
-        assert!(require_forum_transport_authorization(
-            &auth(
-                tenant_id,
-                vec![Permission::new(Resource::ForumTopics, Action::Manage)],
-            ),
-            &tenant,
-        )
-        .is_ok());
+        assert!(
+            require_forum_transport_authorization(
+                &auth(tenant_id, vec![Permission::FORUM_TOPICS_READ]),
+                &tenant,
+            )
+            .is_ok()
+        );
+        assert!(
+            require_forum_transport_authorization(
+                &auth(
+                    tenant_id,
+                    vec![Permission::new(Resource::ForumTopics, Action::Manage)],
+                ),
+                &tenant,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -379,7 +388,10 @@ mod tests {
                 "forum.topic_list".to_string(),
             ]
         );
-        assert_eq!(response.preview_endpoint, FORUM_PAGE_BUILDER_PREVIEW_ENDPOINT);
+        assert_eq!(
+            response.preview_endpoint,
+            FORUM_PAGE_BUILDER_PREVIEW_ENDPOINT
+        );
         assert_eq!(
             response.property_schema_endpoint,
             FORUM_PAGE_BUILDER_PROPERTY_SCHEMA_ENDPOINT

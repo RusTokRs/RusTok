@@ -125,13 +125,8 @@ impl ForumCounterReconciliationService {
         let started_at = Instant::now();
         let result = match enforce_operations_scope(security) {
             Ok(()) => {
-                self.report_inner(
-                    tenant_id,
-                    requested_limit,
-                    topic_after,
-                    category_after,
-                )
-                .await
+                self.report_inner(tenant_id, requested_limit, topic_after, category_after)
+                    .await
             }
             Err(error) => Err(error),
         };

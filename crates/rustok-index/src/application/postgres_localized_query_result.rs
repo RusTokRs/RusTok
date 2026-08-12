@@ -2,17 +2,14 @@ use std::collections::BTreeSet;
 
 use thiserror::Error;
 
-use crate::domain::{
-    FieldCardinality, IndexValue, LocalizedEntityQuery, Pagination,
-};
+use crate::domain::{FieldCardinality, IndexValue, LocalizedEntityQuery, Pagination};
 
 use super::{
     CompiledPostgresCell, CompiledPostgresLocalizedPageQuery, CompiledPostgresRow,
-    CompiledQueryColumn, IndexProjectedValue, IndexQueryItem, IndexQueryPage,
-    LocalizedCursorCodec, LocalizedCursorValidationError, LocalizedEntityQueryValidationError,
-    LocalizedIndexCursor, PostgresQueryCompileError, PostgresQueryDecodeError, QueryPlanError,
-    SchemaRegistry, SchemaRegistryError,
-    postgres_localized_query::localized_plan_fingerprint,
+    CompiledQueryColumn, IndexProjectedValue, IndexQueryItem, IndexQueryPage, LocalizedCursorCodec,
+    LocalizedCursorValidationError, LocalizedEntityQueryValidationError, LocalizedIndexCursor,
+    PostgresQueryCompileError, PostgresQueryDecodeError, QueryPlanError, SchemaRegistry,
+    SchemaRegistryError, postgres_localized_query::localized_plan_fingerprint,
 };
 
 const EXACT_COUNT_ALIAS: &str = "__exact_count";
@@ -49,7 +46,9 @@ impl SchemaRegistry {
     ) -> Result<IndexQueryPage, PostgresLocalizedQueryDecodeError> {
         self.validate_localized_entity_query(query)?;
         let plan = self.plan_query(&query.query)?;
-        let expected_ordinary = plan.fingerprint().map_err(PostgresQueryCompileError::from)?;
+        let expected_ordinary = plan
+            .fingerprint()
+            .map_err(PostgresQueryCompileError::from)?;
         let compiled = page_query.compiled();
         if compiled.plan_fingerprint != expected_ordinary {
             return Err(PostgresQueryDecodeError::PlanFingerprintMismatch {
@@ -93,7 +92,11 @@ impl SchemaRegistry {
             .into());
         }
 
-        let exact_count = decode_exact_count(query, compiled.exact_count.is_some(), exact_count_row.as_ref())?;
+        let exact_count = decode_exact_count(
+            query,
+            compiled.exact_count.is_some(),
+            exact_count_row.as_ref(),
+        )?;
         let has_more = rows.len() > requested_page_size as usize;
         let decoded = rows
             .iter()
@@ -101,33 +104,34 @@ impl SchemaRegistry {
             .map(|row| decode_row(query, compiled, row))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let next_cursor = if has_more
-            && matches!(&query.query.pagination, Pagination::Cursor { .. })
-        {
-            let last = decoded
-                .last()
-                .ok_or(PostgresQueryDecodeError::MissingCursorItem)?;
-            let registered = self.get(&query.query.schema).ok_or_else(|| {
-                QueryPlanError::Registry(SchemaRegistryError::SchemaNotFound(
-                    query.query.schema.clone(),
-                ))
-            })?;
-            let cursor = LocalizedIndexCursor {
-                tenant_id: query.query.scope.tenant_id,
-                schema: query.query.schema.clone(),
-                schema_fingerprint: registered.fingerprint,
-                requested_locale: query
-                    .requested_locale()
-                    .expect("validated localized query carries requested locale")
-                    .clone(),
-                fallback_locale: query.canonical_fallback_locale().cloned(),
-                order_values: last.order_values.clone(),
-                entity_id: last.item.entity_id,
+        let next_cursor =
+            if has_more && matches!(&query.query.pagination, Pagination::Cursor { .. }) {
+                let last = decoded
+                    .last()
+                    .ok_or(PostgresQueryDecodeError::MissingCursorItem)?;
+                let registered = self.get(&query.query.schema).ok_or_else(|| {
+                    QueryPlanError::Registry(SchemaRegistryError::SchemaNotFound(
+                        query.query.schema.clone(),
+                    ))
+                })?;
+                let cursor = LocalizedIndexCursor {
+                    tenant_id: query.query.scope.tenant_id,
+                    schema: query.query.schema.clone(),
+                    schema_fingerprint: registered.fingerprint,
+                    requested_locale: query
+                        .requested_locale()
+                        .expect("validated localized query carries requested locale")
+                        .clone(),
+                    fallback_locale: query.canonical_fallback_locale().cloned(),
+                    order_values: last.order_values.clone(),
+                    entity_id: last.item.entity_id,
+                };
+                Some(LocalizedCursorCodec::encode_for_query(
+                    &cursor, query, self,
+                )?)
+            } else {
+                None
             };
-            Some(LocalizedCursorCodec::encode_for_query(&cursor, query, self)?)
-        } else {
-            None
-        };
 
         Ok(IndexQueryPage {
             items: decoded.into_iter().map(|row| row.item).collect(),
@@ -143,24 +147,18 @@ fn expected_columns(plan: &super::ExecutableQueryPlan) -> Vec<CompiledQueryColum
         output_alias: "__t0_entity_id".to_owned(),
         relation_alias: "t0".to_owned(),
     }];
-    columns.extend(
-        plan.projection
-            .iter()
-            .enumerate()
-            .map(|(index, field)| CompiledQueryColumn::Field {
-                output_alias: format!("f{index}"),
-                field: field.clone(),
-            }),
-    );
-    columns.extend(
-        plan.order_by
-            .iter()
-            .enumerate()
-            .map(|(index, order)| CompiledQueryColumn::OrderValue {
-                output_alias: format!("__order_{index}"),
-                field: order.field.clone(),
-            }),
-    );
+    columns.extend(plan.projection.iter().enumerate().map(|(index, field)| {
+        CompiledQueryColumn::Field {
+            output_alias: format!("f{index}"),
+            field: field.clone(),
+        }
+    }));
+    columns.extend(plan.order_by.iter().enumerate().map(|(index, order)| {
+        CompiledQueryColumn::OrderValue {
+            output_alias: format!("__order_{index}"),
+            field: order.field.clone(),
+        }
+    }));
     columns
 }
 
@@ -185,10 +183,9 @@ fn decode_row(
     let root_entity_id = match required_cell(row, "__t0_entity_id")? {
         CompiledPostgresCell::Uuid(value) if !value.is_nil() => *value,
         CompiledPostgresCell::Uuid(_) | CompiledPostgresCell::Null => {
-            return Err(PostgresQueryDecodeError::NullRootIdentity(
-                "__t0_entity_id".to_owned(),
-            )
-            .into());
+            return Err(
+                PostgresQueryDecodeError::NullRootIdentity("__t0_entity_id".to_owned()).into(),
+            );
         }
         _ => {
             return Err(PostgresQueryDecodeError::UnexpectedCellType {
@@ -303,9 +300,8 @@ fn required_cell<'a>(
     row: &'a CompiledPostgresRow,
     output_alias: &str,
 ) -> Result<&'a CompiledPostgresCell, PostgresLocalizedQueryDecodeError> {
-    row.get(output_alias).ok_or_else(|| {
-        PostgresQueryDecodeError::MissingColumn(output_alias.to_owned()).into()
-    })
+    row.get(output_alias)
+        .ok_or_else(|| PostgresQueryDecodeError::MissingColumn(output_alias.to_owned()).into())
 }
 
 fn decode_exact_count(
@@ -313,11 +309,7 @@ fn decode_exact_count(
     compiled_has_count: bool,
     row: Option<&CompiledPostgresRow>,
 ) -> Result<Option<u64>, PostgresLocalizedQueryDecodeError> {
-    match (
-        query.query.include_exact_count,
-        compiled_has_count,
-        row,
-    ) {
+    match (query.query.include_exact_count, compiled_has_count, row) {
         (false, false, None) => Ok(None),
         (true, true, Some(row)) => match required_cell(row, EXACT_COUNT_ALIAS)? {
             CompiledPostgresCell::Integer(value) if *value >= 0 => Ok(Some(*value as u64)),
@@ -345,9 +337,9 @@ fn page_size(pagination: &Pagination) -> u32 {
 mod tests {
     use super::*;
     use crate::domain::{
-        EntityName, FieldCardinality, FieldName, FieldPath, IndexField, IndexQuery, IndexQueryScope,
-        IndexSchema, IndexValueType, LocaleKey, LocaleMode, ModuleName, OrderDirection, OrderExpr,
-        Pagination, SchemaRef, SchemaVersion,
+        EntityName, FieldCardinality, FieldName, FieldPath, IndexField, IndexQuery,
+        IndexQueryScope, IndexSchema, IndexValueType, LocaleKey, LocaleMode, ModuleName,
+        OrderDirection, OrderExpr, Pagination, SchemaRef, SchemaVersion,
     };
     use serde_json::json;
     use uuid::Uuid;
@@ -461,10 +453,7 @@ mod tests {
             .iter()
             .map(|id| {
                 CompiledPostgresRow::from_values([
-                    (
-                        "__t0_entity_id".to_owned(),
-                        CompiledPostgresCell::Uuid(*id),
-                    ),
+                    ("__t0_entity_id".to_owned(), CompiledPostgresCell::Uuid(*id)),
                     (
                         "f0".to_owned(),
                         CompiledPostgresCell::Json(json!({"type":"uuid","value":id})),

@@ -62,7 +62,10 @@ fn item_pages_append_without_duplicate_notification_identity() {
             .iter()
             .map(|item| item.id.as_str())
             .collect::<Vec<_>>(),
-        vec!["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"]
+        vec![
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002"
+        ]
     );
     assert_eq!(snapshot.next_cursor, None);
     assert!(!snapshot.has_more);
@@ -73,13 +76,13 @@ fn presentation_uses_bounded_template_fields_then_semantic_fallbacks() {
     let mut rich = item(1, "forum.mention");
     rich.template_data = BTreeMap::from([
         ("title".to_string(), "A topic mentioned you".to_string()),
-        ("body".to_string(), "Open the topic to review the mention.".to_string()),
+        (
+            "body".to_string(),
+            "Open the topic to review the mention.".to_string(),
+        ),
     ]);
     assert_eq!(rich.display_title(), "A topic mentioned you");
-    assert_eq!(
-        rich.display_body(),
-        "Open the topic to review the mention."
-    );
+    assert_eq!(rich.display_body(), "Open the topic to review the mention.");
 
     let fallback = item(2, "forum.topic.created");
     assert_eq!(fallback.display_title(), "forum.topic.created");
@@ -88,12 +91,18 @@ fn presentation_uses_bounded_template_fields_then_semantic_fallbacks() {
 
 #[test]
 fn group_action_labels_match_transport_contract() {
-    assert_eq!(NotificationStorefrontGroupStateAction::MarkRead.as_str(), "mark_read");
+    assert_eq!(
+        NotificationStorefrontGroupStateAction::MarkRead.as_str(),
+        "mark_read"
+    );
     assert_eq!(
         NotificationStorefrontGroupStateAction::MarkUnread.as_str(),
         "mark_unread"
     );
-    assert_eq!(NotificationStorefrontGroupStateAction::Archive.as_str(), "archive");
+    assert_eq!(
+        NotificationStorefrontGroupStateAction::Archive.as_str(),
+        "archive"
+    );
 }
 
 fn group(group_key: &str, id: u128, unread_count: u64) -> NotificationStorefrontGroupSummary {
@@ -107,16 +116,16 @@ fn group(group_key: &str, id: u128, unread_count: u64) -> NotificationStorefront
 
 fn item(id: u128, notification_type: &str) -> NotificationStorefrontItem {
     NotificationStorefrontItem {
-        id: format!("{id:032x}")
-            .chars()
-            .enumerate()
-            .fold(String::new(), |mut output, (index, character)| {
+        id: format!("{id:032x}").chars().enumerate().fold(
+            String::new(),
+            |mut output, (index, character)| {
                 if matches!(index, 8 | 12 | 16 | 20) {
                     output.push('-');
                 }
                 output.push(character);
                 output
-            }),
+            },
+        ),
         source: "forum".to_string(),
         notification_type: notification_type.to_string(),
         template_key: format!("{notification_type}.v1"),

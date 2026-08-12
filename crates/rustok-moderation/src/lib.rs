@@ -1,8 +1,8 @@
-mod commands;
 pub mod application;
 pub mod application_dispatch;
 pub mod application_recovery;
 mod application_scheduler;
+mod commands;
 pub mod domain;
 pub mod entities;
 pub mod error;

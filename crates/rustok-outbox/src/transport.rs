@@ -78,9 +78,8 @@ impl OutboxTransport {
     {
         let envelope_id = envelope.id();
         let event_type = envelope.event_type().to_string();
-        let active_model = Self::model_from_contract_envelope(envelope.clone()).map_err(|error| {
-            write_once_unavailable(envelope_id, event_type.as_str(), error)
-        })?;
+        let active_model = Self::model_from_contract_envelope(envelope.clone())
+            .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
 
         entity::Entity::insert(active_model)
             .on_conflict(
@@ -105,9 +104,10 @@ impl OutboxTransport {
             })?;
 
         if stored.event_type.as_str() != envelope.event_type()
-            || stored.schema_version != i16::try_from(envelope.schema_version()).map_err(|error| {
-                write_once_unavailable(envelope_id, event_type.as_str(), error)
-            })?
+            || stored.schema_version
+                != i16::try_from(envelope.schema_version()).map_err(|error| {
+                    write_once_unavailable(envelope_id, event_type.as_str(), error)
+                })?
         {
             return Err(ContractEventWriteOnceError::Conflict);
         }
@@ -129,9 +129,9 @@ impl OutboxTransport {
             ));
         }
 
-        if same_contract_publication(&stored_envelope, &envelope).map_err(|error| {
-            write_once_unavailable(envelope_id, event_type.as_str(), error)
-        })? {
+        if same_contract_publication(&stored_envelope, &envelope)
+            .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?
+        {
             Ok(envelope_id)
         } else {
             Err(ContractEventWriteOnceError::Conflict)
@@ -342,12 +342,9 @@ mod tests {
 
     #[test]
     fn accepts_sealed_marketplace_listing_contract_envelope() {
-        let envelope = ContractEventEnvelope::new(
-            Uuid::new_v4(),
-            Some(Uuid::new_v4()),
-            contract_event(1),
-        )
-        .expect("valid marketplace listing contract envelope");
+        let envelope =
+            ContractEventEnvelope::new(Uuid::new_v4(), Some(Uuid::new_v4()), contract_event(1))
+                .expect("valid marketplace listing contract envelope");
 
         let model = OutboxTransport::model_from_contract_envelope(envelope)
             .expect("contract envelope should map to outbox row");

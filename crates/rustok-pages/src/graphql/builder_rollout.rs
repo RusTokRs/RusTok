@@ -4,9 +4,7 @@ use rustok_api::{
     has_effective_permission, tenant_module_settings,
 };
 use rustok_page_builder::{
-    dto::{
-        BuilderCapabilityKind, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE, PageBuilderErrorKind,
-    },
+    dto::{BuilderCapabilityKind, PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE, PageBuilderErrorKind},
     health::ProviderHealthSnapshot,
     rollout::{
         BuilderCapabilityFlags, BuilderRolloutError, effective_provider_runtime_flags,
@@ -242,8 +240,10 @@ fn rollout_invalid_error(message: impl std::fmt::Display) -> async_graphql::Erro
 
 fn ensure_tenant_authority(auth: &AuthContext, tenant: &TenantContext) -> Result<()> {
     if auth.tenant_id != tenant.id {
-        return Err(async_graphql::Error::new("Pages Page Builder rollout access is denied")
-            .extend_with(|_, ext| ext.set("code", "FORBIDDEN")));
+        return Err(
+            async_graphql::Error::new("Pages Page Builder rollout access is denied")
+                .extend_with(|_, ext| ext.set("code", "FORBIDDEN")),
+        );
     }
     Ok(())
 }
@@ -330,9 +330,8 @@ mod tests {
 
     #[test]
     fn capability_preflight_uses_canonical_feature_disabled_contract() {
-        let disabled = GqlPageBuilderCapabilityPreflight::feature_disabled(
-            GqlPageBuilderCapability::Publish,
-        );
+        let disabled =
+            GqlPageBuilderCapabilityPreflight::feature_disabled(GqlPageBuilderCapability::Publish);
         assert!(!disabled.allowed);
         assert_eq!(disabled.error_kind.as_deref(), Some("feature-disabled"));
         assert_eq!(
@@ -340,8 +339,7 @@ mod tests {
             Some(PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE)
         );
 
-        let allowed =
-            GqlPageBuilderCapabilityPreflight::allow(GqlPageBuilderCapability::Preview);
+        let allowed = GqlPageBuilderCapabilityPreflight::allow(GqlPageBuilderCapability::Preview);
         assert!(allowed.allowed);
         assert!(allowed.error_kind.is_none());
         assert!(allowed.error_code.is_none());
@@ -355,10 +353,8 @@ mod tests {
             sanitize_failure_rate: 0.0,
             runtime_error_rate: 0.0,
         });
-        let degraded_flags = effective_provider_runtime_flags(
-            &BuilderCapabilityFlags::default(),
-            Some(&degraded),
-        );
+        let degraded_flags =
+            effective_provider_runtime_flags(&BuilderCapabilityFlags::default(), Some(&degraded));
         assert_eq!(degraded_flags, BuilderToggleProfile::PublishOff.flags());
         assert!(ensure_capability(&degraded_flags, BuilderCapabilityKind::Preview).is_ok());
         assert_eq!(
@@ -378,12 +374,8 @@ mod tests {
             Some(&unavailable),
         );
         assert_eq!(unavailable_flags, BuilderToggleProfile::BuilderOff.flags());
-        assert!(
-            ensure_capability(&unavailable_flags, BuilderCapabilityKind::Preview).is_err()
-        );
-        assert!(
-            ensure_capability(&unavailable_flags, BuilderCapabilityKind::Publish).is_err()
-        );
+        assert!(ensure_capability(&unavailable_flags, BuilderCapabilityKind::Preview).is_err());
+        assert!(ensure_capability(&unavailable_flags, BuilderCapabilityKind::Publish).is_err());
     }
 
     #[test]
@@ -397,11 +389,9 @@ mod tests {
         });
         assert_eq!(health.state, ProviderHealthState::Degraded);
 
-        let payload = GqlPageBuilderRolloutSnapshot::new(
-            &tenant,
-            BuilderCapabilityFlags::default(),
-        )
-        .with_provider_health(&health);
+        let payload =
+            GqlPageBuilderRolloutSnapshot::new(&tenant, BuilderCapabilityFlags::default())
+                .with_provider_health(&health);
         assert!(payload.provider_health_observed);
         let transported = payload.provider_health.expect("health payload");
         assert_eq!(transported.state, "degraded");

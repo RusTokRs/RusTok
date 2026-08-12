@@ -130,8 +130,7 @@ fn map_legacy_runtime_error(
     _error: legacy::StorefrontCheckoutRuntimeError,
 ) -> StorefrontCheckoutRuntimeError {
     let diagnostic_error = MountedRuntimeDiagnosticError;
-    let legacy_error_type =
-        std::any::type_name::<legacy::StorefrontCheckoutRuntimeError>();
+    let legacy_error_type = std::any::type_name::<legacy::StorefrontCheckoutRuntimeError>();
 
     tracing::error!(
         error = ?diagnostic_error,
@@ -162,10 +161,8 @@ pub async fn read_storefront_payment_collection(
     tenant: &rustok_api::TenantContext,
     auth: rustok_api::OptionalAuthContext,
     cart_id: uuid::Uuid,
-) -> Result<
-    Option<rustok_payment::dto::PaymentCollectionResponse>,
-    StorefrontCheckoutRuntimeError,
-> {
+) -> Result<Option<rustok_payment::dto::PaymentCollectionResponse>, StorefrontCheckoutRuntimeError>
+{
     let error_context = MountedRuntimeErrorContext::new(
         tenant.id,
         auth.0.is_some(),
@@ -187,10 +184,7 @@ pub async fn read_storefront_order_refunds(
     request_context: &rustok_api::RequestContext,
     auth: rustok_api::OptionalAuthContext,
     order_id: uuid::Uuid,
-) -> Result<
-    (Vec<rustok_payment::dto::RefundResponse>, u64),
-    StorefrontCheckoutRuntimeError,
-> {
+) -> Result<(Vec<rustok_payment::dto::RefundResponse>, u64), StorefrontCheckoutRuntimeError> {
     let error_context = MountedRuntimeErrorContext::new(
         tenant.id,
         auth.0.is_some(),
@@ -199,17 +193,9 @@ pub async fn read_storefront_order_refunds(
         "read_storefront_order_refunds",
     );
 
-    legacy::read_storefront_order_refunds(
-        runtime,
-        tenant,
-        request_context,
-        auth,
-        order_id,
-    )
-    .await
-    .map_err(|error| {
-        map_legacy_runtime_error(error_context, REFUND_SUMMARY_READ_POLICY, error)
-    })
+    legacy::read_storefront_order_refunds(runtime, tenant, request_context, auth, order_id)
+        .await
+        .map_err(|error| map_legacy_runtime_error(error_context, REFUND_SUMMARY_READ_POLICY, error))
 }
 
 pub async fn create_storefront_payment_collection(
@@ -227,21 +213,11 @@ pub async fn create_storefront_payment_collection(
         "create_storefront_payment_collection",
     );
 
-    legacy::create_storefront_payment_collection(
-        runtime,
-        tenant,
-        request_context,
-        auth,
-        command,
-    )
-    .await
-    .map_err(|error| {
-        map_legacy_runtime_error(
-            error_context,
-            PAYMENT_COLLECTION_CREATE_POLICY,
-            error,
-        )
-    })
+    legacy::create_storefront_payment_collection(runtime, tenant, request_context, auth, command)
+        .await
+        .map_err(|error| {
+            map_legacy_runtime_error(error_context, PAYMENT_COLLECTION_CREATE_POLICY, error)
+        })
 }
 
 pub async fn select_storefront_shipping_option(
@@ -259,17 +235,9 @@ pub async fn select_storefront_shipping_option(
         "select_storefront_shipping_option",
     );
 
-    legacy::select_storefront_shipping_option(
-        runtime,
-        tenant,
-        request_context,
-        auth,
-        command,
-    )
-    .await
-    .map_err(|error| {
-        map_legacy_runtime_error(error_context, SHIPPING_SELECTION_POLICY, error)
-    })
+    legacy::select_storefront_shipping_option(runtime, tenant, request_context, auth, command)
+        .await
+        .map_err(|error| map_legacy_runtime_error(error_context, SHIPPING_SELECTION_POLICY, error))
 }
 
 /// Mounted storefront completion boundary.

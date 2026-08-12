@@ -1,4 +1,7 @@
-#![expect(dead_code, reason = "Shared test support module for rustok-index integration test targets")]
+#![expect(
+    dead_code,
+    reason = "Shared test support module for rustok-index integration test targets"
+)]
 
 use std::{
     collections::BTreeMap,
@@ -11,27 +14,25 @@ use async_trait::async_trait;
 use rustok_core::MigrationSource;
 use rustok_index::{
     EntityKey, EntityName, FieldCardinality, FieldName, IndexDriftFindingLifecycleActor,
-    IndexDriftRepairAuthorizer, IndexDriftRepairAuthorization, IndexDriftRepairCommand,
+    IndexDriftRepairAuthorization, IndexDriftRepairAuthorizer, IndexDriftRepairCommand,
     IndexDriftRepairEvidenceReader, IndexDriftRepairFailure, IndexDriftRepairOwner,
-    IndexDriftRepairOwnerRegistry, IndexDriftRepairRecoveryAuthorizer,
-    IndexDriftRepairRecoveryAuthorization, IndexDriftRepairRecoveryCommand,
+    IndexDriftRepairOwnerRegistry, IndexDriftRepairRecoveryAuthorization,
+    IndexDriftRepairRecoveryAuthorizer, IndexDriftRepairRecoveryCommand,
     IndexDriftRepairRecoveryFailure, IndexDriftRepairRecoveryService, IndexDriftRepairService,
     IndexDriftRepairStore, IndexDriftRepairTarget, IndexField, IndexLink, IndexLinkValue,
     IndexMutation, IndexRecord, IndexSchema, IndexSchemaSourceCatalog, IndexSource,
     IndexSourceAbsenceCatalog, IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark,
     IndexSourceCatalog, IndexSourceFailure, IndexSourceLoadBatch, IndexSourceLoadRequest,
     IndexSourcePage, IndexSourceScanRequest, IndexValue, IndexValueType, LinkCardinality, LinkName,
-    LinkedEntityKey, LocaleMode, ModuleName, SchemaRef, SchemaVersion, SharedIndexSourceAbsenceRegistry,
-    SharedIndexSourceRegistry,
+    LinkedEntityKey, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
+    SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
     infrastructure::postgres::{
         IndexDriftDigestFindingRequest, IndexDriftFindingScope, IndexDriftFindingSeverity,
         MutationDelivery, PostgresIndexDriftFindingWriter,
-        PostgresIndexDriftMissingEntityEvidenceReader,
-        PostgresIndexDriftMissingEntityRepairOwner,
-        PostgresIndexDriftOrphanLinkEvidenceReader,
-        PostgresIndexDriftOrphanLinkRepairOwner, PostgresIndexDriftRepairRecoveryStore,
-        PostgresIndexDriftRepairStore, PostgresMutationStore,
-        PostgresSchemaRegistrationStore, RecoveryAwareIndexDriftRepairOwner,
+        PostgresIndexDriftMissingEntityEvidenceReader, PostgresIndexDriftMissingEntityRepairOwner,
+        PostgresIndexDriftOrphanLinkEvidenceReader, PostgresIndexDriftOrphanLinkRepairOwner,
+        PostgresIndexDriftRepairRecoveryStore, PostgresIndexDriftRepairStore,
+        PostgresMutationStore, PostgresSchemaRegistrationStore, RecoveryAwareIndexDriftRepairOwner,
         RecoveryAwareIndexDriftRepairStore,
     },
 };
@@ -67,9 +68,7 @@ pub struct TestDatabase {
 impl TestDatabase {
     pub async fn setup(test_name: &str) -> TestResult<Option<Self>> {
         let Some(database_url) = database_url() else {
-            eprintln!(
-                "{DATABASE_ENV} is not set to a PostgreSQL URL; skipping {test_name}"
-            );
+            eprintln!("{DATABASE_ENV} is not set to a PostgreSQL URL; skipping {test_name}");
             return Ok(None);
         };
         let control = connect(&database_url).await?;
@@ -269,8 +268,7 @@ impl IndexSourceAbsenceProvider for FixtureAuthority {
             .copied();
         source_version
             .map(|version| {
-                IndexSourceAbsenceWatermark::new(key, version)
-                    .map_err(|_| fixture_source_failure())
+                IndexSourceAbsenceWatermark::new(key, version).map_err(|_| fixture_source_failure())
             })
             .transpose()
     }
@@ -615,12 +613,10 @@ impl IndexDriftRepairRecoveryAuthorizer for AllowRecovery {
     }
 }
 
-pub async fn recovery_store(
-    database: &TestDatabase,
-) -> TestResult<Arc<dyn IndexDriftRepairStore>> {
-    let inner: Arc<dyn IndexDriftRepairStore> = Arc::new(
-        PostgresIndexDriftRepairStore::new(database.connection().await?),
-    );
+pub async fn recovery_store(database: &TestDatabase) -> TestResult<Arc<dyn IndexDriftRepairStore>> {
+    let inner: Arc<dyn IndexDriftRepairStore> = Arc::new(PostgresIndexDriftRepairStore::new(
+        database.connection().await?,
+    ));
     Ok(Arc::new(RecoveryAwareIndexDriftRepairStore::new(
         database.connection().await?,
         inner,
@@ -631,11 +627,13 @@ pub async fn missing_evidence(
     database: &TestDatabase,
     runtime: &FixtureRuntime,
 ) -> TestResult<Arc<dyn IndexDriftRepairEvidenceReader>> {
-    Ok(Arc::new(PostgresIndexDriftMissingEntityEvidenceReader::new(
-        database.connection().await?,
-        runtime.sources.clone(),
-        runtime.absence.clone(),
-    )?))
+    Ok(Arc::new(
+        PostgresIndexDriftMissingEntityEvidenceReader::new(
+            database.connection().await?,
+            runtime.sources.clone(),
+            runtime.absence.clone(),
+        )?,
+    ))
 }
 
 pub async fn orphan_evidence(
@@ -653,21 +651,18 @@ pub async fn missing_owner(
     database: &TestDatabase,
     runtime: &FixtureRuntime,
 ) -> TestResult<Arc<dyn IndexDriftRepairOwner>> {
-    let base: Arc<dyn IndexDriftRepairOwner> = Arc::new(
-        PostgresIndexDriftMissingEntityRepairOwner::new(
+    let base: Arc<dyn IndexDriftRepairOwner> =
+        Arc::new(PostgresIndexDriftMissingEntityRepairOwner::new(
             database.connection().await?,
             runtime.schemas.clone(),
-        )?,
-    );
+        )?);
     Ok(Arc::new(RecoveryAwareIndexDriftRepairOwner::new(
         database.connection().await?,
         base,
     )?))
 }
 
-pub async fn orphan_owner(
-    database: &TestDatabase,
-) -> TestResult<Arc<dyn IndexDriftRepairOwner>> {
+pub async fn orphan_owner(database: &TestDatabase) -> TestResult<Arc<dyn IndexDriftRepairOwner>> {
     let base: Arc<dyn IndexDriftRepairOwner> = Arc::new(
         PostgresIndexDriftOrphanLinkRepairOwner::new(database.connection().await?)?,
     );
@@ -703,10 +698,7 @@ pub async fn recovery_service(
     ))
 }
 
-pub async fn payload_digest(
-    database: &TestDatabase,
-    command_id: Uuid,
-) -> TestResult<String> {
+pub async fn payload_digest(database: &TestDatabase, command_id: Uuid) -> TestResult<String> {
     let db = database.connection().await?;
     let row = db
         .query_one(Statement::from_sql_and_values(
@@ -719,10 +711,7 @@ pub async fn payload_digest(
     Ok(row.try_get("", "payload_digest")?)
 }
 
-pub async fn repair_command_state(
-    database: &TestDatabase,
-    command_id: Uuid,
-) -> TestResult<String> {
+pub async fn repair_command_state(database: &TestDatabase, command_id: Uuid) -> TestResult<String> {
     let db = database.connection().await?;
     let row = db
         .query_one(Statement::from_sql_and_values(
@@ -735,10 +724,7 @@ pub async fn repair_command_state(
     Ok(row.try_get("", "state")?)
 }
 
-pub async fn count_repair_commands(
-    database: &TestDatabase,
-    finding_id: Uuid,
-) -> TestResult<i64> {
+pub async fn count_repair_commands(database: &TestDatabase, finding_id: Uuid) -> TestResult<i64> {
     count_value(
         database,
         "SELECT COUNT(*)::bigint AS value FROM index_consistency_finding_repair_commands WHERE tenant_id = $1 AND finding_id = $2",

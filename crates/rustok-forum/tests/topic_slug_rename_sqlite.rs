@@ -48,11 +48,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -129,8 +125,14 @@ async fn rename_records_one_alias_and_old_route_becomes_gone_after_delete() -> T
     assert!(renamed.changed);
     assert_eq!(renamed.previous_slug, "old-route");
     assert_eq!(renamed.slug, "new-route");
-    assert_eq!(renamed.previous_path, format!("/en/forum/t/{short_id}/old-route"));
-    assert_eq!(renamed.canonical.path, format!("/en/forum/t/{short_id}/new-route"));
+    assert_eq!(
+        renamed.previous_path,
+        format!("/en/forum/t/{short_id}/old-route")
+    );
+    assert_eq!(
+        renamed.canonical.path,
+        format!("/en/forum/t/{short_id}/new-route")
+    );
     let alias_id = renamed.alias_id.expect("rename alias");
 
     let replay = service
@@ -184,7 +186,10 @@ async fn rename_records_one_alias_and_old_route_becomes_gone_after_delete() -> T
         .resolve(tenant_id, "en", &short_id, "old-route")
         .await?;
     assert_eq!(old_active.disposition, ForumTopicRouteDisposition::Redirect);
-    assert_eq!(old_active.canonical.expect("new canonical").slug, "new-route");
+    assert_eq!(
+        old_active.canonical.expect("new canonical").slug,
+        "new-route"
+    );
 
     service.delete(tenant_id, topic_id, admin).await?;
 
@@ -198,7 +203,10 @@ async fn rename_records_one_alias_and_old_route_becomes_gone_after_delete() -> T
     let current_deleted = route_service
         .resolve(tenant_id, "en", &short_id, "new-route")
         .await?;
-    assert_eq!(current_deleted.disposition, ForumTopicRouteDisposition::Gone);
+    assert_eq!(
+        current_deleted.disposition,
+        ForumTopicRouteDisposition::Gone
+    );
 
     Ok(())
 }

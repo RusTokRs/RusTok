@@ -49,11 +49,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -195,14 +191,8 @@ async fn selected_reply_split_is_atomic_idempotent_and_append_only() -> TestResu
     insert_user(&db, tenant_id, actor_id).await?;
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
     let category_id = create_category(&db, tenant_id, admin.clone()).await?;
-    let source_topic_id = create_topic(
-        &db,
-        &event_bus,
-        tenant_id,
-        category_id,
-        admin.clone(),
-    )
-    .await?;
+    let source_topic_id =
+        create_topic(&db, &event_bus, tenant_id, category_id, admin.clone()).await?;
     let remaining_reply_id = create_reply(
         &db,
         &event_bus,
@@ -286,20 +276,10 @@ async fn selected_reply_split_is_atomic_idempotent_and_append_only() -> TestResu
     };
     let service = ForumTopicSplitService::new(db.clone(), event_bus.clone());
     let first = service
-        .split_selected_replies(
-            tenant_id,
-            source_topic_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .split_selected_replies(tenant_id, source_topic_id, admin.clone(), input.clone())
         .await?;
     let replay = service
-        .split_selected_replies(
-            tenant_id,
-            source_topic_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .split_selected_replies(tenant_id, source_topic_id, admin.clone(), input.clone())
         .await?;
 
     assert_eq!(first, replay);
@@ -440,14 +420,8 @@ async fn selected_reply_split_rejects_cross_boundary_parent_edges() -> TestResul
     insert_user(&db, tenant_id, actor_id).await?;
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
     let category_id = create_category(&db, tenant_id, admin.clone()).await?;
-    let source_topic_id = create_topic(
-        &db,
-        &event_bus,
-        tenant_id,
-        category_id,
-        admin.clone(),
-    )
-    .await?;
+    let source_topic_id =
+        create_topic(&db, &event_bus, tenant_id, category_id, admin.clone()).await?;
     let selected_parent = create_reply(
         &db,
         &event_bus,

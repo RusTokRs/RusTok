@@ -206,7 +206,10 @@ async fn writer_serializes_identity_and_preserves_lifecycle_on_postgres() -> Tes
     let other = PostgresIndexDriftFindingWriter::new(database.connection().await?)
         .record_digest_mismatch(&request(other_tenant, scope, 'b'))
         .await?;
-    assert!(matches!(other, IndexDriftFindingWriteOutcome::Created { .. }));
+    assert!(matches!(
+        other,
+        IndexDriftFindingWriteOutcome::Created { .. }
+    ));
     assert_ne!(other.finding_key(), created.finding_key);
     assert_eq!(count_findings(&evidence_db, other_tenant).await?, 1);
     assert_eq!(count_all_findings(&evidence_db).await?, 2);
@@ -259,10 +262,7 @@ async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<(
     Ok(())
 }
 
-async fn read_finding(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<FindingEvidence> {
+async fn read_finding(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<FindingEvidence> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Postgres,

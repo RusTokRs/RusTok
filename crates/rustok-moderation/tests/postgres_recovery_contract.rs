@@ -4,11 +4,11 @@ use chrono::Utc;
 use rustok_api::{PortActor, PortContext};
 use rustok_moderation::{
     AssignModerationCaseCommand, DecideModerationCaseCommand, ModerationApplicationOperationStatus,
-    ModerationCasePriority, ModerationCaseRecord, ModerationCaseStatus, ModerationDecisionApplication,
-    ModerationDecisionEffect, ModerationDecisionEffectAction, ModerationDecisionKind,
-    ModerationDecisionRecord, ModerationError, ModerationReasonCode, ModerationReporterKind,
-    ModerationScopeRef, ModerationService, ModerationSubjectKind, ModerationSubjectRef,
-    OpenModerationCaseCommand, ReconcileLegacyModerationApplicationCommand,
+    ModerationCasePriority, ModerationCaseRecord, ModerationCaseStatus,
+    ModerationDecisionApplication, ModerationDecisionEffect, ModerationDecisionEffectAction,
+    ModerationDecisionKind, ModerationDecisionRecord, ModerationError, ModerationReasonCode,
+    ModerationReporterKind, ModerationScopeRef, ModerationService, ModerationSubjectKind,
+    ModerationSubjectRef, OpenModerationCaseCommand, ReconcileLegacyModerationApplicationCommand,
     RequeueModerationApplicationCommand, SubmitModerationReportCommand,
 };
 use sea_orm::{
@@ -85,8 +85,8 @@ impl TestDatabase {
 }
 
 #[tokio::test]
-async fn postgres_recovery_contract_preserves_requeue_denial_and_legacy_reconciliation(
-) -> TestResult<()> {
+async fn postgres_recovery_contract_preserves_requeue_denial_and_legacy_reconciliation()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -120,7 +120,10 @@ async fn rejected_application_requeues_replay_safely_and_claims_again(
     let lease_token = claimed
         .lease_token
         .ok_or_else(|| std::io::Error::other("claimed application has no lease token"))?;
-    assert_eq!(claimed.status, ModerationApplicationOperationStatus::Applying);
+    assert_eq!(
+        claimed.status,
+        ModerationApplicationOperationStatus::Applying
+    );
     assert_eq!(claimed.attempt_count, 1);
 
     let rejected = service
@@ -132,7 +135,10 @@ async fn rejected_application_requeues_replay_safely_and_claims_again(
             "postgres recovery contract rejection",
         )
         .await?;
-    assert_eq!(rejected.status, ModerationApplicationOperationStatus::Rejected);
+    assert_eq!(
+        rejected.status,
+        ModerationApplicationOperationStatus::Rejected
+    );
     let escalated = service
         .get_case(tenant_id, case.id)
         .await?
@@ -168,13 +174,19 @@ async fn rejected_application_requeues_replay_safely_and_claims_again(
             },
         )
         .await;
-    assert!(matches!(changed_request, Err(ModerationError::IdempotencyConflict)));
+    assert!(matches!(
+        changed_request,
+        Err(ModerationError::IdempotencyConflict)
+    ));
 
     let second_claim = service
         .claim_application_operation(tenant_id, decision.id, "postgres-requeue-second", 60)
         .await?
         .ok_or_else(|| std::io::Error::other("requeued application was not claimable"))?;
-    assert_eq!(second_claim.status, ModerationApplicationOperationStatus::Applying);
+    assert_eq!(
+        second_claim.status,
+        ModerationApplicationOperationStatus::Applying
+    );
     assert_eq!(second_claim.attempt_count, 2);
     let applying_case = service
         .get_case(tenant_id, case.id)
@@ -211,7 +223,10 @@ async fn applied_application_cannot_be_requeued(database: &TestDatabase) -> Test
             },
         )
         .await?;
-    assert_eq!(applied.status, ModerationApplicationOperationStatus::Applied);
+    assert_eq!(
+        applied.status,
+        ModerationApplicationOperationStatus::Applied
+    );
     let closed = service
         .get_case(tenant_id, case.id)
         .await?
@@ -257,7 +272,8 @@ async fn legacy_rejected_application_reconciles_to_escalated(
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let service = ModerationService::new(database.connection("legacy_rejected_owner").await?);
-    let (case, decision) = seed_decided_case(&service, tenant_id, actor_id, 41, "legacy-rejected").await?;
+    let (case, decision) =
+        seed_decided_case(&service, tenant_id, actor_id, 41, "legacy-rejected").await?;
     let storage = database.connection("legacy_rejected_storage").await?;
     storage
         .execute(Statement::from_sql_and_values(
@@ -305,7 +321,8 @@ async fn legacy_applied_application_reconciles_to_closed(
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let service = ModerationService::new(database.connection("legacy_applied_owner").await?);
-    let (case, decision) = seed_decided_case(&service, tenant_id, actor_id, 51, "legacy-applied").await?;
+    let (case, decision) =
+        seed_decided_case(&service, tenant_id, actor_id, 51, "legacy-applied").await?;
     let storage = database.connection("legacy_applied_storage").await?;
     storage
         .execute(Statement::from_sql_and_values(

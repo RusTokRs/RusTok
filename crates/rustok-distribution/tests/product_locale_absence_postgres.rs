@@ -84,12 +84,8 @@ impl TestDatabase {
                 &format!("idx_abs_source_{suffix}"),
             )
             .await?,
-            snapshot: scoped_connection(
-                &database_url,
-                &schema_name,
-                &snapshot_application_name,
-            )
-            .await?,
+            snapshot: scoped_connection(&database_url, &schema_name, &snapshot_application_name)
+                .await?,
             lock: scoped_connection(
                 &database_url,
                 &schema_name,
@@ -167,11 +163,9 @@ async fn run_product_locale_absence_scenarios(database: &TestDatabase) -> TestRe
             .await
     });
 
-    if let Err(error) = wait_for_blocked_materialized_read(
-        &database.observer,
-        &database.snapshot_application_name,
-    )
-    .await
+    if let Err(error) =
+        wait_for_blocked_materialized_read(&database.observer, &database.snapshot_application_name)
+            .await
     {
         let _ = lock.rollback().await;
         capture.abort();

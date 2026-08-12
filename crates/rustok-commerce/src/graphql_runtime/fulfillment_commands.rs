@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use rustok_fulfillment::{
-    FulfillmentAdminCommandPort, FulfillmentAdminCommandRuntime,
-    FulfillmentAdminCreateCommandPort, FulfillmentAdminCreateCommandRuntime,
-    providers::FulfillmentProviderRegistry,
+    FulfillmentAdminCommandPort, FulfillmentAdminCommandRuntime, FulfillmentAdminCreateCommandPort,
+    FulfillmentAdminCreateCommandRuntime, providers::FulfillmentProviderRegistry,
 };
 use sea_orm::DatabaseConnection;
 
@@ -35,17 +34,12 @@ impl CommerceFulfillmentCommandRuntime {
         provider_registry: FulfillmentProviderRegistry,
     ) -> Self {
         Self::new(
-            FulfillmentAdminCommandRuntime::in_process(
-                db.clone(),
-                provider_registry.clone(),
-            ),
+            FulfillmentAdminCommandRuntime::in_process(db.clone(), provider_registry.clone()),
             FulfillmentAdminCreateCommandRuntime::in_process(db, provider_registry),
         )
     }
 
-    pub(crate) fn from_graphql_inputs(
-        inputs: &rustok_api::graphql::GraphqlRuntimeInputs,
-    ) -> Self {
+    pub(crate) fn from_graphql_inputs(inputs: &rustok_api::graphql::GraphqlRuntimeInputs) -> Self {
         let provider_registry = inputs
             .shared_get::<FulfillmentProviderRegistry>()
             .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider);

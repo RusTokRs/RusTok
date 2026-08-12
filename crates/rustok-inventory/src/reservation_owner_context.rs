@@ -147,9 +147,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
     }
 }
 
-fn inventory_reservation_context_facts(
-    context: &PortContext,
-) -> InventoryReservationContextFacts {
+fn inventory_reservation_context_facts(context: &PortContext) -> InventoryReservationContextFacts {
     let actor_kind = match &context.actor.kind {
         rustok_api::PortActorKind::User => "user",
         rustok_api::PortActorKind::Service => "service",
@@ -258,13 +256,7 @@ fn map_inventory_reservation_identity_local_port_error(
         _ => return error,
     };
 
-    log_inventory_reservation_local_outcome(
-        context,
-        operation,
-        local_operation,
-        identity,
-        &error,
-    );
+    log_inventory_reservation_local_outcome(context, operation, local_operation, identity, &error);
     error
 }
 
@@ -372,12 +364,7 @@ fn require_inventory_reservation_write_admission(
             log_inventory_reservation_admission_rejection(context, operation, "policy", error);
         })?;
     context.require_write_semantics().inspect_err(|error| {
-        log_inventory_reservation_admission_rejection(
-            context,
-            operation,
-            "write_semantics",
-            error,
-        );
+        log_inventory_reservation_admission_rejection(context, operation, "write_semantics", error);
     })
 }
 

@@ -5,8 +5,8 @@ use rustok_api::{PortContext, PortError};
 use rustok_fulfillment::{
     CreateAdminFulfillmentRequest, CreateFulfillmentInput, CreateFulfillmentItemInput,
     FulfillmentAdminCreateCommandPort, FulfillmentReadPort, FulfillmentResponse,
-    ListFulfillmentProjectionsRequest, ReadShippingOptionProjectionRequest, ShippingOptionReadPort,
-    ShippingOptionResponse, MANUAL_FULFILLMENT_PROVIDER_ID,
+    ListFulfillmentProjectionsRequest, MANUAL_FULFILLMENT_PROVIDER_ID,
+    ReadShippingOptionProjectionRequest, ShippingOptionReadPort, ShippingOptionResponse,
 };
 use rustok_order::{OrderLineItemResponse, OrderReadPort, ReadOrderProjectionRequest};
 use serde_json::Value;
@@ -87,7 +87,9 @@ impl AdminManualFulfillmentOrchestrationService {
                 let entry = fulfilled_quantities
                     .entry(item.order_line_item_id)
                     .or_insert(0);
-                *entry = entry.checked_add(item.quantity).ok_or_else(invalid_request)?;
+                *entry = entry
+                    .checked_add(item.quantity)
+                    .ok_or_else(invalid_request)?;
             }
         }
 
@@ -261,7 +263,10 @@ fn validate_shipping_option_against_order(
     order_currency_code: &str,
     required_shipping_profile_slug: &str,
 ) -> Result<(), PortError> {
-    if !option.currency_code.eq_ignore_ascii_case(order_currency_code) {
+    if !option
+        .currency_code
+        .eq_ignore_ascii_case(order_currency_code)
+    {
         return Err(invalid_request());
     }
     let required_profiles = BTreeSet::from([required_shipping_profile_slug.to_string()]);

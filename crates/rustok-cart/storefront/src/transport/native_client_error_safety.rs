@@ -5,8 +5,7 @@ use crate::core::{CartFetchRequest, CartLineItemDecrementRequest, CartLineItemMu
 use super::native_server_adapter::ApiError;
 
 const CART_STOREFRONT_NATIVE_CLIENT_OWNER: &str = "rustok_cart.storefront";
-const CART_STOREFRONT_NATIVE_CLIENT_BOUNDARY: &str =
-    "cart_storefront_native_client_transport";
+const CART_STOREFRONT_NATIVE_CLIENT_BOUNDARY: &str = "cart_storefront_native_client_transport";
 const CART_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE: &str =
     "Cart storefront request could not be completed";
 
@@ -28,10 +27,7 @@ impl NativeClientErrorContext {
                 .selected_cart_id
                 .as_deref()
                 .map(|value| value.chars().count()),
-            locale_length: request
-                .locale
-                .as_deref()
-                .map(|value| value.chars().count()),
+            locale_length: request.locale.as_deref().map(|value| value.chars().count()),
             cart_id_length: None,
             line_item_id_length: None,
         }
@@ -53,11 +49,7 @@ impl NativeClientErrorContext {
         )
     }
 
-    fn line_item_operation(
-        operation: &'static str,
-        cart_id: &str,
-        line_item_id: &str,
-    ) -> Self {
+    fn line_item_operation(operation: &'static str, cart_id: &str, line_item_id: &str) -> Self {
         Self {
             operation,
             correlation_id: native_client_correlation_id(operation),

@@ -24,12 +24,10 @@ const RECEIVE_TIMEOUT: Duration = Duration::from_secs(20);
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test]
-async fn malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_bytes(
-) -> TestResult<()> {
+async fn malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_bytes()
+-> TestResult<()> {
     let Some(config) = external_test_config()? else {
-        eprintln!(
-            "{ADDRESS_ENV} is not set; skipping external Iggy raw poison lifecycle evidence"
-        );
+        eprintln!("{ADDRESS_ENV} is not set; skipping external Iggy raw poison lifecycle evidence");
         return Ok(());
     };
 
@@ -56,10 +54,7 @@ async fn malformed_delivery_redelivers_until_explicit_ack_and_dlq_keeps_exact_by
 
     let first_failure = receive_decode_failure(&first_source_cursor).await?;
     assert_eq!(first_failure.raw_payload(), first_payload.as_slice());
-    assert_eq!(
-        first_failure.kind(),
-        ContractDecodeFailureKind::Deserialize
-    );
+    assert_eq!(first_failure.kind(), ContractDecodeFailureKind::Deserialize);
     assert_eq!(
         first_failure.stable_error_code(),
         "iggy.contract.decode_invalid"
@@ -157,11 +152,10 @@ async fn acknowledge_cursor_message(
     cursor: &mut Box<dyn ConsumerCursor>,
     message: &rustok_iggy_connector::SubscriberMessage,
 ) -> TestResult<()> {
-    let ack_token = message
-        .metadata
-        .ack_token
-        .as_deref()
-        .ok_or_else(|| invalid_data("external Iggy DLQ delivery has no acknowledgement token"))?;
+    let ack_token =
+        message.metadata.ack_token.as_deref().ok_or_else(|| {
+            invalid_data("external Iggy DLQ delivery has no acknowledgement token")
+        })?;
     cursor.acknowledge(ack_token).await?;
     Ok(())
 }

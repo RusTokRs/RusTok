@@ -47,8 +47,8 @@ mod category_tree {
 }
 mod category_visibility;
 mod counter_reconciliation;
-mod solution_reconciliation;
 pub mod event;
+mod solution_reconciliation;
 mod import_write {
     include!("import_tombstone_write.rs");
     include!("import_write.rs");
@@ -128,9 +128,9 @@ mod topic_audience_lock;
 mod topic_audience_read;
 mod topic_audience_visibility;
 mod topic_canonical_resolution;
+mod topic_create_audience_authorization;
 mod topic_route;
 mod topic_route_backfill;
-mod topic_create_audience_authorization;
 mod topic_facade {
     include!("topic_facade.rs");
     include!("topic_facade_locale_enumeration.rs");
@@ -154,8 +154,8 @@ mod topic_solution_lock;
 mod topic_split;
 mod topic_subscription_lock;
 mod topic_tag_lock;
-mod topic_vote_lock;
 pub mod topic_visibility;
+mod topic_vote_lock;
 pub mod user_stats;
 mod user_trust;
 mod user_trust_audience_facts;
@@ -202,10 +202,6 @@ pub use counter_reconciliation::{
     DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, ForumCounterDrift, ForumCounterDriftKind,
     ForumCounterReconciliationReport, ForumCounterReconciliationService,
     MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
-};
-pub use solution_reconciliation::{
-    ForumSolutionDrift, ForumSolutionDriftKind, ForumSolutionReconciliationReport,
-    ForumSolutionReconciliationService,
 };
 pub use event::ForumEventService;
 pub use import_write::{
@@ -259,6 +255,10 @@ pub use search_result_eligibility::{
     ForumSearchResultCandidate, ForumSearchResultCandidateKind,
     ForumSearchResultEligibilityService, MAX_FORUM_SEARCH_RESULT_ELIGIBILITY_CANDIDATES,
 };
+pub use solution_reconciliation::{
+    ForumSolutionDrift, ForumSolutionDriftKind, ForumSolutionReconciliationReport,
+    ForumSolutionReconciliationService,
+};
 pub use storefront_read_state::{
     ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumStorefrontUnreadTopicPage,
     ForumTopicUnreadSummary,
@@ -278,43 +278,29 @@ pub use topic_audience_visibility::{
 pub use topic_canonical_resolution::{
     ForumTopicCanonicalResolution, MAX_FORUM_TOPIC_CANONICAL_REDIRECT_HOPS,
 };
-pub use topic_route::{
-    FORUM_TOPIC_RENAMED_ROUTE_REASON, FORUM_TOPIC_ROUTE_SHORT_ID_LEN,
-    ForumTopicRouteDescriptor, ForumTopicRouteDisposition, ForumTopicRouteResolution,
-    ForumTopicRouteService, ForumTopicSlugRenameResult, MAX_FORUM_TOPIC_ROUTE_ALIAS_REASON_LEN,
-    MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN, MAX_FORUM_TOPIC_ROUTE_SLUG_LEN,
-    RenameForumTopicSlugInput,
-};
-pub use topic_route_backfill::{
-    BackfillForumTopicMergeRouteAliasesInput, ForumTopicMergeRouteBackfillCursor,
-    ForumTopicMergeRouteBackfillResult, ForumTopicMergeRouteBackfillService,
-    MAX_FORUM_TOPIC_MERGE_ROUTE_BACKFILL_OPERATIONS,
-};
-pub use topic_owner::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 pub use topic_create_audience_authorization::{
     ForumTopicCreateAudienceAuthorization, ForumTopicCreateAudienceAuthorizationService,
 };
 pub use topic_facade::TopicService;
 pub use topic_fork::{
     ForkForumReplyBranchInput, ForumTopicForkResult, ForumTopicForkService,
-    MAX_FORUM_TOPIC_FORK_BODY_ROWS, MAX_FORUM_TOPIC_FORK_MENTIONS,
-    MAX_FORUM_TOPIC_FORK_QUOTES, MAX_FORUM_TOPIC_FORK_REASON_LEN,
-    MAX_FORUM_TOPIC_FORK_RELATION_REVISIONS, MAX_FORUM_TOPIC_FORK_REPLIES,
-    MAX_FORUM_TOPIC_FORK_REPLY_REVISIONS, MAX_FORUM_TOPIC_FORK_TITLE_LEN,
+    MAX_FORUM_TOPIC_FORK_BODY_ROWS, MAX_FORUM_TOPIC_FORK_MENTIONS, MAX_FORUM_TOPIC_FORK_QUOTES,
+    MAX_FORUM_TOPIC_FORK_REASON_LEN, MAX_FORUM_TOPIC_FORK_RELATION_REVISIONS,
+    MAX_FORUM_TOPIC_FORK_REPLIES, MAX_FORUM_TOPIC_FORK_REPLY_REVISIONS,
+    MAX_FORUM_TOPIC_FORK_TITLE_LEN,
 };
 pub use topic_merge::{
     ForumTopicMergeResult, ForumTopicMergeService, MAX_FORUM_TOPIC_MERGE_REASON_LEN,
     MAX_FORUM_TOPIC_MERGE_REPLIES, MergeForumTopicInput,
 };
 pub use topic_merge_audience_reconciliation::{
-    ForumTopicMergeAudienceReconciliationResult,
-    ForumTopicMergeAudienceReconciliationService, MAX_FORUM_TOPIC_MERGE_AUDIENCE_REASON_LEN,
-    ReconcileForumTopicMergeAudienceInput,
+    ForumTopicMergeAudienceReconciliationResult, ForumTopicMergeAudienceReconciliationService,
+    MAX_FORUM_TOPIC_MERGE_AUDIENCE_REASON_LEN, ReconcileForumTopicMergeAudienceInput,
 };
 pub use topic_merge_read_state_reconciliation::{
-    ForumTopicMergeReadStateReconciliationResult,
-    ForumTopicMergeReadStateReconciliationService, MAX_FORUM_TOPIC_MERGE_READ_STATE_REASON_LEN,
-    MAX_FORUM_TOPIC_MERGE_READ_STATES, ReconcileForumTopicMergeReadStatesInput,
+    ForumTopicMergeReadStateReconciliationResult, ForumTopicMergeReadStateReconciliationService,
+    MAX_FORUM_TOPIC_MERGE_READ_STATE_REASON_LEN, MAX_FORUM_TOPIC_MERGE_READ_STATES,
+    ReconcileForumTopicMergeReadStatesInput,
 };
 pub use topic_merge_subscription_reconciliation::{
     ForumTopicMergeSubscriptionReconciliationResult,
@@ -336,19 +322,29 @@ pub use topic_move::{
     ForumTopicMoveResult, ForumTopicMoveService, MAX_FORUM_TOPIC_MOVE_REASON_LEN,
     MoveForumTopicInput,
 };
+pub use topic_owner::route_tombstone_visibility::ForumTopicRouteTombstoneVisibilityService;
 pub use topic_reply_create_audience::{
     ForumTopicReplyCreateAudiencePolicy, ForumTopicReplyCreateAudiencePolicyService,
     SetForumTopicReplyCreateAudiencePolicyInput,
 };
 pub use topic_reply_range_move::{
-    ForumReplyRangeMoveResult, ForumReplyRangeMoveService,
-    MAX_FORUM_REPLY_RANGE_MOVE_REASON_LEN, MAX_FORUM_REPLY_RANGE_MOVE_REPLIES,
-    MoveForumReplyRangeInput,
+    ForumReplyRangeMoveResult, ForumReplyRangeMoveService, MAX_FORUM_REPLY_RANGE_MOVE_REASON_LEN,
+    MAX_FORUM_REPLY_RANGE_MOVE_REPLIES, MoveForumReplyRangeInput,
+};
+pub use topic_route::{
+    FORUM_TOPIC_RENAMED_ROUTE_REASON, FORUM_TOPIC_ROUTE_SHORT_ID_LEN, ForumTopicRouteDescriptor,
+    ForumTopicRouteDisposition, ForumTopicRouteResolution, ForumTopicRouteService,
+    ForumTopicSlugRenameResult, MAX_FORUM_TOPIC_ROUTE_ALIAS_REASON_LEN,
+    MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN, MAX_FORUM_TOPIC_ROUTE_SLUG_LEN, RenameForumTopicSlugInput,
+};
+pub use topic_route_backfill::{
+    BackfillForumTopicMergeRouteAliasesInput, ForumTopicMergeRouteBackfillCursor,
+    ForumTopicMergeRouteBackfillResult, ForumTopicMergeRouteBackfillService,
+    MAX_FORUM_TOPIC_MERGE_ROUTE_BACKFILL_OPERATIONS,
 };
 pub use topic_split::{
     ForumTopicSplitResult, ForumTopicSplitService, MAX_FORUM_TOPIC_SPLIT_REASON_LEN,
-    MAX_FORUM_TOPIC_SPLIT_REPLIES, MAX_FORUM_TOPIC_SPLIT_TITLE_LEN,
-    SplitForumTopicRepliesInput,
+    MAX_FORUM_TOPIC_SPLIT_REPLIES, MAX_FORUM_TOPIC_SPLIT_TITLE_LEN, SplitForumTopicRepliesInput,
 };
 pub use topic_visibility::{
     ForumTopicVisibilityScope, ForumTopicVisibilityService, MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES,

@@ -64,9 +64,7 @@ LIMIT 1
 #[derive(Clone)]
 struct ProductSalesChannelRelationConvergenceRegistrationMarker;
 
-pub(crate) fn register(
-    extensions: &mut ModuleRuntimeExtensions,
-) -> rustok_core::Result<()> {
+pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
     if !extensions.contains::<rustok_product::ProductRuntimeSelected>()
         || !extensions.contains::<rustok_channel::ChannelRuntimeSelected>()
     {
@@ -197,12 +195,8 @@ impl ProductSalesChannelRelationConvergenceAdapter {
             return Err(invalid_work_item());
         }
         let work = payload.work.into_owner_work()?;
-        ProductSalesChannelIndexRelationConvergenceClaim::restore(
-            item.tenant_id,
-            lease_token,
-            work,
-        )
-        .map_err(|_| invalid_work_item())
+        ProductSalesChannelIndexRelationConvergenceClaim::restore(item.tenant_id, lease_token, work)
+            .map_err(|_| invalid_work_item())
     }
 
     async fn release_after_outcome(
@@ -277,7 +271,8 @@ impl ModuleWorkHandler for ProductSalesChannelRelationConvergenceAdapter {
         let claim = Self::decode_item(&item)?;
         match claim.work().clone() {
             ProductSalesChannelIndexRelationConvergenceWork::VisibilityRequest {
-                product_id, ..
+                product_id,
+                ..
             } => match self
                 .resolver
                 .reconcile_product(claim.tenant_id(), product_id)

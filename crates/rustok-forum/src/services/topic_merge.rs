@@ -161,12 +161,10 @@ impl ForumTopicMergeService {
         let txn = self.db.begin().await?;
         lock_topic_merge_tenant_in_tx(&txn, tenant_id).await?;
 
-        if let Some(existing) = forum_topic_merge_operation::Entity::find_by_id((
-            tenant_id,
-            input.operation_id,
-        ))
-        .one(&txn)
-        .await?
+        if let Some(existing) =
+            forum_topic_merge_operation::Entity::find_by_id((tenant_id, input.operation_id))
+                .one(&txn)
+                .await?
         {
             if existing.source_topic_id != input.source_topic_id
                 || existing.target_topic_id != target_topic_id
@@ -193,13 +191,15 @@ impl ForumTopicMergeService {
             return Ok(operation_to_result(existing));
         }
 
-        let preliminary_source =
-            find_topic_in_tx(&txn, tenant_id, input.source_topic_id).await?;
+        let preliminary_source = find_topic_in_tx(&txn, tenant_id, input.source_topic_id).await?;
         let preliminary_target = find_topic_in_tx(&txn, tenant_id, target_topic_id).await?;
         lock_merge_counter_scopes_in_tx(
             &txn,
             tenant_id,
-            &[preliminary_source.category_id, preliminary_target.category_id],
+            &[
+                preliminary_source.category_id,
+                preliminary_target.category_id,
+            ],
             input.source_topic_id,
             target_topic_id,
         )
@@ -223,12 +223,8 @@ impl ForumTopicMergeService {
         source.status.validate_transition(&TopicStatus::Archived)?;
         let source_category_id = source.category_id;
         let target_category_id = target.category_id;
-        ensure_categories_active_in_tx(
-            &txn,
-            tenant_id,
-            &[source_category_id, target_category_id],
-        )
-        .await?;
+        ensure_categories_active_in_tx(&txn, tenant_id, &[source_category_id, target_category_id])
+            .await?;
 
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &[source.id, target.id]).await?;
         let source_solution =
@@ -526,9 +522,7 @@ fn plan_solution_merge(
             losing_solution_author_id: None,
             audit: None,
         }),
-        (Some(_), Some(_), None) => {
-            Err(ForumError::TopicMergeSolutionConflict(operation_id))
-        }
+        (Some(_), Some(_), None) => Err(ForumError::TopicMergeSolutionConflict(operation_id)),
         (Some(source), Some(target), Some(selected)) => {
             let (
                 source_solution_transfer,

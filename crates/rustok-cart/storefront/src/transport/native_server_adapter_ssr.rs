@@ -244,7 +244,10 @@ fn cart_error(
     };
 
     let error_type = std::any::type_name_of_val(&error);
-    let correlation_id = format!("cart-storefront-native-{owner_operation}-{}", Uuid::new_v4());
+    let correlation_id = format!(
+        "cart-storefront-native-{owner_operation}-{}",
+        Uuid::new_v4()
+    );
     let request_context_present = request_context.is_some();
     let request_tenant_id_non_nil = request_context.map(|context| !context.tenant_id.is_nil());
     let tenant_id_non_nil = !tenant_id.is_nil();
@@ -252,7 +255,9 @@ fn cart_error(
     let cart_id_non_nil = cart_id.map(|value| !value.is_nil());
     let line_item_id_present = line_item_id.is_some();
     let line_item_id_non_nil = line_item_id.map(|value| !value.is_nil());
-    let channel_id_present = request_context.and_then(|context| context.channel_id).is_some();
+    let channel_id_present = request_context
+        .and_then(|context| context.channel_id)
+        .is_some();
     let channel_id_non_nil = request_context
         .and_then(|context| context.channel_id)
         .map(|value| !value.is_nil());
@@ -337,13 +342,18 @@ fn pricing_error(
             | rustok_api::PortErrorKind::InvariantViolation
     );
     let error_type = std::any::type_name_of_val(&error);
-    let correlation_id = format!("cart-storefront-pricing-{owner_operation}-{}", Uuid::new_v4());
+    let correlation_id = format!(
+        "cart-storefront-pricing-{owner_operation}-{}",
+        Uuid::new_v4()
+    );
     let request_context_present = request_context.is_some();
     let request_tenant_id_non_nil = request_context.map(|context| !context.tenant_id.is_nil());
     let tenant_id_non_nil = !tenant_id.is_nil();
     let cart_id_non_nil = !cart_id.is_nil();
     let line_item_id_non_nil = !line_item_id.is_nil();
-    let channel_id_present = request_context.and_then(|context| context.channel_id).is_some();
+    let channel_id_present = request_context
+        .and_then(|context| context.channel_id)
+        .is_some();
     let channel_id_non_nil = request_context
         .and_then(|context| context.channel_id)
         .map(|value| !value.is_nil());
@@ -546,7 +556,8 @@ async fn storefront_cart_native(
             "cart.storefront_cart_id_invalid",
             "Invalid cart selection",
         )
-    })? else {
+    })?
+    else {
         let _ = locale;
         return Ok(StorefrontCartData {
             selected_cart_id: None,
@@ -619,9 +630,8 @@ async fn reprice_storefront_cart_line_items(
         .channel_id
         .or_else(|| request_context.and_then(|context| context.channel_id));
     let channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(|| {
-        request_context.and_then(|context| {
-            normalize_public_channel_slug(context.channel_slug.as_deref())
-        })
+        request_context
+            .and_then(|context| normalize_public_channel_slug(context.channel_slug.as_deref()))
     });
     let mut updates = Vec::new();
     for line_item in &cart.line_items {
@@ -697,8 +707,7 @@ async fn storefront_cart_decrement_line_item(
 
     let runtime_ctx = expect_context::<HostRuntimeContext>();
     let db = runtime_ctx.db_clone();
-    let event_bus =
-        transactional_event_bus_from_runtime(&runtime_ctx, "cart/decrement-line-item")?;
+    let event_bus = transactional_event_bus_from_runtime(&runtime_ctx, "cart/decrement-line-item")?;
     let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
         .await
         .map_err(tenant_context_error)?;
@@ -715,7 +724,8 @@ async fn storefront_cart_decrement_line_item(
             "cart.storefront_cart_id_invalid",
             "Invalid cart selection",
         )
-    })? else {
+    })?
+    else {
         return Err(ServerFnError::new("Invalid cart selection"));
     };
     let (_, parsed_line_item_id) = parse_line_item_id(line_item_id).map_err(|error| {
@@ -773,9 +783,9 @@ async fn storefront_cart_decrement_line_item(
     } else {
         let next_quantity = line_item.quantity - 1;
         let pricing_service = PricingService::new(db, event_bus);
-        let variant_id = line_item.variant_id.ok_or_else(|| {
-            missing_variant_error(tenant.id, parsed_cart_id, parsed_line_item_id)
-        })?;
+        let variant_id = line_item
+            .variant_id
+            .ok_or_else(|| missing_variant_error(tenant.id, parsed_cart_id, parsed_line_item_id))?;
         let resolved_price = pricing_service
             .resolve_product_price(
                 rustok_api::PortContext::new(
@@ -789,9 +799,11 @@ async fn storefront_cart_decrement_line_item(
                     product_id: line_item.product_id,
                     variant_id,
                     region_id: cart.region_id,
-                    channel_id: cart
-                        .channel_id
-                        .or_else(|| request_context.as_ref().and_then(|context| context.channel_id)),
+                    channel_id: cart.channel_id.or_else(|| {
+                        request_context
+                            .as_ref()
+                            .and_then(|context| context.channel_id)
+                    }),
                     channel_slug: normalize_public_channel_slug(cart.channel_slug.as_deref())
                         .or_else(|| {
                             request_context.as_ref().and_then(|context| {
@@ -815,11 +827,8 @@ async fn storefront_cart_decrement_line_item(
                 )
             })?;
 
-        let pricing_update = storefront_cart_pricing_update(
-            parsed_line_item_id,
-            next_quantity,
-            &resolved_price,
-        );
+        let pricing_update =
+            storefront_cart_pricing_update(parsed_line_item_id, next_quantity, &resolved_price);
         cart_service
             .update_line_item_pricing(
                 tenant.id,
@@ -868,7 +877,8 @@ async fn storefront_cart_remove_line_item(
             "cart.storefront_cart_id_invalid",
             "Invalid cart selection",
         )
-    })? else {
+    })?
+    else {
         return Err(ServerFnError::new("Invalid cart selection"));
     };
     let (_, parsed_line_item_id) = parse_line_item_id(line_item_id).map_err(|error| {

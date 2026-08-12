@@ -103,14 +103,11 @@ impl PageService {
         let fetch_limit = u64::from(max_records).saturating_add(1);
         let txn = self.db.begin().await?;
 
-        let page_query = || {
-            page::Entity::find_by_id(page_id).filter(page::Column::TenantId.eq(tenant_id))
-        };
+        let page_query =
+            || page::Entity::find_by_id(page_id).filter(page::Column::TenantId.eq(tenant_id));
         let page = match txn.get_database_backend() {
             DbBackend::Sqlite => page_query().one(&txn).await?,
-            DbBackend::Postgres | DbBackend::MySql => {
-                page_query().lock_shared().one(&txn).await?
-            }
+            DbBackend::Postgres | DbBackend::MySql => page_query().lock_shared().one(&txn).await?,
         };
         if page.is_none() {
             return Err(PagesError::PageNotFound(page_id));
@@ -167,29 +164,29 @@ impl PageService {
 
             let locale_hash = hex_sha256(record.locale.as_bytes());
             let record_identity_hash = artifact_record_identity_hash(&record)?;
-            let (status, diagnostic_hash) = match verify_artifact_record(&record, tenant_id, page_id)
-            {
-                Ok(()) => {
-                    valid_artifact_count = valid_artifact_count.saturating_add(1);
-                    ("valid", None)
-                }
-                Err(error) => {
-                    invalid_artifact_count = invalid_artifact_count.saturating_add(1);
-                    let diagnostic_hash = hex_sha256(error.to_string().as_bytes());
-                    if findings.len() < MAX_PAGE_ARTIFACT_AUDIT_FINDINGS {
-                        findings.push(PageArtifactIntegrityFinding {
-                            artifact_id: record.id,
-                            locale_hash: locale_hash.clone(),
-                            record_identity_hash: record_identity_hash.clone(),
-                            code: PAGE_ARTIFACT_INTEGRITY_INVALID.to_string(),
-                            diagnostic_hash: diagnostic_hash.clone(),
-                        });
-                    } else {
-                        findings_truncated = true;
+            let (status, diagnostic_hash) =
+                match verify_artifact_record(&record, tenant_id, page_id) {
+                    Ok(()) => {
+                        valid_artifact_count = valid_artifact_count.saturating_add(1);
+                        ("valid", None)
                     }
-                    ("invalid", Some(diagnostic_hash))
-                }
-            };
+                    Err(error) => {
+                        invalid_artifact_count = invalid_artifact_count.saturating_add(1);
+                        let diagnostic_hash = hex_sha256(error.to_string().as_bytes());
+                        if findings.len() < MAX_PAGE_ARTIFACT_AUDIT_FINDINGS {
+                            findings.push(PageArtifactIntegrityFinding {
+                                artifact_id: record.id,
+                                locale_hash: locale_hash.clone(),
+                                record_identity_hash: record_identity_hash.clone(),
+                                code: PAGE_ARTIFACT_INTEGRITY_INVALID.to_string(),
+                                diagnostic_hash: diagnostic_hash.clone(),
+                            });
+                        } else {
+                            findings_truncated = true;
+                        }
+                        ("invalid", Some(diagnostic_hash))
+                    }
+                };
             entries.push(ArtifactAuditEntry {
                 artifact_id: record.id,
                 locale_hash,

@@ -44,10 +44,7 @@ pub fn require_direct_control_plane_user(
 mod tests {
     use super::*;
 
-    fn principal(
-        tenant_id: Uuid,
-        principal_kind: AuthPrincipalKind,
-    ) -> RbacControlPlanePrincipal {
+    fn principal(tenant_id: Uuid, principal_kind: AuthPrincipalKind) -> RbacControlPlanePrincipal {
         RbacControlPlanePrincipal {
             tenant_id,
             principal_kind,
@@ -69,17 +66,11 @@ mod tests {
 
     #[test]
     fn delegated_and_service_principals_are_denied_even_with_management_permission() {
-        for principal_kind in [
-            AuthPrincipalKind::DelegatedUser,
-            AuthPrincipalKind::Service,
-        ] {
+        for principal_kind in [AuthPrincipalKind::DelegatedUser, AuthPrincipalKind::Service] {
             let tenant_id = Uuid::new_v4();
 
             assert_eq!(
-                require_direct_control_plane_user(
-                    principal(tenant_id, principal_kind),
-                    tenant_id,
-                ),
+                require_direct_control_plane_user(principal(tenant_id, principal_kind), tenant_id,),
                 Err(RbacControlPlaneAdmissionError::DirectSessionRequired)
             );
         }

@@ -76,9 +76,7 @@ pub fn register(registry: &Registry) -> Result<(), prometheus::Error> {
     registry.register(Box::new(
         RBAC_INVALIDATION_DATABASE_READ_ERRORS_TOTAL.clone(),
     ))?;
-    registry.register(Box::new(
-        RBAC_INVALIDATION_WATCHDOG_RESTARTS_TOTAL.clone(),
-    ))?;
+    registry.register(Box::new(RBAC_INVALIDATION_WATCHDOG_RESTARTS_TOTAL.clone()))?;
     registry.register(Box::new(RBAC_INVALIDATION_RECOVERIES_TOTAL.clone()))?;
     registry.register(Box::new(RBAC_INVALIDATION_FULL_CLEARS_TOTAL.clone()))?;
     Ok(())
@@ -168,7 +166,10 @@ mod tests {
             "rustok_rbac_invalidation_recoveries_total",
             "rustok_rbac_invalidation_full_clears_total",
         ] {
-            assert!(names.iter().any(|name| name == expected), "missing {expected}");
+            assert!(
+                names.iter().any(|name| name == expected),
+                "missing {expected}"
+            );
         }
     }
 }

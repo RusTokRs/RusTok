@@ -14,9 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue, json};
 use sha2::{Digest, Sha256};
 
-use super::{
-    connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata,
-};
+use super::{connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata};
 
 const MANIFEST_CONTRACT: &str = "index_partition_evidence_manifest_v1";
 const SHADOW_PLAN_VERSION: &str = "tenant_hash_shadow_v1";
@@ -291,33 +289,46 @@ fn read_manifest(path: &Path) -> Result<(PreparedManifest, JsonValue)> {
         metadata.file_type().is_file() && !metadata.file_type().is_symlink(),
         "partition manifest must be a regular non-symlink file"
     );
-    let bytes = fs::read(path)
-        .with_context(|| format!("failed to read partition manifest at {path:?}"))?;
-    let raw: JsonValue = serde_json::from_slice(&bytes)
-        .context("failed to parse partition manifest JSON")?;
+    let bytes =
+        fs::read(path).with_context(|| format!("failed to read partition manifest at {path:?}"))?;
+    let raw: JsonValue =
+        serde_json::from_slice(&bytes).context("failed to parse partition manifest JSON")?;
     let manifest = serde_json::from_value(raw.clone())
         .context("failed to deserialize prepared partition manifest")?;
     Ok((manifest, raw))
 }
 
 fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()> {
-    ensure!(manifest.contract == MANIFEST_CONTRACT, "unexpected manifest contract");
-    ensure!(manifest.repository == "RusTokRs/RusTok", "unexpected manifest repository");
-    ensure!(is_lower_hex(&manifest.commit, 40), "manifest commit must be a lowercase full SHA-1");
+    ensure!(
+        manifest.contract == MANIFEST_CONTRACT,
+        "unexpected manifest contract"
+    );
+    ensure!(
+        manifest.repository == "RusTokRs/RusTok",
+        "unexpected manifest repository"
+    );
+    ensure!(
+        is_lower_hex(&manifest.commit, 40),
+        "manifest commit must be a lowercase full SHA-1"
+    );
     ensure!(
         !manifest.run_key.is_empty() && manifest.run_key.len() <= 128,
         "manifest run_key must be non-empty and bounded"
     );
-    ensure!(manifest.postgres_image == "postgres:16", "manifest must pin postgres:16");
-    ensure!(manifest.strategy == "tenant_hash", "manifest strategy must be tenant_hash");
+    ensure!(
+        manifest.postgres_image == "postgres:16",
+        "manifest must pin postgres:16"
+    );
+    ensure!(
+        manifest.strategy == "tenant_hash",
+        "manifest strategy must be tenant_hash"
+    );
     ensure!(
         manifest.plan_digest_contract == PLAN_DIGEST_CONTRACT,
         "unexpected plan digest contract"
     );
     ensure!(
-        manifest.modulus >= 2
-            && manifest.modulus <= 128
-            && manifest.modulus.is_power_of_two(),
+        manifest.modulus >= 2 && manifest.modulus <= 128 && manifest.modulus.is_power_of_two(),
         "manifest modulus must be a power of two between 2 and 128"
     );
     ensure!(
@@ -333,8 +344,14 @@ fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()>
             && manifest.repetitions.cutover > 0,
         "manifest repetition counts must all be positive"
     );
-    ensure!(manifest.thresholds.is_object(), "manifest thresholds must be an object");
-    ensure!(is_lower_hex(&manifest.evidence_id, 64), "invalid manifest evidence_id");
+    ensure!(
+        manifest.thresholds.is_object(),
+        "manifest thresholds must be an object"
+    );
+    ensure!(
+        is_lower_hex(&manifest.evidence_id, 64),
+        "invalid manifest evidence_id"
+    );
     ensure!(
         manifest.shadow_plan_version == SHADOW_PLAN_VERSION,
         "unexpected shadow plan version"
@@ -345,7 +362,10 @@ fn validate_manifest(manifest: &PreparedManifest, raw: &JsonValue) -> Result<()>
         .cloned()
         .context("prepared manifest must be a JSON object")?;
     for key in ["evidence_id", "shadow_plan_version", "shadow_relations"] {
-        ensure!(input.remove(key).is_some(), "prepared manifest is missing {key}");
+        ensure!(
+            input.remove(key).is_some(),
+            "prepared manifest is missing {key}"
+        );
     }
     let expected_evidence_id = sha256_hex(&canonical_json_bytes(&JsonValue::Object(input))?);
     ensure!(
@@ -389,8 +409,14 @@ fn validate_relation_plan(
     expected_parent: &str,
     modulus: u32,
 ) -> Result<()> {
-    ensure!(plan.source == expected_source, "unexpected shadow source relation");
-    ensure!(plan.parent == expected_parent, "unexpected shadow parent relation");
+    ensure!(
+        plan.source == expected_source,
+        "unexpected shadow source relation"
+    );
+    ensure!(
+        plan.parent == expected_parent,
+        "unexpected shadow parent relation"
+    );
     validate_identifier(&plan.parent)?;
     ensure!(
         plan.partitions.len() == modulus as usize,
@@ -420,7 +446,10 @@ async fn ensure_session_setting(
         .await?
         .context("session-setting query returned no row")?;
     let actual: String = row.try_get("", "value")?;
-    ensure!(actual == expected, "requires {setting}={expected}, got {actual}");
+    ensure!(
+        actual == expected,
+        "requires {setting}={expected}, got {actual}"
+    );
     Ok(())
 }
 
@@ -475,7 +504,11 @@ async fn validate_shadow_relation_catalog(
     let relkind: String = row.try_get("", "relkind")?;
     let comment: Option<String> = row.try_get("", "comment")?;
     let expected_comment = format!("rustok-index-partition:{}", manifest.evidence_id);
-    ensure!(relkind == "p", "shadow parent {} must be partitioned", plan.parent);
+    ensure!(
+        relkind == "p",
+        "shadow parent {} must be partitioned",
+        plan.parent
+    );
     ensure!(
         comment.as_deref() == Some(expected_comment.as_str()),
         "shadow parent {} is not bound to the evidence identity",
@@ -614,7 +647,10 @@ fn build_query_cases(
     entities: &[EntityAnchor],
     links: &[LinkAnchor],
 ) -> Result<Vec<QueryCase>> {
-    ensure!(!entities.is_empty(), "entity query anchors must not be empty");
+    ensure!(
+        !entities.is_empty(),
+        "entity query anchors must not be empty"
+    );
     let template_count = if links.is_empty() { 3 } else { 5 };
     let mut cases = Vec::with_capacity(manifest.repetitions.query);
     for index in 0..manifest.repetitions.query {
@@ -783,11 +819,7 @@ fn link_scope_case(ordinal: usize, anchor: &LinkAnchor, shadow: &str) -> QueryCa
             "source_locale_key = ?",
             "link_name = ?",
         ],
-        logical_ordering: vec![
-            "source_entity_id ASC",
-            "source_version ASC",
-            "ordinal ASC",
-        ],
+        logical_ordering: vec!["source_entity_id ASC", "source_version ASC", "ordinal ASC"],
         uses_entities: false,
         uses_links: true,
     }
@@ -882,19 +914,15 @@ async fn capture_query_case<C: ConnectionTrait>(
     let mut shadow_samples = Vec::with_capacity(samples);
     for sample in 1..=samples {
         if sample % 2 == 1 {
-            baseline_samples.push(
-                explain_sample(db, manifest, case, QuerySide::Baseline, sample).await?,
-            );
-            shadow_samples.push(
-                explain_sample(db, manifest, case, QuerySide::Shadow, sample).await?,
-            );
+            baseline_samples
+                .push(explain_sample(db, manifest, case, QuerySide::Baseline, sample).await?);
+            shadow_samples
+                .push(explain_sample(db, manifest, case, QuerySide::Shadow, sample).await?);
         } else {
-            shadow_samples.push(
-                explain_sample(db, manifest, case, QuerySide::Shadow, sample).await?,
-            );
-            baseline_samples.push(
-                explain_sample(db, manifest, case, QuerySide::Baseline, sample).await?,
-            );
+            shadow_samples
+                .push(explain_sample(db, manifest, case, QuerySide::Shadow, sample).await?);
+            baseline_samples
+                .push(explain_sample(db, manifest, case, QuerySide::Baseline, sample).await?);
         }
     }
 
@@ -939,9 +967,7 @@ async fn result_digest<C: ConnectionTrait>(
     sql: &str,
     values: &[SeaValue],
 ) -> Result<(i64, String)> {
-    let wrapped = format!(
-        "SELECT row_to_json(result)::text AS result_json FROM ({sql}) AS result"
-    );
+    let wrapped = format!("SELECT row_to_json(result)::text AS result_json FROM ({sql}) AS result");
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -1073,7 +1099,10 @@ fn normalize_plan_node(value: &JsonValue) -> Result<JsonValue> {
         ("Partial Mode", "partial_mode"),
     ] {
         if let Some(value) = node.get(source).and_then(JsonValue::as_str) {
-            normalized.insert(target.to_owned(), JsonValue::String(value.to_ascii_lowercase()));
+            normalized.insert(
+                target.to_owned(),
+                JsonValue::String(value.to_ascii_lowercase()),
+            );
         }
     }
     if !children.is_empty() {
@@ -1190,7 +1219,10 @@ fn validate_plan_relations(
                 "shadow query {} must prune links to exactly one child when used",
                 case.name
             );
-            let allowed = entity_children.union(&link_children).cloned().collect::<BTreeSet<_>>();
+            let allowed = entity_children
+                .union(&link_children)
+                .cloned()
+                .collect::<BTreeSet<_>>();
             ensure!(
                 names.is_subset(&allowed),
                 "shadow query {} accessed a relation outside the evidence plan: {:?}",
@@ -1223,15 +1255,16 @@ fn collect_relation_names(value: &JsonValue, names: &mut BTreeSet<String>) {
 
 fn explain_root(explain: &JsonValue) -> Result<&JsonMap<String, JsonValue>> {
     let entries = explain.as_array().context("EXPLAIN must be a JSON array")?;
-    ensure!(entries.len() == 1, "EXPLAIN must contain exactly one root entry");
-    entries[0].as_object().context("EXPLAIN root must be an object")
+    ensure!(
+        entries.len() == 1,
+        "EXPLAIN must contain exactly one root entry"
+    );
+    entries[0]
+        .as_object()
+        .context("EXPLAIN root must be an object")
 }
 
-fn stable_plan_digest(
-    samples: &[QueryExplainSample],
-    query: &str,
-    side: &str,
-) -> Result<String> {
+fn stable_plan_digest(samples: &[QueryExplainSample], query: &str, side: &str) -> Result<String> {
     let digests = samples
         .iter()
         .map(|sample| sample.plan_digest.clone())
@@ -1264,7 +1297,9 @@ fn percentile_95(values: &[f64]) -> Result<f64> {
     ensure!(!values.is_empty(), "p95 sample set must not be empty");
     let mut sorted = values.to_vec();
     ensure!(
-        sorted.iter().all(|value| value.is_finite() && *value >= 0.0),
+        sorted
+            .iter()
+            .all(|value| value.is_finite() && *value >= 0.0),
         "p95 samples must be finite and non-negative"
     );
     sorted.sort_by(|left, right| left.total_cmp(right));
@@ -1280,13 +1315,16 @@ fn ensure_output_available(path: &Path) -> Result<()> {
 }
 
 fn publish_query_artifact(path: &Path, runs: &[PartitionQueryRunEvidence]) -> Result<()> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create query evidence directory {parent:?}"))?;
     }
     ensure_output_available(path)?;
-    let mut bytes = serde_json::to_vec_pretty(runs)
-        .context("failed to serialize partition query evidence")?;
+    let mut bytes =
+        serde_json::to_vec_pretty(runs).context("failed to serialize partition query evidence")?;
     bytes.push(b'\n');
     let temporary = temporary_path(path);
     let mut file = OpenOptions::new()

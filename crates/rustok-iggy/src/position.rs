@@ -49,7 +49,11 @@ impl ConsumerPositionSnapshot {
 
     /// Whether every topic partition has a coherent lag value.
     pub fn is_complete(&self) -> bool {
-        !self.partitions.is_empty() && self.partitions.iter().all(|position| position.lag().is_some())
+        !self.partitions.is_empty()
+            && self
+                .partitions
+                .iter()
+                .all(|position| position.lag().is_some())
     }
 
     /// Exact total lag across all partitions, or `None` when one partition is unknown.
@@ -67,7 +71,10 @@ impl ConsumerPositionSnapshot {
         if !self.is_complete() {
             return None;
         }
-        self.partitions.iter().filter_map(ConsumerPartitionPosition::lag).max()
+        self.partitions
+            .iter()
+            .filter_map(ConsumerPartitionPosition::lag)
+            .max()
     }
 }
 
@@ -144,8 +151,11 @@ impl IggyConsumerPositionObserver {
         };
 
         let mut failures = Vec::new();
-        for (address, connection_string) in
-            config.external.addresses.iter().zip(connection_strings(&config.external)?)
+        for (address, connection_string) in config
+            .external
+            .addresses
+            .iter()
+            .zip(connection_strings(&config.external)?)
         {
             let client = match IggyClient::from_connection_string(&connection_string) {
                 Ok(client) => client,
@@ -265,7 +275,11 @@ fn connection_strings(config: &ExternalConfig) -> Result<Vec<String>, ConsumerPo
     if config.tls_enabled {
         options.push("tls=true".to_string());
     }
-    if let Some(domain) = config.tls_domain.as_deref().filter(|domain| !domain.is_empty()) {
+    if let Some(domain) = config
+        .tls_domain
+        .as_deref()
+        .filter(|domain| !domain.is_empty())
+    {
         options.push(format!("tls_domain={domain}"));
     }
     if let Some(ca_file) = config
@@ -289,10 +303,7 @@ fn connection_strings(config: &ExternalConfig) -> Result<Vec<String>, ConsumerPo
             let mut connection_string = if config.username.is_empty() {
                 format!("iggy://{address}")
             } else {
-                format!(
-                    "iggy://{}:{}@{address}",
-                    config.username, config.password
-                )
+                format!("iggy://{}:{}@{address}", config.username, config.password)
             };
             if !options.is_empty() {
                 connection_string.push('?');
@@ -406,7 +417,9 @@ mod tests {
         };
         assert_eq!(
             connection_strings(&config).expect("valid config"),
-            vec!["iggy://service:secret@iggy.internal:8090?tls=true&tls_domain=iggy.internal&tls_ca_file=/etc/iggy-ca.pem"]
+            vec![
+                "iggy://service:secret@iggy.internal:8090?tls=true&tls_domain=iggy.internal&tls_ca_file=/etc/iggy-ca.pem"
+            ]
         );
     }
 }

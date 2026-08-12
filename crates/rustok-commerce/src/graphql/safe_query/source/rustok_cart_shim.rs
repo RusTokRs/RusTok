@@ -238,9 +238,7 @@ pub(crate) struct CartStorefrontQueryPort {
     inner: Arc<dyn OwnerCartStorefrontPort>,
 }
 
-pub(crate) fn in_process_cart_storefront_port(
-    db: DatabaseConnection,
-) -> CartStorefrontQueryPort {
+pub(crate) fn in_process_cart_storefront_port(db: DatabaseConnection) -> CartStorefrontQueryPort {
     CartStorefrontQueryPort {
         inner: ::rustok_cart::in_process_cart_storefront_port(db),
     }

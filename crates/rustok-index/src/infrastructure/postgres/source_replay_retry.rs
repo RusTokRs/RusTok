@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value as SqlValue};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use thiserror::Error;
 
 use super::IndexReplayJobLease;
@@ -336,9 +336,7 @@ fn valid_failure_code(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_FAILURE_CODE_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }
 
@@ -405,9 +403,7 @@ mod tests {
     #[test]
     fn default_policy_uses_bounded_exponential_backoff() {
         let policy = IndexReplayRetryPolicy::default();
-        for (attempt, seconds, next_attempt) in
-            [(1, 5, 2), (2, 10, 3), (3, 20, 4), (4, 40, 5)]
-        {
+        for (attempt, seconds, next_attempt) in [(1, 5, 2), (2, 10, 3), (3, 20, 4), (4, 40, 5)] {
             assert_eq!(
                 policy
                     .evaluate(attempt, IndexReplayRetryFailureKind::Retryable)
@@ -438,18 +434,12 @@ mod tests {
 
     #[test]
     fn policy_and_failure_code_validation_fail_closed() {
-        assert!(IndexReplayRetryPolicy::new(
-            0,
-            Duration::from_secs(1),
-            Duration::from_secs(2)
-        )
-        .is_err());
-        assert!(IndexReplayRetryPolicy::new(
-            2,
-            Duration::from_secs(3),
-            Duration::from_secs(2)
-        )
-        .is_err());
+        assert!(
+            IndexReplayRetryPolicy::new(0, Duration::from_secs(1), Duration::from_secs(2)).is_err()
+        );
+        assert!(
+            IndexReplayRetryPolicy::new(2, Duration::from_secs(3), Duration::from_secs(2)).is_err()
+        );
         for code in ["", "UPPER", " leading", "contains/slash"] {
             assert!(IndexReplayRetryFailure::retryable(code).is_err());
         }

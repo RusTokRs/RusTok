@@ -28,27 +28,25 @@ pub(crate) async fn render_forum_category_route_response(
     mut query_params: HashMap<String, String>,
     csp_nonce: Option<&CspNonce>,
 ) -> Response {
-    let resolution = match rustok_forum_storefront::resolve_storefront_category_route(
-        locale_path_prefix,
-        slug,
-    )
-    .await
-    {
-        Ok(Some(resolution)) => resolution,
-        Ok(None) => {
-            return private_status_response(
-                StatusCode::NOT_FOUND,
-                "Forum category route not found",
-            );
-        }
-        Err(error) => {
-            eprintln!("failed to resolve Forum storefront category route: {error}");
-            return private_status_response(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Forum category route resolution is temporarily unavailable",
-            );
-        }
-    };
+    let resolution =
+        match rustok_forum_storefront::resolve_storefront_category_route(locale_path_prefix, slug)
+            .await
+        {
+            Ok(Some(resolution)) => resolution,
+            Ok(None) => {
+                return private_status_response(
+                    StatusCode::NOT_FOUND,
+                    "Forum category route not found",
+                );
+            }
+            Err(error) => {
+                eprintln!("failed to resolve Forum storefront category route: {error}");
+                return private_status_response(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Forum category route resolution is temporarily unavailable",
+                );
+            }
+        };
 
     match forum_category_host_action(requested_path.as_str(), &resolution) {
         ForumCategoryHostAction::Redirect(location) => {
@@ -128,9 +126,7 @@ fn forum_category_host_action(
         StorefrontForumCategoryRouteDisposition::Redirect => {
             ForumCategoryHostAction::Redirect(canonical.path.clone())
         }
-        StorefrontForumCategoryRouteDisposition::Canonical
-            if requested_path != canonical.path =>
-        {
+        StorefrontForumCategoryRouteDisposition::Canonical if requested_path != canonical.path => {
             ForumCategoryHostAction::Redirect(canonical.path.clone())
         }
         StorefrontForumCategoryRouteDisposition::Canonical => ForumCategoryHostAction::Render {

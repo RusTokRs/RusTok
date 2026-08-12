@@ -229,9 +229,9 @@ fn validate_artifact_bundle(root: &Path) -> Result<CaptureArtifacts> {
             metadata.len() > 0,
             "partition evidence artifact {role} must not be empty"
         );
-        let canonical = path
-            .canonicalize()
-            .with_context(|| format!("failed to canonicalize partition evidence artifact {role}"))?;
+        let canonical = path.canonicalize().with_context(|| {
+            format!("failed to canonicalize partition evidence artifact {role}")
+        })?;
         ensure!(
             canonical.starts_with(&canonical_root),
             "partition evidence artifact {role} must stay inside the canonical evidence root"
@@ -295,9 +295,9 @@ fn valid_run_key(value: &str) -> bool {
     !bytes.is_empty()
         && bytes.len() <= 128
         && bytes[0].is_ascii_alphanumeric()
-        && bytes.iter().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(*byte, b'.' | b'_' | b':' | b'-')
-        })
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(*byte, b'.' | b'_' | b':' | b'-'))
 }
 
 fn is_lower_hex(value: &str, length: usize) -> bool {

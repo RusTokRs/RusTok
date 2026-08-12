@@ -15,10 +15,7 @@ const PAYMENT_STOREFRONT_NATIVE_OWNER: &str = "rustok_payment.storefront";
 const PAYMENT_STOREFRONT_NATIVE_BOUNDARY: &str = "payment_storefront_native_transport";
 
 #[cfg(feature = "ssr")]
-fn map_request_context_error<E>(
-    owner_operation: &'static str,
-    _error: E,
-) -> ServerFnError {
+fn map_request_context_error<E>(owner_operation: &'static str, _error: E) -> ServerFnError {
     let error_type = std::any::type_name::<E>();
     tracing::error!(
         error_type,
@@ -309,7 +306,8 @@ fn checkout_runtime(
     request_context: &rustok_api::RequestContext,
     tenant_id: Uuid,
     owner_operation: &'static str,
-) -> Result<rustok_commerce::storefront_checkout_runtime::StorefrontCheckoutRuntime, ServerFnError> {
+) -> Result<rustok_commerce::storefront_checkout_runtime::StorefrontCheckoutRuntime, ServerFnError>
+{
     use leptos::prelude::expect_context;
     use rustok_api::HostRuntimeContext;
     use rustok_outbox::TransactionalEventBus;

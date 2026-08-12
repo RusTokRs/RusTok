@@ -12,8 +12,7 @@ use crate::dto::{
     GroupTranslationMutationResult, ListGroupTranslationsRequest, UpsertGroupTranslationRequest,
 };
 use crate::effective_membership_guard::{
-    GroupManagerCapability, require_effective_manager_direct_owned,
-    require_effective_manager_owned,
+    GroupManagerCapability, require_effective_manager_direct_owned, require_effective_manager_owned,
 };
 use crate::entities::{group, translation};
 use crate::error::{GroupsError, GroupsResult};

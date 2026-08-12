@@ -230,7 +230,8 @@ struct ProviderHealthRuntimeWindow {
     publish: VecDeque<ProviderHealthRuntimeSample>,
 }
 
-static PROVIDER_HEALTH_RUNTIME_WINDOW: OnceLock<Mutex<ProviderHealthRuntimeWindow>> = OnceLock::new();
+static PROVIDER_HEALTH_RUNTIME_WINDOW: OnceLock<Mutex<ProviderHealthRuntimeWindow>> =
+    OnceLock::new();
 
 /// Record one completed provider operation in the bounded process-local SLO window.
 ///

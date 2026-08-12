@@ -103,9 +103,7 @@ impl ExecutableQueryPlan {
     }
 
     pub(crate) fn join_for_path(&self, path: &[LinkName]) -> Option<&PlannedJoin> {
-        self.joins
-            .iter()
-            .find(|join| join.path.as_slice() == path)
+        self.joins.iter().find(|join| join.path.as_slice() == path)
     }
 
     pub(crate) fn outer_joins(&self) -> impl Iterator<Item = &PlannedJoin> {
@@ -297,9 +295,7 @@ fn planned_field(
         .ok_or_else(|| QueryPlanError::ValidatedAliasMissing(path.clone()))
 }
 
-pub(crate) fn derive_many_projections(
-    projection: &[PlannedField],
-) -> Vec<PlannedManyProjection> {
+pub(crate) fn derive_many_projections(projection: &[PlannedField]) -> Vec<PlannedManyProjection> {
     let mut group_indexes = BTreeMap::<Vec<LinkName>, usize>::new();
     let mut groups = Vec::<PlannedManyProjection>::new();
 

@@ -14,8 +14,8 @@ use super::{
     SecondaryIndexPlan, SecondaryIndexRequest,
 };
 use crate::{
-    EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema,
-    IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
+    EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema, IndexValueType,
+    LocaleMode, ModuleName, SchemaRef, SchemaVersion,
 };
 
 const TENANT: &str = "11111111-1111-1111-1111-111111111111";
@@ -93,13 +93,8 @@ impl Fixture {
         operation: SecondaryIndexOperation,
         worker: &str,
     ) -> SecondaryIndexRequest {
-        SecondaryIndexRequest::new(
-            self.spec(field),
-            operation,
-            worker,
-            Duration::from_secs(60),
-        )
-        .unwrap()
+        SecondaryIndexRequest::new(self.spec(field), operation, worker, Duration::from_secs(60))
+            .unwrap()
     }
 }
 
@@ -180,14 +175,18 @@ fn plan_derives_stable_typed_and_containment_indexes() {
     let second = SecondaryIndexPlan::from_schema(tenant, &schema).unwrap();
     assert_eq!(first, second);
     assert_eq!(first.indexes().len(), 3);
-    assert!(first
-        .indexes()
-        .windows(2)
-        .all(|indexes| indexes[0].field_name() < indexes[1].field_name()));
-    assert!(first
-        .indexes()
-        .iter()
-        .all(|index| index.index_name().len() <= 63));
+    assert!(
+        first
+            .indexes()
+            .windows(2)
+            .all(|indexes| indexes[0].field_name() < indexes[1].field_name())
+    );
+    assert!(
+        first
+            .indexes()
+            .iter()
+            .all(|index| index.index_name().len() <= 63)
+    );
 
     let price = first
         .indexes()
@@ -211,10 +210,12 @@ fn plan_derives_stable_typed_and_containment_indexes() {
     let tags_sql = tags.create_statement(DbBackend::Postgres).unwrap();
     assert!(tags_sql.contains("USING gin"));
     assert!(tags_sql.contains("((payload -> 'tags') -> 'value') jsonb_path_ops"));
-    assert!(first
-        .indexes()
-        .iter()
-        .all(|index| index.field_name().as_str() != "internal_note"));
+    assert!(
+        first
+            .indexes()
+            .iter()
+            .all(|index| index.field_name().as_str() != "internal_note")
+    );
 }
 
 #[tokio::test]
@@ -228,11 +229,7 @@ async fn ensure_reindex_and_retire_are_durable_and_idempotent() {
     assert_eq!(
         fixture
             .manager
-            .claim(&fixture.request(
-                "price_minor",
-                SecondaryIndexOperation::Ensure,
-                "worker-b",
-            ))
+            .claim(&fixture.request("price_minor", SecondaryIndexOperation::Ensure, "worker-b",))
             .await
             .unwrap(),
         SecondaryIndexClaimOutcome::Busy
@@ -323,11 +320,7 @@ async fn expired_operation_is_reclaimed_with_attempt_fencing() {
     let fixture = Fixture::new("active").await;
     let first = match fixture
         .manager
-        .claim(&fixture.request(
-            "status",
-            SecondaryIndexOperation::Ensure,
-            "worker-a",
-        ))
+        .claim(&fixture.request("status", SecondaryIndexOperation::Ensure, "worker-a"))
         .await
         .unwrap()
     {
@@ -346,11 +339,7 @@ async fn expired_operation_is_reclaimed_with_attempt_fencing() {
 
     let second = match fixture
         .manager
-        .claim(&fixture.request(
-            "status",
-            SecondaryIndexOperation::Ensure,
-            "worker-b",
-        ))
+        .claim(&fixture.request("status", SecondaryIndexOperation::Ensure, "worker-b"))
         .await
         .unwrap()
     {

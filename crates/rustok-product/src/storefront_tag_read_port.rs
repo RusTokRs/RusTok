@@ -63,11 +63,7 @@ impl ProductStorefrontTagReadPort for CatalogService {
             .all(self.database())
             .await
             .map_err(|error| {
-                tag_error_to_port_error(
-                    &context,
-                    owner_operation,
-                    CommerceError::Database(error),
-                )
+                tag_error_to_port_error(&context, owner_operation, CommerceError::Database(error))
             })?;
         if products.len() != request.product_ids.len() {
             tracing::error!(
@@ -175,7 +171,9 @@ fn require_tag_read_context(
                 ..
             } = error;
             match kind {
-                PortErrorKind::Timeout => PortError::timeout(code, "product tag request context is invalid"),
+                PortErrorKind::Timeout => {
+                    PortError::timeout(code, "product tag request context is invalid")
+                }
                 PortErrorKind::Validation => {
                     PortError::validation(code, "product tag request context is invalid")
                 }
@@ -189,7 +187,10 @@ fn require_tag_read_context(
         })
 }
 
-fn parse_tenant_id(context: &PortContext, owner_operation: &'static str) -> Result<Uuid, PortError> {
+fn parse_tenant_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|error| {
         tracing::warn!(
             error = ?error,

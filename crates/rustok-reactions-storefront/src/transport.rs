@@ -1,6 +1,6 @@
+use leptos::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use leptos::prelude::*;
 use leptos_auth::AuthContext;
 use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
@@ -226,11 +226,16 @@ mod tests {
 
     #[test]
     fn subject_wire_uses_graphql_camel_case_fields() {
-        let subject = ReactionSubjectUiRef::new("forum", "topic", Uuid::new_v4(), "42")
-            .expect("subject");
+        let subject =
+            ReactionSubjectUiRef::new("forum", "topic", Uuid::new_v4(), "42").expect("subject");
         let value = serde_json::to_value(SubjectInputWire::from(subject)).expect("serialize");
         assert!(value.get("subjectId").is_some());
-        assert_eq!(value.get("subjectRevision").and_then(|value| value.as_str()), Some("42"));
+        assert_eq!(
+            value
+                .get("subjectRevision")
+                .and_then(|value| value.as_str()),
+            Some("42")
+        );
         assert!(value.get("tenantId").is_none());
         assert!(value.get("actorId").is_none());
     }

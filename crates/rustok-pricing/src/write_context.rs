@@ -111,10 +111,16 @@ impl PricingWritePort for InProcessPricingWritePort {
                 .map(|value| !value.is_nil())
                 .unwrap_or(false),
             min_quantity_present: request.min_quantity.is_some(),
-            min_quantity_nonzero: request.min_quantity.map(|value| value != 0).unwrap_or(false),
+            min_quantity_nonzero: request
+                .min_quantity
+                .map(|value| value != 0)
+                .unwrap_or(false),
             min_quantity_negative: request.min_quantity.map(|value| value < 0).unwrap_or(false),
             max_quantity_present: request.max_quantity.is_some(),
-            max_quantity_nonzero: request.max_quantity.map(|value| value != 0).unwrap_or(false),
+            max_quantity_nonzero: request
+                .max_quantity
+                .map(|value| value != 0)
+                .unwrap_or(false),
             max_quantity_negative: request.max_quantity.map(|value| value < 0).unwrap_or(false),
             currency_code_length: Some(request.currency_code.chars().count()),
             channel_slug_length: request
@@ -219,12 +225,8 @@ impl PricingWritePort for InProcessPricingWritePort {
             adjustment_percent_present: request.adjustment_percent.is_some(),
             ..PricingWriteDiagnosticFacts::default()
         };
-        let result = PricingWritePort::set_price_list_percentage_rule(
-            &self.inner,
-            context,
-            request,
-        )
-        .await;
+        let result =
+            PricingWritePort::set_price_list_percentage_rule(&self.inner, context, request).await;
         result.map_err(|error| {
             map_pricing_write_local_port_error(
                 &diagnostic_context,
@@ -246,12 +248,10 @@ fn classify_pricing_write_local_outcome(error: &PortError) -> Option<PricingWrit
             local_operation: "validate_actor_context",
             sanitized_message: Some("pricing write actor is invalid"),
         },
-        (PortErrorKind::Unavailable, "pricing.database_unavailable") => {
-            PricingWriteLocalOutcome {
-                local_operation: "owner_storage",
-                sanitized_message: None,
-            }
-        }
+        (PortErrorKind::Unavailable, "pricing.database_unavailable") => PricingWriteLocalOutcome {
+            local_operation: "owner_storage",
+            sanitized_message: None,
+        },
         (PortErrorKind::NotFound, "pricing.product_not_found") => PricingWriteLocalOutcome {
             local_operation: "load_product",
             sanitized_message: Some("product was not found"),
@@ -272,12 +272,10 @@ fn classify_pricing_write_local_outcome(error: &PortError) -> Option<PricingWrit
             local_operation: "validate_owner_request",
             sanitized_message: None,
         },
-        (PortErrorKind::Conflict, "pricing.insufficient_inventory") => {
-            PricingWriteLocalOutcome {
-                local_operation: "validate_inventory_requirement",
-                sanitized_message: Some("inventory is insufficient for the pricing operation"),
-            }
-        }
+        (PortErrorKind::Conflict, "pricing.insufficient_inventory") => PricingWriteLocalOutcome {
+            local_operation: "validate_inventory_requirement",
+            sanitized_message: Some("inventory is insufficient for the pricing operation"),
+        },
         (PortErrorKind::Validation, "pricing.invalid_option_combination") => {
             PricingWriteLocalOutcome {
                 local_operation: "validate_option_combination",
@@ -300,12 +298,10 @@ fn classify_pricing_write_local_outcome(error: &PortError) -> Option<PricingWrit
             local_operation: "validate_product_variants",
             sanitized_message: None,
         },
-        (PortErrorKind::Conflict, "pricing.cannot_delete_published") => {
-            PricingWriteLocalOutcome {
-                local_operation: "validate_published_product_state",
-                sanitized_message: None,
-            }
-        }
+        (PortErrorKind::Conflict, "pricing.cannot_delete_published") => PricingWriteLocalOutcome {
+            local_operation: "validate_published_product_state",
+            sanitized_message: None,
+        },
         (PortErrorKind::InvariantViolation, "pricing.rich_error") => PricingWriteLocalOutcome {
             local_operation: "owner_rich_invariant",
             sanitized_message: None,

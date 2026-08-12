@@ -2,9 +2,7 @@ use std::collections::HashSet;
 
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

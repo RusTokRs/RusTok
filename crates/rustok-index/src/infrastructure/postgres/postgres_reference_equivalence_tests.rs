@@ -14,7 +14,7 @@ use crate::{
     EntityKey, EntityName, FieldCardinality, FieldName, FieldPath, FilterExpr, IndexField,
     IndexLink, IndexLinkValue, IndexModule, IndexMutation, IndexQuery, IndexQueryPage,
     IndexQueryPort, IndexQueryScope, IndexRecord, IndexSchema, IndexValue, IndexValueType,
-    LinkCardinality, LinkedEntityKey, LinkName, LocaleKey, LocaleMode, ModuleName,
+    LinkCardinality, LinkName, LinkedEntityKey, LocaleKey, LocaleMode, ModuleName,
     MutationDelivery, OrderDirection, OrderExpr, Pagination, PostgresIndexQueryPort,
     PostgresMutationStore, PostgresSchemaRegistrationStore, SchemaRef, SchemaRegistry,
     SchemaVersion,
@@ -114,8 +114,20 @@ impl Fixture {
             reference: channel.clone(),
             locale_mode: LocaleMode::None,
             fields: vec![
-                field("id", IndexValueType::Uuid, FieldCardinality::One, false, true),
-                field("name", IndexValueType::String, FieldCardinality::One, false, true),
+                field(
+                    "id",
+                    IndexValueType::Uuid,
+                    FieldCardinality::One,
+                    false,
+                    true,
+                ),
+                field(
+                    "name",
+                    IndexValueType::String,
+                    FieldCardinality::One,
+                    false,
+                    true,
+                ),
             ],
             links: Vec::new(),
         };
@@ -123,10 +135,34 @@ impl Fixture {
             reference: variant.clone(),
             locale_mode: LocaleMode::Required,
             fields: vec![
-                field("id", IndexValueType::Uuid, FieldCardinality::One, false, true),
-                field("score", IndexValueType::Integer, FieldCardinality::One, false, true),
-                field("title", IndexValueType::String, FieldCardinality::One, true, true),
-                field("tags", IndexValueType::String, FieldCardinality::Many, false, false),
+                field(
+                    "id",
+                    IndexValueType::Uuid,
+                    FieldCardinality::One,
+                    false,
+                    true,
+                ),
+                field(
+                    "score",
+                    IndexValueType::Integer,
+                    FieldCardinality::One,
+                    false,
+                    true,
+                ),
+                field(
+                    "title",
+                    IndexValueType::String,
+                    FieldCardinality::One,
+                    true,
+                    true,
+                ),
+                field(
+                    "tags",
+                    IndexValueType::String,
+                    FieldCardinality::Many,
+                    false,
+                    false,
+                ),
             ],
             links: Vec::new(),
         };
@@ -134,9 +170,27 @@ impl Fixture {
             reference: product.clone(),
             locale_mode: LocaleMode::Required,
             fields: vec![
-                field("id", IndexValueType::Uuid, FieldCardinality::One, false, true),
-                field("score", IndexValueType::Integer, FieldCardinality::One, false, true),
-                field("title", IndexValueType::String, FieldCardinality::One, true, true),
+                field(
+                    "id",
+                    IndexValueType::Uuid,
+                    FieldCardinality::One,
+                    false,
+                    true,
+                ),
+                field(
+                    "score",
+                    IndexValueType::Integer,
+                    FieldCardinality::One,
+                    false,
+                    true,
+                ),
+                field(
+                    "title",
+                    IndexValueType::String,
+                    FieldCardinality::One,
+                    true,
+                    true,
+                ),
                 field(
                     "channel_id",
                     IndexValueType::Uuid,
@@ -403,7 +457,11 @@ fn product_record(
     }
 }
 
-fn query(fields: Vec<FieldPath>, filter: Option<FilterExpr>, order_by: Vec<OrderExpr>) -> IndexQuery {
+fn query(
+    fields: Vec<FieldPath>,
+    filter: Option<FilterExpr>,
+    order_by: Vec<OrderExpr>,
+) -> IndexQuery {
     IndexQuery {
         scope: IndexQueryScope {
             tenant_id: TENANT,
@@ -512,10 +570,7 @@ async fn postgres_query_port_matches_reference_fixture() -> TestResult<()> {
                 linked_path(&["variants"], "tags"),
             ],
             Some(FilterExpr::And(vec![
-                FilterExpr::Gte(
-                    linked_path(&["variants"], "score"),
-                    IndexValue::Integer(7),
-                ),
+                FilterExpr::Gte(linked_path(&["variants"], "score"), IndexValue::Integer(7)),
                 FilterExpr::Contains(
                     linked_path(&["variants"], "tags"),
                     IndexValue::String("featured".to_owned()),

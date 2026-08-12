@@ -58,11 +58,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -296,21 +292,11 @@ async fn manager_can_select_source_solution_and_replay_exact_audit() -> TestResu
         Some(fixture.source_solution.clone())
     );
     assert_eq!(
-        user_solution_count(
-            &fixture.db,
-            fixture.tenant_id,
-            fixture.source_author_id
-        )
-        .await?,
+        user_solution_count(&fixture.db, fixture.tenant_id, fixture.source_author_id).await?,
         1
     );
     assert_eq!(
-        user_solution_count(
-            &fixture.db,
-            fixture.tenant_id,
-            fixture.target_author_id
-        )
-        .await?,
+        user_solution_count(&fixture.db, fixture.tenant_id, fixture.target_author_id).await?,
         0
     );
     assert_eq!(
@@ -340,16 +326,17 @@ async fn manager_can_select_source_solution_and_replay_exact_audit() -> TestResu
         )
         .await?;
     assert_eq!(replay, merged);
-    assert_eq!(merge_operation_count(&fixture.db, fixture.tenant_id).await?, 1);
-    assert_eq!(merge_event_count(&fixture.db, fixture.tenant_id).await?, 1);
-    assert_eq!(resolution_audit_count(&fixture.db, fixture.tenant_id).await?, 1);
     assert_eq!(
-        user_solution_count(
-            &fixture.db,
-            fixture.tenant_id,
-            fixture.target_author_id
-        )
-        .await?,
+        merge_operation_count(&fixture.db, fixture.tenant_id).await?,
+        1
+    );
+    assert_eq!(merge_event_count(&fixture.db, fixture.tenant_id).await?, 1);
+    assert_eq!(
+        resolution_audit_count(&fixture.db, fixture.tenant_id).await?,
+        1
+    );
+    assert_eq!(
+        user_solution_count(&fixture.db, fixture.tenant_id, fixture.target_author_id).await?,
         0
     );
 
@@ -418,9 +405,15 @@ async fn manager_can_select_target_solution_and_invalid_selection_is_atomic() ->
         .await
         .expect_err("unrelated solution identity must fail before mutation");
     assert_eq!(invalid.stable_code(), "FORUM_VALIDATION_FAILED");
-    assert_eq!(merge_operation_count(&fixture.db, fixture.tenant_id).await?, 0);
+    assert_eq!(
+        merge_operation_count(&fixture.db, fixture.tenant_id).await?,
+        0
+    );
     assert_eq!(merge_event_count(&fixture.db, fixture.tenant_id).await?, 0);
-    assert_eq!(resolution_audit_count(&fixture.db, fixture.tenant_id).await?, 0);
+    assert_eq!(
+        resolution_audit_count(&fixture.db, fixture.tenant_id).await?,
+        0
+    );
     assert_eq!(
         solution_snapshot(&fixture.db, fixture.tenant_id, fixture.source_topic_id).await?,
         Some(fixture.source_solution.clone())
@@ -450,21 +443,11 @@ async fn manager_can_select_target_solution_and_invalid_selection_is_atomic() ->
         Some(fixture.target_solution)
     );
     assert_eq!(
-        user_solution_count(
-            &fixture.db,
-            fixture.tenant_id,
-            fixture.source_author_id
-        )
-        .await?,
+        user_solution_count(&fixture.db, fixture.tenant_id, fixture.source_author_id).await?,
         0
     );
     assert_eq!(
-        user_solution_count(
-            &fixture.db,
-            fixture.tenant_id,
-            fixture.target_author_id
-        )
-        .await?,
+        user_solution_count(&fixture.db, fixture.tenant_id, fixture.target_author_id).await?,
         1
     );
     assert_merge_event_and_resolution_audit(
@@ -556,7 +539,10 @@ async fn assert_merge_event_and_resolution_audit(
         .await?
         .ok_or("merge semantic event missing")?;
     assert_eq!(event.try_get::<i16>("", "schema_version")?, 1);
-    assert_eq!(event.try_get::<Option<Uuid>>("", "actor_id")?, Some(actor_id));
+    assert_eq!(
+        event.try_get::<Option<Uuid>>("", "actor_id")?,
+        Some(actor_id)
+    );
     let payload: JsonValue = event.try_get("", "payload")?;
     assert_eq!(
         payload,
@@ -606,10 +592,7 @@ async fn assert_merge_event_and_resolution_audit(
     Ok(())
 }
 
-async fn merge_operation_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn merge_operation_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -633,10 +616,7 @@ async fn merge_event_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResu
     .await
 }
 
-async fn resolution_audit_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn resolution_audit_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(

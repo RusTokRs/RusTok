@@ -5,8 +5,8 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumError,
-    ForumModule, ForumTopicMergeResult, ForumTopicMergeService, MergeForumTopicInput,
-    ReplyService, TopicService,
+    ForumModule, ForumTopicMergeResult, ForumTopicMergeService, MergeForumTopicInput, ReplyService,
+    TopicService,
 };
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
@@ -26,7 +26,10 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(db_url);
-    options.max_connections(5).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(5)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await?;
     db.execute_unprepared(
         "CREATE TABLE users (\
@@ -50,11 +53,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -151,10 +150,8 @@ async fn cross_category_topic_merge_transfers_published_reply_counters_once() ->
     insert_user(&db, tenant_id, actor_id).await?;
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
 
-    let source_category_id =
-        create_category(&db, tenant_id, admin.clone(), "cross-source").await?;
-    let target_category_id =
-        create_category(&db, tenant_id, admin.clone(), "cross-target").await?;
+    let source_category_id = create_category(&db, tenant_id, admin.clone(), "cross-source").await?;
+    let target_category_id = create_category(&db, tenant_id, admin.clone(), "cross-target").await?;
     let source_topic_id = create_topic(
         &db,
         &event_bus,
@@ -297,7 +294,10 @@ async fn cross_category_topic_merge_transfers_published_reply_counters_once() ->
     assert_category_counters(&db, tenant_id, source_category_id, 1, 0).await?;
     assert_category_counters(&db, tenant_id, target_category_id, 1, 3).await?;
     assert_eq!(merge_operation_count(&db, tenant_id).await?, 1);
-    assert_eq!(projection_root_ids(&db, tenant_id).await?, projection_ids_after_merge);
+    assert_eq!(
+        projection_root_ids(&db, tenant_id).await?,
+        projection_ids_after_merge
+    );
     Ok(())
 }
 
@@ -309,10 +309,8 @@ async fn cross_category_topic_merge_rolls_back_on_source_counter_drift() -> Test
     insert_user(&db, tenant_id, actor_id).await?;
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
 
-    let source_category_id =
-        create_category(&db, tenant_id, admin.clone(), "drift-source").await?;
-    let target_category_id =
-        create_category(&db, tenant_id, admin.clone(), "drift-target").await?;
+    let source_category_id = create_category(&db, tenant_id, admin.clone(), "drift-source").await?;
+    let target_category_id = create_category(&db, tenant_id, admin.clone(), "drift-target").await?;
     let source_topic_id = create_topic(
         &db,
         &event_bus,
@@ -392,7 +390,10 @@ async fn cross_category_topic_merge_rolls_back_on_source_counter_drift() -> Test
     assert_category_counters(&db, tenant_id, target_category_id, 1, 0).await?;
     assert_eq!(merge_operation_count(&db, tenant_id).await?, 0);
     assert_eq!(merge_event_count(&db, tenant_id).await?, baseline_events);
-    assert_eq!(projection_root_ids(&db, tenant_id).await?, baseline_projection_ids);
+    assert_eq!(
+        projection_root_ids(&db, tenant_id).await?,
+        baseline_projection_ids
+    );
     Ok(())
 }
 
@@ -413,7 +414,10 @@ async fn assert_topic_state(
         ))
         .await?
         .ok_or("topic row missing")?;
-    assert_eq!(row.try_get::<Uuid>("", "category_id")?, expected_category_id);
+    assert_eq!(
+        row.try_get::<Uuid>("", "category_id")?,
+        expected_category_id
+    );
     assert_eq!(row.try_get::<String>("", "status")?, expected_status);
     assert_eq!(row.try_get::<bool>("", "is_locked")?, expected_locked);
     assert_eq!(row.try_get::<i32>("", "reply_count")?, expected_reply_count);
@@ -479,17 +483,34 @@ async fn assert_merge_event(
         .await?
         .ok_or("semantic event row missing")?;
     assert_eq!(row.try_get::<String>("", "aggregate_type")?, "forum_topic");
-    assert_eq!(row.try_get::<Uuid>("", "aggregate_id")?, merged.target_topic_id);
-    assert_eq!(row.try_get::<String>("", "event_type")?, "forum.topic.merged");
+    assert_eq!(
+        row.try_get::<Uuid>("", "aggregate_id")?,
+        merged.target_topic_id
+    );
+    assert_eq!(
+        row.try_get::<String>("", "event_type")?,
+        "forum.topic.merged"
+    );
     assert_eq!(row.try_get::<i16>("", "schema_version")?, 1);
-    assert_eq!(row.try_get::<Option<Uuid>>("", "actor_id")?, Some(merged.actor_id));
+    assert_eq!(
+        row.try_get::<Option<Uuid>>("", "actor_id")?,
+        Some(merged.actor_id)
+    );
     let payload: JsonValue = row.try_get("", "payload")?;
-    let payload_object = payload.as_object().ok_or("merge payload must be an object")?;
+    let payload_object = payload
+        .as_object()
+        .ok_or("merge payload must be an object")?;
     assert_eq!(payload_object.len(), 9);
     assert!(!payload_object.contains_key("source_category_id"));
     assert_eq!(payload["operation_id"], merged.operation_id.to_string());
-    assert_eq!(payload["source_topic_id"], merged.source_topic_id.to_string());
-    assert_eq!(payload["target_topic_id"], merged.target_topic_id.to_string());
+    assert_eq!(
+        payload["source_topic_id"],
+        merged.source_topic_id.to_string()
+    );
+    assert_eq!(
+        payload["target_topic_id"],
+        merged.target_topic_id.to_string()
+    );
     assert_eq!(payload["category_id"], merged.category_id.to_string());
     assert_eq!(payload["moved_reply_count"], merged.moved_reply_count);
     assert_eq!(
@@ -505,10 +526,7 @@ async fn assert_merge_event(
     Ok(())
 }
 
-async fn merge_operation_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn merge_operation_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -572,7 +590,10 @@ async fn projection_targets(
             continue;
         }
         match envelope.event {
-            DomainEvent::ReindexRequested { target_type, target_id } => {
+            DomainEvent::ReindexRequested {
+                target_type,
+                target_id,
+            } => {
                 targets.insert((target_type, target_id));
             }
             event => panic!("unexpected projection root event: {event:?}"),

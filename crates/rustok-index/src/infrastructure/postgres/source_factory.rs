@@ -120,10 +120,7 @@ struct PostgresIndexSourcesMaterialized;
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum PostgresIndexSourceFactoryError {
     #[error("PostgreSQL Index source factory {kind} is invalid: {value}")]
-    InvalidFactoryId {
-        kind: &'static str,
-        value: String,
-    },
+    InvalidFactoryId { kind: &'static str, value: String },
     #[error("PostgreSQL Index source factory is already registered: {owner_module}/{factory_name}")]
     DuplicateFactory {
         owner_module: String,
@@ -188,10 +185,7 @@ pub fn materialize_postgres_index_sources(
     );
 
     for descriptor in factories.iter() {
-        if let Err(error) = descriptor
-            .factory
-            .register_source(&mut staged, db.clone())
-        {
+        if let Err(error) = descriptor.factory.register_source(&mut staged, db.clone()) {
             tracing::error!(
                 error = %error,
                 owner_module = descriptor.owner_module(),
@@ -224,9 +218,7 @@ fn validate_factory_id(
     let valid = !value.is_empty()
         && value.len() <= MAX_FACTORY_ID_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
         });
     if valid {
         Ok(())
@@ -325,10 +317,12 @@ mod tests {
             materialize_postgres_index_sources(&mut extensions, connection().await).unwrap(),
             0
         );
-        assert!(extensions
-            .get::<IndexSourceCatalog>()
-            .expect("source catalog")
-            .is_empty());
+        assert!(
+            extensions
+                .get::<IndexSourceCatalog>()
+                .expect("source catalog")
+                .is_empty()
+        );
         assert!(!extensions.contains::<SharedIndexMutationEventRegistry>());
     }
 
@@ -418,10 +412,12 @@ mod tests {
             error,
             PostgresIndexSourceFactoryError::MutationEventRegistry(_)
         ));
-        assert!(extensions
-            .get::<IndexSourceCatalog>()
-            .expect("source catalog")
-            .is_empty());
+        assert!(
+            extensions
+                .get::<IndexSourceCatalog>()
+                .expect("source catalog")
+                .is_empty()
+        );
         assert!(!extensions.contains::<SharedIndexMutationEventRegistry>());
     }
 
@@ -450,10 +446,12 @@ mod tests {
             error,
             PostgresIndexSourceFactoryError::FactoryFailed { .. }
         ));
-        assert!(extensions
-            .get::<IndexSourceCatalog>()
-            .expect("source catalog")
-            .is_empty());
+        assert!(
+            extensions
+                .get::<IndexSourceCatalog>()
+                .expect("source catalog")
+                .is_empty()
+        );
     }
 
     #[tokio::test]

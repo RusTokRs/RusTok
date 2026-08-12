@@ -9,8 +9,7 @@ use crate::model::{
     StorefrontCheckoutShippingOption, StorefrontCheckoutWorkspace, StorefrontCommerceData,
 };
 
-const STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY: &str =
-    "commerce_storefront_aggregate_transport";
+const STOREFRONT_COMMERCE_TRANSPORT_BOUNDARY: &str = "commerce_storefront_aggregate_transport";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {

@@ -1,6 +1,6 @@
-use crate::model::{SearchPreviewFilters, SearchPreviewPayload};
 #[cfg(feature = "ssr")]
 use crate::model::{SearchFacetBucket, SearchFacetGroup, SearchPreviewResultItem};
+use crate::model::{SearchPreviewFilters, SearchPreviewPayload};
 use leptos::prelude::{ServerFnError, server};
 
 use super::ApiError;
@@ -162,16 +162,7 @@ async fn forum_storefront_search_by_filters_native(
     solved: Option<bool>,
 ) -> Result<SearchPreviewPayload, ServerFnError> {
     execute_forum_storefront_search_native(
-        query,
-        locale,
-        preset_key,
-        filters,
-        author_ids,
-        tags,
-        solved,
-        None,
-        None,
-        None,
+        query, locale, preset_key, filters, author_ids, tags, solved, None, None, None,
     )
     .await
 }

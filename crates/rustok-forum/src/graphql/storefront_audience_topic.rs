@@ -82,7 +82,8 @@ async fn load_storefront_audience_topic(
     let service = runtime.topic_audience_read_service(db.clone(), event_bus.clone());
 
     let topic = if let Some(auth) = ctx.data_opt::<AuthContext>() {
-        let security = SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+        let security =
+            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
         let audience_context = topic_read_audience_port_context(
             ForumTopicReadTransport::Graphql,
             ForumTopicReadOperation::SelectedTopic,

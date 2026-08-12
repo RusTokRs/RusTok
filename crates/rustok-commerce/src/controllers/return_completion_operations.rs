@@ -17,13 +17,10 @@ use crate::dto::OrderReturnResponse;
 use crate::services::{ListReturnCompletionOperationsInput, ReturnCompletionOperationResponse};
 use crate::{PostOrderOrchestrationError, ReturnCompletionOrchestrationService};
 
-const RETURN_COMPLETION_OPERATOR_OWNER: &str =
-    "rustok_commerce.return_completion_operation";
-const RETURN_COMPLETION_OPERATOR_BOUNDARY: &str =
-    "commerce_admin_return_completion_operation_http";
+const RETURN_COMPLETION_OPERATOR_OWNER: &str = "rustok_commerce.return_completion_operation";
+const RETURN_COMPLETION_OPERATOR_BOUNDARY: &str = "commerce_admin_return_completion_operation_http";
 
-type ReturnCompletionOperatorHttpPolicy =
-    (StatusCode, &'static str, &'static str, &'static str);
+type ReturnCompletionOperatorHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 #[derive(Clone, Copy)]
 struct ReturnCompletionOperatorErrorContext {
@@ -56,9 +53,7 @@ struct ReturnCompletionOperatorDiagnosticContext {
     operation: &'static str,
 }
 
-impl From<&ReturnCompletionOperatorErrorContext>
-    for ReturnCompletionOperatorDiagnosticContext
-{
+impl From<&ReturnCompletionOperatorErrorContext> for ReturnCompletionOperatorDiagnosticContext {
     fn from(context: &ReturnCompletionOperatorErrorContext) -> Self {
         Self {
             tenant_id: uuid_shape(context.tenant_id),
@@ -289,8 +284,7 @@ fn map_operator_error(
     context: ReturnCompletionOperatorErrorContext,
     error: PostOrderOrchestrationError,
 ) -> HttpError {
-    let Some((status, code, message, error_kind)) =
-        return_completion_operator_policy(&error)
+    let Some((status, code, message, error_kind)) = return_completion_operator_policy(&error)
     else {
         return super::admin::map_post_order_orchestration_error(error);
     };

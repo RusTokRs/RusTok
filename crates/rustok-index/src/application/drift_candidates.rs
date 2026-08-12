@@ -339,15 +339,21 @@ impl IndexDriftCandidatePage {
                 max: request.limit,
             });
         }
-        if request.fence.as_ref().is_some_and(|expected| expected != &fence) {
+        if request
+            .fence
+            .as_ref()
+            .is_some_and(|expected| expected != &fence)
+        {
             return Err(IndexDriftCandidateError::FenceChanged);
         }
         if next_cursor.is_some() && candidates.is_empty() {
             return Err(IndexDriftCandidateError::EmptyPageContinuation);
         }
-        if request.cursor.as_ref().is_some_and(|current| {
-            next_cursor.as_ref().is_some_and(|next| current == next)
-        }) {
+        if request
+            .cursor
+            .as_ref()
+            .is_some_and(|current| next_cursor.as_ref().is_some_and(|next| current == next))
+        {
             return Err(IndexDriftCandidateError::CursorDidNotAdvance);
         }
 
@@ -358,7 +364,10 @@ impl IndexDriftCandidatePage {
                 return Err(IndexDriftCandidateError::CandidateScopeMismatch { position });
             }
             let order_key = candidate.order_key();
-            if previous.as_ref().is_some_and(|previous| previous >= &order_key) {
+            if previous
+                .as_ref()
+                .is_some_and(|previous| previous >= &order_key)
+            {
                 return Err(IndexDriftCandidateError::UnstableCandidateOrder { position });
             }
             previous = Some(order_key);
@@ -525,9 +534,7 @@ fn valid_machine_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_FAILURE_CODE_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }
 
@@ -570,17 +577,13 @@ mod tests {
         let request = IndexDriftCandidateRequest::first_page(scope, 16).expect("valid request");
         let fence = IndexDriftCandidateFence::new("snapshot-1").expect("valid fence");
 
-        let later = IndexDriftCandidate::stale_entity(key(Uuid::from_u128(3)), 3)
-            .expect("valid candidate");
-        let earlier = IndexDriftCandidate::stale_entity(key(Uuid::from_u128(2)), 2)
-            .expect("valid candidate");
-        let error = IndexDriftCandidatePage::new(
-            &request,
-            fence.clone(),
-            vec![later, earlier],
-            None,
-        )
-        .expect_err("descending candidates must fail");
+        let later =
+            IndexDriftCandidate::stale_entity(key(Uuid::from_u128(3)), 3).expect("valid candidate");
+        let earlier =
+            IndexDriftCandidate::stale_entity(key(Uuid::from_u128(2)), 2).expect("valid candidate");
+        let error =
+            IndexDriftCandidatePage::new(&request, fence.clone(), vec![later, earlier], None)
+                .expect_err("descending candidates must fail");
         assert_eq!(
             error,
             IndexDriftCandidateError::UnstableCandidateOrder { position: 1 }
@@ -608,8 +611,8 @@ mod tests {
             16,
         )
         .expect("valid continuation request");
-        let candidate = IndexDriftCandidate::stale_entity(key(Uuid::from_u128(2)), 2)
-            .expect("valid candidate");
+        let candidate =
+            IndexDriftCandidate::stale_entity(key(Uuid::from_u128(2)), 2).expect("valid candidate");
 
         let error = IndexDriftCandidatePage::new(
             &request,

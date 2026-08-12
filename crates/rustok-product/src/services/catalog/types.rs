@@ -85,9 +85,9 @@ fn validate_attribute_filter(filter: &ProductAttributeFilter) -> CommerceResult<
     let code = filter.code.as_str();
     if code.is_empty()
         || code.len() > MAX_ATTRIBUTE_FILTER_CODE_LENGTH
-        || !code.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '_' | '-')
-        })
+        || !code
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
     {
         return Err(CommerceError::Validation(
             "attribute filter code must contain 1..128 ASCII letters, digits, `_`, or `-`"
@@ -339,10 +339,7 @@ pub struct ProductTagState {
 }
 
 pub(crate) fn validate_storefront_product_search(search: Option<&str>) -> CommerceResult<()> {
-    let Some(search) = search
-        .map(str::trim)
-        .filter(|search| !search.is_empty())
-    else {
+    let Some(search) = search.map(str::trim).filter(|search| !search.is_empty()) else {
         return Ok(());
     };
     if search.len() > MAX_STOREFRONT_PRODUCT_SEARCH_BYTES {
@@ -427,9 +424,7 @@ mod tests {
 
         let multibyte = "é".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES / 2);
         assert_eq!(multibyte.len(), MAX_STOREFRONT_PRODUCT_SEARCH_BYTES);
-        assert!(
-            StorefrontProductListQuery::try_new(Some(multibyte), None, None, None).is_ok()
-        );
+        assert!(StorefrontProductListQuery::try_new(Some(multibyte), None, None, None).is_ok());
         assert!(
             StorefrontProductListQuery::try_new(
                 Some("é".repeat(MAX_STOREFRONT_PRODUCT_SEARCH_BYTES / 2 + 1)),

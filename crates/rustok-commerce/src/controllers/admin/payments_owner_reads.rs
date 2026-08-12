@@ -10,8 +10,9 @@ use rustok_api::{
 use rustok_payment::{
     AuthorizeAdminPaymentCollectionRequest, CancelAdminPaymentCollectionRequest,
     CancelAdminRefundRequest, CaptureAdminPaymentCollectionRequest, CompleteAdminRefundRequest,
-    CreateAdminRefundRequest, ListPaymentCollectionProjectionsRequest, ListRefundProjectionsRequest,
-    ReadPaymentCollectionProjectionRequest, ReadRefundProjectionRequest,
+    CreateAdminRefundRequest, ListPaymentCollectionProjectionsRequest,
+    ListRefundProjectionsRequest, ReadPaymentCollectionProjectionRequest,
+    ReadRefundProjectionRequest,
 };
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
@@ -469,13 +470,8 @@ pub async fn authorize_payment_collection(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
-    let context = admin_payment_collection_command_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        "authorize",
-    );
+    let context =
+        admin_payment_collection_command_context(&tenant, &auth, &request_context, id, "authorize");
     let collection = runtime
         .payment_admin_collection_command_port()
         .authorize_payment_collection(
@@ -520,13 +516,8 @@ pub async fn capture_payment_collection(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
-    let context = admin_payment_collection_command_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        "capture",
-    );
+    let context =
+        admin_payment_collection_command_context(&tenant, &auth, &request_context, id, "capture");
     let collection = runtime
         .payment_admin_collection_command_port()
         .capture_payment_collection(
@@ -571,13 +562,8 @@ pub async fn cancel_payment_collection(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
-    let context = admin_payment_collection_command_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        "cancel",
-    );
+    let context =
+        admin_payment_collection_command_context(&tenant, &auth, &request_context, id, "cancel");
     let collection = runtime
         .payment_admin_collection_command_port()
         .cancel_payment_collection(
@@ -632,13 +618,8 @@ pub async fn create_refund(
         "Permission denied: payments:update required",
     )?;
     let creation_key = refund_creation_key(&headers)?;
-    let context = admin_refund_create_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        creation_key.as_str(),
-    );
+    let context =
+        admin_refund_create_context(&tenant, &auth, &request_context, id, creation_key.as_str());
     let refund = runtime
         .payment_admin_refund_command_port()
         .create_refund(
@@ -684,7 +665,8 @@ pub async fn list_refunds(
         "Permission denied: payments:read required",
     )?;
     let pagination = params.pagination.unwrap_or_default();
-    let context = admin_payment_read_context(&tenant, &auth, &request_context, None, "list_refunds");
+    let context =
+        admin_payment_read_context(&tenant, &auth, &request_context, None, "list_refunds");
     let page = runtime
         .payment_admin_read_port()
         .list_refund_projections(
@@ -737,7 +719,8 @@ pub async fn show_refund(
         &[Permission::PAYMENTS_READ],
         "Permission denied: payments:read required",
     )?;
-    let context = admin_payment_read_context(&tenant, &auth, &request_context, Some(id), "show_refund");
+    let context =
+        admin_payment_read_context(&tenant, &auth, &request_context, Some(id), "show_refund");
     let refund = runtime
         .payment_admin_read_port()
         .read_refund_projection(
@@ -779,13 +762,7 @@ pub async fn complete_refund(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
-    let context = admin_refund_transition_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        "complete",
-    );
+    let context = admin_refund_transition_context(&tenant, &auth, &request_context, id, "complete");
     let refund = runtime
         .payment_admin_refund_command_port()
         .complete_refund(
@@ -831,13 +808,7 @@ pub async fn cancel_refund(
         &[Permission::PAYMENTS_UPDATE],
         "Permission denied: payments:update required",
     )?;
-    let context = admin_refund_transition_context(
-        &tenant,
-        &auth,
-        &request_context,
-        id,
-        "cancel",
-    );
+    let context = admin_refund_transition_context(&tenant, &auth, &request_context, id, "cancel");
     let refund = runtime
         .payment_admin_refund_command_port()
         .cancel_refund(

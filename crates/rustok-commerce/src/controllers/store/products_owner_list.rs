@@ -12,8 +12,8 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use super::{
-    StoreContextQuery, StoreListProductsParams,
     super::common::{PaginatedResponse, PaginationMeta},
+    StoreContextQuery, StoreListProductsParams,
 };
 use crate::controllers::{CommerceHttpRuntime, products::ProductListItem};
 use crate::dto::{ProductResponse, RegionResponse, ShippingOptionResponse};
@@ -27,7 +27,8 @@ impl CommerceHttpRuntime {
     fn product_storefront_http_read_port(
         &self,
     ) -> Option<std::sync::Arc<dyn ProductStorefrontHttpReadPort>> {
-        self.product_catalog_read_runtime.storefront_http_read_port()
+        self.product_catalog_read_runtime
+            .storefront_http_read_port()
     }
 }
 
@@ -166,9 +167,7 @@ pub async fn list_products(
             },
         )
         .await
-        .map_err(|error| {
-            map_storefront_product_list_port_error(error, &port_context, tenant.id)
-        })?;
+        .map_err(|error| map_storefront_product_list_port_error(error, &port_context, tenant.id))?;
 
     let items = list
         .items

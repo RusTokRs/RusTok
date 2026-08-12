@@ -12,8 +12,8 @@ use tonic::{Code, Request, Response, Status};
 use uuid::Uuid;
 
 use crate::auth::{
-    AUTHORIZATION_METADATA, ProductCatalogGrpcAuthenticationError,
-    ProductCatalogGrpcBearerToken, TENANT_ID_METADATA,
+    AUTHORIZATION_METADATA, ProductCatalogGrpcAuthenticationError, ProductCatalogGrpcBearerToken,
+    TENANT_ID_METADATA,
 };
 use crate::proto::product_catalog_read_service_server::ProductCatalogReadService;
 use crate::proto::{JsonRequest, JsonResponse};

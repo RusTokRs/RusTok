@@ -67,9 +67,17 @@ mod tests {
     #[test]
     fn inactive_filter_preserves_categories_topics_and_replies() {
         let filter = ForumStorefrontCurrentChannelFilter::default();
-        assert!(filter.matches(&item("forum_category", "channel_slugs", serde_json::json!([]))));
+        assert!(filter.matches(&item(
+            "forum_category",
+            "channel_slugs",
+            serde_json::json!([])
+        )));
         assert!(filter.matches(&item("forum_topic", "channel_slugs", serde_json::json!([]))));
-        assert!(filter.matches(&item("forum_reply", "topic_channel_slugs", serde_json::json!([]))));
+        assert!(filter.matches(&item(
+            "forum_reply",
+            "topic_channel_slugs",
+            serde_json::json!([])
+        )));
     }
 
     #[test]
@@ -92,11 +100,7 @@ mod tests {
             "channel_slugs",
             serde_json::json!(["mobile"])
         )));
-        assert!(!filter.matches(&item(
-            "forum_topic",
-            "channel_slugs",
-            serde_json::json!([])
-        )));
+        assert!(!filter.matches(&item("forum_topic", "channel_slugs", serde_json::json!([]))));
         assert!(!filter.matches(&item(
             "forum_category",
             "channel_slugs",
@@ -109,11 +113,7 @@ mod tests {
         let filter = ForumStorefrontCurrentChannelFilter {
             channel_slug: Some("web".to_string()),
         };
-        assert!(!filter.matches(&item(
-            "forum_reply",
-            "other",
-            serde_json::json!(["web"])
-        )));
+        assert!(!filter.matches(&item("forum_reply", "other", serde_json::json!(["web"]))));
         assert!(!filter.matches(&item(
             "forum_reply",
             "topic_channel_slugs",

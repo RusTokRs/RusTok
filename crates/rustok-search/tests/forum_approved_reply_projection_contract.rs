@@ -1,6 +1,5 @@
 const FORUM_SOURCE: &str = include_str!("../../rustok-forum/src/search_projection.rs");
-const PUBLIC_DISCOVERY: &str =
-    include_str!("../../rustok-forum/src/services/public_discovery.rs");
+const PUBLIC_DISCOVERY: &str = include_str!("../../rustok-forum/src/services/public_discovery.rs");
 const REPLY_AUDIENCE_READ: &str =
     include_str!("../../rustok-forum/src/services/reply_audience_read.rs");
 const FORUM_REPLY_UPDATE: &str = include_str!("../../rustok-forum/src/services/reply_inline.rs");
@@ -14,7 +13,10 @@ fn require(source: &str, marker: &str) {
 }
 
 fn reject(source: &str, marker: &str) {
-    assert!(!source.contains(marker), "forbidden source marker: {marker}");
+    assert!(
+        !source.contains(marker),
+        "forbidden source marker: {marker}"
+    );
 }
 
 #[test]

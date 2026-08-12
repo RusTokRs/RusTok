@@ -121,10 +121,7 @@ impl IggyDlqPublisher {
             .payload(entry.payload.clone().into())
             .build()
             .map_err(publish_error)?;
-        producer
-            .send(vec![message])
-            .await
-            .map_err(publish_error)?;
+        producer.send(vec![message]).await.map_err(publish_error)?;
 
         tracing::warn!(
             event_id = %entry.event_id,
@@ -180,7 +177,11 @@ fn connection_strings(config: &ExternalConfig) -> Result<Vec<String>, DlqPublish
     if config.tls_enabled {
         options.push("tls=true".to_string());
     }
-    if let Some(domain) = config.tls_domain.as_deref().filter(|domain| !domain.is_empty()) {
+    if let Some(domain) = config
+        .tls_domain
+        .as_deref()
+        .filter(|domain| !domain.is_empty())
+    {
         options.push(format!("tls_domain={domain}"));
     }
     if let Some(ca_file) = config
@@ -204,10 +205,7 @@ fn connection_strings(config: &ExternalConfig) -> Result<Vec<String>, DlqPublish
             let mut connection_string = if config.username.is_empty() {
                 format!("iggy://{address}")
             } else {
-                format!(
-                    "iggy://{}:{}@{address}",
-                    config.username, config.password
-                )
+                format!("iggy://{}:{}@{address}", config.username, config.password)
             };
             if !options.is_empty() {
                 connection_string.push('?');
@@ -269,7 +267,9 @@ mod tests {
         };
         assert_eq!(
             connection_strings(&config).unwrap(),
-            vec!["iggy://service:secret@iggy.internal:8090?tls=true&tls_domain=iggy.internal&tls_ca_file=/etc/iggy-ca.pem"]
+            vec![
+                "iggy://service:secret@iggy.internal:8090?tls=true&tls_domain=iggy.internal&tls_ca_file=/etc/iggy-ca.pem"
+            ]
         );
     }
 }

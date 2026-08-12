@@ -82,13 +82,7 @@ impl PostgresSchemaRegistrationStore {
         let (fingerprint, schema_json) = registration_contract(tenant_id, schema)?;
         let transaction = self.db.begin().await.map_err(storage_error)?;
         let result = self
-            .register_in_transaction(
-                &transaction,
-                tenant_id,
-                schema,
-                fingerprint,
-                &schema_json,
-            )
+            .register_in_transaction(&transaction, tenant_id, schema, fingerprint, &schema_json)
             .await;
         finish_transaction(transaction, result).await
     }
@@ -201,13 +195,8 @@ impl PostgresSchemaRegistrationStore {
             .await?
         };
 
-        let retired_schema_count = retire_lower_active_schemas(
-            transaction,
-            tenant_id,
-            schema,
-            backend,
-        )
-        .await?;
+        let retired_schema_count =
+            retire_lower_active_schemas(transaction, tenant_id, schema, backend).await?;
 
         Ok(PersistedSchemaSupersessionOutcome {
             registration,
@@ -415,11 +404,7 @@ fn stored_schema(row: QueryResult) -> Result<StoredSchema, SchemaRegistrationErr
     })
 }
 
-fn schema_scope_values(
-    tenant_id: Uuid,
-    schema: &IndexSchema,
-    backend: DbBackend,
-) -> Vec<SqlValue> {
+fn schema_scope_values(tenant_id: Uuid, schema: &IndexSchema, backend: DbBackend) -> Vec<SqlValue> {
     let mut values = schema_identity_values(tenant_id, schema, backend);
     values.push(i64::from(schema.reference.version.get()).into());
     values

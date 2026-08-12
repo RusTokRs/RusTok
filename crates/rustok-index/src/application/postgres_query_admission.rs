@@ -62,7 +62,9 @@ pub enum PostgresQueryEntityAdmissionError {
     Empty,
     #[error("PostgreSQL entity query admission predicate is too large")]
     TooLarge,
-    #[error("PostgreSQL entity query admission predicate must reference the controlled entity alias")]
+    #[error(
+        "PostgreSQL entity query admission predicate must reference the controlled entity alias"
+    )]
     MissingEntityAlias,
     #[error("PostgreSQL entity query admission predicate contains a forbidden SQL boundary")]
     ForbiddenSqlBoundary,
@@ -140,12 +142,8 @@ fn validate_relation_alias(alias: &str) -> Result<(), PostgresQueryEntityAdmissi
         };
         numeric_component(projection) && numeric_component(target)
     });
-    let many_filter = alias
-        .strip_prefix("mx_t")
-        .is_some_and(numeric_component);
-    let many_order = alias
-        .strip_prefix("mo_t")
-        .is_some_and(numeric_component);
+    let many_filter = alias.strip_prefix("mx_t").is_some_and(numeric_component);
+    let many_order = alias.strip_prefix("mo_t").is_some_and(numeric_component);
     if plain || many_projection || many_filter || many_order {
         Ok(())
     } else {
@@ -172,7 +170,9 @@ fn apply_to_sql(
         let alias_q = quote_identifier(&alias);
         let anchor = format!("{alias_q}.is_deleted = FALSE");
         if !sql.contains(&anchor) {
-            return Err(PostgresQueryEntityAdmissionApplyError::EntityAnchorMissing(alias));
+            return Err(PostgresQueryEntityAdmissionApplyError::EntityAnchorMissing(
+                alias,
+            ));
         }
         let rendered = admission.render(&alias);
         let replacement = format!("{anchor} AND ({rendered})");
@@ -195,7 +195,10 @@ mod tests {
             "{{entity}}.source_version > 0; SELECT 1",
             "{{entity}}.source_version > 0 -- bypass",
         ] {
-            assert!(PostgresQueryEntityAdmission::new(invalid).is_err(), "{invalid}");
+            assert!(
+                PostgresQueryEntityAdmission::new(invalid).is_err(),
+                "{invalid}"
+            );
         }
     }
 
@@ -230,9 +233,8 @@ mod tests {
         let admission = PostgresQueryEntityAdmission::new("{{entity}}.source_version > 0").unwrap();
         apply_to_sql(&mut sql, &admission).unwrap();
         for alias in ["t0", "t1", "mp0_t1", "mx_t1", "mo_t1"] {
-            let marker = format!(
-                "\"{alias}\".is_deleted = FALSE AND (\"{alias}\".source_version > 0)"
-            );
+            let marker =
+                format!("\"{alias}\".is_deleted = FALSE AND (\"{alias}\".source_version > 0)");
             assert!(sql.contains(&marker), "missing {marker}");
         }
     }

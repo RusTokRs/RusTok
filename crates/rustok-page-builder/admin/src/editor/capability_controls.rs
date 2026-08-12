@@ -121,7 +121,9 @@ pub(crate) fn CapabilityPolicyPanel(
     );
 
     let evaluation = runtime.editor_capability_evaluation.clone();
-    let host_provider = evaluation.as_ref().map(|evaluation| evaluation.provider_state);
+    let host_provider = evaluation
+        .as_ref()
+        .map(|evaluation| evaluation.provider_state);
     let provider_control_state = provider_status
         .as_ref()
         .map(PageBuilderAdminProviderStatus::state)

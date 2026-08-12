@@ -25,11 +25,8 @@ pub trait ProductCatalogCommandPort: Send + Sync {
         input: UpdateProductInput,
     ) -> Result<ProductResponse, PortError>;
 
-    async fn delete_product(
-        &self,
-        context: PortContext,
-        product_id: Uuid,
-    ) -> Result<(), PortError>;
+    async fn delete_product(&self, context: PortContext, product_id: Uuid)
+    -> Result<(), PortError>;
 
     async fn publish_product(
         &self,

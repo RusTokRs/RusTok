@@ -26,8 +26,8 @@ pub mod entities;
 pub mod error;
 pub mod migrations;
 mod order_read;
-mod post_order_command;
 pub mod ports;
+mod post_order_command;
 pub mod services;
 pub mod status;
 
@@ -42,8 +42,8 @@ pub mod checkout_owner_context {
 }
 
 pub use admin_command::{
-    CancelOrderRequest, DeliverOrderRequest, InProcessOrderAdminCommandPort,
-    MarkOrderPaidRequest, OrderAdminCommandPort, OrderAdminCommandRuntime, ShipOrderRequest,
+    CancelOrderRequest, DeliverOrderRequest, InProcessOrderAdminCommandPort, MarkOrderPaidRequest,
+    OrderAdminCommandPort, OrderAdminCommandRuntime, ShipOrderRequest,
     in_process_order_admin_command_port,
 };
 pub use analytics::{OrderStatsSnapshot, load_order_stats_snapshot};
@@ -56,8 +56,7 @@ pub use checkout_compensation_local_context::{
 };
 pub use checkout_order_recovery::*;
 pub use checkout_owner_context_impl::{
-    InProcessCheckoutOrderPaymentSettlementPort,
-    in_process_checkout_order_payment_settlement_port,
+    InProcessCheckoutOrderPaymentSettlementPort, in_process_checkout_order_payment_settlement_port,
 };
 pub use checkout_payment_settlement::{
     CheckoutOrderPaymentSettlementPort, SettleCheckoutOrderPaymentRequest,
@@ -70,13 +69,13 @@ pub use order_read::{
     OrderReadPort, OrderReturnProjectionPage, ReadOrderChangeProjectionRequest,
     ReadOrderProjectionRequest, ReadOrderReturnProjectionRequest, in_process_order_read_port,
 };
+pub use ports::*;
 pub use post_order_command::{
     ApplyOrderChangeRequest, CancelOrderChangeRequest, CancelOrderReturnRequest,
     CompleteOrderReturnRequest, CreateOrderChangeRequest, CreateOrderReturnRequest,
     InProcessOrderPostOrderCommandPort, OrderPostOrderCommandPort, OrderPostOrderCommandRuntime,
     in_process_order_post_order_command_port,
 };
-pub use ports::*;
 pub use status::*;
 
 pub use error::{OrderError, OrderResult};

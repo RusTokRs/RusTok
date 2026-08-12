@@ -309,10 +309,7 @@ pub struct PartitionEvidence {
 }
 
 impl PartitionEvidence {
-    pub const fn new(
-        baseline: PartitionBaselineEvidence,
-        shadow: PartitionShadowEvidence,
-    ) -> Self {
+    pub const fn new(baseline: PartitionBaselineEvidence, shadow: PartitionShadowEvidence) -> Self {
         Self { baseline, shadow }
     }
 
@@ -351,7 +348,9 @@ pub enum PartitionAdmissionReason {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PartitionAdmissionOutcome {
-    KeepUnpartitioned { reasons: Vec<PartitionAdmissionReason> },
+    KeepUnpartitioned {
+        reasons: Vec<PartitionAdmissionReason>,
+    },
     Admitted(PartitionShadowPlan),
 }
 
@@ -561,9 +560,9 @@ pub fn evaluate_partition_admission(
     }
 
     if reasons.is_empty() {
-        Ok(PartitionAdmissionOutcome::Admitted(PartitionShadowPlan::new(
-            &evidence.shadow,
-        )))
+        Ok(PartitionAdmissionOutcome::Admitted(
+            PartitionShadowPlan::new(&evidence.shadow),
+        ))
     } else {
         Ok(PartitionAdmissionOutcome::KeepUnpartitioned { reasons })
     }

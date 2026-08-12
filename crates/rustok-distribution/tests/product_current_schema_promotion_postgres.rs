@@ -137,8 +137,8 @@ struct ProductIndexRuntime {
 }
 
 #[tokio::test]
-async fn product_key4_stages_rebuilds_promotes_and_restarts_without_key3_runtime_compatibility(
-) -> TestResult<()> {
+async fn product_key4_stages_rebuilds_promotes_and_restarts_without_key3_runtime_compatibility()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -166,7 +166,10 @@ async fn run_product_key4_promotion_scenario(database: &TestDatabase) -> TestRes
         schema_status(&database.query, &historical_ref).await?,
         "active"
     );
-    assert_eq!(schema_status(&database.query, &current_ref).await?, "active");
+    assert_eq!(
+        schema_status(&database.query, &current_ref).await?,
+        "active"
+    );
 
     // Rebuild one real Product row through the selected current Product source and the production mutation
     // store while both persisted contracts are still active. The runtime itself publishes only key4.
@@ -209,7 +212,10 @@ async fn run_product_key4_promotion_scenario(database: &TestDatabase) -> TestRes
         schema_status(&database.query, &historical_ref).await?,
         "retired"
     );
-    assert_eq!(schema_status(&database.query, &current_ref).await?, "active");
+    assert_eq!(
+        schema_status(&database.query, &current_ref).await?,
+        "active"
+    );
 
     let repeated = schema_store
         .register_current(TENANT_ID, &runtime.current_product_schema)
@@ -218,10 +224,8 @@ async fn run_product_key4_promotion_scenario(database: &TestDatabase) -> TestRes
 
     // Build a test-only immutable probe registry containing the persisted historical contract plus every
     // current runtime schema. No historical Product source/factory is registered or selected.
-    let probe_registry = historical_probe_registry(
-        &runtime.schemas,
-        runtime.historical_product_schema.clone(),
-    )?;
+    let probe_registry =
+        historical_probe_registry(&runtime.schemas, runtime.historical_product_schema.clone())?;
     assert_historical_readiness_is_inactive(database, &probe_registry, &historical_ref).await?;
     assert_historical_query_is_inactive(database, probe_registry, &historical_ref).await?;
 
@@ -369,7 +373,10 @@ async fn assert_historical_readiness_is_inactive(
         IndexSchemaReadinessError::NotReady { failures }
             if failures.len() == 1
                 && failures[0].reference == *historical_ref
-                && failures[0].reason == PersistedSchemaReadinessFailure::Inactive => Ok(()),
+                && failures[0].reason == PersistedSchemaReadinessFailure::Inactive =>
+        {
+            Ok(())
+        }
         other => Err(std::io::Error::other(format!(
             "expected inactive Product key3 readiness failure, got {other:?}"
         ))
@@ -390,7 +397,10 @@ async fn assert_historical_query_is_inactive(
     match error {
         IndexQueryExecutionError::SchemaNotReady { reference, reason }
             if reference == *historical_ref
-                && reason == PersistedSchemaReadinessFailure::Inactive => Ok(()),
+                && reason == PersistedSchemaReadinessFailure::Inactive =>
+        {
+            Ok(())
+        }
         other => Err(std::io::Error::other(format!(
             "expected inactive Product key3 query failure, got {other:?}"
         ))
@@ -445,7 +455,9 @@ async fn assert_current_product_query(
     query: &impl IndexQueryPort,
     current_ref: &SchemaRef,
 ) -> TestResult<()> {
-    let page = query.execute_query(product_identity_query(current_ref)?).await?;
+    let page = query
+        .execute_query(product_identity_query(current_ref)?)
+        .await?;
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.items[0].entity_id, PRODUCT_ID);
     assert_eq!(projected_string(&page.items[0], "title")?, TITLE);

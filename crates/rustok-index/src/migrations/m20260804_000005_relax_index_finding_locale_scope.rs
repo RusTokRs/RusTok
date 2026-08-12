@@ -93,10 +93,7 @@ fn quote_postgres_identifier(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
 
-async fn rebuild_sqlite_table(
-    manager: &SchemaManager<'_>,
-    scope_check: &str,
-) -> Result<(), DbErr> {
+async fn rebuild_sqlite_table(manager: &SchemaManager<'_>, scope_check: &str) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     connection
         .execute_unprepared(&format!(

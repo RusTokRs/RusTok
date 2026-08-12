@@ -5,8 +5,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::domain::{
-    FieldPath, FilterExpr, IndexValue, IndexValueType, LocaleKey, LocalizedEntityQuery, OrderDirection,
-    OrderExpr, SchemaFingerprint, SchemaRef,
+    FieldPath, FilterExpr, IndexValue, IndexValueType, LocaleKey, LocalizedEntityQuery,
+    OrderDirection, OrderExpr, SchemaFingerprint, SchemaRef,
 };
 
 use super::{LocalizedEntityQueryValidationError, SchemaRegistry, SchemaRegistryError};
@@ -77,9 +77,13 @@ pub enum LocalizedCursorValidationError {
     RequestedLocaleMismatch,
     #[error("localized cursor fallback locale does not match canonical query fallback")]
     FallbackLocaleMismatch,
-    #[error("localized cursor query fingerprint does not match fold/filter/projection/order semantics")]
+    #[error(
+        "localized cursor query fingerprint does not match fold/filter/projection/order semantics"
+    )]
     QueryFingerprintMismatch,
-    #[error("localized cursor contains {actual} order values but query defines {expected} order expressions")]
+    #[error(
+        "localized cursor contains {actual} order values but query defines {expected} order expressions"
+    )]
     OrderArityMismatch { expected: usize, actual: usize },
     #[error("localized cursor order field contract is missing at position {index}")]
     OrderFieldContractMissing { index: usize },
@@ -161,13 +165,9 @@ fn decode_payload<T: DeserializeOwned>(
     Ok(postcard::from_bytes(payload)?)
 }
 
-fn query_fingerprint(
-    query: &LocalizedEntityQuery,
-) -> Result<[u8; 32], LocalizedCursorCodecError> {
-    let mut localized_projection_fields = query
-        .localized_projection_fields
-        .iter()
-        .collect::<Vec<_>>();
+fn query_fingerprint(query: &LocalizedEntityQuery) -> Result<[u8; 32], LocalizedCursorCodecError> {
+    let mut localized_projection_fields =
+        query.localized_projection_fields.iter().collect::<Vec<_>>();
     localized_projection_fields.sort();
     let identity = LocalizedCursorQueryIdentity {
         mode: "localized_entity_fold_v1",
@@ -277,8 +277,8 @@ fn resolve_order_value_type(
 mod tests {
     use super::*;
     use crate::domain::{
-        EntityName, FieldCardinality, FieldName, IndexField, IndexQuery, IndexQueryScope, IndexSchema,
-        LocaleMode, ModuleName, Pagination, SchemaVersion,
+        EntityName, FieldCardinality, FieldName, IndexField, IndexQuery, IndexQueryScope,
+        IndexSchema, LocaleMode, ModuleName, Pagination, SchemaVersion,
     };
     use crate::{CursorCodec, IndexCursor};
 
@@ -362,7 +362,8 @@ mod tests {
         registry.register(schema.clone()).unwrap();
         let original = query(&schema, Some("en"));
         let cursor = cursor(&original, &schema);
-        let encoded = LocalizedCursorCodec::encode_for_query(&cursor, &original, &registry).unwrap();
+        let encoded =
+            LocalizedCursorCodec::encode_for_query(&cursor, &original, &registry).unwrap();
         assert_eq!(
             LocalizedCursorCodec::decode_scoped_for_query(&encoded, &original, &registry).unwrap(),
             cursor
@@ -393,7 +394,8 @@ mod tests {
         registry.register(schema.clone()).unwrap();
         let original = query(&schema, Some("en"));
         let cursor = cursor(&original, &schema);
-        let encoded = LocalizedCursorCodec::encode_for_query(&cursor, &original, &registry).unwrap();
+        let encoded =
+            LocalizedCursorCodec::encode_for_query(&cursor, &original, &registry).unwrap();
 
         let mut changed_fallback = original.clone();
         changed_fallback.fallback_locale = Some(LocaleKey::new("fr").unwrap());

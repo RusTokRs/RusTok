@@ -45,7 +45,8 @@ impl PostgresHarness {
             return Ok(None);
         };
         Ok(Some(Self {
-            control: connect_postgres(&database_url, "moderation_migration_contract_control").await?,
+            control: connect_postgres(&database_url, "moderation_migration_contract_control")
+                .await?,
             database_url,
         }))
     }
@@ -59,8 +60,8 @@ impl PostgresHarness {
         self.control
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema}""#))
             .await?;
-        let db = connect_postgres(&self.database_url, &format!("moderation_migration_{label}"))
-            .await?;
+        let db =
+            connect_postgres(&self.database_url, &format!("moderation_migration_{label}")).await?;
         db.execute_unprepared(&format!(r#"SET search_path TO "{schema}""#))
             .await?;
         Ok((schema, db))
@@ -203,9 +204,18 @@ WHERE a.decision_id = '{}'
         ))
         .await?
         .ok_or_else(|| test_error("backfilled typed operation identity is missing"))?;
-    assert_eq!(identity.try_get::<Uuid>("", "tenant_id")?, fixture.tenant_id);
-    assert_eq!(identity.try_get::<Uuid>("", "case_id")?, fixture.typed_case_id);
-    assert_eq!(identity.try_get::<Uuid>("", "subject_id")?, fixture.typed_subject_id);
+    assert_eq!(
+        identity.try_get::<Uuid>("", "tenant_id")?,
+        fixture.tenant_id
+    );
+    assert_eq!(
+        identity.try_get::<Uuid>("", "case_id")?,
+        fixture.typed_case_id
+    );
+    assert_eq!(
+        identity.try_get::<Uuid>("", "subject_id")?,
+        fixture.typed_subject_id
+    );
     assert_eq!(
         identity.try_get::<i64>("", "subject_revision")?,
         fixture.typed_subject_revision
@@ -293,8 +303,9 @@ async fn seed_legacy_decisions(db: &DatabaseConnection) -> TestResult<UpgradeFix
         'a',
     )
     .await?;
-    db.execute_unprepared(&format!(
-        r#"
+    db.execute_unprepared(
+        &format!(
+            r#"
 INSERT INTO moderation_decision_effects (
     decision_id, tenant_id, schema_version, effect_kind, effect_payload, created_at
 ) VALUES (
@@ -303,18 +314,13 @@ INSERT INTO moderation_decision_effects (
     '{}'
 )
 "#,
-        fixture.typed_decision_id, fixture.tenant_id, LEGACY_CREATED_AT
-    ).replace("\\\"", "\""))
-    .await?;
-
-    insert_case(
-        db,
-        fixture.tenant_id,
-        untyped_case_id,
-        Uuid::new_v4(),
-        23,
+            fixture.typed_decision_id, fixture.tenant_id, LEGACY_CREATED_AT
+        )
+        .replace("\\\"", "\""),
     )
     .await?;
+
+    insert_case(db, fixture.tenant_id, untyped_case_id, Uuid::new_v4(), 23).await?;
     insert_decision(
         db,
         fixture.tenant_id,
@@ -326,9 +332,16 @@ INSERT INTO moderation_decision_effects (
     )
     .await?;
 
-    assert_eq!(scalar_i64(db, "SELECT COUNT(*) AS value FROM moderation_decisions").await?, 2);
     assert_eq!(
-        scalar_i64(db, "SELECT COUNT(*) AS value FROM moderation_decision_effects").await?,
+        scalar_i64(db, "SELECT COUNT(*) AS value FROM moderation_decisions").await?,
+        2
+    );
+    assert_eq!(
+        scalar_i64(
+            db,
+            "SELECT COUNT(*) AS value FROM moderation_decision_effects"
+        )
+        .await?,
         1
     );
     Ok(fixture)
@@ -388,7 +401,11 @@ fn assert_flag(row: &QueryResult, name: &str) -> TestResult<()> {
 }
 
 async fn application_operation_count(db: &DatabaseConnection) -> TestResult<i64> {
-    scalar_i64(db, "SELECT COUNT(*) AS value FROM moderation_application_operations").await
+    scalar_i64(
+        db,
+        "SELECT COUNT(*) AS value FROM moderation_application_operations",
+    )
+    .await
 }
 
 async fn migration_count(db: &DatabaseConnection) -> TestResult<i64> {

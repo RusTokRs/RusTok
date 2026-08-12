@@ -30,13 +30,13 @@ fn forum_projection_publishes_only_exact_owner_routes() {
         "format!(\"{topic_route}?reply={reply_id}\")",
         "\"route\": route",
     ] {
-        assert!(source.contains(marker), "missing projection marker: {marker}");
+        assert!(
+            source.contains(marker),
+            "missing projection marker: {marker}"
+        );
     }
 
-    for forbidden in [
-        "\"/modules/forum?category=",
-        "\"/modules/forum?topic=",
-    ] {
+    for forbidden in ["\"/modules/forum?category=", "\"/modules/forum?topic="] {
         assert!(
             !source.contains(forbidden),
             "Forum projection retains UUID route construction: {forbidden}"
@@ -98,7 +98,10 @@ fn contract_locks_reindex_fail_closed_and_transport_compatibility() {
         "\"new_migration\": false",
         "\"executed_by_implementation_agent\": false",
     ] {
-        assert!(contract.contains(marker), "missing contract marker: {marker}");
+        assert!(
+            contract.contains(marker),
+            "missing contract marker: {marker}"
+        );
     }
 
     for marker in [
@@ -109,7 +112,10 @@ fn contract_locks_reindex_fail_closed_and_transport_compatibility() {
         "No tests, Node verifiers, formatting, Cargo commands",
         "implementation-plan.md` remains the only authoritative roadmap",
     ] {
-        assert!(docs.contains(marker), "missing documentation marker: {marker}");
+        assert!(
+            docs.contains(marker),
+            "missing documentation marker: {marker}"
+        );
     }
 
     for marker in [
@@ -119,6 +125,9 @@ fn contract_locks_reindex_fail_closed_and_transport_compatibility() {
         "no compatibility fallback exists",
         "verify no UUID Forum query route is emitted after reindex",
     ] {
-        assert!(evidence.contains(marker), "missing Search evidence marker: {marker}");
+        assert!(
+            evidence.contains(marker),
+            "missing Search evidence marker: {marker}"
+        );
     }
 }

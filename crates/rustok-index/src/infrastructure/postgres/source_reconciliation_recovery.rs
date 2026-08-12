@@ -2,7 +2,7 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
     TransactionTrait, Value as SqlValue,
 };
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -357,9 +357,7 @@ fn validate_scope_name(value: &str) -> Result<(), IndexReconciliationRecoveryErr
     Ok(())
 }
 
-fn ensure_supported_backend(
-    backend: DbBackend,
-) -> Result<(), IndexReconciliationRecoveryError> {
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReconciliationRecoveryError> {
     match backend {
         DbBackend::Postgres => Ok(()),
         DbBackend::Sqlite if cfg!(test) => Ok(()),
@@ -559,9 +557,21 @@ mod tests {
         assert_eq!(job.try_get::<i64>("", "attempt_count").unwrap(), 0);
         assert_eq!(job.try_get::<i64>("", "cancel_requested").unwrap(), 0);
         assert_eq!(job.try_get::<i64>("", "retry_epoch").unwrap(), 1);
-        assert!(job.try_get::<Option<String>>("", "last_error_code").unwrap().is_none());
-        assert!(job.try_get::<Option<JsonValue>>("", "last_error_details").unwrap().is_none());
-        assert!(job.try_get::<Option<String>>("", "completed_at").unwrap().is_none());
+        assert!(
+            job.try_get::<Option<String>>("", "last_error_code")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            job.try_get::<Option<JsonValue>>("", "last_error_details")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            job.try_get::<Option<String>>("", "completed_at")
+                .unwrap()
+                .is_none()
+        );
         let cursor: JsonValue = job.try_get("", "cursor").unwrap();
         assert_eq!(cursor, initial_cursor());
 
@@ -574,7 +584,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(audit.try_get::<String>("", "actor_id").unwrap(), actor_id.to_string());
+        assert_eq!(
+            audit.try_get::<String>("", "actor_id").unwrap(),
+            actor_id.to_string()
+        );
         assert_eq!(audit.try_get::<String>("", "action").unwrap(), "requeue");
         assert_eq!(
             audit.try_get::<String>("", "reason").unwrap(),
@@ -605,13 +618,9 @@ mod tests {
         let actor_id = Uuid::new_v4();
         insert_failed(&db, tenant_id, job_id, 1).await;
         let store = PostgresIndexReconciliationRecoveryStore::new(db.clone());
-        let request = IndexReconciliationRequeueRequest::new(
-            tenant_id,
-            job_id,
-            actor_id,
-            "approved retry",
-        )
-        .unwrap();
+        let request =
+            IndexReconciliationRequeueRequest::new(tenant_id, job_id, actor_id, "approved retry")
+                .unwrap();
 
         assert!(matches!(
             store.requeue_failed(request.clone()).await.unwrap(),

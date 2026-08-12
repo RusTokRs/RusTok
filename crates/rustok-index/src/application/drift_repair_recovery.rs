@@ -274,8 +274,12 @@ pub enum IndexDriftRepairRecoveryStoreOutcome {
     AlreadyCompleted,
     NotFound,
     FindingNotOpen,
-    StaleRevision { current_revision: Option<u64> },
-    InvalidTransition { current_state: Option<IndexDriftRepairRecoveryState> },
+    StaleRevision {
+        current_revision: Option<u64>,
+    },
+    InvalidTransition {
+        current_state: Option<IndexDriftRepairRecoveryState>,
+    },
 }
 
 #[async_trait]
@@ -294,8 +298,12 @@ pub enum IndexDriftRepairRecoveryOutcome {
     AlreadyCompleted,
     NotFound,
     FindingNotOpen,
-    StaleRevision { current_revision: Option<u64> },
-    InvalidTransition { current_state: Option<IndexDriftRepairRecoveryState> },
+    StaleRevision {
+        current_revision: Option<u64>,
+    },
+    InvalidTransition {
+        current_state: Option<IndexDriftRepairRecoveryState>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -419,9 +427,7 @@ fn valid_machine_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_MACHINE_NAME_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }
 

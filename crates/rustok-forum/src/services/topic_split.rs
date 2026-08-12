@@ -157,14 +157,7 @@ impl ForumTopicSplitService {
         if let Some(existing) =
             load_split_operation_in_tx(&txn, tenant_id, prepared.operation_id).await?
         {
-            validate_replay_in_tx(
-                &txn,
-                &existing,
-                source_topic_id,
-                actor_id,
-                &prepared,
-            )
-            .await?;
+            validate_replay_in_tx(&txn, &existing, source_topic_id, actor_id, &prepared).await?;
             txn.commit().await?;
             return Ok(operation_to_result(existing));
         }
@@ -210,13 +203,9 @@ impl ForumTopicSplitService {
         )
         .await?;
 
-        let selected = load_selected_replies_in_tx(
-            &txn,
-            tenant_id,
-            source_topic_id,
-            &prepared.reply_ids,
-        )
-        .await?;
+        let selected =
+            load_selected_replies_in_tx(&txn, tenant_id, source_topic_id, &prepared.reply_ids)
+                .await?;
         validate_split_boundary_in_tx(
             &txn,
             tenant_id,
@@ -312,23 +301,13 @@ impl ForumTopicSplitService {
         .insert(&txn)
         .await?;
 
-        clone_topic_access_in_tx(
-            &txn,
-            tenant_id,
-            source_topic_id,
-            prepared.target_topic_id,
-        )
-        .await?;
+        clone_topic_access_in_tx(&txn, tenant_id, source_topic_id, prepared.target_topic_id)
+            .await?;
         validate_cloned_access_in_tx(&txn, tenant_id, &source, &target).await?;
 
-        let reply_audit = move_selected_replies_in_tx(
-            &txn,
-            tenant_id,
-            prepared.target_topic_id,
-            selected,
-            now,
-        )
-        .await?;
+        let reply_audit =
+            move_selected_replies_in_tx(&txn, tenant_id, prepared.target_topic_id, selected, now)
+                .await?;
         if let Some(solution) = moved_solution.as_ref() {
             validate_cascaded_solution_transfer_in_tx(
                 &txn,
@@ -424,13 +403,8 @@ impl ForumTopicSplitService {
             now,
         )
         .await?;
-        insert_split_reply_audit_in_tx(
-            &txn,
-            tenant_id,
-            prepared.operation_id,
-            &reply_audit,
-        )
-        .await?;
+        insert_split_reply_audit_in_tx(&txn, tenant_id, prepared.operation_id, &reply_audit)
+            .await?;
 
         publish_forum_topic_projection_in_tx(
             &self.event_bus,
@@ -1125,8 +1099,7 @@ async fn validate_cloned_access_in_tx(
         load_topic_reply_create_audience_policy_for_topic(txn, tenant_id, target).await?;
     if source_reply_create.inherited_category_layers
         != target_reply_create.inherited_category_layers
-        || source_reply_create.configured_constraints
-            != target_reply_create.configured_constraints
+        || source_reply_create.configured_constraints != target_reply_create.configured_constraints
     {
         return Err(ForumError::Validation(
             "Forum topic split reply-create policy clone is inconsistent".to_string(),
@@ -1314,14 +1287,15 @@ async fn load_split_operation_in_tx(
             )));
         }
     };
-    Ok(txn.query_one(Statement::from_sql_and_values(
-        backend,
-        sql,
-        vec![tenant_id.into(), operation_id.into()],
-    ))
-    .await?
-    .map(stored_operation_from_row)
-    .transpose()?)
+    Ok(txn
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![tenant_id.into(), operation_id.into()],
+        ))
+        .await?
+        .map(stored_operation_from_row)
+        .transpose()?)
 }
 
 fn stored_operation_from_row(row: QueryResult) -> Result<StoredSplitOperation, sea_orm::DbErr> {
@@ -1488,10 +1462,8 @@ fn operation_to_result(operation: StoredSplitOperation) -> ForumTopicSplitResult
         reason: operation.reason,
         moved_reply_count: operation.moved_reply_count,
         moved_published_reply_count: operation.moved_published_reply_count,
-        source_resulting_published_reply_count: operation
-            .source_resulting_published_reply_count,
-        target_resulting_published_reply_count: operation
-            .target_resulting_published_reply_count,
+        source_resulting_published_reply_count: operation.source_resulting_published_reply_count,
+        target_resulting_published_reply_count: operation.target_resulting_published_reply_count,
         solution_reply_id: operation.solution_reply_id,
         split_at: operation.split_at.with_timezone(&Utc),
     }

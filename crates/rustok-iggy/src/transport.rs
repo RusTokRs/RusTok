@@ -131,14 +131,16 @@ impl IggyTransport {
         if entry.broker_message_id().is_some() {
             let mut publisher = self.dlq_publisher.lock().await;
             if publisher.is_none() {
-                let connected = IggyDlqPublisher::connect(&self.config).await.map_err(|error| {
-                    tracing::error!(
-                        error_code = error.stable_code(),
-                        error = %error,
-                        "Failed to connect deterministic Iggy DLQ publisher"
-                    );
-                    rustok_core::Error::External(error.to_string())
-                })?;
+                let connected = IggyDlqPublisher::connect(&self.config)
+                    .await
+                    .map_err(|error| {
+                        tracing::error!(
+                            error_code = error.stable_code(),
+                            error = %error,
+                            "Failed to connect deterministic Iggy DLQ publisher"
+                        );
+                        rustok_core::Error::External(error.to_string())
+                    })?;
                 *publisher = Some(connected);
             }
 

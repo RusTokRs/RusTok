@@ -93,10 +93,9 @@ pub fn build_forum_topic_slug_rename_command(
 fn looks_like_uuid(value: &str) -> bool {
     let groups = value.split('-').collect::<Vec<_>>();
     groups.len() == 5
-        && groups
-            .iter()
-            .zip([8, 4, 4, 4, 12])
-            .all(|(group, len)| group.len() == len && group.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        && groups.iter().zip([8, 4, 4, 4, 12]).all(|(group, len)| {
+            group.len() == len && group.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
 }
 
 #[cfg(test)]
@@ -132,10 +131,12 @@ mod tests {
     fn rejects_missing_or_unsafe_ui_input() {
         assert!(build_forum_topic_slug_rename_command(&candidate(), "   ").is_err());
         assert!(build_forum_topic_slug_rename_command(&candidate(), "bad\nslug").is_err());
-        assert!(build_forum_topic_slug_rename_command(
-            &candidate(),
-            "x".repeat(MAX_FORUM_TOPIC_ROUTE_SLUG_LEN + 1).as_str(),
-        )
-        .is_err());
+        assert!(
+            build_forum_topic_slug_rename_command(
+                &candidate(),
+                "x".repeat(MAX_FORUM_TOPIC_ROUTE_SLUG_LEN + 1).as_str(),
+            )
+            .is_err()
+        );
     }
 }

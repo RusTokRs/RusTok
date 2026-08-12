@@ -7,8 +7,7 @@ use super::{SelectShippingOptionRequest, ShippingSelectionTransportError};
 
 const FULFILLMENT_STOREFRONT_GRAPHQL_OWNER: &str = "rustok_fulfillment.storefront";
 const FULFILLMENT_STOREFRONT_GRAPHQL_OPERATION: &str = "select_storefront_shipping_option";
-const FULFILLMENT_STOREFRONT_GRAPHQL_BOUNDARY: &str =
-    "fulfillment_storefront_graphql_transport";
+const FULFILLMENT_STOREFRONT_GRAPHQL_BOUNDARY: &str = "fulfillment_storefront_graphql_transport";
 
 pub(super) struct GraphqlCallContext {
     correlation_id: String,

@@ -26,8 +26,7 @@ pub async fn fetch_customers(
 }
 
 pub async fn fetch_customer_detail(customer_id: String) -> Result<CustomerDetail, ApiError> {
-    let context =
-        CustomerAdminTransportErrorContext::for_customer_detail(customer_id.as_str());
+    let context = CustomerAdminTransportErrorContext::for_customer_detail(customer_id.as_str());
     native::fetch_customer_detail(customer_id)
         .await
         .map_err(|server_error| context.map_error(server_error))

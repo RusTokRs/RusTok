@@ -47,10 +47,8 @@ pub struct CommerceHttpRuntime {
 
 impl CommerceHttpRuntime {
     pub fn in_process(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        let payment_provider_registry =
-            PaymentProviderRegistry::with_manual_provider();
-        let fulfillment_provider_registry =
-            FulfillmentProviderRegistry::with_manual_provider();
+        let payment_provider_registry = PaymentProviderRegistry::with_manual_provider();
+        let fulfillment_provider_registry = FulfillmentProviderRegistry::with_manual_provider();
         let shipping_option_read_runtime =
             crate::graphql_runtime::CommerceShippingOptionReadRuntime::in_process(db.clone());
         let shipping_option_admin_command_runtime =
@@ -67,8 +65,10 @@ impl CommerceHttpRuntime {
                 db.clone(),
                 fulfillment_provider_registry.clone(),
             );
-        let order_read_runtime =
-            crate::graphql_runtime::CommerceOrderReadRuntime::in_process(db.clone(), event_bus.clone());
+        let order_read_runtime = crate::graphql_runtime::CommerceOrderReadRuntime::in_process(
+            db.clone(),
+            event_bus.clone(),
+        );
         let order_admin_command_runtime =
             rustok_order::OrderAdminCommandRuntime::in_process(db.clone(), event_bus.clone());
         let order_post_order_command_runtime =
@@ -345,7 +345,9 @@ impl CommerceHttpRuntime {
             })?;
         let payment_admin_read_runtime = runtime
             .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
-            .unwrap_or_else(|| rustok_payment::PaymentAdminReadRuntime::in_process(runtime.db_clone()));
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentAdminReadRuntime::in_process(runtime.db_clone())
+            });
         let payment_admin_collection_command_runtime = runtime
             .shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>()
             .unwrap_or_else(|| {

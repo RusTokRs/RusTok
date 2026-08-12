@@ -15,12 +15,16 @@ use super::{
 pub enum IndexQueryRuntimeCompositionError {
     #[error("shared Index query runtime is already materialized")]
     AlreadyMaterialized,
-    #[error("PostgreSQL Index query admission owner {owner_module} targets unregistered schema {schema}")]
+    #[error(
+        "PostgreSQL Index query admission owner {owner_module} targets unregistered schema {schema}"
+    )]
     AdmissionSchemaMissing {
         owner_module: String,
         schema: SchemaRef,
     },
-    #[error("PostgreSQL Index link-target availability owner {owner_module} targets unregistered schema {schema}")]
+    #[error(
+        "PostgreSQL Index link-target availability owner {owner_module} targets unregistered schema {schema}"
+    )]
     LinkAvailabilitySchemaMissing {
         owner_module: String,
         schema: SchemaRef,
@@ -66,10 +70,12 @@ pub fn materialize_postgres_index_query_runtime(
     }
     for (schema, owner_module) in admissions.link_availability_iter() {
         if registry.registry().get(schema).is_none() {
-            return Err(IndexQueryRuntimeCompositionError::LinkAvailabilitySchemaMissing {
-                owner_module: owner_module.to_owned(),
-                schema: schema.clone(),
-            });
+            return Err(
+                IndexQueryRuntimeCompositionError::LinkAvailabilitySchemaMissing {
+                    owner_module: owner_module.to_owned(),
+                    schema: schema.clone(),
+                },
+            );
         }
     }
     if !admissions.is_empty() {
@@ -100,9 +106,7 @@ mod tests {
         register_postgres_index_query_link_target_availability,
     };
 
-    use super::{
-        IndexQueryRuntimeCompositionError, materialize_postgres_index_query_runtime,
-    };
+    use super::{IndexQueryRuntimeCompositionError, materialize_postgres_index_query_runtime};
 
     fn schema() -> IndexSchema {
         IndexSchema {

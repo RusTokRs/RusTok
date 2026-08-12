@@ -104,8 +104,8 @@ struct Document {
 }
 
 #[tokio::test]
-async fn forum_reindex_atomically_replaces_legacy_routes_with_owner_canonical_routes(
-) -> TestResult<()> {
+async fn forum_reindex_atomically_replaces_legacy_routes_with_owner_canonical_routes()
+-> TestResult<()> {
     let Some(test) = TestDb::setup().await? else {
         return Ok(());
     };
@@ -264,7 +264,11 @@ async fn forum_reindex_atomically_replaces_legacy_routes_with_owner_canonical_ro
     );
 
     assert_eq!(count_legacy_routes(&test.db, tenant_id).await?, 0);
-    assert!(load_document(&test.db, tenant_id, stale_orphan_id).await?.is_none());
+    assert!(
+        load_document(&test.db, tenant_id, stale_orphan_id)
+            .await?
+            .is_none()
+    );
     let other = load_document(&test.db, other_tenant_id, other_id)
         .await?
         .expect("other tenant document");
@@ -302,8 +306,12 @@ async fn execute(
     sql: &str,
     values: Vec<sea_orm::Value>,
 ) -> Result<(), sea_orm::DbErr> {
-    db.execute(Statement::from_sql_and_values(DbBackend::Postgres, sql, values))
-        .await?;
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        sql,
+        values,
+    ))
+    .await?;
     Ok(())
 }
 

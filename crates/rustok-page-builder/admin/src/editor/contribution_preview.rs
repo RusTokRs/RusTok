@@ -1,7 +1,5 @@
 use crate::editor::AdminEditorRuntime;
-use crate::{
-    PageBuilderContributionHostContext, PageBuilderContributionPreviewRequest,
-};
+use crate::{PageBuilderContributionHostContext, PageBuilderContributionPreviewRequest};
 use fly_ui::{ContributionAssemblyResult, Presentation};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -127,7 +125,8 @@ fn selected_preview_request(
         let component = controller.editor().document().component(component_id)?;
         let provider = component.provider.as_deref()?.trim();
         let component_type = component.component_type().trim();
-        if provider.is_empty() || component_type.is_empty() || host.preview_port(provider).is_none() {
+        if provider.is_empty() || component_type.is_empty() || host.preview_port(provider).is_none()
+        {
             return None;
         }
         let admitted = assembly.registry.iter().any(|(_, contribution)| {

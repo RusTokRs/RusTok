@@ -101,10 +101,7 @@ impl PaymentAdminCollectionCommandRuntime {
         Self { command_port }
     }
 
-    pub fn in_process(
-        db: DatabaseConnection,
-        provider_registry: PaymentProviderRegistry,
-    ) -> Self {
+    pub fn in_process(db: DatabaseConnection, provider_registry: PaymentProviderRegistry) -> Self {
         Self::new(in_process_payment_admin_collection_command_port(
             db,
             provider_registry,
@@ -334,13 +331,8 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
             .await
         {
             Ok(collection) => {
-                self.mark_journal_committed(
-                    &context,
-                    OPERATION,
-                    journaled.operation_id,
-                    "capture",
-                )
-                .await?;
+                self.mark_journal_committed(&context, OPERATION, journaled.operation_id, "capture")
+                    .await?;
                 Ok(collection)
             }
             Err(error) => {
@@ -352,12 +344,8 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
                     &error,
                 )
                 .await;
-                Err(self.local_persistence_after_provider_error(
-                    &context,
-                    OPERATION,
-                    "capture",
-                    error,
-                ))
+                Err(self
+                    .local_persistence_after_provider_error(&context, OPERATION, "capture", error))
             }
         }
     }
@@ -444,13 +432,8 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
         {
             Ok(collection) => {
                 if let Some(operation_id) = provider_operation_id {
-                    self.mark_journal_committed(
-                        &context,
-                        OPERATION,
-                        operation_id,
-                        "cancel",
-                    )
-                    .await?;
+                    self.mark_journal_committed(&context, OPERATION, operation_id, "cancel")
+                        .await?;
                 }
                 Ok(collection)
             }
@@ -465,10 +448,7 @@ impl PaymentAdminCollectionCommandPort for InProcessPaymentAdminCollectionComman
                     )
                     .await;
                     Err(self.local_persistence_after_provider_error(
-                        &context,
-                        OPERATION,
-                        "cancel",
-                        error,
+                        &context, OPERATION, "cancel", error,
                     ))
                 } else {
                     Err(map_payment_error(&context, OPERATION, error))
@@ -568,9 +548,21 @@ impl InProcessPaymentAdminCollectionCommandPort {
         }
 
         let provider_result = match provider_operation {
-            "authorize" => self.provider_registry.execute_authorize(provider_id, request).await,
-            "capture" => self.provider_registry.execute_capture(provider_id, request).await,
-            "cancel" => self.provider_registry.execute_cancel(provider_id, request).await,
+            "authorize" => {
+                self.provider_registry
+                    .execute_authorize(provider_id, request)
+                    .await
+            }
+            "capture" => {
+                self.provider_registry
+                    .execute_capture(provider_id, request)
+                    .await
+            }
+            "cancel" => {
+                self.provider_registry
+                    .execute_cancel(provider_id, request)
+                    .await
+            }
             _ => {
                 return Err(PortError::validation(
                     "payment.provider_operation_invalid",
@@ -590,7 +582,10 @@ impl InProcessPaymentAdminCollectionCommandPort {
                         .await
                 } else {
                     self.operation_journal
-                        .mark_provider_error(journal_operation.id, "payment.provider_operation_failed")
+                        .mark_provider_error(
+                            journal_operation.id,
+                            "payment.provider_operation_failed",
+                        )
                         .await
                 };
                 if checkpoint.is_err() {
@@ -746,13 +741,8 @@ impl InProcessPaymentAdminCollectionCommandPort {
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
             )
         {
-            self.mark_journal_committed(
-                context,
-                owner_operation,
-                existing.id,
-                provider_operation,
-            )
-            .await?;
+            self.mark_journal_committed(context, owner_operation, existing.id, provider_operation)
+                .await?;
         }
         Ok(())
     }
@@ -764,7 +754,12 @@ impl InProcessPaymentAdminCollectionCommandPort {
         operation_id: Uuid,
         provider_operation: &'static str,
     ) -> Result<(), PortError> {
-        if self.operation_journal.mark_committed(operation_id).await.is_err() {
+        if self
+            .operation_journal
+            .mark_committed(operation_id)
+            .await
+            .is_err()
+        {
             let _ = self
                 .operation_journal
                 .mark_reconciliation_required(
@@ -819,9 +814,11 @@ fn require_admin_collection_write_admission(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(), PortError> {
-    context.require_policy(PortCallPolicy::write()).inspect_err(|error| {
-        log_port_error(context, operation, "policy", error);
-    })?;
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_port_error(context, operation, "policy", error);
+        })?;
     context.require_write_semantics().inspect_err(|error| {
         log_port_error(context, operation, "write_semantics", error);
     })
@@ -973,17 +970,19 @@ fn persisted_provider_result(
             journal_operation.operation.as_str(),
         ));
     };
-    serde_json::from_value(value)
-        .map(Some)
-        .map_err(|_| {
-            PaymentError::provider_outcome_unknown(
-                journal_operation.provider_id.as_str(),
-                journal_operation.operation.as_str(),
-            )
-        })
+    serde_json::from_value(value).map(Some).map_err(|_| {
+        PaymentError::provider_outcome_unknown(
+            journal_operation.provider_id.as_str(),
+            journal_operation.operation.as_str(),
+        )
+    })
 }
 
-fn insert_metadata_string(metadata: &mut Value, key: &str, value: String) -> Result<(), PaymentError> {
+fn insert_metadata_string(
+    metadata: &mut Value,
+    key: &str,
+    value: String,
+) -> Result<(), PaymentError> {
     if !metadata.is_object() {
         if metadata.is_null() {
             *metadata = serde_json::json!({});
@@ -994,7 +993,9 @@ fn insert_metadata_string(metadata: &mut Value, key: &str, value: String) -> Res
         }
     }
     let object = metadata.as_object_mut().ok_or_else(|| {
-        PaymentError::Validation("payment provider operation metadata must be an object".to_string())
+        PaymentError::Validation(
+            "payment provider operation metadata must be an object".to_string(),
+        )
     })?;
     if let Some(existing) = object.get(key).and_then(Value::as_str) {
         if existing != value {

@@ -8,22 +8,20 @@ use rustok_core::ModuleRuntimeExtensions;
 use rustok_runtime::{
     HostRuntimeContext, ModuleWorkRegistration, ModuleWorkRegistrations, ModuleWorkScheduler,
 };
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    EntityName, ModuleName, SchemaRef, SchemaRegistry, SchemaVersion,
-    SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
+    EntityName, ModuleName, SchemaRef, SchemaRegistry, SchemaVersion, SharedIndexSchemaRegistry,
+    SharedIndexSourceRegistry,
 };
 
 use super::{
-    IndexReconciliationRunError, IndexReconciliationRunRequest,
-    IndexReconciliationRunStatus, PostgresIndexReconciliationRunner,
+    IndexReconciliationRunError, IndexReconciliationRunRequest, IndexReconciliationRunStatus,
+    PostgresIndexReconciliationRunner,
 };
 
 pub const INDEX_RECONCILIATION_WORKER: &str = "index_reconciliation";
@@ -338,7 +336,10 @@ async fn discover_due_reconciliation(
     let backend = db.get_database_backend();
     ensure_supported_backend(backend)?;
     let row = db
-        .query_one(Statement::from_string(backend, due_reconciliation_sql(backend)))
+        .query_one(Statement::from_string(
+            backend,
+            due_reconciliation_sql(backend),
+        ))
         .await
         .map_err(|_| ModuleWorkError::Source(DISCOVERY_FAILED_CODE.to_owned()))?;
     let Some(row) = row else {
@@ -357,9 +358,15 @@ fn decode_due_work(
     if tenant_id.is_nil() || job_id.is_nil() {
         return Err(invalid_stored_job());
     }
-    let module_name: String = row.try_get("", "module_name").map_err(|_| invalid_stored_job())?;
-    let entity_name: String = row.try_get("", "entity_name").map_err(|_| invalid_stored_job())?;
-    let schema_version: i64 = row.try_get("", "schema_version").map_err(|_| invalid_stored_job())?;
+    let module_name: String = row
+        .try_get("", "module_name")
+        .map_err(|_| invalid_stored_job())?;
+    let entity_name: String = row
+        .try_get("", "entity_name")
+        .map_err(|_| invalid_stored_job())?;
+    let schema_version: i64 = row
+        .try_get("", "schema_version")
+        .map_err(|_| invalid_stored_job())?;
     let schema_version = u32::try_from(schema_version).map_err(|_| invalid_stored_job())?;
     if schema_version == 0 {
         return Err(invalid_stored_job());
@@ -369,13 +376,17 @@ fn decode_due_work(
         entity: EntityName::new(entity_name).map_err(|_| invalid_stored_job())?,
         version: SchemaVersion::new(schema_version),
     };
-    let request_json: JsonValue = row.try_get("", "request").map_err(|_| invalid_stored_job())?;
+    let request_json: JsonValue = row
+        .try_get("", "request")
+        .map_err(|_| invalid_stored_job())?;
     let request: StoredReconciliationJobRequest =
         serde_json::from_value(request_json).map_err(|_| invalid_stored_job())?;
     if request.contract != RECONCILIATION_JOB_REQUEST_CONTRACT || request.pass_count == 0 {
         return Err(invalid_stored_job());
     }
-    let source = sources.source_for_schema(&schema).ok_or_else(invalid_stored_job)?;
+    let source = sources
+        .source_for_schema(&schema)
+        .ok_or_else(invalid_stored_job)?;
     if source.source_name() != request.source_name {
         return Err(invalid_stored_job());
     }
@@ -466,7 +477,9 @@ mod tests {
     use std::time::Duration;
 
     use rustok_core::ModuleRuntimeExtensions;
-    use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistration, ModuleWorkRegistrations, ModuleWorkScheduler};
+    use rustok_runtime::{
+        HostRuntimeContext, ModuleWorkRegistration, ModuleWorkRegistrations, ModuleWorkScheduler,
+    };
     use sea_orm::{Database, DbBackend};
 
     use super::{
@@ -482,9 +495,7 @@ mod tests {
         assert_eq!(policy.max_pages(), 8);
         assert_eq!(policy.heartbeat_every_pages(), 1);
         assert_eq!(policy.lease_duration(), Duration::from_secs(300));
-        assert!(
-            IndexReconciliationSchedulerPolicy::new(1, 0, 1, Duration::from_secs(1)).is_err()
-        );
+        assert!(IndexReconciliationSchedulerPolicy::new(1, 0, 1, Duration::from_secs(1)).is_err());
     }
 
     #[test]
@@ -532,7 +543,9 @@ mod tests {
 
     #[tokio::test]
     async fn missing_source_registry_registers_no_worker() {
-        let db = Database::connect("sqlite::memory:").await.expect("test database");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("test database");
         let host = HostRuntimeContext::new(db);
         let scheduler = ModuleWorkScheduler::new();
         IndexReconciliationWorkRegistration

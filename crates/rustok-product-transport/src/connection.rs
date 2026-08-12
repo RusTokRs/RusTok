@@ -178,19 +178,16 @@ fn is_loopback_host(host: Option<Host<&str>>) -> bool {
 mod tests {
     use std::time::Duration;
 
-    use super::{
-        GrpcProductCatalogReadConnectionConfig, GrpcProductCatalogReadConnectionError,
-    };
+    use super::{GrpcProductCatalogReadConnectionConfig, GrpcProductCatalogReadConnectionError};
 
     #[test]
     fn https_endpoint_is_accepted() {
-        let validated = GrpcProductCatalogReadConnectionConfig::new(
-            "https://product-catalog.internal:7443",
-        )
-        .with_tls_domain(Some("product-catalog.internal".to_string()))
-        .with_connect_timeout(Duration::from_millis(2_500))
-        .validated()
-        .expect("HTTPS Product endpoint should validate");
+        let validated =
+            GrpcProductCatalogReadConnectionConfig::new("https://product-catalog.internal:7443")
+                .with_tls_domain(Some("product-catalog.internal".to_string()))
+                .with_connect_timeout(Duration::from_millis(2_500))
+                .validated()
+                .expect("HTTPS Product endpoint should validate");
 
         assert!(validated.endpoint_uses_tls);
         assert_eq!(

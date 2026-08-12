@@ -5,9 +5,7 @@ use rustok_events::ContractEventEnvelope;
 use rustok_iggy_connector::{ConsumerCursor, SubscriberMessageMetadata};
 use tokio::sync::Mutex;
 
-use crate::contract_decode_failure::{
-    ConsumedContractDecodeFailure, ContractDecodeFailureKind,
-};
+use crate::contract_decode_failure::{ConsumedContractDecodeFailure, ContractDecodeFailureKind};
 use crate::serialization::EventSerializer;
 
 #[derive(Debug, Clone)]
@@ -240,13 +238,7 @@ impl ConsumedContractEvent {
         error: impl Into<String>,
         retry_count: u32,
     ) -> crate::dlq::DlqEntry {
-        crate::dlq::DlqEntry::new(
-            self.envelope.id(),
-            self.topic,
-            payload,
-            error,
-            retry_count,
-        )
-        .with_connector_metadata(self.connector_metadata)
+        crate::dlq::DlqEntry::new(self.envelope.id(), self.topic, payload, error, retry_count)
+            .with_connector_metadata(self.connector_metadata)
     }
 }

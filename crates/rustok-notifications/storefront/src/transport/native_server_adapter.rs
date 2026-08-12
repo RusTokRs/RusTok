@@ -7,9 +7,9 @@ use crate::core::{
     NotificationStorefrontGroupStateAction, NotificationStorefrontGroupStateCommand,
     NotificationStorefrontGroupStatePage, NotificationStorefrontGroupSummary,
     NotificationStorefrontGroupSummaryPage, NotificationStorefrontGroupSummaryRequest,
-    NotificationStorefrontItem, NotificationStorefrontItemState, NotificationStorefrontOpenDecision,
-    NotificationStorefrontOpenRequest, NotificationStorefrontPriority,
-    NotificationStorefrontUnreadCount,
+    NotificationStorefrontItem, NotificationStorefrontItemState,
+    NotificationStorefrontOpenDecision, NotificationStorefrontOpenRequest,
+    NotificationStorefrontPriority, NotificationStorefrontUnreadCount,
 };
 
 use serde::{Deserialize, Serialize};
@@ -33,8 +33,8 @@ impl From<ServerFnError> for NativeNotificationStorefrontError {
     }
 }
 
-pub async fn load_notification_unread_count(
-) -> Result<NotificationStorefrontUnreadCount, NativeNotificationStorefrontError> {
+pub async fn load_notification_unread_count()
+-> Result<NotificationStorefrontUnreadCount, NativeNotificationStorefrontError> {
     notification_storefront_unread_count_native()
         .await
         .map_err(Into::into)
@@ -72,12 +72,9 @@ pub async fn apply_notification_group_state(
         .map_err(Into::into)
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "notifications/storefront/unread-count"
-)]
-async fn notification_storefront_unread_count_native(
-) -> Result<NotificationStorefrontUnreadCount, ServerFnError> {
+#[server(prefix = "/api/fn", endpoint = "notifications/storefront/unread-count")]
+async fn notification_storefront_unread_count_native()
+-> Result<NotificationStorefrontUnreadCount, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use rustok_notifications::NotificationInboxStorefrontPort;
@@ -134,10 +131,7 @@ async fn notification_storefront_group_summaries_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "notifications/storefront/group-items"
-)]
+#[server(prefix = "/api/fn", endpoint = "notifications/storefront/group-items")]
 async fn notification_storefront_group_items_native(
     request: NotificationStorefrontGroupItemsRequest,
 ) -> Result<NotificationStorefrontGroupItemsPage, ServerFnError> {
@@ -217,10 +211,7 @@ async fn notification_storefront_open_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "notifications/storefront/group-state"
-)]
+#[server(prefix = "/api/fn", endpoint = "notifications/storefront/group-state")]
 async fn notification_storefront_group_state_native(
     command: NotificationStorefrontGroupStateCommand,
 ) -> Result<NotificationStorefrontGroupStatePage, ServerFnError> {
@@ -291,7 +282,9 @@ async fn authenticated_context(
         .await
         .map_err(ServerFnError::new)?;
     if auth.tenant_id != tenant.id {
-        return Err(ServerFnError::new("notification storefront tenant mismatch"));
+        return Err(ServerFnError::new(
+            "notification storefront tenant mismatch",
+        ));
     }
     if !auth.is_human_user_principal() {
         return Err(ServerFnError::new(

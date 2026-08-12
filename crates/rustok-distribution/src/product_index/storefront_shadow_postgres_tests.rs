@@ -140,8 +140,8 @@ struct EvidenceRuntime {
 }
 
 #[tokio::test]
-async fn product_storefront_localized_postgres_retains_owner_shadow_identity_and_projection_evidence(
-) -> TestResult<()> {
+async fn product_storefront_localized_postgres_retains_owner_shadow_identity_and_projection_evidence()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -152,8 +152,8 @@ async fn product_storefront_localized_postgres_retains_owner_shadow_identity_and
 }
 
 #[tokio::test]
-async fn product_storefront_localized_postgres_retains_wildcard_and_equal_timestamp_paging_evidence(
-) -> TestResult<()> {
+async fn product_storefront_localized_postgres_retains_wildcard_and_equal_timestamp_paging_evidence()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };

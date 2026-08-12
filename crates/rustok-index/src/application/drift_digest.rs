@@ -23,8 +23,7 @@ impl IndexDriftSnapshotBoundary {
             || value.len() > MAX_BOUNDARY_BYTES
             || value.trim() != value
             || !value.bytes().all(|byte| {
-                byte.is_ascii_alphanumeric()
-                    || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
+                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
             })
         {
             return Err(IndexDriftDigestError::InvalidSnapshotBoundary);
@@ -548,9 +547,7 @@ fn valid_machine_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_FAILURE_CODE_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }
 
@@ -677,17 +674,17 @@ mod tests {
         )
         .unwrap();
         let recorder = RecorderFixture::default();
-        let producer = IndexDriftDigestProducer::new(
-            registry(),
-            SnapshotFixture { pair },
-            recorder.clone(),
-        );
+        let producer =
+            IndexDriftDigestProducer::new(registry(), SnapshotFixture { pair }, recorder.clone());
 
         let outcome = producer
             .produce(IndexDriftDigestRequest::new(key()).unwrap())
             .await
             .unwrap();
-        assert!(matches!(outcome, IndexDriftDigestOutcome::Consistent { .. }));
+        assert!(matches!(
+            outcome,
+            IndexDriftDigestOutcome::Consistent { .. }
+        ));
         assert!(recorder.mismatches.lock().unwrap().is_empty());
     }
 
@@ -699,11 +696,8 @@ mod tests {
         )
         .unwrap();
         let recorder = RecorderFixture::default();
-        let producer = IndexDriftDigestProducer::new(
-            registry(),
-            SnapshotFixture { pair },
-            recorder.clone(),
-        );
+        let producer =
+            IndexDriftDigestProducer::new(registry(), SnapshotFixture { pair }, recorder.clone());
 
         let outcome = producer
             .produce(IndexDriftDigestRequest::new(key()).unwrap())
@@ -857,11 +851,8 @@ mod tests {
         )
         .unwrap();
         let recorder = RecorderFixture::default();
-        let producer = IndexDriftDigestProducer::new(
-            registry(),
-            SnapshotFixture { pair },
-            recorder.clone(),
-        );
+        let producer =
+            IndexDriftDigestProducer::new(registry(), SnapshotFixture { pair }, recorder.clone());
 
         assert!(matches!(
             producer

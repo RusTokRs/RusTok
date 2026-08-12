@@ -6,7 +6,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::import_mapping::{
-    ForumImportEntityKind, ForumImportExternalRef, FORUM_IMPORT_SOURCE_NODEBB,
+    FORUM_IMPORT_SOURCE_NODEBB, ForumImportEntityKind, ForumImportExternalRef,
     MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH,
 };
 use crate::import_write_preparation::{
@@ -14,9 +14,9 @@ use crate::import_write_preparation::{
     ForumPreparedImportWriteBatch,
 };
 use crate::mentions::{
-    extract_forum_mention_candidates, ForumContentTarget, ForumMentionAudience,
-    ForumMentionPolicy, ForumQuoteReference, FORUM_MAX_MENTION_TARGETS_PER_REVISION,
-    FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
+    FORUM_MAX_MENTION_TARGETS_PER_REVISION, FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
+    ForumContentTarget, ForumMentionAudience, ForumMentionPolicy, ForumQuoteReference,
+    extract_forum_mention_candidates,
 };
 
 pub const MAX_FORUM_IMPORT_RELATION_TARGETS_PER_BATCH: usize =
@@ -89,9 +89,13 @@ pub enum ForumImportRelationPreparationError {
     TooManyTargets { max: usize, actual: usize },
     #[error("Forum import relation preparation locale is invalid: {locale}")]
     InvalidLocale { locale: String },
-    #[error("Forum import relation preparation locale must already be normalized: {actual} -> {normalized}")]
+    #[error(
+        "Forum import relation preparation locale must already be normalized: {actual} -> {normalized}"
+    )]
     LocaleNotNormalized { actual: String, normalized: String },
-    #[error("Forum import relation preparation record locale differs from batch locale for {source:?}: {actual}")]
+    #[error(
+        "Forum import relation preparation record locale differs from batch locale for {source:?}: {actual}"
+    )]
     RecordLocaleMismatch {
         source: ForumImportExternalRef,
         actual: String,
@@ -101,7 +105,9 @@ pub enum ForumImportRelationPreparationError {
         kind: &'static str,
         source: ForumImportExternalRef,
     },
-    #[error("Forum import relation preparation requires NodeBB {expected:?} source, got {source:?}")]
+    #[error(
+        "Forum import relation preparation requires NodeBB {expected:?} source, got {source:?}"
+    )]
     InvalidSourceRef {
         expected: ForumImportEntityKind,
         source: ForumImportExternalRef,
@@ -123,9 +129,13 @@ pub enum ForumImportRelationPreparationError {
     },
     #[error("Forum import relation suppression requires empty relation facts for {source:?}")]
     SuppressedRelationsContainFacts { source: ForumImportExternalRef },
-    #[error("Forum import relation materialization does not support quote revisions yet for {source:?}")]
+    #[error(
+        "Forum import relation materialization does not support quote revisions yet for {source:?}"
+    )]
     QuoteRelationsUnsupported { source: ForumImportExternalRef },
-    #[error("Forum import relation decision exceeds {max} mention targets for {source:?}: {actual}")]
+    #[error(
+        "Forum import relation decision exceeds {max} mention targets for {source:?}: {actual}"
+    )]
     TooManyMentionTargets {
         source: ForumImportExternalRef,
         max: usize,
@@ -137,22 +147,30 @@ pub enum ForumImportRelationPreparationError {
         max: usize,
         actual: usize,
     },
-    #[error("Forum import relation decision contains invalid mention handle {handle:?} for {source:?}")]
+    #[error(
+        "Forum import relation decision contains invalid mention handle {handle:?} for {source:?}"
+    )]
     InvalidMentionHandle {
         source: ForumImportExternalRef,
         handle: String,
     },
-    #[error("Forum import relation decision contains nil mentioned user id for {source:?}/{handle}")]
+    #[error(
+        "Forum import relation decision contains nil mentioned user id for {source:?}/{handle}"
+    )]
     NilMentionUserId {
         source: ForumImportExternalRef,
         handle: String,
     },
-    #[error("Forum import relation decision repeats normalized mention handle {handle} for {source:?}")]
+    #[error(
+        "Forum import relation decision repeats normalized mention handle {handle} for {source:?}"
+    )]
     DuplicateMentionHandle {
         source: ForumImportExternalRef,
         handle: String,
     },
-    #[error("Forum import relation decision maps multiple mention handles onto user {user_id} for {source:?}")]
+    #[error(
+        "Forum import relation decision maps multiple mention handles onto user {user_id} for {source:?}"
+    )]
     DuplicateMentionUser {
         source: ForumImportExternalRef,
         user_id: Uuid,
@@ -171,7 +189,9 @@ pub enum ForumImportRelationPreparationError {
     MentionHandleMismatch { source: ForumImportExternalRef },
     #[error("Forum import mention audiences differ from RichText for {source:?}")]
     MentionAudienceMismatch { source: ForumImportExternalRef },
-    #[error("Forum import relation suppression conflicts with EmitDomainEvents for mentioned content {source:?}")]
+    #[error(
+        "Forum import relation suppression conflicts with EmitDomainEvents for mentioned content {source:?}"
+    )]
     EventModeRequiresMaterialization { source: ForumImportExternalRef },
 }
 
@@ -193,11 +213,7 @@ impl ForumImportRelationPreparer {
             .topics
             .iter()
             .map(|record| {
-                prepare_topic_relations(
-                    record,
-                    request.writes.event_mode,
-                    &mut topic_decisions,
-                )
+                prepare_topic_relations(record, request.writes.event_mode, &mut topic_decisions)
             })
             .collect::<Result<Vec<_>, _>>()?;
         let replies = request
@@ -205,11 +221,7 @@ impl ForumImportRelationPreparer {
             .replies
             .iter()
             .map(|record| {
-                prepare_reply_relations(
-                    record,
-                    request.writes.event_mode,
-                    &mut reply_decisions,
-                )
+                prepare_reply_relations(record, request.writes.event_mode, &mut reply_decisions)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -242,7 +254,10 @@ struct DecisionIndex<'a, T> {
 }
 
 impl<'a, T: DecisionSource> DecisionIndex<'a, T> {
-    fn new(kind: &'static str, decisions: &'a [T]) -> Result<Self, ForumImportRelationPreparationError> {
+    fn new(
+        kind: &'static str,
+        decisions: &'a [T],
+    ) -> Result<Self, ForumImportRelationPreparationError> {
         let mut by_source = BTreeMap::new();
         for decision in decisions {
             let key = ref_key(decision.source());
@@ -400,9 +415,11 @@ fn prepare_content_relations(
         });
     }
     if !decision.quotes.is_empty() {
-        return Err(ForumImportRelationPreparationError::QuoteRelationsUnsupported {
-            source: source.clone(),
-        });
+        return Err(
+            ForumImportRelationPreparationError::QuoteRelationsUnsupported {
+                source: source.clone(),
+            },
+        );
     }
 
     let policy = ForumMentionPolicy {
@@ -468,9 +485,11 @@ fn prepare_content_relations(
                 });
             }
             if audiences.as_slice() != extracted.audiences() {
-                return Err(ForumImportRelationPreparationError::MentionAudienceMismatch {
-                    source: source.clone(),
-                });
+                return Err(
+                    ForumImportRelationPreparationError::MentionAudienceMismatch {
+                        source: source.clone(),
+                    },
+                );
             }
             Ok(ForumPreparedImportContentRelations {
                 source: source.clone(),
@@ -505,10 +524,12 @@ fn normalize_mention_bindings(
             });
         }
         if by_handle.contains_key(&handle) {
-            return Err(ForumImportRelationPreparationError::DuplicateMentionHandle {
-                source: source.clone(),
-                handle,
-            });
+            return Err(
+                ForumImportRelationPreparationError::DuplicateMentionHandle {
+                    source: source.clone(),
+                    handle,
+                },
+            );
         }
         if !user_ids.insert(binding.user_id) {
             return Err(ForumImportRelationPreparationError::DuplicateMentionUser {
@@ -545,7 +566,9 @@ fn relation_event_mode(event_mode: ForumImportWriteEventMode) -> ForumImportRela
         ForumImportWriteEventMode::SuppressInteractiveEvents => {
             ForumImportRelationEventMode::SuppressAddedTargetEvents
         }
-        ForumImportWriteEventMode::EmitDomainEvents => ForumImportRelationEventMode::EmitAddedTargetEvents,
+        ForumImportWriteEventMode::EmitDomainEvents => {
+            ForumImportRelationEventMode::EmitAddedTargetEvents
+        }
     }
 }
 

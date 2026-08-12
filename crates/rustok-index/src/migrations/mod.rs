@@ -9,8 +9,8 @@ mod m20260806_000008_add_index_finding_repair_recovery;
 mod m20260808_000009_add_index_job_locale_scope;
 
 use rustok_core::MigrationDependencyDescriptor;
-use sea_orm_migration::sea_orm::DbBackend;
 use sea_orm_migration::prelude::*;
+use sea_orm_migration::sea_orm::DbBackend;
 
 pub(super) fn source_version_column<T: IntoIden>(
     backend: DbBackend,

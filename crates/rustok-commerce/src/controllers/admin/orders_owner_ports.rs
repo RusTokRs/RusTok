@@ -9,10 +9,9 @@ use rustok_api::{
 };
 use rustok_fulfillment::FindLatestFulfillmentByOrderProjectionRequest;
 use rustok_order::{
-    CancelOrderRequest as OwnerCancelOrderRequest,
-    DeliverOrderRequest as OwnerDeliverOrderRequest, ListOrderProjectionsRequest,
-    MarkOrderPaidRequest as OwnerMarkOrderPaidRequest, ReadOrderProjectionRequest,
-    ShipOrderRequest as OwnerShipOrderRequest,
+    CancelOrderRequest as OwnerCancelOrderRequest, DeliverOrderRequest as OwnerDeliverOrderRequest,
+    ListOrderProjectionsRequest, MarkOrderPaidRequest as OwnerMarkOrderPaidRequest,
+    ReadOrderProjectionRequest, ShipOrderRequest as OwnerShipOrderRequest,
 };
 use rustok_payment::LatestPaymentCollectionByOrderRequest;
 use rustok_web::{HttpError, HttpResult};
@@ -346,13 +345,8 @@ pub async fn show_order(
             )
         })?;
 
-    let payment_context = admin_order_port_context(
-        &tenant,
-        &auth,
-        &request_context,
-        Some(id),
-        "payment_detail",
-    );
+    let payment_context =
+        admin_order_port_context(&tenant, &auth, &request_context, Some(id), "payment_detail");
     let payment_collection = runtime
         .payment_order_read_port()
         .find_latest_collection_by_order(
@@ -360,9 +354,7 @@ pub async fn show_order(
             LatestPaymentCollectionByOrderRequest { order_id: id },
         )
         .await
-        .map_err(|error| {
-            map_payment_detail_port_error(tenant.id, id, &payment_context, error)
-        })?;
+        .map_err(|error| map_payment_detail_port_error(tenant.id, id, &payment_context, error))?;
 
     let fulfillment_context = admin_order_port_context(
         &tenant,
@@ -415,8 +407,13 @@ pub async fn mark_order_paid(
         "Permission denied: orders:update required",
     )?;
 
-    let context =
-        admin_order_port_context(&tenant, &auth, &request_context, Some(id), "mark_order_paid");
+    let context = admin_order_port_context(
+        &tenant,
+        &auth,
+        &request_context,
+        Some(id),
+        "mark_order_paid",
+    );
     let order = runtime
         .order_admin_command_port()
         .mark_paid(
@@ -468,7 +465,8 @@ pub async fn ship_order(
         "Permission denied: orders:update required",
     )?;
 
-    let context = admin_order_port_context(&tenant, &auth, &request_context, Some(id), "ship_order");
+    let context =
+        admin_order_port_context(&tenant, &auth, &request_context, Some(id), "ship_order");
     let order = runtime
         .order_admin_command_port()
         .ship(

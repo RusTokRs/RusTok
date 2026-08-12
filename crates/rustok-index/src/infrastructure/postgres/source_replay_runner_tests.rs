@@ -230,10 +230,7 @@ fn mutation(
                 locale: None,
             },
             source_version,
-            fields: BTreeMap::from([(
-                FieldName::new("id").unwrap(),
-                IndexValue::Uuid(entity_id),
-            )]),
+            fields: BTreeMap::from([(FieldName::new("id").unwrap(), IndexValue::Uuid(entity_id))]),
             links: Vec::new(),
         },
     }
@@ -260,7 +257,11 @@ async fn scalar_string(db: &DatabaseConnection, sql: &str) -> String {
 #[tokio::test]
 async fn bounded_run_yields_pending_and_resumes_with_a_new_attempt() {
     let fixture = Fixture::new(3, None, None).await;
-    let first = fixture.runner.run(fixture.request("worker-a", 2, 1)).await.unwrap();
+    let first = fixture
+        .runner
+        .run(fixture.request("worker-a", 2, 1))
+        .await
+        .unwrap();
     assert_eq!(first.status(), IndexReplayRunStatus::Yielded);
     assert_eq!(first.pages_processed(), 2);
     assert_eq!(first.heartbeat_count(), 1);
@@ -275,7 +276,11 @@ async fn bounded_run_yields_pending_and_resumes_with_a_new_attempt() {
         1,
     );
 
-    let second = fixture.runner.run(fixture.request("worker-b", 2, 1)).await.unwrap();
+    let second = fixture
+        .runner
+        .run(fixture.request("worker-b", 2, 1))
+        .await
+        .unwrap();
     assert_eq!(second.status(), IndexReplayRunStatus::Complete);
     assert_eq!(second.job_id(), first.job_id());
     assert_eq!(second.attempt_count(), Some(2));
@@ -294,7 +299,11 @@ async fn bounded_run_yields_pending_and_resumes_with_a_new_attempt() {
 #[tokio::test]
 async fn pending_cancel_request_terminalizes_without_a_worker() {
     let fixture = Fixture::new(3, None, None).await;
-    let first = fixture.runner.run(fixture.request("worker-a", 1, 1)).await.unwrap();
+    let first = fixture
+        .runner
+        .run(fixture.request("worker-a", 1, 1))
+        .await
+        .unwrap();
     assert_eq!(first.status(), IndexReplayRunStatus::Yielded);
     let job_id = first.job_id().unwrap();
     assert_eq!(
@@ -318,7 +327,11 @@ async fn pending_cancel_request_terminalizes_without_a_worker() {
 #[tokio::test]
 async fn running_cancel_request_is_observed_after_the_current_page() {
     let fixture = Fixture::new(3, None, Some(0)).await;
-    let outcome = fixture.runner.run(fixture.request("worker-a", 3, 1)).await.unwrap();
+    let outcome = fixture
+        .runner
+        .run(fixture.request("worker-a", 3, 1))
+        .await
+        .unwrap();
     assert_eq!(outcome.status(), IndexReplayRunStatus::Cancelled);
     assert_eq!(outcome.pages_processed(), 1);
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 1);
@@ -374,7 +387,11 @@ async fn requested_running_cancel_survives_reclaim_and_fences_the_old_attempt() 
         .await
         .unwrap();
 
-    let second = fixture.runner.run(fixture.request("worker-b", 3, 1)).await.unwrap();
+    let second = fixture
+        .runner
+        .run(fixture.request("worker-b", 3, 1))
+        .await
+        .unwrap();
     assert_eq!(second.status(), IndexReplayRunStatus::Cancelled);
     assert_eq!(second.job_id(), Some(first.job_id()));
     assert_eq!(second.attempt_count(), Some(2));
@@ -417,24 +434,28 @@ async fn lease_loss_during_a_page_does_not_publish_failure_or_advance_cursor() {
 #[test]
 fn run_request_bounds_pages_and_heartbeat_cadence() {
     let tenant_id = Uuid::parse_str(TENANT).unwrap();
-    assert!(IndexReplayRunRequest::new(
-        tenant_id,
-        schema_ref(),
-        "worker-a",
-        10,
-        0,
-        1,
-        Duration::from_secs(60),
-    )
-    .is_err());
-    assert!(IndexReplayRunRequest::new(
-        tenant_id,
-        schema_ref(),
-        "worker-a",
-        10,
-        2,
-        3,
-        Duration::from_secs(60),
-    )
-    .is_err());
+    assert!(
+        IndexReplayRunRequest::new(
+            tenant_id,
+            schema_ref(),
+            "worker-a",
+            10,
+            0,
+            1,
+            Duration::from_secs(60),
+        )
+        .is_err()
+    );
+    assert!(
+        IndexReplayRunRequest::new(
+            tenant_id,
+            schema_ref(),
+            "worker-a",
+            10,
+            2,
+            3,
+            Duration::from_secs(60),
+        )
+        .is_err()
+    );
 }

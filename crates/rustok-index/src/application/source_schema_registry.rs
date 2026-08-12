@@ -3,9 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use rustok_core::ModuleRuntimeExtensions;
 use thiserror::Error;
 
-use crate::domain::{
-    DomainError, IndexSchema, SchemaFingerprint, SchemaIdentity, SchemaRef,
-};
+use crate::domain::{DomainError, IndexSchema, SchemaFingerprint, SchemaIdentity, SchemaRef};
 
 use super::{SchemaRegistry, SchemaRegistryError};
 
@@ -195,16 +193,12 @@ fn validate_owner_module(value: &str) -> Result<(), IndexSchemaSourceError> {
     let valid = !value.is_empty()
         && value.len() <= 128
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
         });
     if valid {
         Ok(())
     } else {
-        Err(IndexSchemaSourceError::InvalidOwnerModule(
-            value.to_owned(),
-        ))
+        Err(IndexSchemaSourceError::InvalidOwnerModule(value.to_owned()))
     }
 }
 

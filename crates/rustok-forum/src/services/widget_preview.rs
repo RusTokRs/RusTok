@@ -14,8 +14,8 @@ use crate::error::{ForumError, ForumResult};
 use crate::services::topic::TopicService as TopicPersistenceService;
 use crate::services::topic_visibility::ForumTopicVisibilityService;
 use crate::services::widget_contract::{
-    FORUM_WIDGET_CONTRACT_VERSION, FORUM_WIDGET_TYPE_REPLY_STREAM,
-    FORUM_WIDGET_TYPE_TOPIC_DETAIL, FORUM_WIDGET_TYPE_TOPIC_LIST, ForumWidgetContractService,
+    FORUM_WIDGET_CONTRACT_VERSION, FORUM_WIDGET_TYPE_REPLY_STREAM, FORUM_WIDGET_TYPE_TOPIC_DETAIL,
+    FORUM_WIDGET_TYPE_TOPIC_LIST, ForumWidgetContractService,
 };
 use crate::services::{ReplyService, TopicService};
 use crate::state_machine::ReplyStatus;
@@ -53,10 +53,11 @@ impl ForumWidgetPreviewService {
         fallback_locale: Option<&str>,
         input: PreviewForumWidgetInput,
     ) -> ForumResult<ForumWidgetPreviewResponse> {
-        let validation = ForumWidgetContractService::validate_props(ValidateForumWidgetPropsInput {
-            widget_type: input.widget_type,
-            props: input.props,
-        });
+        let validation =
+            ForumWidgetContractService::validate_props(ValidateForumWidgetPropsInput {
+                widget_type: input.widget_type,
+                props: input.props,
+            });
         let widget_type = validation.widget_type.clone();
         if !validation.valid {
             return Ok(ForumWidgetPreviewResponse {
@@ -134,23 +135,20 @@ impl ForumWidgetPreviewService {
         let hidden_category_ids = ForumTopicVisibilityService::new(self.db.clone())
             .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
             .await?;
-        let (items, total) = TopicPersistenceService::new(
-            self.db.clone(),
-            self.event_bus.clone(),
-        )
-        .list_widget_preview_with_locale_fallback_and_hidden_categories(
-            tenant_id,
-            security,
-            category_id,
-            page,
-            per_page,
-            include_pinned,
-            sort,
-            locale,
-            fallback_locale,
-            &hidden_category_ids,
-        )
-        .await?;
+        let (items, total) = TopicPersistenceService::new(self.db.clone(), self.event_bus.clone())
+            .list_widget_preview_with_locale_fallback_and_hidden_categories(
+                tenant_id,
+                security,
+                category_id,
+                page,
+                per_page,
+                include_pinned,
+                sort,
+                locale,
+                fallback_locale,
+                &hidden_category_ids,
+            )
+            .await?;
 
         Ok(ForumTopicListWidgetPreview {
             items,
@@ -273,21 +271,21 @@ fn required_string<'a>(props: &'a Value, field: &str) -> ForumResult<&'a str> {
         .get(field)
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| ForumError::Validation(format!("Normalized widget field `{field}` is missing")))
+        .ok_or_else(|| {
+            ForumError::Validation(format!("Normalized widget field `{field}` is missing"))
+        })
 }
 
 fn required_u64(props: &Value, field: &str) -> ForumResult<u64> {
-    props
-        .get(field)
-        .and_then(Value::as_u64)
-        .ok_or_else(|| ForumError::Validation(format!("Normalized widget field `{field}` is missing")))
+    props.get(field).and_then(Value::as_u64).ok_or_else(|| {
+        ForumError::Validation(format!("Normalized widget field `{field}` is missing"))
+    })
 }
 
 fn required_bool(props: &Value, field: &str) -> ForumResult<bool> {
-    props
-        .get(field)
-        .and_then(Value::as_bool)
-        .ok_or_else(|| ForumError::Validation(format!("Normalized widget field `{field}` is missing")))
+    props.get(field).and_then(Value::as_bool).ok_or_else(|| {
+        ForumError::Validation(format!("Normalized widget field `{field}` is missing"))
+    })
 }
 
 fn required_uuid(props: &Value, field: &str) -> ForumResult<Uuid> {
@@ -321,26 +319,25 @@ mod tests {
 
     #[test]
     fn approved_reply_stream_never_requires_moderation_scope() {
-        let statuses = reply_stream_preview_statuses(
-            true,
-            &security(vec![Permission::FORUM_TOPICS_READ]),
-        )
-        .expect("approved-only widget preview should not require moderation");
+        let statuses =
+            reply_stream_preview_statuses(true, &security(vec![Permission::FORUM_TOPICS_READ]))
+                .expect("approved-only widget preview should not require moderation");
         assert_eq!(statuses, &[ReplyStatus::Approved]);
     }
 
     #[test]
     fn non_approved_reply_stream_requires_effective_moderation_scope() {
-        let denied = reply_stream_preview_statuses(
-            false,
-            &security(vec![Permission::FORUM_TOPICS_READ]),
-        )
-        .expect_err("non-approved preview must require reply moderation");
+        let denied =
+            reply_stream_preview_statuses(false, &security(vec![Permission::FORUM_TOPICS_READ]))
+                .expect_err("non-approved preview must require reply moderation");
         assert!(denied.to_string().contains("forum_replies:moderate"));
 
         let statuses = reply_stream_preview_statuses(
             false,
-            &security(vec![Permission::new(Resource::ForumReplies, Action::Manage)]),
+            &security(vec![Permission::new(
+                Resource::ForumReplies,
+                Action::Manage,
+            )]),
         )
         .expect("manage should satisfy the effective moderation scope");
         assert_eq!(statuses, &MODERATOR_PREVIEW_REPLY_STATUSES);

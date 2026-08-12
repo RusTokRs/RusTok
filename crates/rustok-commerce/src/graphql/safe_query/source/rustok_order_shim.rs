@@ -3,10 +3,9 @@ use std::sync::Arc;
 use ::rustok_api::{PortContext, PortError, PortErrorKind};
 use ::rustok_order::{
     ListOrderChangeProjectionsRequest, ListOrderChangesInput, ListOrderProjectionsRequest,
-    ListOrderReturnProjectionsRequest, ListOrderReturnsInput, ListOrdersInput,
-    OrderChangeResponse, OrderReadPort, OrderResponse, OrderReturnResponse,
-    ReadOrderChangeProjectionRequest, ReadOrderProjectionRequest,
-    ReadOrderReturnProjectionRequest,
+    ListOrderReturnProjectionsRequest, ListOrderReturnsInput, ListOrdersInput, OrderChangeResponse,
+    OrderReadPort, OrderResponse, OrderReturnResponse, ReadOrderChangeProjectionRequest,
+    ReadOrderProjectionRequest, ReadOrderReturnProjectionRequest,
 };
 use ::rustok_outbox::TransactionalEventBus;
 use ::sea_orm::{DatabaseConnection, DbErr};
@@ -34,11 +33,9 @@ pub(crate) struct OrderService {
 
 impl OrderService {
     pub(crate) fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        let order_reads = crate::graphql_runtime::order_read_runtime_for_current_graphql_scope(
-            db,
-            event_bus,
-        )
-        .order_read_port();
+        let order_reads =
+            crate::graphql_runtime::order_read_runtime_for_current_graphql_scope(db, event_bus)
+                .order_read_port();
         Self { order_reads }
     }
 
@@ -225,8 +222,7 @@ fn graphql_order_read_context(
     operation: &'static str,
     resource_id: Uuid,
 ) -> PortContext {
-    let call_context =
-        crate::graphql_runtime::order_read_call_context_for_current_graphql_scope();
+    let call_context = crate::graphql_runtime::order_read_call_context_for_current_graphql_scope();
     let locale = explicit_locale
         .or_else(|| call_context.locale())
         .unwrap_or("und");

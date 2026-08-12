@@ -211,11 +211,9 @@ mod tests {
 
     #[test]
     fn one_id_with_distinct_exact_bytes_requires_manual_review() {
-        let summary = summarize_dlq_duplicates([
-            observation(7, &[1, 2, 3]),
-            observation(7, &[1, 2, 4]),
-        ])
-        .unwrap();
+        let summary =
+            summarize_dlq_duplicates([observation(7, &[1, 2, 3]), observation(7, &[1, 2, 4])])
+                .unwrap();
 
         assert_eq!(summary.total_messages(), 2);
         assert_eq!(summary.unique_message_ids(), 1);
@@ -241,10 +239,7 @@ mod tests {
     #[test]
     fn nil_message_id_is_rejected_with_stable_code() {
         let error = DlqDuplicateObservation::from_payload(Uuid::nil(), &[1]).unwrap_err();
-        assert_eq!(
-            error,
-            DlqDuplicateInspectionError::InvalidBrokerMessageId
-        );
+        assert_eq!(error, DlqDuplicateInspectionError::InvalidBrokerMessageId);
         assert_eq!(error.stable_code(), "iggy.dlq_duplicate.identity_invalid");
     }
 }

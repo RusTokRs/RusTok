@@ -408,11 +408,7 @@ mod tests {
             &db,
             &event_bus,
             &tenant,
-            &auth_context(
-                tenant_id,
-                actor_id,
-                vec![Permission::FORUM_TOPICS_READ],
-            ),
+            &auth_context(tenant_id, actor_id, vec![Permission::FORUM_TOPICS_READ]),
             None,
             target_topic_id,
             input.clone(),
@@ -421,11 +417,7 @@ mod tests {
         .expect_err("read-only actor must not merge topics");
         assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
 
-        let manage_auth = auth_context(
-            tenant_id,
-            actor_id,
-            vec![Permission::FORUM_TOPICS_MANAGE],
-        );
+        let manage_auth = auth_context(tenant_id, actor_id, vec![Permission::FORUM_TOPICS_MANAGE]);
         let mismatch = execute_merge_forum_topic(
             &db,
             &event_bus,

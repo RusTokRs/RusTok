@@ -46,9 +46,7 @@ async fn disabled_deduplication_persists_repeated_uuid_twice() -> TestResult<()>
 #[tokio::test]
 async fn enabled_deduplication_suppresses_immediate_repeated_uuid() -> TestResult<()> {
     let Some(harness) = ExternalDedupHarness::start(ENABLED_ADDRESS_ENV, "enabled").await? else {
-        eprintln!(
-            "{ENABLED_ADDRESS_ENV} is not set; skipping enabled Iggy deduplication evidence"
-        );
+        eprintln!("{ENABLED_ADDRESS_ENV} is not set; skipping enabled Iggy deduplication evidence");
         return Ok(());
     };
 
@@ -89,9 +87,7 @@ async fn bounded_deduplication_capacity_eviction_accepts_old_uuid_again() -> Tes
 #[tokio::test]
 async fn expired_deduplication_entry_accepts_same_uuid_after_bounded_wait() -> TestResult<()> {
     let Some(harness) = ExternalDedupHarness::start(EXPIRY_ADDRESS_ENV, "expiry").await? else {
-        eprintln!(
-            "{EXPIRY_ADDRESS_ENV} is not set; skipping expiry Iggy deduplication evidence"
-        );
+        eprintln!("{EXPIRY_ADDRESS_ENV} is not set; skipping expiry Iggy deduplication evidence");
         return Ok(());
     };
     let wait = expiry_wait()?;
@@ -180,10 +176,7 @@ fn poison_entry(stream: &str, offset: u64, payload: Vec<u8>) -> rustok_core::Res
     .to_dlq_entry(1))
 }
 
-fn external_test_config(
-    address_env: &'static str,
-    scope: &str,
-) -> TestResult<Option<IggyConfig>> {
+fn external_test_config(address_env: &'static str, scope: &str) -> TestResult<Option<IggyConfig>> {
     let address = match env::var(address_env) {
         Ok(value) => bounded_env(address_env, value, 255)?,
         Err(env::VarError::NotPresent) => return Ok(None),
@@ -242,7 +235,9 @@ fn connection_string(config: &ExternalConfig) -> Result<String, IoError> {
         return Err(invalid_data("Iggy dedup evidence requires TCP"));
     }
     if config.tls_enabled || config.tls_domain.is_some() || config.tls_ca_file.is_some() {
-        return Err(invalid_data("Iggy dedup evidence does not claim TLS coverage"));
+        return Err(invalid_data(
+            "Iggy dedup evidence does not claim TLS coverage",
+        ));
     }
     validate_connection_component(address, "address", &['@', '?', '#'])?;
     validate_connection_component(&config.username, "username", &[':', '@'])?;
@@ -264,9 +259,9 @@ fn expiry_wait() -> TestResult<Duration> {
             "{EXPIRY_WAIT_ENV} is required for expiry evidence: {error}"
         ))
     })?;
-    let millis = value.parse::<u64>().map_err(|error| {
-        invalid_data(format!("{EXPIRY_WAIT_ENV} is invalid: {error}"))
-    })?;
+    let millis = value
+        .parse::<u64>()
+        .map_err(|error| invalid_data(format!("{EXPIRY_WAIT_ENV} is invalid: {error}")))?;
     if !(MIN_EXPIRY_WAIT_MS..=MAX_EXPIRY_WAIT_MS).contains(&millis) {
         return Err(invalid_data(format!(
             "{EXPIRY_WAIT_ENV} must be between {MIN_EXPIRY_WAIT_MS} and {MAX_EXPIRY_WAIT_MS}"

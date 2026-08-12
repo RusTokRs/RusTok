@@ -1,6 +1,4 @@
-use rustok_benchmarks::index_storage::{
-    PartitionSnapshotConfig, capture_partition_snapshot,
-};
+use rustok_benchmarks::index_storage::{PartitionSnapshotConfig, capture_partition_snapshot};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

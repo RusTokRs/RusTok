@@ -2,10 +2,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::native_server_adapter::ApiError;
 
-const COMMERCE_ADMIN_PROMOTION_CLIENT_OWNER: &str =
-    "rustok_commerce.admin_promotion_transport";
-const COMMERCE_ADMIN_PROMOTION_CLIENT_BOUNDARY: &str =
-    "commerce_admin_promotion_client_transport";
+const COMMERCE_ADMIN_PROMOTION_CLIENT_OWNER: &str = "rustok_commerce.admin_promotion_transport";
+const COMMERCE_ADMIN_PROMOTION_CLIENT_BOUNDARY: &str = "commerce_admin_promotion_client_transport";
 const COMMERCE_ADMIN_PROMOTION_CLIENT_PUBLIC_MESSAGE: &str =
     "Commerce admin promotion request could not be completed";
 

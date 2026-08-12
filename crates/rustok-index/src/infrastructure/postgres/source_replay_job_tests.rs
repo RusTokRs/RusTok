@@ -146,7 +146,11 @@ async fn replay_job_excludes_other_workers_and_requires_complete_checkpoint() {
     let lease = fixture.acquire("worker-a").await;
     assert_eq!(lease.attempt_count(), 1);
     assert_eq!(
-        fixture.jobs.acquire(&fixture.request("worker-b")).await.unwrap(),
+        fixture
+            .jobs
+            .acquire(&fixture.request("worker-b"))
+            .await
+            .unwrap(),
         IndexReplayJobAcquireOutcome::Busy
     );
     assert_eq!(
@@ -178,7 +182,11 @@ async fn replay_job_excludes_other_workers_and_requires_complete_checkpoint() {
         .unwrap();
     fixture.jobs.succeed(&lease).await.unwrap();
     assert_eq!(
-        fixture.jobs.acquire(&fixture.request("worker-b")).await.unwrap(),
+        fixture
+            .jobs
+            .acquire(&fixture.request("worker-b"))
+            .await
+            .unwrap(),
         IndexReplayJobAcquireOutcome::AlreadyComplete {
             job_id: lease.job_id(),
         }

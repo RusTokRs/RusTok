@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use thiserror::Error;
 
 use crate::domain::{
-    FieldCardinality, FieldPath, LocalizedEntityQuery, LocaleMode, OrderDirection, SchemaRef,
+    FieldCardinality, FieldPath, LocaleMode, LocalizedEntityQuery, OrderDirection, SchemaRef,
 };
 
 use super::{QueryValidationError, SchemaRegistry, SchemaRegistryError};
@@ -30,7 +30,9 @@ pub enum LocalizedEntityQueryValidationError {
     LocalizedProjectionLinkedPath(FieldPath),
     #[error("localized projection field must be scalar in the initial fold compiler: {0:?}")]
     LocalizedProjectionMany(FieldPath),
-    #[error("localized projection field must not be evaluated by the ordinary identity filter: {0:?}")]
+    #[error(
+        "localized projection field must not be evaluated by the ordinary identity filter: {0:?}"
+    )]
     LocalizedProjectionInOrdinaryFilter(FieldPath),
     #[error("localized projection field must not drive identity ordering: {0:?}")]
     LocalizedProjectionInOrder(FieldPath),
@@ -43,9 +45,7 @@ impl SchemaRegistry {
         &self,
         query: &LocalizedEntityQuery,
     ) -> Result<(), LocalizedEntityQueryValidationError> {
-        query
-            .validate_shape()
-            .map_err(QueryValidationError::from)?;
+        query.validate_shape().map_err(QueryValidationError::from)?;
 
         if !matches!(
             query.identity_order_direction,
@@ -116,12 +116,16 @@ impl SchemaRegistry {
             }
             if !path.links().is_empty() {
                 return Err(
-                    LocalizedEntityQueryValidationError::LocalizedProjectionLinkedPath(path.clone()),
+                    LocalizedEntityQueryValidationError::LocalizedProjectionLinkedPath(
+                        path.clone(),
+                    ),
                 );
             }
             if !query.query.fields.iter().any(|selected| selected == path) {
                 return Err(
-                    LocalizedEntityQueryValidationError::LocalizedProjectionNotSelected(path.clone()),
+                    LocalizedEntityQueryValidationError::LocalizedProjectionNotSelected(
+                        path.clone(),
+                    ),
                 );
             }
             let field = registered
@@ -134,9 +138,9 @@ impl SchemaRegistry {
                     field: path.field().clone(),
                 })?;
             if field.cardinality != FieldCardinality::One {
-                return Err(LocalizedEntityQueryValidationError::LocalizedProjectionMany(
-                    path.clone(),
-                ));
+                return Err(
+                    LocalizedEntityQueryValidationError::LocalizedProjectionMany(path.clone()),
+                );
             }
             if ordinary_filter_paths.contains(path) {
                 return Err(
@@ -252,8 +256,7 @@ mod tests {
         let schema = schema(LocaleMode::Required);
         let mut registry = SchemaRegistry::new();
         registry.register(schema.clone()).unwrap();
-        let query = localized_query(&schema)
-            .with_identity_order_direction(OrderDirection::MaxDesc);
+        let query = localized_query(&schema).with_identity_order_direction(OrderDirection::MaxDesc);
         assert_eq!(
             registry.validate_localized_entity_query(&query),
             Err(LocalizedEntityQueryValidationError::InvalidIdentityOrderDirection)

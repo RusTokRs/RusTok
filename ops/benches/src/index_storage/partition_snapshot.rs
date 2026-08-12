@@ -7,15 +7,11 @@ use std::{
 
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 
-use super::{
-    connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata,
-};
+use super::{connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata};
 
 const MANIFEST_CONTRACT: &str = "index_partition_evidence_manifest_v1";
 const SHADOW_PLAN_VERSION: &str = "tenant_hash_shadow_v1";
@@ -189,8 +185,7 @@ pub async fn capture_partition_snapshot(
 ) -> Result<PartitionSnapshotCapture> {
     let manifest: PreparedManifest = read_regular_json(&config.manifest_path, "manifest")?;
     validate_manifest(&manifest)?;
-    let audit: TenantPredicateAudit =
-        read_regular_json(&config.query_audit_path, "query audit")?;
+    let audit: TenantPredicateAudit = read_regular_json(&config.query_audit_path, "query audit")?;
     validate_query_audit(&audit)?;
 
     let baseline_path = config.baseline_path();
@@ -207,7 +202,10 @@ pub async fn capture_partition_snapshot(
         "partition evidence requires PostgreSQL 16, got {}",
         database_metadata.server_version_num
     );
-    ensure!(database_metadata.jit == "off", "partition evidence requires jit=off");
+    ensure!(
+        database_metadata.jit == "off",
+        "partition evidence requires jit=off"
+    );
     ensure_unpartitioned_source(&db, "index_entities").await?;
     ensure_unpartitioned_source(&db, "index_links").await?;
 
@@ -218,20 +216,22 @@ pub async fn capture_partition_snapshot(
         .await
         .context("failed to create deterministic partition evidence shadow tables")?;
 
-    let transaction = db.begin().await.context("failed to start snapshot transaction")?;
+    let transaction = db
+        .begin()
+        .await
+        .context("failed to start snapshot transaction")?;
     transaction
         .execute_unprepared("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;")
         .await
         .context("failed to pin repeatable-read snapshot")?;
     let baseline_generated_at = Utc::now();
     let distinct_tenants = distinct_tenants(&transaction).await?;
-    ensure!(distinct_tenants > 0, "partition evidence requires at least one tenant");
-    let baseline_entities = relation_evidence(
-        &transaction,
-        "index_entities",
-        RelationKind::Entities,
-    )
-    .await?;
+    ensure!(
+        distinct_tenants > 0,
+        "partition evidence requires at least one tenant"
+    );
+    let baseline_entities =
+        relation_evidence(&transaction, "index_entities", RelationKind::Entities).await?;
     let baseline_links =
         relation_evidence(&transaction, "index_links", RelationKind::Links).await?;
     copy_relation(
@@ -261,12 +261,9 @@ pub async fn capture_partition_snapshot(
         RelationKind::Entities,
     )
     .await?;
-    let shadow_links = shadow_relation_evidence(
-        &db,
-        &manifest.shadow_relations.links,
-        RelationKind::Links,
-    )
-    .await?;
+    let shadow_links =
+        shadow_relation_evidence(&db, &manifest.shadow_relations.links, RelationKind::Links)
+            .await?;
     let current_entities = logical_relation(&db, "index_entities", RelationKind::Entities).await?;
     let current_links = logical_relation(&db, "index_links", RelationKind::Links).await?;
     let caught_up = current_entities.rows == shadow_entities.rows
@@ -292,8 +289,14 @@ pub async fn capture_partition_snapshot(
         links: shadow_links,
     };
     ensure_snapshot_parity(&baseline, &shadow)?;
-    ensure!(orphan_links == 0, "shadow snapshot contains {orphan_links} orphan links");
-    ensure!(foreign_keys_validated, "shadow source foreign key is not validated");
+    ensure!(
+        orphan_links == 0,
+        "shadow snapshot contains {orphan_links} orphan links"
+    );
+    ensure!(
+        foreign_keys_validated,
+        "shadow source foreign key is not validated"
+    );
     ensure_database_metadata_stable(&db, &database_metadata, "partition snapshot capture").await?;
 
     publish_snapshot_pair(&baseline_path, &baseline, &shadow_path, &shadow)?;
@@ -319,15 +322,30 @@ fn read_regular_json<T: DeserializeOwned>(path: &Path, label: &str) -> Result<T>
 }
 
 fn validate_manifest(manifest: &PreparedManifest) -> Result<()> {
-    ensure!(manifest.contract == MANIFEST_CONTRACT, "unexpected manifest contract");
-    ensure!(manifest.repository == "RusTokRs/RusTok", "unexpected manifest repository");
-    ensure!(is_lower_hex(&manifest.commit, 40), "manifest commit must be lowercase SHA-1");
+    ensure!(
+        manifest.contract == MANIFEST_CONTRACT,
+        "unexpected manifest contract"
+    );
+    ensure!(
+        manifest.repository == "RusTokRs/RusTok",
+        "unexpected manifest repository"
+    );
+    ensure!(
+        is_lower_hex(&manifest.commit, 40),
+        "manifest commit must be lowercase SHA-1"
+    );
     ensure!(
         !manifest.run_key.is_empty() && manifest.run_key.len() <= 128,
         "manifest run_key must be bounded and non-empty"
     );
-    ensure!(manifest.postgres_image == "postgres:16", "manifest must pin postgres:16");
-    ensure!(manifest.strategy == "tenant_hash", "manifest strategy must be tenant_hash");
+    ensure!(
+        manifest.postgres_image == "postgres:16",
+        "manifest must pin postgres:16"
+    );
+    ensure!(
+        manifest.strategy == "tenant_hash",
+        "manifest strategy must be tenant_hash"
+    );
     ensure!(
         manifest.plan_digest_contract == "normalized_partition_plan_v1",
         "unexpected plan digest contract"
@@ -336,7 +354,10 @@ fn validate_manifest(manifest: &PreparedManifest) -> Result<()> {
         (2..=128).contains(&manifest.modulus) && manifest.modulus.is_power_of_two(),
         "manifest modulus must be a power of two between 2 and 128"
     );
-    ensure!(is_lower_hex(&manifest.evidence_id, 64), "invalid evidence_id");
+    ensure!(
+        is_lower_hex(&manifest.evidence_id, 64),
+        "invalid evidence_id"
+    );
     ensure!(
         manifest.shadow_plan_version == SHADOW_PLAN_VERSION,
         "unexpected shadow plan version"
@@ -379,7 +400,10 @@ fn validate_relation_plan(
     modulus: u32,
 ) -> Result<()> {
     ensure!(plan.source == expected_source, "unexpected relation source");
-    ensure!(plan.parent == expected_parent, "unexpected shadow parent name");
+    ensure!(
+        plan.parent == expected_parent,
+        "unexpected shadow parent name"
+    );
     validate_identifier(&plan.parent)?;
     ensure!(
         plan.partitions.len() == modulus as usize,
@@ -396,7 +420,10 @@ fn validate_relation_plan(
 }
 
 fn validate_identifier(value: &str) -> Result<()> {
-    ensure!(!value.is_empty() && value.len() <= 63, "invalid PostgreSQL identifier length");
+    ensure!(
+        !value.is_empty() && value.len() <= 63,
+        "invalid PostgreSQL identifier length"
+    );
     ensure!(
         value
             .bytes()
@@ -407,8 +434,14 @@ fn validate_identifier(value: &str) -> Result<()> {
 }
 
 fn validate_query_audit(audit: &TenantPredicateAudit) -> Result<()> {
-    ensure!(audit.contract == QUERY_AUDIT_CONTRACT, "unexpected query audit contract");
-    ensure!(audit.total_templates > 0, "query audit must contain templates");
+    ensure!(
+        audit.contract == QUERY_AUDIT_CONTRACT,
+        "unexpected query audit contract"
+    );
+    ensure!(
+        audit.total_templates > 0,
+        "query audit must contain templates"
+    );
     ensure!(
         audit.tenant_scoped_templates >= 0
             && audit.tenant_scoped_templates <= audit.total_templates,
@@ -418,9 +451,18 @@ fn validate_query_audit(audit: &TenantPredicateAudit) -> Result<()> {
 }
 
 fn ensure_outputs_available(baseline_path: &Path, shadow_path: &Path) -> Result<()> {
-    ensure!(baseline_path != shadow_path, "baseline and shadow outputs must be distinct");
-    ensure!(!baseline_path.exists(), "refusing to overwrite {baseline_path:?}");
-    ensure!(!shadow_path.exists(), "refusing to overwrite {shadow_path:?}");
+    ensure!(
+        baseline_path != shadow_path,
+        "baseline and shadow outputs must be distinct"
+    );
+    ensure!(
+        !baseline_path.exists(),
+        "refusing to overwrite {baseline_path:?}"
+    );
+    ensure!(
+        !shadow_path.exists(),
+        "refusing to overwrite {shadow_path:?}"
+    );
     Ok(())
 }
 
@@ -458,7 +500,10 @@ async fn ensure_shadow_absent(db: &DatabaseConnection, plan: &RelationPlan) -> R
             .await?
             .context("shadow existence query returned no row")?;
         let existing: Option<String> = row.try_get("", "relation")?;
-        ensure!(existing.is_none(), "shadow relation already exists: {relation}");
+        ensure!(
+            existing.is_none(),
+            "shadow relation already exists: {relation}"
+        );
     }
     Ok(())
 }
@@ -588,7 +633,9 @@ async fn shadow_relation_evidence(
         partition_bytes.push(relation_size(db, partition).await?);
     }
     let bytes = partition_bytes.iter().try_fold(0_i64, |total, value| {
-        total.checked_add(*value).context("shadow relation byte count overflow")
+        total
+            .checked_add(*value)
+            .context("shadow relation byte count overflow")
     })?;
     Ok(ShadowRelationEvidence {
         rows: logical.rows,
@@ -608,7 +655,10 @@ async fn relation_size<C: ConnectionTrait>(db: &C, relation: &str) -> Result<i64
         .await?
         .with_context(|| format!("relation size query returned no row for {relation}"))?;
     let bytes: i64 = row.try_get("", "bytes")?;
-    ensure!(bytes > 0, "relation {relation} has a non-positive physical size");
+    ensure!(
+        bytes > 0,
+        "relation {relation} has a non-positive physical size"
+    );
     Ok(bytes)
 }
 
@@ -777,7 +827,8 @@ fn publish_snapshot_pair(
 }
 
 fn json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>> {
-    let mut bytes = serde_json::to_vec_pretty(value).context("failed to serialize evidence JSON")?;
+    let mut bytes =
+        serde_json::to_vec_pretty(value).context("failed to serialize evidence JSON")?;
     bytes.push(b'\n');
     Ok(bytes)
 }

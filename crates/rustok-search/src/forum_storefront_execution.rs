@@ -12,8 +12,8 @@ use crate::forum_current_channel_filter::ForumStorefrontCurrentChannelFilter;
 use crate::{
     FORUM_SEARCH_SOURCE_MODULE, ForumStorefrontDocumentFilters, MAX_FORUM_SEARCH_RESULT_CANDIDATES,
     PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter, SearchDictionaryService,
-    SearchFilterPresetService, SearchQuery, SearchQueryLogRecord, SearchRankingProfile, SearchResult,
-    SearchResultItem, SearchSettingsService, SharedStorefrontSearchCategoryScopePort,
+    SearchFilterPresetService, SearchQuery, SearchQueryLogRecord, SearchRankingProfile,
+    SearchResult, SearchResultItem, SearchSettingsService, SharedStorefrontSearchCategoryScopePort,
     SharedStorefrontSearchResultEligibilityPort, StorefrontSearchCategoryScopeRequest,
     StorefrontSearchResultCandidate, StorefrontSearchResultCandidateKind,
     StorefrontSearchResultEligibilityRequest, StorefrontSearchTransport, TrustedStorefrontChannel,
@@ -328,9 +328,7 @@ async fn execute_result_eligible_search(
         ));
     }
 
-    all_items.retain(|item| {
-        document_filters.matches(item) && current_channel_filter.matches(item)
-    });
+    all_items.retain(|item| document_filters.matches(item) && current_channel_filter.matches(item));
 
     let mut seen_candidates = HashSet::new();
     let candidates = all_items
@@ -473,13 +471,10 @@ fn normalize_request(
     let query = normalize_query(&request.query)?;
     let locale = normalize_locale(request.locale.as_deref())?;
     let fallback_locale = normalize_required_locale(&request.fallback_locale)?;
-    let exact_locale = locale
-        .clone()
-        .unwrap_or_else(|| fallback_locale.clone());
+    let exact_locale = locale.clone().unwrap_or_else(|| fallback_locale.clone());
     let published_from =
         normalize_optional_rfc3339("published_from", request.published_from.as_deref())?;
-    let published_to =
-        normalize_optional_rfc3339("published_to", request.published_to.as_deref())?;
+    let published_to = normalize_optional_rfc3339("published_to", request.published_to.as_deref())?;
     if published_from
         .as_ref()
         .zip(published_to.as_ref())
@@ -813,10 +808,7 @@ mod tests {
 
     #[test]
     fn date_bounds_require_rfc3339() {
-        assert!(
-            normalize_optional_rfc3339("published_from", Some("2026-07-31T00:00:00Z"))
-                .is_ok()
-        );
+        assert!(normalize_optional_rfc3339("published_from", Some("2026-07-31T00:00:00Z")).is_ok());
         assert!(normalize_optional_rfc3339("published_from", Some("2026-07-31")).is_err());
     }
 

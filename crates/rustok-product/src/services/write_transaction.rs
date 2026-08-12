@@ -38,10 +38,7 @@ tokio::task_local! {
 /// captures the receipt only for the explicitly wrapped owner command. The concrete
 /// owner write method records its actual result before commit, so transaction-derived
 /// fields such as category path never need a preflight read outside the owner transaction.
-pub(crate) async fn with_product_operation_receipt<F, T>(
-    lease: idempotency::Lease,
-    future: F,
-) -> T
+pub(crate) async fn with_product_operation_receipt<F, T>(lease: idempotency::Lease, future: F) -> T
 where
     F: Future<Output = T>,
 {

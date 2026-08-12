@@ -167,11 +167,7 @@ impl DlqDuplicateRollingWindow {
             .ok_or(DlqDuplicateRollingWindowError::CountOverflow)?;
         candidate_cycles.push_back(incoming);
 
-        let snapshot = summarize_window(
-            &candidate_cycles,
-            candidate_retained,
-            candidate_evicted,
-        )?;
+        let snapshot = summarize_window(&candidate_cycles, candidate_retained, candidate_evicted)?;
 
         self.cycles = candidate_cycles;
         self.retained_observations = candidate_retained;
@@ -195,13 +191,9 @@ fn summarize_window(
     retained_observations: u32,
     evicted_cycles: u64,
 ) -> Result<DlqDuplicateRollingWindowSnapshot, DlqDuplicateRollingWindowError> {
-    let retained_cycles = u32::try_from(cycles.len())
-        .map_err(|_| DlqDuplicateRollingWindowError::CountOverflow)?;
-    let summary = summarize_dlq_duplicates(
-        cycles
-            .iter()
-            .flat_map(|cycle| cycle.iter().cloned()),
-    )?;
+    let retained_cycles =
+        u32::try_from(cycles.len()).map_err(|_| DlqDuplicateRollingWindowError::CountOverflow)?;
+    let summary = summarize_dlq_duplicates(cycles.iter().flat_map(|cycle| cycle.iter().cloned()))?;
 
     Ok(DlqDuplicateRollingWindowSnapshot {
         summary,

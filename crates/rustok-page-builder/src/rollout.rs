@@ -329,7 +329,10 @@ mod tests {
                     "publish": { "enabled": flags.publish_enabled }
                 }
             });
-            assert_eq!(BuilderCapabilityFlags::from_module_settings(&settings), Ok(flags));
+            assert_eq!(
+                BuilderCapabilityFlags::from_module_settings(&settings),
+                Ok(flags)
+            );
         }
     }
 
@@ -362,7 +365,10 @@ mod tests {
             BuilderCapabilityFlags::default()
         );
         assert_eq!(
-            effective_provider_runtime_flags(&BuilderToggleProfile::PreviewOff.flags(), Some(&ready)),
+            effective_provider_runtime_flags(
+                &BuilderToggleProfile::PreviewOff.flags(),
+                Some(&ready)
+            ),
             BuilderToggleProfile::PreviewOff.flags()
         );
 
@@ -384,7 +390,10 @@ mod tests {
             runtime_error_rate: 0.03,
         });
         assert_eq!(
-            effective_provider_runtime_flags(&BuilderCapabilityFlags::default(), Some(&unavailable)),
+            effective_provider_runtime_flags(
+                &BuilderCapabilityFlags::default(),
+                Some(&unavailable)
+            ),
             BuilderToggleProfile::BuilderOff.flags()
         );
 

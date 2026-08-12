@@ -4,8 +4,7 @@ const MIGRATION: &str = include_str!(
 const MIGRATIONS_MOD: &str = include_str!("../src/migrations/mod.rs");
 const TOPIC_OWNER: &str = include_str!("../src/services/topic_owner.rs");
 const TOPIC_OWNER_INLINE: &str = include_str!("../src/services/topic_owner_inline.rs");
-const SNAPSHOT_OWNER: &str =
-    include_str!("../src/services/topic_route_tombstone_visibility.rs");
+const SNAPSHOT_OWNER: &str = include_str!("../src/services/topic_route_tombstone_visibility.rs");
 const CATEGORY_VISIBILITY: &str = include_str!("../src/services/category_visibility.rs");
 
 fn require_order(source: &str, markers: &[&str]) {
@@ -38,11 +37,12 @@ fn migration_adds_sealed_append_only_snapshot_storage() {
         "DatabaseBackend::Postgres",
         "DatabaseBackend::Sqlite",
     ] {
-        assert!(MIGRATION.contains(marker), "missing migration marker {marker}");
+        assert!(
+            MIGRATION.contains(marker),
+            "missing migration marker {marker}"
+        );
     }
-    assert!(MIGRATIONS_MOD.contains(
-        "m20260806_000025_add_forum_topic_route_tombstone_visibility"
-    ));
+    assert!(MIGRATIONS_MOD.contains("m20260806_000025_add_forum_topic_route_tombstone_visibility"));
 }
 
 #[test]
@@ -58,9 +58,7 @@ fn delete_matches_canonical_policy_lock_order_before_snapshot() {
             "mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?",
         ],
     );
-    assert!(TOPIC_OWNER_INLINE.contains(
-        "include!(\"topic_route_tombstone_visibility.rs\")"
-    ));
+    assert!(TOPIC_OWNER_INLINE.contains("include!(\"topic_route_tombstone_visibility.rs\")"));
 }
 
 #[test]
@@ -85,12 +83,11 @@ fn snapshot_reuses_visibility_and_lock_owners_and_seals_exact_channel_scope() {
             "missing snapshot owner marker {marker}"
         );
     }
-    assert!(CATEGORY_VISIBILITY.contains(
-        "pub(crate) async fn is_category_public_to_anonymous"
-    ));
-    assert!(CATEGORY_VISIBILITY.contains(
-        "super::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?"
-    ));
+    assert!(CATEGORY_VISIBILITY.contains("pub(crate) async fn is_category_public_to_anonymous"));
+    assert!(
+        CATEGORY_VISIBILITY
+            .contains("super::category_audience::lock_category_tree_in_tx(&txn, tenant_id).await?")
+    );
 
     for forbidden in [
         "forum_category_policy::",

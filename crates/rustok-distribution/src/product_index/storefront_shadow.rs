@@ -33,11 +33,15 @@ pub(crate) enum ProductStorefrontIndexShadowError {
     InvalidPagination,
     #[error("Product Storefront Index shadow query offset exceeds the Index bounded offset depth")]
     OffsetTooDeep,
-    #[error("Product Storefront Index shadow query title pattern exceeds the bounded TextLike contract")]
+    #[error(
+        "Product Storefront Index shadow query title pattern exceeds the bounded TextLike contract"
+    )]
     SearchPatternTooLong,
     #[error("Product Storefront Index shadow query title pattern contains a NUL byte")]
     SearchPatternContainsNul,
-    #[error("resolved Product attribute filters do not match the owner Storefront filter identities")]
+    #[error(
+        "resolved Product attribute filters do not match the owner Storefront filter identities"
+    )]
     AttributeFilterResolutionMismatch,
     #[error("resolved Product attribute term expression is invalid")]
     InvalidAttributeTermPredicate,
@@ -64,16 +68,16 @@ pub(crate) fn build_product_storefront_index_shadow_query(
     if tenant_id.is_nil() {
         return Err(ProductStorefrontIndexShadowError::NilTenant);
     }
-    let public_channel_id = public_channel_id
-        .ok_or(ProductStorefrontIndexShadowError::PublicChannelRequired)?;
+    let public_channel_id =
+        public_channel_id.ok_or(ProductStorefrontIndexShadowError::PublicChannelRequired)?;
     if public_channel_id.is_nil() {
         return Err(ProductStorefrontIndexShadowError::NilPublicChannel);
     }
 
-    let requested_locale =
-        LocaleKey::new(requested_locale).map_err(|_| ProductStorefrontIndexShadowError::InvalidLocale)?;
-    let fallback_locale =
-        LocaleKey::new(fallback_locale).map_err(|_| ProductStorefrontIndexShadowError::InvalidLocale)?;
+    let requested_locale = LocaleKey::new(requested_locale)
+        .map_err(|_| ProductStorefrontIndexShadowError::InvalidLocale)?;
+    let fallback_locale = LocaleKey::new(fallback_locale)
+        .map_err(|_| ProductStorefrontIndexShadowError::InvalidLocale)?;
 
     if owner.page == 0 || owner.per_page == 0 || owner.per_page > 48 {
         return Err(ProductStorefrontIndexShadowError::InvalidPagination);
@@ -172,13 +176,11 @@ pub(crate) fn build_product_storefront_index_shadow_query(
         include_exact_count: true,
     };
 
-    Ok(LocalizedEntityQuery::new(
-        query,
-        Some(fallback_locale),
-        any_locale_filter,
+    Ok(
+        LocalizedEntityQuery::new(query, Some(fallback_locale), any_locale_filter)
+            .with_localized_projection_fields([root_field("title")?, root_field("handle")?])
+            .with_identity_order_direction(direction),
     )
-    .with_localized_projection_fields([root_field("title")?, root_field("handle")?])
-    .with_identity_order_direction(direction))
 }
 
 fn resolved_attribute_filters_to_index(
@@ -262,9 +264,9 @@ fn product_schema_ref() -> Result<SchemaRef, ProductStorefrontIndexShadowError> 
 }
 
 fn root_field(name: &str) -> Result<FieldPath, ProductStorefrontIndexShadowError> {
-    Ok(FieldPath::new(
-        FieldName::new(name).map_err(|_| ProductStorefrontIndexShadowError::InvalidSchemaContract)?,
-    ))
+    Ok(FieldPath::new(FieldName::new(name).map_err(|_| {
+        ProductStorefrontIndexShadowError::InvalidSchemaContract
+    })?))
 }
 
 #[cfg(test)]
@@ -314,14 +316,29 @@ mod tests {
         assert_eq!(query.query.scope.tenant_id, tenant);
         assert_eq!(query.identity_order_direction, OrderDirection::Desc);
         assert_eq!(query.query.order_by.len(), 2);
-        assert!(query.query.order_by.iter().all(|order| order.direction == OrderDirection::Desc));
-        assert_eq!(query.query.order_by[0].field.field().as_str(), "published_at");
+        assert!(
+            query
+                .query
+                .order_by
+                .iter()
+                .all(|order| order.direction == OrderDirection::Desc)
+        );
+        assert_eq!(
+            query.query.order_by[0].field.field().as_str(),
+            "published_at"
+        );
         assert_eq!(query.query.order_by[1].field.field().as_str(), "created_at");
         assert!(matches!(
             query.query.pagination,
-            Pagination::Offset { limit: 12, offset: 12 }
+            Pagination::Offset {
+                limit: 12,
+                offset: 12
+            }
         ));
-        assert!(matches!(query.any_locale_filter, Some(FilterExpr::TextLike(_, _))));
+        assert!(matches!(
+            query.any_locale_filter,
+            Some(FilterExpr::TextLike(_, _))
+        ));
         assert_eq!(query.localized_projection_fields.len(), 2);
     }
 
@@ -344,7 +361,11 @@ mod tests {
         let Some(FilterExpr::And(filters)) = query.query.filter else {
             panic!("shadow query root filter must be AND");
         };
-        assert!(filters.iter().any(|filter| matches!(filter, FilterExpr::Not(_))));
+        assert!(
+            filters
+                .iter()
+                .any(|filter| matches!(filter, FilterExpr::Not(_)))
+        );
     }
 
     #[test]

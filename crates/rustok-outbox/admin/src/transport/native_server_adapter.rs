@@ -45,7 +45,9 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
             .await
             .map_err(ServerFnError::new)?
             .0
-            .ok_or_else(|| ServerFnError::new("tenant context is required for outbox inspection"))?;
+            .ok_or_else(|| {
+                ServerFnError::new("tenant context is required for outbox inspection")
+            })?;
         require_outbox_admin_tenant_scope(auth.tenant_id, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::LOGS_READ) {

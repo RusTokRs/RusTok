@@ -525,9 +525,7 @@ fn normalize_alias_reason(reason: &str) -> PagesResult<String> {
         || reason.chars().count() > MAX_PAGE_ROUTE_ALIAS_REASON_LEN
         || reason.chars().any(char::is_control)
     {
-        return Err(PagesError::validation(
-            "Page route alias reason is invalid",
-        ));
+        return Err(PagesError::validation("Page route alias reason is invalid"));
     }
     Ok(reason.to_string())
 }

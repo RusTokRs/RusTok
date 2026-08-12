@@ -192,10 +192,19 @@ pub enum InlineEditError {
     UnsupportedSelection,
     SelectedPageNotFound,
     SelectedPageMissingId,
-    GrantPageMismatch { expected: String, actual: String },
-    StaleProjectHash { expected: ProjectHash, actual: ProjectHash },
+    GrantPageMismatch {
+        expected: String,
+        actual: String,
+    },
+    StaleProjectHash {
+        expected: ProjectHash,
+        actual: ProjectHash,
+    },
     AuthorizationRejected(String),
-    SequenceReplay { last: u64, received: u64 },
+    SequenceReplay {
+        last: u64,
+        received: u64,
+    },
     UnsupportedField,
     ComponentNotFound(String),
     ComponentOutsideSelectedPage(String),
@@ -234,7 +243,10 @@ impl Display for InlineEditError {
             ),
             Self::UnsupportedField => formatter.write_str("inline edit field is unsupported"),
             Self::ComponentNotFound(component_id) => {
-                write!(formatter, "inline edit component `{component_id}` was not found")
+                write!(
+                    formatter,
+                    "inline edit component `{component_id}` was not found"
+                )
             }
             Self::ComponentOutsideSelectedPage(component_id) => write!(
                 formatter,
@@ -373,9 +385,7 @@ fn collect_runtime_owned_subtree(
     };
     let id = component.id();
     let blocked_here = ancestor_blocked || id.is_some_and(|id| direct.contains(id));
-    if blocked_here
-        && let Some(id) = id
-    {
+    if blocked_here && let Some(id) = id {
         blocked.insert(id.to_string());
     }
     for child in component.children() {
@@ -452,7 +462,8 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
 
     #[cfg(all(target_arch = "wasm32", feature = "hydrate"))]
     {
-        let subscription = StoredValue::new_local(None::<fly_leptos::RealDomInlineEditSubscription>);
+        let subscription =
+            StoredValue::new_local(None::<fly_leptos::RealDomInlineEditSubscription>);
         let root_id = root_id.clone();
         let grant = grant.clone();
         let editable_ids = editable_ids.clone();
@@ -613,8 +624,8 @@ mod tests {
 
     #[test]
     fn only_noninteractive_static_leaf_text_outside_runtime_subtrees_is_editable() {
-        let ids = inline_editable_component_ids(&project(), &PageSelection::First)
-            .expect("editable ids");
+        let ids =
+            inline_editable_component_ids(&project(), &PageSelection::First).expect("editable ids");
         assert_eq!(ids, vec!["heading", "static-child"]);
     }
 
@@ -633,17 +644,20 @@ mod tests {
             .bind_request(1_000, 1, "heading", "Updated")
             .expect("request");
         let result = session
-            .apply_authorized(request, 1_000, &|request: &AuthenticatedInlineEditRequest| {
-                (request.authorization_proof() == "signed-proof")
-                    .then_some(())
-                    .ok_or_else(|| "invalid proof".to_string())
-            })
+            .apply_authorized(
+                request,
+                1_000,
+                &|request: &AuthenticatedInlineEditRequest| {
+                    (request.authorization_proof() == "signed-proof")
+                        .then_some(())
+                        .ok_or_else(|| "invalid proof".to_string())
+                },
+            )
             .expect("apply");
         assert_ne!(result.previous_hash, result.project_hash);
         assert_eq!(result.command_sequence, 1);
         assert_eq!(
-            result.project_data["pages"][0]["component"]["components"][0]["content"]
-                .as_str(),
+            result.project_data["pages"][0]["component"]["components"][0]["content"].as_str(),
             Some("Updated")
         );
     }
@@ -667,7 +681,10 @@ mod tests {
             Err(InlineEditError::NoContentChange(_))
         ));
         assert_eq!(session.last_sequence, 0);
-        assert_eq!(session.current_project_hash(), grant.expected_project_hash());
+        assert_eq!(
+            session.current_project_hash(),
+            grant.expected_project_hash()
+        );
     }
 
     #[test]

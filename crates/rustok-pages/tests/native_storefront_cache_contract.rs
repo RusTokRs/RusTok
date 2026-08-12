@@ -137,12 +137,7 @@ impl PagesCacheReadPort for RecordingCachePort {
         Ok(state.values.get(key).cloned())
     }
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> Result<(), PageCacheError> {
+    async fn put(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<(), PageCacheError> {
         let mut state = self
             .state
             .lock()
@@ -194,9 +189,9 @@ where
 async fn native_storefront_cache_misses_refills_hits_rotates_and_fails_open() -> TestResult<()> {
     let tenant_id = Uuid::from_u128(9001);
     let cache_variant = serde_json::to_string(&("home", "en", "en", "web"))?;
-    let cache = Arc::new(RecordingCachePort::new(
-        PageCacheGenerationSnapshot::new(3, 5, 7),
-    ));
+    let cache = Arc::new(RecordingCachePort::new(PageCacheGenerationSnapshot::new(
+        3, 5, 7,
+    )));
     let cache_port: Arc<dyn PagesCacheReadPort> = cache.clone();
     let runtime = PagesCacheReadRuntime::new(cache_port);
     let source_calls = Arc::new(AtomicUsize::new(0));
@@ -213,7 +208,10 @@ async fn native_storefront_cache_misses_refills_hits_rotates_and_fails_open() ->
     assert_eq!(source_calls.load(Ordering::SeqCst), 1);
 
     let first_cache = cache.snapshot();
-    assert_eq!(first_cache.generations, PageCacheGenerationSnapshot::new(3, 5, 7));
+    assert_eq!(
+        first_cache.generations,
+        PageCacheGenerationSnapshot::new(3, 5, 7)
+    );
     assert_eq!(first_cache.get_keys.len(), 1);
     assert_eq!(first_cache.put_keys.len(), 1);
     assert_eq!(first_cache.get_keys[0], first_cache.put_keys[0]);

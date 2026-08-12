@@ -308,9 +308,7 @@ fn order_status_kind_label(status: OrderStatusKind) -> &'static str {
     }
 }
 
-fn order_compensation_order_error_facts(
-    error: &OrderError,
-) -> OrderCompensationOrderErrorFacts {
+fn order_compensation_order_error_facts(error: &OrderError) -> OrderCompensationOrderErrorFacts {
     let (
         error_variant,
         text_field_count,
@@ -328,14 +326,7 @@ fn order_compensation_order_error_facts(
             if id.is_nil() { 0 } else { 1 },
             false,
         ),
-        OrderError::Validation(cause) => (
-            "validation",
-            1,
-            cause.chars().count(),
-            0,
-            0,
-            false,
-        ),
+        OrderError::Validation(cause) => ("validation", 1, cause.chars().count(), 0, 0, false),
         OrderError::InvalidTransition { from, to } => (
             "invalid_transition",
             2,

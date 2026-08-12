@@ -162,16 +162,12 @@ where
         source_registry: &SharedIndexSourceRegistry,
         event_registry: &SharedIndexMutationEventRegistry,
         delivery: ProductIndexRefreshDelivery<A::Token>,
-    ) -> Result<IndexSourceRefreshEventProcessOutcome, ProductIndexRefreshDeliveryProcessError> {
+    ) -> Result<IndexSourceRefreshEventProcessOutcome, ProductIndexRefreshDeliveryProcessError>
+    {
         let delivery = delivery.into_index_delivery()?;
         Ok(self
             .inner
-            .process(
-                schema_registry,
-                source_registry,
-                event_registry,
-                delivery,
-            )
+            .process(schema_registry, source_registry, event_registry, delivery)
             .await?)
     }
 }

@@ -13,8 +13,7 @@ pub(crate) async fn lock_active_topic_read_state_write_in_tx(
     tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ForumResult<forum_topic::Model> {
-    let mut topics =
-        lock_active_topic_read_state_writes_in_tx(txn, tenant_id, &[topic_id]).await?;
+    let mut topics = lock_active_topic_read_state_writes_in_tx(txn, tenant_id, &[topic_id]).await?;
     topics.pop().ok_or(ForumError::TopicNotFound(topic_id))
 }
 
@@ -86,7 +85,11 @@ pub(crate) async fn lock_topic_rows_for_read_state_in_tx(
         .map(|topic| (topic.id, topic))
         .collect::<std::collections::HashMap<_, _>>();
     ids.into_iter()
-        .map(|topic_id| by_id.remove(&topic_id).ok_or(ForumError::TopicNotFound(topic_id)))
+        .map(|topic_id| {
+            by_id
+                .remove(&topic_id)
+                .ok_or(ForumError::TopicNotFound(topic_id))
+        })
         .collect()
 }
 

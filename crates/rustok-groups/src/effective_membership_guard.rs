@@ -80,14 +80,9 @@ pub(crate) async fn require_effective_manager_direct_owned(
         return Ok(());
     }
 
-    let effective = resolve_group_membership_enforcement(
-        db,
-        tenant_id,
-        group_id,
-        actor_user_id,
-        Utc::now(),
-    )
-    .await?;
+    let effective =
+        resolve_group_membership_enforcement(db, tenant_id, group_id, actor_user_id, Utc::now())
+            .await?;
     require_manager_state(effective, capability)
 }
 

@@ -236,7 +236,10 @@ mod tests {
             OrderDirection::MinAsc.aggregate(),
             Some(ManyOrderAggregate::Min)
         );
-        assert_eq!(OrderDirection::MinDesc.base_direction(), OrderDirection::Desc);
+        assert_eq!(
+            OrderDirection::MinDesc.base_direction(),
+            OrderDirection::Desc
+        );
         assert_eq!(
             OrderDirection::MaxDesc.aggregate(),
             Some(ManyOrderAggregate::Max)

@@ -93,14 +93,10 @@ mod tests {
         let mut identity = ProductAdminLifecycleRetryIdentity::default();
         let intent = "tenant/user/product/status:published".to_string();
 
-        let first = identity.idempotency_key_for(
-            ProductAdminLifecycleOperation::ChangeStatus,
-            &intent,
-        );
-        let retry = identity.idempotency_key_for(
-            ProductAdminLifecycleOperation::ChangeStatus,
-            &intent,
-        );
+        let first =
+            identity.idempotency_key_for(ProductAdminLifecycleOperation::ChangeStatus, &intent);
+        let retry =
+            identity.idempotency_key_for(ProductAdminLifecycleOperation::ChangeStatus, &intent);
 
         assert_eq!(first, retry);
         assert_eq!(identity.pending_key(), Some(first.as_str()));
@@ -112,14 +108,10 @@ mod tests {
         let draft_a = "tenant/user/create/title:a".to_string();
         let draft_b = "tenant/user/create/title:b".to_string();
 
-        let first = identity.idempotency_key_for(
-            ProductAdminLifecycleOperation::CreateProduct,
-            &draft_a,
-        );
-        let changed = identity.idempotency_key_for(
-            ProductAdminLifecycleOperation::CreateProduct,
-            &draft_b,
-        );
+        let first =
+            identity.idempotency_key_for(ProductAdminLifecycleOperation::CreateProduct, &draft_a);
+        let changed =
+            identity.idempotency_key_for(ProductAdminLifecycleOperation::CreateProduct, &draft_b);
 
         assert_ne!(first, changed);
     }
@@ -129,14 +121,10 @@ mod tests {
         let mut identity = ProductAdminLifecycleRetryIdentity::default();
         let intent = "tenant/user/product:123".to_string();
 
-        let update = identity.idempotency_key_for(
-            ProductAdminLifecycleOperation::UpdateProduct,
-            &intent,
-        );
-        let remove = identity.idempotency_key_for(
-            ProductAdminLifecycleOperation::DeleteProduct,
-            &intent,
-        );
+        let update =
+            identity.idempotency_key_for(ProductAdminLifecycleOperation::UpdateProduct, &intent);
+        let remove =
+            identity.idempotency_key_for(ProductAdminLifecycleOperation::DeleteProduct, &intent);
 
         assert_ne!(update, remove);
     }
@@ -146,17 +134,13 @@ mod tests {
         let mut identity = ProductAdminLifecycleRetryIdentity::default();
         let intent = "tenant/user/product:123/delete".to_string();
 
-        let first = identity.idempotency_key_for(
-            ProductAdminLifecycleOperation::DeleteProduct,
-            &intent,
-        );
+        let first =
+            identity.idempotency_key_for(ProductAdminLifecycleOperation::DeleteProduct, &intent);
         identity.mark_succeeded();
         assert_eq!(identity.pending_key(), None);
 
-        let later = identity.idempotency_key_for(
-            ProductAdminLifecycleOperation::DeleteProduct,
-            &intent,
-        );
+        let later =
+            identity.idempotency_key_for(ProductAdminLifecycleOperation::DeleteProduct, &intent);
         assert_ne!(first, later);
     }
 

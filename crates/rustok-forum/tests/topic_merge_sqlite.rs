@@ -33,7 +33,10 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(db_url);
-    options.max_connections(5).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(5)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await?;
     db.execute_unprepared(
         "CREATE TABLE users (\
@@ -57,11 +60,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -281,7 +280,10 @@ async fn topic_merge_is_atomic_idempotent_and_append_only() -> TestResult<()> {
         .await?;
     assert_eq!(replay, merged);
     assert_eq!(merge_operation_count(&db, tenant_id).await?, 1);
-    assert_eq!(projection_root_ids(&db, tenant_id).await?, projection_ids_after_merge);
+    assert_eq!(
+        projection_root_ids(&db, tenant_id).await?,
+        projection_ids_after_merge
+    );
     assert_category_counters(&db, tenant_id, category_id, 2, 3).await?;
 
     let conflict = service
@@ -316,7 +318,8 @@ async fn topic_merge_is_atomic_idempotent_and_append_only() -> TestResult<()> {
 }
 
 #[tokio::test]
-async fn topic_merge_transfers_source_only_solution_and_preserves_target_only_solution() -> TestResult<()> {
+async fn topic_merge_transfers_source_only_solution_and_preserves_target_only_solution()
+-> TestResult<()> {
     let (db, event_bus) = setup().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -380,7 +383,10 @@ async fn topic_merge_transfers_source_only_solution_and_preserves_target_only_so
         .merge_topic(tenant_id, target_topic_id, admin.clone(), input.clone())
         .await?;
     assert_eq!(merged.operation_id, operation_id);
-    assert_eq!(solution_snapshot(&db, tenant_id, source_topic_id).await?, None);
+    assert_eq!(
+        solution_snapshot(&db, tenant_id, source_topic_id).await?,
+        None
+    );
     assert_eq!(
         solution_snapshot(&db, tenant_id, target_topic_id).await?,
         Some(source_solution_before.clone())
@@ -389,15 +395,7 @@ async fn topic_merge_transfers_source_only_solution_and_preserves_target_only_so
         user_solution_count(&db, tenant_id, source_author_id).await?,
         source_solution_count_before
     );
-    assert_reply_location(
-        &db,
-        tenant_id,
-        source_reply_id,
-        target_topic_id,
-        1,
-        None,
-    )
-    .await?;
+    assert_reply_location(&db, tenant_id, source_reply_id, target_topic_id, 1, None).await?;
     let target_read = TopicService::new(db.clone(), event_bus.clone())
         .get(tenant_id, admin.clone(), target_topic_id, "en")
         .await?;
@@ -472,7 +470,10 @@ async fn topic_merge_transfers_source_only_solution_and_preserves_target_only_so
         solution_snapshot(&db, tenant_id, retained_target_topic_id).await?,
         Some(target_solution_before)
     );
-    assert_eq!(solution_snapshot(&db, tenant_id, empty_source_topic_id).await?, None);
+    assert_eq!(
+        solution_snapshot(&db, tenant_id, empty_source_topic_id).await?,
+        None
+    );
     Ok(())
 }
 
@@ -489,8 +490,7 @@ async fn topic_merge_rejects_competing_solutions_without_partial_state() -> Test
     let admin = SecurityContext::new(UserRole::Admin, Some(actor_id));
     let source_author = SecurityContext::new(UserRole::Customer, Some(source_author_id));
     let target_author = SecurityContext::new(UserRole::Customer, Some(target_author_id));
-    let category_id =
-        create_category(&db, tenant_id, admin.clone(), "merge-guard", false).await?;
+    let category_id = create_category(&db, tenant_id, admin.clone(), "merge-guard", false).await?;
     let target_topic_id = create_topic(
         &db,
         &event_bus,
@@ -570,8 +570,14 @@ async fn topic_merge_rejects_competing_solutions_without_partial_state() -> Test
     assert_topic_state(&db, tenant_id, source_topic_id, "open", false, 1).await?;
     assert_reply_location(&db, tenant_id, source_reply_id, source_topic_id, 1, None).await?;
     assert_reply_location(&db, tenant_id, target_reply_id, target_topic_id, 1, None).await?;
-    assert_eq!(solution_snapshot(&db, tenant_id, source_topic_id).await?, source_solution_before);
-    assert_eq!(solution_snapshot(&db, tenant_id, target_topic_id).await?, target_solution_before);
+    assert_eq!(
+        solution_snapshot(&db, tenant_id, source_topic_id).await?,
+        source_solution_before
+    );
+    assert_eq!(
+        solution_snapshot(&db, tenant_id, target_topic_id).await?,
+        target_solution_before
+    );
     assert_eq!(
         user_solution_count(&db, tenant_id, source_author_id).await?,
         source_solution_count_before
@@ -582,13 +588,20 @@ async fn topic_merge_rejects_competing_solutions_without_partial_state() -> Test
     );
     assert_category_counters(&db, tenant_id, category_id, 2, 2).await?;
     assert_eq!(merge_operation_count(&db, tenant_id).await?, 0);
-    assert_eq!(merge_event_count(&db, tenant_id).await?, baseline_merge_events);
-    assert_eq!(projection_root_ids(&db, tenant_id).await?, baseline_projection_ids);
+    assert_eq!(
+        merge_event_count(&db, tenant_id).await?,
+        baseline_merge_events
+    );
+    assert_eq!(
+        projection_root_ids(&db, tenant_id).await?,
+        baseline_projection_ids
+    );
     Ok(())
 }
 
 #[tokio::test]
-async fn topic_solution_database_guard_requires_active_topic_and_approved_reply() -> TestResult<()> {
+async fn topic_solution_database_guard_requires_active_topic_and_approved_reply() -> TestResult<()>
+{
     let (db, event_bus) = setup().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -620,7 +633,10 @@ async fn topic_solution_database_guard_requires_active_topic_and_approved_reply(
         None,
     )
     .await?;
-    assert_eq!(reply_status(&db, tenant_id, pending_reply_id).await?, "pending");
+    assert_eq!(
+        reply_status(&db, tenant_id, pending_reply_id).await?,
+        "pending"
+    );
     assert!(db
         .execute(Statement::from_sql_and_values(
             DbBackend::Sqlite,
@@ -656,7 +672,10 @@ async fn topic_solution_database_guard_requires_active_topic_and_approved_reply(
         None,
     )
     .await?;
-    assert_eq!(reply_status(&db, tenant_id, approved_reply_id).await?, "approved");
+    assert_eq!(
+        reply_status(&db, tenant_id, approved_reply_id).await?,
+        "approved"
+    );
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "UPDATE forum_topics SET status = 'archived', is_locked = TRUE WHERE tenant_id = ? AND id = ?",
@@ -800,10 +819,7 @@ async fn assert_reply_location(
     Ok(())
 }
 
-async fn merge_operation_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn merge_operation_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -842,14 +858,29 @@ async fn assert_semantic_event(
         .ok_or("semantic event row missing")?;
     assert_eq!(row.try_get::<Uuid>("", "event_id")?, merged.event_id);
     assert_eq!(row.try_get::<String>("", "aggregate_type")?, "forum_topic");
-    assert_eq!(row.try_get::<Uuid>("", "aggregate_id")?, merged.target_topic_id);
-    assert_eq!(row.try_get::<String>("", "event_type")?, "forum.topic.merged");
+    assert_eq!(
+        row.try_get::<Uuid>("", "aggregate_id")?,
+        merged.target_topic_id
+    );
+    assert_eq!(
+        row.try_get::<String>("", "event_type")?,
+        "forum.topic.merged"
+    );
     assert_eq!(row.try_get::<i16>("", "schema_version")?, 1);
-    assert_eq!(row.try_get::<Option<Uuid>>("", "actor_id")?, Some(merged.actor_id));
+    assert_eq!(
+        row.try_get::<Option<Uuid>>("", "actor_id")?,
+        Some(merged.actor_id)
+    );
     let payload: JsonValue = row.try_get("", "payload")?;
     assert_eq!(payload["operation_id"], merged.operation_id.to_string());
-    assert_eq!(payload["source_topic_id"], merged.source_topic_id.to_string());
-    assert_eq!(payload["target_topic_id"], merged.target_topic_id.to_string());
+    assert_eq!(
+        payload["source_topic_id"],
+        merged.source_topic_id.to_string()
+    );
+    assert_eq!(
+        payload["target_topic_id"],
+        merged.target_topic_id.to_string()
+    );
     assert_eq!(payload["category_id"], merged.category_id.to_string());
     assert_eq!(payload["moved_reply_count"], merged.moved_reply_count);
     assert_eq!(
@@ -905,7 +936,10 @@ async fn projection_targets(
             continue;
         }
         match envelope.event {
-            DomainEvent::ReindexRequested { target_type, target_id } => {
+            DomainEvent::ReindexRequested {
+                target_type,
+                target_id,
+            } => {
                 targets.insert((target_type, target_id));
             }
             event => panic!("unexpected projection root event: {event:?}"),

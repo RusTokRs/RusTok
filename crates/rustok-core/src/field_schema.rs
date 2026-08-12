@@ -469,41 +469,41 @@ fn validate_field_value(
                 let char_count = s.chars().count() as f64;
 
                 if let Some(min) = r.min
-                    && char_count < min {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!(
-                                "Field '{}' is too short (minimum {} characters)",
-                                key, min as usize
-                            ),
-                            error_code: FieldErrorCode::TooShort,
-                        });
-                    }
+                    && char_count < min
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!(
+                            "Field '{}' is too short (minimum {} characters)",
+                            key, min as usize
+                        ),
+                        error_code: FieldErrorCode::TooShort,
+                    });
+                }
 
                 if let Some(max) = r.max
-                    && char_count > max {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!(
-                                "Field '{}' is too long (maximum {} characters)",
-                                key, max as usize
-                            ),
-                            error_code: FieldErrorCode::TooLong,
-                        });
-                    }
+                    && char_count > max
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!(
+                            "Field '{}' is too long (maximum {} characters)",
+                            key, max as usize
+                        ),
+                        error_code: FieldErrorCode::TooLong,
+                    });
+                }
 
                 if let Some(pattern) = &r.pattern
                     && let Ok(re) = Regex::new(pattern)
-                        && !re.is_match(s) {
-                            errors.push(FieldValidationError {
-                                field_key: key.clone(),
-                                message: format!(
-                                    "Field '{}' does not match the required pattern",
-                                    key
-                                ),
-                                error_code: FieldErrorCode::PatternMismatch,
-                            });
-                        } // Invalid pattern in definition — skip silently
+                    && !re.is_match(s)
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!("Field '{}' does not match the required pattern", key),
+                        error_code: FieldErrorCode::PatternMismatch,
+                    });
+                } // Invalid pattern in definition — skip silently
             }
         }
 
@@ -528,21 +528,23 @@ fn validate_field_value(
             if let Some(r) = rule {
                 let len = s.len() as f64;
                 if let Some(min) = r.min
-                    && len < min {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!("Field '{}' is too short", key),
-                            error_code: FieldErrorCode::TooShort,
-                        });
-                    }
+                    && len < min
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!("Field '{}' is too short", key),
+                        error_code: FieldErrorCode::TooShort,
+                    });
+                }
                 if let Some(max) = r.max
-                    && len > max {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!("Field '{}' is too long", key),
-                            error_code: FieldErrorCode::TooLong,
-                        });
-                    }
+                    && len > max
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!("Field '{}' is too long", key),
+                        error_code: FieldErrorCode::TooLong,
+                    });
+                }
             }
         }
 
@@ -567,21 +569,23 @@ fn validate_field_value(
             if let Some(r) = rule {
                 let len = s.len() as f64;
                 if let Some(min) = r.min
-                    && len < min {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!("Field '{}' is too short", key),
-                            error_code: FieldErrorCode::TooShort,
-                        });
-                    }
+                    && len < min
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!("Field '{}' is too short", key),
+                        error_code: FieldErrorCode::TooShort,
+                    });
+                }
                 if let Some(max) = r.max
-                    && len > max {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!("Field '{}' is too long", key),
-                            error_code: FieldErrorCode::TooLong,
-                        });
-                    }
+                    && len > max
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!("Field '{}' is too long", key),
+                        error_code: FieldErrorCode::TooLong,
+                    });
+                }
             }
         }
 
@@ -601,21 +605,23 @@ fn validate_field_value(
 
             if let Some(r) = rule {
                 if let Some(min) = r.min
-                    && n < min {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!("Field '{}' must be at least {}", key, min as i64),
-                            error_code: FieldErrorCode::BelowMinimum,
-                        });
-                    }
+                    && n < min
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!("Field '{}' must be at least {}", key, min as i64),
+                        error_code: FieldErrorCode::BelowMinimum,
+                    });
+                }
                 if let Some(max) = r.max
-                    && n > max {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!("Field '{}' must be at most {}", key, max as i64),
-                            error_code: FieldErrorCode::AboveMaximum,
-                        });
-                    }
+                    && n > max
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!("Field '{}' must be at most {}", key, max as i64),
+                        error_code: FieldErrorCode::AboveMaximum,
+                    });
+                }
             }
         }
 
@@ -631,21 +637,23 @@ fn validate_field_value(
 
             if let Some(r) = rule {
                 if let Some(min) = r.min
-                    && n < min {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!("Field '{}' must be at least {}", key, min),
-                            error_code: FieldErrorCode::BelowMinimum,
-                        });
-                    }
+                    && n < min
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!("Field '{}' must be at least {}", key, min),
+                        error_code: FieldErrorCode::BelowMinimum,
+                    });
+                }
                 if let Some(max) = r.max
-                    && n > max {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!("Field '{}' must be at most {}", key, max),
-                            error_code: FieldErrorCode::AboveMaximum,
-                        });
-                    }
+                    && n > max
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!("Field '{}' must be at most {}", key, max),
+                        error_code: FieldErrorCode::AboveMaximum,
+                    });
+                }
             }
         }
 
@@ -713,13 +721,14 @@ fn validate_field_value(
 
             if let Some(r) = rule
                 && let Some(options) = &r.options
-                    && !options.iter().any(|o| o.value == s) {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!("Field '{}' has an invalid option value '{}'", key, s),
-                            error_code: FieldErrorCode::InvalidOption,
-                        });
-                    }
+                && !options.iter().any(|o| o.value == s)
+            {
+                errors.push(FieldValidationError {
+                    field_key: key.clone(),
+                    message: format!("Field '{}' has an invalid option value '{}'", key, s),
+                    error_code: FieldErrorCode::InvalidOption,
+                });
+            }
         }
 
         // ── MultiSelect ───────────────────────────────────────────────────────
@@ -747,42 +756,45 @@ fn validate_field_value(
                 let count = arr.len() as f64;
 
                 if let Some(min) = r.min
-                    && count < min {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!(
-                                "Field '{}' requires at least {} selection(s)",
-                                key, min as usize
-                            ),
-                            error_code: FieldErrorCode::TooShort,
-                        });
-                    }
+                    && count < min
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!(
+                            "Field '{}' requires at least {} selection(s)",
+                            key, min as usize
+                        ),
+                        error_code: FieldErrorCode::TooShort,
+                    });
+                }
 
                 if let Some(max) = r.max
-                    && count > max {
-                        errors.push(FieldValidationError {
-                            field_key: key.clone(),
-                            message: format!(
-                                "Field '{}' allows at most {} selection(s)",
-                                key, max as usize
-                            ),
-                            error_code: FieldErrorCode::TooLong,
-                        });
-                    }
+                    && count > max
+                {
+                    errors.push(FieldValidationError {
+                        field_key: key.clone(),
+                        message: format!(
+                            "Field '{}' allows at most {} selection(s)",
+                            key, max as usize
+                        ),
+                        error_code: FieldErrorCode::TooLong,
+                    });
+                }
 
                 if let Some(options) = &r.options {
                     for item in arr {
                         if let Some(s) = item.as_str()
-                            && !options.iter().any(|o| o.value == s) {
-                                errors.push(FieldValidationError {
-                                    field_key: key.clone(),
-                                    message: format!(
-                                        "Field '{}' has an invalid option value '{}'",
-                                        key, s
-                                    ),
-                                    error_code: FieldErrorCode::InvalidOption,
-                                });
-                            }
+                            && !options.iter().any(|o| o.value == s)
+                        {
+                            errors.push(FieldValidationError {
+                                field_key: key.clone(),
+                                message: format!(
+                                    "Field '{}' has an invalid option value '{}'",
+                                    key, s
+                                ),
+                                error_code: FieldErrorCode::InvalidOption,
+                            });
+                        }
                     }
                 }
             }

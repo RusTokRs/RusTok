@@ -3,9 +3,10 @@ use sea_orm::{ActiveModelTrait, Set};
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::MarketplaceListingService;
 use crate::command_receipts::{
-    admit, complete, normalize_idempotency_key, replay, request_hash, rollback,
-    ListingCommandAdmission, NewListingCommandReceipt,
+    ListingCommandAdmission, NewListingCommandReceipt, admit, complete, normalize_idempotency_key,
+    replay, request_hash, rollback,
 };
 use crate::dto::{
     ListMarketplaceListingEventsRequest, MarketplaceListingApprovalStatus,
@@ -18,7 +19,6 @@ use crate::listing_events::{
     append_listing_event, list_listing_events, normalize_listing_event_locale,
 };
 use crate::service::{find_listing, load_response_for_model};
-use crate::MarketplaceListingService;
 
 impl MarketplaceListingService {
     pub async fn list_events(

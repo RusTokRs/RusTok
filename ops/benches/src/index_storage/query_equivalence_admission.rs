@@ -68,8 +68,7 @@ impl QueryEquivalenceAdmissionConfig {
         let expected_repository =
             env::var(REPOSITORY_ENV).unwrap_or_else(|_| "RusTokRs/RusTok".to_owned());
         validate_repository(&expected_repository)?;
-        let expected_commit =
-            env::var(COMMIT_ENV).context(format!("{COMMIT_ENV} is required"))?;
+        let expected_commit = env::var(COMMIT_ENV).context(format!("{COMMIT_ENV} is required"))?;
         ensure!(
             is_lower_hex_commit(&expected_commit),
             "{COMMIT_ENV} must be a 40-character lowercase Git commit"
@@ -77,14 +76,12 @@ impl QueryEquivalenceAdmissionConfig {
         let expected_run_key =
             env::var(RUN_KEY_ENV).context(format!("{RUN_KEY_ENV} is required"))?;
         validate_run_key(&expected_run_key)?;
-        let output_path = env::var(OUTPUT_ENV)
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                bundle_root
-                    .parent()
-                    .unwrap_or_else(|| Path::new("."))
-                    .join(format!("{}-admission.json", expected_run_key))
-            });
+        let output_path = env::var(OUTPUT_ENV).map(PathBuf::from).unwrap_or_else(|_| {
+            bundle_root
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(format!("{}-admission.json", expected_run_key))
+        });
         let output_path = absolute_path(output_path)?;
 
         Ok(Self {
@@ -363,7 +360,10 @@ fn validate_descriptor(
 
     let execution = &descriptor.execution;
     ensure!(execution.package == TEST_PACKAGE, "unexpected test package");
-    ensure!(execution.test_filter == TEST_FILTER, "unexpected test filter");
+    ensure!(
+        execution.test_filter == TEST_FILTER,
+        "unexpected test filter"
+    );
     ensure!(
         execution.exit_code == 0,
         "captured fixture did not exit successfully"
@@ -379,11 +379,7 @@ fn validate_descriptor(
         "captured equivalence command does not match the admitted command contract"
     );
     ensure!(
-        execution
-            .scenarios
-            .iter()
-            .map(String::as_str)
-            .eq(SCENARIOS),
+        execution.scenarios.iter().map(String::as_str).eq(SCENARIOS),
         "captured equivalence scenarios do not match the admitted scenario contract"
     );
     ensure!(
@@ -492,10 +488,7 @@ fn read_inventory(root: &Path) -> Result<BTreeSet<String>> {
 }
 
 fn expected_inventory() -> BTreeSet<String> {
-    INVENTORY
-        .iter()
-        .map(|value| (*value).to_owned())
-        .collect()
+    INVENTORY.iter().map(|value| (*value).to_owned()).collect()
 }
 
 fn read_stable_regular_file(path: &Path, max_bytes: usize, label: &str) -> Result<Vec<u8>> {
@@ -571,8 +564,9 @@ fn ensure_output_absent(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
         Ok(_) => anyhow::bail!("query equivalence admission output already exists: {path:?}"),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error)
-            .with_context(|| format!("failed to inspect admission output path {path:?}")),
+        Err(error) => {
+            Err(error).with_context(|| format!("failed to inspect admission output path {path:?}"))
+        }
     }
 }
 
@@ -619,9 +613,9 @@ fn validate_run_key(value: &str) -> Result<()> {
         "{RUN_KEY_ENV} must contain between 1 and 128 bytes"
     );
     ensure!(
-        value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')
-        }),
+        value
+            .bytes()
+            .all(|byte| { byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.') }),
         "{RUN_KEY_ENV} may contain only ASCII letters, digits, dash, underscore, and dot"
     );
     ensure!(
@@ -640,10 +634,6 @@ fn is_lower_hex_commit(value: &str) -> bool {
 
 fn first_non_empty_env(keys: &[&str], fallback: &str) -> String {
     keys.iter()
-        .find_map(|key| {
-            env::var(key)
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-        })
+        .find_map(|key| env::var(key).ok().filter(|value| !value.trim().is_empty()))
         .unwrap_or_else(|| fallback.to_owned())
 }

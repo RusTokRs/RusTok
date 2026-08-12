@@ -37,7 +37,8 @@ struct RaceSeed {
 
 #[tokio::test]
 async fn postgres_concurrent_content_edits_fence_topic_lock_and_reply_hide() -> TestResult<()> {
-    let Some(database) = PostgresForumTestDb::setup("moderation_revision_concurrency").await? else {
+    let Some(database) = PostgresForumTestDb::setup("moderation_revision_concurrency").await?
+    else {
         return Ok(());
     };
 
@@ -81,12 +82,15 @@ async fn topic_translation_edit_fences_permanent_lock(
     assert_application_waits_while_edit_owns_revision(&mut application, "topic").await?;
     edit.commit().await?;
 
-    let first_error = application
-        .await?
-        .expect_err("overlapping topic edit must prevent lock application against the old revision");
+    let first_error = application.await?.expect_err(
+        "overlapping topic edit must prevent lock application against the old revision",
+    );
     assert_overlap_error_is_fail_closed(&first_error)?;
 
-    assert_eq!(topic_revision(&database.db, seed).await?, reviewed_revision + 1);
+    assert_eq!(
+        topic_revision(&database.db, seed).await?,
+        reviewed_revision + 1
+    );
     assert_eq!(topic_locked(&database.db, seed).await?, false);
     assert_eq!(
         topic_title(&database.db, seed).await?,
@@ -107,13 +111,14 @@ async fn topic_translation_edit_fences_permanent_lock(
         .expect_err("stale topic decision must not lock edited content");
     assert_revision_conflict(&stale_error)?;
     assert_eq!(topic_locked(&database.db, seed).await?, false);
-    assert_eq!(topic_revision(&database.db, seed).await?, reviewed_revision + 1);
+    assert_eq!(
+        topic_revision(&database.db, seed).await?,
+        reviewed_revision + 1
+    );
     Ok(())
 }
 
-async fn reply_body_edit_fences_hide_application(
-    database: &PostgresForumTestDb,
-) -> TestResult<()> {
+async fn reply_body_edit_fences_hide_application(database: &PostgresForumTestDb) -> TestResult<()> {
     let seed = seed_public_subjects(&database.db).await?;
     let reviewed_revision = reply_revision(&database.db, seed).await?;
 
@@ -140,14 +145,20 @@ async fn reply_body_edit_fences_hide_application(
     assert_application_waits_while_edit_owns_revision(&mut application, "reply").await?;
     edit.commit().await?;
 
-    let first_error = application
-        .await?
-        .expect_err("overlapping reply edit must prevent hide application against the old revision");
+    let first_error = application.await?.expect_err(
+        "overlapping reply edit must prevent hide application against the old revision",
+    );
     assert_overlap_error_is_fail_closed(&first_error)?;
 
-    assert_eq!(reply_revision(&database.db, seed).await?, reviewed_revision + 1);
+    assert_eq!(
+        reply_revision(&database.db, seed).await?,
+        reviewed_revision + 1
+    );
     assert_eq!(reply_status(&database.db, seed).await?, "approved");
-    assert_eq!(reply_body(&database.db, seed).await?, "Concurrent reply edit");
+    assert_eq!(
+        reply_body(&database.db, seed).await?,
+        "Concurrent reply edit"
+    );
     assert_public_reply_accounting(&database.db, seed).await?;
     assert_eq!(count_reply_status_events(&database.db, seed).await?, 0);
 
@@ -161,7 +172,10 @@ async fn reply_body_edit_fences_hide_application(
         .expect_err("stale reply decision must not hide edited content");
     assert_revision_conflict(&stale_error)?;
     assert_eq!(reply_status(&database.db, seed).await?, "approved");
-    assert_eq!(reply_revision(&database.db, seed).await?, reviewed_revision + 1);
+    assert_eq!(
+        reply_revision(&database.db, seed).await?,
+        reviewed_revision + 1
+    );
     assert_public_reply_accounting(&database.db, seed).await?;
     assert_eq!(count_reply_status_events(&database.db, seed).await?, 0);
     Ok(())
@@ -171,7 +185,8 @@ fn spawn_application(
     adapter: Arc<dyn ModerationSubjectCommandPort>,
     tenant_id: Uuid,
     command: ApplyModerationDecisionCommand,
-) -> tokio::task::JoinHandle<Result<rustok_moderation_api::ModerationDecisionApplication, PortError>> {
+) -> tokio::task::JoinHandle<Result<rustok_moderation_api::ModerationDecisionApplication, PortError>>
+{
     tokio::spawn(async move {
         adapter
             .apply_moderation_decision(
@@ -248,10 +263,7 @@ fn assert_overlap_error_is_fail_closed(error: &PortError) -> TestResult<()> {
 }
 
 fn assert_revision_conflict(error: &PortError) -> TestResult<()> {
-    if error.kind != PortErrorKind::Conflict
-        || error.retryable
-        || error.code != REVISION_CONFLICT
-    {
+    if error.kind != PortErrorKind::Conflict || error.retryable || error.code != REVISION_CONFLICT {
         return Err(test_error(format!(
             "expected non-retryable Forum moderation revision conflict, got {error}"
         )));
@@ -259,15 +271,11 @@ fn assert_revision_conflict(error: &PortError) -> TestResult<()> {
     Ok(())
 }
 
-fn topic_adapter(
-    db: DatabaseConnection,
-) -> TestResult<Arc<dyn ModerationSubjectCommandPort>> {
+fn topic_adapter(db: DatabaseConnection) -> TestResult<Arc<dyn ModerationSubjectCommandPort>> {
     Ok(ForumModerationSubjectAdapterFactory::topic().build(&HostRuntimeContext::new(db))?)
 }
 
-fn reply_adapter(
-    db: DatabaseConnection,
-) -> TestResult<Arc<dyn ModerationSubjectCommandPort>> {
+fn reply_adapter(db: DatabaseConnection) -> TestResult<Arc<dyn ModerationSubjectCommandPort>> {
     Ok(ForumModerationSubjectAdapterFactory::reply().build(&HostRuntimeContext::new(db))?)
 }
 
@@ -308,11 +316,9 @@ fn reply_hide_command(
         },
         decision_kind: ModerationDecisionKind::Hide,
         reason_code: ModerationReasonCode::Other,
-        effect: ModerationDecisionEffect::v1(
-            ModerationDecisionEffectAction::SetVisibility {
-                state: ModerationVisibilityState::Hidden,
-            },
-        )?,
+        effect: ModerationDecisionEffect::v1(ModerationDecisionEffectAction::SetVisibility {
+            state: ModerationVisibilityState::Hidden,
+        })?,
         decision_hash: "b".repeat(64),
     })
 }
@@ -395,10 +401,7 @@ async fn topic_revision(db: &DatabaseConnection, seed: RaceSeed) -> TestResult<i
     .await
 }
 
-async fn topic_revision_in(
-    db: &DatabaseTransaction,
-    seed: RaceSeed,
-) -> TestResult<i64> {
+async fn topic_revision_in(db: &DatabaseTransaction, seed: RaceSeed) -> TestResult<i64> {
     scalar_i64_on(
         db,
         format!(
@@ -420,10 +423,7 @@ async fn reply_revision(db: &DatabaseConnection, seed: RaceSeed) -> TestResult<i
     .await
 }
 
-async fn reply_revision_in(
-    db: &DatabaseTransaction,
-    seed: RaceSeed,
-) -> TestResult<i64> {
+async fn reply_revision_in(db: &DatabaseTransaction, seed: RaceSeed) -> TestResult<i64> {
     scalar_i64_on(
         db,
         format!(

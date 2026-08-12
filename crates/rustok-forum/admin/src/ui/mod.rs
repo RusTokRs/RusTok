@@ -1,7 +1,7 @@
 mod category_dnd;
 pub mod leptos;
-pub mod root;
 mod richtext;
+pub mod root;
 mod topic_fork;
 mod topic_merge;
 mod topic_reply_range;

@@ -78,11 +78,18 @@ fn resolve_owner_schema(
         )));
     }
     serde_json::from_value::<crate::ForumWidgetOwnerSchemaRef>(property_schema.clone()).map_err(
-        |error| ServerFnError::new(format!("Forum widget owner schema reference is invalid: {error}")),
+        |error| {
+            ServerFnError::new(format!(
+                "Forum widget owner schema reference is invalid: {error}"
+            ))
+        },
     )
 }
 
-#[server(prefix = "/api/fn", endpoint = "forum/page-builder-widget-property-schema")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "forum/page-builder-widget-property-schema"
+)]
 pub async fn load_forum_page_builder_widget_property_schema(
     request: ForumWidgetPropertySchemaTransportRequest,
 ) -> Result<ForumWidgetPropertySchemaTransportResponse, ServerFnError> {
@@ -114,7 +121,10 @@ pub async fn load_forum_page_builder_widget_property_schema(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "forum/page-builder-widget-property-validate")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "forum/page-builder-widget-property-validate"
+)]
 pub async fn validate_forum_page_builder_widget_properties(
     request: ForumWidgetPropertyValidationTransportRequest,
 ) -> Result<ForumWidgetPropertyValidationTransportResponse, ServerFnError> {

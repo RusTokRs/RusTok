@@ -33,7 +33,10 @@ fn seo_wrapper_uses_route_owners_for_canonical_and_alternate_paths() {
         "return category_provider().load_target(runtime, request).await",
         "return topic_provider().load_target(runtime, request).await",
     ] {
-        assert!(source.contains(marker), "missing SEO owner marker: {marker}");
+        assert!(
+            source.contains(marker),
+            "missing SEO owner marker: {marker}"
+        );
     }
 
     for forbidden in [
@@ -109,7 +112,10 @@ fn contract_preserves_visibility_schema_and_compatibility_boundaries() {
         "\"new_migration\": false",
         "\"executed_by_implementation_agent\": false",
     ] {
-        assert!(contract.contains(marker), "missing contract marker: {marker}");
+        assert!(
+            contract.contains(marker),
+            "missing contract marker: {marker}"
+        );
     }
 
     for marker in [
@@ -121,7 +127,10 @@ fn contract_preserves_visibility_schema_and_compatibility_boundaries() {
         "No tests, Node verifiers, formatting, Cargo commands",
         "implementation-plan.md` remains the only authoritative roadmap",
     ] {
-        assert!(docs.contains(marker), "missing documentation marker: {marker}");
+        assert!(
+            docs.contains(marker),
+            "missing documentation marker: {marker}"
+        );
     }
 }
 
@@ -139,6 +148,9 @@ fn stale_public_discovery_guard_tracks_current_canonical_card_routes() {
         "retired category UUID card route",
         "retired topic UUID card route",
     ] {
-        assert!(verifier.contains(marker), "missing refreshed guard marker: {marker}");
+        assert!(
+            verifier.contains(marker),
+            "missing refreshed guard marker: {marker}"
+        );
     }
 }

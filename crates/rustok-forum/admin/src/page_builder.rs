@@ -69,7 +69,10 @@ impl ContributionAdapter for ForumContributionAdapter {
         request: &RendererRequest<'_>,
     ) -> UiResult<Self::Rendered> {
         ensure_forum_provider(request.provider)?;
-        ensure_component_type(request.component_type, resolved.renderer.component_type.as_str())?;
+        ensure_component_type(
+            request.component_type,
+            resolved.renderer.component_type.as_str(),
+        )?;
         Ok(ForumWidgetRenderModel {
             component_id: request.component_id.to_string(),
             widget_type: request.component_type.to_string(),
@@ -148,7 +151,11 @@ pub fn register_forum_fly_widgets(registries: &mut RegistrySet) -> FlyResult<()>
         let label = catalog
             .messages
             .get(&renderer.accessibility.label_message_id)
-            .or_else(|| preview.messages.get(&renderer.accessibility.label_message_id))
+            .or_else(|| {
+                preview
+                    .messages
+                    .get(&renderer.accessibility.label_message_id)
+            })
             .cloned()
             .ok_or_else(|| {
                 FlyError::Decode(format!(
@@ -250,11 +257,12 @@ fn component_props(component: &Value) -> UiResult<Value> {
 }
 
 fn owner_schema_ref(value: &Value) -> UiResult<ForumWidgetOwnerSchemaRef> {
-    let schema = serde_json::from_value::<ForumWidgetOwnerSchemaRef>(value.clone()).map_err(|error| {
-        UiError::AdapterRejected(format!(
-            "Forum widget owner schema reference is invalid: {error}"
-        ))
-    })?;
+    let schema =
+        serde_json::from_value::<ForumWidgetOwnerSchemaRef>(value.clone()).map_err(|error| {
+            UiError::AdapterRejected(format!(
+                "Forum widget owner schema reference is invalid: {error}"
+            ))
+        })?;
     if schema.format != OWNER_SCHEMA_REF_FORMAT {
         return Err(UiError::AdapterRejected(format!(
             "Forum widget owner schema format `{}` is unsupported",
@@ -290,7 +298,8 @@ mod tests {
 
     #[test]
     fn generated_manifest_registers_split_authoring_and_preview_contracts() {
-        let result = build_forum_admin_contribution_registry(&forum_full_admin_contribution_policy());
+        let result =
+            build_forum_admin_contribution_registry(&forum_full_admin_contribution_policy());
         assert!(result.is_valid(), "diagnostics: {:?}", result.diagnostics);
         assert_eq!(result.registered_contributions, 2);
 
@@ -300,7 +309,10 @@ mod tests {
             .expect("Forum widget catalog contribution");
         assert_eq!(catalog.blocks.len(), FORUM_WIDGET_COMPONENT_TYPES.len());
         assert!(catalog.renderers.is_empty());
-        assert_eq!(catalog.property_editors.len(), FORUM_WIDGET_COMPONENT_TYPES.len());
+        assert_eq!(
+            catalog.property_editors.len(),
+            FORUM_WIDGET_COMPONENT_TYPES.len()
+        );
 
         let preview = result
             .registry
@@ -351,7 +363,8 @@ mod tests {
 
     #[test]
     fn adapter_resolves_preview_and_property_contract_without_copying_owner_schema() {
-        let assembly = build_forum_admin_contribution_registry(&forum_full_admin_contribution_policy());
+        let assembly =
+            build_forum_admin_contribution_registry(&forum_full_admin_contribution_policy());
         let component_type = FORUM_WIDGET_COMPONENT_TYPES[0];
         let registries = forum_fly_registry_set().expect("Forum Fly registry");
         let component = to_value(

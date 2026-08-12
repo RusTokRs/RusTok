@@ -1,6 +1,5 @@
 use rustok_events::{
-    BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION,
-    BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY,
+    BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION, BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY,
     BlogCommentsDelegationScheduleAuditEvent, ContractEventEnvelope,
 };
 use rustok_outbox::{
@@ -21,10 +20,7 @@ async fn database() -> sea_orm::DatabaseConnection {
     db
 }
 
-fn event(
-    request_id: Uuid,
-    candidate_generation: i64,
-) -> BlogCommentsDelegationScheduleAuditEvent {
+fn event(request_id: Uuid, candidate_generation: i64) -> BlogCommentsDelegationScheduleAuditEvent {
     BlogCommentsDelegationScheduleAuditEvent::ReplacementSucceeded {
         audit_schema_version: BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION,
         request_id,

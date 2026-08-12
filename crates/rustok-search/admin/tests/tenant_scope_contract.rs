@@ -5,8 +5,7 @@ const READ_DIAGNOSTICS: &str =
     include_str!("../src/transport/native_server_adapter/read_diagnostics.rs");
 const READ_ANALYTICS: &str =
     include_str!("../src/transport/native_server_adapter/read_analytics.rs");
-const WRITE_RUNTIME: &str =
-    include_str!("../src/transport/native_server_adapter/write_runtime.rs");
+const WRITE_RUNTIME: &str = include_str!("../src/transport/native_server_adapter/write_runtime.rs");
 const WRITE_DICTIONARY: &str =
     include_str!("../src/transport/native_server_adapter/write_dictionary.rs");
 
@@ -37,7 +36,10 @@ fn every_authenticated_search_admin_endpoint_uses_the_scoped_permission_helpers(
         .matches("leptos_axum::extract::<TenantContext>()")
         .count();
 
-    assert_eq!(read_calls, 7, "all Search Admin read endpoints must be scoped");
+    assert_eq!(
+        read_calls, 7,
+        "all Search Admin read endpoints must be scoped"
+    );
     assert_eq!(
         manage_calls, 8,
         "all Search Admin manage endpoints must be scoped"

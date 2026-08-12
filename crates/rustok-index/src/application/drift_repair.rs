@@ -429,9 +429,7 @@ impl IndexDriftRepairOwnerOutcome {
         Ok(Self::Applied { receipt_digest })
     }
 
-    pub fn not_applied(
-        code: impl Into<String>,
-    ) -> Result<Self, IndexDriftRepairValidationError> {
+    pub fn not_applied(code: impl Into<String>) -> Result<Self, IndexDriftRepairValidationError> {
         let code = code.into();
         validate_machine_name(&code)?;
         Ok(Self::NotApplied { code })
@@ -842,22 +840,16 @@ impl IndexDriftRepairService {
                     Some(receipt_digest),
                 )
             }
-            IndexDriftRepairOwnerOutcome::Applied { receipt_digest } => {
-                not_repaired_completion(
-                    owner.owner_name(),
-                    &before,
-                    Some(&after),
-                    Some(receipt_digest),
-                    "after_not_converged",
-                )
-            }
-            IndexDriftRepairOwnerOutcome::NotApplied { code } => not_repaired_completion(
+            IndexDriftRepairOwnerOutcome::Applied { receipt_digest } => not_repaired_completion(
                 owner.owner_name(),
                 &before,
                 Some(&after),
-                None,
-                &code,
+                Some(receipt_digest),
+                "after_not_converged",
             ),
+            IndexDriftRepairOwnerOutcome::NotApplied { code } => {
+                not_repaired_completion(owner.owner_name(), &before, Some(&after), None, &code)
+            }
         }
         .map_err(|_| permanent_failure("index_drift_repair_completion_invalid"))?;
         self.complete_ticket(&ticket, &completion).await
@@ -967,9 +959,7 @@ fn valid_machine_name(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_MACHINE_NAME_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }
 

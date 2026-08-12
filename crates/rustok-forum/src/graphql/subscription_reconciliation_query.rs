@@ -68,8 +68,7 @@ impl ForumSubscriptionReconciliationQuery {
         category_after: Option<Uuid>,
         category_user_after: Option<Uuid>,
     ) -> Result<GqlForumSubscriptionReconciliationReport> {
-        let (tenant_id, security, requested_limit, db) =
-            reconciliation_context(ctx, limit).await?;
+        let (tenant_id, security, requested_limit, db) = reconciliation_context(ctx, limit).await?;
         let report = ForumSubscriptionReconciliationService::new(db)
             .report_page(
                 tenant_id,
@@ -102,16 +101,13 @@ async fn reconciliation_context(
     }
     let requested_limit = normalize_limit(limit)?;
     let db = ctx.data::<DatabaseConnection>()?.clone();
-    let security =
-        SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+    let security = SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
     Ok((tenant.id, security, requested_limit, db))
 }
 
 fn require_operations_permissions(auth: &AuthContext) -> Result<()> {
-    let categories_manage = has_any_effective_permission(
-        &auth.permissions,
-        &[Permission::FORUM_CATEGORIES_MANAGE],
-    );
+    let categories_manage =
+        has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_MANAGE]);
     let topics_manage =
         has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_MANAGE]);
     if categories_manage && topics_manage {
@@ -224,7 +220,10 @@ mod tests {
             category_cursor: Some(category_cursor),
             drifts: Vec::new(),
         });
-        assert_eq!(mapped.topic_cursor.unwrap().target_id, topic_cursor.target_id);
+        assert_eq!(
+            mapped.topic_cursor.unwrap().target_id,
+            topic_cursor.target_id
+        );
         assert_eq!(
             mapped.category_cursor.unwrap().user_id,
             category_cursor.user_id

@@ -393,17 +393,24 @@ fn route_channel_digest(channel_slugs: &[String]) -> String {
 }
 
 fn normalize_channel_slug(channel_slug: Option<&str>) -> ForumResult<Option<String>> {
-    let Some(channel_slug) = channel_slug.map(str::trim).filter(|slug| !slug.is_empty()) else {
+    let Some(raw_slug) = channel_slug else {
         return Ok(None);
     };
-    if channel_slug.chars().count() > MAX_FORUM_ROUTE_TOMBSTONE_CHANNEL_SLUG_LEN
-        || channel_slug.chars().any(char::is_control)
-    {
+    if raw_slug.chars().any(char::is_control) {
         return Err(ForumError::Validation(
             "Forum topic route tombstone channel slug is invalid".to_string(),
         ));
     }
-    Ok(Some(channel_slug.to_ascii_lowercase()))
+    let trimmed = raw_slug.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.chars().count() > MAX_FORUM_ROUTE_TOMBSTONE_CHANNEL_SLUG_LEN {
+        return Err(ForumError::Validation(
+            "Forum topic route tombstone channel slug is invalid".to_string(),
+        ));
+    }
+    Ok(Some(trimmed.to_ascii_lowercase()))
 }
 
 fn unsupported_backend(backend: DatabaseBackend) -> ForumError {

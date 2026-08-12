@@ -9,8 +9,8 @@ use rustok_events::{
     ContractEventEnvelope, DomainEvent, EventEnvelope, ForumSearchProjectionEvent,
 };
 use rustok_search::{
-    ForumSearchContractIngress, ForumSearchContractIngressError,
-    ForumSearchContractIngressOutcome, SearchModule,
+    ForumSearchContractIngress, ForumSearchContractIngressError, ForumSearchContractIngressOutcome,
+    SearchModule,
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -25,8 +25,7 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 const SEARCH_TEST_DATABASE_ENV: &str = "RUSTOK_SEARCH_TEST_DATABASE_URL";
 const ROOT_EVENT_TYPE: &str = "index.reindex_requested";
-const EVIDENCE_CONTRACT: &str =
-    "forum_search_versioned_invalidation_postgres_ingress_evidence_v1";
+const EVIDENCE_CONTRACT: &str = "forum_search_versioned_invalidation_postgres_ingress_evidence_v1";
 const EVIDENCE_PATH: &str =
     "target/forum-search-versioned-invalidation-postgres-ingress-evidence.json";
 
@@ -328,12 +327,7 @@ async fn run_ingress_proof(db: &DatabaseConnection) -> TestResult<Vec<ScenarioEv
     let conflicting_tenant_id = Uuid::new_v4();
     let conflict_root_id = Uuid::new_v4();
     let conflict_category_id = Uuid::new_v4();
-    let conflicting_root = root_envelope(
-        conflicting_tenant_id,
-        conflict_root_id,
-        "forum",
-        None,
-    );
+    let conflicting_root = root_envelope(conflicting_tenant_id, conflict_root_id, "forum", None);
     insert_legacy_root(db, &conflicting_root, "forum").await?;
     let conflict_before = load_snapshot(db, conflict_root_id).await?;
     ensure_snapshot(
@@ -356,8 +350,10 @@ async fn run_ingress_proof(db: &DatabaseConnection) -> TestResult<Vec<ScenarioEv
         .await
         .expect_err("mismatched durable identity must fail closed");
     let stable_error_code = error.stable_code();
-    if !matches!(error, ForumSearchContractIngressError::InboxIdentityConflict)
-        || stable_error_code != "forum.search_projection.contract_inbox_identity_conflict"
+    if !matches!(
+        error,
+        ForumSearchContractIngressError::InboxIdentityConflict
+    ) || stable_error_code != "forum.search_projection.contract_inbox_identity_conflict"
     {
         return Err(test_error(format!(
             "unexpected identity conflict classification: {stable_error_code}"
@@ -509,7 +505,10 @@ fn ensure_durable_outcome(
             root_event_id,
             owner_revision,
         } if root_event_id == expected_root_event_id
-            && owner_revision == expected_owner_revision => Ok(()),
+            && owner_revision == expected_owner_revision =>
+        {
+            Ok(())
+        }
         other => Err(test_error(format!(
             "unexpected durable ingress outcome: {other:?}"
         ))),
@@ -560,7 +559,10 @@ fn write_evidence(artifact: IngressEvidenceArtifact) -> TestResult<()> {
     let mut bytes = serde_json::to_vec_pretty(&artifact)?;
     bytes.push(b'\n');
     fs::write(&path, bytes)?;
-    eprintln!("wrote Forum Search PostgreSQL ingress evidence to {}", path.display());
+    eprintln!(
+        "wrote Forum Search PostgreSQL ingress evidence to {}",
+        path.display()
+    );
     Ok(())
 }
 

@@ -50,8 +50,7 @@ impl MarketplaceListingQuery {
         approval_status: Option<MarketplaceListingApprovalStatusGql>,
         search: Option<String>,
     ) -> Result<MarketplaceListingConnectionGql> {
-        let auth =
-            require_permissions(ctx, &[Permission::MARKETPLACE_LISTINGS_LIST]).await?;
+        let auth = require_permissions(ctx, &[Permission::MARKETPLACE_LISTINGS_LIST]).await?;
         let page = page.unwrap_or(1).max(1) as u64;
         let per_page = per_page.unwrap_or(25).clamp(1, 100) as u64;
         let runtime = runtime(ctx)?;

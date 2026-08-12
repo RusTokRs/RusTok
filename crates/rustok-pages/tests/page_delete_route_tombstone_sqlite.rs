@@ -98,14 +98,8 @@ async fn delete_turns_every_retained_public_route_into_gone_without_rewriting_re
         .await
         .expect("page should publish");
 
-    let published_rename = patch_slug(
-        &service,
-        tenant_id,
-        &published,
-        "About us",
-        "about-us",
-    )
-    .await;
+    let published_rename =
+        patch_slug(&service, tenant_id, &published, "About us", "about-us").await;
     let first_unpublished = service
         .unpublish_if_current(
             tenant_id,
@@ -144,11 +138,7 @@ async fn delete_turns_every_retained_public_route_into_gone_without_rewriting_re
         .expect("second public route should be snapshotted before unpublish");
 
     service
-        .delete(
-            tenant_id,
-            SecurityContext::system(),
-            final_unpublished.id,
-        )
+        .delete(tenant_id, SecurityContext::system(), final_unpublished.id)
         .await
         .expect("unpublished page should delete with tombstones");
 

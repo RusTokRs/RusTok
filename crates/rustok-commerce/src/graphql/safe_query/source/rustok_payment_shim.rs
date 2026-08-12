@@ -237,8 +237,7 @@ pub(crate) mod error {
             let not_found = error.kind == PortErrorKind::NotFound;
             let collection_not_found =
                 not_found && matches!(resource, PaymentQueryResource::Collection(_));
-            let refund_not_found =
-                not_found && matches!(resource, PaymentQueryResource::Refund(_));
+            let refund_not_found = not_found && matches!(resource, PaymentQueryResource::Refund(_));
             let error = PaymentQueryError::new(error, tenant_id, operation, resource);
             if collection_not_found {
                 Self::PaymentCollectionNotFound(error)
@@ -368,7 +367,9 @@ impl PaymentService {
                 },
             )
             .await
-            .map_err(|error| PaymentError::from_owner_port(error, tenant_id, OPERATION, resource))?;
+            .map_err(|error| {
+                PaymentError::from_owner_port(error, tenant_id, OPERATION, resource)
+            })?;
         Ok((page.items, page.total))
     }
 
@@ -408,7 +409,9 @@ impl PaymentService {
                 },
             )
             .await
-            .map_err(|error| PaymentError::from_owner_port(error, tenant_id, OPERATION, resource))?;
+            .map_err(|error| {
+                PaymentError::from_owner_port(error, tenant_id, OPERATION, resource)
+            })?;
         Ok((page.items, page.total))
     }
 }

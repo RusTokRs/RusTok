@@ -72,7 +72,11 @@ pub fn forum_topic_split_candidate_label(candidate: &ForumTopicSplitCandidate) -
 
 pub fn forum_topic_split_reply_label(reply: &ForumTopicSplitReply) -> String {
     let preview = reply.content_preview.trim();
-    let preview = if preview.is_empty() { "(empty reply)" } else { preview };
+    let preview = if preview.is_empty() {
+        "(empty reply)"
+    } else {
+        preview
+    };
     let parent = reply
         .parent_reply_id
         .as_deref()
@@ -179,7 +183,9 @@ fn validate_parent_closed_selection(
             && selected.contains(parent_reply_id)
             && !selected.contains(reply.id.as_str())
         {
-            return Err("Selecting a parent requires every loaded child to be selected".to_string());
+            return Err(
+                "Selecting a parent requires every loaded child to be selected".to_string(),
+            );
         }
     }
 
@@ -264,8 +270,21 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 fn format_uuid(bytes: [u8; 16]) -> String {
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14],
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        bytes[6],
+        bytes[7],
+        bytes[8],
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
         bytes[15]
     )
 }
@@ -273,10 +292,9 @@ fn format_uuid(bytes: [u8; 16]) -> String {
 fn looks_like_uuid(value: &str) -> bool {
     let groups = value.split('-').collect::<Vec<_>>();
     groups.len() == 5
-        && groups
-            .iter()
-            .zip([8, 4, 4, 4, 12])
-            .all(|(group, len)| group.len() == len && group.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        && groups.iter().zip([8, 4, 4, 4, 12]).all(|(group, len)| {
+            group.len() == len && group.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
 }
 
 #[cfg(test)]

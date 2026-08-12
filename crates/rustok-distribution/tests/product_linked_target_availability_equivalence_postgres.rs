@@ -4,16 +4,18 @@ use std::{collections::BTreeSet, env, error::Error};
 
 use rustok_core::{MigrationSource, ModuleRegistry};
 use rustok_index::{
-    EntityKey, EntityName, FieldName, FieldPath, FilterExpr, IndexModule, IndexMutation, IndexQuery,
-    IndexQueryPage, IndexQueryPort, IndexQueryScope, IndexSourceLoadRequest, IndexValue, LinkName,
-    LocaleKey, ModuleName, MutationApplyOutcome, MutationDelivery, OrderDirection, OrderExpr,
-    Pagination, PostgresMutationStore, PostgresSchemaRegistrationStore, SchemaRef, SchemaVersion,
-    SharedIndexQueryRuntime, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
-    materialize_index_source_registry, materialize_postgres_index_query_runtime,
-    materialize_postgres_index_sources,
+    EntityKey, EntityName, FieldName, FieldPath, FilterExpr, IndexModule, IndexMutation,
+    IndexQuery, IndexQueryPage, IndexQueryPort, IndexQueryScope, IndexSourceLoadRequest,
+    IndexValue, LinkName, LocaleKey, ModuleName, MutationApplyOutcome, MutationDelivery,
+    OrderDirection, OrderExpr, Pagination, PostgresMutationStore, PostgresSchemaRegistrationStore,
+    SchemaRef, SchemaVersion, SharedIndexQueryRuntime, SharedIndexSchemaRegistry,
+    SharedIndexSourceRegistry, materialize_index_source_registry,
+    materialize_postgres_index_query_runtime, materialize_postgres_index_sources,
 };
 use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistrations, ModuleWorkScheduler};
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -168,8 +170,8 @@ struct Runtime {
 }
 
 #[tokio::test]
-async fn linked_target_availability_preserves_filter_order_count_and_runtime_restart_parity(
-) -> TestResult<()> {
+async fn linked_target_availability_preserves_filter_order_count_and_runtime_restart_parity()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -194,7 +196,10 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     materialize_current(&runtime, SALES_CHANNEL_SOURCE, channel_key(CHANNEL_B_ID)?).await?;
 
     assert_ids_unordered(
-        runtime.query.execute_query(variant_stale_match_query()?).await?,
+        runtime
+            .query
+            .execute_query(variant_stale_match_query()?)
+            .await?,
         &[PRODUCT_A_ID, PRODUCT_B_ID],
         2,
     );
@@ -204,7 +209,10 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         2,
     );
     assert_ids_unordered(
-        runtime.query.execute_query(channel_stale_match_query()?).await?,
+        runtime
+            .query
+            .execute_query(channel_stale_match_query()?)
+            .await?,
         &[PRODUCT_A_ID, PRODUCT_B_ID],
         2,
     );
@@ -234,7 +242,10 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     // The stale old SKU must not leak through linked filtering. Product B remains fully authoritative,
     // so page and exact count contain only B rather than hiding the whole query result.
     assert_ids_unordered(
-        runtime.query.execute_query(variant_stale_match_query()?).await?,
+        runtime
+            .query
+            .execute_query(variant_stale_match_query()?)
+            .await?,
         &[PRODUCT_B_ID],
         1,
     );
@@ -248,12 +259,16 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     // The same availability boundary must survive runtime restart without owner-specific recovery state.
     let restarted_query = database.fresh_query_runtime().await?;
     assert_ids_unordered(
-        restarted_query.execute_query(variant_stale_match_query()?).await?,
+        restarted_query
+            .execute_query(variant_stale_match_query()?)
+            .await?,
         &[PRODUCT_B_ID],
         1,
     );
     assert_ids_ordered(
-        restarted_query.execute_query(variant_order_query()?).await?,
+        restarted_query
+            .execute_query(variant_order_query()?)
+            .await?,
         &[PRODUCT_B_ID],
         1,
     );
@@ -262,7 +277,10 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         materialize_current(&runtime, PRODUCT_VARIANT_SOURCE, variant_key(VARIANT_A_ID)?).await?;
     assert_eq!(applied_variant, variant_a_current);
     assert_ids_unordered(
-        runtime.query.execute_query(variant_current_match_query()?).await?,
+        runtime
+            .query
+            .execute_query(variant_current_match_query()?)
+            .await?,
         &[PRODUCT_A_ID, PRODUCT_B_ID],
         2,
     );
@@ -272,7 +290,9 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         2,
     );
     assert_ids_unordered(
-        restarted_query.execute_query(variant_current_match_query()?).await?,
+        restarted_query
+            .execute_query(variant_current_match_query()?)
+            .await?,
         &[PRODUCT_A_ID, PRODUCT_B_ID],
         2,
     );
@@ -299,7 +319,10 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     );
 
     assert_ids_unordered(
-        runtime.query.execute_query(channel_stale_match_query()?).await?,
+        runtime
+            .query
+            .execute_query(channel_stale_match_query()?)
+            .await?,
         &[PRODUCT_B_ID],
         1,
     );
@@ -313,7 +336,10 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         materialize_current(&runtime, SALES_CHANNEL_SOURCE, channel_key(CHANNEL_A_ID)?).await?;
     assert_eq!(applied_channel, channel_a_current);
     assert_ids_unordered(
-        runtime.query.execute_query(channel_current_match_query()?).await?,
+        runtime
+            .query
+            .execute_query(channel_current_match_query()?)
+            .await?,
         &[PRODUCT_A_ID, PRODUCT_B_ID],
         2,
     );

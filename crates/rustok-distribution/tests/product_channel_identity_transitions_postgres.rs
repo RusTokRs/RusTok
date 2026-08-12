@@ -4,15 +4,17 @@ use std::{env, error::Error};
 
 use rustok_core::{MigrationSource, ModuleRegistry};
 use rustok_index::{
-    EntityKey, EntityName, FieldName, FieldPath, FilterExpr, IndexModule, IndexMutation, IndexQuery,
-    IndexQueryPort, IndexQueryScope, IndexSourceLoadRequest, IndexValue, LocaleKey, ModuleName,
-    MutationApplyOutcome, MutationDelivery, Pagination, PostgresMutationStore,
+    EntityKey, EntityName, FieldName, FieldPath, FilterExpr, IndexModule, IndexMutation,
+    IndexQuery, IndexQueryPort, IndexQueryScope, IndexSourceLoadRequest, IndexValue, LocaleKey,
+    ModuleName, MutationApplyOutcome, MutationDelivery, Pagination, PostgresMutationStore,
     PostgresSchemaRegistrationStore, SchemaRef, SchemaVersion, SharedIndexQueryRuntime,
     SharedIndexSchemaRegistry, SharedIndexSourceRegistry, materialize_index_source_registry,
     materialize_postgres_index_query_runtime, materialize_postgres_index_sources,
 };
 use rustok_runtime::{HostRuntimeContext, ModuleWorkRegistrations, ModuleWorkScheduler};
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use sea_orm_migration::SchemaManager;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
@@ -159,10 +161,17 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     assert_state_checkpoint(&database.writer, TENANT_A, baseline_a_generation).await?;
     assert_state_checkpoint(&database.writer, TENANT_B, baseline_b_generation).await?;
     assert_eq!(
-        latest_membership(&database.writer, TENANT_A, PRODUCT_A).await?.1,
+        latest_membership(&database.writer, TENANT_A, PRODUCT_A)
+            .await?
+            .1,
         vec![ALPHA_CHANNEL]
     );
-    assert!(latest_membership(&database.writer, TENANT_B, PRODUCT_B).await?.1.is_empty());
+    assert!(
+        latest_membership(&database.writer, TENANT_B, PRODUCT_B)
+            .await?
+            .1
+            .is_empty()
+    );
 
     materialize_current(&runtime, TENANT_A, PRODUCT_A).await?;
     materialize_current(&runtime, TENANT_B, PRODUCT_B).await?;
@@ -172,8 +181,11 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     // CREATE: adding beta changes tenant A unrestricted membership, so query freshness invalidates the
     // old Product row immediately. Convergence must advance relation/projection and a current Product
     // mutation is required before query authority returns.
-    let a_relation_before_create = latest_membership(&database.writer, TENANT_A, PRODUCT_A).await?.0;
-    let a_projection_before_create = latest_projection(&database.writer, TENANT_A, PRODUCT_A).await?;
+    let a_relation_before_create = latest_membership(&database.writer, TENANT_A, PRODUCT_A)
+        .await?
+        .0;
+    let a_projection_before_create =
+        latest_projection(&database.writer, TENANT_A, PRODUCT_A).await?;
     insert_channel(&database.writer, TENANT_A, BETA_CHANNEL, "beta", "Beta").await?;
     let generation_after_create = channel_generation(&database.writer, TENANT_A).await?;
     assert!(generation_after_create > baseline_a_generation);
@@ -182,7 +194,8 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     run_scheduler_until_idle(&runtime.scheduler, 12).await?;
     let (a_relation_after_create, a_membership_after_create) =
         latest_membership(&database.writer, TENANT_A, PRODUCT_A).await?;
-    let a_projection_after_create = latest_projection(&database.writer, TENANT_A, PRODUCT_A).await?;
+    let a_projection_after_create =
+        latest_projection(&database.writer, TENANT_A, PRODUCT_A).await?;
     assert!(a_relation_after_create > a_relation_before_create);
     assert!(a_projection_after_create > a_projection_before_create);
     assert_eq!(a_membership_after_create, vec![ALPHA_CHANNEL, BETA_CHANNEL]);
@@ -201,7 +214,8 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     run_scheduler_until_idle(&runtime.scheduler, 12).await?;
     let (a_relation_after_delete, a_membership_after_delete) =
         latest_membership(&database.writer, TENANT_A, PRODUCT_A).await?;
-    let a_projection_after_delete = latest_projection(&database.writer, TENANT_A, PRODUCT_A).await?;
+    let a_projection_after_delete =
+        latest_projection(&database.writer, TENANT_A, PRODUCT_A).await?;
     assert!(a_relation_after_delete > a_relation_before_delete);
     assert!(a_projection_after_delete > a_projection_before_delete);
     assert_eq!(a_membership_after_delete, vec![ALPHA_CHANNEL]);
@@ -214,7 +228,9 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     // Product projections are materialized.
     let a_relation_before_move = a_relation_after_delete;
     let a_projection_before_move = a_projection_after_delete;
-    let b_relation_before_move = latest_membership(&database.writer, TENANT_B, PRODUCT_B).await?.0;
+    let b_relation_before_move = latest_membership(&database.writer, TENANT_B, PRODUCT_B)
+        .await?
+        .0;
     let b_projection_before_move = latest_projection(&database.writer, TENANT_B, PRODUCT_B).await?;
     move_channel(&database.writer, ALPHA_CHANNEL, TENANT_A, TENANT_B).await?;
     let generation_a_after_move = channel_generation(&database.writer, TENANT_A).await?;
@@ -254,7 +270,14 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         materialized_source_version(&database.mutation, TENANT_B, PRODUCT_B).await?;
     delete_channel(&database.writer, TENANT_B, ALPHA_CHANNEL).await?;
     let generation_after_identity_delete = channel_generation(&database.writer, TENANT_B).await?;
-    insert_channel(&database.writer, TENANT_B, ALPHA_CHANNEL, "alpha", "Alpha recreated").await?;
+    insert_channel(
+        &database.writer,
+        TENANT_B,
+        ALPHA_CHANNEL,
+        "alpha",
+        "Alpha recreated",
+    )
+    .await?;
     let generation_after_recreate = channel_generation(&database.writer, TENANT_B).await?;
     assert!(generation_after_identity_delete > generation_b_after_move);
     assert!(generation_after_recreate > generation_after_identity_delete);
@@ -264,7 +287,8 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
 
     let (b_relation_after_recreate, b_membership_after_recreate) =
         latest_membership(&database.writer, TENANT_B, PRODUCT_B).await?;
-    let b_projection_after_recreate = latest_projection(&database.writer, TENANT_B, PRODUCT_B).await?;
+    let b_projection_after_recreate =
+        latest_projection(&database.writer, TENANT_B, PRODUCT_B).await?;
     assert_eq!(b_relation_after_recreate, b_relation_before_recreate);
     assert_eq!(b_projection_after_recreate, b_projection_before_recreate);
     assert_eq!(b_membership_after_recreate, vec![ALPHA_CHANNEL]);
@@ -342,7 +366,11 @@ async fn run_scheduler_until_idle(
     .into())
 }
 
-async fn materialize_current(runtime: &Runtime, tenant_id: Uuid, product_id: Uuid) -> TestResult<()> {
+async fn materialize_current(
+    runtime: &Runtime,
+    tenant_id: Uuid,
+    product_id: Uuid,
+) -> TestResult<()> {
     let mutation = load_product_mutation(&runtime.sources, tenant_id, product_id).await?;
     let source_version = mutation.source_version();
     let delivery = MutationDelivery::from_event(PRODUCT_SOURCE, mutation)?;

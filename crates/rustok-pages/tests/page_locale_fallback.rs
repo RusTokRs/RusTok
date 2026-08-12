@@ -1,9 +1,9 @@
 use rustok_content::entities::node::ContentStatus;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
+use rustok_pages::PagesModule;
 use rustok_pages::dto::{CreatePageInput, ListPagesFilter, PageTranslationInput};
 use rustok_pages::services::PageService;
-use rustok_pages::PagesModule;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use std::sync::Arc;

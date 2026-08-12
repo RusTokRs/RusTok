@@ -27,7 +27,10 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(db_url);
-    options.max_connections(5).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(5)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await?;
     db.execute_unprepared(
         "CREATE TABLE users (id TEXT NOT NULL PRIMARY KEY, tenant_id TEXT NOT NULL, UNIQUE (tenant_id, id))",
@@ -47,11 +50,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -329,8 +328,8 @@ async fn merge_read_state_reconciliation_is_conservative_atomic_and_idempotent()
         .await;
     assert!(matches!(service_write, Err(ForumError::Validation(_))));
 
-    assert!(db
-        .execute(Statement::from_sql_and_values(
+    assert!(
+        db.execute(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             INSERT INTO forum_topic_read_states (
@@ -338,12 +337,17 @@ async fn merge_read_state_reconciliation_is_conservative_atomic_and_idempotent()
                 created_at, updated_at
             ) VALUES (?, ?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             "#,
-            vec![tenant_id.into(), source_topic_id.into(), raw_guard_user.into()],
+            vec![
+                tenant_id.into(),
+                source_topic_id.into(),
+                raw_guard_user.into()
+            ],
         ))
         .await
-        .is_err());
-    assert!(db
-        .execute(Statement::from_sql_and_values(
+        .is_err()
+    );
+    assert!(
+        db.execute(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             r#"
             UPDATE forum_topic_read_states
@@ -358,7 +362,8 @@ async fn merge_read_state_reconciliation_is_conservative_atomic_and_idempotent()
             ],
         ))
         .await
-        .is_err());
+        .is_err()
+    );
 
     let operation_id = Uuid::new_v4();
     let input = ReconcileForumTopicMergeReadStatesInput {
@@ -367,12 +372,7 @@ async fn merge_read_state_reconciliation_is_conservative_atomic_and_idempotent()
     };
     let service = ForumTopicMergeReadStateReconciliationService::new(db.clone());
     let reconciled = service
-        .reconcile_merge_read_states(
-            tenant_id,
-            merge_operation_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .reconcile_merge_read_states(tenant_id, merge_operation_id, admin.clone(), input.clone())
         .await?;
 
     assert_eq!(reconciled.operation_id, operation_id);
@@ -385,21 +385,22 @@ async fn merge_read_state_reconciliation_is_conservative_atomic_and_idempotent()
     assert_eq!(reconciled.discarded_source_only_count, 1);
     assert_eq!(reconciled.discarded_target_overlap_count, 2);
     assert_eq!(read_state_count(&db, tenant_id, source_topic_id).await?, 0);
-    assert_eq!(read_state_snapshots(&db, tenant_id, target_topic_id).await?, target_before);
+    assert_eq!(
+        read_state_snapshots(&db, tenant_id, target_topic_id).await?,
+        target_before
+    );
     assert_reconciliation_event(&db, tenant_id, &reconciled).await?;
     assert_eq!(reconciliation_count(&db, tenant_id).await?, 1);
 
     let replay = service
-        .reconcile_merge_read_states(
-            tenant_id,
-            merge_operation_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .reconcile_merge_read_states(tenant_id, merge_operation_id, admin.clone(), input.clone())
         .await?;
     assert_eq!(replay, reconciled);
     assert_eq!(read_state_count(&db, tenant_id, source_topic_id).await?, 0);
-    assert_eq!(read_state_snapshots(&db, tenant_id, target_topic_id).await?, target_before);
+    assert_eq!(
+        read_state_snapshots(&db, tenant_id, target_topic_id).await?,
+        target_before
+    );
     assert_eq!(reconciliation_count(&db, tenant_id).await?, 1);
 
     let bulk = ForumTopicReadStateService::new(db.clone())
@@ -533,10 +534,7 @@ async fn read_state_count(
     .await
 }
 
-async fn reconciliation_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn reconciliation_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(

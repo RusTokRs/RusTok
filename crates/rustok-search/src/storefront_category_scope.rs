@@ -26,8 +26,7 @@ pub struct StorefrontSearchCategoryScopeRequest {
 
 impl StorefrontSearchCategoryScopeRequest {
     pub fn is_explicit_forum_only(&self) -> bool {
-        self.source_modules.len() == 1
-            && self.source_modules[0] == FORUM_SEARCH_SOURCE_MODULE
+        self.source_modules.len() == 1 && self.source_modules[0] == FORUM_SEARCH_SOURCE_MODULE
     }
 }
 
@@ -39,8 +38,7 @@ pub trait StorefrontSearchCategoryScopePort: Send + Sync {
     ) -> Result<Vec<Uuid>, PortError>;
 }
 
-pub type SharedStorefrontSearchCategoryScopePort =
-    Arc<dyn StorefrontSearchCategoryScopePort>;
+pub type SharedStorefrontSearchCategoryScopePort = Arc<dyn StorefrontSearchCategoryScopePort>;
 
 /// Applies the owner category-scope capability only to an explicit Forum-only
 /// Search request. Mixed, unspecified, and non-Forum source scopes retain the

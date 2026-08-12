@@ -10,7 +10,7 @@ pub(super) async fn schema(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     event_id TEXT NOT NULL UNIQUE,
     tenant_id TEXT NOT NULL,
     aggregate_type TEXT NOT NULL
-        CHECK (aggregate_type IN ('category', 'topic', 'reply')),
+        CHECK (aggregate_type IN ('category', 'topic', 'reply', 'forum_topic')),
     aggregate_id TEXT NOT NULL,
     event_type TEXT NOT NULL
         CHECK (event_type IN (
@@ -36,7 +36,18 @@ pub(super) async fn schema(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         'forum.topic.tags_changed',
         'forum.mention.user_added',
         'forum.mention.audience_added',
-        'forum.subscription.changed'
+        'forum.subscription.changed',
+        'forum.topic.merged',
+        'forum.topic.split',
+        'forum.topic.moved',
+        'forum.topic.forked',
+        'forum.topic.reply_range_moved',
+        'forum.topic.merge.votes_reconciled',
+        'forum.topic.merge.tags_reconciled',
+        'forum.topic.merge.subscriptions_reconciled',
+        'forum.topic.merge.read_state_reconciled',
+        'forum.topic.merge.audience_reconciled',
+        'forum.projection.invalidation'
         )),
     schema_version INTEGER NOT NULL DEFAULT 1
         CHECK (schema_version = 1),

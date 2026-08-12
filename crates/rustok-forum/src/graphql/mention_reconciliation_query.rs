@@ -92,16 +92,13 @@ async fn reconciliation_context(
     let requested_limit = normalize_limit(limit)?;
     let relation_after = normalize_relation_cursor(relation_after)?;
     let db = ctx.data::<DatabaseConnection>()?.clone();
-    let security =
-        SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+    let security = SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
     Ok((tenant.id, security, requested_limit, relation_after, db))
 }
 
 fn require_operations_permissions(auth: &AuthContext) -> Result<()> {
-    let categories_manage = has_any_effective_permission(
-        &auth.permissions,
-        &[Permission::FORUM_CATEGORIES_MANAGE],
-    );
+    let categories_manage =
+        has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_MANAGE]);
     let topics_manage =
         has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_MANAGE]);
     if categories_manage && topics_manage {

@@ -10,11 +10,12 @@ use crate::{
     EntityKey, IndexDriftAuthorizedRepairCommand, IndexDriftRepairAuthorizer,
     IndexDriftRepairEvidence, IndexDriftRepairEvidenceReader, IndexDriftRepairEvidenceState,
     IndexDriftRepairFailure, IndexDriftRepairFinding, IndexDriftRepairOwner,
-    IndexDriftRepairOwnerOutcome, IndexDriftRepairOwnerRegistry, IndexDriftRepairReservationOutcome,
-    IndexDriftRepairService, IndexDriftRepairStore, IndexDriftRepairStoreCompletionOutcome,
-    IndexDriftRepairTarget, IndexDriftRepairTargetKind, IndexDriftRepairTicket, IndexMutation,
-    IndexSourceAbsenceError, IndexSourceError, IndexSourceFailureKind, IndexSourceLoadRequest,
-    SchemaRegistry, SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
+    IndexDriftRepairOwnerOutcome, IndexDriftRepairOwnerRegistry,
+    IndexDriftRepairReservationOutcome, IndexDriftRepairService, IndexDriftRepairStore,
+    IndexDriftRepairStoreCompletionOutcome, IndexDriftRepairTarget, IndexDriftRepairTargetKind,
+    IndexDriftRepairTicket, IndexMutation, IndexSourceAbsenceError, IndexSourceError,
+    IndexSourceFailureKind, IndexSourceLoadRequest, SchemaRegistry,
+    SharedIndexSourceAbsenceRegistry, SharedIndexSourceRegistry,
 };
 
 use super::{
@@ -311,15 +312,15 @@ pub fn materialize_postgres_index_drift_missing_entity_repair_service(
     let base_owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(
         PostgresIndexDriftMissingEntityRepairOwner::new(db.clone(), schemas)?,
     );
-    let owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(
-        RecoveryAwareIndexDriftRepairOwner::new(db.clone(), base_owner)?,
-    );
+    let owner: Arc<dyn IndexDriftRepairOwner> = Arc::new(RecoveryAwareIndexDriftRepairOwner::new(
+        db.clone(),
+        base_owner,
+    )?);
     let owners = IndexDriftRepairOwnerRegistry::new([owner])
         .map_err(|_| permanent_failure(COMPONENTS_INVALID))?;
     let store = materialize_postgres_index_drift_repair_store(db.clone())?;
-    let recovery_store: Arc<dyn IndexDriftRepairStore> = Arc::new(
-        RecoveryAwareIndexDriftRepairStore::new(db, store)?,
-    );
+    let recovery_store: Arc<dyn IndexDriftRepairStore> =
+        Arc::new(RecoveryAwareIndexDriftRepairStore::new(db, store)?);
     let gated_store: Arc<dyn IndexDriftRepairStore> = Arc::new(MissingEntityOnlyRepairStore {
         inner: recovery_store,
     });
@@ -431,14 +432,8 @@ fn evidence_digest(
     let mut hasher = Sha256::new();
     hash_component(&mut hasher, EVIDENCE_DOMAIN);
     hash_entity_key(&mut hasher, target.key);
-    hash_component(
-        &mut hasher,
-        &target.indexed_source_version.to_be_bytes(),
-    );
-    hash_component(
-        &mut hasher,
-        &target.absence_source_version.to_be_bytes(),
-    );
+    hash_component(&mut hasher, &target.indexed_source_version.to_be_bytes());
+    hash_component(&mut hasher, &target.absence_source_version.to_be_bytes());
     match authority {
         MissingEntityAuthority::Present(version) => {
             hash_component(&mut hasher, b"owner_present");
@@ -482,14 +477,8 @@ fn owner_receipt_digest(
     hash_component(&mut hasher, authorized.command().command_id().as_bytes());
     hash_component(&mut hasher, finding.finding_id().as_bytes());
     hash_entity_key(&mut hasher, target.key);
-    hash_component(
-        &mut hasher,
-        &target.indexed_source_version.to_be_bytes(),
-    );
-    hash_component(
-        &mut hasher,
-        &target.absence_source_version.to_be_bytes(),
-    );
+    hash_component(&mut hasher, &target.indexed_source_version.to_be_bytes());
+    hash_component(&mut hasher, &target.absence_source_version.to_be_bytes());
     match outcome {
         MutationApplyOutcome::Applied { source_version } => {
             hash_component(&mut hasher, b"applied");
@@ -525,9 +514,7 @@ fn entity_values(key: &EntityKey) -> Vec<SqlValue> {
     ]
 }
 
-fn positive_source_version(
-    row: &QueryResult,
-) -> Result<u64, IndexDriftRepairFailure> {
+fn positive_source_version(row: &QueryResult) -> Result<u64, IndexDriftRepairFailure> {
     let value = row
         .try_get::<String>("", "source_version_text")
         .map_err(|_| permanent_failure(SOURCE_CONTRACT_INVALID))?;

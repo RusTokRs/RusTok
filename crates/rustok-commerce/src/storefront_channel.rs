@@ -35,7 +35,6 @@ pub(crate) fn public_channel_slug_from_request(request_context: &RequestContext)
     normalize_public_channel_slug(request_context.channel_slug.as_deref())
 }
 
-
 #[cfg(test)]
 mod tests {
     use rustok_inventory::{

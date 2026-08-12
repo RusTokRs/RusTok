@@ -90,7 +90,9 @@ struct CliProcessResult {
 async fn live_cli_system_role_repair_reaches_two_running_replicas_without_restart() {
     run_live_cli_repair_scenario()
         .await
-        .unwrap_or_else(|error| panic!("RBAC live CLI repair propagation evidence failed: {error}"));
+        .unwrap_or_else(|error| {
+            panic!("RBAC live CLI repair propagation evidence failed: {error}")
+        });
 }
 
 async fn run_live_cli_repair_scenario() -> TestResult<()> {
@@ -147,7 +149,9 @@ async fn run_live_cli_repair_scenario() -> TestResult<()> {
         validate_observer_ready(&first_ready)?;
         validate_observer_ready(&second_ready)?;
         if first_ready.process_id == second_ready.process_id {
-            return Err(test_error("observer replicas unexpectedly share one process"));
+            return Err(test_error(
+                "observer replicas unexpectedly share one process",
+            ));
         }
 
         let mut cli = spawn_cli(&target_url, tenant_id, &cli_result_path)?;
@@ -169,7 +173,9 @@ async fn run_live_cli_repair_scenario() -> TestResult<()> {
         if cli_result.process_id == first_ready.process_id
             || cli_result.process_id == second_ready.process_id
         {
-            return Err(test_error("CLI repair did not execute in an independent process"));
+            return Err(test_error(
+                "CLI repair did not execute in an independent process",
+            ));
         }
 
         wait_for_child(
@@ -275,13 +281,9 @@ async fn run_observer(
     let watchdog = context
         .shared_get::<RbacInvalidationGenerationWatchdogHandle>()
         .ok_or_else(|| test_error("observer watchdog handle is unavailable"))?;
-    let initial_allowed = RbacService::has_permission(
-        &db,
-        &tenant_id,
-        &user_id,
-        &Permission::SETTINGS_MANAGE,
-    )
-    .await?;
+    let initial_allowed =
+        RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE)
+            .await?;
     let ready = ObserverReady {
         process_id: std::process::id(),
         initial_generation: rustok_rbac::read_permission_invalidation_generation(&db).await?,
@@ -302,15 +304,11 @@ async fn run_observer(
     let generation_seen_at = wait_for_durable_generation(&db, 1, WATCHDOG_RECOVERY_BOUND).await?;
     wait_for_applied_generation(1, WATCHDOG_RECOVERY_BOUND).await?;
 
-    let final_allowed = RbacService::has_permission(
-        &db,
-        &tenant_id,
-        &user_id,
-        &Permission::SETTINGS_MANAGE,
-    )
-    .await?;
-    let authoritative = RbacService::get_user_permissions_authoritative(&db, &tenant_id, &user_id)
-        .await?;
+    let final_allowed =
+        RbacService::has_permission(&db, &tenant_id, &user_id, &Permission::SETTINGS_MANAGE)
+            .await?;
+    let authoritative =
+        RbacService::get_user_permissions_authoritative(&db, &tenant_id, &user_id).await?;
     let result = ObserverResult {
         process_id: std::process::id(),
         durable_generation: rustok_rbac::read_permission_invalidation_generation(&db).await?,
@@ -334,11 +332,7 @@ async fn run_observer(
     Ok(())
 }
 
-async fn run_cli(
-    database_url: &str,
-    tenant_id: Uuid,
-    result_path: PathBuf,
-) -> TestResult<()> {
+async fn run_cli(database_url: &str, tenant_id: Uuid, result_path: PathBuf) -> TestResult<()> {
     let db = connect_postgres(database_url).await?;
     let runtime = RuntimeComposition::from_database(db, serde_json::json!({}));
     let exit = rustok_cli::run_with_runtime(
@@ -483,11 +477,7 @@ fn spawn_observer(
     Ok(command.spawn()?)
 }
 
-fn spawn_cli(
-    database_url: &str,
-    tenant_id: Uuid,
-    result_path: &Path,
-) -> TestResult<Child> {
+fn spawn_cli(database_url: &str, tenant_id: Uuid, result_path: &Path) -> TestResult<Child> {
     Ok(child_command("cli", database_url, tenant_id, result_path)?.spawn()?)
 }
 
@@ -614,11 +604,7 @@ async fn insert_tenant(db: &DatabaseConnection) -> TestResult<Uuid> {
     Ok(tenant_id)
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    suffix: &str,
-) -> TestResult<Uuid> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, suffix: &str) -> TestResult<Uuid> {
     let user_id = Uuid::new_v4();
     users::Entity::insert(users::ActiveModel {
         id: Set(user_id),

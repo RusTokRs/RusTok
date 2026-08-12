@@ -23,11 +23,13 @@ pub fn ForumStorefrontComposition() -> impl IntoView {
     let reply_locale = route.locale.clone();
 
     let topic_revision_resource = Resource::new_blocking(
-        move || (
-            reactions_enabled.get(),
-            topic_reaction_id,
-            topic_locale.clone(),
-        ),
+        move || {
+            (
+                reactions_enabled.get(),
+                topic_reaction_id,
+                topic_locale.clone(),
+            )
+        },
         |(enabled, topic_id, locale)| async move {
             if !enabled {
                 return Ok(None);
@@ -212,10 +214,7 @@ mod tests {
         let invalid_reply = forum_route(Some(topic_id), Some("not-a-uuid"));
         let topic = explicit_forum_topic_id(&invalid_reply);
         assert!(explicit_forum_reply_id(&invalid_reply, topic.as_ref()).is_none());
-        let nil_reply = forum_route(
-            Some(topic_id),
-            Some("00000000-0000-0000-0000-000000000000"),
-        );
+        let nil_reply = forum_route(Some(topic_id), Some("00000000-0000-0000-0000-000000000000"));
         let topic = explicit_forum_topic_id(&nil_reply);
         assert!(explicit_forum_reply_id(&nil_reply, topic.as_ref()).is_none());
     }

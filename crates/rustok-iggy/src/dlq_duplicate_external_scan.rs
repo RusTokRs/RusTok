@@ -90,8 +90,8 @@ impl IggyDlqDuplicateScanWindowPolicy {
     ) -> Result<Self, IggyDlqDuplicateScanError> {
         validate_partitions(&partitions)?;
         validate_message_bounds(per_partition_messages, batch_size)?;
-        let partition_count =
-            u32::try_from(partitions.len()).map_err(|_| IggyDlqDuplicateScanError::InvalidRequest)?;
+        let partition_count = u32::try_from(partitions.len())
+            .map_err(|_| IggyDlqDuplicateScanError::InvalidRequest)?;
         let total_message_budget = per_partition_messages
             .checked_mul(partition_count)
             .filter(|total| *total <= MAX_SCAN_MESSAGES)
@@ -262,8 +262,8 @@ impl<'a> IggyDlqDuplicateScanner<'a> {
                     previous_offset = Some(offset);
                 }
 
-                let last_offset = previous_offset
-                    .ok_or(IggyDlqDuplicateScanError::InvalidBrokerResponse)?;
+                let last_offset =
+                    previous_offset.ok_or(IggyDlqDuplicateScanError::InvalidBrokerResponse)?;
                 next_offset = last_offset
                     .checked_add(1)
                     .ok_or(IggyDlqDuplicateScanError::OffsetOverflow)?;
@@ -381,8 +381,7 @@ mod tests {
 
     #[test]
     fn fair_window_policy_bounds_each_partition_and_total() {
-        let policy = IggyDlqDuplicateScanWindowPolicy::new(vec![1, 2, 3], 50, 100, 25)
-            .unwrap();
+        let policy = IggyDlqDuplicateScanWindowPolicy::new(vec![1, 2, 3], 50, 100, 25).unwrap();
         assert_eq!(policy.partitions(), &[1, 2, 3]);
         assert_eq!(policy.start_offset(), 50);
         assert_eq!(policy.per_partition_messages(), 100);

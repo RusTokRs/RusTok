@@ -200,9 +200,7 @@ fn fulfillment_port_context_facts(context: &PortContext) -> FulfillmentPortConte
     }
 }
 
-fn fulfillment_owner_error_facts(
-    error: &crate::FulfillmentError,
-) -> FulfillmentOwnerErrorFacts {
+fn fulfillment_owner_error_facts(error: &crate::FulfillmentError) -> FulfillmentOwnerErrorFacts {
     let (
         error_variant,
         text_field_count,
@@ -211,14 +209,9 @@ fn fulfillment_owner_error_facts(
         uuid_non_nil_count,
         opaque_payload_present,
     ) = match error {
-        crate::FulfillmentError::Validation(value) => (
-            "validation",
-            1,
-            value.chars().count(),
-            0,
-            0,
-            false,
-        ),
+        crate::FulfillmentError::Validation(value) => {
+            ("validation", 1, value.chars().count(), 0, 0, false)
+        }
         crate::FulfillmentError::ShippingOptionNotFound(id) => (
             "shipping_option_not_found",
             0,

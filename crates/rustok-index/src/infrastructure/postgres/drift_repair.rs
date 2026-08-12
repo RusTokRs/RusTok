@@ -50,19 +50,10 @@ impl PostgresIndexDriftRepairStore {
     ) -> Result<IndexDriftRepairReservationOutcome, IndexDriftRepairFailure> {
         let command = authorized.command();
         let payload_digest = command_payload_digest(command);
-        lock_command_id(
-            transaction,
-            command.tenant_id(),
-            command.command_id(),
-        )
-        .await?;
+        lock_command_id(transaction, command.tenant_id(), command.command_id()).await?;
 
-        if let Some(existing) = load_command(
-            transaction,
-            command.tenant_id(),
-            command.command_id(),
-        )
-        .await?
+        if let Some(existing) =
+            load_command(transaction, command.tenant_id(), command.command_id()).await?
         {
             if existing.finding_id != command.finding_id()
                 || existing.payload_digest != payload_digest
@@ -161,12 +152,8 @@ impl PostgresIndexDriftRepairStore {
             return Err(permanent_failure(STORED_CONTRACT_INVALID));
         }
 
-        let finding_open = exact_finding_is_open(
-            transaction,
-            ticket.tenant_id(),
-            ticket.finding_id(),
-        )
-        .await?;
+        let finding_open =
+            exact_finding_is_open(transaction, ticket.tenant_id(), ticket.finding_id()).await?;
         let effective = if finding_open {
             completion.clone()
         } else {
@@ -423,7 +410,10 @@ fn validate_target_commitment(
     let expected_check = match target {
         IndexDriftRepairTarget::MissingEntity { .. } => MISSING_ENTITY_CHECK.to_owned(),
         IndexDriftRepairTarget::OrphanLink { .. } => {
-            format!("{ORPHAN_LINK_CHECK_PREFIX}{}", orphan_identity_digest(target))
+            format!(
+                "{ORPHAN_LINK_CHECK_PREFIX}{}",
+                orphan_identity_digest(target)
+            )
         }
     };
     if check_name != expected_check
@@ -525,9 +515,7 @@ async fn lock_command_id(
     tenant_id: Uuid,
     command_id: Uuid,
 ) -> Result<(), IndexDriftRepairFailure> {
-    let key = format!(
-        "index-drift-repair-command\u{1f}{tenant_id}\u{1f}{command_id}"
-    );
+    let key = format!("index-drift-repair-command\u{1f}{tenant_id}\u{1f}{command_id}");
     transaction
         .execute(Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -685,10 +673,7 @@ fn orphan_evidence_digest(target: &IndexDriftRepairTarget, state: &[u8]) -> Stri
     hash_component(&mut hasher, link_name.as_str().as_bytes());
     hash_component(&mut hasher, &ordinal.to_be_bytes());
     hash_linked_key(&mut hasher, target);
-    hash_component(
-        &mut hasher,
-        &target_absence_source_version.to_be_bytes(),
-    );
+    hash_component(&mut hasher, &target_absence_source_version.to_be_bytes());
     hex::encode(hasher.finalize())
 }
 
@@ -708,10 +693,7 @@ fn orphan_identity_digest(target: &IndexDriftRepairTarget) -> String {
     hash_component(&mut hasher, link_name.as_str().as_bytes());
     hash_component(&mut hasher, &ordinal.to_be_bytes());
     hash_linked_key(&mut hasher, target);
-    hash_component(
-        &mut hasher,
-        &target_absence_source_version.to_be_bytes(),
-    );
+    hash_component(&mut hasher, &target_absence_source_version.to_be_bytes());
     hex::encode(hasher.finalize())
 }
 
@@ -741,10 +723,7 @@ fn hash_repair_target(hasher: &mut Sha256, target: &IndexDriftRepairTarget) {
             hash_component(hasher, link_name.as_str().as_bytes());
             hash_component(hasher, &ordinal.to_be_bytes());
             hash_linked_key(hasher, target);
-            hash_component(
-                hasher,
-                &target_absence_source_version.to_be_bytes(),
-            );
+            hash_component(hasher, &target_absence_source_version.to_be_bytes());
         }
     }
 }
@@ -799,10 +778,7 @@ fn hash_component(hasher: &mut Sha256, value: &[u8]) {
     hasher.update(value);
 }
 
-fn required_text(
-    row: &QueryResult,
-    column: &str,
-) -> Result<String, IndexDriftRepairFailure> {
+fn required_text(row: &QueryResult, column: &str) -> Result<String, IndexDriftRepairFailure> {
     let value = row
         .try_get::<String>("", column)
         .map_err(|_| permanent_failure(STORED_CONTRACT_INVALID))?;
@@ -820,10 +796,7 @@ fn optional_text(
         .map_err(|_| permanent_failure(STORED_CONTRACT_INVALID))
 }
 
-fn required_digest(
-    row: &QueryResult,
-    column: &str,
-) -> Result<String, IndexDriftRepairFailure> {
+fn required_digest(row: &QueryResult, column: &str) -> Result<String, IndexDriftRepairFailure> {
     let value = required_text(row, column)?;
     if !valid_digest(&value) {
         return Err(permanent_failure(STORED_CONTRACT_INVALID));

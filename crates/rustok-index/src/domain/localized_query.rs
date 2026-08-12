@@ -82,11 +82,7 @@ impl LocalizedEntityQuery {
 
     pub fn validate_shape(&self) -> Result<(), DomainError> {
         self.query.validate_shape()?;
-        let ordinary_nodes = self
-            .query
-            .filter
-            .as_ref()
-            .map_or(0, FilterExpr::node_count);
+        let ordinary_nodes = self.query.filter.as_ref().map_or(0, FilterExpr::node_count);
         let any_locale_nodes = self
             .any_locale_filter
             .as_ref()

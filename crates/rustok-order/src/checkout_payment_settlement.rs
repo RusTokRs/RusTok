@@ -283,10 +283,7 @@ fn order_payment_settlement_request_facts(
         payment_method_present: !request.payment_method.trim().is_empty(),
         payment_method_length: request.payment_method.chars().count(),
         locale_present: request.locale.is_some(),
-        locale_length: request
-            .locale
-            .as_ref()
-            .map(|value| value.chars().count()),
+        locale_length: request.locale.as_ref().map(|value| value.chars().count()),
         fallback_locale_present: request.fallback_locale.is_some(),
         fallback_locale_length: request
             .fallback_locale

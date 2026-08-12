@@ -130,13 +130,8 @@ mod tests {
     #[tokio::test]
     async fn timed_source_classifies_scan_timeout_as_retryable() {
         let source = TimedIndexSource::new(PendingSource, Duration::from_millis(1));
-        let request = IndexSourceScanRequest::new(
-            Uuid::from_u128(1),
-            schema_ref(),
-            None,
-            1,
-        )
-        .unwrap();
+        let request =
+            IndexSourceScanRequest::new(Uuid::from_u128(1), schema_ref(), None, 1).unwrap();
 
         let failure = source.scan(request).await.unwrap_err();
         assert_eq!(failure.kind(), IndexSourceFailureKind::Retryable);

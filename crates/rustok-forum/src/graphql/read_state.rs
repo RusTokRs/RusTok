@@ -561,7 +561,10 @@ mod tests {
 
     #[test]
     fn locale_resolution_outcomes_are_fixed_and_do_not_expose_locale_values() {
-        assert_eq!(locale_resolution_outcome("ru", "ru", 1), LOCALE_OUTCOME_EXACT);
+        assert_eq!(
+            locale_resolution_outcome("ru", "ru", 1),
+            LOCALE_OUTCOME_EXACT
+        );
         assert_eq!(
             locale_resolution_outcome("tenant-secret", "different-secret", 2),
             LOCALE_OUTCOME_FALLBACK

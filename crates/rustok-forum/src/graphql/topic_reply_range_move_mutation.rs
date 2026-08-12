@@ -150,10 +150,8 @@ impl From<ForumReplyRangeMoveResult> for GqlForumReplyRangeMove {
             target_end_position: value.target_end_position,
             moved_reply_count: value.moved_reply_count,
             moved_published_reply_count: value.moved_published_reply_count,
-            source_resulting_published_reply_count: value
-                .source_resulting_published_reply_count,
-            target_resulting_published_reply_count: value
-                .target_resulting_published_reply_count,
+            source_resulting_published_reply_count: value.source_resulting_published_reply_count,
+            target_resulting_published_reply_count: value.target_resulting_published_reply_count,
             moved_solution_reply_id: value.moved_solution_reply_id,
             source_resulting_solution_reply_id: value.source_resulting_solution_reply_id,
             target_resulting_solution_reply_id: value.target_resulting_solution_reply_id,
@@ -205,16 +203,13 @@ mod tests {
 
     #[test]
     fn reply_range_transport_requires_topic_manage_permission() {
-        let denied = require_topic_manage_permission(&auth_context(vec![
-            Permission::FORUM_TOPICS_READ,
-        ]))
-        .expect_err("read-only actor must not move reply ranges");
+        let denied =
+            require_topic_manage_permission(&auth_context(vec![Permission::FORUM_TOPICS_READ]))
+                .expect_err("read-only actor must not move reply ranges");
         assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
 
-        require_topic_manage_permission(&auth_context(vec![
-            Permission::FORUM_TOPICS_MANAGE,
-        ]))
-        .expect("manager permission must be accepted");
+        require_topic_manage_permission(&auth_context(vec![Permission::FORUM_TOPICS_MANAGE]))
+            .expect("manager permission must be accepted");
     }
 
     #[test]

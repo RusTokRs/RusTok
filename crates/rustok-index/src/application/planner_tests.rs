@@ -141,10 +141,7 @@ fn aliases_do_not_depend_on_reference_encounter_order() {
     assert!(!first.joins[0].traverses_many);
     assert_eq!(first.order_by[0].field.relation_alias, "t1");
     assert_eq!(first.order_by[0].field.value_type, IndexValueType::Uuid);
-    assert_eq!(
-        first.order_by[0].field.cardinality,
-        FieldCardinality::One
-    );
+    assert_eq!(first.order_by[0].field.cardinality, FieldCardinality::One);
     assert!(!first.order_by[0].field.nullable);
     assert!(!first.order_by[0].field.traverses_many);
 }

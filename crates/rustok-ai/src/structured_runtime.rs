@@ -915,9 +915,7 @@ mod tests {
     use rustok_core::ModuleRegistry;
     use rustok_outbox::{OutboxTransport, TransactionalEventBus};
     use rustok_secrets::SecretResolverRegistry;
-    use sea_orm::{
-        ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set,
-    };
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
     use serde_json::json;
     use tokio::sync::Notify;
 

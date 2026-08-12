@@ -2057,10 +2057,11 @@ mod tests {
 
         let blog_comment_service = BlogCommentService::new(db.clone(), events.clone());
         blog_comment_service
-            .create_comment(
+            .create_public_comment(
                 tenant_id,
                 security.clone(),
                 post_id,
+                None,
                 BlogCreateCommentInput {
                     locale: "en".to_string(),
                     content: richtext("First blog comment"),
@@ -2070,10 +2071,11 @@ mod tests {
             .await
             .expect("first blog comment should be created");
         blog_comment_service
-            .create_comment(
+            .create_public_comment(
                 tenant_id,
                 security.clone(),
                 post_id,
+                None,
                 BlogCreateCommentInput {
                     locale: "en".to_string(),
                     content: richtext("Second blog comment"),

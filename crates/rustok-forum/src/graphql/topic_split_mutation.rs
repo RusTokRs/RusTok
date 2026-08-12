@@ -142,10 +142,8 @@ impl From<ForumTopicSplitResult> for GqlForumTopicSplit {
             reason: value.reason,
             moved_reply_count: value.moved_reply_count,
             moved_published_reply_count: value.moved_published_reply_count,
-            source_resulting_published_reply_count: value
-                .source_resulting_published_reply_count,
-            target_resulting_published_reply_count: value
-                .target_resulting_published_reply_count,
+            source_resulting_published_reply_count: value.source_resulting_published_reply_count,
+            target_resulting_published_reply_count: value.target_resulting_published_reply_count,
             solution_reply_id: value.solution_reply_id,
             split_at: value.split_at.to_rfc3339(),
         }
@@ -195,16 +193,13 @@ mod tests {
 
     #[test]
     fn split_transport_requires_topic_manage_permission() {
-        let denied = require_topic_manage_permission(&auth_context(vec![
-            Permission::FORUM_TOPICS_READ,
-        ]))
-        .expect_err("read-only actor must not split topics");
+        let denied =
+            require_topic_manage_permission(&auth_context(vec![Permission::FORUM_TOPICS_READ]))
+                .expect_err("read-only actor must not split topics");
         assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
 
-        require_topic_manage_permission(&auth_context(vec![
-            Permission::FORUM_TOPICS_MANAGE,
-        ]))
-        .expect("manager permission must be accepted");
+        require_topic_manage_permission(&auth_context(vec![Permission::FORUM_TOPICS_MANAGE]))
+            .expect("manager permission must be accepted");
     }
 
     #[test]

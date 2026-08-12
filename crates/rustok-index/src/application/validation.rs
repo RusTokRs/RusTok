@@ -109,10 +109,7 @@ struct ResolvedField<'a> {
 }
 
 impl SchemaRegistry {
-    pub fn validate_mutation(
-        &self,
-        mutation: &IndexMutation,
-    ) -> Result<(), RecordValidationError> {
+    pub fn validate_mutation(&self, mutation: &IndexMutation) -> Result<(), RecordValidationError> {
         match mutation {
             IndexMutation::Upsert { record, .. } => self.validate_record(record),
             IndexMutation::Delete {

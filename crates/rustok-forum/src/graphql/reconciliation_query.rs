@@ -11,8 +11,7 @@ use uuid::Uuid;
 use crate::{
     ForumCounterDrift, ForumCounterReconciliationReport, ForumCounterReconciliationService,
     services::{
-        ForumSolutionDrift, ForumSolutionReconciliationReport,
-        ForumSolutionReconciliationService,
+        ForumSolutionDrift, ForumSolutionReconciliationReport, ForumSolutionReconciliationService,
     },
 };
 
@@ -89,8 +88,7 @@ impl ForumReconciliationQuery {
         topic_after: Option<Uuid>,
         category_after: Option<Uuid>,
     ) -> Result<GqlForumCounterReconciliationReport> {
-        let (tenant_id, security, requested_limit, db) =
-            reconciliation_context(ctx, limit).await?;
+        let (tenant_id, security, requested_limit, db) = reconciliation_context(ctx, limit).await?;
         let report = ForumCounterReconciliationService::new(db)
             .report_page(
                 tenant_id,
@@ -116,8 +114,7 @@ impl ForumReconciliationQuery {
         solution_after: Option<Uuid>,
         solution_stat_after: Option<Uuid>,
     ) -> Result<GqlForumSolutionReconciliationReport> {
-        let (tenant_id, security, requested_limit, db) =
-            reconciliation_context(ctx, limit).await?;
+        let (tenant_id, security, requested_limit, db) = reconciliation_context(ctx, limit).await?;
         let report = ForumSolutionReconciliationService::new(db)
             .report_page(
                 tenant_id,
@@ -148,16 +145,13 @@ async fn reconciliation_context(
     }
     let requested_limit = normalize_limit(limit)?;
     let db = ctx.data::<DatabaseConnection>()?.clone();
-    let security =
-        SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+    let security = SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
     Ok((tenant.id, security, requested_limit, db))
 }
 
 fn require_operations_permissions(auth: &AuthContext) -> Result<()> {
-    let categories_manage = has_any_effective_permission(
-        &auth.permissions,
-        &[Permission::FORUM_CATEGORIES_MANAGE],
-    );
+    let categories_manage =
+        has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_MANAGE]);
     let topics_manage =
         has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_MANAGE]);
     if categories_manage && topics_manage {

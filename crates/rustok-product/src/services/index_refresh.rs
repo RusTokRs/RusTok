@@ -325,7 +325,12 @@ pub(crate) async fn record_product_locale_refreshes_in_tx(
     if txn.get_database_backend() != DatabaseBackend::Postgres {
         return Ok(());
     }
-    validate_refresh_identity(tenant_id, product_id, root_event_id, "Product Index locale refresh")?;
+    validate_refresh_identity(
+        tenant_id,
+        product_id,
+        root_event_id,
+        "Product Index locale refresh",
+    )?;
 
     let rows = txn
         .query_all(Statement::from_sql_and_values(

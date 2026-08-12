@@ -101,7 +101,7 @@ pub fn build_forum_topic_merge_command(
             Some(ForumTopicMergeWinner::Target) => Some(target_solution.clone()),
             None => {
                 return Err(
-                    "Choose which accepted solution must remain after the merge".to_string(),
+                    "Choose which accepted solution must remain after the merge".to_string()
                 );
             }
         },
@@ -183,10 +183,9 @@ fn format_uuid(bytes: [u8; 16]) -> String {
 fn looks_like_uuid(value: &str) -> bool {
     let groups = value.split('-').collect::<Vec<_>>();
     groups.len() == 5
-        && groups
-            .iter()
-            .zip([8, 4, 4, 4, 12])
-            .all(|(group, len)| group.len() == len && group.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        && groups.iter().zip([8, 4, 4, 4, 12]).all(|(group, len)| {
+            group.len() == len && group.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
 }
 
 #[cfg(test)]
@@ -232,14 +231,10 @@ mod tests {
             Some("00000000-0000-4000-8000-000000000022"),
         );
         let operation_id = "00000000-0000-4000-8000-000000000003";
-        assert!(build_forum_topic_merge_command(
-            operation_id,
-            &source,
-            &target,
-            "merge",
-            None,
-        )
-        .is_err());
+        assert!(
+            build_forum_topic_merge_command(operation_id, &source, &target, "merge", None,)
+                .is_err()
+        );
         let command = build_forum_topic_merge_command(
             operation_id,
             &source,

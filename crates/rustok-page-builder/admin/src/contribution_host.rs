@@ -11,9 +11,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-pub type PageBuilderContributionPreviewFuture = Pin<
-    Box<dyn Future<Output = Result<Value, PageBuilderContributionPreviewError>> + 'static>,
->;
+pub type PageBuilderContributionPreviewFuture =
+    Pin<Box<dyn Future<Output = Result<Value, PageBuilderContributionPreviewError>> + 'static>>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PageBuilderContributionPreviewRequest {
@@ -253,16 +252,17 @@ pub struct PageBuilderContributionHostContext {
 }
 
 impl PageBuilderContributionHostContext {
-    pub fn new(
-        extensions: Vec<PageBuilderContributionHostExtension>,
-    ) -> Result<Self, String> {
+    pub fn new(extensions: Vec<PageBuilderContributionHostExtension>) -> Result<Self, String> {
         let mut modules = BTreeSet::new();
         let mut providers = BTreeSet::new();
         for extension in &extensions {
             let module_id = extension.module_id().trim();
             let provider = extension.owner_provider().trim();
             if module_id.is_empty() || provider.is_empty() {
-                return Err("Page Builder contribution host extension requires module/provider identity".to_string());
+                return Err(
+                    "Page Builder contribution host extension requires module/provider identity"
+                        .to_string(),
+                );
             }
             if !modules.insert(module_id.to_string()) {
                 return Err(format!(

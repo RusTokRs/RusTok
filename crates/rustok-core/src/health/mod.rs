@@ -248,9 +248,10 @@ impl HealthRegistry {
         {
             let cache = self.cache.read().await;
             if let Some((result, timestamp)) = cache.get(name)
-                && timestamp.elapsed() < self.cache_ttl {
-                    return Some(result.clone());
-                }
+                && timestamp.elapsed() < self.cache_ttl
+            {
+                return Some(result.clone());
+            }
         }
 
         // Run the check

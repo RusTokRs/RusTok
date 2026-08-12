@@ -114,11 +114,13 @@ impl PostgresIndexQueryAdmissionCatalog {
         let owner_module = owner_module.into();
         validate_owner_module(&owner_module)?;
         if let Some(existing_owner) = self.required_link_targets.get(&schema) {
-            return Err(PostgresIndexQueryAdmissionError::DuplicateLinkAvailabilitySchema {
-                schema,
-                existing_owner: existing_owner.clone(),
-                incoming_owner: owner_module,
-            });
+            return Err(
+                PostgresIndexQueryAdmissionError::DuplicateLinkAvailabilitySchema {
+                    schema,
+                    existing_owner: existing_owner.clone(),
+                    incoming_owner: owner_module,
+                },
+            );
         }
         self.required_link_targets.insert(schema, owner_module);
         Ok(())
@@ -147,8 +149,10 @@ impl PostgresIndexQueryAdmissionCatalog {
         }
 
         let owner_rules = self.owner_rules();
-        let target_owner_admission = owner_dispatch_for_alias(&owner_rules, AVAILABILITY_TARGET_ALIAS);
-        let predicate = require_requested_link_targets_predicate(&link_names, &target_owner_admission);
+        let target_owner_admission =
+            owner_dispatch_for_alias(&owner_rules, AVAILABILITY_TARGET_ALIAS);
+        let predicate =
+            require_requested_link_targets_predicate(&link_names, &target_owner_admission);
         apply_root_predicate(&mut compiled.sql, &predicate)?;
         if let Some(exact_count) = compiled.exact_count.as_mut() {
             apply_root_predicate(&mut exact_count.sql, &predicate)?;
@@ -230,7 +234,9 @@ pub enum PostgresIndexQueryAdmissionError {
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub(crate) enum PostgresIndexQueryLinkAvailabilityApplyError {
-    #[error("compiled PostgreSQL query root admission anchor count is {actual}, expected exactly one")]
+    #[error(
+        "compiled PostgreSQL query root admission anchor count is {actual}, expected exactly one"
+    )]
     RootAnchorMismatch { actual: usize },
 }
 
@@ -267,11 +273,7 @@ fn apply_root_predicate(
     if actual != 1 {
         return Err(PostgresIndexQueryLinkAvailabilityApplyError::RootAnchorMismatch { actual });
     }
-    *sql = sql.replacen(
-        ROOT_ANCHOR,
-        &format!("{ROOT_ANCHOR} AND ({predicate})"),
-        1,
-    );
+    *sql = sql.replacen(ROOT_ANCHOR, &format!("{ROOT_ANCHOR} AND ({predicate})"), 1);
     Ok(())
 }
 
@@ -310,7 +312,11 @@ fn owner_dispatch_for_alias(owner_rules: &BTreeMap<SchemaRef, String>, alias: &s
             )
         })
         .collect::<Vec<_>>();
-    format!("(NOT ({}) OR {})", guards.join(" OR "), allowed.join(" OR "))
+    format!(
+        "(NOT ({}) OR {})",
+        guards.join(" OR "),
+        allowed.join(" OR ")
+    )
 }
 
 fn schema_guard_for_alias(schema: &SchemaRef, alias: &str) -> String {
@@ -330,9 +336,7 @@ fn validate_owner_module(value: &str) -> Result<(), PostgresIndexQueryAdmissionE
     let valid = !value.is_empty()
         && value.len() <= 128
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
         });
     if valid {
         Ok(())
@@ -386,14 +390,13 @@ mod tests {
             columns: Vec::new(),
             many_relations: Vec::new(),
             exact_count: Some(crate::CompiledPostgresCount {
-                sql: "SELECT COUNT(*) FROM index_entities AS \"t0\" WHERE \"t0\".is_deleted = FALSE"
-                    .to_owned(),
+                sql:
+                    "SELECT COUNT(*) FROM index_entities AS \"t0\" WHERE \"t0\".is_deleted = FALSE"
+                        .to_owned(),
                 binds: Vec::new(),
             }),
-            plan_fingerprint: serde_json::from_value(
-                serde_json::to_value([0_u8; 32]).unwrap(),
-            )
-            .unwrap(),
+            plan_fingerprint: serde_json::from_value(serde_json::to_value([0_u8; 32]).unwrap())
+                .unwrap(),
         }
     }
 
@@ -459,7 +462,13 @@ mod tests {
             .apply_link_target_availability(&query, &mut compiled)
             .unwrap();
         assert!(!compiled.sql.contains("availability_link"));
-        assert!(!compiled.exact_count.unwrap().sql.contains("availability_link"));
+        assert!(
+            !compiled
+                .exact_count
+                .unwrap()
+                .sql
+                .contains("availability_link")
+        );
     }
 
     #[test]

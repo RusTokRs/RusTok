@@ -124,10 +124,7 @@ fn decode_summary(
     Ok(summary)
 }
 
-fn decode_count(
-    row: &QueryResult,
-    column: &str,
-) -> Result<u64, ConsumerPoisonReceiptError> {
+fn decode_count(row: &QueryResult, column: &str) -> Result<u64, ConsumerPoisonReceiptError> {
     let value: i64 = row.try_get("", column).map_err(storage_error)?;
     u64::try_from(value).map_err(|_| invalid_summary("aggregate count is negative"))
 }

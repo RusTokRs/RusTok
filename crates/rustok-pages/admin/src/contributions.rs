@@ -41,8 +41,9 @@ pub fn pages_metadata_property_schema() -> ConsumerPropertyEditorSchema {
                 "generated Pages metadata contribution is missing property editor `{PAGES_METADATA_PROPERTY_EDITOR_ID}`"
             )
         });
-    let schema = serde_json::from_value::<ConsumerPropertyEditorSchema>(editor.property_schema.clone())
-        .expect("generated Pages metadata property schema must deserialize");
+    let schema =
+        serde_json::from_value::<ConsumerPropertyEditorSchema>(editor.property_schema.clone())
+            .expect("generated Pages metadata property schema must deserialize");
     schema
         .validate()
         .expect("generated Pages metadata property schema must satisfy Page Builder contract");
@@ -91,14 +92,12 @@ mod tests {
     #[test]
     fn manifest_targets_fly_blocks_and_keeps_metadata_under_pages_owner() {
         let manifest = pages_contribution_manifest();
-        assert!(manifest.allows_target_provider(
-            FLY_BUILTIN_PROVIDER,
-            FLY_BUILTIN_PROVIDER_VERSION,
-        ));
-        assert!(manifest.allows_target_provider(
-            PAGES_OWNER_PROVIDER,
-            PAGES_OWNER_PROVIDER_VERSION,
-        ));
+        assert!(
+            manifest.allows_target_provider(FLY_BUILTIN_PROVIDER, FLY_BUILTIN_PROVIDER_VERSION,)
+        );
+        assert!(
+            manifest.allows_target_provider(PAGES_OWNER_PROVIDER, PAGES_OWNER_PROVIDER_VERSION,)
+        );
         assert!(!manifest.allows_target_provider("other.provider", "1"));
         assert!(!manifest.allows_target_provider(FLY_BUILTIN_PROVIDER, "2"));
     }
@@ -163,7 +162,10 @@ mod tests {
         for block_id in PAGES_LANDING_BLOCK_IDS {
             assert!(module_manifest.contains(&format!("\"{block_id}\"")));
         }
-        assert_eq!(pages_metadata_property_schema().format, PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT);
+        assert_eq!(
+            pages_metadata_property_schema().format,
+            PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT
+        );
     }
 
     #[test]

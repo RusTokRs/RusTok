@@ -112,7 +112,10 @@ async fn published_slug_renames_create_immutable_redirects_and_reserve_old_claim
     assert_eq!(canonical.disposition, PageRouteDisposition::Canonical);
     assert_eq!(canonical.requested_page_id, Some(latest.id));
     assert_eq!(
-        canonical.canonical.as_ref().map(|route| route.path.as_str()),
+        canonical
+            .canonical
+            .as_ref()
+            .map(|route| route.path.as_str()),
         Some("/en/modules/pages?slug=company")
     );
 

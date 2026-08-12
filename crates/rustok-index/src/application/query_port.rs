@@ -90,10 +90,7 @@ impl IndexQueryExecutionError {
         }
     }
 
-    pub(crate) fn contract_preparation(
-        reference: SchemaRef,
-        error: impl fmt::Display,
-    ) -> Self {
+    pub(crate) fn contract_preparation(reference: SchemaRef, error: impl fmt::Display) -> Self {
         Self::ContractPreparation {
             reference,
             details: error.to_string(),

@@ -23,7 +23,10 @@ fn category_cards_emit_canonical_locale_slug_routes() {
         "Some(format!(\"/{locale}/forum/c/{slug}\"))",
         ".unwrap_or_else(|| module_route_base.to_string())",
     ] {
-        assert!(core.contains(marker), "missing category href marker: {marker}");
+        assert!(
+            core.contains(marker),
+            "missing category href marker: {marker}"
+        );
     }
     assert!(!core.contains("?category={category_id}"));
 }
@@ -73,9 +76,7 @@ fn rust_storefront_mount_executes_transport_decision_without_storage_access() {
 
 #[test]
 fn mount_contract_keeps_private_fail_closed_http_policy() {
-    let contract = read(
-        "crates/rustok-forum/contracts/forum-category-route-storefront-mount.json",
-    );
+    let contract = read("crates/rustok-forum/contracts/forum-category-route-storefront-mount.json");
     let docs = read("crates/rustok-forum/docs/forum-24o-category-route-storefront-mount.md");
 
     for marker in [
@@ -89,7 +90,10 @@ fn mount_contract_keeps_private_fail_closed_http_policy() {
         "\"seo_or_hreflang_changed\": false",
         "\"new_migration\": false",
     ] {
-        assert!(contract.contains(marker), "missing contract marker: {marker}");
+        assert!(
+            contract.contains(marker),
+            "missing contract marker: {marker}"
+        );
     }
 
     for marker in [
@@ -100,15 +104,16 @@ fn mount_contract_keeps_private_fail_closed_http_policy() {
         "protocol-relative paths",
         "No tests, verifiers, formatting, Cargo commands",
     ] {
-        assert!(docs.contains(marker), "missing documentation marker: {marker}");
+        assert!(
+            docs.contains(marker),
+            "missing documentation marker: {marker}"
+        );
     }
 }
 
 #[test]
 fn topic_mount_and_seo_boundaries_remain_outside_this_slice() {
-    let contract = read(
-        "crates/rustok-forum/contracts/forum-category-route-storefront-mount.json",
-    );
+    let contract = read("crates/rustok-forum/contracts/forum-category-route-storefront-mount.json");
     let host = read("apps/storefront/src/forum_category_route.rs");
 
     for marker in [
@@ -117,7 +122,10 @@ fn topic_mount_and_seo_boundaries_remain_outside_this_slice() {
         "\"seo_or_hreflang_changed\": false",
         "\"next_storefront_changed\": false",
     ] {
-        assert!(contract.contains(marker), "missing compatibility marker: {marker}");
+        assert!(
+            contract.contains(marker),
+            "missing compatibility marker: {marker}"
+        );
     }
     for forbidden in [
         "hreflang",

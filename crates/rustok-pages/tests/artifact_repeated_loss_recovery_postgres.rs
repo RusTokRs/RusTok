@@ -16,9 +16,7 @@ use rustok_pages::entities::{
     page_static_landing_artifact,
 };
 use rustok_pages::services::PageService;
-use rustok_pages::{
-    PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT, PagesError, PagesModule,
-};
+use rustok_pages::{PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT, PagesError, PagesModule};
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Statement,
@@ -104,8 +102,8 @@ struct RollbackFixture {
 }
 
 #[tokio::test]
-async fn missing_binding_activation_recovers_same_locale_after_rebuilt_artifact_is_lost_again_on_postgres(
-) -> TestResult<()> {
+async fn missing_binding_activation_recovers_same_locale_after_rebuilt_artifact_is_lost_again_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("same_locale").await? else {
         return Ok(());
     };
@@ -151,10 +149,12 @@ async fn missing_binding_activation_recovers_same_locale_after_rebuilt_artifact_
             .is_some()
     );
     assert!(
-        page_artifact_binding_replacement_operation::Entity::find_by_id(first_activation.operation_id)
-            .one(&db)
-            .await?
-            .is_some()
+        page_artifact_binding_replacement_operation::Entity::find_by_id(
+            first_activation.operation_id
+        )
+        .one(&db)
+        .await?
+        .is_some()
     );
 
     let second_rebuild = rebuild_source(
@@ -217,8 +217,8 @@ async fn missing_binding_activation_recovers_same_locale_after_rebuilt_artifact_
 }
 
 #[tokio::test]
-async fn repeated_locale_recovery_rejects_missing_binding_while_prior_rebuilt_artifact_still_exists_on_postgres(
-) -> TestResult<()> {
+async fn repeated_locale_recovery_rejects_missing_binding_while_prior_rebuilt_artifact_still_exists_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("prior_rebuilt_live").await? else {
         return Ok(());
     };
@@ -396,7 +396,10 @@ async fn another_locale_can_recover_after_repeated_locale_loss_on_postgres() -> 
         .await?;
     assert_eq!(bindings.len(), 2);
     assert_eq!(bindings[0].locale, "en");
-    assert_eq!(bindings[0].artifact_id, en_second_rebuild.rebuilt_artifact_id);
+    assert_eq!(
+        bindings[0].artifact_id,
+        en_second_rebuild.rebuilt_artifact_id
+    );
     assert_eq!(bindings[1].locale, "fr");
     assert_eq!(bindings[1].artifact_id, fr_rebuild.rebuilt_artifact_id);
 
@@ -598,7 +601,9 @@ async fn create_multilocale_fixture(
         .all(db)
         .await?;
     if sources.len() != 2 || sources[0].locale != "en" || sources[1].locale != "fr" {
-        return Err(std::io::Error::other("published provenance did not retain en/fr sources").into());
+        return Err(
+            std::io::Error::other("published provenance did not retain en/fr sources").into(),
+        );
     }
 
     Ok(MultiLocaleFixture {

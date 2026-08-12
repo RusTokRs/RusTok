@@ -5,8 +5,7 @@ use super::super::{
 };
 
 const FULFILLMENT_STOREFRONT_NATIVE_CLIENT_OWNER: &str = "rustok_fulfillment.storefront";
-const FULFILLMENT_STOREFRONT_NATIVE_CLIENT_OPERATION: &str =
-    "select_storefront_shipping_option";
+const FULFILLMENT_STOREFRONT_NATIVE_CLIENT_OPERATION: &str = "select_storefront_shipping_option";
 const FULFILLMENT_STOREFRONT_NATIVE_CLIENT_BOUNDARY: &str =
     "fulfillment_storefront_native_client_transport";
 const FULFILLMENT_STOREFRONT_NATIVE_CLIENT_PUBLIC_MESSAGE: &str =
@@ -27,9 +26,7 @@ impl NativeClientErrorContext {
         request: &SelectShippingOptionRequest,
     ) -> Result<Self, ShippingSelectionTransportError> {
         Uuid::parse_str(request.cart_id.trim()).map_err(|_| {
-            ShippingSelectionTransportError::Validation(
-                "cart_id must be a valid UUID".to_string(),
-            )
+            ShippingSelectionTransportError::Validation("cart_id must be a valid UUID".to_string())
         })?;
 
         let updates = build_shipping_selection_updates(request)?;

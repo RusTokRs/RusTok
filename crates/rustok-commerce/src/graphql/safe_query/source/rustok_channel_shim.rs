@@ -18,7 +18,11 @@ fn text_shape(value: &str) -> &'static str {
 }
 
 fn uuid_shape(value: &::uuid::Uuid) -> &'static str {
-    if value.is_nil() { "uuid_nil" } else { "uuid_non_nil" }
+    if value.is_nil() {
+        "uuid_nil"
+    } else {
+        "uuid_non_nil"
+    }
 }
 
 fn owner_detail(error: &ChannelError) -> (&'static str, usize) {
@@ -31,7 +35,10 @@ fn owner_detail(error: &ChannelError) -> (&'static str, usize) {
         | ChannelError::InvalidPolicyOperation(value) => (text_shape(value), value.chars().count()),
         ChannelError::TargetAlreadyExists(target_type, value) => (
             "two_text_values",
-            target_type.chars().count().saturating_add(value.chars().count()),
+            target_type
+                .chars()
+                .count()
+                .saturating_add(value.chars().count()),
         ),
         ChannelError::NotFound(value) | ChannelError::InactiveChannel(value) => {
             (uuid_shape(value), 0)

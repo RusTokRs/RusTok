@@ -100,7 +100,10 @@ fn legacy_field_still_hides_gone_while_decision_field_can_expose_it() {
         "GqlForumStorefrontTopicRouteDecisionDisposition::Gone",
         "pub canonical: Option<GqlForumTopicRouteDescriptor>",
     ] {
-        assert!(TOPIC_ROUTE_QUERY.contains(marker), "missing marker {marker}");
+        assert!(
+            TOPIC_ROUTE_QUERY.contains(marker),
+            "missing marker {marker}"
+        );
     }
 }
 

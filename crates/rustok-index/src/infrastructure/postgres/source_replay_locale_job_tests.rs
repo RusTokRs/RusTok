@@ -5,7 +5,7 @@ use sea_orm::{
     ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, Value as SqlValue,
 };
 use sea_orm_migration::SchemaManager;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use uuid::Uuid;
 
 use super::{
@@ -126,9 +126,15 @@ fn schema(locale_mode: LocaleMode) -> IndexSchema {
 #[tokio::test]
 async fn locale_jobs_are_distinct_from_schema_and_other_locales() {
     let fixture = Fixture::new(LocaleMode::Required).await;
-    let schema_lease = fixture.acquire(&fixture.schema_request("schema-worker")).await;
-    let en_lease = fixture.acquire(&fixture.locale_request("EN-us", "en-worker")).await;
-    let de_lease = fixture.acquire(&fixture.locale_request("de", "de-worker")).await;
+    let schema_lease = fixture
+        .acquire(&fixture.schema_request("schema-worker"))
+        .await;
+    let en_lease = fixture
+        .acquire(&fixture.locale_request("EN-us", "en-worker"))
+        .await;
+    let de_lease = fixture
+        .acquire(&fixture.locale_request("de", "de-worker"))
+        .await;
 
     assert!(schema_lease.locale().is_none());
     assert_eq!(en_lease.locale().unwrap().as_str(), "en-US");

@@ -4,8 +4,7 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use crate::topic_reply_range_model::{
-    ForumReplyRangeMoveCandidate, ForumReplyRangeMoveCommand,
-    ForumReplyRangeMoveReceipt,
+    ForumReplyRangeMoveCandidate, ForumReplyRangeMoveCommand, ForumReplyRangeMoveReceipt,
 };
 
 pub type ApiError = String;
@@ -75,8 +74,8 @@ fn graphql_url() -> String {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let base = std::env::var("RUSTOK_API_URL")
-            .unwrap_or_else(|_| "http://localhost:5150".to_string());
+        let base =
+            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
         format!("{base}/api/graphql")
     }
 }

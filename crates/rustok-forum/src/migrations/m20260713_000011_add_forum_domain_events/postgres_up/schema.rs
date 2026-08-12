@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS forum_domain_events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_forum_domain_events_event_id UNIQUE (event_id),
     CONSTRAINT chk_forum_domain_events_aggregate_type
-        CHECK (aggregate_type IN ('category', 'topic', 'reply')),
+        CHECK (aggregate_type IN ('category', 'topic', 'reply', 'forum_topic')),
     CONSTRAINT chk_forum_domain_events_schema_version
         CHECK (schema_version = 1),
     CONSTRAINT chk_forum_domain_events_event_type
@@ -62,8 +62,19 @@ CREATE TABLE IF NOT EXISTS forum_domain_events (
         'forum.topic.tags_changed',
         'forum.mention.user_added',
         'forum.mention.audience_added',
-        'forum.subscription.changed'
-        ))
+        'forum.subscription.changed',
+        'forum.topic.merged',
+        'forum.topic.split',
+        'forum.topic.moved',
+        'forum.topic.forked',
+        'forum.topic.reply_range_moved',
+        'forum.topic.merge.votes_reconciled',
+        'forum.topic.merge.tags_reconciled',
+        'forum.topic.merge.subscriptions_reconciled',
+        'forum.topic.merge.read_state_reconciled',
+        'forum.topic.merge.audience_reconciled',
+        'forum.projection.invalidation'
+        )),
 );
 
 CREATE INDEX IF NOT EXISTS idx_forum_domain_events_tenant_sequence

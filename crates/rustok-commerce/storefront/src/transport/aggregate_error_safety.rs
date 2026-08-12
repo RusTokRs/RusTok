@@ -11,8 +11,7 @@ const COMMERCE_STOREFRONT_AGGREGATE_BOUNDARY: &str =
     "commerce_storefront_aggregate_public_transport";
 const INVALID_CART_SELECTION: &str = "Invalid cart selection";
 const CART_ID_UUID_VALIDATION: &str = "cart_id must be a valid UUID";
-const STOREFRONT_COMMERCE_UNAVAILABLE: &str =
-    "Storefront commerce data is temporarily unavailable";
+const STOREFRONT_COMMERCE_UNAVAILABLE: &str = "Storefront commerce data is temporarily unavailable";
 
 pub(super) struct AggregateFetchErrorContext {
     correlation_id: String,
@@ -89,10 +88,13 @@ impl AggregateFetchErrorContext {
 }
 
 fn is_invalid_cart_selection(error: &UiTransportError) -> bool {
-    [error.native_error.as_deref(), error.graphql_error.as_deref()]
-        .into_iter()
-        .flatten()
-        .any(|message| message == INVALID_CART_SELECTION || message == CART_ID_UUID_VALIDATION)
+    [
+        error.native_error.as_deref(),
+        error.graphql_error.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|message| message == INVALID_CART_SELECTION || message == CART_ID_UUID_VALIDATION)
 }
 
 fn configured_tenant_slug_length() -> Option<usize> {

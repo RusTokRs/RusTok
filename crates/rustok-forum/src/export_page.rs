@@ -6,13 +6,13 @@ use uuid::Uuid;
 
 use crate::services::{CategoryService, ReplyService, TopicService};
 
+use super::super::{
+    ForumExportFragment, ForumExportReadError, ForumExportReadTargetKind, ForumOwnerExportReader,
+};
 use super::{
     ForumExportSourceInventoryError, ForumExportSourceInventoryPage,
     ForumExportSourceInventoryRequest, ForumExportSourceInventoryService,
     ForumExportTargetPlanError, ForumExportTargetPlanner,
-};
-use super::super::{
-    ForumExportFragment, ForumExportReadError, ForumExportReadTargetKind, ForumOwnerExportReader,
 };
 
 #[derive(Clone, Debug)]
@@ -64,13 +64,7 @@ impl ForumExportPageComposer {
         };
 
         let read_batch = ForumExportTargetPlanner
-            .plan_fragment(
-                categories,
-                topics,
-                replies,
-                security,
-                &plan_request,
-            )
+            .plan_fragment(categories, topics, replies, security, &plan_request)
             .await?;
         let fragment = ForumOwnerExportReader
             .read_fragment(categories, topics, replies, security, &read_batch)

@@ -144,8 +144,8 @@ struct EvidenceRuntime {
 }
 
 #[tokio::test]
-async fn product_storefront_eav_postgres_retains_scalar_and_localized_term_equivalence(
-) -> TestResult<()> {
+async fn product_storefront_eav_postgres_retains_scalar_and_localized_term_equivalence()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -156,8 +156,8 @@ async fn product_storefront_eav_postgres_retains_scalar_and_localized_term_equiv
 }
 
 #[tokio::test]
-async fn product_storefront_eav_postgres_retains_option_code_uuid_and_never_equivalence(
-) -> TestResult<()> {
+async fn product_storefront_eav_postgres_retains_option_code_uuid_and_never_equivalence()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -172,13 +172,7 @@ async fn run_scalar_and_localized_evidence(database: &TestDatabase) -> TestResul
     materialize_products(&runtime).await?;
     let executor = shadow_executor(database, runtime.query.clone());
 
-    assert_filter_ids(
-        &executor,
-        "weight=7",
-        &[PRODUCT_A],
-        "integer scalar term",
-    )
-    .await?;
+    assert_filter_ids(&executor, "weight=7", &[PRODUCT_A], "integer scalar term").await?;
     assert_filter_ids(
         &executor,
         "label=Punainen",
@@ -230,7 +224,13 @@ async fn run_option_evidence(database: &TestDatabase) -> TestResult<()> {
     .await?;
 
     // Keep one negative control proving an active but different option is not collapsed with RED.
-    assert_filter_ids(&executor, "color=blue", &[PRODUCT_B], "different option code").await?;
+    assert_filter_ids(
+        &executor,
+        "color=blue",
+        &[PRODUCT_B],
+        "different option code",
+    )
+    .await?;
     Ok(())
 }
 

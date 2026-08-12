@@ -5,8 +5,8 @@ use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallApplyOptions, InstallEnvironment,
     InstallPlan, InstallProfile, InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode,
     SecretRef, SecretValue, SeedExecutionRequest, SeedProfile, SeedTenantRequest, SeedUserRequest,
-    TenantBootstrap, bind_instance_placement, execute_install_apply,
-    execute_seed_profile, load_base_distribution_receipt, redact_install_plan,
+    TenantBootstrap, bind_instance_placement, execute_install_apply, execute_seed_profile,
+    load_base_distribution_receipt, redact_install_plan,
 };
 use rustok_installer_persistence::{
     InstallerPersistenceService, SeaOrmInstallerApplyPorts, SeaOrmInstallerBootstrapPorts,

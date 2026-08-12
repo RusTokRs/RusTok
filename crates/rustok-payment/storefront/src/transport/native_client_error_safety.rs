@@ -23,9 +23,7 @@ impl NativeClientErrorContext {
     pub(super) fn create_payment_collection(request: &PaymentCollectionCreateRequest) -> Self {
         Self {
             operation: "create_storefront_payment_collection",
-            correlation_id: native_client_correlation_id(
-                "create_storefront_payment_collection",
-            ),
+            correlation_id: native_client_correlation_id("create_storefront_payment_collection"),
             cart_id_length: Some(request.cart_id.chars().count()),
             order_id_length: None,
             command_metadata_present: true,
@@ -35,9 +33,7 @@ impl NativeClientErrorContext {
     pub(super) fn fetch_payment_collection(request: &PaymentCollectionFetchRequest) -> Self {
         Self {
             operation: "read_storefront_payment_collection",
-            correlation_id: native_client_correlation_id(
-                "read_storefront_payment_collection",
-            ),
+            correlation_id: native_client_correlation_id("read_storefront_payment_collection"),
             cart_id_length: Some(request.cart_id.chars().count()),
             order_id_length: None,
             command_metadata_present: false,

@@ -31,8 +31,7 @@ pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
 pub use catalog::BuiltinTenantRbacCatalog;
 pub use consistency::{RbacConsistencyStats, load_consistency_stats};
 pub use control_plane::{
-    RbacControlPlaneAdmissionError, RbacControlPlanePrincipal,
-    require_direct_control_plane_user,
+    RbacControlPlaneAdmissionError, RbacControlPlanePrincipal, require_direct_control_plane_user,
 };
 pub use error::RbacError;
 pub use integration::{
@@ -50,8 +49,8 @@ pub use repair::{
     RbacSystemRoleRepairReport,
 };
 pub use role_mutation::{
-    RbacRoleMutationChange, RbacRoleMutationFacts, RbacRoleMutationOutcome,
-    RbacRoleMutationPlan, RbacRoleMutationPolicyError, plan_user_role_mutation,
+    RbacRoleMutationChange, RbacRoleMutationFacts, RbacRoleMutationOutcome, RbacRoleMutationPlan,
+    RbacRoleMutationPolicyError, plan_user_role_mutation,
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{

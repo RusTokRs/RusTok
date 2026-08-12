@@ -193,7 +193,9 @@ pub enum InlineEditContractError {
 impl Display for InlineEditContractError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidGrant(message) => write!(formatter, "invalid inline edit grant: {message}"),
+            Self::InvalidGrant(message) => {
+                write!(formatter, "invalid inline edit grant: {message}")
+            }
             Self::ExpiredGrant => formatter.write_str("inline edit grant has expired"),
             Self::GrantIdentityMismatch => {
                 formatter.write_str("inline edit request does not match its trusted grant")
@@ -204,7 +206,9 @@ impl Display for InlineEditContractError {
             Self::InvalidPlainText(message) => {
                 write!(formatter, "invalid inline edit plain text: {message}")
             }
-            Self::Browser(message) => write!(formatter, "inline edit browser adapter failed: {message}"),
+            Self::Browser(message) => {
+                write!(formatter, "inline edit browser adapter failed: {message}")
+            }
         }
     }
 }
@@ -276,13 +280,19 @@ mod browser {
                     .set_attribute(FLY_REAL_DOM_INLINE_ATTRIBUTE, "content")
                     .map_err(browser_error)?;
                 if snapshot.role.is_none() {
-                    element.set_attribute("role", "textbox").map_err(browser_error)?;
+                    element
+                        .set_attribute("role", "textbox")
+                        .map_err(browser_error)?;
                 }
                 if snapshot.tabindex.is_none() {
-                    element.set_attribute("tabindex", "0").map_err(browser_error)?;
+                    element
+                        .set_attribute("tabindex", "0")
+                        .map_err(browser_error)?;
                 }
                 if snapshot.spellcheck.is_none() {
-                    element.set_attribute("spellcheck", "true").map_err(browser_error)?;
+                    element
+                        .set_attribute("spellcheck", "true")
+                        .map_err(browser_error)?;
                 }
                 Ok(())
             })();
@@ -297,7 +307,11 @@ mod browser {
             if self.restored {
                 return;
             }
-            restore_attribute(&self.element, "contenteditable", self.contenteditable.take());
+            restore_attribute(
+                &self.element,
+                "contenteditable",
+                self.contenteditable.take(),
+            );
             restore_attribute(
                 &self.element,
                 FLY_REAL_DOM_INLINE_ATTRIBUTE,
@@ -339,9 +353,8 @@ mod browser {
         on_request: impl Fn(AuthenticatedInlineEditRequest) + 'static,
         on_error: impl Fn(InlineEditContractError) + 'static,
     ) -> Result<RealDomInlineEditSubscription, InlineEditContractError> {
-        let window = web_sys::window().ok_or_else(|| {
-            InlineEditContractError::Browser("window is unavailable".to_string())
-        })?;
+        let window = web_sys::window()
+            .ok_or_else(|| InlineEditContractError::Browser("window is unavailable".to_string()))?;
         let document = window.document().ok_or_else(|| {
             InlineEditContractError::Browser("document is unavailable".to_string())
         })?;
@@ -419,10 +432,9 @@ mod browser {
                 }
             }
         });
-        if let Err(error) = root.add_event_listener_with_callback(
-            "focusout",
-            focusout.as_ref().unchecked_ref(),
-        ) {
+        if let Err(error) =
+            root.add_event_listener_with_callback("focusout", focusout.as_ref().unchecked_ref())
+        {
             marked.clear();
             return Err(browser_error(error));
         }

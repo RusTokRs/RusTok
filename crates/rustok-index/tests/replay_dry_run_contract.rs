@@ -106,12 +106,8 @@ fn schema() -> IndexSchema {
 fn registered_extensions(mode: EventIdentityMode) -> ModuleRuntimeExtensions {
     let mut extensions = ModuleRuntimeExtensions::default();
     let schema = schema();
-    register_index_schema_source(
-        &mut extensions,
-        "dry_run_contract_owner",
-        schema.clone(),
-    )
-    .unwrap();
+    register_index_schema_source(&mut extensions, "dry_run_contract_owner", schema.clone())
+        .unwrap();
     register_index_source(
         &mut extensions,
         "dry_run_contract_owner",
@@ -144,14 +140,7 @@ fn runtime(mode: EventIdentityMode) -> SharedIndexReplayDryRunRuntime {
 }
 
 fn request() -> IndexReplayDryRunRequest {
-    IndexReplayDryRunRequest::new(
-        Uuid::from_u128(1),
-        schema().reference,
-        None,
-        10,
-        1,
-    )
-    .unwrap()
+    IndexReplayDryRunRequest::new(Uuid::from_u128(1), schema().reference, None, 10, 1).unwrap()
 }
 
 #[tokio::test]
@@ -204,12 +193,7 @@ async fn valid_event_identity_page_completes_without_a_resume_cursor() {
 #[test]
 fn dry_run_materialization_requires_the_complete_registry_pair() {
     let mut missing_sources = ModuleRuntimeExtensions::default();
-    register_index_schema_source(
-        &mut missing_sources,
-        "dry_run_contract_owner",
-        schema(),
-    )
-    .unwrap();
+    register_index_schema_source(&mut missing_sources, "dry_run_contract_owner", schema()).unwrap();
     let schemas = materialize_index_schema_registry(&missing_sources)
         .unwrap()
         .expect("schema registry");

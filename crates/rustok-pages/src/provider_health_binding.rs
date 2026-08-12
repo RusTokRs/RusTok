@@ -1,10 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    env, fs,
-    io::ErrorKind,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, env, fs, io::ErrorKind, path::PathBuf, sync::Arc};
 
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rustok_page_builder::health::{ProviderHealthSnapshot, ProviderSloEvaluation};
@@ -198,8 +192,8 @@ impl PagesProviderHealthAuthority {
 
 pub type SharedPagesProviderHealthAuthority = Arc<PagesProviderHealthAuthority>;
 
-pub fn page_builder_provider_health_authority_from_environment(
-) -> Result<Option<SharedPagesProviderHealthAuthority>, PagesProviderHealthBindingError> {
+pub fn page_builder_provider_health_authority_from_environment()
+-> Result<Option<SharedPagesProviderHealthAuthority>, PagesProviderHealthBindingError> {
     let acceptance_path = environment_value(PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH_ENV)?;
     let deployment_id = environment_value(PAGES_PROVIDER_HEALTH_DEPLOYMENT_ID_ENV)?;
     let image_digest = environment_value(PAGES_PROVIDER_HEALTH_DEPLOYMENT_IMAGE_DIGEST_ENV)?;
@@ -247,7 +241,8 @@ fn read_retained_packet(path: &PathBuf) -> Result<Vec<u8>, PagesProviderHealthBi
     {
         return Err(PagesProviderHealthBindingError::InvalidAcceptanceFile);
     }
-    let bytes = fs::read(path).map_err(|_| PagesProviderHealthBindingError::InvalidAcceptanceFile)?;
+    let bytes =
+        fs::read(path).map_err(|_| PagesProviderHealthBindingError::InvalidAcceptanceFile)?;
     if bytes.is_empty() || bytes.len() as u64 > MAX_ACCEPTANCE_PACKET_BYTES {
         return Err(PagesProviderHealthBindingError::InvalidAcceptanceFile);
     }
@@ -331,7 +326,8 @@ fn validate_packet(
 
     if packet.deployment.expected_target_count == 0
         || packet.deployment.expected_target_count > 64
-        || packet.deployment.expected_target_count != packet.deployment.verified_backend_target_count
+        || packet.deployment.expected_target_count
+            != packet.deployment.verified_backend_target_count
         || packet.deployment.query_window_seconds < MIN_QUERY_WINDOW_SECONDS
         || packet.deployment.query_window_seconds > MAX_QUERY_WINDOW_SECONDS
         || packet.deployment.freshness_seconds < MIN_FRESHNESS_SECONDS
@@ -339,7 +335,10 @@ fn validate_packet(
         || !packet.deployment.identity_age_seconds.is_finite()
         || packet.deployment.identity_age_seconds < packet.deployment.query_window_seconds as f64
         || packet.deployment.identity_age_seconds > MAX_IDENTITY_AGE_SECONDS
-        || !packet.evaluation.max_target_operation_freshness_age_seconds.is_finite()
+        || !packet
+            .evaluation
+            .max_target_operation_freshness_age_seconds
+            .is_finite()
         || packet.evaluation.max_target_operation_freshness_age_seconds < 0.0
         || packet.evaluation.max_target_operation_freshness_age_seconds
             > packet.deployment.freshness_seconds as f64
@@ -357,7 +356,8 @@ fn validate_packet(
         - packet.evaluation.max_target_operation_freshness_age_seconds)
         * 1000.0)
         .floor();
-    if !remaining_millis.is_finite() || remaining_millis < 0.0 || remaining_millis > i64::MAX as f64 {
+    if !remaining_millis.is_finite() || remaining_millis < 0.0 || remaining_millis > i64::MAX as f64
+    {
         return Err(PagesProviderHealthBindingError::EvidenceBoundsInvalid);
     }
     let expected_valid_until = evaluated_at + Duration::milliseconds(remaining_millis as i64);
@@ -369,10 +369,8 @@ fn validate_packet(
     if packet.evaluation.snapshot != canonical_snapshot {
         return Err(PagesProviderHealthBindingError::HealthPolicyMismatch);
     }
-    let canonical_slo = ProviderSloEvaluation::evaluate(
-        canonical_snapshot.observed,
-        canonical_snapshot.thresholds,
-    );
+    let canonical_slo =
+        ProviderSloEvaluation::evaluate(canonical_snapshot.observed, canonical_snapshot.thresholds);
     if packet.evaluation.slo_evaluation != canonical_slo {
         return Err(PagesProviderHealthBindingError::HealthPolicyMismatch);
     }
@@ -564,11 +562,15 @@ mod tests {
             decided_at: evaluated_at,
             health_valid_until: evaluated_at + Duration::seconds(60),
         };
-        assert!(accepted
-            .snapshot_at(evaluated_at + Duration::seconds(65))
-            .is_some());
-        assert!(accepted
-            .snapshot_at(evaluated_at + Duration::seconds(66))
-            .is_none());
+        assert!(
+            accepted
+                .snapshot_at(evaluated_at + Duration::seconds(65))
+                .is_some()
+        );
+        assert!(
+            accepted
+                .snapshot_at(evaluated_at + Duration::seconds(66))
+                .is_none()
+        );
     }
 }

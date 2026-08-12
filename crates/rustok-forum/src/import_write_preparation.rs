@@ -7,7 +7,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::import_mapping::{
-    ForumImportEntityKind, ForumImportExternalRef, FORUM_IMPORT_SOURCE_NODEBB,
+    FORUM_IMPORT_SOURCE_NODEBB, ForumImportEntityKind, ForumImportExternalRef,
     MAX_FORUM_IMPORT_SOURCE_RECORDS_PER_BATCH,
 };
 use crate::import_resolution::{
@@ -134,7 +134,9 @@ pub enum ForumImportWritePreparationError {
     TooManyRecords { max: usize, actual: usize },
     #[error("Forum import write preparation locale is invalid: {locale}")]
     InvalidLocale { locale: String },
-    #[error("Forum import write preparation locale must already be normalized: {actual} -> {normalized}")]
+    #[error(
+        "Forum import write preparation locale must already be normalized: {actual} -> {normalized}"
+    )]
     LocaleNotNormalized { actual: String, normalized: String },
     #[error("Forum import write preparation has nil {kind} target id for {source:?}")]
     NilTargetId {
@@ -172,24 +174,32 @@ pub enum ForumImportWritePreparationError {
         source: ForumImportExternalRef,
         position: i32,
     },
-    #[error("Forum import source category position is outside owner range for {source:?}: {position}")]
+    #[error(
+        "Forum import source category position is outside owner range for {source:?}: {position}"
+    )]
     SourceCategoryPositionOutOfRange {
         source: ForumImportExternalRef,
         position: i64,
     },
-    #[error("Forum import category position decision differs from source for {source:?}: {source_position} != {decision_position}")]
+    #[error(
+        "Forum import category position decision differs from source for {source:?}: {source_position} != {decision_position}"
+    )]
     CategoryPositionChanged {
         source: ForumImportExternalRef,
         source_position: i64,
         decision_position: i32,
     },
-    #[error("Forum import write timestamp must be non-negative for {kind} {source:?}: {timestamp_ms}")]
+    #[error(
+        "Forum import write timestamp must be non-negative for {kind} {source:?}: {timestamp_ms}"
+    )]
     NegativeTimestamp {
         kind: &'static str,
         source: ForumImportExternalRef,
         timestamp_ms: i64,
     },
-    #[error("Forum import write timestamp differs from source for {kind} {source:?}: {source_timestamp_ms} != {decision_timestamp_ms}")]
+    #[error(
+        "Forum import write timestamp differs from source for {kind} {source:?}: {source_timestamp_ms} != {decision_timestamp_ms}"
+    )]
     TimestampChanged {
         kind: &'static str,
         source: ForumImportExternalRef,
@@ -207,7 +217,9 @@ pub enum ForumImportWritePreparationError {
     },
     #[error("Forum import category target cycle reaches {id}")]
     CategoryCycle { id: Uuid },
-    #[error("Forum import topic category {category_id} is outside the bounded batch for {source:?}")]
+    #[error(
+        "Forum import topic category {category_id} is outside the bounded batch for {source:?}"
+    )]
     TopicCategoryOutsideBatch {
         source: ForumImportExternalRef,
         category_id: Uuid,
@@ -217,7 +229,9 @@ pub enum ForumImportWritePreparationError {
         source: ForumImportExternalRef,
         topic_id: Uuid,
     },
-    #[error("Forum import reply parent {parent_reply_id} is outside the bounded batch for {source:?}")]
+    #[error(
+        "Forum import reply parent {parent_reply_id} is outside the bounded batch for {source:?}"
+    )]
     ReplyParentOutsideBatch {
         source: ForumImportExternalRef,
         parent_reply_id: Uuid,
@@ -335,7 +349,10 @@ struct DecisionIndex<'a, T> {
 }
 
 impl<'a, T: DecisionSource> DecisionIndex<'a, T> {
-    fn new(kind: &'static str, decisions: &'a [T]) -> Result<Self, ForumImportWritePreparationError> {
+    fn new(
+        kind: &'static str,
+        decisions: &'a [T],
+    ) -> Result<Self, ForumImportWritePreparationError> {
         let mut by_source = BTreeMap::new();
         for decision in decisions {
             let source = decision.source();
@@ -473,10 +490,12 @@ fn validate_relations(
         validate_source_ref(&category.source, ForumImportEntityKind::Category)?;
         if let Some(parent_id) = category.parent_id {
             if !category_ids.contains(&parent_id) {
-                return Err(ForumImportWritePreparationError::CategoryParentOutsideBatch {
-                    source: category.source.clone(),
-                    parent_id,
-                });
+                return Err(
+                    ForumImportWritePreparationError::CategoryParentOutsideBatch {
+                        source: category.source.clone(),
+                        parent_id,
+                    },
+                );
             }
         }
         parent_by_category.insert(category.id, category.parent_id);
@@ -487,10 +506,12 @@ fn validate_relations(
         validate_source_ref(&topic.source, ForumImportEntityKind::Topic)?;
         validate_source_ref(&topic.body_source, ForumImportEntityKind::Post)?;
         if !category_ids.contains(&topic.category_id) {
-            return Err(ForumImportWritePreparationError::TopicCategoryOutsideBatch {
-                source: topic.source.clone(),
-                category_id: topic.category_id,
-            });
+            return Err(
+                ForumImportWritePreparationError::TopicCategoryOutsideBatch {
+                    source: topic.source.clone(),
+                    category_id: topic.category_id,
+                },
+            );
         }
     }
     for reply in &batch.replies {
@@ -558,10 +579,12 @@ fn prepare_category(
             }
         })?;
         if expected < 0 {
-            return Err(ForumImportWritePreparationError::SourceCategoryPositionOutOfRange {
-                source: record.source.clone(),
-                position: source_position,
-            });
+            return Err(
+                ForumImportWritePreparationError::SourceCategoryPositionOutOfRange {
+                    source: record.source.clone(),
+                    position: source_position,
+                },
+            );
         }
         if expected != decision.position {
             return Err(ForumImportWritePreparationError::CategoryPositionChanged {
@@ -639,9 +662,11 @@ fn prepare_reply(
     match (record.deleted, decision.status) {
         (true, ReplyStatus::Deleted) => {}
         (true, _) => {
-            return Err(ForumImportWritePreparationError::DeletedReplyStatusRequired {
-                source: record.source.clone(),
-            });
+            return Err(
+                ForumImportWritePreparationError::DeletedReplyStatusRequired {
+                    source: record.source.clone(),
+                },
+            );
         }
         (false, ReplyStatus::Deleted) => {
             return Err(ForumImportWritePreparationError::LiveReplyCannotBeDeleted {

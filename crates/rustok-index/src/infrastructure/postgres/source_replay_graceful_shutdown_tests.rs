@@ -98,7 +98,10 @@ impl Fixture {
         }
 
         let schema = schema();
-        let fingerprint = schema.fingerprint().expect("schema fingerprint").to_string();
+        let fingerprint = schema
+            .fingerprint()
+            .expect("schema fingerprint")
+            .to_string();
         let schema_json = serde_json::to_value(&schema).expect("schema json");
         db.execute(Statement::from_sql_and_values(
             DbBackend::Sqlite,

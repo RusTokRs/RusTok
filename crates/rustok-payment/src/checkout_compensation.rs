@@ -752,14 +752,7 @@ fn checkout_payment_compensation_payment_error_facts(
         uuid_non_nil_count,
         opaque_payload_present,
     ) = match error {
-        PaymentError::Validation(value) => (
-            "validation",
-            1,
-            value.chars().count(),
-            0,
-            0,
-            false,
-        ),
+        PaymentError::Validation(value) => ("validation", 1, value.chars().count(), 0, 0, false),
         PaymentError::PaymentCollectionNotFound(id) => (
             "payment_collection_not_found",
             0,
@@ -873,7 +866,8 @@ fn log_checkout_payment_compensation_owner_failure(
     let payment_error_text_field_count = payment_error_facts.map(|facts| facts.text_field_count);
     let payment_error_text_total_length = payment_error_facts.map(|facts| facts.text_total_length);
     let payment_error_uuid_field_count = payment_error_facts.map(|facts| facts.uuid_field_count);
-    let payment_error_uuid_non_nil_count = payment_error_facts.map(|facts| facts.uuid_non_nil_count);
+    let payment_error_uuid_non_nil_count =
+        payment_error_facts.map(|facts| facts.uuid_non_nil_count);
     let payment_error_opaque_payload_present =
         payment_error_facts.map(|facts| facts.opaque_payload_present);
     tracing::error!(

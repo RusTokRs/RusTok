@@ -12,9 +12,8 @@ use crate::domain::{
 use super::{
     CompiledPostgresCount, CompiledPostgresQuery, CompiledQueryColumn, ExecutableQueryPlan,
     LocalizedCursorCodec, LocalizedCursorValidationError, LocalizedEntityQueryValidationError,
-    LocalizedIndexCursor, PlannedField, PostgresBindValue, PostgresQueryCompileError, QueryPlanError,
-    QueryPlanFingerprint, SchemaRegistry,
-    postgres_compiler::quote_identifier,
+    LocalizedIndexCursor, PlannedField, PostgresBindValue, PostgresQueryCompileError,
+    QueryPlanError, QueryPlanFingerprint, SchemaRegistry, postgres_compiler::quote_identifier,
 };
 
 const ROOT_ALIAS: &str = "t0";
@@ -204,8 +203,7 @@ fn compile_localized_page(
         .then(|| compile_exact_count(query, plan, any_locale_plan))
         .transpose()?;
     let ordinary_plan_fingerprint = plan.fingerprint()?;
-    let localized_plan_fingerprint =
-        localized_plan_fingerprint(query, ordinary_plan_fingerprint)?;
+    let localized_plan_fingerprint = localized_plan_fingerprint(query, ordinary_plan_fingerprint)?;
 
     Ok(CompiledPostgresLocalizedPageQuery {
         compiled: CompiledPostgresQuery {
@@ -225,10 +223,8 @@ pub(super) fn localized_plan_fingerprint(
     query: &LocalizedEntityQuery,
     ordinary_plan_fingerprint: QueryPlanFingerprint,
 ) -> Result<LocalizedQueryPlanFingerprint, PostgresQueryCompileError> {
-    let mut localized_projection_fields = query
-        .localized_projection_fields
-        .iter()
-        .collect::<Vec<_>>();
+    let mut localized_projection_fields =
+        query.localized_projection_fields.iter().collect::<Vec<_>>();
     localized_projection_fields.sort();
     let identity = LocalizedPlanIdentity {
         mode: "localized_entity_fold_plan_v1",
@@ -345,12 +341,7 @@ fn compile_any_locale_exists(
     bindings: &mut Bindings,
 ) -> Result<String, PostgresQueryCompileError> {
     let any_alias = quote_identifier(ANY_LOCALE_ALIAS);
-    let filter = compile_filter_for_alias(
-        any_locale_plan,
-        filter,
-        ANY_LOCALE_ALIAS,
-        bindings,
-    )?;
+    let filter = compile_filter_for_alias(any_locale_plan, filter, ANY_LOCALE_ALIAS, bindings)?;
     Ok(format!(
         "EXISTS (SELECT 1 FROM index_entities AS {any_alias} WHERE {} AND {any_alias}.locale_key IS NOT NULL AND {any_alias}.is_deleted = FALSE AND ({filter}))",
         same_identity_predicate(ANY_LOCALE_ALIAS, &root_plan.root_alias),
@@ -395,18 +386,10 @@ fn compile_filter_for_alias(
                 values.join(", ")
             ))
         }
-        FilterExpr::Gt(path, value) => {
-            compile_range(plan, path, value, alias, ">", bindings)
-        }
-        FilterExpr::Gte(path, value) => {
-            compile_range(plan, path, value, alias, ">=", bindings)
-        }
-        FilterExpr::Lt(path, value) => {
-            compile_range(plan, path, value, alias, "<", bindings)
-        }
-        FilterExpr::Lte(path, value) => {
-            compile_range(plan, path, value, alias, "<=", bindings)
-        }
+        FilterExpr::Gt(path, value) => compile_range(plan, path, value, alias, ">", bindings),
+        FilterExpr::Gte(path, value) => compile_range(plan, path, value, alias, ">=", bindings),
+        FilterExpr::Lt(path, value) => compile_range(plan, path, value, alias, "<", bindings),
+        FilterExpr::Lte(path, value) => compile_range(plan, path, value, alias, "<=", bindings),
         FilterExpr::Contains(path, value) => {
             let sql = field_sql_for_path(plan, path, alias, bindings)?;
             let encoded = serde_json::to_value(vec![value.clone()])?;
@@ -500,14 +483,8 @@ fn compile_keyset(
 
     let entity_id = bindings.push(PostgresBindValue::Uuid(cursor.entity_id));
     let root_after = match query.identity_order_direction {
-        OrderDirection::Asc => format!(
-            "{}.entity_id > {entity_id}",
-            quote_identifier(ROOT_ALIAS)
-        ),
-        OrderDirection::Desc => format!(
-            "{}.entity_id < {entity_id}",
-            quote_identifier(ROOT_ALIAS)
-        ),
+        OrderDirection::Asc => format!("{}.entity_id > {entity_id}", quote_identifier(ROOT_ALIAS)),
+        OrderDirection::Desc => format!("{}.entity_id < {entity_id}", quote_identifier(ROOT_ALIAS)),
         _ => unreachable!("validated localized identity order is asc or desc"),
     };
     disjuncts.push(conjunction(&equalities, &root_after));
@@ -658,12 +635,10 @@ fn field_sql_for_alias(
         field.path.field().as_str().to_owned(),
     ));
     let raw = format!("jsonb_extract_path({relation_alias}.payload, {field_name}::text)");
-    let scalar_text = format!(
-        "jsonb_extract_path_text({relation_alias}.payload, {field_name}::text, 'value')"
-    );
-    let type_text = format!(
-        "jsonb_extract_path_text({relation_alias}.payload, {field_name}::text, 'type')"
-    );
+    let scalar_text =
+        format!("jsonb_extract_path_text({relation_alias}.payload, {field_name}::text, 'value')");
+    let type_text =
+        format!("jsonb_extract_path_text({relation_alias}.payload, {field_name}::text, 'type')");
     let scalar = match field.value_type {
         IndexValueType::Boolean => format!("({scalar_text})::boolean"),
         IndexValueType::Integer => format!("({scalar_text})::bigint"),
@@ -672,8 +647,7 @@ fn field_sql_for_alias(
         IndexValueType::Uuid => format!("({scalar_text})::uuid"),
         IndexValueType::Timestamp => format!("({scalar_text})::timestamptz"),
     };
-    let null_predicate =
-        format!("{raw} IS NULL OR {type_text} IS NULL OR {type_text} = 'null'");
+    let null_predicate = format!("{raw} IS NULL OR {type_text} IS NULL OR {type_text} = 'null'");
     FieldSql {
         raw,
         scalar,
@@ -718,11 +692,11 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::domain::{
-        EntityName, FieldCardinality, FieldName, IndexField, IndexQuery, IndexQueryScope, IndexSchema,
-        LocaleKey, LocaleMode, ModuleName, OrderExpr, SchemaRef, SchemaVersion,
-    };
     use crate::PostgresQueryEntityAdmission;
+    use crate::domain::{
+        EntityName, FieldCardinality, FieldName, IndexField, IndexQuery, IndexQueryScope,
+        IndexSchema, LocaleKey, LocaleMode, ModuleName, OrderExpr, SchemaRef, SchemaVersion,
+    };
 
     fn schema() -> IndexSchema {
         IndexSchema {
@@ -852,19 +826,19 @@ mod tests {
         let mut compiled = registry
             .compile_postgres_localized_page_query(&query)
             .unwrap();
-        let admission =
-            PostgresQueryEntityAdmission::new("{{entity}}.source_version > 0").unwrap();
+        let admission = PostgresQueryEntityAdmission::new("{{entity}}.source_version > 0").unwrap();
         admission.apply(compiled.compiled_mut()).unwrap();
         for alias in ["t0", "t1", "t2", "t3", "t4"] {
-            let marker = format!(
-                "\"{alias}\".is_deleted = FALSE AND (\"{alias}\".source_version > 0)"
+            let marker =
+                format!("\"{alias}\".is_deleted = FALSE AND (\"{alias}\".source_version > 0)");
+            assert!(
+                compiled.compiled().sql.contains(&marker),
+                "missing {marker}"
             );
-            assert!(compiled.compiled().sql.contains(&marker), "missing {marker}");
         }
         for alias in ["t0", "t3", "t4"] {
-            let marker = format!(
-                "\"{alias}\".is_deleted = FALSE AND (\"{alias}\".source_version > 0)"
-            );
+            let marker =
+                format!("\"{alias}\".is_deleted = FALSE AND (\"{alias}\".source_version > 0)");
             assert!(
                 compiled
                     .compiled()

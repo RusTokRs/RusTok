@@ -43,12 +43,13 @@ pub async fn fetch_pages_builder_rollout_snapshot(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .ok_or(PagesBuilderRolloutSnapshotError::MissingTenant)?;
-    let (routed_tenant, flags, provider_health) = crate::transport::fetch_page_builder_rollout_snapshot(
-        token,
-        Some(requested_tenant.clone()),
-    )
-    .await
-    .map_err(|error| PagesBuilderRolloutSnapshotError::Transport(error.to_string()))?;
+    let (routed_tenant, flags, provider_health) =
+        crate::transport::fetch_page_builder_rollout_snapshot(
+            token,
+            Some(requested_tenant.clone()),
+        )
+        .await
+        .map_err(|error| PagesBuilderRolloutSnapshotError::Transport(error.to_string()))?;
     if routed_tenant != requested_tenant {
         return Err(PagesBuilderRolloutSnapshotError::TenantMismatch {
             requested: requested_tenant,
@@ -122,8 +123,7 @@ mod tests {
             tenant_slug: "pages-tenant".to_string(),
             provider_health: Some(health),
         };
-        let effective =
-            pages_editor_capabilities_for_snapshot(CapabilityState::full(), &snapshot);
+        let effective = pages_editor_capabilities_for_snapshot(CapabilityState::full(), &snapshot);
         assert!(effective.edit);
         assert!(effective.properties);
         assert!(!effective.publish);

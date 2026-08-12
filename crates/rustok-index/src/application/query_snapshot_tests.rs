@@ -91,7 +91,10 @@ fn retained_v4_plan_and_sql_snapshots_are_stable() {
 
     assert_eq!(render_plan(&plan), PLAN_SNAPSHOT);
     assert_eq!(format!("{}\n", compiled.sql), SQL_SNAPSHOT);
-    assert_eq!(render_compiled(&compiled.binds, &compiled.columns, &compiled.many_relations), COMPILED_SNAPSHOT);
+    assert_eq!(
+        render_compiled(&compiled.binds, &compiled.columns, &compiled.many_relations),
+        COMPILED_SNAPSHOT
+    );
     assert!(compiled.exact_count.is_none());
 }
 
@@ -167,9 +170,7 @@ fn render_compiled(
             CompiledQueryColumn::EntityId {
                 output_alias,
                 relation_alias,
-            } => lines.push(format!(
-                "column:entity_id|{output_alias}|{relation_alias}"
-            )),
+            } => lines.push(format!("column:entity_id|{output_alias}|{relation_alias}")),
             CompiledQueryColumn::Field {
                 output_alias,
                 field,

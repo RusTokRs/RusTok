@@ -139,14 +139,62 @@ async fn summaries_count_non_archived_rows_order_latest_and_preserve_sparse_prog
     let base = fixed_time();
 
     for (id, target, group, state, seconds) in [
-        (Uuid::from_u128(109), target_a, GROUP_A, NotificationState::Archived, 9),
-        (Uuid::from_u128(108), target_a, GROUP_A, NotificationState::Seen, 8),
-        (Uuid::from_u128(107), target_b, GROUP_B, NotificationState::Unread, 7),
-        (Uuid::from_u128(106), target_c, GROUP_C, NotificationState::Read, 6),
-        (Uuid::from_u128(105), target_a, GROUP_A, NotificationState::Unread, 5),
-        (Uuid::from_u128(104), target_b, GROUP_B, NotificationState::Unread, 4),
-        (Uuid::from_u128(103), target_a, GROUP_A, NotificationState::Read, 3),
-        (Uuid::from_u128(102), target_d, GROUP_D, NotificationState::Archived, 10),
+        (
+            Uuid::from_u128(109),
+            target_a,
+            GROUP_A,
+            NotificationState::Archived,
+            9,
+        ),
+        (
+            Uuid::from_u128(108),
+            target_a,
+            GROUP_A,
+            NotificationState::Seen,
+            8,
+        ),
+        (
+            Uuid::from_u128(107),
+            target_b,
+            GROUP_B,
+            NotificationState::Unread,
+            7,
+        ),
+        (
+            Uuid::from_u128(106),
+            target_c,
+            GROUP_C,
+            NotificationState::Read,
+            6,
+        ),
+        (
+            Uuid::from_u128(105),
+            target_a,
+            GROUP_A,
+            NotificationState::Unread,
+            5,
+        ),
+        (
+            Uuid::from_u128(104),
+            target_b,
+            GROUP_B,
+            NotificationState::Unread,
+            4,
+        ),
+        (
+            Uuid::from_u128(103),
+            target_a,
+            GROUP_A,
+            NotificationState::Read,
+            3,
+        ),
+        (
+            Uuid::from_u128(102),
+            target_d,
+            GROUP_D,
+            NotificationState::Archived,
+            10,
+        ),
     ] {
         seed_notification(
             &db,
@@ -207,12 +255,7 @@ async fn summaries_count_non_archived_rows_order_latest_and_preserve_sparse_prog
     assert_eq!(first.groups[1].latest_item.state, NotificationState::Unread);
 
     let second = service
-        .list_page(summary_request(
-            tenant_id,
-            recipient_id,
-            Some(cursor),
-            2,
-        ))
+        .list_page(summary_request(tenant_id, recipient_id, Some(cursor), 2))
         .await
         .expect("suppressed terminal summary page should load");
     assert!(second.groups.is_empty());
@@ -380,10 +423,7 @@ async fn retryable_summary_authorization_failure_aborts_without_partial_result_o
         .list_page(summary_request(tenant_id, recipient_id, None, 2))
         .await
         .expect_err("retryable recipient policy failure must abort the summary page");
-    assert_eq!(
-        error.stable_code(),
-        "NOTIFICATION_RECIPIENT_POLICY_FAILURE"
-    );
+    assert_eq!(error.stable_code(), "NOTIFICATION_RECIPIENT_POLICY_FAILURE");
     assert!(error.is_retryable());
     assert_eq!(
         source_calls
@@ -401,7 +441,10 @@ async fn retryable_summary_authorization_failure_aborts_without_partial_result_o
         .await
         .expect("notification rows should remain readable");
     assert_eq!(rows.len(), 2);
-    assert!(rows.iter().all(|row| row.state == NotificationState::Unread));
+    assert!(
+        rows.iter()
+            .all(|row| row.state == NotificationState::Unread)
+    );
     assert!(rows.iter().all(|row| row.updated_at == row.created_at));
 }
 
@@ -412,13 +455,7 @@ fn group_summary_limits_reuse_shared_inbox_bounds() {
         20
     );
     assert_eq!(
-        summary_request(
-            Uuid::from_u128(32),
-            Uuid::from_u128(33),
-            None,
-            u16::MAX,
-        )
-        .bounded_limit(),
+        summary_request(Uuid::from_u128(32), Uuid::from_u128(33), None, u16::MAX,).bounded_limit(),
         u64::from(MAX_NOTIFICATION_INBOX_PAGE_SIZE)
     );
 }
@@ -480,8 +517,7 @@ async fn seed_notification(
     let seen_at = matches!(state, NotificationState::Seen | NotificationState::Read)
         .then_some(created_at.to_owned());
     let read_at = matches!(state, NotificationState::Read).then_some(created_at.to_owned());
-    let archived_at =
-        matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
+    let archived_at = matches!(state, NotificationState::Archived).then_some(created_at.to_owned());
     notification::ActiveModel {
         id: Set(notification_id),
         tenant_id: Set(tenant_id),

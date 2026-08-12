@@ -173,11 +173,8 @@ impl ForumSubscriptionReconciliationService {
         category_after_target: Option<Uuid>,
         category_after_user: Option<Uuid>,
     ) -> ForumResult<ForumSubscriptionReconciliationReport> {
-        let topic_after = subscription_cursor(
-            topic_after_target,
-            topic_after_user,
-            "topic subscription",
-        )?;
+        let topic_after =
+            subscription_cursor(topic_after_target, topic_after_user, "topic subscription")?;
         let category_after = subscription_cursor(
             category_after_target,
             category_after_user,
@@ -378,10 +375,9 @@ fn subscription_cursor(
 ) -> ForumResult<Option<ForumSubscriptionCursor>> {
     match (target_after, user_after) {
         (None, None) => Ok(None),
-        (Some(target_id), Some(user_id)) => Ok(Some(ForumSubscriptionCursor {
-            target_id,
-            user_id,
-        })),
+        (Some(target_id), Some(user_id)) => {
+            Ok(Some(ForumSubscriptionCursor { target_id, user_id }))
+        }
         _ => Err(ForumError::Validation(format!(
             "Forum {label} cursor requires both target and user components"
         ))),

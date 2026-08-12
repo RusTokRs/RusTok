@@ -1,8 +1,7 @@
 use std::{env, time::Duration};
 
 use rustok_iggy::{
-    IggyDedupRecoveryWindowPolicy, IggyDedupRecoveryWindowStatus,
-    IggyDeduplicationConfiguration,
+    IggyDedupRecoveryWindowPolicy, IggyDedupRecoveryWindowStatus, IggyDeduplicationConfiguration,
 };
 
 const SKIP_MESSAGE: &str =
@@ -12,8 +11,7 @@ const PUBLICATION_LEASE_MS: &str = "RUSTOK_IGGY_DEDUP_RECOVERY_PUBLICATION_LEASE
 const PROCESS_RESTART_MS: &str = "RUSTOK_IGGY_DEDUP_RECOVERY_PROCESS_RESTART_MS";
 const TRANSPORT_RECONNECT_MS: &str = "RUSTOK_IGGY_DEDUP_RECOVERY_TRANSPORT_RECONNECT_MS";
 const OPERATOR_RECOVERY_MS: &str = "RUSTOK_IGGY_DEDUP_RECOVERY_OPERATOR_RECOVERY_MS";
-const REQUIRED_MAX_ENTRIES: &str =
-    "RUSTOK_IGGY_DEDUP_RECOVERY_REQUIRED_MAX_ENTRIES_PER_PARTITION";
+const REQUIRED_MAX_ENTRIES: &str = "RUSTOK_IGGY_DEDUP_RECOVERY_REQUIRED_MAX_ENTRIES_PER_PARTITION";
 const CONFIGURED_MAX_ENTRIES: &str = "RUSTOK_IGGY_DEDUP_RECOVERY_CONFIGURED_MAX_ENTRIES";
 const CONFIGURED_EXPIRY_MS: &str = "RUSTOK_IGGY_DEDUP_RECOVERY_CONFIGURED_EXPIRY_MS";
 
@@ -56,7 +54,11 @@ fn parse_u64(values: &[(&str, String)], name: &str, allow_zero: bool) -> u64 {
         .iter()
         .find_map(|(candidate, value)| (*candidate == name).then_some(value.as_str()))
         .expect("required retained calibration environment must exist");
-    assert_eq!(raw.trim(), raw, "{name} must not contain surrounding whitespace");
+    assert_eq!(
+        raw.trim(),
+        raw,
+        "{name} must not contain surrounding whitespace"
+    );
     let parsed = raw
         .parse::<u64>()
         .unwrap_or_else(|_| panic!("{name} must be an unsigned integer"));

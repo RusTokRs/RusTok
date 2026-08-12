@@ -79,11 +79,7 @@ async fn row(
     .ok_or_else(|| std::io::Error::other("expected row").into())
 }
 
-async fn count(
-    db: &DatabaseConnection,
-    sql: &str,
-    values: Vec<sea_orm::Value>,
-) -> TestResult<i64> {
+async fn count(db: &DatabaseConnection, sql: &str, values: Vec<sea_orm::Value>) -> TestResult<i64> {
     Ok(row(db, sql, values).await?.try_get("", "value")?)
 }
 
@@ -216,14 +212,8 @@ async fn reply_branch_fork_is_atomic_idempotent_and_preserves_provenance() -> Te
     let (db, event_bus) = setup().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
-    let (
-        admin,
-        category_id,
-        source_topic_id,
-        external_parent_id,
-        branch_root_id,
-        branch_child_id,
-    ) = create_fixture(&db, &event_bus, tenant_id, actor_id).await?;
+    let (admin, category_id, source_topic_id, external_parent_id, branch_root_id, branch_child_id) =
+        create_fixture(&db, &event_bus, tenant_id, actor_id).await?;
 
     execute(
         &db,
@@ -343,20 +333,10 @@ async fn reply_branch_fork_is_atomic_idempotent_and_preserves_provenance() -> Te
     };
     let service = ForumTopicForkService::new(db.clone(), event_bus);
     let first = service
-        .fork_reply_branch(
-            tenant_id,
-            source_topic_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .fork_reply_branch(tenant_id, source_topic_id, admin.clone(), input.clone())
         .await?;
     let replay = service
-        .fork_reply_branch(
-            tenant_id,
-            source_topic_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .fork_reply_branch(tenant_id, source_topic_id, admin.clone(), input.clone())
         .await?;
 
     assert_eq!(first, replay);

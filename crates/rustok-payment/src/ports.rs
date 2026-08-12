@@ -500,12 +500,8 @@ fn payment_collection_owner_error_code(error: &crate::PaymentError) -> &'static 
         crate::PaymentError::InvalidTransition { .. } => "payment.invalid_transition",
         crate::PaymentError::ProviderUnavailable { .. } => "payment.provider_unavailable",
         crate::PaymentError::ProviderRejected { .. } => "payment.provider_rejected",
-        crate::PaymentError::ProviderInvalidResponse { .. } => {
-            "payment.provider_invalid_response"
-        }
-        crate::PaymentError::ProviderOutcomeUnknown { .. } => {
-            "payment.provider_outcome_unknown"
-        }
+        crate::PaymentError::ProviderInvalidResponse { .. } => "payment.provider_invalid_response",
+        crate::PaymentError::ProviderOutcomeUnknown { .. } => "payment.provider_outcome_unknown",
         crate::PaymentError::ProviderConfiguration { .. } => "payment.provider_not_configured",
         crate::PaymentError::Database(_) => "payment.database_unavailable",
     }

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value as SqlValue};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -236,10 +236,7 @@ impl PostgresIndexReconciliationRetryStore {
         }
     }
 
-    pub fn with_policy(
-        db: DatabaseConnection,
-        policy: IndexReconciliationRetryPolicy,
-    ) -> Self {
+    pub fn with_policy(db: DatabaseConnection, policy: IndexReconciliationRetryPolicy) -> Self {
         Self { db, policy }
     }
 
@@ -366,15 +363,11 @@ fn valid_failure_code(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_FAILURE_CODE_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }
 
-fn ensure_supported_backend(
-    backend: DbBackend,
-) -> Result<(), IndexReconciliationRetryError> {
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), IndexReconciliationRetryError> {
     match backend {
         DbBackend::Postgres => Ok(()),
         DbBackend::Sqlite if cfg!(test) => Ok(()),
@@ -437,9 +430,7 @@ mod tests {
     #[test]
     fn default_policy_uses_bounded_exponential_backoff() {
         let policy = IndexReconciliationRetryPolicy::default();
-        for (attempt, seconds, next_attempt) in
-            [(1, 5, 2), (2, 10, 3), (3, 20, 4), (4, 40, 5)]
-        {
+        for (attempt, seconds, next_attempt) in [(1, 5, 2), (2, 10, 3), (3, 20, 4), (4, 40, 5)] {
             assert_eq!(
                 policy
                     .evaluate(attempt, IndexReconciliationRetryFailureKind::Retryable)
@@ -482,18 +473,14 @@ mod tests {
             IndexReconciliationRetryLease::new(Uuid::new_v4(), Uuid::new_v4(), "worker", 0),
             Err(IndexReconciliationRetryError::InvalidAttemptCount)
         ));
-        assert!(IndexReconciliationRetryPolicy::new(
-            0,
-            Duration::from_secs(1),
-            Duration::from_secs(2),
-        )
-        .is_err());
-        assert!(IndexReconciliationRetryPolicy::new(
-            2,
-            Duration::from_secs(3),
-            Duration::from_secs(2),
-        )
-        .is_err());
+        assert!(
+            IndexReconciliationRetryPolicy::new(0, Duration::from_secs(1), Duration::from_secs(2),)
+                .is_err()
+        );
+        assert!(
+            IndexReconciliationRetryPolicy::new(2, Duration::from_secs(3), Duration::from_secs(2),)
+                .is_err()
+        );
         for code in ["", "UPPER", " leading", "contains/slash"] {
             assert!(IndexReconciliationRetryFailure::retryable(code).is_err());
         }
@@ -503,9 +490,7 @@ mod tests {
     fn retry_sql_is_lease_fenced_and_preserves_job_identity() {
         let retry = schedule_retry_sql(DbBackend::Postgres);
         assert!(retry.contains("state = 'pending'"));
-        assert!(retry.contains(
-            "available_at = CURRENT_TIMESTAMP + ($5 * INTERVAL '1 second')"
-        ));
+        assert!(retry.contains("available_at = CURRENT_TIMESTAMP + ($5 * INTERVAL '1 second')"));
         assert!(retry.contains("kind = 'reconcile'"));
         assert!(retry.contains("lease_owner = $3"));
         assert!(retry.contains("attempt_count = $4"));
@@ -535,6 +520,9 @@ mod tests {
             details.get("dependency_code").and_then(JsonValue::as_str),
             Some("owner_source_retryable")
         );
-        assert_eq!(details.get("retryable").and_then(JsonValue::as_bool), Some(true));
+        assert_eq!(
+            details.get("retryable").and_then(JsonValue::as_bool),
+            Some(true)
+        );
     }
 }

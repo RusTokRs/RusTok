@@ -138,10 +138,13 @@ fn validate_inventory_request(
         ForumExportReadTargetKind::Topic => (Resource::ForumTopics, "forum_topics"),
         ForumExportReadTargetKind::Reply => (Resource::ForumReplies, "forum_replies"),
     };
-    if !matches!(security.get_scope(resource, Action::Manage), PermissionScope::All) {
-        return Err(ForumExportSourceInventoryError::AllManagePermissionRequired {
-            resource: label,
-        });
+    if !matches!(
+        security.get_scope(resource, Action::Manage),
+        PermissionScope::All
+    ) {
+        return Err(
+            ForumExportSourceInventoryError::AllManagePermissionRequired { resource: label },
+        );
     }
     Ok(())
 }

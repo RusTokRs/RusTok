@@ -12,9 +12,7 @@ pub mod proto {
     tonic::include_proto!("rustok.product");
 }
 
-pub use auth::{
-    ProductCatalogGrpcAuthenticationError, ProductCatalogGrpcBearerToken,
-};
+pub use auth::{ProductCatalogGrpcAuthenticationError, ProductCatalogGrpcBearerToken};
 pub use client::GrpcProductCatalogReadProvider;
 pub use connection::{
     GrpcProductCatalogReadConnectionConfig, GrpcProductCatalogReadConnectionError,

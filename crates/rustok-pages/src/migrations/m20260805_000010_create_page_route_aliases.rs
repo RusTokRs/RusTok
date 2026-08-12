@@ -35,10 +35,7 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(PageRouteAliases::TargetPageId).uuid())
-                    .col(
-                        ColumnDef::new(PageRouteAliases::TargetLocale)
-                            .string_len(32),
-                    )
+                    .col(ColumnDef::new(PageRouteAliases::TargetLocale).string_len(32))
                     .col(
                         ColumnDef::new(PageRouteAliases::Reason)
                             .string_len(500)

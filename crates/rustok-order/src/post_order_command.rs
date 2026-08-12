@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    ApplyOrderChangeInput, CancelOrderChangeInput, CancelOrderReturnInput, CompleteOrderReturnInput,
-    CreateOrderChangeInput, CreateOrderReturnInput, OrderChangeResponse, OrderError,
-    OrderReturnResponse, OrderService,
+    ApplyOrderChangeInput, CancelOrderChangeInput, CancelOrderReturnInput,
+    CompleteOrderReturnInput, CreateOrderChangeInput, CreateOrderReturnInput, OrderChangeResponse,
+    OrderError, OrderReturnResponse, OrderService,
 };
 
 const ORDER_POST_ORDER_COMMAND_OWNER: &str = "rustok_order";
@@ -226,9 +226,11 @@ fn require_post_order_command_context(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<(Uuid, Uuid), PortError> {
-    context.require_policy(PortCallPolicy::write()).inspect_err(|error| {
-        log_context_error(context, operation, "policy", error);
-    })?;
+    context
+        .require_policy(PortCallPolicy::write())
+        .inspect_err(|error| {
+            log_context_error(context, operation, "policy", error);
+        })?;
     let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         let error = PortError::validation(
             "order.post_order_command_context_invalid",

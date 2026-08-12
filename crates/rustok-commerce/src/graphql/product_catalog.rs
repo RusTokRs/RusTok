@@ -276,7 +276,8 @@ impl ProductCatalogQuery {
             format!("commerce-graphql-product:admin-catalog:{page}:{per_page}"),
         )
         .with_deadline(std::time::Duration::from_secs(2));
-        let port_context = match request_context.and_then(|context| context.channel_slug.as_deref()) {
+        let port_context = match request_context.and_then(|context| context.channel_slug.as_deref())
+        {
             Some(channel) => port_context.with_channel(channel),
             None => port_context,
         };

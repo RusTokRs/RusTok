@@ -162,8 +162,7 @@ pub fn ensure_registered() -> Result<(), prometheus::Error> {
     )) {
         Ok(()) => Ok(()),
         Err(error) => {
-            SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_METRICS_REGISTERING
-                .store(false, Ordering::Release);
+            SOCIAL_GRAPH_INDEX_PRIVACY_SHADOW_METRICS_REGISTERING.store(false, Ordering::Release);
             Err(error)
         }
     }

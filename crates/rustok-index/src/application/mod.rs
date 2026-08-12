@@ -59,8 +59,7 @@ pub use drift_candidate_confirmation::{
     IndexDriftCandidateConfirmationFailureKind, IndexDriftCandidateConfirmationOutcome,
     IndexDriftCandidateConfirmer, IndexDriftCandidateMaterializedObservation,
     IndexDriftCandidateMaterializedObserver, IndexDriftCandidateNotCandidateReason,
-    IndexDriftConfirmedCandidate, IndexDriftConfirmedMissingEntity,
-    IndexDriftConfirmedOrphanLink,
+    IndexDriftConfirmedCandidate, IndexDriftConfirmedMissingEntity, IndexDriftConfirmedOrphanLink,
 };
 pub use drift_candidates::{
     IndexDriftCandidate, IndexDriftCandidateCursor, IndexDriftCandidateError,
@@ -88,16 +87,15 @@ pub use drift_finding_lifecycle::{
     IndexDriftFindingState,
 };
 pub use drift_repair::{
-    IndexDriftAuthorizedRepairCommand, IndexDriftRepairAuthorization,
-    IndexDriftRepairAuthorizer, IndexDriftRepairCommand, IndexDriftRepairCompletion,
-    IndexDriftRepairEvidence, IndexDriftRepairEvidenceReader, IndexDriftRepairEvidenceState,
-    IndexDriftRepairFailure, IndexDriftRepairFailureError, IndexDriftRepairFailureKind,
-    IndexDriftRepairFinding, IndexDriftRepairNotStartedReason, IndexDriftRepairOutcome,
-    IndexDriftRepairOwner, IndexDriftRepairOwnerOutcome, IndexDriftRepairOwnerRegistry,
-    IndexDriftRepairReceipt, IndexDriftRepairReceiptOutcome, IndexDriftRepairReservationOutcome,
-    IndexDriftRepairService, IndexDriftRepairStore, IndexDriftRepairStoreCompletionOutcome,
-    IndexDriftRepairTarget, IndexDriftRepairTargetKind, IndexDriftRepairTicket,
-    IndexDriftRepairValidationError,
+    IndexDriftAuthorizedRepairCommand, IndexDriftRepairAuthorization, IndexDriftRepairAuthorizer,
+    IndexDriftRepairCommand, IndexDriftRepairCompletion, IndexDriftRepairEvidence,
+    IndexDriftRepairEvidenceReader, IndexDriftRepairEvidenceState, IndexDriftRepairFailure,
+    IndexDriftRepairFailureError, IndexDriftRepairFailureKind, IndexDriftRepairFinding,
+    IndexDriftRepairNotStartedReason, IndexDriftRepairOutcome, IndexDriftRepairOwner,
+    IndexDriftRepairOwnerOutcome, IndexDriftRepairOwnerRegistry, IndexDriftRepairReceipt,
+    IndexDriftRepairReceiptOutcome, IndexDriftRepairReservationOutcome, IndexDriftRepairService,
+    IndexDriftRepairStore, IndexDriftRepairStoreCompletionOutcome, IndexDriftRepairTarget,
+    IndexDriftRepairTargetKind, IndexDriftRepairTicket, IndexDriftRepairValidationError,
 };
 pub use drift_repair_recovery::{
     IndexDriftAuthorizedRepairRecoveryCommand, IndexDriftRepairRecoveryAction,
@@ -105,9 +103,8 @@ pub use drift_repair_recovery::{
     IndexDriftRepairRecoveryCommand, IndexDriftRepairRecoveryFailure,
     IndexDriftRepairRecoveryFailureError, IndexDriftRepairRecoveryFailureKind,
     IndexDriftRepairRecoveryOutcome, IndexDriftRepairRecoveryReceipt,
-    IndexDriftRepairRecoveryService, IndexDriftRepairRecoveryState,
-    IndexDriftRepairRecoveryStore, IndexDriftRepairRecoveryStoreOutcome,
-    IndexDriftRepairRecoveryValidationError,
+    IndexDriftRepairRecoveryService, IndexDriftRepairRecoveryState, IndexDriftRepairRecoveryStore,
+    IndexDriftRepairRecoveryStoreOutcome, IndexDriftRepairRecoveryValidationError,
 };
 pub use localized_cursor::{
     LocalizedCursorCodec, LocalizedCursorCodecError, LocalizedCursorValidationError,
@@ -126,8 +123,8 @@ pub use planner::{
     QueryPlanError, QueryPlanFingerprint,
 };
 pub use postgres_compiler::{
-    CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery,
-    CompiledQueryColumn, PostgresBindValue, PostgresQueryBuildError, PostgresQueryCompileError,
+    CompiledManyRelationColumn, CompiledPostgresCount, CompiledPostgresQuery, CompiledQueryColumn,
+    PostgresBindValue, PostgresQueryBuildError, PostgresQueryCompileError,
 };
 pub use postgres_localized_query::{
     CompiledPostgresLocalizedPageQuery, LocalizedQueryPlanFingerprint,
@@ -139,20 +136,16 @@ pub use postgres_query_admission::{
     PostgresQueryEntityAdmissionError,
 };
 pub use postgres_query_result::{
-    CompiledPostgresCell, CompiledPostgresPageQuery, CompiledPostgresRow,
-    IndexNestedRelationItem, IndexNestedRelationProjection, IndexProjectedValue, IndexQueryItem,
-    IndexQueryPage, IndexRelationIdentity, PostgresQueryDecodeError, PostgresQueryPageBuildError,
+    CompiledPostgresCell, CompiledPostgresPageQuery, CompiledPostgresRow, IndexNestedRelationItem,
+    IndexNestedRelationProjection, IndexProjectedValue, IndexQueryItem, IndexQueryPage,
+    IndexRelationIdentity, PostgresQueryDecodeError, PostgresQueryPageBuildError,
 };
-pub use query_port::{
-    IndexQueryExecutionError, IndexQueryPort, PersistedSchemaReadinessFailure,
-};
+pub use query_port::{IndexQueryExecutionError, IndexQueryPort, PersistedSchemaReadinessFailure};
 pub use query_runtime::SharedIndexQueryRuntime;
 pub use registry::{
     LinkPathStep, RegisteredSchema, RegistrationOutcome, SchemaRegistry, SchemaRegistryError,
 };
-pub use replay_mode::{
-    IndexReplayExecutionSurface, IndexReplayMode, IndexReplayModeSelection,
-};
+pub use replay_mode::{IndexReplayExecutionSurface, IndexReplayMode, IndexReplayModeSelection};
 pub use source_absence::{
     IndexSourceAbsenceCatalog, IndexSourceAbsenceDescriptor, IndexSourceAbsenceError,
     IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark, SharedIndexSourceAbsenceRegistry,
@@ -178,8 +171,9 @@ pub use source_registry::{
 };
 pub use source_replay::{
     IndexReplayCheckpoint, IndexReplayCheckpointKey, IndexReplayCheckpointStore, IndexReplayError,
-    IndexReplayFailure, IndexReplayFailureKind, IndexReplayMutationOutcome, IndexReplayMutationSink,
-    IndexReplayPageOutcome, IndexReplayPageRequest, IndexReplayPageStatus, IndexReplayWorker,
+    IndexReplayFailure, IndexReplayFailureKind, IndexReplayMutationOutcome,
+    IndexReplayMutationSink, IndexReplayPageOutcome, IndexReplayPageRequest, IndexReplayPageStatus,
+    IndexReplayWorker,
 };
 pub use source_schema_registry::{
     IndexSchemaSourceCatalog, IndexSchemaSourceDescriptor, IndexSchemaSourceError,

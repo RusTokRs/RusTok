@@ -128,18 +128,19 @@ impl EventBus {
 
         // Check backpressure if enabled
         if let Some(backpressure) = &self.backpressure
-            && let Err(e) = backpressure.try_acquire() {
-                tracing::warn!(
-                    error = %e,
-                    event_type = envelope.event.event_type(),
-                    "Event rejected due to backpressure"
-                );
-                self.stats.events_dropped.fetch_add(1, Ordering::Relaxed);
-                return Err(crate::Error::External(format!(
-                    "Event rejected due to backpressure: {}",
-                    e
-                )));
-            }
+            && let Err(e) = backpressure.try_acquire()
+        {
+            tracing::warn!(
+                error = %e,
+                event_type = envelope.event.event_type(),
+                "Event rejected due to backpressure"
+            );
+            self.stats.events_dropped.fetch_add(1, Ordering::Relaxed);
+            return Err(crate::Error::External(format!(
+                "Event rejected due to backpressure: {}",
+                e
+            )));
+        }
 
         if self.sender.receiver_count() == 0 {
             tracing::debug!(event = ?envelope.event, "Event published without subscribers");

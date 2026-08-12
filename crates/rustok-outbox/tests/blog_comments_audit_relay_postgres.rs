@@ -39,10 +39,7 @@ impl TestDatabase {
             return Ok(None);
         };
         let control = connect(&database_url).await?;
-        let schema_name = format!(
-            "rustok_outbox_blog_audit_{}",
-            Uuid::new_v4().simple()
-        );
+        let schema_name = format!("rustok_outbox_blog_audit_{}", Uuid::new_v4().simple());
         control
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;

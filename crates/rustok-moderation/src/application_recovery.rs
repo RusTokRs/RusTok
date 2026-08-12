@@ -62,13 +62,9 @@ impl ModerationService {
                 replay(receipt, OP_REQUEUE_APPLICATION, hash.as_str())
             }
             ModerationReceiptAdmission::New(receipt) => {
-                let result = requeue_application_in_transaction(
-                    &receipt,
-                    tenant_id,
-                    operator_id,
-                    command,
-                )
-                .await;
+                let result =
+                    requeue_application_in_transaction(&receipt, tenant_id, operator_id, command)
+                        .await;
                 finish(receipt, result).await
             }
         }
@@ -477,10 +473,7 @@ async fn transition_case_status_for_recovery(
             moderation_case::Column::Revision,
             Expr::value(next_revision),
         )
-        .col_expr(
-            moderation_case::Column::UpdatedAt,
-            Expr::value(now),
-        )
+        .col_expr(moderation_case::Column::UpdatedAt, Expr::value(now))
         .filter(moderation_case::Column::TenantId.eq(tenant_id))
         .filter(moderation_case::Column::Id.eq(case.id))
         .filter(moderation_case::Column::Revision.eq(case.revision))

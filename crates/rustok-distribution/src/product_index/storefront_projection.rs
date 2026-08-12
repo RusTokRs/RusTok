@@ -17,7 +17,9 @@ pub(crate) enum ProductStorefrontIndexPublicProjectionError {
         entity_id: Uuid,
         field: &'static str,
     },
-    #[error("Product Storefront Index item {entity_id} projected root field {field} must be string or null")]
+    #[error(
+        "Product Storefront Index item {entity_id} projected root field {field} must be string or null"
+    )]
     InvalidFieldValue {
         entity_id: Uuid,
         field: &'static str,
@@ -48,10 +50,12 @@ fn apply_string_placeholder(
     for (candidate, projected) in item.fields.iter().enumerate() {
         if projected.path.links().is_empty() && projected.path.field().as_str() == field {
             if position.replace(candidate).is_some() {
-                return Err(ProductStorefrontIndexPublicProjectionError::DuplicateField {
-                    entity_id: item.entity_id,
-                    field,
-                });
+                return Err(
+                    ProductStorefrontIndexPublicProjectionError::DuplicateField {
+                        entity_id: item.entity_id,
+                        field,
+                    },
+                );
             }
         }
     }
@@ -66,10 +70,12 @@ fn apply_string_placeholder(
             Ok(())
         }
         IndexValue::String(_) => Ok(()),
-        _ => Err(ProductStorefrontIndexPublicProjectionError::InvalidFieldValue {
-            entity_id: item.entity_id,
-            field,
-        }),
+        _ => Err(
+            ProductStorefrontIndexPublicProjectionError::InvalidFieldValue {
+                entity_id: item.entity_id,
+                field,
+            },
+        ),
     }
 }
 
@@ -138,7 +144,11 @@ mod tests {
 
         let projected = project_product_storefront_index_page(page).unwrap();
         assert_eq!(
-            projected.items.iter().map(|item| item.entity_id).collect::<Vec<_>>(),
+            projected
+                .items
+                .iter()
+                .map(|item| item.entity_id)
+                .collect::<Vec<_>>(),
             vec![first, second]
         );
         assert_eq!(projected.exact_count, Some(9));
@@ -201,10 +211,7 @@ mod tests {
         };
         assert!(matches!(
             project_product_storefront_index_page(duplicate),
-            Err(ProductStorefrontIndexPublicProjectionError::DuplicateField {
-                field: "title",
-                ..
-            })
+            Err(ProductStorefrontIndexPublicProjectionError::DuplicateField { field: "title", .. })
         ));
 
         let wrong_typed = IndexQueryPage {
@@ -221,10 +228,12 @@ mod tests {
         };
         assert!(matches!(
             project_product_storefront_index_page(wrong_typed),
-            Err(ProductStorefrontIndexPublicProjectionError::InvalidFieldValue {
-                field: "title",
-                ..
-            })
+            Err(
+                ProductStorefrontIndexPublicProjectionError::InvalidFieldValue {
+                    field: "title",
+                    ..
+                }
+            )
         ));
     }
 }

@@ -1,4 +1,8 @@
-use axum::{Json, extract::{Path, State}, http::StatusCode};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+};
 use rustok_api::{
     AuthContext, Permission, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     TenantContext,
@@ -21,8 +25,7 @@ const ADMIN_FULFILLMENT_COMMAND_OWNER: &str = "rustok_fulfillment.admin_command"
 const ADMIN_FULFILLMENT_CREATE_OWNER: &str = "rustok_fulfillment.admin_create_command";
 const ADMIN_FULFILLMENT_COMMAND_BOUNDARY: &str = "commerce_admin_fulfillment_command_http";
 
-type AdminFulfillmentCommandHttpPolicy =
-    (StatusCode, &'static str, &'static str, &'static str);
+type AdminFulfillmentCommandHttpPolicy = (StatusCode, &'static str, &'static str, &'static str);
 
 fn admin_fulfillment_command_context(
     tenant: &TenantContext,
@@ -83,7 +86,10 @@ fn admin_fulfillment_create_command_context(
         tenant.id.to_string(),
         PortActor::user(auth.user_id.to_string()),
         request_context.locale.as_str(),
-        format!("commerce-admin-fulfillment-create-command:{}", input.order_id),
+        format!(
+            "commerce-admin-fulfillment-create-command:{}",
+            input.order_id
+        ),
     )
     .with_idempotency_key(format!(
         "admin-fulfillment:create:{}:{first:016x}{second:016x}",
@@ -254,13 +260,7 @@ pub async fn create_fulfillment(
         .create_manual_fulfillment(read_context, write_context.clone(), input)
         .await
         .map_err(|error| {
-            map_fulfillment_create_error(
-                tenant.id,
-                auth.user_id,
-                order_id,
-                &write_context,
-                error,
-            )
+            map_fulfillment_create_error(tenant.id, auth.user_id, order_id, &write_context, error)
         })?;
     Ok((StatusCode::CREATED, Json(fulfillment)))
 }
@@ -290,8 +290,7 @@ pub async fn ship_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
-    let context =
-        admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "ship");
+    let context = admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "ship");
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .ship_fulfillment(
@@ -390,8 +389,7 @@ pub async fn reopen_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
-    let context =
-        admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "reopen");
+    let context = admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "reopen");
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .reopen_fulfillment(
@@ -440,8 +438,7 @@ pub async fn reship_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
-    let context =
-        admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "reship");
+    let context = admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "reship");
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .reship_fulfillment(
@@ -490,8 +487,7 @@ pub async fn cancel_fulfillment(
         &[Permission::FULFILLMENTS_UPDATE],
         "Permission denied: fulfillments:update required",
     )?;
-    let context =
-        admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "cancel");
+    let context = admin_fulfillment_command_context(&tenant, &auth, &request_context, id, "cancel");
     let fulfillment = runtime
         .fulfillment_admin_command_port()
         .cancel_fulfillment(

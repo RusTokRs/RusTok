@@ -34,7 +34,10 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
         Uuid::new_v4()
     );
     let mut options = ConnectOptions::new(db_url);
-    options.max_connections(5).min_connections(1).sqlx_logging(false);
+    options
+        .max_connections(5)
+        .min_connections(1)
+        .sqlx_logging(false);
     let db = Database::connect(options).await?;
     db.execute_unprepared(
         "CREATE TABLE users (\
@@ -58,11 +61,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     Ok((db, event_bus))
 }
 
-async fn insert_user(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> TestResult<()> {
+async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
@@ -128,8 +127,8 @@ async fn create_topic(
 }
 
 #[tokio::test]
-async fn merge_tag_reconciliation_is_atomic_idempotent_and_preserves_relation_identity(
-) -> TestResult<()> {
+async fn merge_tag_reconciliation_is_atomic_idempotent_and_preserves_relation_identity()
+-> TestResult<()> {
     let (db, event_bus) = setup().await?;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -195,7 +194,10 @@ async fn merge_tag_reconciliation_is_atomic_idempotent_and_preserves_relation_id
             },
         )
         .await;
-    assert!(matches!(stale_service_update, Err(ForumError::Validation(_))));
+    assert!(matches!(
+        stale_service_update,
+        Err(ForumError::Validation(_))
+    ));
     assert_archived_tag_database_guards(
         &db,
         tenant_id,
@@ -214,15 +216,9 @@ async fn merge_tag_reconciliation_is_atomic_idempotent_and_preserves_relation_id
         operation_id,
         reason: "Union taxonomy tag membership after topic merge".to_string(),
     };
-    let service =
-        ForumTopicMergeTagReconciliationService::new(db.clone(), event_bus.clone());
+    let service = ForumTopicMergeTagReconciliationService::new(db.clone(), event_bus.clone());
     let reconciled = service
-        .reconcile_merge_tags(
-            tenant_id,
-            merge_operation_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .reconcile_merge_tags(tenant_id, merge_operation_id, admin.clone(), input.clone())
         .await?;
 
     assert_eq!(reconciled.operation_id, operation_id);
@@ -280,17 +276,18 @@ async fn merge_tag_reconciliation_is_atomic_idempotent_and_preserves_relation_id
     );
 
     let replay = service
-        .reconcile_merge_tags(
-            tenant_id,
-            merge_operation_id,
-            admin.clone(),
-            input.clone(),
-        )
+        .reconcile_merge_tags(tenant_id, merge_operation_id, admin.clone(), input.clone())
         .await?;
     assert_eq!(replay, reconciled);
-    assert_eq!(tag_snapshots(&db, tenant_id, target_topic_id).await?, target_after);
+    assert_eq!(
+        tag_snapshots(&db, tenant_id, target_topic_id).await?,
+        target_after
+    );
     assert_eq!(reconciliation_count(&db, tenant_id).await?, 1);
-    assert_eq!(projection_root_ids(&db, tenant_id).await?, projection_ids_after);
+    assert_eq!(
+        projection_root_ids(&db, tenant_id).await?,
+        projection_ids_after
+    );
 
     let drift = service
         .reconcile_merge_tags(
@@ -428,11 +425,7 @@ async fn tag_snapshots(
     Ok(snapshots)
 }
 
-async fn tag_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-) -> TestResult<i64> {
+async fn tag_count(db: &DatabaseConnection, tenant_id: Uuid, topic_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -444,10 +437,7 @@ async fn tag_count(
     .await
 }
 
-async fn reconciliation_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-) -> TestResult<i64> {
+async fn reconciliation_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64> {
     scalar_i64(
         db,
         Statement::from_sql_and_values(
@@ -558,7 +548,10 @@ async fn projection_targets(
             continue;
         }
         match envelope.event {
-            DomainEvent::ReindexRequested { target_type, target_id } => {
+            DomainEvent::ReindexRequested {
+                target_type,
+                target_id,
+            } => {
                 targets.insert((target_type, target_id));
             }
             event => panic!("unexpected projection root event: {event:?}"),

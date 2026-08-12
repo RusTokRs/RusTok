@@ -317,10 +317,12 @@ fn order_change_read_context(
         format!("commerce-graphql-order-change-read:{change_id}"),
     )
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    })
+    Ok(
+        match request.and_then(|request| request.channel_slug.as_deref()) {
+            Some(channel) => context.with_channel(channel),
+            None => context,
+        },
+    )
 }
 
 fn order_command_context(
@@ -343,10 +345,12 @@ fn order_command_context(
     )
     .with_idempotency_key(format!("graphql-order:{order_id}:{operation}"))
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    })
+    Ok(
+        match request.and_then(|request| request.channel_slug.as_deref()) {
+            Some(channel) => context.with_channel(channel),
+            None => context,
+        },
+    )
 }
 
 fn order_post_order_command_context(
@@ -369,10 +373,12 @@ fn order_post_order_command_context(
     )
     .with_idempotency_key(Uuid::new_v4().to_string())
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    })
+    Ok(
+        match request.and_then(|request| request.channel_slug.as_deref()) {
+            Some(channel) => context.with_channel(channel),
+            None => context,
+        },
+    )
 }
 
 #[derive(Default)]
@@ -461,13 +467,7 @@ impl CommerceFulfillmentMutation {
             )
             .await
             .map_err(|error| {
-                order_owner_graphql_error(
-                    tenant_id,
-                    id,
-                    "mark_order_paid",
-                    &context,
-                    error,
-                )
+                order_owner_graphql_error(tenant_id, id, "mark_order_paid", &context, error)
             })?;
 
         Ok(order.into())
@@ -676,13 +676,7 @@ impl CommerceFulfillmentMutation {
             )
             .await
             .map_err(|error| {
-                order_change_graphql_error(
-                    tenant_id,
-                    id,
-                    &read_context,
-                    &command_context,
-                    error,
-                )
+                order_change_graphql_error(tenant_id, id, &read_context, &command_context, error)
             })?;
 
         Ok(result.order_change.into())

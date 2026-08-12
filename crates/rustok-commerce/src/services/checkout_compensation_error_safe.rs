@@ -31,10 +31,8 @@ mod safe_boundary {
     use serde_json::Value;
     use uuid::Uuid;
 
-    const PAYMENT_MANUAL_CODE: &str =
-        "payment.checkout_compensation_manual_reconciliation";
-    const ORDER_MANUAL_CODE: &str =
-        "order.checkout_compensation_manual_reconciliation";
+    const PAYMENT_MANUAL_CODE: &str = "payment.checkout_compensation_manual_reconciliation";
+    const ORDER_MANUAL_CODE: &str = "order.checkout_compensation_manual_reconciliation";
 
     #[derive(Clone, Copy)]
     enum MessageFamily {
@@ -99,9 +97,7 @@ mod safe_boundary {
             }
         }
 
-        pub(crate) fn inventory(
-            request: &InventoryIdentityReservationReleaseRequest,
-        ) -> Self {
+        pub(crate) fn inventory(request: &InventoryIdentityReservationReleaseRequest) -> Self {
             Self {
                 family: MessageFamily::Inventory,
                 owner: "rustok_inventory",
@@ -227,11 +223,7 @@ mod safe_boundary {
     }
 
     fn text_shape(value: &str) -> &'static str {
-        if value.is_empty() {
-            "empty"
-        } else {
-            "present"
-        }
+        if value.is_empty() { "empty" } else { "present" }
     }
 
     fn optional_text_shape(value: Option<&str>) -> &'static str {
@@ -259,18 +251,14 @@ mod safe_boundary {
                     return "Checkout payment compensation requires manual reconciliation";
                 }
                 match &error.kind {
-                    PortErrorKind::Validation => {
-                        "Checkout payment compensation request is invalid"
-                    }
+                    PortErrorKind::Validation => "Checkout payment compensation request is invalid",
                     PortErrorKind::NotFound => {
                         "Checkout payment compensation resource was not found"
                     }
                     PortErrorKind::Conflict => {
                         "Checkout payment compensation conflicts with the current payment state"
                     }
-                    PortErrorKind::Forbidden => {
-                        "Checkout payment compensation is not permitted"
-                    }
+                    PortErrorKind::Forbidden => "Checkout payment compensation is not permitted",
                     PortErrorKind::Unavailable | PortErrorKind::Timeout => {
                         "Checkout payment compensation service is temporarily unavailable"
                     }
@@ -284,18 +272,12 @@ mod safe_boundary {
                     return "Checkout order compensation requires manual reconciliation";
                 }
                 match &error.kind {
-                    PortErrorKind::Validation => {
-                        "Checkout order compensation request is invalid"
-                    }
-                    PortErrorKind::NotFound => {
-                        "Checkout order compensation resource was not found"
-                    }
+                    PortErrorKind::Validation => "Checkout order compensation request is invalid",
+                    PortErrorKind::NotFound => "Checkout order compensation resource was not found",
                     PortErrorKind::Conflict => {
                         "Checkout order compensation conflicts with the current order state"
                     }
-                    PortErrorKind::Forbidden => {
-                        "Checkout order compensation is not permitted"
-                    }
+                    PortErrorKind::Forbidden => "Checkout order compensation is not permitted",
                     PortErrorKind::Unavailable | PortErrorKind::Timeout => {
                         "Checkout order compensation service is temporarily unavailable"
                     }
@@ -305,18 +287,12 @@ mod safe_boundary {
                 }
             }
             MessageFamily::Inventory => match &error.kind {
-                PortErrorKind::Validation => {
-                    "Checkout inventory compensation request is invalid"
-                }
-                PortErrorKind::NotFound => {
-                    "Checkout inventory compensation resource was not found"
-                }
+                PortErrorKind::Validation => "Checkout inventory compensation request is invalid",
+                PortErrorKind::NotFound => "Checkout inventory compensation resource was not found",
                 PortErrorKind::Conflict => {
                     "Checkout inventory compensation conflicts with the current inventory state"
                 }
-                PortErrorKind::Forbidden => {
-                    "Checkout inventory compensation is not permitted"
-                }
+                PortErrorKind::Forbidden => "Checkout inventory compensation is not permitted",
                 PortErrorKind::Unavailable | PortErrorKind::Timeout => {
                     "Checkout inventory compensation service is temporarily unavailable"
                 }
@@ -325,18 +301,12 @@ mod safe_boundary {
                 }
             },
             MessageFamily::Cart => match &error.kind {
-                PortErrorKind::Validation => {
-                    "Checkout cart compensation request is invalid"
-                }
-                PortErrorKind::NotFound => {
-                    "Checkout cart compensation resource was not found"
-                }
+                PortErrorKind::Validation => "Checkout cart compensation request is invalid",
+                PortErrorKind::NotFound => "Checkout cart compensation resource was not found",
                 PortErrorKind::Conflict => {
                     "Checkout cart compensation conflicts with the current cart state"
                 }
-                PortErrorKind::Forbidden => {
-                    "Checkout cart compensation is not permitted"
-                }
+                PortErrorKind::Forbidden => "Checkout cart compensation is not permitted",
                 PortErrorKind::Unavailable | PortErrorKind::Timeout => {
                     "Checkout cart compensation service is temporarily unavailable"
                 }
@@ -510,7 +480,9 @@ mod rustok_payment_shim {
             context: PortContext,
             request: CheckoutPaymentCompensationRequest,
         ) -> Result<Option<::rustok_payment::PaymentCollectionStatusSnapshot>, PortError> {
-            self.inner.compensate_checkout_payment(context, request).await
+            self.inner
+                .compensate_checkout_payment(context, request)
+                .await
         }
     }
 
@@ -629,8 +601,7 @@ mod rustok_inventory_shim {
     use super::safe_boundary::{BoundaryFacts, sanitize};
 
     pub use ::rustok_inventory::{
-        InventoryIdentityReservationReleaseRequest,
-        InventoryIdentityReservationReleaseSnapshot,
+        InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationReleaseSnapshot,
     };
 
     #[async_trait]
@@ -792,9 +763,7 @@ impl CheckoutCompensationService {
             inner: legacy::CheckoutCompensationService::new(
                 db,
                 event_bus,
-                rustok_inventory_shim::wrap_inventory_reservation_identity_port(
-                    reservation_port,
-                ),
+                rustok_inventory_shim::wrap_inventory_reservation_identity_port(reservation_port),
                 rustok_cart_shim::wrap_cart_checkout_port(cart_port),
             ),
         }
@@ -833,9 +802,7 @@ impl CheckoutCompensationService {
         payment_compensation_port: Arc<dyn CanonicalCheckoutPaymentCompensationPort>,
     ) -> Self {
         self.inner = self.inner.with_payment_compensation_port(
-            rustok_payment_shim::wrap_checkout_payment_compensation_port(
-                payment_compensation_port,
-            ),
+            rustok_payment_shim::wrap_checkout_payment_compensation_port(payment_compensation_port),
         );
         self
     }

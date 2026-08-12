@@ -13,8 +13,8 @@ use super::{
     SchemaLeaseError,
 };
 use crate::{
-    EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema,
-    IndexValueType, LocaleMode, ModuleName, SchemaRef, SchemaVersion,
+    EntityName, FieldCardinality, FieldName, IndexField, IndexModule, IndexSchema, IndexValueType,
+    LocaleMode, ModuleName, SchemaRef, SchemaVersion,
 };
 
 const TENANT: &str = "11111111-1111-1111-1111-111111111111";
@@ -113,13 +113,22 @@ async fn scalar_i64(db: &DatabaseConnection, sql: &str) -> i64 {
 #[tokio::test]
 async fn acquire_excludes_other_workers_and_completion_is_terminal() {
     let fixture = Fixture::new("active").await;
-    let first = match fixture.store.acquire(&fixture.request("worker-a")).await.unwrap() {
+    let first = match fixture
+        .store
+        .acquire(&fixture.request("worker-a"))
+        .await
+        .unwrap()
+    {
         SchemaLeaseAcquireOutcome::Acquired(lease) => lease,
         outcome => panic!("first acquisition should win, got {outcome:?}"),
     };
     assert_eq!(first.attempt_count(), 1);
     assert_eq!(
-        fixture.store.acquire(&fixture.request("worker-b")).await.unwrap(),
+        fixture
+            .store
+            .acquire(&fixture.request("worker-b"))
+            .await
+            .unwrap(),
         SchemaLeaseAcquireOutcome::Busy
     );
     fixture
@@ -129,7 +138,11 @@ async fn acquire_excludes_other_workers_and_completion_is_terminal() {
         .unwrap();
     fixture.store.succeed(&first).await.unwrap();
     assert_eq!(
-        fixture.store.acquire(&fixture.request("worker-b")).await.unwrap(),
+        fixture
+            .store
+            .acquire(&fixture.request("worker-b"))
+            .await
+            .unwrap(),
         SchemaLeaseAcquireOutcome::AlreadyApplied {
             job_id: first.job_id(),
         }
@@ -154,7 +167,12 @@ async fn acquire_excludes_other_workers_and_completion_is_terminal() {
 #[tokio::test]
 async fn expired_lease_is_reclaimed_with_attempt_fencing() {
     let fixture = Fixture::new("active").await;
-    let first = match fixture.store.acquire(&fixture.request("worker-a")).await.unwrap() {
+    let first = match fixture
+        .store
+        .acquire(&fixture.request("worker-a"))
+        .await
+        .unwrap()
+    {
         SchemaLeaseAcquireOutcome::Acquired(lease) => lease,
         outcome => panic!("first acquisition should win, got {outcome:?}"),
     };
@@ -168,20 +186,33 @@ async fn expired_lease_is_reclaimed_with_attempt_fencing() {
         .await
         .unwrap();
 
-    let second = match fixture.store.acquire(&fixture.request("worker-b")).await.unwrap() {
+    let second = match fixture
+        .store
+        .acquire(&fixture.request("worker-b"))
+        .await
+        .unwrap()
+    {
         SchemaLeaseAcquireOutcome::Acquired(lease) => lease,
         outcome => panic!("expired lease should be reclaimed, got {outcome:?}"),
     };
     assert_eq!(second.job_id(), first.job_id());
     assert_eq!(second.attempt_count(), 2);
-    assert_eq!(fixture.store.succeed(&first).await, Err(SchemaLeaseError::LeaseLost));
+    assert_eq!(
+        fixture.store.succeed(&first).await,
+        Err(SchemaLeaseError::LeaseLost)
+    );
     fixture
         .store
         .fail(&second, "schema.ddl_failed", json!({"retryable": true}))
         .await
         .unwrap();
 
-    let third = match fixture.store.acquire(&fixture.request("worker-c")).await.unwrap() {
+    let third = match fixture
+        .store
+        .acquire(&fixture.request("worker-c"))
+        .await
+        .unwrap()
+    {
         SchemaLeaseAcquireOutcome::Acquired(lease) => lease,
         outcome => panic!("failed terminal job should permit a new attempt, got {outcome:?}"),
     };
@@ -202,7 +233,9 @@ async fn schema_registration_and_request_identity_fail_closed() {
     let retired = Fixture::new("retired").await;
     assert_eq!(
         retired.store.acquire(&retired.request("worker-a")).await,
-        Err(SchemaLeaseError::SchemaRetired(retired.schema.reference.clone()))
+        Err(SchemaLeaseError::SchemaRetired(
+            retired.schema.reference.clone()
+        ))
     );
 
     let active = Fixture::new("active").await;
