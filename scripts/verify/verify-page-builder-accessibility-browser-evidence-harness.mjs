@@ -28,6 +28,7 @@ const config = read(configPath);
 const setup = read(setupPath);
 const runner = read(runnerPath);
 const packet = read(packetPath);
+const browserWorkflow = read(".github/workflows/browser-e2e.yml");
 const packageJson = JSON.parse(read("apps/next-admin/package.json"));
 const pageManager = read("crates/rustok-page-builder/admin/src/editor/page_manager.rs");
 const capabilityControls = read(
@@ -111,6 +112,7 @@ for (const marker of [
 }
 
 for (const marker of [
+  'path.resolve(__dirname, "../../../..")',
   "contract.output.environment",
   "contract.output.default_path",
   'path.resolve(repoRoot, "target")',
@@ -118,11 +120,17 @@ for (const marker of [
 ]) {
   requireContains(setup, marker, `accessibility browser setup missing ${marker}`);
 }
-for (const forbidden of ["readFileSync(resolveOutput", "writeFileSync", "renameSync"]) {
-  requireAbsent(setup, forbidden, `global setup must only clear output: ${forbidden}`);
+for (const forbidden of [
+  "import.meta",
+  "readFileSync(resolveOutput",
+  "writeFileSync",
+  "renameSync",
+]) {
+  requireAbsent(setup, forbidden, `global setup must remain CommonJS-safe and only clear output: ${forbidden}`);
 }
 
 for (const marker of [
+  'path.resolve(__dirname, "../../../..")',
   'button[aria-pressed]',
   'page.keyboard.press(forward ? "Tab" : "Shift+Tab")',
   'page.keyboard.press("Enter")',
@@ -145,6 +153,7 @@ for (const marker of [
   requireContains(runner, marker, `accessibility browser runner missing ${marker}`);
 }
 for (const forbidden of [
+  "import.meta",
   ".content()",
   ".cookies()",
   "response.text()",
@@ -157,8 +166,16 @@ for (const forbidden of [
   requireAbsent(
     runner,
     forbidden,
-    `accessibility browser runner must not retain sensitive browser material through ${forbidden}`,
+    `accessibility browser runner must not retain sensitive browser material or require ESM through ${forbidden}`,
   );
+}
+
+for (const marker of [
+  "Compile-list Page Builder accessibility evidence harness",
+  "matrix.app == 'apps/next-admin'",
+  "npx --no-install playwright test --config=playwright.page-builder-accessibility.config.ts --list",
+]) {
+  requireContains(browserWorkflow, marker, `Browser E2E workflow missing accessibility discovery guard ${marker}`);
 }
 
 if (packageJson.devDependencies?.["@playwright/test"] === undefined) {
