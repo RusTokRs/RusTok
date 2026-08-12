@@ -40,28 +40,25 @@ around the owner contracts.
   state.
 - Lease distribution build intents to separately authorized workers with
   immutable attempts, heartbeat ownership, expired-lease reclaim, and
-  digest-pinned terminal publication evidence. The current singular-artifact
-  receipt is an atomic-cutover gap; the accepted target has the
-  static-distribution worker alone publish one complete OCI role bundle and
-  canonical receipt.
-- The current interim static release ledger advances an active/predecessor head
-  before deployment convergence. The accepted target replaces that authority
-  with inert verified role-bundle admission; the production operation alone
-  freezes the then-serving direct predecessor and advances desired/observed
-  rollout.
+  digest-pinned terminal publication evidence. The static-distribution worker
+  alone publishes one complete OCI role bundle and canonical receipt.
+- Admit verified role bundles without changing the serving head. The
+  production rollout operation freezes the then-serving direct predecessor,
+  advances desired state, and activates only after every exact `(node, role)`
+  assignment converges healthy.
 - Bind every compiled promoted module definition to its exact promotion,
   registry release, distribution release, and native artifact identity before
   lifecycle dispatch; platform-native definitions remain distinct.
-- Own topology-bound native rollout state. The current node-set/singular-digest
-  aggregate is replaced atomically by exact role/failure-domain candidate and
+- Own topology-bound native rollout state with exact role/failure-domain candidate and
   predecessor assignments, per-role observation revisions, convergence,
   degradation/recovery, exact replay, and transactional outbox facts.
   Deployment agents report evidence; this crate never starts a native process
   or mutates the running server.
-- The current rebuild-on-rollback command is an interim gap. The accepted
-  production path retains, pre-stages, revalidates, and redeploys the exact
+- Retain, pre-stage, revalidate, and redeploy the exact
   then-serving direct-predecessor role bundle through the normal rollout;
-  incident recovery never builds or republishes bytes.
+  incident recovery never builds or republishes bytes. The obsolete
+  rebuild-on-rollback command and duplicate `rustok-build` rollback authority
+  are removed.
 - Own artifact-release quarantine and terminal emergency revocation separately
   from registry yanking; security state blocks new execution while preserving
   tenant enablement intent and records exact revisioned outbox evidence.

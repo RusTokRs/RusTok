@@ -134,12 +134,11 @@ For the commerce family, the same principle applies:
 
 ## Platform Build Events
 
-`rustok-build` owns platform build lifecycle events. A rollback is the explicit
-`BuildRolledBack` transition, not another successful completion. Its canonical
-root event is `build.rolled_back`: the payload binds the requested and restored
-builds plus source and target releases, while `EventEnvelope.actor_id` carries
-the verified actor. Server WebSocket and GraphQL subscriptions adapt that same
-owner event and must preserve those facts.
+`rustok-build` owns build lifecycle facts only: request, start, progress,
+completion, cancellation, and failure. Production release admission, rollout,
+activation, recovery, and their predecessor facts are owned by
+`rustok-modules`; transports must not reconstruct those facts from build
+completion.
 
 ## Retry and Resilience
 

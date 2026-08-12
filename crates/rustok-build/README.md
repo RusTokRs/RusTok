@@ -2,39 +2,31 @@
 
 ## Purpose
 
-`rustok-build` owns platform build and release persistence contracts.
+`rustok-build` owns immutable platform build-plan construction, queued build
+execution, and read-only build-history contracts. It owns no production release
+head, deployment, activation, or rollback authority.
 
 ## Responsibilities
 
-- Define build and release SeaORM models, status state machines, execution plans, runtime-mode intent, and executor reports.
+- Define the build SeaORM model, status state machine, execution plans,
+  runtime-mode intent, and executor reports.
 - Deduplicate successful builds by the complete immutable execution identity, including selected artifact identity, compiled profile, and runtime mode, rather than module manifest alone.
 - Build and execute Cargo/Trunk command specifications independently of the server host.
-- Execute queued build plans from server workers or `rustok-cli` through explicit event, release-activation, and release-publication ports.
-- Define portable `DeploymentSettings`, `DeploymentBackend`, and
-  `DeploymentWorkspace` contracts for server and CLI host adapters.
-- Own bounded build/release history and active-release reads so transports do
-  not query build persistence entities directly.
-- Expose the host-composed `BuildControl`/`SharedBuildControl` port for
-  active-build, release-history, and rollback operations. The server wires the
-  event-aware rollback implementation; admin and GraphQL transports consume
-  this port without constructing `BuildService` themselves. The port returns
-  framework-neutral `rustok-api` snapshots rather than exposing SeaORM models;
-  persistence-to-snapshot mapping remains owned by this crate.
-- Emit an explicit `BuildRolledBack` owner event with requested/restored build,
-  release transition, and actor identity. Rollback is never represented as an
-  ordinary build completion.
+- Execute queued build plans through explicit build-event ports.
+- Own bounded build-history and active-build reads so transports do not query
+  build persistence entities directly.
+- Expose the read-only `BuildControl`/`SharedBuildControl` port and map
+  persistence into the framework-neutral `PlatformBuildSnapshot`.
 
 ## Interactions
 
-`apps/server` composes workers, event delivery, and deployment adapters around
-these contracts. `RoleBuildPlan` binds compiled surfaces to
-`BuildRuntimeMode`, so deployment adapters can pass the same runtime intent to
-every release target. `DeploymentSettings` and `DeploymentWorkspace` keep
-backend configuration and artifact/runtime paths portable while
-`ReleasePublisherPort` leaves filesystem, HTTP, and container rollout execution
-in a host adapter consumed by installer/CLI orchestration. The local filesystem
-adapter has no independent publication root; its host derives
-`<instance-root>/releases/platform/sha256` from the canonical
-`rustok-runtime::InstanceLayout` resolved from `RUSTOK_INSTANCE_ROOT`.
+`apps/server` composes build history and event delivery. `RoleBuildPlan` binds
+compiled surfaces to `BuildRuntimeMode`. The
+`rustok-static-distribution-worker` alone publishes the complete immutable role
+bundle; `rustok-modules` alone admits it and owns desired/observed rollout,
+serving selection, direct-predecessor recovery, and retention. Runtime
+materialization is derived from `rustok-runtime::InstanceLayout` under the
+operator-selected `<instance-root>`; this crate never selects a deployment
+directory.
 
 See [docs](docs/README.md).

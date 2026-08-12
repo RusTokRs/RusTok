@@ -63,14 +63,14 @@ Excluded:
 
 ## Current Gaps That This Plan Must Remove
 
-The repository already has strong primitives, but they do not yet form this
-product contract:
+The repository has completed part of the cutover, while the remaining gaps do
+not yet form the full product contract:
 
 1. Dynamic artifact rollback commits an installation-selection transition;
    activation, tenant intent, and observed runtime convergence remain separate.
-2. Static distribution rollback currently queues a complete rebuild, while
-   `rustok-build` exposes a different operator rollback that reselects a prior
-   build release. These cannot remain parallel production rollback paths.
+2. The duplicate static rebuild rollback and direct `rustok-build` operator
+   rollback have been removed; the remaining controller/agent and operator
+   transport work must expose only the retained-predecessor owner path.
 3. `ArtifactRollbackRequest` currently accepts
    `migration_rollback_mode` from its caller. Caller input cannot authorize
    code rollback against live data.
@@ -189,10 +189,9 @@ candidate rollout begins. A rebuild remains release-admission and
 reproducibility evidence, or a separately admitted maintenance update through
 the same owner lifecycle; it is never a rollback fallback. This decision
 supersedes the
-rebuild-on-rollback portion of the static promotion boundary. The current
-direct `rustok-build` release rollback and the
-current rebuild-on-failure path must be replaced together, leaving one
-`rustok-modules`-owned transition.
+rebuild-on-rollback portion of the static promotion boundary. The direct
+`rustok-build` release rollback and rebuild-on-failure path have been removed,
+leaving one `rustok-modules`-owned transition.
 
 An arbitrary older version is not a rollback target. Selecting it creates a
 new candidate update and repeats admission, compatibility, migration, and
@@ -1739,9 +1738,9 @@ backend preflight.
   plan/validation primitives, `rustok-static-distribution-worker` is the sole
   complete role-bundle executor/publisher, and one unversioned role-bundle
   receipt crosses back to `rustok-modules`.
-- [ ] Atomically remove the current direct `rustok-build` operator rollback and
-  rebuild-on-rollback path when the canonical replacement and every caller are
-  ready.
+- [x] Atomically remove the direct `rustok-build` operator rollback and
+  rebuild-on-rollback path, including the duplicate head, mutation, event, DTO,
+  schema, tests, and repository-owned callers.
 - [x] Define dynamic installation and static composition as explicit rollback
   units and preserve their distinct lower-level mechanics.
 - [ ] Synchronize the affected ADRs, local plans, central plans, owner maps, and
@@ -1754,9 +1753,10 @@ backend preflight.
   digests, generated registries, every present Leptos/browser asset, migration
   and data declarations, and all evidence referrers.
 - [ ] Make the static worker's single publisher the only OCI role-bundle
-  publisher. Remove the filesystem, HTTP, container-build, arbitrary
+  publisher and remove any remaining alternate publisher implementation.
+- [x] Remove the `rustok-build` filesystem, HTTP, container-build, arbitrary
   `rollout_command`, `ReleasePublisherPort`, per-role installer release-head,
-  and active-release paths atomically when the replacement is operational.
+  and active-release paths atomically.
 - [x] Change the typed installer boundary to one exact admitted-distribution
   request and one bound receipt; role results are observations of that rollout,
   not independent releases. Remove the executable per-role `rustok-build`

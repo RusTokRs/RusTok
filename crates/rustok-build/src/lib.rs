@@ -1,4 +1,4 @@
-//! Platform-owned build and release persistence contracts.
+//! Platform-owned immutable build-plan and build-history contracts.
 
 pub mod build;
 pub mod control;

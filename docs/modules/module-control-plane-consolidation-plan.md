@@ -1878,8 +1878,8 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   digest-pinned signature-manifest receipt.
   Deployment evidence that the launcher creates the hardened job, and later
   release-governance admission, remain unfinished.
-  `rustok-build` remains a reviewed static platform-release composition service
-  used only by installer/CLI operations; its server background executor has
+  `rustok-build` remains a reviewed static role-plan/build foundation used only
+  by trusted preparation operations; its server background executor has
   been removed. It has no path from `module.build.queued` and is not an
   implementation of `ModuleBuildWorker`. It must not be repurposed as a
   server-local fallback for untrusted module builds. No server-local fallback
@@ -2827,11 +2827,9 @@ multi-node reconciliation path consumed by those transports.
   a parallel lifecycle-error taxonomy.
 - [ ] Require typed actor, tenant, permission, idempotency, and revision inputs.
 - [x] Keep subscriptions/build events as transport adapters over owner events.
-  Platform rollback now emits the explicit owner `BuildRolledBack` event with
-  requested/restored build identity, release predecessor transition, and actor.
-  The canonical `build.rolled_back` root event, WebSocket message, and GraphQL
-  subscription map that same event; rollback no longer emits a synthetic
-  `BuildCompleted`.
+  Build completion contains build facts only. Static admission, rollout,
+  activation, and recovery events come exclusively from `rustok-modules` and
+  are not synthesized from `BuildCompleted`.
 
 ### 7.2 Native Leptos Server Functions
 
@@ -3277,13 +3275,13 @@ distribution mode, not the default marketplace installation path.
   involved release atomically cancels the pending rollback request.
   Activation, rollback, and revocation share one durable idempotency-key
   namespace, preventing cross-command key reuse.
-- [ ] Cut over rollback atomically to the retained direct-predecessor
+- [x] Remove the superseded rebuild rollback and direct `rustok-build`
+  operator rollback without a compatibility or fallback path.
+- [ ] Complete the retained direct-predecessor rollout surface:
   distribution contract above. Bind every deployed server and worker role,
   embedded Leptos SSR/hydration artifact, generated registry, and browser asset;
   expose the complete composition blast radius; and report success only after
-  the predecessor is observed healthy. Delete the superseded rebuild rollback
-  and direct `rustok-build` operator rollback rather than keeping either as a
-  compatibility or fallback path.
+  the predecessor is observed healthy.
 - [x] Do not claim sandbox isolation for native execution. The current
   request/approval and distribution-selection services have no compiler,
   active-composition mutation, or native loader dependency. The worker owner

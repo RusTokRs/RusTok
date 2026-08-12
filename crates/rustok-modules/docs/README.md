@@ -233,20 +233,20 @@ is reproducibility history, not the production direct predecessor. Selection
 also requires its own fail-closed
 host authorization decision. These services have no compiler,
 active-composition mutation, native loader, compatibility alias, or alternate
-versioned path. The current interim
+versioned path. The
 `ModuleControlPlane::static_distribution_worker` implementation separately
 owns bounded claim leases, heartbeats, expired-lease attempt closure, and exact
 terminal replay. Successful completion requires artifact, SBOM, provenance,
 signature-manifest, and test evidence, but still cannot activate a release.
-The current interim `ModuleControlPlane::static_distribution_release` ledger
+`ModuleControlPlane::static_distribution_release` admission ledger
 accepts only the current successfully completed build, calls a
 mandatory external verifier before opening the mutation transaction, then
 relocks and revalidates the exact build, every selected promotion, and its
 published build evidence. Signature, provenance, SBOM, test, and dependency
 policy decisions must all pass under the exact requested policy revision. The
-owner atomically supersedes the prior release, advances a dedicated release CAS
-head, stores immutable admission evidence and exact-replay idempotency, and
-publishes `module.static_distribution.release_activated`. This release ledger
+owner stores the candidate as admitted without changing the serving head,
+stores immutable admission evidence and exact-replay idempotency, and publishes
+`module.static_distribution.release_admitted`. This release ledger
 reloads the exact immutable build items before returning a release. A runtime
 host builds its definition catalog through
 `ModuleDefinitionCatalog::from_static_distribution`: compiled platform modules
@@ -255,41 +255,31 @@ remain `platform_native`, while every promoted module becomes
 release revision, native artifact digest, and `static_native` executor facts.
 The same catalog can be supplied to the owner lifecycle and effective-policy
 services; lifecycle dispatch still resolves the implementation only from the
-compiled registry. This release ledger does not deploy code or mutate the
-running composition; deployment, explicit rollback, and revocation remain
-separate owner operations.
-`ModuleControlPlane::static_distribution_release` also owns the currently
-implemented lifecycle commands. Rollback is limited to the active release's
-direct predecessor and is
-accepted only when the distribution head still matches the active release. It
-revalidates the target admission, terminal build digest, complete composition,
-promotion review, and publication evidence before queuing a new immutable build
-and publishing both build and rollback outbox facts. The old artifact is never
-reactivated, and the rebuilt artifact digest must reproduce the target before
-activation. A newer selection or failed/cancelled rollback build closes the
-pending request. Revocation uses release-head revision CAS and exact replay,
-records actor/reason/policy, cancels pending rollback requests involving that
-release, and clears the head when the revoked release was active. Neither
-operation mutates a running process; deployment consumes the resulting owner
-events.
+compiled registry. Admission does not deploy code or mutate the running
+composition. `ModuleControlPlane::static_distribution_rollout` freezes the
+then-serving direct predecessor and exact `(node, role)` assignments, persists
+desired/observed rollout, and advances the serving head only after every
+assignment converges healthy. Recovery revalidates and redeploys retained
+predecessor bytes; it never queues a build. Revocation remains a separate
+revision-CAS security operation. Deployment agents report evidence and never
+own release selection.
 
 The accepted
 [module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
-supersedes that rebuild-on-rollback mechanism for production incident recovery.
-The target worker publishes one complete role bundle and one receipt containing
+defines the production incident-recovery boundary. The worker publishes one
+complete role bundle and one receipt containing
 its per-role artifact and evidence identities. Release admission stores that
 immutable bundle and build lineage but does not supersede the serving release
 or advance desired/observed rollout state. The production operation freezes
 the direct predecessor from then-observed serving state; later unused
-admissions cannot alter it. The target owner retains, pre-stages, and
+admissions cannot alter it. The owner retains, pre-stages, and
 revalidates that complete direct-predecessor bundle before rollout, then
 redeploys those exact immutable server, worker, selected Leptos,
 generated-registry, and browser-asset bytes through the normal desired/observed
 reconciler. Rebuild remains reproducibility evidence or a separately admitted
 maintenance update through the same owner lifecycle; it is never a rollback
-fallback. The current single-artifact publisher, active-head mutation, and
-rebuild request are therefore explicit atomic-cutover gaps, not alternate
-production paths.
+fallback. The duplicate `rustok-build` release head/rollback surface and the
+rebuild-on-rollback request have been removed atomically.
 
 For dynamic target admission, one governed publisher/module semantic version
 binds one immutable artifact release ID and digest set. Equal replay is

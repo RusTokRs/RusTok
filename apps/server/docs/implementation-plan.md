@@ -19,9 +19,10 @@ Server work for that plan is:
   dispatcher and worker deployments;
 - migrate platform composition, build enqueue, registry governance, effective
   policy, GraphQL, and native adapters to owner operations;
-- keep release activation as a host side-effect adapter: it synchronizes OAuth
-  applications, then delegates the active-release projection to
-  `SeaOrmModuleCompositionService` and never writes `platform_state` directly;
+- keep production release admission, desired/observed rollout, activation, and
+  recovery exclusively in `rustok-modules`; the server exposes only narrow
+  authenticated transports and deployment-agent observations, never another
+  release head or activation side-effect hook;
 - adapt typed manifests and bootstrap-file loading at the host boundary while
   `SeaOrmModuleCompositionService` owns canonical active-snapshot reads and
   bootstrap persistence, revision-CAS updates, and the combined CAS/build
