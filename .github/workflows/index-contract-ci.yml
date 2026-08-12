@@ -21,6 +21,7 @@ on:
       - "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
+      - ".github/workflows/index-product-refresh-redelivery-evidence.yml"
       - ".github/workflows/index-contract-ci.yml"
   push:
     branches:
@@ -44,6 +45,7 @@ on:
       - "scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs"
       - "scripts/verify/verify-index-contract-ci.mjs"
       - ".github/workflows/event-contract-digest-admission.yml"
+      - ".github/workflows/index-product-refresh-redelivery-evidence.yml"
       - ".github/workflows/index-contract-ci.yml"
 
 permissions:
