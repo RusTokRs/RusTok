@@ -2,6 +2,7 @@ mod m20260329_000001_create_taxonomy_tables;
 mod m20260711_000001_add_tenant_identity_key;
 mod m20260721_000006_expand_taxonomy_locale_storage_columns;
 mod m20260803_000007_add_translation_target_support;
+mod m20260812_000008_add_route_key_registry;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -12,6 +13,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260711_000001_add_tenant_identity_key::Migration),
         Box::new(m20260721_000006_expand_taxonomy_locale_storage_columns::Migration),
         Box::new(m20260803_000007_add_translation_target_support::Migration),
+        Box::new(m20260812_000008_add_route_key_registry::Migration),
     ]
 }
 

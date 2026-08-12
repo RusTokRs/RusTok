@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::{
     TaxonomyResult, entities::translation_change::ActiveModel as TranslationChangeActiveModel,
+    route_key_registry::reconcile_route_keys_for_locale_in_tx,
 };
 
 pub(crate) const TRANSLATION_OWNER_SLUG: &str = "taxonomy";
@@ -20,10 +21,26 @@ pub(crate) struct TranslationChangeEvidence<'a> {
     pub lifecycle: &'a str,
 }
 
+/// Finalizes one localized Taxonomy mutation inside the caller's transaction.
+///
+/// Route-key reservations are reconciled before durable change evidence is
+/// appended, so a uniqueness conflict aborts the same transaction that changed
+/// the translation or aliases. Deletes skip reconciliation because the
+/// composite route-key rows are removed by the term foreign-key cascade.
 pub(crate) async fn record_translation_change_in_tx(
     transaction: &DatabaseTransaction,
     evidence: TranslationChangeEvidence<'_>,
 ) -> TaxonomyResult<()> {
+    if evidence.operation != "delete" {
+        reconcile_route_keys_for_locale_in_tx(
+            transaction,
+            evidence.tenant_id,
+            evidence.term_id,
+            evidence.locale,
+        )
+        .await?;
+    }
+
     TranslationChangeActiveModel {
         id: Set(generate_id()),
         tenant_id: Set(evidence.tenant_id),

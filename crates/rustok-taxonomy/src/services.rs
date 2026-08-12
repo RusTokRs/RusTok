@@ -736,7 +736,7 @@ impl TaxonomyService {
         slug: &str,
         exclude_term_id: Option<Uuid>,
     ) -> TaxonomyResult<()> {
-        let mut select = taxonomy_term_translation::Entity::find()
+        let mut translation_select = taxonomy_term_translation::Entity::find()
             .join(
                 JoinType::InnerJoin,
                 taxonomy_term_translation::Relation::Term.def(),
@@ -748,11 +748,32 @@ impl TaxonomyService {
             .filter(taxonomy_term::Column::ScopeType.eq(scope.scope_type))
             .filter(taxonomy_term::Column::ScopeValue.eq(scope.scope_value));
         if let Some(exclude_term_id) = exclude_term_id {
-            select = select.filter(taxonomy_term_translation::Column::TermId.ne(exclude_term_id));
+            translation_select = translation_select
+                .filter(taxonomy_term_translation::Column::TermId.ne(exclude_term_id));
         }
-        if select.one(txn).await?.is_some() {
+        if translation_select.one(txn).await?.is_some() {
             return Err(TaxonomyError::DuplicateSlug(slug.to_string()));
         }
+
+        let mut alias_select = taxonomy_term_alias::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                taxonomy_term_alias::Relation::Term.def(),
+            )
+            .filter(taxonomy_term_alias::Column::TenantId.eq(scope.tenant_id))
+            .filter(taxonomy_term_alias::Column::Locale.eq(locale))
+            .filter(taxonomy_term_alias::Column::Slug.eq(slug))
+            .filter(taxonomy_term::Column::Kind.eq(scope.kind))
+            .filter(taxonomy_term::Column::ScopeType.eq(scope.scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(scope.scope_value));
+        if let Some(exclude_term_id) = exclude_term_id {
+            alias_select =
+                alias_select.filter(taxonomy_term_alias::Column::TermId.ne(exclude_term_id));
+        }
+        if alias_select.one(txn).await?.is_some() {
+            return Err(TaxonomyError::DuplicateSlug(slug.to_string()));
+        }
+
         Ok(())
     }
 
@@ -770,7 +791,7 @@ impl TaxonomyService {
                 return Err(TaxonomyError::DuplicateAlias(alias.clone()));
             }
 
-            let mut select = taxonomy_term_alias::Entity::find()
+            let mut alias_select = taxonomy_term_alias::Entity::find()
                 .join(
                     JoinType::InnerJoin,
                     taxonomy_term_alias::Relation::Term.def(),
@@ -782,9 +803,29 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::ScopeType.eq(scope.scope_type))
                 .filter(taxonomy_term::Column::ScopeValue.eq(scope.scope_value));
             if let Some(exclude_term_id) = exclude_term_id {
-                select = select.filter(taxonomy_term_alias::Column::TermId.ne(exclude_term_id));
+                alias_select =
+                    alias_select.filter(taxonomy_term_alias::Column::TermId.ne(exclude_term_id));
             }
-            if select.one(txn).await?.is_some() {
+            if alias_select.one(txn).await?.is_some() {
+                return Err(TaxonomyError::DuplicateAlias(alias.clone()));
+            }
+
+            let mut translation_select = taxonomy_term_translation::Entity::find()
+                .join(
+                    JoinType::InnerJoin,
+                    taxonomy_term_translation::Relation::Term.def(),
+                )
+                .filter(taxonomy_term_translation::Column::TenantId.eq(scope.tenant_id))
+                .filter(taxonomy_term_translation::Column::Locale.eq(locale))
+                .filter(taxonomy_term_translation::Column::Slug.eq(alias))
+                .filter(taxonomy_term::Column::Kind.eq(scope.kind))
+                .filter(taxonomy_term::Column::ScopeType.eq(scope.scope_type))
+                .filter(taxonomy_term::Column::ScopeValue.eq(scope.scope_value));
+            if let Some(exclude_term_id) = exclude_term_id {
+                translation_select = translation_select
+                    .filter(taxonomy_term_translation::Column::TermId.ne(exclude_term_id));
+            }
+            if translation_select.one(txn).await?.is_some() {
                 return Err(TaxonomyError::DuplicateAlias(alias.clone()));
             }
         }
@@ -830,7 +871,7 @@ impl TaxonomyService {
         let locales = resolve_locale_candidates(lookup.locale, lookup.fallback_locale);
 
         for locale_candidate in locales {
-            if let Some(translation) = taxonomy_term_translation::Entity::find()
+            let translations = taxonomy_term_translation::Entity::find()
                 .join(
                     JoinType::InnerJoin,
                     taxonomy_term_translation::Relation::Term.def(),
@@ -841,13 +882,10 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::Kind.eq(lookup.scope.kind))
                 .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
                 .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
-                .one(&self.db)
-                .await?
-            {
-                return Ok(Some(translation.term_id));
-            }
-
-            if let Some(alias) = taxonomy_term_alias::Entity::find()
+                .filter(taxonomy_term::Column::Status.eq(TaxonomyTermStatus::Active))
+                .all(&self.db)
+                .await?;
+            let aliases = taxonomy_term_alias::Entity::find()
                 .join(
                     JoinType::InnerJoin,
                     taxonomy_term_alias::Relation::Term.def(),
@@ -858,10 +896,19 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::Kind.eq(lookup.scope.kind))
                 .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
                 .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
-                .one(&self.db)
-                .await?
-            {
-                return Ok(Some(alias.term_id));
+                .filter(taxonomy_term::Column::Status.eq(TaxonomyTermStatus::Active))
+                .all(&self.db)
+                .await?;
+
+            if let Some(term_id) = resolve_unique_localized_route_match(
+                lookup.slug,
+                &locale_candidate,
+                translations
+                    .into_iter()
+                    .map(|translation| translation.term_id),
+                aliases.into_iter().map(|alias| alias.term_id),
+            )? {
+                return Ok(Some(term_id));
             }
         }
 
@@ -1206,7 +1253,7 @@ impl TaxonomyService {
         let locales = resolve_locale_candidates(lookup.locale, lookup.fallback_locale);
 
         for locale_candidate in locales {
-            if let Some(translation) = taxonomy_term_translation::Entity::find()
+            let translations = taxonomy_term_translation::Entity::find()
                 .join(
                     JoinType::InnerJoin,
                     taxonomy_term_translation::Relation::Term.def(),
@@ -1217,13 +1264,9 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::Kind.eq(lookup.scope.kind))
                 .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
                 .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
-                .one(txn)
-                .await?
-            {
-                return Ok(Some(translation.term_id));
-            }
-
-            if let Some(alias) = taxonomy_term_alias::Entity::find()
+                .all(txn)
+                .await?;
+            let aliases = taxonomy_term_alias::Entity::find()
                 .join(
                     JoinType::InnerJoin,
                     taxonomy_term_alias::Relation::Term.def(),
@@ -1234,14 +1277,42 @@ impl TaxonomyService {
                 .filter(taxonomy_term::Column::Kind.eq(lookup.scope.kind))
                 .filter(taxonomy_term::Column::ScopeType.eq(lookup.scope.scope_type))
                 .filter(taxonomy_term::Column::ScopeValue.eq(lookup.scope.scope_value))
-                .one(txn)
-                .await?
-            {
-                return Ok(Some(alias.term_id));
+                .all(txn)
+                .await?;
+
+            if let Some(term_id) = resolve_unique_localized_route_match(
+                lookup.slug,
+                &locale_candidate,
+                translations
+                    .into_iter()
+                    .map(|translation| translation.term_id),
+                aliases.into_iter().map(|alias| alias.term_id),
+            )? {
+                return Ok(Some(term_id));
             }
         }
 
         Ok(None)
+    }
+}
+
+fn resolve_unique_localized_route_match(
+    slug: &str,
+    locale: &str,
+    translation_term_ids: impl IntoIterator<Item = Uuid>,
+    alias_term_ids: impl IntoIterator<Item = Uuid>,
+) -> TaxonomyResult<Option<Uuid>> {
+    let term_ids = translation_term_ids
+        .into_iter()
+        .chain(alias_term_ids)
+        .collect::<HashSet<_>>();
+
+    match term_ids.len() {
+        0 => Ok(None),
+        1 => Ok(term_ids.into_iter().next()),
+        _ => Err(TaxonomyError::conflict(format!(
+            "ambiguous localized taxonomy route key `{slug}` for locale `{locale}`",
+        ))),
     }
 }
 
@@ -1612,6 +1683,100 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn alias_cannot_shadow_another_terms_translation_slug() {
+        let (_db, service) = setup().await;
+        let tenant_id = Uuid::new_v4();
+        let security = admin();
+
+        service
+            .create_term(
+                tenant_id,
+                security.clone(),
+                CreateTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    scope_type: TaxonomyScopeType::Module,
+                    scope_value: Some("forum".to_string()),
+                    locale: "en".to_string(),
+                    name: "Rust".to_string(),
+                    slug: Some("systems".to_string()),
+                    canonical_key: Some("rust".to_string()),
+                    description: None,
+                    aliases: vec![],
+                },
+            )
+            .await
+            .expect("first term should be created");
+
+        let error = service
+            .create_term(
+                tenant_id,
+                security,
+                CreateTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    scope_type: TaxonomyScopeType::Module,
+                    scope_value: Some("forum".to_string()),
+                    locale: "en".to_string(),
+                    name: "Zig".to_string(),
+                    slug: Some("zig".to_string()),
+                    canonical_key: Some("zig".to_string()),
+                    description: None,
+                    aliases: vec!["systems".to_string()],
+                },
+            )
+            .await
+            .expect_err("alias must not shadow another term translation slug");
+
+        assert!(matches!(error, TaxonomyError::DuplicateAlias(alias) if alias == "systems"));
+    }
+
+    #[tokio::test]
+    async fn translation_slug_cannot_shadow_another_terms_alias() {
+        let (_db, service) = setup().await;
+        let tenant_id = Uuid::new_v4();
+        let security = admin();
+
+        service
+            .create_term(
+                tenant_id,
+                security.clone(),
+                CreateTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    scope_type: TaxonomyScopeType::Module,
+                    scope_value: Some("forum".to_string()),
+                    locale: "en".to_string(),
+                    name: "Rust".to_string(),
+                    slug: Some("rust".to_string()),
+                    canonical_key: Some("rust".to_string()),
+                    description: None,
+                    aliases: vec!["systems".to_string()],
+                },
+            )
+            .await
+            .expect("first term should be created");
+
+        let error = service
+            .create_term(
+                tenant_id,
+                security,
+                CreateTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    scope_type: TaxonomyScopeType::Module,
+                    scope_value: Some("forum".to_string()),
+                    locale: "en".to_string(),
+                    name: "Zig".to_string(),
+                    slug: Some("systems".to_string()),
+                    canonical_key: Some("zig".to_string()),
+                    description: None,
+                    aliases: vec![],
+                },
+            )
+            .await
+            .expect_err("translation slug must not shadow another term alias");
+
+        assert!(matches!(error, TaxonomyError::DuplicateSlug(slug) if slug == "systems"));
+    }
+
+    #[tokio::test]
     async fn get_term_uses_translation_fallback() {
         let (_db, service) = setup().await;
         let tenant_id = Uuid::new_v4();
@@ -1731,5 +1896,87 @@ mod tests {
 
         assert_eq!(resolved.id, module_term_id);
         assert_ne!(resolved.id, global_term_id);
+    }
+
+    #[tokio::test]
+    async fn resolve_term_for_module_skips_deprecated_module_route() {
+        let (_db, service) = setup().await;
+        let tenant_id = Uuid::new_v4();
+        let security = admin();
+
+        let global_term_id = service
+            .create_term(
+                tenant_id,
+                security.clone(),
+                CreateTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    scope_type: TaxonomyScopeType::Global,
+                    scope_value: None,
+                    locale: "en".to_string(),
+                    name: "Rust global".to_string(),
+                    slug: Some("rust".to_string()),
+                    canonical_key: Some("rust".to_string()),
+                    description: None,
+                    aliases: vec![],
+                },
+            )
+            .await
+            .expect("global term should be created");
+
+        let module_term_id = service
+            .create_term(
+                tenant_id,
+                security.clone(),
+                CreateTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    scope_type: TaxonomyScopeType::Module,
+                    scope_value: Some("blog".to_string()),
+                    locale: "en".to_string(),
+                    name: "Rust module".to_string(),
+                    slug: Some("rust".to_string()),
+                    canonical_key: Some("rust".to_string()),
+                    description: None,
+                    aliases: vec![],
+                },
+            )
+            .await
+            .expect("module term should be created");
+
+        service
+            .update_term(
+                tenant_id,
+                module_term_id,
+                security.clone(),
+                UpdateTaxonomyTermInput {
+                    locale: "en".to_string(),
+                    name: None,
+                    slug: None,
+                    description: None,
+                    status: Some(TaxonomyTermStatus::Deprecated),
+                    aliases: None,
+                },
+            )
+            .await
+            .expect("module term should be deprecated");
+
+        let resolved = service
+            .resolve_term_for_module(
+                tenant_id,
+                security,
+                ResolveTaxonomyTermInput {
+                    kind: TaxonomyTermKind::Tag,
+                    module_slug: "blog".to_string(),
+                    locale: "en".to_string(),
+                    slug_or_alias: "rust".to_string(),
+                    fallback_locale: Some("en".to_string()),
+                },
+            )
+            .await
+            .expect("resolve should succeed")
+            .expect("active global term should resolve");
+
+        assert_eq!(resolved.id, global_term_id);
+        assert_ne!(resolved.id, module_term_id);
+        assert_eq!(resolved.status, TaxonomyTermStatus::Active);
     }
 }

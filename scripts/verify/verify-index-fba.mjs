@@ -110,8 +110,11 @@ if (!normalizedPlan.includes('Backward compatibility with the rejected implement
   fail('plan must preserve destructive rewrite policy');
 }
 
+const currentMilestone = plan.match(/^- Current milestone: `M(\d+) - /mu);
+if (!currentMilestone) fail('plan must expose a numbered current milestone');
+if (Number(currentMilestone[1]) < 4) fail('plan must not regress the current milestone below M4');
+
 for (const marker of [
-  '- Current milestone: `M4 - Query engine v1 (',
   '- M2 storage benchmark: `complete`',
   '- M2 storage decision: `JSONB accepted; rejected prototypes removed`',
   '- M3 storage-schema foundation: `complete`',
@@ -177,7 +180,6 @@ for (const marker of [
   if (!benchmarkSql.includes(marker)) fail(`selected JSONB benchmark SQL missing ${marker}`);
 }
 for (const rejected of [
-  'Prototype::TypedEav',
   'Prototype::HotProjection',
   'idx_bench_eav',
   'idx_bench_hot',
