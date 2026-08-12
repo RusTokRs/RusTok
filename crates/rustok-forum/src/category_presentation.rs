@@ -1,5 +1,5 @@
 use rustok_api::{PortContext, PortError};
-use rustok_media::{MediaAssetReadPort, MediaImageDescriptor};
+use rustok_media::{MediaImageDescriptor, MediaPublicImageReadPort};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -23,8 +23,9 @@ const CATEGORY_COVER_MIME_TYPES: &[&str] = &[
 
 /// Transport-neutral Media metadata required to evaluate a category cover.
 ///
-/// A Media adapter may construct this value from `MediaAssetReadPort` results,
-/// but storage paths, drivers, credentials and blob data never enter Forum.
+/// The candidate is derived from `MediaPublicImageReadPort`, so Media remains
+/// authoritative for asset/blob lifecycle and delivery eligibility. Storage
+/// paths, drivers, credentials and blob data never enter Forum policy.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CategoryCoverMediaCandidate {
     pub media_id: Uuid,
@@ -36,14 +37,14 @@ pub struct CategoryCoverMediaCandidate {
     pub descriptor: Option<MediaImageDescriptor>,
 }
 
-/// Resolve and validate a category cover for a future owner write command.
+/// Resolve and validate a category cover for an owner write command.
 ///
 /// A write never treats a missing optional Media owner as an empty value. It
 /// returns a stable capability-unavailable error that transports can map without
-/// parsing display text. Persistence remains disabled until Media publishes
-/// quarantine and deletion lifecycle state.
+/// parsing display text. Media decides whether the requested asset is an active,
+/// ready public image before Forum evaluates its category-specific constraints.
 pub async fn resolve_category_cover_for_write(
-    media_port: Option<&dyn MediaAssetReadPort>,
+    media_port: Option<&dyn MediaPublicImageReadPort>,
     context: PortContext,
     media_id: Uuid,
     alt: Option<String>,
@@ -60,7 +61,7 @@ pub async fn resolve_category_cover_for_write(
 /// degrades to `None`. Not-found, timeout, storage and other provider failures
 /// remain typed errors so Forum does not silently erase operational failures.
 pub async fn hydrate_category_cover_for_read(
-    media_port: Option<&dyn MediaAssetReadPort>,
+    media_port: Option<&dyn MediaPublicImageReadPort>,
     context: PortContext,
     media_id: Uuid,
     alt: Option<String>,
@@ -74,24 +75,21 @@ pub async fn hydrate_category_cover_for_read(
 }
 
 async fn load_category_cover_candidate(
-    media_port: &dyn MediaAssetReadPort,
+    media_port: &dyn MediaPublicImageReadPort,
     context: PortContext,
     media_id: Uuid,
     alt: Option<String>,
 ) -> ForumResult<CategoryCoverMediaCandidate> {
-    let asset = media_port
-        .get_asset(context.clone(), media_id)
+    let public_image = media_port
+        .get_public_image_asset(context, media_id, alt)
         .await
         .map_err(map_category_cover_media_port_error)?;
+    let asset = public_image.asset;
     if asset.id != media_id {
         return Err(ForumError::Validation(
             "Category cover media response does not match the requested asset".to_string(),
         ));
     }
-    let descriptor = media_port
-        .get_image_descriptor(context, media_id, alt)
-        .await
-        .map_err(map_category_cover_media_port_error)?;
 
     Ok(CategoryCoverMediaCandidate {
         media_id: asset.id,
@@ -100,7 +98,7 @@ async fn load_category_cover_candidate(
         size: asset.size,
         width: asset.width,
         height: asset.height,
-        descriptor,
+        descriptor: public_image.descriptor,
     })
 }
 
@@ -152,11 +150,12 @@ pub fn normalize_category_icon_key(value: &str) -> Option<String> {
     (!previous_was_separator).then_some(normalized)
 }
 
-/// Validate the Media-owned metadata currently available for a category cover.
+/// Validate Forum-specific category-cover constraints after the Media owner has
+/// already admitted the asset as an active, ready public image.
 ///
-/// Quarantine/deletion state is not currently published by the Media read port.
-/// A persistent `cover_media_id` command must remain disabled until those owner
-/// states are included in the candidate produced by the Media adapter.
+/// Quarantine/deletion state is not currently published by the generic Media
+/// asset read port; category cover policy intentionally consumes the dedicated
+/// `MediaPublicImageReadPort` instead of duplicating those lifecycle rules.
 pub fn validate_category_cover_candidate(
     expected_tenant_id: Uuid,
     candidate: &CategoryCoverMediaCandidate,
@@ -198,7 +197,7 @@ pub fn validate_category_cover_candidate(
     })?;
     if !descriptor.should_emit_to_public_metadata() {
         return Err(ForumError::Validation(
-            "Category cover media is not directly publicly addressable".to_string(),
+            "Category cover media is not publicly addressable".to_string(),
         ));
     }
     if descriptor.mime_type.as_deref() != Some(mime_type.as_str()) {

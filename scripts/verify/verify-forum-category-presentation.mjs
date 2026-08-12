@@ -77,14 +77,11 @@ requireText(
 requireText(
   contract,
   "should_emit_to_public_metadata",
-  `${contractPath}: direct-public descriptor policy is not enforced`,
-);
-requireText(
-  contract,
-  "Quarantine/deletion state is not currently published",
-  `${contractPath}: unresolved Media owner state must remain explicit`,
+  `${contractPath}: public descriptor policy is not enforced`,
 );
 for (const marker of [
+  "MediaPublicImageReadPort",
+  "get_public_image_asset",
   "CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE_CODE",
   "resolve_category_cover_for_write",
   "hydrate_category_cover_for_read",
@@ -92,8 +89,13 @@ for (const marker of [
   "let Some(media_port) = media_port else",
   "map_category_cover_media_port_error",
 ]) {
-  requireText(contract, marker, `${contractPath}: optional Media capability marker is missing: ${marker}`);
+  requireText(contract, marker, `${contractPath}: Media owner marker is missing: ${marker}`);
 }
+requireText(
+  contract,
+  "active, ready public image",
+  `${contractPath}: Media lifecycle authority must stay explicit`,
+);
 requireText(
   errors,
   "CapabilityUnavailable",
@@ -116,6 +118,11 @@ reject(
   "forum category presentation must not access Media persistence or storage internals",
 );
 reject(
+  contract,
+  /\bMediaAssetReadPort\b/,
+  "forum category cover must consume Media public-image owner admission, not the generic asset-read port",
+);
+reject(
   categoryBoundary,
   /\b(?:cover|image)_(?:url|path)\b/i,
   "forum category presentation must not store an arbitrary image URL or path",
@@ -130,8 +137,8 @@ requireText(plan, "Delivered in `FORUM-13A`", `${planPath}: FORUM-13A delivery i
 requireText(plan, "Delivered in `FORUM-13B`", `${planPath}: FORUM-13B delivery is not recorded`);
 requireText(
   plan,
-  "quarantine/deletion",
-  `${planPath}: remaining Media state dependency is not recorded`,
+  "Media keeps lifecycle ownership.",
+  `${planPath}: Media lifecycle ownership is not recorded in FORUM-13`,
 );
 for (const marker of [
   "CategoryCoverMediaCandidate",
