@@ -32,7 +32,7 @@ jobs:
         run: python3 scripts/tmp/fix-return-completion-owner-patcher.py
       - name: Apply source patch
         run: python3 scripts/tmp/apply-return-completion-order-owner-cutover.py
-      - name: Apply exhaustive Order error fix
+      - name: Apply Order owner compatibility fixes
         run: python3 scripts/tmp/apply-return-completion-order-port-exhaustive-fix.py
       - name: Format Rust
         run: cargo fmt --all
@@ -42,11 +42,18 @@ jobs:
         run: cargo check -p rustok-commerce --all-features
         env:
           PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+      - name: Test return-completion transport guard
+        run: cargo test -p rustok-server --test commerce_return_completion_transport_guard
+        env:
+          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+      - name: Check diff
+        run: git diff --check
       - name: Commit verified source
         shell: bash
         run: |
           git add \
             .github/workflows/ecommerce-hardening.yml \
+            apps/server/tests/commerce_return_completion_transport_guard.rs \
             crates/rustok-commerce/docs/return-completion-order-owner-port-cutover-2026-08-12.md \
             crates/rustok-commerce/src/controllers/admin/changes.rs \
             crates/rustok-commerce/src/controllers/admin/mod.rs \
