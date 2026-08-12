@@ -276,8 +276,8 @@ pub(crate) fn fulfillment_lifecycle_read_runtime_for_current_graphql_scope(
         .unwrap_or_else(|_| CommerceFulfillmentLifecycleReadRuntime::in_process(db))
 }
 
-pub(crate) fn fulfillment_read_call_context_for_current_graphql_scope(
-) -> CommerceFulfillmentReadCallContext {
+pub(crate) fn fulfillment_read_call_context_for_current_graphql_scope()
+-> CommerceFulfillmentReadCallContext {
     CURRENT_COMMERCE_FULFILLMENT_READ_CALL_CONTEXT
         .try_with(Clone::clone)
         .unwrap_or_default()
@@ -304,8 +304,8 @@ pub(crate) fn payment_read_runtime_for_current_graphql_scope(
     payment_reads::runtime_for_current_graphql_scope(db)
 }
 
-pub(crate) fn payment_read_call_context_for_current_graphql_scope(
-) -> (PortActor, Option<String>, Option<String>) {
+pub(crate) fn payment_read_call_context_for_current_graphql_scope()
+-> (PortActor, Option<String>, Option<String>) {
     let context = payment_reads::call_context_for_current_graphql_scope();
     (
         context.actor(),
@@ -609,13 +609,28 @@ pub(crate) fn fulfillment_orchestration_from_context(
     }
 }
 
-pub(crate) fn post_order_orchestration_from_context(
+pub(crate) fn return_decision_owner_orchestration_from_context(
     ctx: &Context<'_>,
     db: DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
-) -> crate::PostOrderOrchestrationService {
-    crate::PostOrderOrchestrationService::new(db, event_bus)
-        .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
+) -> crate::ReturnDecisionOwnerOrchestrationService {
+    let service = match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
+        Some(runtime) => crate::ReturnDecisionOwnerOrchestrationService::new(
+            db,
+            runtime.order_post_order_command_runtime().command_port(),
+            runtime.payment_read_runtime().admin_read_port(),
+        ),
+        None => {
+            let order_runtime = OrderPostOrderCommandRuntime::in_process(db.clone(), event_bus);
+            let payment_runtime = CommercePaymentReadRuntime::in_process(db.clone());
+            crate::ReturnDecisionOwnerOrchestrationService::new(
+                db,
+                order_runtime.command_port(),
+                payment_runtime.admin_read_port(),
+            )
+        }
+    };
+    service.with_payment_provider_registry(payment_provider_registry_from_context(ctx))
 }
 
 pub(crate) fn order_change_orchestration_from_context(
