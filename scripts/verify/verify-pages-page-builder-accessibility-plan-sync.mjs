@@ -1,0 +1,118 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import path from "node:path";
+
+const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
+  ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
+  : process.cwd();
+
+const paths = {
+  shared: "docs/modules/pages-page-builder-parity-continuation-plan.md",
+  central: "docs/modules/page-builder-implementation-plan.md",
+  local: "crates/rustok-page-builder/docs/implementation-plan.md",
+  actualization: "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md",
+  accessibilityActualization: "docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md",
+  accessibilityGuard: "scripts/verify/verify-page-builder-admin-accessibility.mjs",
+};
+
+const failures = [];
+
+function read(relativePath) {
+  const absolutePath = path.join(repoRoot, relativePath);
+  if (!fs.existsSync(absolutePath)) {
+    failures.push(`${relativePath}: required file is missing`);
+    return "";
+  }
+  const stat = fs.lstatSync(absolutePath);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    failures.push(`${relativePath}: must be a regular non-symlink file`);
+    return "";
+  }
+  return fs.readFileSync(absolutePath, "utf8");
+}
+
+function requireText(source, marker, label) {
+  if (!source.includes(marker)) failures.push(`${label}: missing '${marker}'`);
+}
+
+function forbidText(source, marker, label) {
+  if (source.includes(marker)) failures.push(`${label}: stale marker remains '${marker}'`);
+}
+
+const shared = read(paths.shared);
+const central = read(paths.central);
+const local = read(paths.local);
+const actualization = read(paths.actualization);
+const accessibilityActualization = read(paths.accessibilityActualization);
+const accessibilityGuard = read(paths.accessibilityGuard);
+
+for (const marker of [
+  "Date: 2026-08-12",
+  "generic-editor-accessibility-source-ready",
+  "PR #3444",
+  "Generic Page Builder editor accessibility: source-ready / execution-open",
+  "Generic editor control accessibility | Source-ready | Keyboard/focus/browser/screen-reader evidence pending",
+  paths.accessibilityActualization,
+  paths.actualization,
+  "generic editor accessibility semantics is complete at this cursor",
+  "verify-page-builder-admin-accessibility.mjs",
+]) requireText(shared, marker, paths.shared);
+
+for (const marker of [
+  "through PR #3444 on 2026-08-12",
+  "Generic editor control accessibility semantics: source-ready",
+  "Generic editor executable accessibility evidence: pending",
+  "Generic editor programmatic accessibility semantics and static anti-drift guard are source-ready",
+  "Complete generic typed asset/control surfaces and programmatic accessibility semantics at source level",
+  "Retain executable keyboard/focus/accessibility-tree/browser/screen-reader evidence for the built editor",
+  paths.actualization,
+  "verify-page-builder-admin-accessibility.mjs",
+  "verify-pages-page-builder-accessibility-plan-sync.mjs",
+]) requireText(central, marker, paths.central);
+forbidText(
+  central,
+  "Complete remaining generic typed asset/control surfaces and accessibility\n  evidence.",
+  paths.central,
+);
+
+for (const marker of [
+  "2026-08-12 parity/accessibility reconciliation",
+  "generic-editor-accessibility-source-ready",
+  "browser-accessibility-evidence-pending",
+  "Generic editor control semantics are also source-ready after PR #3444",
+  "Retain generic editor keyboard/focus/accessible-name/state/browser/screen-reader evidence",
+  paths.actualization,
+  "verify-page-builder-admin-accessibility.mjs",
+  "verify-pages-page-builder-accessibility-plan-sync.mjs",
+]) requireText(local, marker, paths.local);
+
+for (const marker of [
+  "source-parity-rechecked",
+  "generic-editor-accessibility-source-ready",
+  "focused-ci-gate-ready",
+  "browser-accessibility-evidence-pending",
+  "PR #3444",
+  ".github/workflows/pages-page-builder-parity.yml",
+  "static source markers do not establish WCAG conformance",
+]) requireText(actualization, marker, paths.actualization);
+
+for (const marker of [
+  "generic-editor-control-accessibility-source-ready",
+  "source-guard-ready",
+  "browser-accessibility-evidence-pending",
+  "scripts/verify/verify-page-builder-admin-accessibility.mjs",
+]) requireText(accessibilityActualization, marker, paths.accessibilityActualization);
+
+for (const marker of [
+  "aria-pressed=active.to_string()",
+  "Page Builder admin accessibility source verified.",
+]) requireText(accessibilityGuard, marker, paths.accessibilityGuard);
+
+if (failures.length > 0) {
+  console.error("Pages/Page Builder accessibility plan sync verification failed:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+
+console.log("Pages/Page Builder accessibility plan sync verified.");
