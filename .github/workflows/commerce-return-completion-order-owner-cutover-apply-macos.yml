@@ -43,9 +43,10 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
       - name: Test return-completion transport guard
-        run: cargo test -p rustok-server --test commerce_return_completion_transport_guard
-        env:
-          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+        shell: bash
+        run: |
+          CARGO_MANIFEST_DIR="$PWD/apps/server" rustc --test apps/server/tests/commerce_return_completion_transport_guard.rs -o /tmp/commerce_return_completion_transport_guard
+          /tmp/commerce_return_completion_transport_guard
       - name: Check diff
         run: git diff --check
       - name: Commit verified source
