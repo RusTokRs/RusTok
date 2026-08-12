@@ -2,7 +2,7 @@
 
 Status: `source-parity-rechecked / generic-editor-accessibility-source-ready / focused-ci-gate-ready / browser-accessibility-evidence-pending / rollout-execution-pending`.
 
-Base rechecked: `main@ac36c04c732e9fdf23f2de3d917faf79e0552f3f`.
+Base rechecked: `main@389fa1acdb1bbe7f554380ecb5ea178c5f73bda9`.
 
 ## Recheck result
 
