@@ -40,8 +40,12 @@ These tables are a derived read model. Source modules remain authoritative and d
 
 - M3 partition evidence packet tooling: `complete`
 - M3 partition evidence capture/assembly: `complete`
+- M3 partition baseline/shadow snapshot runner: `complete`
+- M3 partition query evidence runner: `complete`
+- M3 partition mutation/WAL evidence runner: `complete`
+- M3 partition maintenance evidence runner: `complete`
 
-The repository owner still executes and retains the PostgreSQL packet. Source-complete tooling and documentation do not authorize production partition cutover.
+The repository owner still executes and retains the PostgreSQL packet. Source-complete tooling and documentation do not authorize production partition cutover. The real query, mutation, maintenance, and cutover measurements remain open. Real mutation, maintenance, and cutover evidence remain open; maintenance and cutover evidence remain open; cutover evidence remains open until one complete retained owner-run packet satisfies admission.
 
 - [M3 partition evidence runbook](./partition-evidence-runbook.md)
 
