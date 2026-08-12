@@ -153,7 +153,7 @@ if (observedAcceptance.next_cursor?.observed_health_owner_acceptance !== "source
 
 for (const marker of [
   "provider-health-runtime-evidence-harness-source-ready",
-  "mismatched page id",
+  "mismatched envelope page id",
   "all_on",
   "observed_runtime_evidence_owner_review_pending",
   "No tests, Node verifiers, Cargo commands",

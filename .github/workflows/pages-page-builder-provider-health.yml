@@ -1,0 +1,98 @@
+name: Pages Page Builder Provider Health
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/pages-page-builder-provider-health.yml"
+      - "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json"
+      - "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json"
+      - "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs"
+      - "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs"
+      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json"
+      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json"
+      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs"
+      - "scripts/evidence/accept-pages-builder-provider-health-deployment.mjs"
+      - "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs"
+      - "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs"
+      - "scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs"
+      - "docs/modules/pages-page-builder-provider-health-*-actualization-*.md"
+      - "docs/modules/pages-page-builder-parity-continuation-plan.md"
+      - "docs/modules/page-builder-implementation-plan.md"
+      - "crates/rustok-page-builder/docs/implementation-plan.md"
+      - "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/pages-page-builder-provider-health.yml"
+      - "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json"
+      - "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-evaluator-source.json"
+      - "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs"
+      - "crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs"
+      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-owner-acceptance-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-execution-contract.json"
+      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-runtime-harness-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-builder-provider-health-observed-acceptance-runner-test-source.json"
+      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs"
+      - "scripts/evidence/accept-pages-builder-provider-health-deployment.mjs"
+      - "scripts/evidence/accept-pages-builder-provider-health-runtime.mjs"
+      - "scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs"
+      - "scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs"
+      - "docs/modules/pages-page-builder-provider-health-*-actualization-*.md"
+      - "docs/modules/pages-page-builder-parity-continuation-plan.md"
+      - "docs/modules/page-builder-implementation-plan.md"
+      - "crates/rustok-page-builder/docs/implementation-plan.md"
+      - "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-and-runner:
+    name: Provider-health source and owner-runner evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify deployment identity evidence source
+        if: ${{ !cancelled() }}
+        run: node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-identity.mjs
+      - name: Verify deployment evaluator evidence source
+        if: ${{ !cancelled() }}
+        run: node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-deployment-evaluator.mjs
+      - name: Verify binding owner acceptance source
+        if: ${{ !cancelled() }}
+        run: node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-owner-acceptance.mjs
+      - name: Verify runtime evidence harness source
+        if: ${{ !cancelled() }}
+        run: node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-runtime-harness.mjs
+      - name: Verify observed-health owner acceptance source
+        if: ${{ !cancelled() }}
+        run: node crates/rustok-pages/scripts/verify/verify-pages-builder-provider-health-observed-acceptance.mjs
+      - name: Verify observed-health owner acceptance runner test source
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-pages-builder-provider-health-owner-runner-tests.mjs
+      - name: Observed-health owner acceptance runner synthetic tests
+        if: ${{ !cancelled() }}
+        run: node scripts/evidence/accept-pages-builder-provider-health-runtime.test.mjs
+      - name: Verify Pages and Page Builder plan parity
+        if: ${{ !cancelled() }}
+        run: node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
