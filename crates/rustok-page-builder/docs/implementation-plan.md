@@ -1,5 +1,16 @@
 # Implementation Plan for `rustok-page-builder`
 
+## 2026-08-12 parity/accessibility reconciliation
+
+This local plan is reconciled through PR #3444 together with
+`docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md`.
+The provider-health, Pages gate and Forum Wave source architecture remains unchanged and execution-owned.
+Generic editor asset/control accessibility semantics are now source-ready and guarded by
+`scripts/verify/verify-page-builder-admin-accessibility.mjs`; keyboard/focus/accessibility-tree/browser/
+screen-reader evidence remains pending and no WCAG conformance is inferred from static source.
+
+Markers: `generic-editor-accessibility-source-ready` / `browser-accessibility-evidence-pending`.
+
 ## Current state
 
 `rustok-page-builder` exposes one Fly-backed capability service for preview, tree, properties and
@@ -187,6 +198,12 @@ Authenticated real-DOM authoring, dedicated authoring JS/WASM delivery, same-ori
 deterministic release composition and anonymous-authoring exclusion are source-ready. They remain
 execution/rollout work rather than open source architecture gaps.
 
+Generic editor control semantics are also source-ready after PR #3444. The merged asset, property,
+style, responsive-style, trait, page and palette/layer surfaces carry programmatic control names,
+scoped repeated-action names and selected-state semantics, with a static anti-drift guard. Remaining
+accessibility work is executable evidence on the built surface rather than another generic-control
+source slice.
+
 Forum is the second production consumer and its Page Builder source path is complete through canonical
 module metadata, Fly component/block registration, `ContributionAdapter`, owner preview and owner-backed
 property editing. Provider-neutral Page Builder host ports compose Forum only when tenant/module/RBAC
@@ -233,6 +250,10 @@ and decision packets, not another production-consumer or provider-health archite
   observed-health evidence.
 - `crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json` records the
   exact-source/deployment correlation required before an observed Forum control-plane Wave may start.
+- `scripts/verify/verify-page-builder-admin-accessibility.mjs` source-locks generic editor programmatic
+  names, scoped repeated actions and selected-state semantics without claiming browser conformance.
+- `docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md` records the current
+  accessibility/parity source cursor and keeps executable accessibility evidence separate.
 - `scripts/verify/verify-page-builder-admin-provider-status.mjs` source-locks the provider status seam,
   fail-closed capability narrowing, server-preview control and Pages server/UI rollout-flag identity.
 - `scripts/verify/verify-page-builder-publish-runtime-review.mjs` source-locks reviewed runtime,
@@ -264,11 +285,12 @@ and decision packets, not another production-consumer or provider-health archite
 
 - **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection,
   typed rollback control, generation-aware Pages storefront/artifact readers, registered draft and
-  published Pages metadata properties, typed admin provider-status/degraded-control seams, and the
-  Forum second-consumer host composition are source-connected. Provider-health observation/evaluator/
-  binding/consumer source, observed-health runtime harness/owner acceptance, Pages gate acceptance and
-  Forum Wave admission are source-ready; their maintainer execution and accepted observed evidence,
-  inline edit, anonymous bundle and Forum browser evidence remain open.
+  published Pages metadata properties, typed admin provider-status/degraded-control seams, generic
+  editor source-level accessibility semantics and the Forum second-consumer host composition are
+  source-connected. Provider-health observation/evaluator/binding/consumer source, observed-health
+  runtime harness/owner acceptance, Pages gate acceptance and Forum Wave admission are source-ready;
+  their maintainer execution and accepted observed evidence, inline edit, anonymous bundle,
+  accessibility browser evidence and Forum browser evidence remain open.
 - **FBA:** `boundary_ready` for preview, consumer-property contracts and policy-bound
   sanitization/materialization, and `service_and_public_transport_integrated` for Pages reviewed
   publication, immutable rollback/repair continuity and Forum owner-preserving contribution runtime
@@ -284,6 +306,16 @@ and decision packets, not another production-consumer or provider-health archite
   - `admin/src/editor/server_preview.rs`;
   - `admin/src/editor/modular_canvas.rs`;
   - `admin/src/editor/consumer_properties.rs`;
+  - `admin/src/editor/asset_section.rs`;
+  - `admin/src/editor/style_section.rs`;
+  - `admin/src/editor/properties_section.rs`;
+  - `admin/src/editor/responsive_styles.rs`;
+  - `admin/src/editor/trait_panel.rs`;
+  - `admin/src/editor/page_manager.rs`;
+  - `admin/src/editor/palette_layers.rs`;
+  - `scripts/verify/verify-page-builder-admin-accessibility.mjs`;
+  - `docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md`;
+  - `docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md`;
   - `contracts/page-builder-consumer-properties.json`;
   - `src/publish_runtime.rs`;
   - `src/static_publish_policy.rs`;
@@ -356,12 +388,16 @@ and decision packets, not another production-consumer or provider-health archite
    run `forum_page_builder_wave_admission_v1`, then perform the separate observed control-plane Wave with
    audit trail, fallback profiles, metrics/traces, rollback decision, approvals and waivers before owner
    review.
-8. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
+8. Retain generic editor keyboard/focus/accessible-name/state/browser/screen-reader evidence on the built
+   admin surface. Source semantics and the static guard are already ready.
+9. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
    `PageBuilderBrowserModuleDescriptor` and reuse the canonical runtime DTO.
-9. Promote FFA/FBA only after observed Pages/Forum evidence and provider-health requirements are met.
+10. Promote FFA/FBA only after observed Pages/Forum evidence and provider-health requirements are met.
 
 ## Verification
 
+- `node scripts/verify/verify-page-builder-admin-accessibility.mjs`;
+- `node scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-admin-provider-status.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-provider-health-runtime-observation.mjs`;
@@ -395,7 +431,8 @@ and decision packets, not another production-consumer or provider-health archite
 - `cargo test -p rustok-pages --lib`;
 - `cargo xtask module validate page_builder`.
 
-These are execution cursors only. They were not run by this source-authoring slice.
+The focused source verifiers are executed by `.github/workflows/pages-page-builder-parity.yml`.
+Environment-bound browser, provider-health, rollout and database evidence remains maintainer execution.
 
 ## Boundaries
 
