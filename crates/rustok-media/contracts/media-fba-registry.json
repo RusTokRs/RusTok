@@ -38,6 +38,29 @@
       ]
     },
     {
+      "name": "MediaReferenceAdmissionPort",
+      "owner": "media",
+      "contract_version": "media.reference_admission.v1",
+      "operations": [
+        "admit_references"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": false,
+      "deadline_required": true,
+      "write_operations": [],
+      "read_operations": [
+        "admit_references"
+      ],
+      "semantics": {
+        "batch_limit": 100,
+        "duplicates": "deduplicate_preserving_first_request_order",
+        "missing_asset": "referenceable_false",
+        "unknown_lifecycle": "fail_closed",
+        "lifecycle_detail_visibility": "owner_private"
+      }
+    },
+    {
       "name": "MediaAssetWritePort",
       "owner": "media",
       "contract_version": "media.asset_write.v1",
@@ -90,6 +113,17 @@
       "fallback_profiles": [
         "embedded_native"
       ]
+    },
+    {
+      "module": "forum",
+      "profile": "forum_attachment_reference_admission",
+      "degraded_modes": [
+        "text_only_when_media_unavailable",
+        "reject_nonempty_attachment_batch_without_media"
+      ],
+      "fallback_profiles": [
+        "embedded_native"
+      ]
     }
   ],
   "evidence": {
@@ -105,6 +139,9 @@
   "in_process_provider_impl": {
     "service": "MediaService",
     "source": "crates/rustok-media/src/ports.rs",
+    "additional_sources": [
+      "crates/rustok-media/src/reference_admission.rs"
+    ],
     "status": "implemented"
   },
   "contract_tests": {
@@ -161,6 +198,19 @@
           "typed_port_error_mapping",
           "context_deadline_preserved",
           "locale_fallback_input_preserved"
+        ]
+      },
+      {
+        "operation": "admit_references",
+        "profiles": [
+          "in_process",
+          "loopback_grpc"
+        ],
+        "assertions": [
+          "context_deadline_preserved",
+          "batch_deduplication_preserved",
+          "missing_and_deleted_fail_closed",
+          "lifecycle_details_not_exposed"
         ]
       },
       {

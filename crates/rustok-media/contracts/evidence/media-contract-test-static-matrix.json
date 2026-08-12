@@ -57,6 +57,20 @@
       "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
     },
     {
+      "operation": "admit_references",
+      "profiles": [
+        "in_process",
+        "loopback_grpc"
+      ],
+      "assertions": [
+        "context_deadline_preserved",
+        "batch_deduplication_preserved",
+        "missing_and_deleted_fail_closed",
+        "lifecycle_details_not_exposed"
+      ],
+      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+    },
+    {
       "operation": "prepare_upload",
       "profiles": [
         "in_process",

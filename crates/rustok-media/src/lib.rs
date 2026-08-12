@@ -8,6 +8,7 @@ pub mod lifecycle;
 pub mod migrations;
 pub mod ports;
 pub mod public_image;
+pub mod reference_admission;
 pub mod service;
 mod translation_evidence;
 pub mod translation_target;
@@ -36,6 +37,7 @@ pub use public_image::{
     MEDIA_PUBLIC_IMAGE_PATH_PREFIX, MediaPublicImageAsset, MediaPublicImageBody,
     MediaPublicImageReadPort, MediaPublicImageService, public_image_path,
 };
+pub use reference_admission::*;
 pub use service::{
     MediaReconciliationDecision, MediaReconciliationReport, MediaService, MediaUsageSnapshot,
     load_media_usage_snapshot,

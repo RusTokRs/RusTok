@@ -1,18 +1,27 @@
 # Media gRPC transport
 
 The transport is deliberately narrower than the Media HTTP/object interfaces.
-It carries asset metadata, owner-selected public image descriptors,
-translations, upload-session control, deletion commands, and reconciliation
-commands. Upload/download bytes never enter a JSON or protobuf envelope.
+It carries asset metadata, bounded durable-reference admission decisions,
+owner-selected public image descriptors, translations, upload-session control,
+deletion commands, and reconciliation commands. Upload/download bytes never enter
+a JSON or protobuf envelope.
 
 ## Contract ownership
 
-`rustok-media` owns `MediaAssetReadPort`, `MediaPublicImageReadPort`,
-`MediaAssetWritePort`, `PortContext` usage, DTO validation, lifecycle behavior,
-public URL policy, and typed errors. This crate owns tonic framing and validated
-consumer connection policy. Owner errors are serialized into gRPC status details so
-the client reconstructs the exact `PortError`; unstructured network failures use a
-small deterministic gRPC-to-port fallback mapping.
+`rustok-media` owns `MediaAssetReadPort`, `MediaReferenceAdmissionPort`,
+`MediaPublicImageReadPort`, `MediaAssetWritePort`, `PortContext` usage, DTO
+validation, lifecycle behavior, public URL policy, and typed errors. This crate
+owns tonic framing and validated consumer connection policy. Owner errors are
+serialized into gRPC status details so the client reconstructs the exact
+`PortError`; unstructured network failures use a small deterministic
+gRPC-to-port fallback mapping.
+
+`AdmitReferences` returns bounded `MediaReferenceAdmission` owner decisions. The
+consumer sees only the requested Media UUID, trusted tenant UUID and
+`referenceable` boolean. Lifecycle strings, delete timestamps, blob state,
+quarantine implementation details and storage keys remain Media-private. Missing,
+deleting, deleted, failed, non-ready and unknown future lifecycle states fail
+closed. Duplicate request UUIDs are normalized once by the owner.
 
 `GetPublicImageAsset` returns `MediaPublicImageAsset`: canonical asset metadata
 plus the descriptor selected by Media. Storage-relative image references may
@@ -22,14 +31,18 @@ and object-store read remain on the Media-owned HTTP endpoint.
 
 ## Provider configuration
 
-`MediaGrpcService::new(provider)` preserves the existing metadata/write adapter
-and does not infer access to Media database or storage state. A deployment must
-explicitly call `with_public_image_provider(...)` to enable public descriptor
+`MediaGrpcService::new(provider)` preserves the metadata/reference-admission/write
+adapter and does not infer access to Media database or storage state. A deployment
+must explicitly call `with_public_image_provider(...)` to enable public descriptor
 selection. Calls without that attachment return typed unavailable semantics.
 
-The trusted server interceptor must separately allow
-`MediaGrpcOperation::GetPublicImageAsset`; a generic asset-read grant does not
-implicitly authorize public URL selection.
+The trusted server interceptor must separately allow both privileged owner
+capabilities when needed:
+
+- `MediaGrpcOperation::AdmitReferences` for durable-reference admission;
+- `MediaGrpcOperation::GetPublicImageAsset` for public descriptor selection.
+
+A generic asset-read grant does not implicitly authorize either operation.
 
 ## Consumer connection policy
 
@@ -75,9 +88,9 @@ provider class and non-sensitive configuration booleans.
 ## Deployment boundary
 
 Embedded deployments use the Media providers directly. Extracted deployments wrap
-the metadata/write provider in `MediaGrpcService`, attach the public-image provider
-explicitly, and expose the Media capability HTTP route through deployment-owned
-ingress.
+the metadata/reference-admission/write provider in `MediaGrpcService`, attach the
+public-image provider explicitly, and expose the Media capability HTTP route through
+deployment-owned ingress.
 
 Production provider listeners still require host-owned mutual TLS and an
 authentication/authorization interceptor that inserts `TrustedMediaAuthority` with an
@@ -93,10 +106,17 @@ gates.
 
 ## Verification
 
-`cargo test -p rustok-media-transport` contains owner-port conformance and connection
-configuration source scenarios. Retained source covers public capability descriptor
-selection, deadline propagation, typed deleted state, explicit trusted-operation
-authorization, HTTPS/loopback policy, bounded connection timeout, public-origin
-rebasing, and the rule that binary image bodies never cross gRPC.
+`cargo test -p rustok-media-transport --test port_conformance` contains owner-port
+conformance for embedded and loopback gRPC profiles. Retained source covers
+reference-admission active/missing/deleted semantics, duplicate normalization,
+deadline propagation, public capability descriptor selection, typed deleted state,
+explicit trusted-operation authorization, HTTPS/loopback policy, bounded connection
+timeout, public-origin rebasing, and the rule that binary image bodies never cross
+gRPC.
 
-These commands were not run while publishing this source slice.
+`node scripts/verify/verify-media-fba.mjs` additionally locks the machine-readable
+`MediaReferenceAdmissionPort` contract, Forum degraded-mode consumer profile, source
+policy markers, and conformance evidence registration.
+
+These commands are maintainer-run through repository CI; source presence alone does
+not promote Media to `transport_verified`.

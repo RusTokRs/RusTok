@@ -11,6 +11,7 @@ service MediaService {
   rpc GetImageDescriptor(ImageDescriptorRequest) returns (JsonResponse);
   rpc GetPublicImageAsset(ImageDescriptorRequest) returns (JsonResponse);
   rpc GetTranslations(IdRequest) returns (JsonResponse);
+  rpc AdmitReferences(JsonRequest) returns (JsonResponse);
   rpc PrepareUpload(JsonRequest) returns (JsonResponse);
   rpc CompleteUpload(IdRequest) returns (JsonResponse);
   rpc DeleteAsset(IdRequest) returns (EmptyResponse);

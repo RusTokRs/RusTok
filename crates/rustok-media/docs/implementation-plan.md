@@ -52,24 +52,27 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
 - Presigned S3 sessions persist tenant/actor, expected type/size, staging key, expiry, and completion.
 - Immutable recipes normalize orientation and apply bounded transforms/encoders through a bounded worker.
 - Media descriptors classify URLs as direct-public, proxy-required, or not-addressable.
+- `MediaReferenceAdmissionPort` is the bounded owner contract for durable cross-module Media references. It accepts at most 100 UUIDs, deduplicates them, requires the shared read/deadline policy, and returns only `{ media_id, tenant_id, referenceable }`. Missing assets, deleting/deleted/failed assets, non-ready/deleting blobs, and future unknown lifecycle states fail closed without exposing lifecycle strings or storage details.
+- Forum consumes that admission contract before attachment-relation persistence. Text-only Forum remains valid without Media; a non-empty attachment batch fails closed when the capability is unavailable or any asset is non-referenceable. `MediaAssetReadPort::get_asset` is explicitly not a substitute for this owner decision.
 - `MediaPublicImageReadPort` returns one owner result containing the canonical `MediaItem` and the descriptor selected by Media delivery policy.
 - `MediaPublicImageService` preserves direct-public descriptors, replaces storage-relative image paths with `/api/media/public/images/{id}/{active_blob_sha256}`, and drops opaque references.
 - The public image handler verifies tenant, active asset/blob, ready state, image MIME, checksum, object metadata size, and body size. It returns checksum ETag, one-year immutable cache semantics, content type/length, and `nosniff`.
 - Invalid id/checksum/tenant/lifecycle/state/MIME combinations are indistinguishable as not found; storage/database/invariant failures return static unavailable messages while details remain in logs.
 - Profiles consumes this owner surface for GraphQL and native storefront avatar/banner presentation and independently revalidates tenant, uploader, and image MIME.
-- `rustok-media-transport` now carries `MediaPublicImageAsset` through `GetPublicImageAsset` with deadline propagation, exact typed owner errors, trusted authority, and explicit operation authorization. Image bytes remain outside gRPC.
+- `rustok-media-transport` carries both `MediaReferenceAdmissionPort` and `MediaPublicImageAsset` through explicit gRPC operations with deadline propagation, exact typed owner errors, trusted authority, and operation-specific authorization. Image bytes remain outside gRPC.
 
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
-- Provider contracts: `MediaAssetReadPort`, `MediaPublicImageReadPort`, and `MediaAssetWritePort`.
-- Cross-module consumers receive typed descriptors and control operations, never object-store handles or storage keys.
+- Provider contracts: `MediaAssetReadPort`, `MediaReferenceAdmissionPort`, `MediaPublicImageReadPort`, and `MediaAssetWritePort`.
+- Cross-module consumers receive typed descriptors, bounded owner reference decisions, and control operations, never object-store handles, storage keys, or copied lifecycle state.
 - Local streaming REST and presigned object-store PUT are Media-owned binary transports. The public image capability GET is also Media-owned binary delivery; generic gRPC DTOs carry no bytes.
-- `rustok-media-transport` provides tonic client/server adapters for metadata, public descriptor selection, and write/control contracts.
+- `rustok-media-transport` provides tonic client/server adapters for metadata, bounded reference admission, public descriptor selection, and write/control contracts.
 - The public-image gRPC server requires explicit `with_public_image_provider(...)` configuration and a separate `MediaGrpcOperation::GetPublicImageAsset` grant. Generic asset-read authorization does not imply public URL selection.
-- Source-level embedded/loopback conformance now covers owner-selected capability descriptors, deadlines, deleted-state errors, and explicit trusted operation grants.
+- Reference admission uses its own `MediaGrpcOperation::AdmitReferences` grant. Generic asset-read authorization does not imply permission to obtain a durable-reference admission decision.
+- Source-level embedded/loopback conformance covers owner-selected capability descriptors, reference-admission active/missing/deleted semantics and deduplication, deadlines, deleted-state errors, and explicit trusted operation grants.
 - Remote byte delivery is not a gRPC concern. Extracted deployments still need a reachable Media HTTP ingress, public base routing when a shared relative ingress is unavailable, cache/conditional-GET evidence, mTLS, readiness, isolated database/storage, rollback, and performance evidence.
 - This addition does not promote Media beyond its current FBA status.
 
@@ -105,7 +108,7 @@ The database remains the index; consumers never derive or list these keys.
 2. **Completed — Media-owned persistence and lifecycle evidence.**
 3. **Implemented — immutable image renditions and bounded processing.**
 4. **Implemented — restart-safe reconciliation.**
-5. **Implemented — metadata/write extraction control-plane conformance; rerun evidence after lifecycle/receipt changes.**
+5. **Implemented — metadata/write extraction control-plane conformance plus bounded reference-admission parity; rerun evidence after lifecycle/receipt changes.**
 6. **Source-complete — public image capability and remote descriptor control plane.** Media owns descriptor selection and HTTP byte delivery; embedded and loopback gRPC providers expose the same `MediaPublicImageAsset`; Profiles consumes the owner result without constructing URLs. Compiled/runtime Local/S3, HTTP cache/conditional GET, deployment ingress, degradation, and production remote-provider evidence remain pending.
 
 ## Verification
@@ -123,8 +126,10 @@ The database remains the index; consumers never derive or list these keys.
   `DECISIONS/2026-07-16-media-search-extraction-boundaries.md`;
   `MediaAssetSummary` is the content-free read projection used by the FBA
   contract.
+- `cargo test -p rustok-media reference_admission`
 - `cargo test -p rustok-media --test public_image_proxy -- --nocapture`
 - `cargo test -p rustok-media-transport --test port_conformance -- --nocapture`
+- `node scripts/verify/verify-media-fba.mjs`
 - `node scripts/verify/verify-media-public-image-proxy.mjs`
 - `cargo test -p rustok-media`
 - `cargo test -p rustok-media-transport`
@@ -135,15 +140,16 @@ The database remains the index; consumers never derive or list these keys.
 - `npm run verify:media:fba`
 - `cargo test -p rustok-storage --all-features`
 
-These commands are maintainer-run and were not executed while publishing this slice. Required new evidence covers storage-relative descriptor issuance, direct-public preservation, wrong-checksum/cross-tenant masking, active/ready/image gates, object-body delivery, immutable cache/ETag, Profiles owner revalidation, embedded/loopback descriptor parity, and production Media HTTP reachability.
+These commands are maintainer-run and were not executed while publishing this slice. Required new evidence covers bounded reference admission, active/missing/deleted fail-closed parity, deduplication/deadline policy, storage-relative descriptor issuance, direct-public preservation, wrong-checksum/cross-tenant masking, active/ready/image gates, object-body delivery, immutable cache/ETag, Profiles owner revalidation, embedded/loopback descriptor parity, and production Media HTTP reachability.
 
 ## Change rules
 
-1. Media owns media metadata, lifecycle, public descriptor selection, and public byte delivery; `rustok-storage` owns none of those domain decisions.
+1. Media owns media metadata, lifecycle, durable-reference admission, public descriptor selection, and public byte delivery; `rustok-storage` owns none of those domain decisions.
 2. Never mutate an original or rendition object in place.
 3. Never query media by listing object-store folders.
 4. Never expose object keys through public capability paths or consumer DTOs.
-5. Consumers may apply their own relation policy to the returned `MediaItem`, but may not reconstruct a public URL.
-6. Never add image bytes to generic gRPC DTOs; extracted deployments route the returned descriptor to Media-owned HTTP delivery.
-7. Do not claim production public-image remote parity until the extracted deployment owns a reachable public URL/byte endpoint with retained cache, authority, readiness, and rollback evidence.
-8. Keep FFA/FBA status and central registry evidence synchronized with UI or transport-boundary changes.
+5. Consumers may apply their own relation policy to `MediaReferenceAdmission`, but may not infer durable-reference eligibility from `MediaItem` or reconstruct a public URL.
+6. Durable cross-module Media references must use the bounded owner admission contract and fail closed when it is unavailable or returns non-referenceable; consumers must not copy lifecycle/quarantine/deletion state.
+7. Never add image bytes to generic gRPC DTOs; extracted deployments route the returned descriptor to Media-owned HTTP delivery.
+8. Do not claim production public-image remote parity until the extracted deployment owns a reachable public URL/byte endpoint with retained cache, authority, readiness, and rollback evidence.
+9. Keep FFA/FBA status and central registry evidence synchronized with UI or transport-boundary changes.

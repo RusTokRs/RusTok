@@ -33,6 +33,16 @@ sameSet(port.operations, ['get_asset', 'list_assets', 'get_image_descriptor', 'g
 sameSet(port.read_operations, port.operations, 'read operations');
 if ((port.write_operations ?? []).length !== 0 || port.idempotency_required !== false) fail('media read port unexpectedly declares write semantics');
 if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('port context/error drift');
+const referencePort = registry.ports?.find((candidate) => candidate.name === 'MediaReferenceAdmissionPort');
+if (!referencePort || referencePort.contract_version !== 'media.reference_admission.v1') fail('reference admission port identity/version drift');
+sameSet(referencePort.operations, ['admit_references'], 'reference admission operations');
+sameSet(referencePort.read_operations, referencePort.operations, 'reference admission read operations');
+if ((referencePort.write_operations ?? []).length !== 0 || referencePort.idempotency_required !== false || referencePort.deadline_required !== true) fail('reference admission policy drift');
+if (referencePort.context !== 'rustok_api::ports::PortContext' || referencePort.error !== 'rustok_api::ports::PortError') fail('reference admission context/error drift');
+if (referencePort.semantics?.batch_limit !== 100 || referencePort.semantics?.missing_asset !== 'referenceable_false' || referencePort.semantics?.unknown_lifecycle !== 'fail_closed' || referencePort.semantics?.lifecycle_detail_visibility !== 'owner_private') fail('reference admission semantics drift');
+const forumConsumer = registry.consumers?.find((candidate) => candidate.module === 'forum' && candidate.profile === 'forum_attachment_reference_admission');
+if (!forumConsumer) fail('Forum reference-admission consumer profile missing');
+sameSet(forumConsumer.degraded_modes, ['text_only_when_media_unavailable', 'reject_nonempty_attachment_batch_without_media'], 'Forum reference-admission degraded modes');
 const writePort = registry.ports?.find((candidate) => candidate.name === 'MediaAssetWritePort');
 if (!writePort || writePort.contract_version !== 'media.asset_write.v1') fail('write port identity/version drift');
 sameSet(writePort.operations, ['prepare_upload', 'complete_upload', 'delete_asset', 'upsert_translation', 'reconcile_storage'], 'write port operations');
@@ -44,10 +54,12 @@ const manifest = read('crates/rustok-media/rustok-module.toml');
 hasAll(manifest, ['[fba.provider]', 'registry = "contracts/media-fba-registry.json"', 'contract_version = "media.asset_read.v1"'], 'manifest');
 
 const lib = read('crates/rustok-media/src/lib.rs');
-hasAll(lib, ['pub mod ports;', 'pub use ports::*;'], 'lib.rs');
+hasAll(lib, ['pub mod ports;', 'pub use ports::*;', 'pub mod reference_admission;', 'pub use reference_admission::*;'], 'lib.rs');
 const ports = read('crates/rustok-media/src/ports.rs');
+const referenceAdmission = read('crates/rustok-media/src/reference_admission.rs');
 const dto = read('crates/rustok-media/src/dto.rs');
 hasAll(ports, ['pub trait MediaAssetReadPort', 'impl MediaAssetReadPort for MediaService', 'pub trait MediaAssetWritePort', 'impl MediaAssetWritePort for MediaService', 'MediaImageDescriptor', 'MediaUploadRequest', 'MEDIA_OWNER_STREAMING_UPLOAD_PATH', 'PortContext', 'PortError'], 'ports.rs');
+hasAll(referenceAdmission, ['pub trait MediaReferenceAdmissionPort', 'impl MediaReferenceAdmissionPort for MediaService', 'async fn admit_references', 'MAX_MEDIA_REFERENCE_ADMISSION_IDS', 'context.require_policy(PortCallPolicy::read())?', 'AssetState::Active.as_str()', 'BlobState::Ready.as_str()', 'referenceable'], 'reference_admission.rs');
 const implStart = ports.indexOf('impl MediaAssetReadPort for MediaService');
 if (implStart === -1) fail('ports.rs missing MediaService impl');
 const implPorts = ports.slice(implStart);
@@ -83,6 +95,9 @@ sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(
 if (registry.contract_tests.status !== 'runtime_verified' || registry.contract_tests.runner !== 'cargo test -p rustok-media-transport --test port_conformance') fail('runtime conformance evidence drift');
 sameSet(registry.contract_tests.profiles, ['in_process', 'loopback_grpc'], 'runtime conformance profiles');
 for (const testCase of evidence.cases) if (testCase.runtime_evidence !== 'crates/rustok-media-transport/tests/port_conformance.rs') fail(`${testCase.operation} runtime evidence drift`);
+const referenceEvidence = evidence.cases.find((testCase) => testCase.operation === 'admit_references');
+if (!referenceEvidence) fail('reference admission runtime evidence missing');
+sameSet(referenceEvidence.assertions, ['context_deadline_preserved', 'batch_deduplication_preserved', 'missing_and_deleted_fail_closed', 'lifecycle_details_not_exposed'], 'reference admission evidence assertions');
 sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'fallback profiles');
 sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'degraded modes');
 if (registry.contract_tests.fallback_smoke.status !== 'source_locked' || evidence.fallback_smoke.status !== 'source_locked') fail('fallback smoke status is not source_locked');
@@ -109,7 +124,7 @@ if (!ports.includes('media.invalid_tenant_id')) fail('ports.rs missing invalid t
 if (!ports.includes('fn require_media_read_policy') || !ports.includes('context.require_policy(PortCallPolicy::read())')) fail('ports.rs missing explicit media read policy guard helper');
 
 const plan = read('crates/rustok-media/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `boundary_ready`', 'media-fba-registry.json', 'MediaAssetReadPort', 'MediaAssetWritePort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json', 'public URL policy', 'MediaAssetSummary', 'whole-module extraction pilot', '2026-07-16-media-search-extraction-boundaries.md'], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'media-fba-registry.json', 'MediaAssetReadPort', 'MediaReferenceAdmissionPort', 'MediaAssetWritePort', 'media-contract-test-static-matrix.json', 'media-runtime-fallback-smoke.json', 'media-port-error-matrix.json', 'public URL policy', 'MediaAssetSummary', 'whole-module extraction pilot', '2026-07-16-media-search-extraction-boundaries.md'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `media` |', 'MediaAssetWritePort', 'streaming REST', 'crates/rustok-media/contracts/media-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');

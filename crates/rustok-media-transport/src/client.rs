@@ -5,8 +5,8 @@ use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_media::{
     MediaAssetReadPort, MediaAssetWritePort, MediaImageDescriptor, MediaItem,
     MediaPublicImageAsset, MediaPublicImageReadPort, MediaReconciliationReport,
-    MediaReconciliationRequest, MediaTranslationItem, MediaUploadRequest, MediaUploadTarget,
-    UpsertTranslationInput,
+    MediaReconciliationRequest, MediaReferenceAdmission, MediaReferenceAdmissionPort,
+    MediaTranslationItem, MediaUploadRequest, MediaUploadTarget, UpsertTranslationInput,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
@@ -118,6 +118,28 @@ impl MediaAssetReadPort for GrpcMediaProvider {
             .client
             .clone()
             .get_translations(with_deadline(payload, &context))
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+}
+
+#[async_trait]
+impl MediaReferenceAdmissionPort for GrpcMediaProvider {
+    async fn admit_references(
+        &self,
+        context: PortContext,
+        media_ids: Vec<Uuid>,
+    ) -> Result<Vec<MediaReferenceAdmission>, PortError> {
+        let payload = JsonRequest {
+            context_json: encode(&context)?,
+            input_json: encode(&media_ids)?,
+        };
+        let response = self
+            .client
+            .clone()
+            .admit_references(with_deadline(payload, &context))
             .await
             .map_err(status_to_port_error)?
             .into_inner();

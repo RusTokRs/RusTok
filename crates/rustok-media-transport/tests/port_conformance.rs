@@ -4,8 +4,8 @@ use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_media::{
     MediaAssetReadPort, MediaAssetWritePort, MediaPublicImageReadPort, MediaPublicImageService,
-    MediaReconciliationRequest, MediaService, MediaUploadRequest, MediaUploadTransport,
-    UploadInput, UpsertTranslationInput, migrations,
+    MediaReconciliationRequest, MediaReferenceAdmissionPort, MediaService, MediaUploadRequest,
+    MediaUploadTransport, UploadInput, UpsertTranslationInput, migrations,
 };
 use rustok_media_transport::{
     GrpcMediaProvider, MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority,
@@ -111,6 +111,7 @@ fn png_upload(tenant_id: Uuid, name: &str) -> UploadInput {
 
 async fn exercise_provider(
     read: &dyn MediaAssetReadPort,
+    reference_admission: &dyn MediaReferenceAdmissionPort,
     public_images: &dyn MediaPublicImageReadPort,
     write: &dyn MediaAssetWritePort,
     tenant_id: Uuid,
@@ -123,6 +124,22 @@ async fn exercise_provider(
     assert_eq!(item.id, asset_id);
     assert_eq!(item.tenant_id, tenant_id);
     assert_eq!(item.mime_type, "image/png");
+
+    let missing_id = Uuid::new_v4();
+    let admissions = reference_admission
+        .admit_references(
+            read_context(tenant_id),
+            vec![asset_id, missing_id, asset_id],
+        )
+        .await
+        .expect("reference admission should preserve the owner DTO");
+    assert_eq!(admissions.len(), 2, "duplicate ids should be normalized once");
+    assert_eq!(admissions[0].media_id, asset_id);
+    assert_eq!(admissions[0].tenant_id, tenant_id);
+    assert!(admissions[0].referenceable);
+    assert_eq!(admissions[1].media_id, missing_id);
+    assert_eq!(admissions[1].tenant_id, tenant_id);
+    assert!(!admissions[1].referenceable);
 
     let (items, total) = read
         .list_assets(read_context(tenant_id), 100, 0)
@@ -268,6 +285,12 @@ async fn exercise_provider(
         .expect_err("deadline policy should cross the provider boundary");
     assert_eq!(policy_error.kind, PortErrorKind::Timeout);
     assert_eq!(policy_error.code, "port.deadline_required");
+    let admission_policy_error = reference_admission
+        .admit_references(missing_deadline.clone(), vec![asset_id])
+        .await
+        .expect_err("reference-admission deadline policy should cross the provider boundary");
+    assert_eq!(admission_policy_error.kind, PortErrorKind::Timeout);
+    assert_eq!(admission_policy_error.code, "port.deadline_required");
     let public_policy_error = public_images
         .get_public_image_asset(missing_deadline, asset_id, None)
         .await
@@ -285,6 +308,13 @@ async fn exercise_provider(
         .expect_err("deleted asset should retain typed not-found semantics");
     assert_eq!(deleted.kind, PortErrorKind::NotFound);
     assert_eq!(deleted.code, "media.not_found");
+    let deleted_admission = reference_admission
+        .admit_references(read_context(tenant_id), vec![asset_id])
+        .await
+        .expect("deleted reference admission should fail closed without leaking lifecycle");
+    assert_eq!(deleted_admission.len(), 1);
+    assert_eq!(deleted_admission[0].media_id, asset_id);
+    assert!(!deleted_admission[0].referenceable);
     let deleted_public = public_images
         .get_public_image_asset(read_context(tenant_id), asset_id, None)
         .await
@@ -304,6 +334,7 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         .await
         .expect("embedded asset should upload");
     exercise_provider(
+        service.as_ref(),
         service.as_ref(),
         public_images.as_ref(),
         service.as_ref(),
@@ -330,6 +361,7 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         MediaGrpcOperation::GetImageDescriptor,
         MediaGrpcOperation::GetPublicImageAsset,
         MediaGrpcOperation::GetTranslations,
+        MediaGrpcOperation::AdmitReferences,
         MediaGrpcOperation::PrepareUpload,
         MediaGrpcOperation::CompleteUpload,
         MediaGrpcOperation::DeleteAsset,
@@ -364,7 +396,15 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         .upload(png_upload(tenant_id, "remote.png"))
         .await
         .expect("remote asset should upload through the Media-owned binary path");
-    exercise_provider(&remote, &remote, &remote, tenant_id, remote_asset.id).await;
+    exercise_provider(
+        &remote,
+        &remote,
+        &remote,
+        &remote,
+        tenant_id,
+        remote_asset.id,
+    )
+    .await;
 
     let _ = shutdown_tx.send(());
     server.await.expect("loopback server task should stop");

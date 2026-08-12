@@ -4,7 +4,7 @@ use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_media::{
     MediaAssetReadPort, MediaAssetWritePort, MediaPublicImageReadPort, MediaReconciliationRequest,
-    MediaUploadRequest, UpsertTranslationInput,
+    MediaReferenceAdmissionPort, MediaUploadRequest, UpsertTranslationInput,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::{Code, Request, Response, Status};
@@ -47,6 +47,7 @@ pub enum MediaGrpcOperation {
     GetImageDescriptor,
     GetPublicImageAsset,
     GetTranslations,
+    AdmitReferences,
     PrepareUpload,
     CompleteUpload,
     DeleteAsset,
@@ -113,7 +114,7 @@ impl<P> MediaGrpcService<P> {
 #[tonic::async_trait]
 impl<P> MediaService for MediaGrpcService<P>
 where
-    P: MediaAssetReadPort + MediaAssetWritePort + 'static,
+    P: MediaAssetReadPort + MediaReferenceAdmissionPort + MediaAssetWritePort + 'static,
 {
     async fn get_asset(
         &self,
@@ -205,6 +206,25 @@ where
         let value = self
             .provider
             .get_translations(context, parse_id(&request.id)?)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn admit_references(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            MediaGrpcOperation::AdmitReferences,
+        )?;
+        let request = request.into_inner();
+        let media_ids: Vec<Uuid> = decode_input(&request.input_json)?;
+        let value = self
+            .provider
+            .admit_references(context, media_ids)
             .await
             .map_err(port_error_to_status)?;
         json_response(&value)

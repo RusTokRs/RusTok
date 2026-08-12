@@ -5,7 +5,7 @@ language: en
 status: active
 owners:
   - rustok-forum
-last_reviewed: 2026-08-11
+last_reviewed: 2026-08-12
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -174,6 +174,15 @@ Translation, SEO, Search/Index, Outbox/Events, Taxonomy, Workflow, Comments,
 Groups and Channel are separate platform capabilities. New Forum work must
 integrate them instead of cloning their data models.
 
+FORUM-14 now has two source-ready admission layers: the existing pure Forum
+attachment relation preparer and a bounded Media-owned reference-admission gate.
+`MediaReferenceAdmissionPort` exposes only the owner decision required for a
+durable cross-module reference and fails closed for missing/non-active/non-ready
+or future unknown lifecycle states. Forum upgrades a prepared batch to
+`ForumMediaAdmittedAttachmentRelationBatch` only after one deduplicated owner
+call. Attachment persistence, owner command transports, read hydration, UI,
+reconciliation and retained runtime evidence remain open.
+
 The Reactions owner now has neutral bounded API contracts, unique source
 provider/factory registries, PostgreSQL/SQLite-compatible tenant-composite
 persistence, immutable catalog snapshots, shared Outbox command receipts,
@@ -259,8 +268,8 @@ remain pending.
 | `FORUM-11` | `done` | Subscription levels and participation policy. |
 | `FORUM-12` | `in_progress` | Mention/quote relations and notification source exist. Runtime execution, profile/block privacy, moderator audience and final Notifications evidence remain. |
 | `FORUM-13` | `in_progress` | Optional Media presentation policy exists. Add typed category-cover owner command, transports, UI and runtime evidence; Media keeps lifecycle ownership. |
-| `FORUM-14` | `planned` | Forum attachment relations over Media-owned sessions/assets; no upload or asset lifecycle in Forum. |
-| `FORUM-15` | `in_progress` | Profiles supplies `ProfilesReader`. Finish member-card composition, privacy/block behavior, Forum-stat enrichment and no-N+1 evidence. |
+| `FORUM-14` | `in_progress` | Structural Forum attachment admission plus bounded Media-owned reference-admission and embedded/gRPC parity are source-ready. Add Forum relation persistence requiring the Media-admitted wrapper, owner command/read transports, UI, reconciliation and retained runtime evidence; Forum never owns upload/blob/lifecycle state. |
+| `FORUM-15` | `in_progress` | Profiles-backed member-card owner composition, privacy admission, bounded Forum-stat enrichment, storefront transport and storefront rendering are source-ready. Add owner-safe Media avatar presentation and retain browser/query-count evidence; Forum must not copy Profile source data. |
 | `FORUM-16` | `in_progress` | Read state, unread projections, bounded bulk owners and transports exist. Visibility-scoped storefront bulk commands and PostgreSQL evidence remain. |
 | `FORUM-17` | `planned` | Forum drafts/bookmarks with optional Notifications reminders and Media references. |
 | `FORUM-18` | `in_progress` | Neutral API, optional owner registration/selection, tenant-composite persistence, shared receipts, atomic actor aggregates, semantic reaction events, bounded aggregate reconciliation, Forum topic/reply provider, Blog second producer, host materialization, composition-test source, bounded Reactions GraphQL transport, separate module-owned Reactions storefront controls, dual-path generic visibility-gated Forum topic/reply current-revision transport, bounded selected-topic/selected-reply host UI composition and Rust Playwright browser-evidence source are ready. Retain the browser execution plus event-digest, owner/event/repair/Forum+Blog/GraphQL/UI/runtime evidence and release lockfile verification; Forum votes remain separate and no reaction ownership moves into Forum. |
@@ -279,7 +288,7 @@ remain pending.
 | `FORUM-31` | `planned` | Complete Forum storefront by composing Profiles, Media, Reactions, Notifications and Search. |
 | `FORUM-32` | `in_progress` | Generated Forum Fly blocks/renderers/property contracts, Forum-owned preview service/HTTP/native transport, provider-neutral Pages host composition and owner-backed schema/validation property editing are source-ready. Retained runtime/browser evidence and observed Page Builder Wave evidence remain. |
 | `FORUM-33` | `in_progress` | Bounded snapshot-consistent owner counter and accepted-solution reconciliation with independent keyset cursors, strict operator GraphQL/owner admission and baseline platform telemetry are source-ready. Retain SQLite/PostgreSQL execution evidence and add subscriptions/mentions/attachments/permitted shared-owner reconciliation plus remaining metrics. Multi-page scans use page-local snapshots; repair remains blocked on dry-run/audit/idempotent job state and CLI integration awaits a synchronized dependency/lock update. |
-| `FORUM-34` | `planned` | Forum import/export adapter and NodeBB mapping over a shared runner. |
+| `FORUM-34` | `in_progress` | FORUM-34A through 34Q provide bounded NodeBB mapping/inspection, application resolution, owner-write preparation, relation admission/persistence, atomic live/deleted reply application and owner export source. A genuinely shared durable owner-data migration runner with cross-batch checkpoint/replay/operator execution remains open; do not create a Forum-local substitute. |
 | `NOTIFY-00` | `in_progress` | Neutral API/runtime composition and Forum providers exist; executable distribution evidence remains. |
 | `NOTIFY-01` | `in_progress` | Persistence/source inbox exist; final commands, migrations, retention and reconciliation remain. |
 | `NOTIFY-02` | `planned` | Preferences, quiet hours and digests. |
@@ -304,6 +313,12 @@ Media owns upload, blobs, MIME, dimensions, renditions, quarantine, deletion,
 delivery and reconciliation. Forum stores only typed tenant-scoped relations,
 Forum usage/order/caption and source revision. Text-only Forum remains available
 when Media is disabled.
+
+Persistent attachment commands must cross `MediaReferenceAdmissionPort` and may
+only consume its bounded owner decision. Forum must not infer persistence safety
+from `get_asset`, expose copied lifecycle state or bypass the Media-admitted batch
+wrapper. Missing/non-referenceable/unknown owner states fail closed before Forum
+relation persistence.
 
 ### `FORUM-15`/`FORUM-27`: Profiles
 
@@ -757,10 +772,11 @@ Hosts register/mount packages and do not absorb policy.
 
 ### Track 3 — Profiles/Media and Forum product
 
-1. Category cover and attachment relations over Media.
-2. Batched Profiles member composition.
-3. Topic kinds, drafts/bookmarks, read-state bulk completion and trust enforcement.
-4. Full admin/storefront assembly and release integrations.
+1. Persist FORUM-14 attachment relations only from the Media-admitted wrapper, then add command/read transports and hydration.
+2. Finish FORUM-13 category-cover owner command and owner-safe Media presentation.
+3. Finish FORUM-15 owner-safe avatar presentation and retain member-card browser/query-count evidence.
+4. Topic kinds, drafts/bookmarks, read-state bulk completion and trust enforcement.
+5. Full admin/storefront assembly and release integrations.
 
 ### Track 4 — Forum Page Builder contribution continuation
 
@@ -775,6 +791,11 @@ Hosts register/mount packages and do not absorb policy.
 - Existing Forum votes remain source-compatible. Do not reinterpret them as
   reactions without explicit semantic mapping and migration.
 - Forum statistics are projections, not a reputation ledger.
+- Forum attachment persistence must require Media-owned reference admission.
+  `MediaAssetReadPort::get_asset` is not a substitute for the dedicated owner
+  decision, and Forum must not store copied Media lifecycle/quarantine/deletion
+  state. Empty/text-only batches remain valid without Media; non-empty batches
+  fail closed when the capability is absent or any asset is non-referenceable.
 - Forum reconciliation is read-only in FORUM-33A/B/C. Counter, accepted-solution
   and solution-stat traversal use independent strict UUID keyset cursors and
   page-local snapshots; they must not be treated as a cross-request serializable
@@ -910,6 +931,9 @@ Hosts register/mount packages and do not absorb policy.
 ## Verification
 
 ```bash
+cargo test -p rustok-media reference_admission
+cargo test -p rustok-media-transport --test port_conformance
+cargo test -p rustok-forum attachment_relation
 node scripts/verify/verify-forum-counter-reconciliation-source.mjs
 node scripts/verify/verify-forum-page-builder-contribution-metadata.mjs
 node scripts/verify/verify-forum-shared-capability-ownership.mjs
@@ -988,6 +1012,23 @@ runtime claims without retained executable evidence.
 7. Search, SEO, Translation, Outbox/Events and realtime remain shared.
 
 ## Immediate next action
+
+For FORUM-14, implement Forum-owned attachment relation persistence only from
+`ForumMediaAdmittedAttachmentRelationBatch`. Recheck target/source-revision
+concurrency inside the Forum owner transaction and keep usage/order/caption/source
+revision authoritative in Forum. Then add command/read transports, Media-backed
+read hydration, module UI, reconciliation and retained runtime evidence. Do not
+reintroduce raw `get_asset` lifecycle inference or Forum-owned Media state.
+
+For FORUM-15, continue with owner-safe avatar presentation through Profiles/Media
+public presentation contracts and retain browser/query-count evidence for the
+already source-ready member-card owner service, privacy gate, bounded stats,
+storefront transport and rendering.
+
+For FORUM-34, recheck for a genuinely shared durable owner-data migration runner
+before adding checkpoint/replay/operator execution. FORUM-34A through 34Q are
+source-ready; do not create a Forum-local journal to fabricate shared-runner
+semantics.
 
 For FORUM-32, retain browser/runtime evidence for Forum-enabled Pages block
 insertion, owner schema loading, invalid diagnostics, owner-normalized `props`,
