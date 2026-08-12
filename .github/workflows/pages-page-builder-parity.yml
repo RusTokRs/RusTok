@@ -14,10 +14,14 @@ on:
       - "crates/rustok-page-builder/admin/src/editor/**"
       - "crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
       - "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json"
+      - "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json"
       - "apps/next-admin/playwright.page-builder-accessibility.config.ts"
       - "apps/next-admin/tests/page-builder-accessibility/**"
+      - "scripts/evidence/verify-page-builder-accessibility-browser-packet.mjs"
+      - "scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs"
       - "scripts/verify/verify-page-builder-admin-accessibility.mjs"
       - "scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs"
+      - "scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs"
       - "scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs"
       - "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
   pull_request:
@@ -33,10 +37,14 @@ on:
       - "crates/rustok-page-builder/admin/src/editor/**"
       - "crates/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
       - "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json"
+      - "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json"
       - "apps/next-admin/playwright.page-builder-accessibility.config.ts"
       - "apps/next-admin/tests/page-builder-accessibility/**"
+      - "scripts/evidence/verify-page-builder-accessibility-browser-packet.mjs"
+      - "scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs"
       - "scripts/verify/verify-page-builder-admin-accessibility.mjs"
       - "scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs"
+      - "scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs"
       - "scripts/verify/verify-pages-page-builder-accessibility-plan-sync.mjs"
       - "crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs"
   workflow_dispatch:
@@ -58,6 +66,10 @@ jobs:
         run: node scripts/verify/verify-page-builder-admin-accessibility.mjs
       - name: Verify generic editor accessibility browser evidence harness
         run: node scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs
+      - name: Verify generic editor accessibility browser packet verifier
+        run: node scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs
+      - name: Exercise generic editor accessibility browser packet verifier
+        run: node scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs
       - name: Verify Pages and Page Builder plan parity
         run: node crates/rustok-page-builder/scripts/verify/verify-pages-page-builder-plan-parity.mjs
       - name: Verify accessibility plan synchronization

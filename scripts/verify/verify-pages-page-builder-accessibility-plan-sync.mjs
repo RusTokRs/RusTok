@@ -18,6 +18,14 @@ const paths = {
     "scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs",
   accessibilityBrowserContract:
     "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-execution-contract.json",
+  accessibilityPacketVerifierContract:
+    "crates/rustok-page-builder/contracts/evidence/page-builder-generic-accessibility-browser-packet-verifier-source.json",
+  accessibilityPacketVerifierRunner:
+    "scripts/evidence/verify-page-builder-accessibility-browser-packet.mjs",
+  accessibilityPacketVerifierTest:
+    "scripts/evidence/verify-page-builder-accessibility-browser-packet.test.mjs",
+  accessibilityPacketVerifierGuard:
+    "scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs",
 };
 
 const failures = [];
@@ -52,6 +60,10 @@ const accessibilityActualization = read(paths.accessibilityActualization);
 const accessibilityGuard = read(paths.accessibilityGuard);
 const accessibilityBrowserGuard = read(paths.accessibilityBrowserGuard);
 const accessibilityBrowserContract = read(paths.accessibilityBrowserContract);
+const accessibilityPacketVerifierContract = read(paths.accessibilityPacketVerifierContract);
+const accessibilityPacketVerifierRunner = read(paths.accessibilityPacketVerifierRunner);
+const accessibilityPacketVerifierTest = read(paths.accessibilityPacketVerifierTest);
+const accessibilityPacketVerifierGuard = read(paths.accessibilityPacketVerifierGuard);
 
 for (const marker of [
   "Date: 2026-08-12",
@@ -98,15 +110,26 @@ for (const marker of [
   "generic-editor-accessibility-source-ready",
   "focused-ci-gate-ready",
   "generic-accessibility-browser-harness-source-ready",
+  "generic-accessibility-browser-packet-verifier-source-ready",
   "browser-accessibility-evidence-pending",
+  "main@21004ce4d5fe9d63e804319eae5dc3b0e8f9c5b5",
   "PR #3444",
   "PR #3453",
+  "PR #3456",
   ".github/workflows/pages-page-builder-parity.yml",
   paths.accessibilityBrowserGuard,
   paths.accessibilityBrowserContract,
+  paths.accessibilityPacketVerifierContract,
+  paths.accessibilityPacketVerifierRunner,
+  paths.accessibilityPacketVerifierTest,
+  paths.accessibilityPacketVerifierGuard,
+  "browser_packet_verified_owner_review_ready_screen_reader_pending",
   "maintainer browser execution pending",
-  "screen-reader execution remains pending",
-  "WCAG conformance remains unclaimed",
+  "owner_review_required = true",
+  "deployment_provenance_verified_by_this_packet = false",
+  "screen_reader_execution_pending = true",
+  "wcag_conformance_not_claimed = true",
+  "synthetic test creates no deployment claim",
 ]) requireText(actualization, marker, paths.actualization);
 
 for (const marker of [
@@ -137,6 +160,65 @@ for (const marker of [
   '"screen-reader execution"',
   '"WCAG conformance"',
 ]) requireText(accessibilityBrowserContract, marker, paths.accessibilityBrowserContract);
+
+for (const marker of [
+  '"format": "page_builder_generic_accessibility_browser_packet_verifier_source_v1"',
+  '"status": "source_ready_maintainer_execution_pending"',
+  '"required_format": "page_builder_generic_accessibility_browser_execution_v1"',
+  '"source_commit_must_equal_checkout_head": true',
+  '"packet_deployment_digest_must_equal_expected": true',
+  '"retained_source_hashes_must_match_contract_and_checkout": true',
+  '"privacy_non_claim_flags_must_remain_fail_closed": true',
+  '"format": "page_builder_generic_accessibility_browser_packet_verification_v1"',
+  '"status": "browser_packet_verified_owner_review_ready_screen_reader_pending"',
+  '"screen-reader execution"',
+  '"WCAG conformance"',
+]) requireText(
+  accessibilityPacketVerifierContract,
+  marker,
+  paths.accessibilityPacketVerifierContract,
+);
+
+for (const marker of [
+  'execFileSync("git", ["rev-parse", "HEAD"]',
+  '"--expected-source"',
+  '"--expected-deployment-digest"',
+  "retained source hash does not match checkout",
+  "owner_review_required: true",
+  "deployment_provenance_verified_by_this_packet: false",
+  "screen_reader_execution_pending: true",
+  "wcag_conformance_not_claimed: true",
+]) requireText(
+  accessibilityPacketVerifierRunner,
+  marker,
+  paths.accessibilityPacketVerifierRunner,
+);
+
+for (const marker of [
+  'requireSuccess("valid"',
+  'requireFailure("source-tamper"',
+  'requireFailure("screen-reader-overclaim"',
+  'requireFailure("wcag-overclaim"',
+  'requireFailure("missing-fact"',
+  'requireFailure("retained-data-drift"',
+  '"digest-mismatch"',
+  "PASS cases=7",
+]) requireText(
+  accessibilityPacketVerifierTest,
+  marker,
+  paths.accessibilityPacketVerifierTest,
+);
+
+for (const marker of [
+  paths.accessibilityPacketVerifierContract,
+  paths.accessibilityPacketVerifierRunner,
+  paths.accessibilityPacketVerifierTest,
+  "source_ready=true execution=pending owner_review=pending screen_reader=pending",
+]) requireText(
+  accessibilityPacketVerifierGuard,
+  marker,
+  paths.accessibilityPacketVerifierGuard,
+);
 
 if (failures.length > 0) {
   console.error("Pages/Page Builder accessibility plan sync verification failed:");
