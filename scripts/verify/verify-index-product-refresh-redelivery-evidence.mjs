@@ -17,13 +17,15 @@ const requireMarker = (source, marker, label) => {
 const harnessPath = 'apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs';
 const contractPath = 'crates/rustok-index/contracts/evidence/product-refresh-postgres-iggy-source.json';
 const guidePath = 'crates/rustok-index/docs/m5-product-refresh-postgres-iggy-redelivery-evidence.md';
+const runnerPath = '.github/workflows/index-product-refresh-redelivery-evidence.yml';
 const harness = read(harnessPath);
 const contract = JSON.parse(read(contractPath));
 const guide = read(guidePath);
 const host = read('apps/server/src/services/product_index_refresh_worker.rs');
 const bridge = read('crates/rustok-distribution/src/product_index/refresh_event.rs');
 const genericWorker = read('crates/rustok-index/src/application/source_refresh_event.rs');
-const workflow = read('.github/workflows/index-contract-ci.yml');
+const sourceWorkflow = read('.github/workflows/index-contract-ci.yml');
+const runner = read(runnerPath);
 
 if (contract.status !== 'source_ready_maintainer_execution_pending') {
   fail(`machine contract status must remain source_ready_maintainer_execution_pending, got ${contract.status}`);
@@ -33,6 +35,9 @@ if (contract.evidence_status !== 'runtime_execution_pending') {
 }
 if (contract.test !== harnessPath || contract.verifier !== 'scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs') {
   fail('machine contract source paths do not match the executable evidence boundary');
+}
+if (contract.manual_workflow !== runnerPath || contract.manual_confirmation !== 'execute') {
+  fail('machine contract does not pin the manual external evidence runner');
 }
 if (contract.database_url_fallback !== null) {
   fail('Product refresh evidence must not admit a generic database URL fallback');
@@ -95,6 +100,8 @@ for (const marker of [
   'IndexReplayMutationOutcome::Duplicate',
   'SourceVersionBehind',
   'runtime claim remains pending',
+  'index-product-refresh-redelivery-evidence.yml',
+  'manual workflow source is not runtime evidence',
 ]) {
   requireMarker(guide, marker, 'Product refresh evidence guide');
 }
@@ -140,8 +147,50 @@ for (const marker of [
   'verify-index-product-refresh-redelivery-evidence.mjs',
   'apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs',
   'cargo check --locked -p rustok-server --no-default-features --features mod-product --test product_index_refresh_redelivery_postgres_iggy',
+  '".github/workflows/index-product-refresh-redelivery-evidence.yml"',
 ]) {
-  requireMarker(workflow, marker, 'Index Contract CI evidence admission');
+  requireMarker(sourceWorkflow, marker, 'Index Contract CI evidence admission');
 }
 
-console.log('[verify-index-product-refresh-redelivery-evidence] Product refresh PostgreSQL/Iggy redelivery evidence source verified');
+for (const marker of [
+  'name: Index Product Refresh Redelivery Evidence',
+  'workflow_dispatch:',
+  'confirmation:',
+  '"execute"',
+  'permissions:',
+  'contents: read',
+  'persist-credentials: false',
+  'cancel-in-progress: false',
+  'RUSTOK_INDEX_PRODUCT_REFRESH_TEST_DATABASE_URL: ${{ secrets.RUSTOK_INDEX_PRODUCT_REFRESH_TEST_DATABASE_URL }}',
+  'RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_ADDRESS: ${{ secrets.RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_ADDRESS }}',
+  'RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_USERNAME: ${{ secrets.RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_USERNAME }}',
+  'RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD: ${{ secrets.RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD }}',
+  'if [[ "${{ inputs.confirmation }}" != "execute" ]]; then',
+  'RUSTOK_INDEX_PRODUCT_REFRESH_TEST_DATABASE_URL secret is required.',
+  'RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_ADDRESS secret is required.',
+  'Iggy username/password must either both be configured or both be omitted.',
+  'node scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs',
+  'cargo test --locked -p rustok-server',
+  '--no-default-features --features mod-product',
+  '--test product_index_refresh_redelivery_postgres_iggy',
+  '-- --nocapture --test-threads=1',
+]) {
+  requireMarker(runner, marker, 'manual Product refresh PostgreSQL/Iggy evidence runner');
+}
+
+for (const forbidden of [
+  'pull_request:',
+  'push:',
+  'contents: write',
+  'pull-requests: write',
+  'persist-credentials: true',
+  'RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED',
+  'DATABASE_URL:',
+  '127.0.0.1:8090',
+]) {
+  if (runner.includes(forbidden)) {
+    fail(`manual evidence runner contains forbidden automatic/fallback marker: ${forbidden}`);
+  }
+}
+
+console.log('[verify-index-product-refresh-redelivery-evidence] Product refresh PostgreSQL/Iggy redelivery evidence source and manual runner verified');
