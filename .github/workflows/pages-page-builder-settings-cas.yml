@@ -1,0 +1,34 @@
+name: Pages Page Builder Settings CAS
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-modules/src/operation_store.rs"
+      - ".github/workflows/pages-page-builder-settings-cas.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-page-builder-settings-cas-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  settings-cas:
+    name: Atomic module settings CAS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-page-builder-settings-cas
+      - name: Check rustok-modules formatting
+        run: cargo fmt -p rustok-modules -- --check
+      - name: Run module settings persistence and CAS tests
+        if: ${{ !cancelled() }}
+        run: cargo test -p rustok-modules --lib settings_
