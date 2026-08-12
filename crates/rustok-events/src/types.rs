@@ -778,7 +778,7 @@ pub enum DomainEvent {
         role_set_digest: Option<String>,
         completion_digest: String,
     },
-    ModuleStaticDistributionReleaseActivated {
+    ModuleStaticDistributionReleaseAdmitted {
         distribution_release_id: Uuid,
         predecessor_release_id: Option<Uuid>,
         distribution_build_id: Uuid,
@@ -789,14 +789,11 @@ pub enum DomainEvent {
         role_set_digest: String,
         policy_revision: String,
     },
-    ModuleStaticDistributionRollbackBuildQueued {
-        rollback_id: Uuid,
-        from_release_id: Uuid,
-        target_release_id: Uuid,
-        distribution_build_id: Uuid,
-        composition_revision: u64,
-        composition_digest: String,
-        policy_revision: String,
+    ModuleStaticDistributionReleaseActivated {
+        distribution_release_id: Uuid,
+        predecessor_release_id: Option<Uuid>,
+        rollout_id: Uuid,
+        release_state_revision: u64,
     },
     ModuleStaticDistributionReleaseRevoked {
         distribution_release_id: Uuid,
@@ -820,11 +817,29 @@ pub enum DomainEvent {
         target_assignments: u32,
         executor_mode: String,
     },
+    ModuleStaticDistributionRecoveryRequested {
+        rollout_id: Uuid,
+        predecessor_rollout_id: Uuid,
+        from_release_id: Uuid,
+        target_release_id: Uuid,
+        rollout_revision: u64,
+        rollout_state_revision: u64,
+        topology_digest: String,
+        policy_revision: String,
+        reason: String,
+    },
+    ModuleStaticDistributionRecoveryConverged {
+        rollout_id: Uuid,
+        from_release_id: Uuid,
+        target_release_id: Uuid,
+        release_state_revision: u64,
+        rollout_state_revision: u64,
+    },
     ModuleStaticDistributionAssignmentObserved {
         rollout_id: Uuid,
         node_id: String,
         role: String,
-        artifact_digest: String,
+        candidate_artifact_digest: String,
         reporter_id: String,
         observation_revision: u64,
         phase: String,
@@ -953,10 +968,12 @@ impl DomainEvent {
                 | Self::ModuleStaticDistributionBuildQueued { .. }
                 | Self::ModuleStaticDistributionBuildClaimed { .. }
                 | Self::ModuleStaticDistributionBuildCompleted { .. }
+                | Self::ModuleStaticDistributionReleaseAdmitted { .. }
                 | Self::ModuleStaticDistributionReleaseActivated { .. }
-                | Self::ModuleStaticDistributionRollbackBuildQueued { .. }
                 | Self::ModuleStaticDistributionReleaseRevoked { .. }
                 | Self::ModuleStaticDistributionRolloutRequested { .. }
+                | Self::ModuleStaticDistributionRecoveryRequested { .. }
+                | Self::ModuleStaticDistributionRecoveryConverged { .. }
                 | Self::ModuleStaticDistributionAssignmentObserved { .. }
                 | Self::ModuleStaticDistributionRolloutStatusChanged { .. }
                 | Self::ModuleArtifactSecurityStateChanged { .. }
@@ -1109,17 +1126,23 @@ impl DomainEvent {
             Self::ModuleStaticDistributionBuildCompleted { .. } => {
                 "module.static_distribution.build_completed"
             }
+            Self::ModuleStaticDistributionReleaseAdmitted { .. } => {
+                "module.static_distribution.release_admitted"
+            }
             Self::ModuleStaticDistributionReleaseActivated { .. } => {
                 "module.static_distribution.release_activated"
-            }
-            Self::ModuleStaticDistributionRollbackBuildQueued { .. } => {
-                "module.static_distribution.rollback_build_queued"
             }
             Self::ModuleStaticDistributionReleaseRevoked { .. } => {
                 "module.static_distribution.release_revoked"
             }
             Self::ModuleStaticDistributionRolloutRequested { .. } => {
                 "module.static_distribution.rollout_requested"
+            }
+            Self::ModuleStaticDistributionRecoveryRequested { .. } => {
+                "module.static_distribution.recovery_requested"
+            }
+            Self::ModuleStaticDistributionRecoveryConverged { .. } => {
+                "module.static_distribution.recovery_converged"
             }
             Self::ModuleStaticDistributionAssignmentObserved { .. } => {
                 "module.static_distribution.assignment_observed"
@@ -1295,10 +1318,12 @@ impl DomainEvent {
             Self::ModuleStaticDistributionBuildQueued { .. } => 1,
             Self::ModuleStaticDistributionBuildClaimed { .. } => 1,
             Self::ModuleStaticDistributionBuildCompleted { .. } => 1,
+            Self::ModuleStaticDistributionReleaseAdmitted { .. } => 1,
             Self::ModuleStaticDistributionReleaseActivated { .. } => 1,
-            Self::ModuleStaticDistributionRollbackBuildQueued { .. } => 1,
             Self::ModuleStaticDistributionReleaseRevoked { .. } => 1,
             Self::ModuleStaticDistributionRolloutRequested { .. } => 1,
+            Self::ModuleStaticDistributionRecoveryRequested { .. } => 1,
+            Self::ModuleStaticDistributionRecoveryConverged { .. } => 1,
             Self::ModuleStaticDistributionAssignmentObserved { .. } => 1,
             Self::ModuleStaticDistributionRolloutStatusChanged { .. } => 1,
             Self::ModuleArtifactSecurityStateChanged { .. } => 1,
@@ -2653,7 +2678,7 @@ impl ValidateEvent for DomainEvent {
                 }
                 Ok(())
             }
-            Self::ModuleStaticDistributionReleaseActivated {
+            Self::ModuleStaticDistributionReleaseAdmitted {
                 distribution_release_id,
                 predecessor_release_id,
                 distribution_build_id,
@@ -2697,28 +2722,27 @@ impl ValidateEvent for DomainEvent {
                 validate_sha256_digest("bundle_root_digest", bundle_root_digest)?;
                 validate_sha256_digest("role_set_digest", role_set_digest)
             }
-            Self::ModuleStaticDistributionRollbackBuildQueued {
-                rollback_id,
-                from_release_id,
-                target_release_id,
-                distribution_build_id,
-                composition_revision,
-                composition_digest,
-                policy_revision,
+            Self::ModuleStaticDistributionReleaseActivated {
+                distribution_release_id,
+                predecessor_release_id,
+                rollout_id,
+                release_state_revision,
             } => {
-                validators::validate_not_nil_uuid("rollback_id", rollback_id)?;
-                validators::validate_not_nil_uuid("from_release_id", from_release_id)?;
-                validators::validate_not_nil_uuid("target_release_id", target_release_id)?;
-                validators::validate_not_nil_uuid("distribution_build_id", distribution_build_id)?;
-                if from_release_id == target_release_id || *composition_revision == 0 {
+                validators::validate_not_nil_uuid(
+                    "distribution_release_id",
+                    distribution_release_id,
+                )?;
+                validators::validate_not_nil_uuid("rollout_id", rollout_id)?;
+                if predecessor_release_id
+                    .is_some_and(|value| value.is_nil() || value == *distribution_release_id)
+                    || *release_state_revision == 0
+                {
                     return Err(EventValidationError::InvalidValue(
-                        "static distribution rollback identity",
-                        "must contain distinct releases and a positive composition revision"
-                            .to_string(),
+                        "static distribution serving identity",
+                        "must contain a valid predecessor and positive state revision".to_string(),
                     ));
                 }
-                validate_policy_revision(policy_revision)?;
-                validate_sha256_digest("composition_digest", composition_digest)
+                Ok(())
             }
             Self::ModuleStaticDistributionReleaseRevoked {
                 distribution_release_id,
@@ -2781,11 +2805,66 @@ impl ValidateEvent for DomainEvent {
                 validate_sha256_digest("role_set_digest", role_set_digest)?;
                 validate_sha256_digest("topology_digest", topology_digest)
             }
+            Self::ModuleStaticDistributionRecoveryRequested {
+                rollout_id,
+                predecessor_rollout_id,
+                from_release_id,
+                target_release_id,
+                rollout_revision,
+                rollout_state_revision,
+                topology_digest,
+                policy_revision,
+                reason,
+            } => {
+                validators::validate_not_nil_uuid("rollout_id", rollout_id)?;
+                validators::validate_not_nil_uuid(
+                    "predecessor_rollout_id",
+                    predecessor_rollout_id,
+                )?;
+                validators::validate_not_nil_uuid("from_release_id", from_release_id)?;
+                validators::validate_not_nil_uuid("target_release_id", target_release_id)?;
+                if rollout_id == predecessor_rollout_id
+                    || from_release_id == target_release_id
+                    || *rollout_revision == 0
+                    || *rollout_state_revision == 0
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "static distribution recovery identity",
+                        "must bind distinct predecessor/current identities and positive revisions"
+                            .to_string(),
+                    ));
+                }
+                validate_policy_revision(policy_revision)?;
+                validators::validate_not_empty("reason", reason)?;
+                validators::validate_max_length("reason", reason, 2_000)?;
+                validate_sha256_digest("topology_digest", topology_digest)
+            }
+            Self::ModuleStaticDistributionRecoveryConverged {
+                rollout_id,
+                from_release_id,
+                target_release_id,
+                release_state_revision,
+                rollout_state_revision,
+            } => {
+                validators::validate_not_nil_uuid("rollout_id", rollout_id)?;
+                validators::validate_not_nil_uuid("from_release_id", from_release_id)?;
+                validators::validate_not_nil_uuid("target_release_id", target_release_id)?;
+                if from_release_id == target_release_id
+                    || *release_state_revision == 0
+                    || *rollout_state_revision == 0
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "static distribution recovery convergence",
+                        "must bind distinct releases and positive revisions".to_string(),
+                    ));
+                }
+                Ok(())
+            }
             Self::ModuleStaticDistributionAssignmentObserved {
                 rollout_id,
                 node_id,
                 role,
-                artifact_digest,
+                candidate_artifact_digest,
                 reporter_id,
                 observation_revision,
                 phase,
@@ -2814,7 +2893,7 @@ impl ValidateEvent for DomainEvent {
                             .to_string(),
                     ));
                 }
-                validate_sha256_digest("artifact_digest", artifact_digest)?;
+                validate_sha256_digest("candidate_artifact_digest", candidate_artifact_digest)?;
                 validate_sha256_digest("report_digest", report_digest)
             }
             Self::ModuleStaticDistributionRolloutStatusChanged {

@@ -29,7 +29,9 @@ pub fn attach_schema_data(
 ) -> std::result::Result<ReactionsGraphqlRuntimeData, String> {
     let subjects = inputs
         .shared_get::<Arc<ReactionSubjectRegistry>>()
-        .ok_or_else(|| "Reactions subject registry is not registered in host runtime".to_string())?;
+        .ok_or_else(|| {
+            "Reactions subject registry is not registered in host runtime".to_string()
+        })?;
     Ok(ReactionsGraphqlRuntimeData {
         service: ReactionsService::new(inputs.db_clone(), subjects),
     })
@@ -87,8 +89,8 @@ impl ReactionsMutation {
         let subject = input.subject.into_subject(tenant.id)?;
         let identity = ReactionCommandIdentity::new(command_id, auth.user_id)
             .map_err(|_| bad_input("invalid reaction command identity"))?;
-        let reaction = ReactionKey::new(input.reaction)
-            .map_err(|_| bad_input("invalid reaction key"))?;
+        let reaction =
+            ReactionKey::new(input.reaction).map_err(|_| bad_input("invalid reaction key"))?;
         let command = ApplyReactionCommand::new(identity, subject, reaction, input.action.into());
         let service = runtime(ctx)?;
         let receipt = ReactionWritePort::apply_reaction(
@@ -199,10 +201,9 @@ impl From<ReactionSnapshot> for ReactionSnapshotGql {
         let selection = catalog.selection();
         let (selection_mode, max_selected) = match selection {
             ReactionSelectionPolicy::Single => (ReactionSelectionModeGql::Single, 1),
-            ReactionSelectionPolicy::Multiple { max_selected } => (
-                ReactionSelectionModeGql::Multiple,
-                i32::from(max_selected),
-            ),
+            ReactionSelectionPolicy::Multiple { max_selected } => {
+                (ReactionSelectionModeGql::Multiple, i32::from(max_selected))
+            }
         };
         let actor_state = snapshot.actor_state().map(|state| ReactionActorStateGql {
             revision: state.revision().to_string(),
@@ -249,7 +250,7 @@ pub struct ReactionWriteResultGql {
     pub changed: bool,
 }
 
-fn runtime(ctx: &Context<'_>) -> Result<&ReactionsService> {
+fn runtime<'a>(ctx: &'a Context<'a>) -> Result<&'a ReactionsService> {
     ctx.data::<ReactionsGraphqlRuntimeData>()
         .map(|runtime| &runtime.service)
         .map_err(|_| {
@@ -259,7 +260,7 @@ fn runtime(ctx: &Context<'_>) -> Result<&ReactionsService> {
         })
 }
 
-fn require_tenant(ctx: &Context<'_>) -> Result<&TenantContext> {
+fn require_tenant<'a>(ctx: &'a Context<'a>) -> Result<&'a TenantContext> {
     ctx.data::<TenantContext>().map_err(|_| {
         <FieldError as GraphQLError>::internal_error("Reactions tenant context is not registered")
     })
@@ -276,10 +277,7 @@ fn optional_principal<'a>(
     Ok(Some(auth))
 }
 
-fn require_human_user<'a>(
-    ctx: &'a Context<'a>,
-    tenant: &TenantContext,
-) -> Result<&'a AuthContext> {
+fn require_human_user<'a>(ctx: &'a Context<'a>, tenant: &TenantContext) -> Result<&'a AuthContext> {
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
@@ -311,7 +309,9 @@ fn port_context(
         .data_opt::<RequestContext>()
         .map(|request| request.locale.clone())
         .unwrap_or_else(|| tenant.default_locale.clone());
-    let actor = auth.map(AuthContext::port_actor).unwrap_or_else(PortActor::system);
+    let actor = auth
+        .map(AuthContext::port_actor)
+        .unwrap_or_else(PortActor::system);
     let mut context = PortContext::new(
         tenant.id.to_string(),
         actor,
@@ -341,7 +341,9 @@ fn port_context(
 
 fn parse_positive_u64(value: &str, field: &str) -> Result<u64> {
     let revision = value.trim().parse::<u64>().map_err(|_| {
-        bad_input(&format!("{field} must be a positive unsigned 64-bit integer string"))
+        bad_input(&format!(
+            "{field} must be a positive unsigned 64-bit integer string"
+        ))
     })?;
     if revision == 0 {
         return Err(bad_input(&format!(

@@ -1,8 +1,6 @@
 use std::time::Duration;
 
-use async_graphql::{
-    Context, Enum, ErrorExtensions, FieldError, InputObject, Json, Object, Result, SimpleObject,
-};
+use async_graphql::{Context, Enum, FieldError, InputObject, Json, Object, Result, SimpleObject};
 use chrono::{DateTime, FixedOffset};
 use rustok_api::graphql::{GraphQLError, require_module_enabled};
 use rustok_api::request::RequestContext;

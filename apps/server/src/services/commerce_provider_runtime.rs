@@ -113,11 +113,15 @@ pub fn attach_commerce_provider_registries(
 
     #[cfg(all(feature = "mod-commerce", feature = "mod-order"))]
     let host = {
-        let runtime = server
+        let runtime = host
             .shared_get::<rustok_commerce::graphql_runtime::CommerceOrderReadRuntime>()
+            .or_else(|| {
+                server.shared_get::<rustok_commerce::graphql_runtime::CommerceOrderReadRuntime>()
+            })
             .unwrap_or_else(|| {
-                let event_bus = server
+                let event_bus = host
                     .shared_get::<rustok_outbox::TransactionalEventBus>()
+                    .or_else(|| server.shared_get::<rustok_outbox::TransactionalEventBus>())
                     .expect(
                         "TransactionalEventBus must be initialized before CommerceOrderReadRuntime",
                     );
@@ -349,6 +353,41 @@ pub fn attach_commerce_provider_registries(
         };
 
     host
+}
+
+#[cfg(all(test, feature = "mod-commerce", feature = "mod-order"))]
+mod host_event_bus_tests {
+    use std::sync::Arc;
+
+    use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+    use sea_orm::Database;
+
+    use super::attach_commerce_provider_registries;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+
+    #[tokio::test]
+    async fn composes_order_read_runtime_from_host_event_bus() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite should connect");
+        let server = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+        let host = rustok_api::HostRuntimeContext::new(db).with_shared_value(event_bus);
+
+        let attached = attach_commerce_provider_registries(host, &server);
+
+        assert!(
+            attached
+                .shared_get::<rustok_commerce::graphql_runtime::CommerceOrderReadRuntime>()
+                .is_some()
+        );
+        assert!(
+            server
+                .shared_get::<rustok_commerce::graphql_runtime::CommerceOrderReadRuntime>()
+                .is_some()
+        );
+    }
 }
 
 #[cfg(all(test, feature = "mod-payment", feature = "mod-fulfillment"))]

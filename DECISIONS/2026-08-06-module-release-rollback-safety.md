@@ -53,7 +53,7 @@ artifact/UI and role digests, declared migration/data-contract facts, and
 declared executor kind/runtime ABI/capability requirements. Immutable admission
 test evidence is attached to the release
 record, but current policy/security revisions, topology, controller authority,
-exact runtime fingerprint, pool generation, node observations, and deployment
+exact runtime fingerprint, pool generation, role-assignment observations, and deployment
 receipts belong to an update/rollout readiness operation. Changing those live
 facts does not create a new artifact release.
 

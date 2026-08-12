@@ -1,4 +1,4 @@
-pub use rustok_api::{PlatformBuildSnapshot as BuildJob, PlatformReleaseSnapshot as ReleaseInfo};
+pub use rustok_api::PlatformBuildSnapshot as BuildJob;
 use serde::{Deserialize, Serialize};
 fn deserialize_registry_principal_label<'de, D>(deserializer: D) -> Result<String, D::Error>
 where

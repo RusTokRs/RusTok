@@ -133,6 +133,7 @@ pub async fn bootstrap_app_runtime(
     if !settings.runtime.is_registry_only() {
         let event_runtime = build_event_runtime(&runtime_ctx).await?;
         runtime_ctx.shared_insert(event_runtime.transport.clone());
+        runtime_ctx.shared_insert(transactional_event_bus_from_context(&runtime_ctx));
         spawn_module_event_dispatcher(&runtime_ctx, &registry, runtime_extensions.clone());
         runtime_ctx.shared_insert(Arc::new(event_runtime));
         runtime_ctx.shared_insert(crate::services::build_control::ServerBuildControl::shared(

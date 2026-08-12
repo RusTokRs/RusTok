@@ -13,7 +13,7 @@ mod m20250101_000005_create_roles_and_permissions;
 mod m20250101_000006_add_metadata_to_tenants_and_users;
 mod m20250130_000004_create_tenant_locales;
 mod m20250201_000001_alter_status_to_enums;
-mod m20250212_000001_create_builds_and_releases;
+mod m20250212_000001_create_builds;
 mod m20260211_000001_add_event_versioning;
 mod m20260211_000002_create_sys_events;
 mod m20260315_000001_create_user_field_definitions;
@@ -380,7 +380,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250101_000005_create_roles_and_permissions::Migration),
             Box::new(m20250101_000006_add_metadata_to_tenants_and_users::Migration),
             Box::new(m20250201_000001_alter_status_to_enums::Migration),
-            Box::new(m20250212_000001_create_builds_and_releases::Migration),
+            Box::new(m20250212_000001_create_builds::Migration),
             Box::new(m20260211_000001_add_event_versioning::Migration),
             Box::new(m20260211_000002_create_sys_events::Migration),
             Box::new(m20260315_000001_create_user_field_definitions::Migration),

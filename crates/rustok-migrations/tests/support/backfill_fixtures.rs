@@ -135,7 +135,7 @@ fn required_string(fixture: &Value, index: usize, field: &str) -> Result<String,
 
 #[cfg(test)]
 mod tests {
-    use super::{BackfillFixture, parse_fixture_document};
+    use super::{parse_fixture_document, BackfillFixture};
 
     #[test]
     fn empty_fixture_document_is_valid() {

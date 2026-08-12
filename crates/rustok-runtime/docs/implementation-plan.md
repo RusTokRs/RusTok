@@ -32,6 +32,9 @@ runtime lookup code while server composition stays host-neutral.
    durable ownership. Digest-addressed methods validate canonical
    `sha256:<hex>` and store the portable hex component without a
    Windows-invalid colon.
+   Existing path prefixes are canonicalized before ownership is bound, and
+   managed descendants reject symbolic links and Windows reparse-point
+   junctions so a selected root cannot redirect writes into another instance.
    **Depends on:** deployment-agent and service-runtime composition.
    **Done when:** installer, server, CLI, workers, and recovery code derive all
    instance-owned paths from the same layout and cross-platform tests cover two

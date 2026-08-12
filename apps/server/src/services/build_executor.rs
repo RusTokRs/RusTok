@@ -2,8 +2,6 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use crate::services::release_activation_hook::ServerReleaseActivationHook;
-
 /// Creates the shared build executor for a database opened by the installer.
 ///
 /// Installer deployment owns this trusted static build operation and cannot
@@ -13,9 +11,8 @@ pub fn build_execution_service_for_database(
     db: sea_orm::DatabaseConnection,
 ) -> rustok_build::BuildExecutionService {
     rustok_build::BuildExecutionService::new(
-        db.clone(),
+        db,
         Arc::new(rustok_build::NoopBuildEventPublisher),
-        Arc::new(ServerReleaseActivationHook::new(db)),
         workspace_root(),
     )
 }

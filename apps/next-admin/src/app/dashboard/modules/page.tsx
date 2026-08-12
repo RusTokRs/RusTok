@@ -3,7 +3,6 @@ import { getTranslations } from 'next-intl/server';
 
 import { auth } from '@/auth';
 import {
-  getActiveRelease,
   getActiveBuild,
   getBuildHistory,
   listInstalledModules,
@@ -47,7 +46,6 @@ async function ModulesContent() {
     marketplaceRegistryFreshness,
     installedModules,
     activeBuild,
-    activeRelease,
     buildHistory
   ] = await Promise.all([
     safeLoad('module registry', () => listModules(opts), { modules: [] }),
@@ -72,7 +70,6 @@ async function ModulesContent() {
     ),
     safeLoad('installed modules', () => listInstalledModules(opts), []),
     safeLoad('active build', () => getActiveBuild(opts), null),
-    safeLoad('active release', () => getActiveRelease(opts), null),
     safeLoad('build history', () => getBuildHistory(10, 0, opts), [])
   ]);
 
@@ -84,7 +81,6 @@ async function ModulesContent() {
       marketplaceRegistryFreshness={marketplaceRegistryFreshness}
       installedModules={installedModules}
       activeBuild={activeBuild}
-      activeRelease={activeRelease}
       buildHistory={buildHistory}
       loadErrors={loadErrors}
     />

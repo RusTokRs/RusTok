@@ -14,7 +14,6 @@ pub(super) async fn execute(
     let executor = rustok_build::BuildExecutionService::new(
         db.clone(),
         Arc::new(rustok_build::NoopBuildEventPublisher),
-        Arc::new(rustok_build::NoopReleaseActivationHook),
         workspace_root(),
     );
     let report = match build_id(args)? {

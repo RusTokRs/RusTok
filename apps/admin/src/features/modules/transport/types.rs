@@ -4,7 +4,7 @@ use crate::entities::module::model::{
 };
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
-    ReleaseInfo, TenantModule, ToggleModuleResult,
+    TenantModule, ToggleModuleResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -23,13 +23,12 @@ pub const MARKETPLACE_MODULE_QUERY: &str = "query MarketplaceModule($slug: Strin
 
 pub const MARKETPLACE_REGISTRY_FRESHNESS_QUERY: &str = "query MarketplaceRegistryFreshness { marketplaceRegistryFreshness { registryId status lastSuccessUnixMs consecutiveFailures } }";
 
-pub const ACTIVE_BUILD_QUERY: &str = "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+pub const ACTIVE_BUILD_QUERY: &str = "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 
-pub const ACTIVE_RELEASE_QUERY: &str = "query ActiveRelease { activeRelease { id buildId status environment manifestHash manifestRevision modules previousReleaseId deployedAt rolledBackAt createdAt updatedAt } }";
+pub const BUILD_HISTORY_QUERY: &str = "query BuildHistory($limit: Int!, $offset: Int!) { buildHistory(limit: $limit, offset: $offset) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 
-pub const BUILD_HISTORY_QUERY: &str = "query BuildHistory($limit: Int!, $offset: Int!) { buildHistory(limit: $limit, offset: $offset) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
-
-pub const BUILD_PROGRESS_SUBSCRIPTION: &str = "subscription BuildProgress { buildProgress { buildId status stage progress releaseId errorMessage } }";
+pub const BUILD_PROGRESS_SUBSCRIPTION: &str =
+    "subscription BuildProgress { buildProgress { buildId status stage progress errorMessage } }";
 
 pub const TOGGLE_MODULE_MUTATION: &str = "mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!) { toggleModule(moduleSlug: $moduleSlug, enabled: $enabled) { moduleSlug enabled settings } }";
 
@@ -43,7 +42,7 @@ pub const COMPENSATE_FAILED_MODULE_OPERATION_MUTATION: &str = "mutation Compensa
 
 pub const UPDATE_MODULE_SETTINGS_MUTATION: &str = "mutation UpdateModuleSettings($moduleSlug: String!, $settings: String!) { updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings) { moduleSlug enabled settings } }";
 
-pub const INSTALL_MODULE_MUTATION: &str = "mutation InstallModule($slug: String!, $version: String!) { installModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+pub const INSTALL_MODULE_MUTATION: &str = "mutation InstallModule($slug: String!, $version: String!) { installModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 
 #[cfg(feature = "ssr")]
 pub const REGISTRY_OWNER_TRANSFER_REASON_CODES: &[&str] = &[
@@ -65,11 +64,9 @@ pub const REGISTRY_YANK_REASON_CODES: &[&str] = &[
     "other",
 ];
 
-pub const UNINSTALL_MODULE_MUTATION: &str = "mutation UninstallModule($slug: String!) { uninstallModule(slug: $slug) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+pub const UNINSTALL_MODULE_MUTATION: &str = "mutation UninstallModule($slug: String!) { uninstallModule(slug: $slug) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 
-pub const UPGRADE_MODULE_MUTATION: &str = "mutation UpgradeModule($slug: String!, $version: String!) { upgradeModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
-
-pub const ROLLBACK_BUILD_MUTATION: &str = "mutation RollbackBuild($buildId: String!) { rollbackBuild(buildId: $buildId) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+pub const UPGRADE_MODULE_MUTATION: &str = "mutation UpgradeModule($slug: String!, $version: String!) { upgradeModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 
 #[cfg(feature = "ssr")]
 pub const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
@@ -122,12 +119,6 @@ pub struct ActiveBuildResponse {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ActiveReleaseResponse {
-    #[serde(rename = "activeRelease")]
-    pub active_release: Option<ReleaseInfo>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BuildHistoryResponse {
     #[serde(rename = "buildHistory")]
     pub build_history: Vec<BuildJob>,
@@ -140,8 +131,6 @@ pub struct BuildProgressEvent {
     pub status: String,
     pub stage: String,
     pub progress: i32,
-    #[serde(rename = "releaseId")]
-    pub release_id: Option<String>,
     #[serde(rename = "errorMessage")]
     pub error_message: Option<String>,
 }
@@ -200,12 +189,6 @@ pub struct UpgradeModuleResponse {
     pub upgrade_module: BuildJob,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RollbackBuildResponse {
-    #[serde(rename = "rollbackBuild")]
-    pub rollback_build: BuildJob,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryMutationResult {
     pub schema_version: u32,
@@ -248,7 +231,6 @@ pub struct RegistryPublishStatusContract {
     pub next_step: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
 pub struct ToggleModuleVariables {
     #[serde(rename = "moduleSlug")]
     pub module_slug: String,
@@ -315,10 +297,4 @@ pub struct UninstallModuleVariables {
 pub struct UpgradeModuleVariables {
     pub slug: String,
     pub version: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct RollbackBuildVariables {
-    #[serde(rename = "buildId")]
-    pub build_id: String,
 }

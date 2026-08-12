@@ -197,16 +197,18 @@ impl MigrationTrait for Migration {
                     signature_digest TEXT NOT NULL CHECK (signature_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     test_evidence_reference TEXT NOT NULL CHECK (length(trim(test_evidence_reference)) BETWEEN 1 AND 512),\
                     test_evidence_digest TEXT NOT NULL CHECK (test_evidence_digest ~ '^sha256:[0-9a-f]{64}$'),\
-                    status TEXT NOT NULL CHECK (status IN ('active', 'superseded', 'revoked')),\
-                    activated_by UUID NOT NULL,\
-                    activated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                    status TEXT NOT NULL CHECK (status IN ('admitted', 'active', 'superseded', 'revoked')),\
+                    admitted_by UUID NOT NULL,\
+                    admitted_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                    activated_at TIMESTAMPTZ NULL,\
                     superseded_at TIMESTAMPTZ NULL,\
                     revoked_by UUID NULL,\
                     revoked_at TIMESTAMPTZ NULL,\
                     revocation_reason TEXT NULL CHECK (revocation_reason IS NULL OR length(trim(revocation_reason)) BETWEEN 1 AND 1024),\
                     revocation_policy_revision TEXT NULL CHECK (revocation_policy_revision IS NULL OR length(trim(revocation_policy_revision)) BETWEEN 1 AND 128),\
-                    CHECK ((status = 'active' AND superseded_at IS NULL AND revoked_by IS NULL AND revoked_at IS NULL AND revocation_reason IS NULL AND revocation_policy_revision IS NULL) OR\
-                           (status = 'superseded' AND superseded_at IS NOT NULL AND revoked_by IS NULL AND revoked_at IS NULL AND revocation_reason IS NULL AND revocation_policy_revision IS NULL) OR\
+                    CHECK ((status = 'admitted' AND activated_at IS NULL AND superseded_at IS NULL AND revoked_by IS NULL AND revoked_at IS NULL AND revocation_reason IS NULL AND revocation_policy_revision IS NULL) OR\
+                           (status = 'active' AND activated_at IS NOT NULL AND superseded_at IS NULL AND revoked_by IS NULL AND revoked_at IS NULL AND revocation_reason IS NULL AND revocation_policy_revision IS NULL) OR\
+                           (status = 'superseded' AND activated_at IS NOT NULL AND superseded_at IS NOT NULL AND revoked_by IS NULL AND revoked_at IS NULL AND revocation_reason IS NULL AND revocation_policy_revision IS NULL) OR\
                            (status = 'revoked' AND revoked_by IS NOT NULL AND revoked_at IS NOT NULL AND revocation_reason IS NOT NULL AND revocation_policy_revision IS NOT NULL))\
                 )",
                 "CREATE UNIQUE INDEX module_static_distribution_releases_active_idx ON module_static_distribution_releases (status) WHERE status = 'active'",
@@ -231,7 +233,7 @@ impl MigrationTrait for Migration {
                     dependency_policy_verified BOOLEAN NOT NULL CHECK (dependency_policy_verified),\
                     verified_at TIMESTAMPTZ NOT NULL\
                 )",
-                "CREATE TABLE module_static_distribution_release_operations (\
+                "CREATE TABLE module_static_distribution_admission_operations (\
                     idempotency_key UUID PRIMARY KEY,\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     actor_id UUID NOT NULL,\
@@ -241,37 +243,6 @@ impl MigrationTrait for Migration {
                     completed_at TIMESTAMPTZ NULL,\
                     CHECK ((distribution_release_id IS NULL AND release_revision IS NULL AND completed_at IS NULL) OR\
                            (distribution_release_id IS NOT NULL AND release_revision IS NOT NULL AND completed_at IS NOT NULL))\
-                )",
-                "CREATE TABLE module_static_distribution_rollback_requests (\
-                    rollback_id UUID PRIMARY KEY,\
-                    from_release_id UUID NOT NULL REFERENCES module_static_distribution_releases(distribution_release_id) ON DELETE RESTRICT,\
-                    target_release_id UUID NOT NULL REFERENCES module_static_distribution_releases(distribution_release_id) ON DELETE RESTRICT,\
-                    distribution_build_id UUID NOT NULL UNIQUE REFERENCES module_static_distribution_builds(distribution_build_id) ON DELETE RESTRICT,\
-                    release_state_revision BIGINT NOT NULL CHECK (release_state_revision > 0),\
-                    composition_revision BIGINT NOT NULL CHECK (composition_revision > 0),\
-                    reason TEXT NOT NULL CHECK (length(trim(reason)) BETWEEN 1 AND 1024),\
-                    policy_revision TEXT NOT NULL CHECK (length(trim(policy_revision)) BETWEEN 1 AND 128),\
-                    requested_by UUID NOT NULL,\
-                    status TEXT NOT NULL CHECK (status IN ('build_queued', 'released', 'cancelled')),\
-                    resulting_release_id UUID NULL UNIQUE REFERENCES module_static_distribution_releases(distribution_release_id) ON DELETE RESTRICT,\
-                    requested_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
-                    completed_at TIMESTAMPTZ NULL,\
-                    CHECK (from_release_id <> target_release_id),\
-                    CHECK ((status = 'build_queued' AND resulting_release_id IS NULL AND completed_at IS NULL) OR\
-                           (status = 'released' AND resulting_release_id IS NOT NULL AND completed_at IS NOT NULL) OR\
-                           (status = 'cancelled' AND resulting_release_id IS NULL AND completed_at IS NOT NULL))\
-                )",
-                "CREATE TABLE module_static_distribution_rollback_operations (\
-                    idempotency_key UUID PRIMARY KEY,\
-                    request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
-                    actor_id UUID NOT NULL,\
-                    rollback_id UUID NULL REFERENCES module_static_distribution_rollback_requests(rollback_id) ON DELETE RESTRICT,\
-                    distribution_build_id UUID NULL REFERENCES module_static_distribution_builds(distribution_build_id) ON DELETE RESTRICT,\
-                    composition_revision BIGINT NULL CHECK (composition_revision IS NULL OR composition_revision > 0),\
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
-                    completed_at TIMESTAMPTZ NULL,\
-                    CHECK ((rollback_id IS NULL AND distribution_build_id IS NULL AND composition_revision IS NULL AND completed_at IS NULL) OR\
-                           (rollback_id IS NOT NULL AND distribution_build_id IS NOT NULL AND composition_revision IS NOT NULL AND completed_at IS NOT NULL))\
                 )",
                 "CREATE TABLE module_static_distribution_revocation_operations (\
                     idempotency_key UUID PRIMARY KEY,\
@@ -287,7 +258,7 @@ impl MigrationTrait for Migration {
                 )",
                 "CREATE TABLE module_static_distribution_release_idempotency_keys (\
                     idempotency_key UUID PRIMARY KEY,\
-                    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('bootstrap_import', 'activate', 'rollback', 'revoke')),\
+                    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('bootstrap_import', 'admit', 'revoke')),\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     actor_id UUID NOT NULL,\
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP\
@@ -479,16 +450,18 @@ impl MigrationTrait for Migration {
                     signature_digest TEXT NOT NULL CHECK (length(signature_digest) = 71 AND substr(signature_digest, 1, 7) = 'sha256:' AND substr(signature_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     test_evidence_reference TEXT NOT NULL CHECK (length(trim(test_evidence_reference)) BETWEEN 1 AND 512),\
                     test_evidence_digest TEXT NOT NULL CHECK (length(test_evidence_digest) = 71 AND substr(test_evidence_digest, 1, 7) = 'sha256:' AND substr(test_evidence_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
-                    status TEXT NOT NULL CHECK (status IN ('active', 'superseded', 'revoked')),\
-                    activated_by TEXT NOT NULL,\
-                    activated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                    status TEXT NOT NULL CHECK (status IN ('admitted', 'active', 'superseded', 'revoked')),\
+                    admitted_by TEXT NOT NULL,\
+                    admitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                    activated_at TEXT NULL,\
                     superseded_at TEXT NULL,\
                     revoked_by TEXT NULL,\
                     revoked_at TEXT NULL,\
                     revocation_reason TEXT NULL CHECK (revocation_reason IS NULL OR length(trim(revocation_reason)) BETWEEN 1 AND 1024),\
                     revocation_policy_revision TEXT NULL CHECK (revocation_policy_revision IS NULL OR length(trim(revocation_policy_revision)) BETWEEN 1 AND 128),\
-                    CHECK ((status = 'active' AND superseded_at IS NULL AND revoked_by IS NULL AND revoked_at IS NULL AND revocation_reason IS NULL AND revocation_policy_revision IS NULL) OR\
-                           (status = 'superseded' AND superseded_at IS NOT NULL AND revoked_by IS NULL AND revoked_at IS NULL AND revocation_reason IS NULL AND revocation_policy_revision IS NULL) OR\
+                    CHECK ((status = 'admitted' AND activated_at IS NULL AND superseded_at IS NULL AND revoked_by IS NULL AND revoked_at IS NULL AND revocation_reason IS NULL AND revocation_policy_revision IS NULL) OR\
+                           (status = 'active' AND activated_at IS NOT NULL AND superseded_at IS NULL AND revoked_by IS NULL AND revoked_at IS NULL AND revocation_reason IS NULL AND revocation_policy_revision IS NULL) OR\
+                           (status = 'superseded' AND activated_at IS NOT NULL AND superseded_at IS NOT NULL AND revoked_by IS NULL AND revoked_at IS NULL AND revocation_reason IS NULL AND revocation_policy_revision IS NULL) OR\
                            (status = 'revoked' AND revoked_by IS NOT NULL AND revoked_at IS NOT NULL AND revocation_reason IS NOT NULL AND revocation_policy_revision IS NOT NULL))\
                 )",
                 "CREATE UNIQUE INDEX module_static_distribution_releases_active_idx ON module_static_distribution_releases (status) WHERE status = 'active'",
@@ -513,7 +486,7 @@ impl MigrationTrait for Migration {
                     dependency_policy_verified INTEGER NOT NULL CHECK (dependency_policy_verified = 1),\
                     verified_at TEXT NOT NULL\
                 )",
-                "CREATE TABLE module_static_distribution_release_operations (\
+                "CREATE TABLE module_static_distribution_admission_operations (\
                     idempotency_key TEXT PRIMARY KEY,\
                     request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     actor_id TEXT NOT NULL,\
@@ -523,37 +496,6 @@ impl MigrationTrait for Migration {
                     completed_at TEXT NULL,\
                     CHECK ((distribution_release_id IS NULL AND release_revision IS NULL AND completed_at IS NULL) OR\
                            (distribution_release_id IS NOT NULL AND release_revision IS NOT NULL AND completed_at IS NOT NULL))\
-                )",
-                "CREATE TABLE module_static_distribution_rollback_requests (\
-                    rollback_id TEXT PRIMARY KEY,\
-                    from_release_id TEXT NOT NULL REFERENCES module_static_distribution_releases(distribution_release_id) ON DELETE RESTRICT,\
-                    target_release_id TEXT NOT NULL REFERENCES module_static_distribution_releases(distribution_release_id) ON DELETE RESTRICT,\
-                    distribution_build_id TEXT NOT NULL UNIQUE REFERENCES module_static_distribution_builds(distribution_build_id) ON DELETE RESTRICT,\
-                    release_state_revision INTEGER NOT NULL CHECK (release_state_revision > 0),\
-                    composition_revision INTEGER NOT NULL CHECK (composition_revision > 0),\
-                    reason TEXT NOT NULL CHECK (length(trim(reason)) BETWEEN 1 AND 1024),\
-                    policy_revision TEXT NOT NULL CHECK (length(trim(policy_revision)) BETWEEN 1 AND 128),\
-                    requested_by TEXT NOT NULL,\
-                    status TEXT NOT NULL CHECK (status IN ('build_queued', 'released', 'cancelled')),\
-                    resulting_release_id TEXT NULL UNIQUE REFERENCES module_static_distribution_releases(distribution_release_id) ON DELETE RESTRICT,\
-                    requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
-                    completed_at TEXT NULL,\
-                    CHECK (from_release_id <> target_release_id),\
-                    CHECK ((status = 'build_queued' AND resulting_release_id IS NULL AND completed_at IS NULL) OR\
-                           (status = 'released' AND resulting_release_id IS NOT NULL AND completed_at IS NOT NULL) OR\
-                           (status = 'cancelled' AND resulting_release_id IS NULL AND completed_at IS NOT NULL))\
-                )",
-                "CREATE TABLE module_static_distribution_rollback_operations (\
-                    idempotency_key TEXT PRIMARY KEY,\
-                    request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
-                    actor_id TEXT NOT NULL,\
-                    rollback_id TEXT NULL REFERENCES module_static_distribution_rollback_requests(rollback_id) ON DELETE RESTRICT,\
-                    distribution_build_id TEXT NULL REFERENCES module_static_distribution_builds(distribution_build_id) ON DELETE RESTRICT,\
-                    composition_revision INTEGER NULL CHECK (composition_revision IS NULL OR composition_revision > 0),\
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
-                    completed_at TEXT NULL,\
-                    CHECK ((rollback_id IS NULL AND distribution_build_id IS NULL AND composition_revision IS NULL AND completed_at IS NULL) OR\
-                           (rollback_id IS NOT NULL AND distribution_build_id IS NOT NULL AND composition_revision IS NOT NULL AND completed_at IS NOT NULL))\
                 )",
                 "CREATE TABLE module_static_distribution_revocation_operations (\
                     idempotency_key TEXT PRIMARY KEY,\
@@ -569,7 +511,7 @@ impl MigrationTrait for Migration {
                 )",
                 "CREATE TABLE module_static_distribution_release_idempotency_keys (\
                     idempotency_key TEXT PRIMARY KEY,\
-                    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('bootstrap_import', 'activate', 'rollback', 'revoke')),\
+                    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('bootstrap_import', 'admit', 'revoke')),\
                     request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     actor_id TEXT NOT NULL,\
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
@@ -596,9 +538,7 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         for table in [
             "module_static_distribution_revocation_operations",
-            "module_static_distribution_rollback_operations",
-            "module_static_distribution_rollback_requests",
-            "module_static_distribution_release_operations",
+            "module_static_distribution_admission_operations",
             "module_static_distribution_release_idempotency_keys",
             "module_static_distribution_release_admissions",
             "module_static_distribution_release_state",
@@ -618,5 +558,61 @@ impl MigrationTrait for Migration {
                 .await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn sqlite_schema_separates_admission_from_serving_activation() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        db.execute_unprepared("PRAGMA foreign_keys = ON")
+            .await
+            .expect("foreign keys");
+        Migration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("static promotion migration");
+
+        let release_columns = column_names(&db, "module_static_distribution_releases").await;
+        assert!(release_columns.contains("admitted_by"));
+        assert!(release_columns.contains("admitted_at"));
+        assert!(release_columns.contains("activated_at"));
+        assert!(!release_columns.contains("activated_by"));
+
+        let tables = db
+            .query_all(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT name FROM sqlite_master WHERE type = 'table'".to_string(),
+            ))
+            .await
+            .expect("table catalog")
+            .into_iter()
+            .map(|row| row.try_get::<String>("", "name").expect("table name"))
+            .collect::<HashSet<_>>();
+        assert!(tables.contains("module_static_distribution_admission_operations"));
+        assert!(!tables.contains("module_static_distribution_release_operations"));
+        assert!(!tables.contains("module_static_distribution_rollback_requests"));
+        assert!(!tables.contains("module_static_distribution_rollback_operations"));
+    }
+
+    async fn column_names(db: &sea_orm::DatabaseConnection, table: &str) -> HashSet<String> {
+        db.query_all(Statement::from_string(
+            DbBackend::Sqlite,
+            format!("PRAGMA table_info({table})"),
+        ))
+        .await
+        .expect("table info")
+        .into_iter()
+        .map(|row| row.try_get("", "name").expect("column name"))
+        .collect()
     }
 }

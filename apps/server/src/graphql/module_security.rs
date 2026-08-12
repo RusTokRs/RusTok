@@ -35,16 +35,13 @@ impl ModuleGraphqlField {
                 | "moduleOperationRecoveryPlan"
                 | "failedModuleOperationRecoveryPlans"
                 | "activeBuild"
-                | "buildHistory"
-                | "activeRelease"
-                | "releaseHistory",
+                | "buildHistory",
             ) => ModuleAuthority::Read,
             (
                 OperationType::Mutation,
                 "installModule"
                 | "uninstallModule"
                 | "upgradeModule"
-                | "rollbackBuild"
                 | "toggleModule"
                 | "retryFailedModuleOperationPostHook"
                 | "compensateFailedModuleOperation"
@@ -65,12 +62,9 @@ impl ModuleGraphqlField {
                 "failedModuleOperationRecoveryPlans" => "failedModuleOperationRecoveryPlans",
                 "activeBuild" => "activeBuild",
                 "buildHistory" => "buildHistory",
-                "activeRelease" => "activeRelease",
-                "releaseHistory" => "releaseHistory",
                 "installModule" => "installModule",
                 "uninstallModule" => "uninstallModule",
                 "upgradeModule" => "upgradeModule",
-                "rollbackBuild" => "rollbackBuild",
                 "toggleModule" => "toggleModule",
                 "retryFailedModuleOperationPostHook" => "retryFailedModuleOperationPostHook",
                 "compensateFailedModuleOperation" => "compensateFailedModuleOperation",

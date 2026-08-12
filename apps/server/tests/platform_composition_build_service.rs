@@ -23,7 +23,6 @@ async fn setup_db(include_builds: bool) -> DatabaseConnection {
             revision INTEGER NOT NULL,
             manifest_json TEXT NOT NULL,
             manifest_hash TEXT NOT NULL,
-            active_release_id TEXT NULL,
             updated_by TEXT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -50,7 +49,6 @@ async fn setup_db(include_builds: bool) -> DatabaseConnection {
                 modules_delta TEXT NULL,
                 requested_by TEXT NOT NULL,
                 reason TEXT NULL,
-                release_id TEXT NULL,
                 logs_url TEXT NULL,
                 error_message TEXT NULL,
                 started_at TEXT NULL,

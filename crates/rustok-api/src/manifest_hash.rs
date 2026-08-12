@@ -11,9 +11,7 @@ pub fn hash_manifest<T: serde::Serialize>(manifest: &T) -> Result<String, serde_
 ///
 /// This is the shared byte contract for digest and signature inputs. Arrays
 /// retain their declared order and no insignificant whitespace is emitted.
-pub fn canonical_json_bytes<T: serde::Serialize>(
-    value: &T,
-) -> Result<Vec<u8>, serde_json::Error> {
+pub fn canonical_json_bytes<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(&canonical_manifest_snapshot_json(value)?)
 }
 

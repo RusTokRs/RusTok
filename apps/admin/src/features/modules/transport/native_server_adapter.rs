@@ -13,7 +13,7 @@ use crate::entities::module::model::{
     registry_principal_label_from_value,
 };
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, TenantModule,
 };
 #[cfg(feature = "ssr")]
 use crate::shared::api::api_base_url;
@@ -883,29 +883,6 @@ pub async fn active_build_native() -> Result<Option<BuildJob>, ServerFnError> {
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "admin/active-release")]
-pub async fn active_release_native() -> Result<Option<ReleaseInfo>, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        let (app_ctx, _auth, _tenant) = modules_server_context().await?;
-        let build_control = app_ctx
-            .build_control
-            .ok_or_else(|| server_error("build control is not configured"))?;
-        let release = build_control
-            .0
-            .active_release()
-            .await
-            .map_err(|err| server_error(err.to_string()))?;
-        Ok(release)
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        Err(ServerFnError::new(
-            "admin/active-release requires the `ssr` feature",
-        ))
-    }
-}
-
 #[server(prefix = "/api/fn", endpoint = "admin/build-history")]
 pub async fn build_history_native(limit: i32, offset: i32) -> Result<Vec<BuildJob>, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -989,45 +966,6 @@ pub async fn update_module_settings_native(
         let _ = (module_slug, settings);
         Err(ServerFnError::new(
             "admin/update-module-settings requires the `ssr` feature",
-        ))
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "admin/rollback-build")]
-pub async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use rustok_api::Permission;
-        use rustok_api::has_any_effective_permission;
-
-        let (app_ctx, auth, tenant) = modules_server_context().await?;
-
-        if !has_any_effective_permission(&auth.permissions, &[Permission::MODULES_MANAGE]) {
-            return Err(ServerFnError::new("modules:manage required"));
-        }
-
-        let build_id = uuid::Uuid::parse_str(build_id.trim())
-            .map_err(|err| server_error(format!("invalid build id: {err}")))?;
-        let build_control = app_ctx
-            .build_control
-            .ok_or_else(|| server_error("build control is not configured"))?;
-        let restored_build = build_control
-            .0
-            .rollback_build(rustok_build::BuildRollbackCommand {
-                build_id,
-                tenant_id: tenant.id,
-                actor_id: auth.user_id,
-            })
-            .await
-            .map_err(|err| server_error(err.to_string()))?;
-
-        Ok(restored_build)
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = build_id;
-        Err(ServerFnError::new(
-            "admin/rollback-build requires the `ssr` feature",
         ))
     }
 }

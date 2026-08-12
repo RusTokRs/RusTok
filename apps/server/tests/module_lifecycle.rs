@@ -287,7 +287,6 @@ async fn setup_db() -> DatabaseConnection {
             revision INTEGER NOT NULL,
             manifest_json TEXT NOT NULL,
             manifest_hash TEXT NOT NULL,
-            active_release_id TEXT NULL,
             updated_by TEXT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP

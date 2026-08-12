@@ -342,8 +342,6 @@ pub mod registry_governance;
 pub mod registry_principal;
 pub mod registry_remote_runner;
 pub mod registry_remote_transitions;
-pub mod release_activation_hook;
-pub mod release_backend;
 pub mod runtime_guardrails;
 pub mod search_product_channel_reconciliation;
 #[cfg(feature = "mod-seo")]

@@ -6,7 +6,6 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Create builds table
         manager
             .create_table(
                 Table::create()
@@ -54,7 +53,6 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(Builds::Reason).text())
-                    .col(ColumnDef::new(Builds::ReleaseId).string_len(64))
                     .col(ColumnDef::new(Builds::LogsUrl).text())
                     .col(ColumnDef::new(Builds::ErrorMessage).text())
                     .col(ColumnDef::new(Builds::StartedAt).timestamp_with_time_zone())
@@ -75,7 +73,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Create index on manifest_hash for deduplication
         manager
             .create_index(
                 Index::create()
@@ -86,7 +83,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Create index on status for querying
         manager
             .create_index(
                 Index::create()
@@ -97,87 +93,10 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Create releases table
-        manager
-            .create_table(
-                Table::create()
-                    .table(Releases::Table)
-                    .if_not_exists()
-                    .col(
-                        ColumnDef::new(Releases::Id)
-                            .string_len(64)
-                            .not_null()
-                            .primary_key(),
-                    )
-                    .col(
-                        ColumnDef::new(Releases::Status)
-                            .string_len(32)
-                            .not_null()
-                            .default("pending"),
-                    )
-                    .col(ColumnDef::new(Releases::BuildId).uuid().not_null())
-                    .col(
-                        ColumnDef::new(Releases::Environment)
-                            .string_len(64)
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(Releases::ContainerImage).text())
-                    .col(ColumnDef::new(Releases::ServerArtifactUrl).text())
-                    .col(ColumnDef::new(Releases::AdminArtifactUrl).text())
-                    .col(ColumnDef::new(Releases::StorefrontArtifactUrl).text())
-                    .col(
-                        ColumnDef::new(Releases::ManifestHash)
-                            .string_len(64)
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(Releases::Modules).json_binary().not_null())
-                    .col(ColumnDef::new(Releases::PreviousReleaseId).string_len(64))
-                    .col(ColumnDef::new(Releases::DeployedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(Releases::RolledBackAt).timestamp_with_time_zone())
-                    .col(
-                        ColumnDef::new(Releases::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .col(
-                        ColumnDef::new(Releases::UpdatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-
-        // Create index on status for finding active release
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_releases_status")
-                    .table(Releases::Table)
-                    .col(Releases::Status)
-                    .to_owned(),
-            )
-            .await?;
-
-        // Create index on build_id
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_releases_build_id")
-                    .table(Releases::Table)
-                    .col(Releases::BuildId)
-                    .to_owned(),
-            )
-            .await
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_table(Table::drop().table(Releases::Table).to_owned())
-            .await?;
-
         manager
             .drop_table(Table::drop().table(Builds::Table).to_owned())
             .await
@@ -197,31 +116,10 @@ pub enum Builds {
     ModulesDelta,
     RequestedBy,
     Reason,
-    ReleaseId,
     LogsUrl,
     ErrorMessage,
     StartedAt,
     FinishedAt,
-    CreatedAt,
-    UpdatedAt,
-}
-
-#[derive(Iden)]
-pub enum Releases {
-    Table,
-    Id,
-    Status,
-    BuildId,
-    Environment,
-    ContainerImage,
-    ServerArtifactUrl,
-    AdminArtifactUrl,
-    StorefrontArtifactUrl,
-    ManifestHash,
-    Modules,
-    PreviousReleaseId,
-    DeployedAt,
-    RolledBackAt,
     CreatedAt,
     UpdatedAt,
 }

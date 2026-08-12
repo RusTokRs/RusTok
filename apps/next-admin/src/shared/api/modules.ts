@@ -75,7 +75,6 @@ export interface BuildJob {
   manifestHash: string;
   modulesDelta: string;
   requestedBy: string;
-  releaseId?: string | null;
   logsUrl?: string | null;
   errorMessage?: string | null;
   reason?: string | null;
@@ -85,23 +84,8 @@ export interface BuildJob {
   finishedAt?: string | null;
 }
 
-export interface ReleaseInfo {
-  id: string;
-  buildId: string;
-  status: string;
-  environment: string;
-  manifestHash: string;
-  modules: string[];
-  previousReleaseId?: string | null;
-  deployedAt?: string | null;
-  rolledBackAt?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface BuildOrchestrationSnapshot {
   activeBuild: BuildJob | null;
-  activeRelease: ReleaseInfo | null;
   buildHistory: BuildJob[];
   marketplaceModules: MarketplaceModule[];
 }
@@ -128,7 +112,6 @@ const BUILD_JOB_FIELDS = `
   modulesDelta
   requestedBy
   reason
-  releaseId
   logsUrl
   errorMessage
   startedAt
@@ -275,24 +258,6 @@ ${BUILD_JOB_FIELDS}
 }
 `;
 
-const ACTIVE_RELEASE_QUERY = `
-query ActiveRelease {
-  activeRelease {
-    id
-    buildId
-    status
-    environment
-    manifestHash
-    modules
-    previousReleaseId
-    deployedAt
-    rolledBackAt
-    createdAt
-    updatedAt
-  }
-}
-`;
-
 const BUILD_HISTORY_QUERY = `
 query BuildHistory($limit: Int!, $offset: Int!) {
   buildHistory(limit: $limit, offset: $offset) {
@@ -335,14 +300,6 @@ ${BUILD_JOB_FIELDS}
 }
 `;
 
-const ROLLBACK_BUILD_MUTATION = `
-mutation RollbackBuild($buildId: String!) {
-  rollbackBuild(buildId: $buildId) {
-${BUILD_JOB_FIELDS}
-  }
-}
-`;
-
 interface ModuleRegistryResponse {
   moduleRegistry: ModuleInfo[];
 }
@@ -371,10 +328,6 @@ interface ActiveBuildResponse {
   activeBuild: BuildJob | null;
 }
 
-interface ActiveReleaseResponse {
-  activeRelease: ReleaseInfo | null;
-}
-
 interface BuildHistoryResponse {
   buildHistory: BuildJob[];
 }
@@ -397,10 +350,6 @@ interface UninstallModuleResponse {
 
 interface UpgradeModuleResponse {
   upgradeModule: BuildJob;
-}
-
-interface RollbackBuildResponse {
-  rollbackBuild: BuildJob;
 }
 
 export async function listModules(
@@ -506,18 +455,6 @@ export async function getActiveBuild(
   return data.activeBuild;
 }
 
-export async function getActiveRelease(
-  opts: GqlOpts = {}
-): Promise<ReleaseInfo | null> {
-  const data = await graphqlRequest<undefined, ActiveReleaseResponse>(
-    ACTIVE_RELEASE_QUERY,
-    undefined,
-    opts.token,
-    opts.tenantSlug
-  );
-  return data.activeRelease;
-}
-
 export async function getBuildHistory(
   limit = 10,
   offset = 0,
@@ -533,10 +470,9 @@ export async function getBuildHistory(
 export async function getBuildOrchestrationSnapshot(
   opts: GqlOpts = {}
 ): Promise<BuildOrchestrationSnapshot> {
-  const [activeBuild, activeRelease, buildHistory, marketplaceModules] =
+  const [activeBuild, buildHistory, marketplaceModules] =
     await Promise.all([
       getActiveBuild(opts),
-      getActiveRelease(opts),
       getBuildHistory(10, 0, opts),
       listMarketplaceModules(
         undefined,
@@ -551,7 +487,6 @@ export async function getBuildOrchestrationSnapshot(
 
   return {
     activeBuild,
-    activeRelease,
     buildHistory,
     marketplaceModules
   };
@@ -625,18 +560,4 @@ export async function upgradeModule(
   >(UPGRADE_MODULE_MUTATION, { slug, version }, opts.token, opts.tenantSlug);
 
   return data.upgradeModule;
-}
-
-export async function rollbackBuild(
-  buildId: string,
-  opts: GqlOpts = {}
-): Promise<BuildJob> {
-  const data = await graphqlRequest<{ buildId: string }, RollbackBuildResponse>(
-    ROLLBACK_BUILD_MUTATION,
-    { buildId },
-    opts.token,
-    opts.tenantSlug
-  );
-
-  return data.rollbackBuild;
 }

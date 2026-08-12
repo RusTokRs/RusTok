@@ -109,19 +109,17 @@ base policy revision before the server accepts the final policy revision.
   directly and do not depend on a framework-global host context.
 - Host-owned `RootQuery` also does not extract a framework-global context: DB-only read paths use
   schema-owned `DatabaseConnection`, and marketplace/cache paths use `ServerRuntimeContext`.
-- Build history, active build/release, and rollback GraphQL/native transports use the
-  host-composed `rustok_build::SharedBuildControl`; the server owns event-aware rollback
-  composition and transports do not construct `BuildService` directly. The
+- Build history and active-build GraphQL/native transports use the read-only
+  host-composed `rustok_build::SharedBuildControl`; transports do not construct
+  `BuildService` directly. The
   control returns typed framework-neutral `rustok-api` snapshots, so GraphQL
   only wraps canonical facts and does not map SeaORM models.
 - Effective-module-policy snapshots carry the owner-produced tenant and exact
   policy-revision cache identity. Server consumers must match both fields;
   TTL or process generation alone never makes a cached authorization decision
   current.
-- Platform rollback streaming preserves the owner `BuildRolledBack` event as a
-  distinct WebSocket/GraphQL event kind with requested/restored build, release
-  predecessor transition, and actor facts. It is not mapped to a synthetic
-  successful build completion.
+- Production release admission, rollout, activation, recovery, and related
+  events are owned by `rustok-modules`; build events contain build facts only.
 - All of `apps/server/src/graphql/**`, including `RootMutation`, RBAC writer, and search rate limiter,
   accepts explicit runtime dependencies. `services/graphql_schema.rs` also accepts only
   `ServerRuntimeContext`.
@@ -218,10 +216,9 @@ base policy revision before the server accepts the final policy revision.
   through the module owner facade. It does not query `tenant_modules` or infer
   effective availability; enabled/denied state remains owned by
   `ModuleEffectivePolicy`.
-- GraphQL build/release history, active release, and rollback precondition reads
-  use the host-composed `rustok-build::SharedBuildControl`. Pagination limits
-  are enforced by the owner, and the transport does not import build/release
-  persistence entities.
+- GraphQL build history and active-build reads use the host-composed read-only
+  `rustok-build::SharedBuildControl`. Pagination limits are enforced by the
+  owner, and the transport does not import build persistence entities.
 - Native admin and GraphQL marketplace reads share the host-composed
   `SharedModuleMarketplaceCatalog`. The server adapter combines active local
   composition with configured remote registry providers, applies durable

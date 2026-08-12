@@ -17,8 +17,8 @@ use crate::context::{AuthContext, TenantContext};
 use crate::graphql::types::{
     ActivityItem, ActivityUser, BuildJob, DashboardStats, InstalledModule, MarketplaceModule,
     MarketplaceModuleVersion, MarketplaceRegistryFreshness, ModuleOperationRecoveryPlan,
-    ModuleRegistryItem, ModuleSettingField, ReleaseInfo, Tenant, TenantModule, User,
-    UserConnection, UserEdge, UsersFilter,
+    ModuleRegistryItem, ModuleSettingField, Tenant, TenantModule, User, UserConnection, UserEdge,
+    UsersFilter,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
@@ -878,52 +878,6 @@ impl RootQuery {
         );
 
         Ok(builds)
-    }
-
-    async fn active_release(&self, ctx: &Context<'_>) -> Result<Option<ReleaseInfo>> {
-        ensure_modules_read_permission(ctx).await?;
-
-        let release = build_control_from_context(ctx)?
-            .0
-            .active_release()
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        Ok(release.as_ref().map(ReleaseInfo::from_snapshot))
-    }
-
-    async fn release_history(
-        &self,
-        ctx: &Context<'_>,
-        #[graphql(default = 20)] limit: i32,
-        #[graphql(default = 0)] offset: i32,
-    ) -> Result<Vec<ReleaseInfo>> {
-        ensure_modules_read_permission(ctx).await?;
-
-        let requested_limit = limit.max(0) as u64;
-        let limit = limit.clamp(1, 100) as u64;
-        let offset = offset.max(0) as u64;
-
-        let releases = build_control_from_context(ctx)?
-            .0
-            .list_releases_page(limit, offset)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        let releases = releases
-            .iter()
-            .map(ReleaseInfo::from_snapshot)
-            .collect::<Vec<_>>();
-
-        metrics::record_read_path_budget(
-            "graphql",
-            "root.release_history",
-            Some(requested_limit),
-            limit,
-            releases.len(),
-        );
-
-        Ok(releases)
     }
 
     async fn me(&self, ctx: &Context<'_>) -> Result<Option<User>> {

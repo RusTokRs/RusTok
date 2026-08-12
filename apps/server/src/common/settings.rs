@@ -400,13 +400,7 @@ pub struct BuildRuntimeSettings {
     /// It does not start a server-local build worker.
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
-    pub deployment: BuildDeploymentSettings,
 }
-
-pub use rustok_build::{
-    DeploymentBackend as BuildDeploymentBackendKind, DeploymentSettings as BuildDeploymentSettings,
-};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RateLimitSettings {
@@ -645,10 +639,7 @@ impl Default for SearchSettings {
 
 impl Default for BuildRuntimeSettings {
     fn default() -> Self {
-        Self {
-            enabled: false,
-            deployment: BuildDeploymentSettings::default(),
-        }
+        Self { enabled: false }
     }
 }
 
@@ -927,93 +918,6 @@ impl RustokSettings {
             )));
         }
 
-        if parsed.build.deployment.backend == BuildDeploymentBackendKind::Http {
-            let endpoint_url = parsed
-                .build
-                .deployment
-                .endpoint_url
-                .as_ref()
-                .map(|value| value.trim().to_string())
-                .unwrap_or_default();
-
-            if endpoint_url.is_empty() {
-                return Err(serde_json::Error::io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "rustok.build.deployment.endpoint_url must not be empty when backend=http",
-                )));
-            }
-
-            parsed.build.deployment.endpoint_url = Some(endpoint_url);
-        }
-
-        let docker_bin = parsed.build.deployment.docker_bin.trim();
-        if docker_bin.is_empty() {
-            parsed.build.deployment.docker_bin = default_build_deployment_docker_bin();
-        } else {
-            parsed.build.deployment.docker_bin = docker_bin.to_string();
-        }
-
-        if parsed.build.deployment.backend == BuildDeploymentBackendKind::Container {
-            let image_repository = parsed
-                .build
-                .deployment
-                .image_repository
-                .as_ref()
-                .map(|value| value.trim().to_string())
-                .unwrap_or_default();
-
-            if image_repository.is_empty() {
-                return Err(serde_json::Error::io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "rustok.build.deployment.image_repository must not be empty when backend=container",
-                )));
-            }
-
-            parsed.build.deployment.image_repository = Some(image_repository);
-        }
-
-        if let Some(public_base_url) = parsed
-            .build
-            .deployment
-            .public_base_url
-            .as_ref()
-            .map(|value| value.trim().trim_end_matches('/').to_string())
-        {
-            if public_base_url.is_empty() {
-                parsed.build.deployment.public_base_url = None;
-            } else {
-                parsed.build.deployment.public_base_url = Some(public_base_url);
-            }
-        }
-
-        if let Some(bearer_token) = parsed
-            .build
-            .deployment
-            .bearer_token
-            .as_ref()
-            .map(|value| value.trim().to_string())
-        {
-            if bearer_token.is_empty() {
-                parsed.build.deployment.bearer_token = None;
-            } else {
-                parsed.build.deployment.bearer_token = Some(bearer_token);
-            }
-        }
-
-        if let Some(rollout_command) = parsed
-            .build
-            .deployment
-            .rollout_command
-            .as_ref()
-            .map(|value| value.trim().to_string())
-        {
-            if rollout_command.is_empty() {
-                parsed.build.deployment.rollout_command = None;
-            } else {
-                parsed.build.deployment.rollout_command = Some(rollout_command);
-            }
-        }
-
         if parsed.rate_limit.enabled && parsed.rate_limit.backend == RateLimitBackendKind::Redis {
             if resolve_redis_url().is_none() {
                 return Err(serde_json::Error::io(std::io::Error::new(
@@ -1178,10 +1082,6 @@ fn default_registry_remote_executor_lease_ttl_ms() -> u64 {
 
 fn default_registry_remote_executor_requeue_scan_interval_ms() -> u64 {
     15_000
-}
-
-fn default_build_deployment_docker_bin() -> String {
-    "docker".to_string()
 }
 
 fn default_requests_per_minute() -> u32 {
@@ -1370,9 +1270,9 @@ fn email_disabled_production_override_enabled() -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BuildDeploymentBackendKind, EmailProvider, EventDeliveryProfile, GuardrailRolloutMode,
-        RateLimitBackendKind, RustokSettings, TenantFallbackMode, TenantResolutionMode,
-        TenantRuntimeProfile, TenantSettingsError,
+        EmailProvider, EventDeliveryProfile, GuardrailRolloutMode, RateLimitBackendKind,
+        RustokSettings, TenantFallbackMode, TenantResolutionMode, TenantRuntimeProfile,
+        TenantSettingsError,
     };
     use std::sync::{Mutex, OnceLock};
 
@@ -1836,114 +1736,6 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("rustok.search.reindex.parallelism must be > 0")
-        );
-    }
-
-    #[test]
-    fn reads_build_deployment_defaults_and_validates_deployment_configuration() {
-        let _guard = env_lock().lock().expect("env lock poisoned");
-        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
-        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
-        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
-
-        let settings =
-            RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} }))).unwrap();
-        assert!(!settings.build.enabled);
-        assert_eq!(
-            settings.build.deployment.backend,
-            BuildDeploymentBackendKind::RecordOnly
-        );
-        assert!(settings.build.deployment.public_base_url.is_none());
-        assert!(settings.build.deployment.endpoint_url.is_none());
-        assert!(settings.build.deployment.bearer_token.is_none());
-        assert_eq!(settings.build.deployment.docker_bin, "docker");
-        assert!(settings.build.deployment.image_repository.is_none());
-        assert!(settings.build.deployment.rollout_command.is_none());
-
-        let raw = serde_json::json!({
-            "rustok": {
-                "build": {
-                    "deployment": {
-                        "backend": "http"
-                    }
-                }
-            }
-        });
-        let err =
-            RustokSettings::from_settings(&Some(raw)).expect_err("http deployment validation");
-        assert!(
-            err.to_string()
-                .contains("rustok.build.deployment.endpoint_url must not be empty")
-        );
-
-        let raw = serde_json::json!({
-            "rustok": {
-                "build": {
-                    "deployment": {
-                        "backend": "http",
-                        "endpoint_url": " https://deploy.example.com/releases ",
-                        "bearer_token": " secret-token "
-                    }
-                }
-            }
-        });
-        let settings =
-            RustokSettings::from_settings(&Some(raw)).expect("http deployment settings parse");
-        assert_eq!(
-            settings.build.deployment.backend,
-            BuildDeploymentBackendKind::Http
-        );
-        assert_eq!(
-            settings.build.deployment.endpoint_url.as_deref(),
-            Some("https://deploy.example.com/releases")
-        );
-        assert_eq!(
-            settings.build.deployment.bearer_token.as_deref(),
-            Some("secret-token")
-        );
-
-        let raw = serde_json::json!({
-            "rustok": {
-                "build": {
-                    "deployment": {
-                        "backend": "container"
-                    }
-                }
-            }
-        });
-        let err =
-            RustokSettings::from_settings(&Some(raw)).expect_err("container deployment validation");
-        assert!(
-            err.to_string()
-                .contains("rustok.build.deployment.image_repository must not be empty")
-        );
-
-        let raw = serde_json::json!({
-            "rustok": {
-                "build": {
-                    "deployment": {
-                        "backend": "container",
-                        "docker_bin": " docker ",
-                        "image_repository": " registry.example.com/rustok/server ",
-                        "rollout_command": " ./scripts/deploy.sh {image} "
-                    }
-                }
-            }
-        });
-        let settings =
-            RustokSettings::from_settings(&Some(raw)).expect("container deployment settings parse");
-        assert_eq!(
-            settings.build.deployment.backend,
-            BuildDeploymentBackendKind::Container
-        );
-        assert_eq!(settings.build.deployment.docker_bin, "docker");
-        assert_eq!(
-            settings.build.deployment.image_repository.as_deref(),
-            Some("registry.example.com/rustok/server")
-        );
-        assert_eq!(
-            settings.build.deployment.rollout_command.as_deref(),
-            Some("./scripts/deploy.sh {image}")
         );
     }
 

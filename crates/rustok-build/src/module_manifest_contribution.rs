@@ -150,7 +150,9 @@ pub fn normalize_module_contribution_manifest(
         "fba.builder_consumer.capabilities",
     )?;
     if builder_capabilities.is_empty() {
-        return fail("fba.builder_consumer.capabilities must not be empty when contribution_manifest is declared");
+        return fail(
+            "fba.builder_consumer.capabilities must not be empty when contribution_manifest is declared",
+        );
     }
     let builder_capability_set = builder_capabilities
         .iter()
@@ -528,10 +530,12 @@ provider = "fly.builtin"
             Some(&"1".to_string())
         );
         assert_eq!(normalized.role("landing").expect("role").surface, "admin");
-        assert!(normalized
-            .manifest_json()
-            .unwrap()
-            .contains("\"module_id\":\"pages\""));
+        assert!(
+            normalized
+                .manifest_json()
+                .unwrap()
+                .contains("\"module_id\":\"pages\"")
+        );
         let metadata = normalized.admin[0]
             .get("metadata")
             .and_then(serde_json::Value::as_object)
@@ -557,9 +561,11 @@ provider = "fly.builtin"
             "required_capabilities = [\"properties\", \"publish\"]",
         );
         let error = normalize_module_contribution_manifest(&invalid).expect_err("must fail");
-        assert!(error
-            .to_string()
-            .contains("outside fba.builder_consumer.capabilities"));
+        assert!(
+            error
+                .to_string()
+                .contains("outside fba.builder_consumer.capabilities")
+        );
     }
 
     #[test]

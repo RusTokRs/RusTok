@@ -1,6 +1,6 @@
-//! Verified activation ledger for completed static distribution builds.
+//! Verified admission ledger for completed static distribution builds.
 //!
-//! Activation records a release candidate that deployment tooling may consume.
+//! Admission records a release candidate that deployment tooling may consume.
 //! It never mutates the running process or the active module runtime projection.
 
 use async_trait::async_trait;
@@ -21,8 +21,7 @@ use crate::{
     ModuleStaticDistributionItem, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
     distribution::{
-        advance_distribution_state, insert_build, load_build, load_distribution_state,
-        module_static_distribution_composition_digest,
+        load_build, load_distribution_state, module_static_distribution_composition_digest,
     },
     promotion::{
         digest_json, load_platform_build_evidence, load_promotion, valid_cas_source_reference,
@@ -38,6 +37,7 @@ const MAX_REASON_BYTES: usize = 1024;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleStaticDistributionReleaseStatus {
+    Admitted,
     Active,
     Superseded,
     Revoked,
@@ -46,6 +46,7 @@ pub enum ModuleStaticDistributionReleaseStatus {
 impl ModuleStaticDistributionReleaseStatus {
     fn parse(value: &str) -> Result<Self, ModuleStaticDistributionReleaseError> {
         match value {
+            "admitted" => Ok(Self::Admitted),
             "active" => Ok(Self::Active),
             "superseded" => Ok(Self::Superseded),
             "revoked" => Ok(Self::Revoked),
@@ -94,21 +95,10 @@ pub trait ModuleStaticDistributionReleaseVerifier: Send + Sync {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModuleStaticDistributionActivationCommand {
+pub struct ModuleStaticDistributionAdmissionCommand {
     pub distribution_build_id: Uuid,
     pub expected_release_revision: u64,
     pub verification_policy_revision: String,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModuleStaticDistributionRollbackCommand {
-    pub target_release_id: Uuid,
-    pub expected_release_revision: u64,
-    pub expected_distribution_revision: u64,
-    pub policy_revision: String,
-    pub reason: String,
     pub actor_id: Uuid,
     pub idempotency_key: Uuid,
 }
@@ -125,14 +115,9 @@ pub struct ModuleStaticDistributionRevocationCommand {
 
 #[async_trait]
 pub trait ModuleStaticDistributionReleaseAuthorizer: Send + Sync {
-    async fn authorize_activation(
+    async fn authorize_admission(
         &self,
-        command: &ModuleStaticDistributionActivationCommand,
-    ) -> Result<(), ModuleStaticDistributionReleaseError>;
-
-    async fn authorize_rollback(
-        &self,
-        command: &ModuleStaticDistributionRollbackCommand,
+        command: &ModuleStaticDistributionAdmissionCommand,
     ) -> Result<(), ModuleStaticDistributionReleaseError>;
 
     async fn authorize_revocation(
@@ -157,8 +142,9 @@ pub struct ModuleStaticDistributionRelease {
     pub composition_digest: String,
     pub evidence: ModuleStaticDistributionBuildEvidence,
     pub status: ModuleStaticDistributionReleaseStatus,
-    pub activated_by: Uuid,
-    pub activated_at: chrono::DateTime<chrono::Utc>,
+    pub admitted_by: Uuid,
+    pub admitted_at: chrono::DateTime<chrono::Utc>,
+    pub activated_at: Option<chrono::DateTime<chrono::Utc>>,
     pub superseded_at: Option<chrono::DateTime<chrono::Utc>>,
     pub revoked_by: Option<Uuid>,
     pub revoked_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -197,13 +183,15 @@ pub async fn resolve_static_distribution_install_binding(
     }
     let transaction = db.begin().await.map_err(store_error)?;
     let state = lock_release_state(&transaction).await?;
-    if state.active_release_id != Some(distribution_release_id) {
+    let release = load_release_record(&transaction, distribution_release_id, true).await?;
+    let selectable = (release.status == ModuleStaticDistributionReleaseStatus::Admitted
+        && release.release_revision == state.revision)
+        || (release.status == ModuleStaticDistributionReleaseStatus::Active
+            && state.active_release_id == Some(distribution_release_id));
+    if !selectable {
         return Err(ModuleStaticDistributionReleaseError::InstallReleaseNotCurrent);
     }
-    let release = load_release_record(&transaction, distribution_release_id, true).await?;
-    if release.status != ModuleStaticDistributionReleaseStatus::Active
-        || !release.admission.admitted()
-    {
+    if !release.admission.admitted() {
         return Err(ModuleStaticDistributionReleaseError::InstallReleaseNotCurrent);
     }
     release.evidence.validate().map_err(distribution_error)?;
@@ -220,56 +208,10 @@ pub async fn resolve_static_distribution_install_binding(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModuleStaticDistributionActivationReceipt {
+pub struct ModuleStaticDistributionAdmissionReceipt {
     pub distribution_release_id: Uuid,
     pub release_revision: u64,
     pub created: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModuleStaticDistributionRollbackReceipt {
-    pub rollback_id: Uuid,
-    pub distribution_build_id: Uuid,
-    pub composition_revision: u64,
-    pub created: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModuleStaticDistributionRollbackStatus {
-    BuildQueued,
-    Released,
-    Cancelled,
-}
-
-impl ModuleStaticDistributionRollbackStatus {
-    fn parse(value: &str) -> Result<Self, ModuleStaticDistributionReleaseError> {
-        match value {
-            "build_queued" => Ok(Self::BuildQueued),
-            "released" => Ok(Self::Released),
-            "cancelled" => Ok(Self::Cancelled),
-            _ => Err(ModuleStaticDistributionReleaseError::Store(
-                "static distribution rollback status is invalid".to_string(),
-            )),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModuleStaticDistributionRollback {
-    pub rollback_id: Uuid,
-    pub from_release_id: Uuid,
-    pub target_release_id: Uuid,
-    pub distribution_build_id: Uuid,
-    pub release_state_revision: u64,
-    pub composition_revision: u64,
-    pub reason: String,
-    pub policy_revision: String,
-    pub requested_by: Uuid,
-    pub status: ModuleStaticDistributionRollbackStatus,
-    pub resulting_release_id: Option<Uuid>,
-    pub requested_at: chrono::DateTime<chrono::Utc>,
-    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -278,13 +220,6 @@ pub struct ModuleStaticDistributionRevocationReceipt {
     pub release_state_revision: u64,
     pub was_active: bool,
     pub created: bool,
-}
-
-struct RollbackRequestRecord {
-    rollback_id: Uuid,
-    from_release_id: Uuid,
-    target_release_id: Uuid,
-    status: String,
 }
 
 #[derive(Clone)]
@@ -314,23 +249,23 @@ where
         }
     }
 
-    pub async fn activate(
+    pub async fn admit(
         &self,
-        command: ModuleStaticDistributionActivationCommand,
-    ) -> Result<ModuleStaticDistributionActivationReceipt, ModuleStaticDistributionReleaseError>
+        command: ModuleStaticDistributionAdmissionCommand,
+    ) -> Result<ModuleStaticDistributionAdmissionReceipt, ModuleStaticDistributionReleaseError>
     {
-        validate_activation_command(&command)?;
-        self.authorizer.authorize_activation(&command).await?;
+        validate_admission_command(&command)?;
+        self.authorizer.authorize_admission(&command).await?;
         let request_digest = digest_json(&command).map_err(promotion_error)?;
         validate_release_idempotency_key(
             &self.db,
-            "activate",
+            "admit",
             command.idempotency_key,
             &request_digest,
             command.actor_id,
         )
         .await?;
-        if let Some(receipt) = load_activation_operation(
+        if let Some(receipt) = load_admission_operation(
             &self.db,
             command.idempotency_key,
             &request_digest,
@@ -372,7 +307,7 @@ where
         validate_admission(&admission, &command.verification_policy_revision)?;
 
         let transaction = self.db.begin().await.map_err(store_error)?;
-        if let Some(receipt) = reserve_activation_operation(
+        if let Some(receipt) = reserve_admission_operation(
             &transaction,
             command.idempotency_key,
             &request_digest,
@@ -391,7 +326,7 @@ where
         {
             return Err(ModuleStaticDistributionReleaseError::BuildIsNotCurrent);
         }
-        lock_build_for_activation(&transaction, command.distribution_build_id).await?;
+        lock_build_for_admission(&transaction, command.distribution_build_id).await?;
         let current_build = load_build(&transaction, command.distribution_build_id)
             .await
             .map_err(distribution_error)?;
@@ -406,39 +341,13 @@ where
                 current: release_state.revision,
             });
         }
-        let rollback_request =
-            load_rollback_request_for_build(&transaction, command.distribution_build_id, true)
-                .await?;
-        if let Some(rollback_request) = &rollback_request {
-            if rollback_request.status != "build_queued"
-                || release_state.active_release_id != Some(rollback_request.from_release_id)
-            {
-                return Err(ModuleStaticDistributionReleaseError::RollbackTargetInvalid);
-            }
-            let target_release =
-                load_release_record(&transaction, rollback_request.target_release_id, true).await?;
-            if target_release.status != ModuleStaticDistributionReleaseStatus::Superseded {
-                return Err(ModuleStaticDistributionReleaseError::RollbackTargetInvalid);
-            }
-            let rebuilt_bundle_root_digest = current_build
-                .result
-                .as_ref()
-                .ok_or(ModuleStaticDistributionReleaseError::BuildNotSucceeded)?
-                .bundle_root_digest
-                .as_str();
-            if rebuilt_bundle_root_digest != target_release.evidence.bundle_root_digest.as_str() {
-                return Err(ModuleStaticDistributionReleaseError::RollbackBuildNotReproducible);
-            }
-        }
+        ensure_no_static_transition_in_progress(&transaction).await?;
         let release_revision = release_state
             .revision
             .checked_add(1)
             .ok_or(ModuleStaticDistributionReleaseError::RevisionOverflow)?;
         let distribution_release_id = self.infrastructure.new_id();
-        let activated_at = self.infrastructure.now();
-        if let Some(active_release_id) = release_state.active_release_id {
-            supersede_release(&transaction, active_release_id).await?;
-        }
+        let admitted_at = self.infrastructure.now();
         let current_evidence = current_build
             .result
             .as_ref()
@@ -449,7 +358,7 @@ where
             release_state.active_release_id,
             release_revision,
             command.actor_id,
-            activated_at.to_owned(),
+            admitted_at.to_owned(),
             current_build.distribution_build_id,
             current_build.composition_revision,
             &current_build.composition_digest,
@@ -461,25 +370,17 @@ where
             self.infrastructure.new_id(),
             distribution_release_id,
             &admission,
-            activated_at,
+            admitted_at,
         )
         .await?;
-        if let Some(rollback_request) = rollback_request {
-            complete_rollback_request(
-                &transaction,
-                rollback_request.rollback_id,
-                distribution_release_id,
-            )
-            .await?;
-        }
-        advance_release_state(
+        advance_release_state_optional(
             &transaction,
             release_state.revision,
             release_revision,
-            distribution_release_id,
+            release_state.active_release_id,
         )
         .await?;
-        complete_activation_operation(
+        complete_admission_operation(
             &transaction,
             command.idempotency_key,
             distribution_release_id,
@@ -496,7 +397,7 @@ where
                 self.infrastructure.event_envelope(
                     None,
                     Some(command.actor_id),
-                    DomainEvent::ModuleStaticDistributionReleaseActivated {
+                    DomainEvent::ModuleStaticDistributionReleaseAdmitted {
                         distribution_release_id,
                         predecessor_release_id: release_state.active_release_id,
                         distribution_build_id: command.distribution_build_id,
@@ -512,197 +413,9 @@ where
             .await
             .map_err(store_error)?;
         transaction.commit().await.map_err(store_error)?;
-        Ok(ModuleStaticDistributionActivationReceipt {
+        Ok(ModuleStaticDistributionAdmissionReceipt {
             distribution_release_id,
             release_revision,
-            created: true,
-        })
-    }
-
-    pub async fn rollback(
-        &self,
-        command: ModuleStaticDistributionRollbackCommand,
-    ) -> Result<ModuleStaticDistributionRollbackReceipt, ModuleStaticDistributionReleaseError> {
-        validate_rollback_command(&command)?;
-        self.authorizer.authorize_rollback(&command).await?;
-        let request_digest = digest_json(&command).map_err(promotion_error)?;
-        validate_release_idempotency_key(
-            &self.db,
-            "rollback",
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?;
-        if let Some(receipt) = load_rollback_operation(
-            &self.db,
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?
-        {
-            return Ok(receipt);
-        }
-
-        let transaction = self.db.begin().await.map_err(store_error)?;
-        if let Some(receipt) = reserve_rollback_operation(
-            &transaction,
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?
-        {
-            transaction.commit().await.map_err(store_error)?;
-            return Ok(receipt);
-        }
-        let distribution_state = load_distribution_state(&transaction, true)
-            .await
-            .map_err(distribution_error)?;
-        if distribution_state.revision != command.expected_distribution_revision {
-            return Err(
-                ModuleStaticDistributionReleaseError::DistributionRevisionConflict {
-                    expected: command.expected_distribution_revision,
-                    current: distribution_state.revision,
-                },
-            );
-        }
-        let release_state = lock_release_state(&transaction).await?;
-        if release_state.revision != command.expected_release_revision {
-            return Err(ModuleStaticDistributionReleaseError::RevisionConflict {
-                expected: command.expected_release_revision,
-                current: release_state.revision,
-            });
-        }
-        let from_release_id = release_state
-            .active_release_id
-            .ok_or(ModuleStaticDistributionReleaseError::NoActiveRelease)?;
-        let from_release = load_release_record(&transaction, from_release_id, true).await?;
-        if from_release.status != ModuleStaticDistributionReleaseStatus::Active
-            || from_release.predecessor_release_id != Some(command.target_release_id)
-        {
-            return Err(ModuleStaticDistributionReleaseError::RollbackTargetInvalid);
-        }
-        if distribution_state.current_build_id != Some(from_release.distribution_build_id)
-            || distribution_state.revision != from_release.composition_revision
-        {
-            return Err(ModuleStaticDistributionReleaseError::PendingDistributionBuild);
-        }
-        let target_release =
-            load_release_record(&transaction, command.target_release_id, true).await?;
-        if target_release.status != ModuleStaticDistributionReleaseStatus::Superseded {
-            return Err(ModuleStaticDistributionReleaseError::RollbackTargetInvalid);
-        }
-        validate_admission(
-            &target_release.admission,
-            &target_release.admission.policy_revision,
-        )?;
-        lock_build_for_activation(&transaction, target_release.distribution_build_id).await?;
-        let target_build = load_build(&transaction, target_release.distribution_build_id)
-            .await
-            .map_err(distribution_error)?;
-        ensure_build_ready(&target_build)?;
-        ensure_release_matches_build(&target_release, &target_build)?;
-        revalidate_promotions(&transaction, &target_build).await?;
-
-        let composition_revision = distribution_state
-            .revision
-            .checked_add(1)
-            .ok_or(ModuleStaticDistributionReleaseError::RevisionOverflow)?;
-        let distribution_build_id = self.infrastructure.new_id();
-        let rollback_id = self.infrastructure.new_id();
-        insert_build(
-            &transaction,
-            crate::distribution::BuildInsert {
-                distribution_build_id,
-                predecessor_build_id: distribution_state.current_build_id,
-                composition_revision,
-                composition_digest: &target_build.composition_digest,
-                platform_source_reference: &target_build.platform_source_reference,
-                platform_source_digest: &target_build.platform_source_digest,
-                toolchain_digest: &target_build.toolchain_digest,
-                build_target: &target_build.build_target,
-                actor_id: command.actor_id,
-                items: &target_build.items,
-            },
-        )
-        .await
-        .map_err(distribution_error)?;
-        advance_distribution_state(
-            &transaction,
-            distribution_state.revision,
-            composition_revision,
-            distribution_build_id,
-        )
-        .await
-        .map_err(distribution_error)?;
-        insert_rollback_request(
-            &transaction,
-            RollbackInsert {
-                rollback_id,
-                from_release_id,
-                target_release_id: command.target_release_id,
-                distribution_build_id,
-                release_state_revision: release_state.revision,
-                composition_revision,
-                reason: &command.reason,
-                policy_revision: &command.policy_revision,
-                actor_id: command.actor_id,
-            },
-        )
-        .await?;
-        complete_rollback_operation(
-            &transaction,
-            command.idempotency_key,
-            rollback_id,
-            distribution_build_id,
-            composition_revision,
-        )
-        .await?;
-        let selected_promotions = u32::try_from(target_build.items.len())
-            .map_err(|_| ModuleStaticDistributionReleaseError::RollbackTargetInvalid)?;
-        self.infrastructure
-            .write_event(
-                &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
-                    DomainEvent::ModuleStaticDistributionBuildQueued {
-                        distribution_build_id,
-                        predecessor_build_id: distribution_state.current_build_id,
-                        composition_revision,
-                        composition_digest: target_build.composition_digest.clone(),
-                        selected_promotions,
-                    },
-                ),
-            )
-            .await
-            .map_err(store_error)?;
-        self.infrastructure
-            .write_event(
-                &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
-                    DomainEvent::ModuleStaticDistributionRollbackBuildQueued {
-                        rollback_id,
-                        from_release_id,
-                        target_release_id: command.target_release_id,
-                        distribution_build_id,
-                        composition_revision,
-                        composition_digest: target_build.composition_digest,
-                        policy_revision: command.policy_revision,
-                    },
-                ),
-            )
-            .await
-            .map_err(store_error)?;
-        transaction.commit().await.map_err(store_error)?;
-        Ok(ModuleStaticDistributionRollbackReceipt {
-            rollback_id,
-            distribution_build_id,
-            composition_revision,
             created: true,
         })
     }
@@ -778,7 +491,6 @@ where
         )
         .await
         .map_err(|error| ModuleStaticDistributionReleaseError::Store(error.to_string()))?;
-        cancel_pending_rollbacks(&transaction, command.distribution_release_id).await?;
         let release_state_revision = release_state
             .revision
             .checked_add(1)
@@ -843,16 +555,6 @@ where
         }
         load_release_record(&self.db, distribution_release_id, false).await
     }
-
-    pub async fn load_rollback(
-        &self,
-        rollback_id: Uuid,
-    ) -> Result<ModuleStaticDistributionRollback, ModuleStaticDistributionReleaseError> {
-        if rollback_id.is_nil() {
-            return Err(ModuleStaticDistributionReleaseError::InvalidCommand);
-        }
-        load_rollback_record(&self.db, rollback_id).await
-    }
 }
 
 #[derive(Debug, Error)]
@@ -877,16 +579,8 @@ pub enum ModuleStaticDistributionReleaseError {
     BuildAlreadyActivated,
     #[error("static distribution release head no longer identifies an active release")]
     ActiveReleaseConflict,
-    #[error("static distribution release head is empty")]
-    NoActiveRelease,
     #[error("static distribution rollback target must be the non-revoked direct predecessor")]
     RollbackTargetInvalid,
-    #[error("static distribution rollback was not found")]
-    RollbackNotFound,
-    #[error("static distribution rollback cannot replace a pending desired build")]
-    PendingDistributionBuild,
-    #[error("static distribution rollback build did not reproduce the target artifact digest")]
-    RollbackBuildNotReproducible,
     #[error("static distribution release is already revoked")]
     ReleaseAlreadyRevoked,
     #[error("static distribution release was not found")]
@@ -905,12 +599,14 @@ pub enum ModuleStaticDistributionReleaseError {
     RevisionOverflow,
     #[error("static distribution release idempotency conflict")]
     IdempotencyConflict,
+    #[error("a static distribution rollout or recovery is already in progress")]
+    TransitionInProgress,
     #[error("static distribution release store error: {0}")]
     Store(String),
 }
 
-fn validate_activation_command(
-    command: &ModuleStaticDistributionActivationCommand,
+fn validate_admission_command(
+    command: &ModuleStaticDistributionAdmissionCommand,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     if command.distribution_build_id.is_nil()
         || command.actor_id.is_nil()
@@ -922,22 +618,6 @@ fn validate_activation_command(
             .verification_policy_revision
             .chars()
             .any(char::is_control)
-    {
-        return Err(ModuleStaticDistributionReleaseError::InvalidCommand);
-    }
-    Ok(())
-}
-
-fn validate_rollback_command(
-    command: &ModuleStaticDistributionRollbackCommand,
-) -> Result<(), ModuleStaticDistributionReleaseError> {
-    if command.target_release_id.is_nil()
-        || command.expected_release_revision == 0
-        || command.expected_distribution_revision == 0
-        || command.actor_id.is_nil()
-        || command.idempotency_key.is_nil()
-        || !valid_policy_revision(&command.policy_revision)
-        || !valid_reason(&command.reason)
     {
         return Err(ModuleStaticDistributionReleaseError::InvalidCommand);
     }
@@ -964,6 +644,31 @@ fn valid_policy_revision(value: &str) -> bool {
         && value.trim() == value
         && value.len() <= MAX_POLICY_REVISION_BYTES
         && !value.chars().any(char::is_control)
+}
+
+async fn ensure_no_static_transition_in_progress(
+    transaction: &DatabaseTransaction,
+) -> Result<(), ModuleStaticDistributionReleaseError> {
+    let backend = transaction.get_database_backend();
+    let row = transaction
+        .query_one(Statement::from_string(
+            backend,
+            "SELECT rollout.status
+             FROM module_static_distribution_rollout_state AS state
+             JOIN module_static_distribution_rollouts AS rollout
+               ON rollout.rollout_id = state.desired_rollout_id
+             WHERE state.state_id = 'current'"
+                .to_string(),
+        ))
+        .await
+        .map_err(store_error)?;
+    if row.is_some_and(|row| {
+        row.try_get::<String>("", "status")
+            .is_ok_and(|status| matches!(status.as_str(), "preparing" | "activating"))
+    }) {
+        return Err(ModuleStaticDistributionReleaseError::TransitionInProgress);
+    }
+    Ok(())
 }
 
 fn valid_reason(value: &str) -> bool {
@@ -1159,7 +864,7 @@ async fn revalidate_promotions(
     Ok(())
 }
 
-async fn lock_build_for_activation(
+async fn lock_build_for_admission(
     transaction: &DatabaseTransaction,
     distribution_build_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
@@ -1195,7 +900,7 @@ pub(crate) async fn insert_release_from_parts(
     predecessor_release_id: Option<Uuid>,
     release_revision: u64,
     actor_id: Uuid,
-    activated_at: chrono::DateTime<chrono::Utc>,
+    admitted_at: chrono::DateTime<chrono::Utc>,
     distribution_build_id: Uuid,
     composition_revision: u64,
     composition_digest: &str,
@@ -1214,9 +919,9 @@ pub(crate) async fn insert_release_from_parts(
                   bundle_reference, bundle_root_digest, role_set_digest, role_artifacts_json,
                   sbom_reference, sbom_digest, provenance_reference, provenance_digest,
                   signature_reference, signature_digest, test_evidence_reference, test_evidence_digest,
-                  status, activated_by, activated_at)
+                  status, admitted_by, admitted_at, activated_at)
                  VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
-                         'active', {}, {})
+                         'admitted', {}, {}, NULL)
                  ON CONFLICT (distribution_build_id) DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -1259,7 +964,7 @@ pub(crate) async fn insert_release_from_parts(
                 evidence.test_evidence_reference.clone().into(),
                 evidence.test_evidence_digest.clone().into(),
                 uuid_value(actor_id, backend),
-                datetime_value(activated_at, backend),
+                datetime_value(admitted_at, backend),
             ],
         ))
         .await
@@ -1346,6 +1051,121 @@ async fn supersede_release(
     Ok(())
 }
 
+/// Makes an admitted immutable release serving only after its rollout has
+/// converged. Admission and serving selection are deliberately separate.
+pub(crate) async fn commit_admitted_release(
+    transaction: &DatabaseTransaction,
+    expected_release_state_revision: u64,
+    predecessor_release_id: Option<Uuid>,
+    target_release_id: Uuid,
+) -> Result<u64, ModuleStaticDistributionReleaseError> {
+    let state = lock_release_state(transaction).await?;
+    if state.revision != expected_release_state_revision
+        || state.active_release_id != predecessor_release_id
+    {
+        return Err(ModuleStaticDistributionReleaseError::ActiveReleaseConflict);
+    }
+    let target = load_release_record(transaction, target_release_id, true).await?;
+    if target.status != ModuleStaticDistributionReleaseStatus::Admitted
+        || target.predecessor_release_id != predecessor_release_id
+        || target.release_revision != expected_release_state_revision
+    {
+        return Err(ModuleStaticDistributionReleaseError::ActiveReleaseConflict);
+    }
+    if let Some(predecessor_release_id) = predecessor_release_id {
+        supersede_release(transaction, predecessor_release_id).await?;
+    }
+    let backend = transaction.get_database_backend();
+    let activated = transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "UPDATE module_static_distribution_releases
+                 SET status = 'active', activated_at = {}
+                 WHERE distribution_release_id = {} AND status = 'admitted'",
+                now_expression(backend),
+                placeholder(backend, 1),
+            ),
+            vec![uuid_value(target_release_id, backend)],
+        ))
+        .await
+        .map_err(store_error)?;
+    if activated.rows_affected() != 1 {
+        return Err(ModuleStaticDistributionReleaseError::ActiveReleaseConflict);
+    }
+    let next_revision = state
+        .revision
+        .checked_add(1)
+        .ok_or(ModuleStaticDistributionReleaseError::RevisionOverflow)?;
+    advance_release_state(
+        transaction,
+        state.revision,
+        next_revision,
+        target_release_id,
+    )
+    .await?;
+    Ok(next_revision)
+}
+
+/// Commits a converged retained-predecessor rollout as the serving release.
+///
+/// This does not create or rebuild a release. The immutable target release is
+/// reselected only after the rollout owner has observed every exact role
+/// assignment active. The release-head CAS and both status transitions share
+/// this transaction.
+pub(crate) async fn commit_recovery_release(
+    transaction: &DatabaseTransaction,
+    expected_release_state_revision: u64,
+    from_release_id: Uuid,
+    target_release_id: Uuid,
+) -> Result<u64, ModuleStaticDistributionReleaseError> {
+    let state = lock_release_state(transaction).await?;
+    if state.revision != expected_release_state_revision
+        || state.active_release_id != Some(from_release_id)
+    {
+        return Err(ModuleStaticDistributionReleaseError::ActiveReleaseConflict);
+    }
+    let from = load_release_record(transaction, from_release_id, true).await?;
+    let target = load_release_record(transaction, target_release_id, true).await?;
+    if from.status != ModuleStaticDistributionReleaseStatus::Active
+        || from.predecessor_release_id != Some(target_release_id)
+        || target.status != ModuleStaticDistributionReleaseStatus::Superseded
+    {
+        return Err(ModuleStaticDistributionReleaseError::RollbackTargetInvalid);
+    }
+    supersede_release(transaction, from_release_id).await?;
+    let backend = transaction.get_database_backend();
+    let activated = transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "UPDATE module_static_distribution_releases
+                 SET status = 'active', activated_at = {}, superseded_at = NULL
+                 WHERE distribution_release_id = {} AND status = 'superseded'",
+                now_expression(backend),
+                placeholder(backend, 1),
+            ),
+            vec![uuid_value(target_release_id, backend)],
+        ))
+        .await
+        .map_err(store_error)?;
+    if activated.rows_affected() != 1 {
+        return Err(ModuleStaticDistributionReleaseError::RollbackTargetInvalid);
+    }
+    let next_revision = state
+        .revision
+        .checked_add(1)
+        .ok_or(ModuleStaticDistributionReleaseError::RevisionOverflow)?;
+    advance_release_state(
+        transaction,
+        state.revision,
+        next_revision,
+        target_release_id,
+    )
+    .await?;
+    Ok(next_revision)
+}
+
 async fn lock_release_state(
     transaction: &DatabaseTransaction,
 ) -> Result<ModuleStaticDistributionReleaseState, ModuleStaticDistributionReleaseError> {
@@ -1400,7 +1220,7 @@ pub(crate) async fn advance_release_state(
     .await
 }
 
-async fn advance_release_state_optional(
+pub(crate) async fn advance_release_state_optional(
     transaction: &DatabaseTransaction,
     expected_revision: u64,
     next_revision: u64,
@@ -1531,12 +1351,12 @@ async fn reserve_release_idempotency_key(
     Ok(())
 }
 
-async fn reserve_activation_operation(
+async fn reserve_admission_operation(
     transaction: &DatabaseTransaction,
     idempotency_key: Uuid,
     request_digest: &str,
     actor_id: Uuid,
-) -> Result<Option<ModuleStaticDistributionActivationReceipt>, ModuleStaticDistributionReleaseError>
+) -> Result<Option<ModuleStaticDistributionAdmissionReceipt>, ModuleStaticDistributionReleaseError>
 {
     let backend = transaction.get_database_backend();
     reserve_release_idempotency_key(
@@ -1551,7 +1371,7 @@ async fn reserve_activation_operation(
         .execute(Statement::from_sql_and_values(
             backend,
             format!(
-                "INSERT INTO module_static_distribution_release_operations
+                "INSERT INTO module_static_distribution_admission_operations
                  (idempotency_key, request_digest, actor_id, created_at)
                  VALUES ({}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
                 placeholder(backend, 1),
@@ -1577,7 +1397,7 @@ async fn reserve_activation_operation(
                 "SELECT request_digest, actor_id, distribution_release_id,
                         release_revision,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
-                 FROM module_static_distribution_release_operations WHERE idempotency_key = {}",
+                 FROM module_static_distribution_admission_operations WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
             vec![uuid_value(idempotency_key, backend)],
@@ -1590,15 +1410,15 @@ async fn reserve_activation_operation(
     if stored_digest != request_digest || stored_actor != actor_id {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
-    replay_activation_receipt(&row, backend).map(Some)
+    replay_admission_receipt(&row, backend).map(Some)
 }
 
-async fn load_activation_operation<C: ConnectionTrait>(
+async fn load_admission_operation<C: ConnectionTrait>(
     connection: &C,
     idempotency_key: Uuid,
     request_digest: &str,
     actor_id: Uuid,
-) -> Result<Option<ModuleStaticDistributionActivationReceipt>, ModuleStaticDistributionReleaseError>
+) -> Result<Option<ModuleStaticDistributionAdmissionReceipt>, ModuleStaticDistributionReleaseError>
 {
     let backend = connection.get_database_backend();
     let Some(row) = connection
@@ -1608,7 +1428,7 @@ async fn load_activation_operation<C: ConnectionTrait>(
                 "SELECT request_digest, actor_id, distribution_release_id,
                         release_revision,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
-                 FROM module_static_distribution_release_operations WHERE idempotency_key = {}",
+                 FROM module_static_distribution_admission_operations WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
             vec![uuid_value(idempotency_key, backend)],
@@ -1623,10 +1443,10 @@ async fn load_activation_operation<C: ConnectionTrait>(
     if stored_digest != request_digest || stored_actor != actor_id {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
-    replay_activation_receipt(&row, backend).map(Some)
+    replay_admission_receipt(&row, backend).map(Some)
 }
 
-async fn complete_activation_operation(
+async fn complete_admission_operation(
     transaction: &DatabaseTransaction,
     idempotency_key: Uuid,
     distribution_release_id: Uuid,
@@ -1637,7 +1457,7 @@ async fn complete_activation_operation(
         .execute(Statement::from_sql_and_values(
             backend,
             format!(
-                "UPDATE module_static_distribution_release_operations
+                "UPDATE module_static_distribution_admission_operations
                  SET distribution_release_id = {}, release_revision = {}, completed_at = {}
                  WHERE idempotency_key = {} AND distribution_release_id IS NULL",
                 placeholder(backend, 1),
@@ -1659,10 +1479,10 @@ async fn complete_activation_operation(
     Ok(())
 }
 
-fn replay_activation_receipt(
+fn replay_admission_receipt(
     row: &QueryResult,
     backend: DbBackend,
-) -> Result<ModuleStaticDistributionActivationReceipt, ModuleStaticDistributionReleaseError> {
+) -> Result<ModuleStaticDistributionAdmissionReceipt, ModuleStaticDistributionReleaseError> {
     let distribution_release_id = optional_uuid_from_row(row, "distribution_release_id", backend)?
         .ok_or(ModuleStaticDistributionReleaseError::IdempotencyConflict)?;
     let release_revision = optional_revision_from_row(row, "release_revision")?
@@ -1671,275 +1491,11 @@ fn replay_activation_receipt(
     if completed != 1 {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
-    Ok(ModuleStaticDistributionActivationReceipt {
+    Ok(ModuleStaticDistributionAdmissionReceipt {
         distribution_release_id,
         release_revision,
         created: false,
     })
-}
-
-struct RollbackInsert<'a> {
-    rollback_id: Uuid,
-    from_release_id: Uuid,
-    target_release_id: Uuid,
-    distribution_build_id: Uuid,
-    release_state_revision: u64,
-    composition_revision: u64,
-    reason: &'a str,
-    policy_revision: &'a str,
-    actor_id: Uuid,
-}
-
-async fn insert_rollback_request(
-    transaction: &DatabaseTransaction,
-    rollback: RollbackInsert<'_>,
-) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let RollbackInsert {
-        rollback_id,
-        from_release_id,
-        target_release_id,
-        distribution_build_id,
-        release_state_revision,
-        composition_revision,
-        reason,
-        policy_revision,
-        actor_id,
-    } = rollback;
-    let backend = transaction.get_database_backend();
-    transaction
-        .execute(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "INSERT INTO module_static_distribution_rollback_requests
-                 (rollback_id, from_release_id, target_release_id, distribution_build_id,
-                  release_state_revision, composition_revision, reason, policy_revision,
-                  requested_by, status, requested_at)
-                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, 'build_queued', {})",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                placeholder(backend, 4),
-                placeholder(backend, 5),
-                placeholder(backend, 6),
-                placeholder(backend, 7),
-                placeholder(backend, 8),
-                placeholder(backend, 9),
-                now_expression(backend),
-            ),
-            vec![
-                uuid_value(rollback_id, backend),
-                uuid_value(from_release_id, backend),
-                uuid_value(target_release_id, backend),
-                uuid_value(distribution_build_id, backend),
-                revision_value(release_state_revision)?,
-                revision_value(composition_revision)?,
-                reason.to_owned().into(),
-                policy_revision.to_owned().into(),
-                uuid_value(actor_id, backend),
-            ],
-        ))
-        .await
-        .map_err(store_error)?;
-    Ok(())
-}
-
-async fn load_rollback_request_for_build<C: ConnectionTrait>(
-    connection: &C,
-    distribution_build_id: Uuid,
-    lock_row: bool,
-) -> Result<Option<RollbackRequestRecord>, ModuleStaticDistributionReleaseError> {
-    let backend = connection.get_database_backend();
-    let lock = if lock_row && backend == DbBackend::Postgres {
-        " FOR UPDATE"
-    } else {
-        ""
-    };
-    let row = connection
-        .query_one(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT rollback_id, from_release_id, target_release_id, status
-                 FROM module_static_distribution_rollback_requests
-                 WHERE distribution_build_id = {}{lock}",
-                placeholder(backend, 1),
-            ),
-            vec![uuid_value(distribution_build_id, backend)],
-        ))
-        .await
-        .map_err(store_error)?;
-    row.map(|row| {
-        Ok(RollbackRequestRecord {
-            rollback_id: uuid_from_row(&row, "rollback_id", backend).map_err(store_error)?,
-            from_release_id: uuid_from_row(&row, "from_release_id", backend)
-                .map_err(store_error)?,
-            target_release_id: uuid_from_row(&row, "target_release_id", backend)
-                .map_err(store_error)?,
-            status: row.try_get("", "status").map_err(store_error)?,
-        })
-    })
-    .transpose()
-}
-
-async fn complete_rollback_request(
-    transaction: &DatabaseTransaction,
-    rollback_id: Uuid,
-    distribution_release_id: Uuid,
-) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
-    let updated = transaction
-        .execute(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "UPDATE module_static_distribution_rollback_requests
-                 SET status = 'released', resulting_release_id = {}, completed_at = {}
-                 WHERE rollback_id = {} AND status = 'build_queued'",
-                placeholder(backend, 1),
-                now_expression(backend),
-                placeholder(backend, 2),
-            ),
-            vec![
-                uuid_value(distribution_release_id, backend),
-                uuid_value(rollback_id, backend),
-            ],
-        ))
-        .await
-        .map_err(store_error)?;
-    if updated.rows_affected() != 1 {
-        return Err(ModuleStaticDistributionReleaseError::RollbackTargetInvalid);
-    }
-    Ok(())
-}
-
-async fn reserve_rollback_operation(
-    transaction: &DatabaseTransaction,
-    idempotency_key: Uuid,
-    request_digest: &str,
-    actor_id: Uuid,
-) -> Result<Option<ModuleStaticDistributionRollbackReceipt>, ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
-    reserve_release_idempotency_key(
-        transaction,
-        "rollback",
-        idempotency_key,
-        request_digest,
-        actor_id,
-    )
-    .await?;
-    let inserted = transaction
-        .execute(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "INSERT INTO module_static_distribution_rollback_operations
-                 (idempotency_key, request_digest, actor_id, created_at)
-                 VALUES ({}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
-            ),
-            vec![
-                uuid_value(idempotency_key, backend),
-                request_digest.to_owned().into(),
-                uuid_value(actor_id, backend),
-            ],
-        ))
-        .await
-        .map_err(store_error)?;
-    if inserted.rows_affected() == 1 {
-        return Ok(None);
-    }
-    query_rollback_operation(transaction, idempotency_key, request_digest, actor_id).await
-}
-
-async fn load_rollback_operation<C: ConnectionTrait>(
-    connection: &C,
-    idempotency_key: Uuid,
-    request_digest: &str,
-    actor_id: Uuid,
-) -> Result<Option<ModuleStaticDistributionRollbackReceipt>, ModuleStaticDistributionReleaseError> {
-    query_rollback_operation(connection, idempotency_key, request_digest, actor_id).await
-}
-
-async fn query_rollback_operation<C: ConnectionTrait>(
-    connection: &C,
-    idempotency_key: Uuid,
-    request_digest: &str,
-    actor_id: Uuid,
-) -> Result<Option<ModuleStaticDistributionRollbackReceipt>, ModuleStaticDistributionReleaseError> {
-    let backend = connection.get_database_backend();
-    let Some(row) = connection
-        .query_one(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT request_digest, actor_id, rollback_id, distribution_build_id,
-                        composition_revision,
-                        CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
-                 FROM module_static_distribution_rollback_operations
-                 WHERE idempotency_key = {}",
-                placeholder(backend, 1),
-            ),
-            vec![uuid_value(idempotency_key, backend)],
-        ))
-        .await
-        .map_err(store_error)?
-    else {
-        return Ok(None);
-    };
-    let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
-    let stored_actor = uuid_from_row(&row, "actor_id", backend).map_err(store_error)?;
-    if stored_digest != request_digest || stored_actor != actor_id {
-        return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
-    }
-    let completed: i64 = row.try_get("", "completed").map_err(store_error)?;
-    if completed != 1 {
-        return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
-    }
-    Ok(Some(ModuleStaticDistributionRollbackReceipt {
-        rollback_id: optional_uuid_from_row(&row, "rollback_id", backend)?
-            .ok_or(ModuleStaticDistributionReleaseError::IdempotencyConflict)?,
-        distribution_build_id: optional_uuid_from_row(&row, "distribution_build_id", backend)?
-            .ok_or(ModuleStaticDistributionReleaseError::IdempotencyConflict)?,
-        composition_revision: optional_revision_from_row(&row, "composition_revision")?
-            .ok_or(ModuleStaticDistributionReleaseError::IdempotencyConflict)?,
-        created: false,
-    }))
-}
-
-async fn complete_rollback_operation(
-    transaction: &DatabaseTransaction,
-    idempotency_key: Uuid,
-    rollback_id: Uuid,
-    distribution_build_id: Uuid,
-    composition_revision: u64,
-) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
-    let updated = transaction
-        .execute(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "UPDATE module_static_distribution_rollback_operations
-                 SET rollback_id = {}, distribution_build_id = {}, composition_revision = {},
-                     completed_at = {}
-                 WHERE idempotency_key = {} AND rollback_id IS NULL",
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-                placeholder(backend, 3),
-                now_expression(backend),
-                placeholder(backend, 4),
-            ),
-            vec![
-                uuid_value(rollback_id, backend),
-                uuid_value(distribution_build_id, backend),
-                revision_value(composition_revision)?,
-                uuid_value(idempotency_key, backend),
-            ],
-        ))
-        .await
-        .map_err(store_error)?;
-    if updated.rows_affected() != 1 {
-        return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
-    }
-    Ok(())
 }
 
 async fn revoke_release(
@@ -1957,7 +1513,7 @@ async fn revoke_release(
                 "UPDATE module_static_distribution_releases
                  SET status = 'revoked', revoked_by = {}, revoked_at = {},
                      revocation_reason = {}, revocation_policy_revision = {}
-                 WHERE distribution_release_id = {} AND status IN ('active', 'superseded')",
+                 WHERE distribution_release_id = {} AND status IN ('admitted', 'active', 'superseded')",
                 placeholder(backend, 1),
                 now_expression(backend),
                 placeholder(backend, 2),
@@ -1976,55 +1532,6 @@ async fn revoke_release(
     if updated.rows_affected() != 1 {
         return Err(ModuleStaticDistributionReleaseError::ReleaseAlreadyRevoked);
     }
-    Ok(())
-}
-
-async fn cancel_pending_rollbacks(
-    transaction: &DatabaseTransaction,
-    release_id: Uuid,
-) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
-    transaction
-        .execute(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "UPDATE module_static_distribution_rollback_requests
-                 SET status = 'cancelled', completed_at = {}
-                 WHERE (target_release_id = {} OR from_release_id = {})
-                   AND status = 'build_queued'",
-                now_expression(backend),
-                placeholder(backend, 1),
-                placeholder(backend, 2),
-            ),
-            vec![
-                uuid_value(release_id, backend),
-                uuid_value(release_id, backend),
-            ],
-        ))
-        .await
-        .map_err(store_error)?;
-    Ok(())
-}
-
-pub(crate) async fn cancel_pending_rollback_for_build(
-    transaction: &DatabaseTransaction,
-    distribution_build_id: Uuid,
-) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let backend = transaction.get_database_backend();
-    transaction
-        .execute(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "UPDATE module_static_distribution_rollback_requests
-                 SET status = 'cancelled', completed_at = {}
-                 WHERE distribution_build_id = {} AND status = 'build_queued'",
-                now_expression(backend),
-                placeholder(backend, 1),
-            ),
-            vec![uuid_value(distribution_build_id, backend)],
-        ))
-        .await
-        .map_err(store_error)?;
     Ok(())
 }
 
@@ -2163,49 +1670,6 @@ async fn complete_revocation_operation(
     Ok(())
 }
 
-async fn load_rollback_record<C: ConnectionTrait>(
-    connection: &C,
-    rollback_id: Uuid,
-) -> Result<ModuleStaticDistributionRollback, ModuleStaticDistributionReleaseError> {
-    let backend = connection.get_database_backend();
-    let row = connection
-        .query_one(Statement::from_sql_and_values(
-            backend,
-            format!(
-                "SELECT rollback_id, from_release_id, target_release_id,
-                        distribution_build_id, release_state_revision, composition_revision,
-                        reason, policy_revision, requested_by, status,
-                        resulting_release_id, requested_at, completed_at
-                 FROM module_static_distribution_rollback_requests
-                 WHERE rollback_id = {}",
-                placeholder(backend, 1),
-            ),
-            vec![uuid_value(rollback_id, backend)],
-        ))
-        .await
-        .map_err(store_error)?
-        .ok_or(ModuleStaticDistributionReleaseError::RollbackNotFound)?;
-    Ok(ModuleStaticDistributionRollback {
-        rollback_id: uuid_from_row(&row, "rollback_id", backend).map_err(store_error)?,
-        from_release_id: uuid_from_row(&row, "from_release_id", backend).map_err(store_error)?,
-        target_release_id: uuid_from_row(&row, "target_release_id", backend)
-            .map_err(store_error)?,
-        distribution_build_id: uuid_from_row(&row, "distribution_build_id", backend)
-            .map_err(store_error)?,
-        release_state_revision: revision_from_row(&row, "release_state_revision", false)?,
-        composition_revision: revision_from_row(&row, "composition_revision", false)?,
-        reason: row.try_get("", "reason").map_err(store_error)?,
-        policy_revision: row.try_get("", "policy_revision").map_err(store_error)?,
-        requested_by: uuid_from_row(&row, "requested_by", backend).map_err(store_error)?,
-        status: ModuleStaticDistributionRollbackStatus::parse(
-            &row.try_get::<String>("", "status").map_err(store_error)?,
-        )?,
-        resulting_release_id: optional_uuid_from_row(&row, "resulting_release_id", backend)?,
-        requested_at: datetime_from_row(&row, "requested_at", backend)?,
-        completed_at: optional_datetime_from_row(&row, "completed_at", backend)?,
-    })
-}
-
 pub(crate) async fn load_release_record<C: ConnectionTrait>(
     connection: &C,
     distribution_release_id: Uuid,
@@ -2230,7 +1694,7 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
                         release.provenance_reference, release.provenance_digest,
                         release.signature_reference, release.signature_digest,
                         release.test_evidence_reference, release.test_evidence_digest,
-                        release.status, release.activated_by, release.activated_at,
+                        release.status, release.admitted_by, release.admitted_at, release.activated_at,
                         release.superseded_at, release.revoked_by, release.revoked_at,
                         release.revocation_reason, release.revocation_policy_revision,
                         admission.verifier_identity, admission.policy_revision,
@@ -2287,8 +1751,9 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
         status: ModuleStaticDistributionReleaseStatus::parse(
             &row.try_get::<String>("", "status").map_err(store_error)?,
         )?,
-        activated_by: uuid_from_row(&row, "activated_by", backend).map_err(store_error)?,
-        activated_at: datetime_from_row(&row, "activated_at", backend)?,
+        admitted_by: uuid_from_row(&row, "admitted_by", backend).map_err(store_error)?,
+        admitted_at: datetime_from_row(&row, "admitted_at", backend)?,
+        activated_at: optional_datetime_from_row(&row, "activated_at", backend)?,
         superseded_at: optional_datetime_from_row(&row, "superseded_at", backend)?,
         revoked_by: optional_uuid_from_row(&row, "revoked_by", backend)?,
         revoked_at: optional_datetime_from_row(&row, "revoked_at", backend)?,

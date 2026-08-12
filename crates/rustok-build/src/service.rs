@@ -11,13 +11,7 @@ use uuid::Uuid;
 use crate::build::{
     ActiveModel as BuildActiveModel, BuildStage, BuildStatus, Entity as BuildEntity, Model as Build,
 };
-use crate::release::{
-    ActiveModel as ReleaseActiveModel, Entity as ReleaseEntity, Model as Release, ReleaseStatus,
-};
-use crate::{
-    BuildEvent, BuildEventPublisher, BuildRequest, NoopBuildEventPublisher, ReleaseActivationHook,
-    ReleaseArtifactBundle,
-};
+use crate::{BuildEvent, BuildEventPublisher, BuildRequest, NoopBuildEventPublisher};
 use rustok_api::manifest_hash::hash_manifest_snapshot;
 
 const MAX_HISTORY_PAGE_SIZE: u64 = 100;
@@ -26,7 +20,6 @@ const MAX_HISTORY_OFFSET: u64 = 1_000_000;
 pub struct BuildService {
     db: DatabaseConnection,
     event_publisher: Arc<dyn BuildEventPublisher>,
-    activation_hook: Arc<dyn ReleaseActivationHook>,
 }
 
 impl BuildService {
@@ -34,7 +27,6 @@ impl BuildService {
         Self {
             db,
             event_publisher: Arc::new(NoopBuildEventPublisher),
-            activation_hook: Arc::new(crate::NoopReleaseActivationHook),
         }
     }
 
@@ -45,19 +37,16 @@ impl BuildService {
         Self {
             db,
             event_publisher,
-            activation_hook: Arc::new(crate::NoopReleaseActivationHook),
         }
     }
 
     pub fn with_runtime(
         db: DatabaseConnection,
         event_publisher: Arc<dyn BuildEventPublisher>,
-        activation_hook: Arc<dyn ReleaseActivationHook>,
     ) -> Self {
         Self {
             db,
             event_publisher,
-            activation_hook,
         }
     }
 
@@ -124,7 +113,6 @@ impl BuildService {
             modules_delta: Set(Some(modules_delta)),
             requested_by: Set(build.requested_by.clone()),
             reason: Set(request.reason),
-            release_id: Set(None),
             logs_url: Set(None),
             error_message: Set(None),
             started_at: Set(None),
@@ -175,11 +163,6 @@ impl BuildService {
             .all(&self.db)
             .await?;
         Ok(builds)
-    }
-
-    #[allow(dead_code)]
-    async fn find_build_by_hash(&self, hash: &str) -> anyhow::Result<Option<Build>> {
-        Self::find_build_by_hash_on(&self.db, hash).await
     }
 
     async fn find_build_by_hash_on<C>(db: &C, hash: &str) -> anyhow::Result<Option<Build>>
@@ -258,10 +241,7 @@ impl BuildService {
                     stage: updated.stage.clone(),
                     progress: updated.progress,
                 },
-                BuildStatus::Success => BuildEvent::BuildCompleted {
-                    build_id,
-                    release_id: updated.release_id.clone(),
-                },
+                BuildStatus::Success => BuildEvent::BuildCompleted { build_id },
                 BuildStatus::Cancelled => BuildEvent::BuildCancelled {
                     build_id,
                     stage: updated.stage.clone(),
@@ -318,332 +298,7 @@ impl BuildService {
         error!(build_id = %build_id, "Build failed");
         Ok(())
     }
-
-    pub async fn create_release(
-        &self,
-        build_id: Uuid,
-        environment: String,
-        modules: Vec<String>,
-    ) -> anyhow::Result<Release> {
-        let build = self
-            .get_build(build_id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Build not found"))?;
-
-        let mut release = Release::new(
-            build_id,
-            environment,
-            build.manifest_hash.clone(),
-            build.manifest_revision,
-            build.manifest_snapshot.clone(),
-            modules,
-        );
-
-        if let Some(prev) = self.active_release().await? {
-            release.previous_release_id = Some(prev.id);
-        }
-
-        let active_model = ReleaseActiveModel {
-            id: Set(release.id.clone()),
-            status: Set(release.status.clone()),
-            build_id: Set(release.build_id),
-            environment: Set(release.environment.clone()),
-            container_image: Set(None),
-            server_artifact_url: Set(None),
-            admin_artifact_url: Set(None),
-            storefront_artifact_url: Set(None),
-            manifest_hash: Set(release.manifest_hash.clone()),
-            manifest_revision: Set(release.manifest_revision),
-            manifest_snapshot: Set(release.manifest_snapshot.clone()),
-            modules: Set(release.modules.clone()),
-            previous_release_id: Set(release.previous_release_id.clone()),
-            deployed_at: Set(None),
-            rolled_back_at: Set(None),
-            created_at: Set(release.created_at),
-            updated_at: Set(release.updated_at),
-        };
-
-        active_model.insert(&self.db).await?;
-
-        let mut build_model: BuildActiveModel = build.into();
-        build_model.release_id = Set(Some(release.id.clone()));
-        build_model.update(&self.db).await?;
-
-        self.event_publisher
-            .publish(BuildEvent::BuildCompleted {
-                build_id,
-                release_id: Some(release.id.clone()),
-            })
-            .await?;
-
-        info!(release_id = %release.id, "Release created");
-
-        Ok(release)
-    }
-
-    pub async fn get_release(&self, release_id: &str) -> anyhow::Result<Option<Release>> {
-        Ok(ReleaseEntity::find_by_id(release_id).one(&self.db).await?)
-    }
-
-    pub async fn activate_release(&self, release_id: &str) -> anyhow::Result<Release> {
-        let updated = self
-            .db
-            .transaction::<_, Release, sea_orm::DbErr>(|txn| {
-                let release_id = release_id.to_string();
-                Box::pin(async move {
-                    let target = ReleaseEntity::find_by_id(&release_id)
-                        .one(txn)
-                        .await?
-                        .ok_or_else(|| sea_orm::DbErr::Custom("Release not found".to_string()))?;
-
-                    let now = Utc::now();
-
-                    if let Some(current) = ReleaseEntity::find()
-                        .filter(crate::release::Column::Status.eq(ReleaseStatus::Active))
-                        .one(txn)
-                        .await?
-                    {
-                        if current.id != target.id {
-                            let mut current_model: ReleaseActiveModel = current.into();
-                            current_model.status = Set(ReleaseStatus::RolledBack);
-                            current_model.rolled_back_at = Set(Some(now));
-                            current_model.updated_at = Set(now);
-                            current_model.update(txn).await?;
-                        }
-                    }
-
-                    let mut target_model: ReleaseActiveModel = target.into();
-                    target_model.status = Set(ReleaseStatus::Active);
-                    target_model.deployed_at = Set(Some(now));
-                    target_model.updated_at = Set(now);
-                    target_model.update(txn).await
-                })
-            })
-            .await
-            .map_err(|error| anyhow::anyhow!("Failed to activate release: {error}"))?;
-
-        self.activation_hook
-            .after_release_activated(&updated)
-            .await?;
-
-        Ok(updated)
-    }
-
-    pub async fn mark_release_deploying(&self, release_id: &str) -> anyhow::Result<Release> {
-        let updated = self
-            .db
-            .transaction::<_, Release, sea_orm::DbErr>(|txn| {
-                let release_id = release_id.to_string();
-                Box::pin(async move {
-                    let release = ReleaseEntity::find_by_id(&release_id)
-                        .one(txn)
-                        .await?
-                        .ok_or_else(|| sea_orm::DbErr::Custom("Release not found".to_string()))?;
-
-                    let mut active_model: ReleaseActiveModel = release.into();
-                    active_model.status = Set(ReleaseStatus::Deploying);
-                    active_model.updated_at = Set(Utc::now());
-                    active_model.update(txn).await
-                })
-            })
-            .await
-            .map_err(|error| anyhow::anyhow!("Failed to mark release deploying: {error}"))?;
-
-        Ok(updated)
-    }
-
-    pub async fn attach_release_artifacts(
-        &self,
-        release_id: &str,
-        artifacts: ReleaseArtifactBundle,
-    ) -> anyhow::Result<Release> {
-        let updated = self
-            .db
-            .transaction::<_, Release, sea_orm::DbErr>(|txn| {
-                let release_id = release_id.to_string();
-                let artifacts = artifacts.clone();
-                Box::pin(async move {
-                    let release = ReleaseEntity::find_by_id(&release_id)
-                        .one(txn)
-                        .await?
-                        .ok_or_else(|| sea_orm::DbErr::Custom("Release not found".to_string()))?;
-
-                    let mut active_model: ReleaseActiveModel = release.into();
-                    active_model.container_image = Set(artifacts.container_image);
-                    active_model.server_artifact_url = Set(artifacts.server_artifact_url);
-                    active_model.admin_artifact_url = Set(artifacts.admin_artifact_url);
-                    active_model.storefront_artifact_url = Set(artifacts.storefront_artifact_url);
-                    active_model.updated_at = Set(Utc::now());
-                    active_model.update(txn).await
-                })
-            })
-            .await
-            .map_err(|error| anyhow::anyhow!("Failed to attach release artifacts: {error}"))?;
-
-        Ok(updated)
-    }
-
-    pub async fn fail_release(&self, release_id: &str) -> anyhow::Result<Release> {
-        let updated = self
-            .db
-            .transaction::<_, Release, sea_orm::DbErr>(|txn| {
-                let release_id = release_id.to_string();
-                Box::pin(async move {
-                    let release = ReleaseEntity::find_by_id(&release_id)
-                        .one(txn)
-                        .await?
-                        .ok_or_else(|| sea_orm::DbErr::Custom("Release not found".to_string()))?;
-
-                    let mut active_model: ReleaseActiveModel = release.into();
-                    active_model.status = Set(ReleaseStatus::Failed);
-                    active_model.updated_at = Set(Utc::now());
-                    active_model.update(txn).await
-                })
-            })
-            .await
-            .map_err(|error| anyhow::anyhow!("Failed to mark release failed: {error}"))?;
-
-        Ok(updated)
-    }
-
-    pub async fn active_release(&self) -> anyhow::Result<Option<Release>> {
-        Ok(ReleaseEntity::find()
-            .filter(crate::release::Column::Status.eq(ReleaseStatus::Active))
-            .order_by_desc(crate::release::Column::UpdatedAt)
-            .one(&self.db)
-            .await?)
-    }
-
-    pub async fn list_releases_page(
-        &self,
-        limit: u64,
-        offset: u64,
-    ) -> anyhow::Result<Vec<Release>> {
-        validate_history_page(limit, offset)?;
-        let releases = ReleaseEntity::find()
-            .order_by_desc(crate::release::Column::CreatedAt)
-            .offset(offset)
-            .limit(limit)
-            .all(&self.db)
-            .await?;
-        Ok(releases)
-    }
-
-    pub async fn rollback_build(
-        &self,
-        command: crate::BuildRollbackCommand,
-    ) -> anyhow::Result<Build> {
-        command.validate()?;
-        let build = self
-            .get_build(command.build_id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Build not found"))?;
-        let release_id = build
-            .release_id
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("Build does not have a release to rollback"))?;
-        let restored_release = self.rollback_release(&release_id).await?;
-        let restored_build = self
-            .get_build(restored_release.build_id)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Restored release is missing its build record"))?;
-
-        self.event_publisher
-            .publish(BuildEvent::BuildRolledBack {
-                requested_build_id: build.id,
-                restored_build_id: restored_build.id,
-                from_release_id: release_id,
-                to_release_id: restored_release.id,
-                actor_id: command.actor_id,
-            })
-            .await?;
-
-        Ok(restored_build)
-    }
-
-    async fn rollback_release(&self, release_id: &str) -> anyhow::Result<Release> {
-        let release_id = release_id.to_string();
-        let (previous, previous_id) = self
-            .db
-            .transaction::<_, (Release, String), sea_orm::DbErr>(|transaction| {
-                let release_id = release_id.clone();
-                Box::pin(async move {
-                    if BuildEntity::find()
-                        .filter(
-                            crate::build::Column::Status
-                                .is_in([BuildStatus::Queued, BuildStatus::Running]),
-                        )
-                        .one(transaction)
-                        .await?
-                        .is_some()
-                    {
-                        return Err(sea_orm::DbErr::Custom(
-                            "Cannot rollback while another build is still queued or running"
-                                .to_string(),
-                        ));
-                    }
-
-                    let current = ReleaseEntity::find()
-                        .filter(crate::release::Column::Status.eq(ReleaseStatus::Active))
-                        .one(transaction)
-                        .await?
-                        .ok_or_else(|| {
-                            sea_orm::DbErr::Custom(
-                                "No active release available for rollback".to_string(),
-                            )
-                        })?;
-                    if current.id != release_id {
-                        return Err(sea_orm::DbErr::Custom(
-                            "Only the current active release can be rolled back".to_string(),
-                        ));
-                    }
-
-                    let previous_id = current.previous_release_id.clone().ok_or_else(|| {
-                        sea_orm::DbErr::Custom(
-                            "No previous release available for rollback".to_string(),
-                        )
-                    })?;
-                    let previous = ReleaseEntity::find_by_id(&previous_id)
-                        .one(transaction)
-                        .await?
-                        .ok_or_else(|| {
-                            sea_orm::DbErr::Custom("Previous release not found".to_string())
-                        })?;
-                    if previous.status != ReleaseStatus::RolledBack {
-                        return Err(sea_orm::DbErr::Custom(
-                            "Previous release is not eligible for rollback activation".to_string(),
-                        ));
-                    }
-
-                    let now = Utc::now();
-                    let mut current_model: ReleaseActiveModel = current.into();
-                    current_model.status = Set(ReleaseStatus::RolledBack);
-                    current_model.rolled_back_at = Set(Some(now));
-                    current_model.updated_at = Set(now);
-                    current_model.update(transaction).await?;
-
-                    let mut previous_model: ReleaseActiveModel = previous.clone().into();
-                    previous_model.status = Set(ReleaseStatus::Active);
-                    previous_model.deployed_at = Set(Some(now));
-                    previous_model.updated_at = Set(now);
-                    previous_model.update(transaction).await?;
-
-                    Ok((previous, previous_id))
-                })
-            })
-            .await
-            .map_err(|error| anyhow::anyhow!("Failed to rollback release: {error}"))?;
-
-        info!(
-            from_release = %release_id,
-            to_release = %previous_id,
-            "Rollback completed"
-        );
-
-        Ok(previous)
-    }
 }
-
 fn validate_history_page(limit: u64, offset: u64) -> anyhow::Result<()> {
     if limit == 0 || limit > MAX_HISTORY_PAGE_SIZE || offset > MAX_HISTORY_OFFSET {
         anyhow::bail!(

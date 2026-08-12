@@ -184,9 +184,7 @@ fn required_admin_search_permission(
     match (entity_type.trim(), source_module.trim()) {
         ("product", _) => Some(Permission::PRODUCTS_READ),
         ("blog_post", "blog" | "rustok-blog") => Some(Permission::BLOG_POSTS_READ),
-        ("forum_category", "forum" | "rustok-forum") => {
-            Some(Permission::FORUM_CATEGORIES_READ)
-        }
+        ("forum_category", "forum" | "rustok-forum") => Some(Permission::FORUM_CATEGORIES_READ),
         ("forum_topic", "forum" | "rustok-forum") => Some(Permission::FORUM_TOPICS_READ),
         ("forum_reply", "forum" | "rustok-forum") => Some(Permission::FORUM_REPLIES_READ),
         ("node", "" | "content" | "rustok-content") => Some(Permission::NODES_READ),

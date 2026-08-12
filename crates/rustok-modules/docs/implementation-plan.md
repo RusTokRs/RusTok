@@ -443,16 +443,11 @@ applies the static-manifest adapter, and calls the owner-controlled
 CAS/build transaction. No GraphQL resolver loads, mutates, validates,
 serializes, or hashes a composition manifest directly.
 
-Platform build active/history/release reads and rollback are now also
-host-composed through `rustok_build::SharedBuildControl`. The server supplies
-the event-aware owner implementation, and GraphQL/native admin adapters no
-longer construct `BuildService` directly. Canonical error/detail parity and
-the remaining build-worker/registry-release transport work stay open in Phase
-7.
-Rollback streaming now preserves the explicit owner `BuildRolledBack` event
-through the canonical root event, WebSocket, and GraphQL adapters. Requested
-and restored builds, the release predecessor transition, and actor identity are
-not reconstructed by transports or flattened into `BuildCompleted`.
+Platform active-build/history reads are host-composed through the read-only
+`rustok_build::SharedBuildControl`. The duplicate build-owned release table,
+active head, rollback command/event, GraphQL/native surface, and admin controls
+are removed. Static release admission, activation, desired/observed rollout,
+recovery, and their events now have one owner in `rustok-modules`.
 
 Lifecycle hooks never receive the transaction that commits tenant state or the
 operation journal. Validation and durable intent happen first; the pre-hook
@@ -775,9 +770,9 @@ receipt. Signing and admission are enforced by the separate build-signature and
 verification-worker policies described below.
 
 The former server background `rustok-build` polling executor has been removed.
-`rustok-build` remains only for reviewed static platform-release composition in
-installer/CLI operations and cannot consume `module.build.queued` or implement
-the module build-worker port.
+`rustok-build` remains only for reviewed static role-plan construction and
+trusted build primitives. It cannot consume `module.build.queued`, implement
+the module build-worker port, publish a role bundle, or own release state.
 
 The current build result derives its toolchain and WIT digests from domain-separated
 immutable request fields. The owner rejects a result that substitutes either
@@ -1576,20 +1571,12 @@ and installation lifecycle preconditions before that command may delete data.
   digests. These fields participate in composition hashing and activation/
   rollback revalidation; promotion callers cannot supply them.
   Verified release activation now accepts only the current successful build,
-  revalidates its immutable selection, persists the interim admission decision
-  and selection-lineage release CAS head, and emits outbox evidence without
-  deploying code. Direct-predecessor rollback now records an immutable request
-  and queues a fresh full-composition build only when no desired build is
-  pending; it reuses no old executable bytes. Revocation serializes through the
-  release CAS, clears an active head, cancels affected pending rollback
-  requests, and preserves immutable evidence. Rollback activation additionally
-  requires the rebuilt artifact digest to reproduce its target, while a
-  superseding selection or failed/cancelled build closes the pending request.
-  This describes the currently implemented interim path. The accepted module
-  release safety decision supersedes rebuild-on-rollback for production
-  recovery; the planned cutover near the top of this document replaces it with
-  retained direct-predecessor role-bundle deployment and removes the interim
-  mutation atomically.
+  revalidates its immutable selection, persists inert admission and emits
+  outbox evidence without deploying code. The rollout operation freezes the
+  then-serving direct predecessor and exact `(node, role)` assignments;
+  convergence activates the candidate. Recovery revalidates and redeploys
+  retained predecessor bytes and never queues a build. Revocation serializes
+  through owner release state and preserves immutable evidence.
   The current-only `ModuleStaticDistributionExecutor` port and owner
   `dispatch_next` orchestration now claim before invoking the external
   executor, heartbeat the durable lease while it runs, and persist its outcome
@@ -1704,9 +1691,17 @@ bundles and evidence publish to OCI, dynamic WASM/Rhai payloads publish into
 the platform object-store CAS, PostgreSQL stores only owner control records,
 and deployment nodes materialize digest-addressed static bytes into disposable
 cache plus predecessor-preserving slots. A node path, symlink, tag, PID, or
-`rustok-build` release row is never production identity. Candidate and direct
+build row is never production identity. Candidate and direct
 predecessor role bytes must be pre-staged and rehashed on every node that can
 lose predecessor capacity before automatic mode is admitted.
+
+The first durable native-rollout slice now records each exact
+`(node_id, role)` assignment, its candidate role digest, its operation-bound
+predecessor role digest when one exists, and role-scoped observation/idempotency
+receipts. Multiple roles may therefore converge on one portable instance
+without sharing a mutable node-level observation. The remaining recovery work
+must consume these retained predecessor digests through the same desired/
+observed reconciler; it must not queue a compiler build during an incident.
 
 For the default local/monolith installation, every physical plane is derived
 from one trusted operator-selected `<instance-root>` using the canonical
@@ -1760,10 +1755,9 @@ acquisition, one automatic attempt, trusted candidate-attributed health
 evaluation, pre-traffic recovery after predecessor displacement, an
 outside-candidate static control path, mixed N/N+1 data and bounded drain
 evidence, and a point-of-no-return gate before irreversible effects. It never
-automatically restores production data. The current direct `rustok-build`
-operator rollback, rebuild-on-rollback path, and caller-selected artifact
-migration mode are
-removed atomically with their canonical replacement; no compatibility path is
+automatically restores production data. The direct `rustok-build` operator
+rollback and rebuild-on-rollback path are removed. Caller-selected artifact
+migration mode remains a required atomic cutover item; no compatibility path is
 retained.
 
 Each preparation owns a `preparation_id` and an explicit platform-public or
@@ -1778,7 +1772,7 @@ tenant installs never share authority, raw logs, or replay identity.
 Current production gaps include the uncomposed release-admission installer and
 update coordinator, empty unfinished-admission recovery scan, absent executor
 prefetch/readiness and admission/recovery reconcilers, singular static
-publisher and rollout identity, direct `rustok-build` active-release mutation,
+  publisher and rollout identity,
 missing `operations_tool_maintenance` coordinator/fleet projection, and
 incomplete retention collection. The artifact runtime lifecycle executor
 itself is already composed by the server and is not this gap.

@@ -37,7 +37,6 @@ use rustok_auth::{
     UserAdminMutationRuntime, UserMutationRecord,
 };
 use rustok_build::EventBusBuildEventPublisher;
-use rustok_build::{BuildRollbackCommand, SharedBuildControl};
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_modules::ModuleCompositionError;
 use std::sync::Arc;
@@ -263,10 +262,6 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
             <FieldError as GraphQLError>::internal_error(&err.to_string())
         }
     }
-}
-
-fn parse_build_id(build_id: &str) -> Result<Uuid> {
-    Uuid::parse_str(build_id).map_err(|_| FieldError::new("Invalid build ID"))
 }
 
 async fn ensure_modules_manage_permission(
@@ -626,28 +621,6 @@ impl RootMutation {
             },
         )
         .await
-    }
-
-    async fn rollback_build(&self, ctx: &Context<'_>, build_id: String) -> Result<BuildJob> {
-        let (_, tenant) = ensure_modules_manage_permission(ctx).await?;
-
-        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
-        let build_control = runtime_ctx
-            .shared_get::<SharedBuildControl>()
-            .ok_or_else(|| {
-                <FieldError as GraphQLError>::internal_error("build control is not configured")
-            })?;
-        let restored_build = build_control
-            .0
-            .rollback_build(BuildRollbackCommand {
-                build_id: parse_build_id(&build_id)?,
-                tenant_id: tenant.id,
-                actor_id: ctx.data::<AuthContext>()?.user_id,
-            })
-            .await
-            .map_err(|err| FieldError::new(err.to_string()))?;
-
-        Ok(BuildJob::from_snapshot(&restored_build))
     }
 
     async fn toggle_module(

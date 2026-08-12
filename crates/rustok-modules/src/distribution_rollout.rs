@@ -19,7 +19,7 @@ use crate::{
     ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseStatus,
     ModuleStaticDistributionRole,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
-    distribution_release::{load_release_record, load_release_state},
+    distribution_release::{commit_recovery_release, load_release_record, load_release_state},
     promotion::{digest_json, valid_digest, valid_reference},
 };
 
@@ -41,6 +41,32 @@ pub enum ModuleStaticDistributionRolloutStatus {
     Failed,
     Degraded,
     Superseded,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleStaticDistributionTransitionKind {
+    Update,
+    Recovery,
+}
+
+impl ModuleStaticDistributionTransitionKind {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Update => "update",
+            Self::Recovery => "recovery",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, ModuleStaticDistributionRolloutError> {
+        match value {
+            "update" => Ok(Self::Update),
+            "recovery" => Ok(Self::Recovery),
+            _ => Err(ModuleStaticDistributionRolloutError::Store(
+                "static distribution transition kind is invalid".to_string(),
+            )),
+        }
+    }
 }
 
 impl ModuleStaticDistributionRolloutStatus {
@@ -118,7 +144,7 @@ pub struct ModuleStaticDistributionTopologySnapshot {
 pub struct ModuleStaticDistributionAssignment {
     pub node_id: String,
     pub role: ModuleStaticDistributionRole,
-    pub artifact_digest: String,
+    pub candidate_artifact_digest: String,
 }
 
 #[async_trait]
@@ -134,9 +160,22 @@ pub trait ModuleStaticDistributionTopologyResolver: Send + Sync {
 #[serde(deny_unknown_fields)]
 pub struct ModuleStaticDistributionRolloutRequest {
     pub distribution_release_id: Uuid,
-    pub expected_release_revision: u64,
+    pub expected_release_state_revision: u64,
+    pub expected_distribution_release_revision: u64,
     pub expected_rollout_state_revision: u64,
     pub policy_revision: String,
+    pub actor_id: Uuid,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleStaticDistributionRecoveryRequest {
+    pub current_rollout_id: Uuid,
+    pub expected_release_state_revision: u64,
+    pub expected_rollout_state_revision: u64,
+    pub policy_revision: String,
+    pub reason: String,
     pub actor_id: Uuid,
     pub idempotency_key: Uuid,
 }
@@ -161,7 +200,7 @@ pub struct ModuleStaticDistributionAssignmentReport {
     pub rollout_id: Uuid,
     pub node_id: String,
     pub role: ModuleStaticDistributionRole,
-    pub artifact_digest: String,
+    pub candidate_artifact_digest: String,
     pub expected_observation_revision: u64,
     pub phase: ModuleStaticDistributionAssignmentPhase,
     pub distribution_release_id: Uuid,
@@ -189,6 +228,11 @@ pub trait ModuleStaticDistributionRolloutAuthorizer: Send + Sync {
         &self,
         command: &ModuleStaticDistributionAssignmentReport,
     ) -> Result<(), ModuleStaticDistributionRolloutError>;
+
+    async fn authorize_recovery(
+        &self,
+        command: &ModuleStaticDistributionRecoveryRequest,
+    ) -> Result<(), ModuleStaticDistributionRolloutError>;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,7 +246,8 @@ pub struct ModuleStaticDistributionRolloutState {
 pub struct ModuleStaticDistributionRolloutAssignment {
     pub node_id: String,
     pub role: ModuleStaticDistributionRole,
-    pub artifact_digest: String,
+    pub candidate_artifact_digest: String,
+    pub predecessor_artifact_digest: Option<String>,
     pub ordinal: u16,
     pub observation_revision: u64,
     pub phase: ModuleStaticDistributionAssignmentPhase,
@@ -217,8 +262,10 @@ pub struct ModuleStaticDistributionRollout {
     pub rollout_id: Uuid,
     pub predecessor_rollout_id: Option<Uuid>,
     pub distribution_release_id: Uuid,
+    pub transition_kind: ModuleStaticDistributionTransitionKind,
     pub rollout_revision: u64,
     pub distribution_release_revision: u64,
+    pub release_state_revision_at_request: u64,
     pub composition_revision: u64,
     pub composition_digest: String,
     pub bundle_reference: String,
@@ -301,15 +348,13 @@ where
         )
         .await?
         {
-            return replay_request(&operation);
+            return replay_request(&operation, "request");
         }
 
         let release_state = load_release_state(&self.db, false)
             .await
             .map_err(release_error)?;
-        if release_state.revision != command.expected_release_revision
-            || release_state.active_release_id != Some(command.distribution_release_id)
-        {
+        if release_state.revision != command.expected_release_state_revision {
             return Err(ModuleStaticDistributionRolloutError::ReleaseRevisionConflict);
         }
         let release = load_release_record(&self.db, command.distribution_release_id, false)
@@ -321,7 +366,7 @@ where
             .resolve(&release, &command.policy_revision)
             .await
             .map_err(ModuleStaticDistributionRolloutError::TopologyResolution)?;
-        validate_topology(&topology)?;
+        validate_topology(&topology, &release)?;
 
         let transaction = self.db.begin().await.map_err(store_error)?;
         if let Some(operation) = reserve_operation(
@@ -334,7 +379,7 @@ where
         .await?
         {
             transaction.commit().await.map_err(store_error)?;
-            return replay_request(&operation);
+            return replay_request(&operation, "request");
         }
         let locked_release_state = load_release_state(&transaction, true)
             .await
@@ -356,11 +401,11 @@ where
                 current: state.revision,
             });
         }
-        let predecessor = match state.desired_rollout_id {
+        let prior_desired = match state.desired_rollout_id {
             Some(rollout_id) => Some(load_rollout(&transaction, rollout_id, true).await?),
             None => None,
         };
-        if predecessor.as_ref().is_some_and(|rollout| {
+        if prior_desired.as_ref().is_some_and(|rollout| {
             matches!(
                 rollout.status,
                 ModuleStaticDistributionRolloutStatus::Preparing
@@ -369,6 +414,10 @@ where
         }) {
             return Err(ModuleStaticDistributionRolloutError::RolloutInProgress);
         }
+        let predecessor = match state.observed_rollout_id {
+            Some(rollout_id) => Some(load_rollout(&transaction, rollout_id, true).await?),
+            None => None,
+        };
         if predecessor.as_ref().is_some_and(|rollout| {
             rollout.status == ModuleStaticDistributionRolloutStatus::Converged
                 && rollout.distribution_release_id == release.distribution_release_id
@@ -377,7 +426,7 @@ where
         }) {
             return Err(ModuleStaticDistributionRolloutError::NoRolloutChange);
         }
-        let rollout_revision = predecessor.as_ref().map_or(Ok(1_u64), |rollout| {
+        let rollout_revision = prior_desired.as_ref().map_or(Ok(1_u64), |rollout| {
             rollout
                 .rollout_revision
                 .checked_add(1)
@@ -396,9 +445,16 @@ where
             &release,
             &topology,
             &command,
+            ModuleStaticDistributionTransitionKind::Update,
         )
         .await?;
-        insert_rollout_assignments(&transaction, rollout_id, &topology.assignments).await?;
+        insert_rollout_assignments(
+            &transaction,
+            rollout_id,
+            &topology.assignments,
+            predecessor.as_ref(),
+        )
+        .await?;
         advance_rollout_state(
             &transaction,
             state.revision,
@@ -436,6 +492,186 @@ where
                         target_assignments: u32::try_from(topology.assignments.len())
                             .map_err(|_| ModuleStaticDistributionRolloutError::InvalidTopology)?,
                         executor_mode: "static_native".to_string(),
+                    },
+                ),
+            )
+            .await
+            .map_err(store_error)?;
+        transaction.commit().await.map_err(store_error)?;
+        Ok(receipt)
+    }
+
+    pub async fn recover(
+        &self,
+        command: ModuleStaticDistributionRecoveryRequest,
+    ) -> Result<ModuleStaticDistributionRolloutReceipt, ModuleStaticDistributionRolloutError> {
+        validate_recovery_request(&command)?;
+        self.authorizer.authorize_recovery(&command).await?;
+        let request_digest = digest_json(&command).map_err(promotion_error)?;
+        let principal_id = command.actor_id.to_string();
+        if let Some(operation) = load_operation(
+            &self.db,
+            command.idempotency_key,
+            "recovery",
+            &request_digest,
+            &principal_id,
+        )
+        .await?
+        {
+            return replay_request(&operation, "recovery");
+        }
+
+        let transaction = self.db.begin().await.map_err(store_error)?;
+        if let Some(operation) = reserve_operation(
+            &transaction,
+            command.idempotency_key,
+            "recovery",
+            &request_digest,
+            &principal_id,
+        )
+        .await?
+        {
+            transaction.commit().await.map_err(store_error)?;
+            return replay_request(&operation, "recovery");
+        }
+        let release_state = load_release_state(&transaction, true)
+            .await
+            .map_err(release_error)?;
+        if release_state.revision != command.expected_release_state_revision {
+            return Err(ModuleStaticDistributionRolloutError::ReleaseRevisionConflict);
+        }
+        let state = load_rollout_state(&transaction, true).await?;
+        if state.revision != command.expected_rollout_state_revision
+            || state.desired_rollout_id != Some(command.current_rollout_id)
+        {
+            return Err(ModuleStaticDistributionRolloutError::StaleRollout);
+        }
+        let current = load_rollout(&transaction, command.current_rollout_id, true).await?;
+        if current.transition_kind == ModuleStaticDistributionTransitionKind::Recovery {
+            return Err(ModuleStaticDistributionRolloutError::RecoveryUnavailable);
+        }
+        let predecessor_rollout_id = current
+            .predecessor_rollout_id
+            .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?;
+        let predecessor = load_rollout(&transaction, predecessor_rollout_id, true).await?;
+        let target_release =
+            load_release_record(&transaction, predecessor.distribution_release_id, true)
+                .await
+                .map_err(release_error)?;
+        let source_release =
+            load_release_record(&transaction, current.distribution_release_id, true)
+                .await
+                .map_err(release_error)?;
+        let accepted_regression = current.status
+            == ModuleStaticDistributionRolloutStatus::Converged
+            && state.observed_rollout_id == Some(current.rollout_id)
+            && source_release.status == ModuleStaticDistributionReleaseStatus::Active
+            && target_release.status == ModuleStaticDistributionReleaseStatus::Superseded
+            && release_state.active_release_id == Some(source_release.distribution_release_id);
+        let partial_rollout_failure = current.status
+            == ModuleStaticDistributionRolloutStatus::Failed
+            && state.observed_rollout_id == Some(predecessor.rollout_id)
+            && source_release.status == ModuleStaticDistributionReleaseStatus::Admitted
+            && target_release.status == ModuleStaticDistributionReleaseStatus::Active
+            && release_state.active_release_id == Some(target_release.distribution_release_id);
+        if (!accepted_regression && !partial_rollout_failure)
+            || target_release.predecessor_release_id == Some(current.distribution_release_id)
+            || predecessor.assignments.len() != current.assignments.len()
+            || current.assignments.iter().any(|assignment| {
+                assignment
+                    .predecessor_artifact_digest
+                    .as_ref()
+                    .is_none_or(|digest| {
+                        !predecessor.assignments.iter().any(|candidate| {
+                            candidate.node_id == assignment.node_id
+                                && candidate.role == assignment.role
+                                && candidate.candidate_artifact_digest == *digest
+                        })
+                    })
+            })
+        {
+            return Err(ModuleStaticDistributionRolloutError::RecoveryUnavailable);
+        }
+        let assignments = predecessor
+            .assignments
+            .iter()
+            .map(|assignment| ModuleStaticDistributionAssignment {
+                node_id: assignment.node_id.clone(),
+                role: assignment.role,
+                candidate_artifact_digest: assignment.candidate_artifact_digest.clone(),
+            })
+            .collect::<Vec<_>>();
+        let topology_digest =
+            module_static_distribution_topology_digest(&current.topology_reference, &assignments)?;
+        let topology = ModuleStaticDistributionTopologySnapshot {
+            topology_reference: current.topology_reference.clone(),
+            topology_digest,
+            assignments,
+        };
+        validate_topology(&topology, &target_release)?;
+
+        let rollout_revision = current
+            .rollout_revision
+            .checked_add(1)
+            .ok_or(ModuleStaticDistributionRolloutError::RevisionOverflow)?;
+        let rollout_state_revision = state
+            .revision
+            .checked_add(1)
+            .ok_or(ModuleStaticDistributionRolloutError::RevisionOverflow)?;
+        let rollout_id = self.infrastructure.new_id();
+        let request = ModuleStaticDistributionRolloutRequest {
+            distribution_release_id: target_release.distribution_release_id,
+            expected_release_state_revision: command.expected_release_state_revision,
+            expected_distribution_release_revision: target_release.release_revision,
+            expected_rollout_state_revision: command.expected_rollout_state_revision,
+            policy_revision: command.policy_revision,
+            actor_id: command.actor_id,
+            idempotency_key: command.idempotency_key,
+        };
+        insert_rollout(
+            &transaction,
+            rollout_id,
+            Some(current.rollout_id),
+            rollout_revision,
+            &target_release,
+            &topology,
+            &request,
+            ModuleStaticDistributionTransitionKind::Recovery,
+        )
+        .await?;
+        insert_rollout_assignments(&transaction, rollout_id, &topology.assignments, None).await?;
+        advance_rollout_state(
+            &transaction,
+            state.revision,
+            rollout_state_revision,
+            Some(rollout_id),
+            state.observed_rollout_id,
+        )
+        .await?;
+        let receipt = ModuleStaticDistributionRolloutReceipt {
+            rollout_id,
+            rollout_revision,
+            rollout_state_revision,
+            status: ModuleStaticDistributionRolloutStatus::Preparing,
+            created: true,
+        };
+        complete_request_operation(&transaction, command.idempotency_key, &receipt).await?;
+        self.infrastructure
+            .write_event(
+                &transaction,
+                self.infrastructure.event_envelope(
+                    None,
+                    Some(command.actor_id),
+                    DomainEvent::ModuleStaticDistributionRecoveryRequested {
+                        rollout_id,
+                        predecessor_rollout_id: current.rollout_id,
+                        from_release_id: current.distribution_release_id,
+                        target_release_id: target_release.distribution_release_id,
+                        rollout_revision,
+                        rollout_state_revision,
+                        topology_digest: topology.topology_digest,
+                        policy_revision: request.policy_revision,
+                        reason: command.reason,
                     },
                 ),
             )
@@ -490,11 +726,51 @@ where
         ) {
             return Err(ModuleStaticDistributionRolloutError::TerminalRollout);
         }
+        let release_state = load_release_state(&transaction, true)
+            .await
+            .map_err(release_error)?;
         let current_release =
             load_release_record(&transaction, rollout.distribution_release_id, true)
                 .await
                 .map_err(release_error)?;
-        if current_release.status != ModuleStaticDistributionReleaseStatus::Active
+        let recovery_source_release =
+            if rollout.transition_kind == ModuleStaticDistributionTransitionKind::Recovery {
+                let predecessor_rollout_id = rollout
+                    .predecessor_rollout_id
+                    .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?;
+                Some(
+                    load_rollout(&transaction, predecessor_rollout_id, false)
+                        .await?
+                        .distribution_release_id,
+                )
+            } else {
+                None
+            };
+        let release_identity_valid = match rollout.transition_kind {
+            ModuleStaticDistributionTransitionKind::Update => {
+                current_release.status == ModuleStaticDistributionReleaseStatus::Admitted
+                    && release_state.revision == rollout.release_state_revision_at_request
+            }
+            ModuleStaticDistributionTransitionKind::Recovery => {
+                let source_release_id = recovery_source_release
+                    .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?;
+                let source_release = load_release_record(&transaction, source_release_id, true)
+                    .await
+                    .map_err(release_error)?;
+                release_state.revision == rollout.release_state_revision_at_request
+                    && ((current_release.status
+                        == ModuleStaticDistributionReleaseStatus::Superseded
+                        && source_release.status == ModuleStaticDistributionReleaseStatus::Active
+                        && release_state.active_release_id == Some(source_release_id))
+                        || (current_release.status
+                            == ModuleStaticDistributionReleaseStatus::Active
+                            && source_release.status
+                                == ModuleStaticDistributionReleaseStatus::Admitted
+                            && release_state.active_release_id
+                                == Some(rollout.distribution_release_id)))
+            }
+        };
+        if !release_identity_valid
             || current_release.release_revision != rollout.distribution_release_revision
         {
             return Err(ModuleStaticDistributionRolloutError::StaleRollout);
@@ -516,7 +792,7 @@ where
                 },
             );
         }
-        if assignment.artifact_digest != command.artifact_digest {
+        if assignment.candidate_artifact_digest != command.candidate_artifact_digest {
             return Err(ModuleStaticDistributionRolloutError::ObservationIdentityMismatch);
         }
         validate_transition(assignment.phase, command.phase, rollout.status)?;
@@ -538,6 +814,7 @@ where
         let mut state_revision = state.revision;
         let mut observed_rollout_id = state.observed_rollout_id;
         let mut status_failure = None;
+        let mut release_convergence = None;
         if command.phase == ModuleStaticDistributionAssignmentPhase::Failed {
             status_failure = command.failure.clone();
             next_status = if rollout.status == ModuleStaticDistributionRolloutStatus::Converged {
@@ -558,6 +835,36 @@ where
         {
             next_status = ModuleStaticDistributionRolloutStatus::Converged;
             observed_rollout_id = Some(rollout.rollout_id);
+            let from_release_id = release_state.active_release_id;
+            let release_state_revision = match rollout.transition_kind {
+                ModuleStaticDistributionTransitionKind::Update => {
+                    crate::distribution_release::commit_admitted_release(
+                        &transaction,
+                        rollout.release_state_revision_at_request,
+                        from_release_id,
+                        rollout.distribution_release_id,
+                    )
+                    .await
+                    .map_err(release_error)?
+                }
+                ModuleStaticDistributionTransitionKind::Recovery => {
+                    if from_release_id == Some(rollout.distribution_release_id) {
+                        rollout.release_state_revision_at_request
+                    } else {
+                        let from_release_id = from_release_id
+                            .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?;
+                        commit_recovery_release(
+                            &transaction,
+                            rollout.release_state_revision_at_request,
+                            from_release_id,
+                            rollout.distribution_release_id,
+                        )
+                        .await
+                        .map_err(release_error)?
+                    }
+                }
+            };
+            release_convergence = Some((from_release_id, release_state_revision));
         }
 
         if next_status != rollout.status {
@@ -589,6 +896,35 @@ where
             )
             .await?;
         }
+        if let Some((from_release_id, release_state_revision)) = release_convergence {
+            let event = match rollout.transition_kind {
+                ModuleStaticDistributionTransitionKind::Update => {
+                    DomainEvent::ModuleStaticDistributionReleaseActivated {
+                        distribution_release_id: rollout.distribution_release_id,
+                        predecessor_release_id: from_release_id,
+                        rollout_id: rollout.rollout_id,
+                        release_state_revision,
+                    }
+                }
+                ModuleStaticDistributionTransitionKind::Recovery => {
+                    DomainEvent::ModuleStaticDistributionRecoveryConverged {
+                        rollout_id: rollout.rollout_id,
+                        from_release_id: recovery_source_release
+                            .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?,
+                        target_release_id: rollout.distribution_release_id,
+                        release_state_revision,
+                        rollout_state_revision: state_revision,
+                    }
+                }
+            };
+            self.infrastructure
+                .write_event(
+                    &transaction,
+                    self.infrastructure.event_envelope(None, None, event),
+                )
+                .await
+                .map_err(store_error)?;
+        }
 
         let receipt = ModuleStaticDistributionAssignmentReportReceipt {
             rollout_id: rollout.rollout_id,
@@ -612,7 +948,7 @@ where
                         rollout_id: rollout.rollout_id,
                         node_id: command.node_id,
                         role: role_name(command.role).to_string(),
-                        artifact_digest: command.artifact_digest,
+                        candidate_artifact_digest: command.candidate_artifact_digest,
                         reporter_id: command.reporter_id,
                         observation_revision,
                         phase: command.phase.as_str().to_string(),
@@ -828,6 +1164,8 @@ pub enum ModuleStaticDistributionRolloutError {
     TerminalRollout,
     #[error("static distribution rollout was not found")]
     RolloutNotFound,
+    #[error("static distribution direct-predecessor recovery is unavailable")]
+    RecoveryUnavailable,
     #[error("static distribution rollout assignment was not found")]
     AssignmentNotFound,
     #[error("static distribution assignment report identity does not match the desired rollout")]
@@ -848,8 +1186,24 @@ fn validate_request(
     command: &ModuleStaticDistributionRolloutRequest,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     if command.distribution_release_id.is_nil()
-        || command.expected_release_revision == 0
+        || command.expected_release_state_revision == 0
+        || command.expected_distribution_release_revision == 0
         || !valid_text(&command.policy_revision, MAX_POLICY_REVISION_BYTES)
+        || command.actor_id.is_nil()
+        || command.idempotency_key.is_nil()
+    {
+        return Err(ModuleStaticDistributionRolloutError::InvalidCommand);
+    }
+    Ok(())
+}
+
+fn validate_recovery_request(
+    command: &ModuleStaticDistributionRecoveryRequest,
+) -> Result<(), ModuleStaticDistributionRolloutError> {
+    if command.current_rollout_id.is_nil()
+        || command.expected_release_state_revision == 0
+        || !valid_text(&command.policy_revision, MAX_POLICY_REVISION_BYTES)
+        || !valid_text(&command.reason, MAX_FAILURE_DETAIL_BYTES)
         || command.actor_id.is_nil()
         || command.idempotency_key.is_nil()
     {
@@ -863,8 +1217,8 @@ fn validate_release(
     command: &ModuleStaticDistributionRolloutRequest,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     if release.distribution_release_id != command.distribution_release_id
-        || release.release_revision != command.expected_release_revision
-        || release.status != ModuleStaticDistributionReleaseStatus::Active
+        || release.release_revision != command.expected_distribution_release_revision
+        || release.status != ModuleStaticDistributionReleaseStatus::Admitted
         || release
             .items
             .iter()
@@ -896,6 +1250,7 @@ pub fn module_static_distribution_topology_digest(
 
 fn validate_topology(
     topology: &ModuleStaticDistributionTopologySnapshot,
+    release: &ModuleStaticDistributionRelease,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     if !valid_reference(&topology.topology_reference)
         || topology.topology_reference.len() > MAX_REFERENCE_BYTES
@@ -904,7 +1259,11 @@ fn validate_topology(
         || topology.assignments.len() > MAX_TARGET_ASSIGNMENTS
         || topology.assignments.iter().any(|assignment| {
             !valid_text(&assignment.node_id, MAX_NODE_ID_BYTES)
-                || !valid_digest(&assignment.artifact_digest)
+                || !valid_digest(&assignment.candidate_artifact_digest)
+                || !release.evidence.roles.iter().any(|role| {
+                    role.role == assignment.role
+                        && role.artifact_digest == assignment.candidate_artifact_digest
+                })
         })
         || topology.assignments.windows(2).any(|assignments| {
             assignment_sort_key(&assignments[0]) >= assignment_sort_key(&assignments[1])
@@ -926,7 +1285,7 @@ fn assignment_sort_key(assignment: &ModuleStaticDistributionAssignment) -> (&str
     (
         assignment.node_id.as_str(),
         role_ordinal(assignment.role),
-        assignment.artifact_digest.as_str(),
+        assignment.candidate_artifact_digest.as_str(),
     )
 }
 
@@ -995,7 +1354,7 @@ fn validate_report(
     };
     if command.rollout_id.is_nil()
         || !valid_text(&command.node_id, MAX_NODE_ID_BYTES)
-        || !valid_digest(&command.artifact_digest)
+        || !valid_digest(&command.candidate_artifact_digest)
         || command.distribution_release_id.is_nil()
         || command.distribution_release_revision == 0
         || command.composition_revision == 0
@@ -1073,6 +1432,7 @@ async fn insert_rollout(
     release: &ModuleStaticDistributionRelease,
     topology: &ModuleStaticDistributionTopologySnapshot,
     command: &ModuleStaticDistributionRolloutRequest,
+    transition_kind: ModuleStaticDistributionTransitionKind,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     transaction
@@ -1080,12 +1440,13 @@ async fn insert_rollout(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_rollouts
-                 (rollout_id, predecessor_rollout_id, distribution_release_id,
-                  rollout_revision, distribution_release_revision, composition_revision,
+                 (rollout_id, predecessor_rollout_id, distribution_release_id, transition_kind,
+                  rollout_revision, distribution_release_revision, release_state_revision_at_request,
+                  composition_revision,
                   composition_digest, bundle_reference, bundle_root_digest, role_set_digest, executor_mode,
                   topology_reference, topology_digest, policy_revision, target_assignment_count,
                   status, requested_by, requested_at, status_changed_at)
-                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'static_native', {}, {}, {}, {},
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'static_native', {}, {}, {}, {},
                          'preparing', {}, {}, {})",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -1102,6 +1463,8 @@ async fn insert_rollout(
                 placeholder(backend, 13),
                 placeholder(backend, 14),
                 placeholder(backend, 15),
+                placeholder(backend, 16),
+                placeholder(backend, 17),
                 now_expression(backend),
                 now_expression(backend),
             ),
@@ -1109,8 +1472,10 @@ async fn insert_rollout(
                 uuid_value(rollout_id, backend),
                 optional_uuid_value(predecessor_rollout_id, backend),
                 uuid_value(release.distribution_release_id, backend),
+                transition_kind.as_str().into(),
                 revision_value(rollout_revision)?,
                 revision_value(release.release_revision)?,
+                revision_value(command.expected_release_state_revision)?,
                 revision_value(release.composition_revision)?,
                 release.composition_digest.clone().into(),
                 release.evidence.bundle_reference.clone().into(),
@@ -1134,27 +1499,38 @@ async fn insert_rollout_assignments(
     transaction: &DatabaseTransaction,
     rollout_id: Uuid,
     assignments: &[ModuleStaticDistributionAssignment],
+    predecessor: Option<&ModuleStaticDistributionRollout>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     for (ordinal, assignment) in assignments.iter().enumerate() {
+        let predecessor_artifact_digest = predecessor
+            .and_then(|rollout| {
+                rollout.assignments.iter().find(|candidate| {
+                    candidate.node_id == assignment.node_id && candidate.role == assignment.role
+                })
+            })
+            .map(|candidate| candidate.candidate_artifact_digest.clone());
         transaction
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "INSERT INTO module_static_distribution_rollout_assignments
-                     (rollout_id, node_id, role, artifact_digest, ordinal, observation_revision, phase)
-                     VALUES ({}, {}, {}, {}, {}, 0, 'pending')",
+                     (rollout_id, node_id, role, candidate_artifact_digest,
+                      predecessor_artifact_digest, ordinal, observation_revision, phase)
+                     VALUES ({}, {}, {}, {}, {}, {}, 0, 'pending')",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                     placeholder(backend, 4),
                     placeholder(backend, 5),
+                    placeholder(backend, 6),
                 ),
                 vec![
                     uuid_value(rollout_id, backend),
                     assignment.node_id.clone().into(),
                     role_name(assignment.role).to_string().into(),
-                    assignment.artifact_digest.clone().into(),
+                    assignment.candidate_artifact_digest.clone().into(),
+                    predecessor_artifact_digest.into(),
                     i64::try_from(ordinal)
                         .map_err(|_| ModuleStaticDistributionRolloutError::InvalidTopology)?
                         .into(),
@@ -1463,8 +1839,9 @@ async fn load_rollout<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT rollout_id, predecessor_rollout_id, distribution_release_id,
-                        rollout_revision, distribution_release_revision, composition_revision,
+                "SELECT rollout_id, predecessor_rollout_id, distribution_release_id, transition_kind,
+                        rollout_revision, distribution_release_revision, release_state_revision_at_request,
+                        composition_revision,
                         composition_digest, bundle_reference, bundle_root_digest, role_set_digest,
                         executor_mode,
                         topology_reference, topology_digest, policy_revision, target_assignment_count,
@@ -1481,7 +1858,8 @@ async fn load_rollout<C: ConnectionTrait>(
         .query_all(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT node_id, role, artifact_digest, ordinal, observation_revision, phase,
+                "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
+                        ordinal, observation_revision, phase,
                         health_evidence_reference, health_evidence_digest,
                         failure_code, failure_detail, reported_by, last_report_digest
                  FROM module_static_distribution_rollout_assignments
@@ -1533,10 +1911,19 @@ async fn load_rollout<C: ConnectionTrait>(
         predecessor_rollout_id: optional_uuid_from_row(&row, "predecessor_rollout_id", backend)?,
         distribution_release_id: uuid_from_row(&row, "distribution_release_id", backend)
             .map_err(store_error)?,
+        transition_kind: ModuleStaticDistributionTransitionKind::parse(
+            &row.try_get::<String>("", "transition_kind")
+                .map_err(store_error)?,
+        )?,
         rollout_revision: revision_from_row(&row, "rollout_revision", false)?,
         distribution_release_revision: revision_from_row(
             &row,
             "distribution_release_revision",
+            false,
+        )?,
+        release_state_revision_at_request: revision_from_row(
+            &row,
+            "release_state_revision_at_request",
             false,
         )?,
         composition_revision: revision_from_row(&row, "composition_revision", false)?,
@@ -1575,7 +1962,8 @@ async fn load_rollout_assignment<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT node_id, role, artifact_digest, ordinal, observation_revision, phase,
+                "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
+                        ordinal, observation_revision, phase,
                         health_evidence_reference, health_evidence_digest,
                         failure_code, failure_detail, reported_by, last_report_digest
                  FROM module_static_distribution_rollout_assignments
@@ -1633,7 +2021,12 @@ fn assignment_from_row(
     Ok(ModuleStaticDistributionRolloutAssignment {
         node_id: row.try_get("", "node_id").map_err(store_error)?,
         role: parse_role(&row.try_get::<String>("", "role").map_err(store_error)?)?,
-        artifact_digest: row.try_get("", "artifact_digest").map_err(store_error)?,
+        candidate_artifact_digest: row
+            .try_get("", "candidate_artifact_digest")
+            .map_err(store_error)?,
+        predecessor_artifact_digest: row
+            .try_get("", "predecessor_artifact_digest")
+            .map_err(store_error)?,
         ordinal: u16::try_from(ordinal).map_err(|_| {
             ModuleStaticDistributionRolloutError::Store(
                 "static distribution assignment ordinal is invalid".to_string(),
@@ -1856,9 +2249,10 @@ async fn complete_operation(
 
 fn replay_request(
     operation: &OperationRecord,
+    operation_kind: &str,
 ) -> Result<ModuleStaticDistributionRolloutReceipt, ModuleStaticDistributionRolloutError> {
     if !operation.completed
-        || operation.operation_kind != "request"
+        || operation.operation_kind != operation_kind
         || operation.node_id.is_some()
         || operation.role.is_some()
         || operation.observation_revision.is_some()
@@ -2013,4 +2407,36 @@ fn release_error(error: impl std::fmt::Display) -> ModuleStaticDistributionRollo
 
 fn store_error(error: impl std::fmt::Display) -> ModuleStaticDistributionRolloutError {
     ModuleStaticDistributionRolloutError::Store(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ModuleStaticDistributionAssignment, module_static_distribution_topology_digest};
+    use crate::ModuleStaticDistributionRole;
+
+    #[test]
+    fn topology_digest_binds_each_role_digest_on_the_same_node() {
+        let node_id = "portable-instance-a".to_string();
+        let first = vec![
+            ModuleStaticDistributionAssignment {
+                node_id: node_id.clone(),
+                role: ModuleStaticDistributionRole::Api,
+                candidate_artifact_digest: format!("sha256:{}", "a".repeat(64)),
+            },
+            ModuleStaticDistributionAssignment {
+                node_id,
+                role: ModuleStaticDistributionRole::Worker,
+                candidate_artifact_digest: format!("sha256:{}", "b".repeat(64)),
+            },
+        ];
+        let mut changed = first.clone();
+        changed[1].candidate_artifact_digest = format!("sha256:{}", "c".repeat(64));
+
+        let first_digest =
+            module_static_distribution_topology_digest("topology:portable-a", &first).unwrap();
+        let changed_digest =
+            module_static_distribution_topology_digest("topology:portable-a", &changed).unwrap();
+
+        assert_ne!(first_digest, changed_digest);
+    }
 }

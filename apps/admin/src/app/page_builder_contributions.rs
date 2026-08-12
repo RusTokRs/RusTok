@@ -143,11 +143,12 @@ async fn page_builder_contribution_permissions(
             .map_err(ServerFnError::new)?;
         let mut granted = Vec::new();
         for required in required_permissions {
-            let permission = rustok_api::Permission::from_str(required.trim()).map_err(|error| {
-                ServerFnError::new(format!(
-                    "Invalid Page Builder contribution permission `{required}`: {error}"
-                ))
-            })?;
+            let permission =
+                rustok_api::Permission::from_str(required.trim()).map_err(|error| {
+                    ServerFnError::new(format!(
+                        "Invalid Page Builder contribution permission `{required}`: {error}"
+                    ))
+                })?;
             if rustok_api::has_effective_permission(&auth.permissions, &permission) {
                 granted.push(permission.to_string());
             }
