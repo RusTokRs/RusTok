@@ -1,4 +1,5 @@
 use sea_orm::entity::prelude::*;
+use sea_orm::Set;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -30,4 +31,72 @@ impl Related<super::blog_category_translation::Entity> for Entity {
     }
 }
 
-impl ActiveModelBehavior for ActiveModel {}
+#[async_trait::async_trait]
+impl ActiveModelBehavior for ActiveModel {
+    async fn before_save<C>(mut self, db: &C, insert: bool) -> Result<Self, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if !insert {
+            return Ok(self);
+        }
+
+        let tenant_id = self
+            .tenant_id
+            .try_as_ref()
+            .copied()
+            .ok_or_else(|| DbErr::Custom("blog category insert requires tenant_id".to_string()))?;
+        let parent_id = self.parent_id.try_as_ref().copied().flatten();
+
+        let depth = match parent_id {
+            None => 0,
+            Some(parent_id) => {
+                let parent = Entity::find_by_id(parent_id)
+                    .filter(Column::TenantId.eq(tenant_id))
+                    .one(db)
+                    .await?
+                    .ok_or_else(|| {
+                        DbErr::Custom(format!(
+                            "blog category parent {parent_id} is missing from tenant {tenant_id}"
+                        ))
+                    })?;
+                child_depth(parent.depth, parent_id)?
+            }
+        };
+        self.depth = Set(depth);
+
+        Ok(self)
+    }
+}
+
+fn child_depth(parent_depth: i32, parent_id: Uuid) -> Result<i32, DbErr> {
+    if parent_depth < 0 {
+        return Err(DbErr::Custom(format!(
+            "blog category parent {parent_id} has invalid negative depth {parent_depth}"
+        )));
+    }
+    parent_depth.checked_add(1).ok_or_else(|| {
+        DbErr::Custom(format!(
+            "blog category hierarchy depth is exhausted beneath parent {parent_id}"
+        ))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn child_depth_is_parent_depth_plus_one() {
+        let parent_id = Uuid::from_u128(1);
+        assert_eq!(child_depth(0, parent_id).expect("depth"), 1);
+        assert_eq!(child_depth(7, parent_id).expect("depth"), 8);
+    }
+
+    #[test]
+    fn child_depth_rejects_invalid_or_exhausted_parent_depth() {
+        let parent_id = Uuid::from_u128(1);
+        assert!(child_depth(-1, parent_id).is_err());
+        assert!(child_depth(i32::MAX, parent_id).is_err());
+    }
+}
