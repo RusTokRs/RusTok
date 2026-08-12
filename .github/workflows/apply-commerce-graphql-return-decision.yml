@@ -34,21 +34,27 @@ jobs:
           def replace_once(path, old, new):
               file = Path(path)
               text = file.read_text()
-              if text.count(old) != 1:
-                  raise SystemExit(f"{path}: expected exactly one replacement target, found {text.count(old)}")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one target {old!r}, found {count}")
               file.write_text(text.replace(old, new, 1))
 
-          replace_once(
-              "crates/rustok-commerce/src/graphql_runtime.rs",
-              '''pub(crate) fn post_order_orchestration_from_context(
-              ctx: &Context<'_>,
-              db: DatabaseConnection,
-              event_bus: rustok_outbox::TransactionalEventBus,
-          ) -> crate::PostOrderOrchestrationService {
-              crate::PostOrderOrchestrationService::new(db, event_bus)
-                  .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
-          }
-          ''',
+          def replace_between(path, start, end, replacement):
+              file = Path(path)
+              text = file.read_text()
+              start_index = text.find(start)
+              end_index = text.find(end, start_index + len(start))
+              if start_index < 0 or end_index < 0:
+                  raise SystemExit(
+                      f"{path}: unable to isolate block between {start!r} and {end!r}"
+                  )
+              file.write_text(text[:start_index] + replacement + text[end_index:])
+
+          runtime_path = "crates/rustok-commerce/src/graphql_runtime.rs"
+          replace_between(
+              runtime_path,
+              "pub(crate) fn post_order_orchestration_from_context(",
+              "pub(crate) fn order_change_orchestration_from_context(",
               '''pub(crate) fn return_decision_owner_orchestration_from_context(
               ctx: &Context<'_>,
               db: DatabaseConnection,
@@ -73,36 +79,25 @@ jobs:
               };
               service.with_payment_provider_registry(payment_provider_registry_from_context(ctx))
           }
+
           ''',
           )
 
+          fulfillment_path = "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs"
           replace_once(
-              "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs",
-              '''use crate::graphql_runtime::{
-              order_admin_command_runtime_from_context, order_change_orchestration_from_context,
-              order_post_order_command_runtime_from_context, post_order_orchestration_from_context,
-              return_completion_orchestration_from_context,
-          };
-          use crate::{
-              OrderChangeOrchestrationError, PaymentOrchestrationError, PostOrderOrchestrationError,
-          };
-          ''',
-              '''use crate::graphql_runtime::{
-              order_admin_command_runtime_from_context, order_change_orchestration_from_context,
-              order_post_order_command_runtime_from_context, return_completion_orchestration_from_context,
-              return_decision_owner_orchestration_from_context,
-          };
-          use crate::{
-              OrderChangeOrchestrationError, PaymentOrchestrationError, PostOrderOrchestrationError,
-              ReturnDecisionOwnerOrchestrationError,
-          };
-          ''',
+              fulfillment_path,
+              "    order_post_order_command_runtime_from_context, post_order_orchestration_from_context,\n    return_completion_orchestration_from_context,",
+              "    order_post_order_command_runtime_from_context, return_completion_orchestration_from_context,\n    return_decision_owner_orchestration_from_context,",
+          )
+          replace_once(
+              fulfillment_path,
+              "    OrderChangeOrchestrationError, PaymentOrchestrationError, PostOrderOrchestrationError,\n};",
+              "    OrderChangeOrchestrationError, PaymentOrchestrationError, PostOrderOrchestrationError,\n    ReturnDecisionOwnerOrchestrationError,\n};",
           )
 
           replace_once(
-              "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs",
-              '''fn order_owner_graphql_error(
-          ''',
+              fulfillment_path,
+              "fn order_owner_graphql_error(\n",
               '''fn payment_port_error_envelope(
               error: &PortError,
           ) -> (&'static str, &'static str, bool, &'static str) {
@@ -174,9 +169,8 @@ jobs:
           )
 
           replace_once(
-              "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs",
-              '''fn order_change_graphql_error(
-          ''',
+              fulfillment_path,
+              "fn order_change_graphql_error(\n",
               '''fn return_decision_graphql_error(
               tenant_id: Uuid,
               actor_id: Uuid,
@@ -218,20 +212,10 @@ jobs:
           ''',
           )
 
-          replace_once(
-              "crates/rustok-commerce/src/graphql/mutations/fulfillment.rs",
-              '''        let decision = post_order_orchestration_from_context(ctx, db.clone(), event_bus.clone())
-              .create_return_decision(
-                  tenant_id,
-                  auth.user_id,
-                  order_id,
-                  build_create_return_decision_input(input)?,
-              )
-              .await
-              .map_err(|error| {
-                  post_order_graphql_error(tenant_id, order_id, "create_order_return_decision", error)
-              })?;
-          ''',
+          replace_between(
+              fulfillment_path,
+              "        let decision = post_order_orchestration_from_context(",
+              "\n\n        Ok(decision.into())",
               '''        let context = order_post_order_command_context(
               ctx,
               tenant_id,
@@ -258,8 +242,7 @@ jobs:
                       &context,
                       error,
                   )
-              })?;
-          ''',
+              })?;''',
           )
           PY
       - name: Format Rust changes
