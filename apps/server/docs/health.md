@@ -24,11 +24,11 @@ surface (`monolith`, `server-with-admin`, `server-with-storefront`, `headless-ap
 `settings.rustok.runtime.host_mode` describes only the runtime-exposed API surface (`full` or
 `registry_only`).
 
-A separate compile-time profile invariant: `embed-admin` and `embed-storefront` control not only routes,
-but also the linkage of the corresponding UI hosts; similarly `mod-commerce`, `mod-blog`, `mod-forum`
-and `mod-pages` control the inclusion of their REST/OpenAPI transport fragments, while the content-only maintenance
-binary `migrate_legacy_richtext` requires `mod-content`. A reduced/headless server build is not obligated
-to pull ecommerce or content surfaces it doesn't need.
+A separate compile-time profile invariant: `embed-admin` and `embed-storefront`
+control not only routes but also linkage of the corresponding UI hosts. Similarly,
+`mod-commerce`, `mod-blog`, `mod-forum`, and `mod-pages` control inclusion of their
+REST/OpenAPI transport fragments, so reduced profiles do not link transports outside
+their selected surface.
 
 ## Readiness model
 

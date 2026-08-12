@@ -127,11 +127,7 @@ fn read_context(tenant_id: Uuid, owner_id: Uuid) -> PortContext {
     .with_claim("groups:access:read")
 }
 
-async fn group_snapshot(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    group_id: Uuid,
-) -> (i64, i64) {
+async fn group_snapshot(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> (i64, i64) {
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Postgres,
@@ -143,7 +139,8 @@ async fn group_snapshot(
         .expect("PostgreSQL group snapshot query should succeed")
         .expect("group should exist");
     (
-        row.try_get("", "version").expect("group version should decode"),
+        row.try_get("", "version")
+            .expect("group version should decode"),
         row.try_get("", "member_count")
             .expect("group member_count should decode"),
     )
@@ -212,14 +209,7 @@ async fn leave_preserves_ban_projection_and_serializes_with_suspension_postgres(
     let owner_id = Uuid::new_v4();
     let banned_group_id = Uuid::new_v4();
     let banned_user_id = Uuid::new_v4();
-    seed_banned_member(
-        &db,
-        tenant_id,
-        banned_group_id,
-        owner_id,
-        banned_user_id,
-    )
-    .await;
+    seed_banned_member(&db, tenant_id, banned_group_id, owner_id, banned_user_id).await;
     let banned_base = group_snapshot(&db, tenant_id, banned_group_id).await;
     let groups = GroupsService::new(db.clone());
     let banned_error = GroupCommandPort::leave_group(
@@ -237,7 +227,10 @@ async fn leave_preserves_ban_projection_and_serializes_with_suspension_postgres(
         membership_snapshot(&db, tenant_id, banned_group_id, banned_user_id).await,
         ("banned".to_string(), 1)
     );
-    assert_eq!(group_snapshot(&db, tenant_id, banned_group_id).await, banned_base);
+    assert_eq!(
+        group_snapshot(&db, tenant_id, banned_group_id).await,
+        banned_base
+    );
 
     let suspended_group_id = Uuid::new_v4();
     let suspended_user_id = Uuid::new_v4();
@@ -307,7 +300,10 @@ async fn leave_preserves_ban_projection_and_serializes_with_suspension_postgres(
         while_suspended.effective_status,
         GroupMembershipEffectiveStatus::Suspended
     );
-    assert_eq!(while_suspended.stored_status, Some(GroupMembershipStatus::Left));
+    assert_eq!(
+        while_suspended.stored_status,
+        Some(GroupMembershipStatus::Left)
+    );
 
     let revoked = GroupMembershipEnforcementCommandPort::revoke_membership_suspension(
         &enforcement,
@@ -321,7 +317,10 @@ async fn leave_preserves_ban_projection_and_serializes_with_suspension_postgres(
     )
     .await
     .expect("owner should revoke preserved PostgreSQL suspension after leave");
-    assert_eq!(revoked.effective_status, GroupMembershipEffectiveStatus::Inactive);
+    assert_eq!(
+        revoked.effective_status,
+        GroupMembershipEffectiveStatus::Inactive
+    );
     assert_eq!(revoked.membership_revision, 4);
     assert_eq!(revoked.member_count, 1);
     assert_eq!(
@@ -394,8 +393,8 @@ async fn leave_preserves_ban_projection_and_serializes_with_suspension_postgres(
             .expect("PostgreSQL leave race task should join without panic")
             .expect("leave must succeed whether it serializes before or after suspension");
         assert_eq!(left.status, GroupMembershipStatus::Left);
-        let suspension_result = enforcement_joined
-            .expect("PostgreSQL enforcement race task should join without panic");
+        let suspension_result =
+            enforcement_joined.expect("PostgreSQL enforcement race task should join without panic");
 
         match suspension_result {
             Err(error) => {
@@ -412,7 +411,10 @@ async fn leave_preserves_ban_projection_and_serializes_with_suspension_postgres(
                     active_enforcement_count(&db, tenant_id, group_id, user_id).await,
                     0
                 );
-                assert_eq!(group_snapshot(&db, tenant_id, group_id).await, (base.0 + 1, 1));
+                assert_eq!(
+                    group_snapshot(&db, tenant_id, group_id).await,
+                    (base.0 + 1, 1)
+                );
             }
             Ok(suspension) => {
                 assert_eq!(suspension.membership_revision, 2);
@@ -425,7 +427,10 @@ async fn leave_preserves_ban_projection_and_serializes_with_suspension_postgres(
                     active_enforcement_count(&db, tenant_id, group_id, user_id).await,
                     1
                 );
-                assert_eq!(group_snapshot(&db, tenant_id, group_id).await, (base.0 + 2, 1));
+                assert_eq!(
+                    group_snapshot(&db, tenant_id, group_id).await,
+                    (base.0 + 2, 1)
+                );
             }
         }
     }

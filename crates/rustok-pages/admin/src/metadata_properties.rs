@@ -4,7 +4,7 @@ use crate::contributions::{
     PAGES_METADATA_PROPERTY_EDITOR_ID, PAGES_OWNER_PROVIDER, pages_metadata_property_schema,
 };
 use crate::core;
-use crate::model::{PageDetail, PageMutationResult};
+use crate::model::{PageDetail, PageMetadataPatch, PageMutationResult};
 use crate::transport;
 use rustok_page_builder_admin::{
     ConsumerPropertyEditorError, ConsumerPropertyEditorPort, ConsumerPropertyEditorRuntime,
@@ -32,41 +32,21 @@ type MetadataPageLoadFuture = Pin<
 
 #[cfg(target_arch = "wasm32")]
 type MetadataPageLoadFuture = Pin<
-    Box<
-        dyn Future<Output = Result<Option<PageDetail>, ConsumerPropertyEditorError>> + 'static,
-    >,
+    Box<dyn Future<Output = Result<Option<PageDetail>, ConsumerPropertyEditorError>> + 'static>,
 >;
 
 #[cfg(not(target_arch = "wasm32"))]
-type MetadataPageSaveFuture = Pin<
-    Box<
-        dyn Future<Output = Result<PageDetail, ConsumerPropertyEditorError>> + Send + 'static,
-    >,
->;
+type MetadataPageSaveFuture =
+    Pin<Box<dyn Future<Output = Result<PageDetail, ConsumerPropertyEditorError>> + Send + 'static>>;
 
 #[cfg(target_arch = "wasm32")]
 type MetadataPageSaveFuture =
     Pin<Box<dyn Future<Output = Result<PageDetail, ConsumerPropertyEditorError>> + 'static>>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MetadataPatchRequest {
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    page_id: String,
-    expected_version: i32,
-    locale: String,
-    title: String,
-    slug: String,
-    meta_title: Option<String>,
-    meta_description: Option<String>,
-    template: Option<String>,
-    channel_slugs: Vec<String>,
-}
-
 trait PagesMetadataTransport: Send + Sync {
     fn fetch_page(&self, snapshot: PagesBuilderSaveSnapshot) -> MetadataPageLoadFuture;
 
-    fn patch_metadata(&self, request: MetadataPatchRequest) -> MetadataPageSaveFuture;
+    fn patch_metadata(&self, request: PageMetadataPatch) -> MetadataPageSaveFuture;
 }
 
 struct ServerPagesMetadataTransport;
@@ -80,23 +60,11 @@ impl PagesMetadataTransport for ServerPagesMetadataTransport {
         })
     }
 
-    fn patch_metadata(&self, request: MetadataPatchRequest) -> MetadataPageSaveFuture {
+    fn patch_metadata(&self, request: PageMetadataPatch) -> MetadataPageSaveFuture {
         Box::pin(async move {
-            transport::patch_page_metadata(
-                request.token,
-                request.tenant_slug,
-                request.page_id,
-                request.expected_version,
-                request.locale,
-                request.title,
-                request.slug,
-                request.meta_title,
-                request.meta_description,
-                request.template,
-                request.channel_slugs,
-            )
-            .await
-            .map_err(|error| ConsumerPropertyEditorError::save(error.to_string()))
+            transport::patch_page_metadata(request)
+                .await
+                .map_err(|error| ConsumerPropertyEditorError::save(error.to_string()))
         })
     }
 }
@@ -148,7 +116,7 @@ impl ConsumerPropertyEditorPort for PagesMetadataPropertyPort {
             let command = metadata_save_command(&schema, &snapshot, &input)?;
             let current = fetch_expected_page(transport.as_ref(), &snapshot).await?;
             require_current_metadata_version(command.expected_version, current.version)?;
-            let request = MetadataPatchRequest {
+            let request = PageMetadataPatch {
                 token: snapshot.token,
                 tenant_slug: snapshot.tenant_slug,
                 page_id: snapshot.page_id.clone(),
@@ -213,8 +181,7 @@ fn metadata_save_command(
         ));
     }
     schema.validate_values(&input.values)?;
-    let expected_version =
-        expected_metadata_version(&snapshot.page_id, &input.expected_revision)?;
+    let expected_version = expected_metadata_version(&snapshot.page_id, &input.expected_revision)?;
     Ok(MetadataSaveCommand {
         expected_version,
         title: required_value(&input.values, "title")?,
@@ -388,7 +355,7 @@ mod tests {
         current: PageDetail,
         saved: PageDetail,
         patch_calls: Arc<AtomicUsize>,
-        last_patch: Arc<Mutex<Option<MetadataPatchRequest>>>,
+        last_patch: Arc<Mutex<Option<PageMetadataPatch>>>,
     }
 
     impl PagesMetadataTransport for RecordingTransport {
@@ -397,7 +364,7 @@ mod tests {
             Box::pin(async move { Ok(Some(current)) })
         }
 
-        fn patch_metadata(&self, request: MetadataPatchRequest) -> MetadataPageSaveFuture {
+        fn patch_metadata(&self, request: PageMetadataPatch) -> MetadataPageSaveFuture {
             self.patch_calls.fetch_add(1, Ordering::SeqCst);
             *self.last_patch.lock().expect("last patch lock") = Some(request);
             let saved = self.saved.clone();

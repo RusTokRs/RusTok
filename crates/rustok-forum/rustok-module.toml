@@ -70,7 +70,7 @@ nav_label = "Merge Topics"
 
 [fba.builder_consumer]
 provider_module = "page-builder"
-contract = "grapesjs_v1"
+contract = "grapesjs"
 contract_version = "1.0"
 builder_contract_version = "1.0"
 consumer_min_version = "1.0"

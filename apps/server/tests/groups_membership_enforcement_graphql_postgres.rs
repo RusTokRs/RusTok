@@ -102,16 +102,15 @@ fn auth_context(tenant_id: Uuid, owner_id: Uuid) -> AuthContext {
     }
 }
 
-fn native_write_context(
-    tenant_id: Uuid,
-    owner_id: Uuid,
-    idempotency_key: &str,
-) -> PortContext {
+fn native_write_context(tenant_id: Uuid, owner_id: Uuid, idempotency_key: &str) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
         PortActor::user(owner_id.to_string()),
         "en",
-        format!("groups-enforcement-postgres-native-parity-{}", Uuid::new_v4()),
+        format!(
+            "groups-enforcement-postgres-native-parity-{}",
+            Uuid::new_v4()
+        ),
     )
     .with_deadline(Duration::from_secs(5))
     .with_idempotency_key(idempotency_key)
@@ -244,7 +243,9 @@ async fn owner_snapshot(
         .expect("enforcement row should exist");
 
     (
-        group.try_get("", "version").expect("group version should decode"),
+        group
+            .try_get("", "version")
+            .expect("group version should decode"),
         group
             .try_get("", "member_count")
             .expect("member_count should decode"),
@@ -368,7 +369,10 @@ mutation {{
     .await
     .expect("native PostgreSQL suspension receipt should replay while currently suspended");
     assert!(native_suspend_replay.replayed);
-    assert_eq!(native_suspend_replay.group_version, native_suspend.group_version);
+    assert_eq!(
+        native_suspend_replay.group_version,
+        native_suspend.group_version
+    );
 
     let graphql_suspend_replay = response_json(
         execute_graphql(
@@ -474,7 +478,10 @@ mutation {{
     assert_eq!(native_revoke.membership_revision, 3);
     assert_eq!(native_revoke.member_count, 2);
     assert!(native_revoke.revoked_at.is_some());
-    assert_eq!(native_revoke.group_version, native_suspend.group_version + 1);
+    assert_eq!(
+        native_revoke.group_version,
+        native_suspend.group_version + 1
+    );
     assert!(!native_revoke.replayed);
 
     let graphql_revoke = response_json(
@@ -509,21 +516,23 @@ mutation {{
         false,
     );
 
-    let native_revoke_replay =
-        GroupMembershipEnforcementCommandPort::revoke_membership_suspension(
-            &native,
-            native_write_context(tenant_id, owner_id, "postgres-native-revoke"),
-            RevokeGroupMembershipSuspensionRequest {
-                group_id: native_group_id,
-                target_user_id: target_id,
-                expected_membership_revision: 2,
-                reason_code: "transport_parity_release".to_string(),
-            },
-        )
-        .await
-        .expect("native PostgreSQL revoke receipt should replay after suspension is no longer active");
+    let native_revoke_replay = GroupMembershipEnforcementCommandPort::revoke_membership_suspension(
+        &native,
+        native_write_context(tenant_id, owner_id, "postgres-native-revoke"),
+        RevokeGroupMembershipSuspensionRequest {
+            group_id: native_group_id,
+            target_user_id: target_id,
+            expected_membership_revision: 2,
+            reason_code: "transport_parity_release".to_string(),
+        },
+    )
+    .await
+    .expect("native PostgreSQL revoke receipt should replay after suspension is no longer active");
     assert!(native_revoke_replay.replayed);
-    assert_eq!(native_revoke_replay.group_version, native_revoke.group_version);
+    assert_eq!(
+        native_revoke_replay.group_version,
+        native_revoke.group_version
+    );
 
     let graphql_revoke_replay = response_json(
         execute_graphql(

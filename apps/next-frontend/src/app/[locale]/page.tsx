@@ -44,10 +44,13 @@ export async function generateMetadata({
 
 export default async function StorefrontHome({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { locale } = await params;
+  const resolvedSearchParams = await searchParams;
   const t = await getTranslations("Storefront");
   const features = t.raw("features") as string[];
   const chips = t.raw("chips") as string[];
@@ -150,6 +153,7 @@ export default async function StorefrontHome({
           <section key={module.id} className="mx-auto max-w-6xl px-6 pb-12">
             {module.render({
               locale,
+              searchParams: resolvedSearchParams,
               enabledModules,
               tenantSlug,
               tenantId: getStorefrontTenantId(),

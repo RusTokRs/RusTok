@@ -2,7 +2,7 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -12,8 +12,8 @@ use rustok_pages::dto::{
 use rustok_pages::entities::{page, page_publish_rebuild_source, page_static_landing_artifact};
 use rustok_pages::services::PageService;
 use rustok_pages::{
-    AuditPageArtifactsInput, PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT,
-    PAGE_ARTIFACT_INTEGRITY_INVALID, PagesModule,
+    AuditPageArtifactsInput, PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT, PAGE_ARTIFACT_INTEGRITY_INVALID,
+    PagesModule,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
@@ -42,10 +42,7 @@ impl TestDatabase {
             return Ok(None);
         };
         let control = connect(&database_url).await?;
-        let schema_name = format!(
-            "rustok_pages_artifact_audit_{}",
-            Uuid::new_v4().simple()
-        );
+        let schema_name = format!("rustok_pages_artifact_audit_{}", Uuid::new_v4().simple());
         control
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;
@@ -356,9 +353,7 @@ async fn publish_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: None,
                 publish: false,

@@ -1,5 +1,6 @@
 use sea_orm::DatabaseConnection;
 use std::collections::BTreeMap;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -15,6 +16,8 @@ pub enum RuntimeHandleError {
     MissingHostContext,
     #[error("required host runtime handle is missing: {handle}")]
     MissingSharedHandle { handle: &'static str },
+    #[error("invalid instance-relative path `{path}`")]
+    InvalidInstanceRelativePath { path: String },
 }
 
 pub type RuntimeHandleResult<T> = Result<T, RuntimeHandleError>;
@@ -25,12 +28,15 @@ pub enum RuntimeCompositionError {
     Database(#[from] sea_orm::DbErr),
     #[error("invalid RUSTOK_SETTINGS_JSON: {0}")]
     InvalidSettings(#[from] serde_json::Error),
+    #[error("invalid RUSTOK_INSTANCE_ROOT: {0}")]
+    InvalidInstanceRoot(String),
 }
 
 #[derive(Clone)]
 pub struct RuntimeComposition {
     host: Option<HostRuntimeContext>,
     settings: serde_json::Value,
+    instance_root: PathBuf,
 }
 
 impl RuntimeComposition {
@@ -49,19 +55,25 @@ impl RuntimeComposition {
                     .filter(|value| !value.trim().is_empty())
             });
 
-        match database_url {
-            Some(database_url) => Ok(Self::from_database(
+        let instance_root = resolve_instance_root_from_environment()?;
+        let host = match database_url {
+            Some(database_url) => Some(HostRuntimeContext::new(
                 sea_orm::Database::connect(database_url).await?,
-                settings,
             )),
-            None => Ok(Self::without_database(settings)),
-        }
+            None => None,
+        };
+        Ok(Self {
+            host,
+            settings,
+            instance_root,
+        })
     }
 
     pub fn without_database(settings: serde_json::Value) -> Self {
         Self {
             host: None,
             settings,
+            instance_root: default_instance_root(),
         }
     }
 
@@ -69,6 +81,7 @@ impl RuntimeComposition {
         Self {
             host: Some(host),
             settings,
+            instance_root: default_instance_root(),
         }
     }
 
@@ -89,6 +102,74 @@ impl RuntimeComposition {
     pub fn settings(&self) -> &serde_json::Value {
         &self.settings
     }
+
+    pub fn instance_root(&self) -> &Path {
+        &self.instance_root
+    }
+
+    pub fn instance_path(&self, relative: impl AsRef<Path>) -> RuntimeHandleResult<PathBuf> {
+        let relative = relative.as_ref();
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+        {
+            return Err(RuntimeHandleError::InvalidInstanceRelativePath {
+                path: relative.display().to_string(),
+            });
+        }
+        Ok(self.instance_root.join(relative))
+    }
+}
+
+pub fn resolve_instance_root_from_environment() -> Result<PathBuf, RuntimeCompositionError> {
+    let configured = std::env::var("RUSTOK_INSTANCE_ROOT")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| ".".to_string());
+    if configured.contains('\0') {
+        return Err(RuntimeCompositionError::InvalidInstanceRoot(
+            "path contains a NUL character".to_string(),
+        ));
+    }
+    let path = PathBuf::from(configured.trim());
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        std::env::current_dir()
+            .map_err(|error| RuntimeCompositionError::InvalidInstanceRoot(error.to_string()))?
+            .join(path)
+    };
+    normalize_absolute_path(&absolute)
+}
+
+fn default_instance_root() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn normalize_absolute_path(path: &Path) -> Result<PathBuf, RuntimeCompositionError> {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    return Err(RuntimeCompositionError::InvalidInstanceRoot(format!(
+                        "`{}` escapes its filesystem root",
+                        path.display()
+                    )));
+                }
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    if !normalized.is_absolute() {
+        return Err(RuntimeCompositionError::InvalidInstanceRoot(format!(
+            "`{}` did not resolve to an absolute path",
+            path.display()
+        )));
+    }
+    Ok(normalized)
 }
 
 pub fn db_clone(runtime: &HostRuntimeContext) -> DatabaseConnection {
@@ -294,6 +375,11 @@ mod tests {
         assert!(matches!(
             composition.require_host(),
             Err(RuntimeHandleError::MissingHostContext)
+        ));
+        assert!(composition.instance_path("storage").unwrap().is_absolute());
+        assert!(matches!(
+            composition.instance_path("../another-instance"),
+            Err(RuntimeHandleError::InvalidInstanceRelativePath { .. })
         ));
     }
 

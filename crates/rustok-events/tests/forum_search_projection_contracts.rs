@@ -17,13 +17,9 @@ fn forum_search_projection_contract_roundtrips_with_root_causation() {
     };
     event.validate().expect("valid Forum Search invalidation");
 
-    let envelope = ContractEventEnvelope::new_caused_by(
-        tenant_id,
-        Some(actor_id),
-        root_event_id,
-        event,
-    )
-    .expect("registered caused contract envelope");
+    let envelope =
+        ContractEventEnvelope::new_caused_by(tenant_id, Some(actor_id), root_event_id, event)
+            .expect("registered caused contract envelope");
     assert_eq!(
         envelope.event_type(),
         "forum.search_projection.invalidation_issued"

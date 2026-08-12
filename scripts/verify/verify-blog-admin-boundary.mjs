@@ -47,6 +47,7 @@ const corePath = "crates/rustok-blog/admin/src/core.rs";
 const modelPath = "crates/rustok-blog/admin/src/model.rs";
 const uiPath = "crates/rustok-blog/admin/src/ui/leptos.rs";
 const richtextAdapterPath = "crates/rustok-blog/admin/src/ui/richtext.rs";
+const sharedRichtextAdapterPath = "crates/leptos-ui/src/richtext.rs";
 const moderationPath = "crates/rustok-blog/admin/src/moderation.rs";
 const transportPath = "crates/rustok-blog/admin/src/transport/mod.rs";
 const graphqlAdapterPath = "crates/rustok-blog/admin/src/transport/graphql_adapter.rs";
@@ -73,6 +74,7 @@ for (const filePath of [
   modelPath,
   uiPath,
   richtextAdapterPath,
+  sharedRichtextAdapterPath,
   moderationPath,
   transportPath,
   graphqlAdapterPath,
@@ -96,6 +98,7 @@ const core = readRepo(corePath);
 const model = readRepo(modelPath);
 const ui = readRepo(uiPath);
 const richtextAdapter = readRepo(richtextAdapterPath);
+const sharedRichtextAdapter = readRepo(sharedRichtextAdapterPath);
 const moderation = readRepo(moderationPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
@@ -228,31 +231,51 @@ assertContains(ui, "let (content, set_content) = signal(RichTextDocument::empty(
 assertContains(ui, "<BlogRichTextEditor", `${uiPath}: UI must render the owner richtext editor`);
 assertContains(ui, "document=content", `${uiPath}: UI must pass canonical document state to the editor`);
 assertContains(ui, "set_document=set_content", `${uiPath}: UI must receive canonical document updates from the editor`);
+assertContains(ui, "content_locale=locale", `${uiPath}: UI must pass the owner-selected content locale`);
+assertContains(ui, "disabled=Signal::derive", `${uiPath}: UI must pass dynamic busy/read-only state`);
 for (const [marker, description] of [
   ["pub fn BlogRichTextEditor(", "owner editor component"],
   ["ReadSignal<RichTextDocument>", "typed controlled input"],
   ["WriteSignal<RichTextDocument>", "typed controlled output"],
+  ["content_locale: ReadSignal<String>", "owner-selected content locale"],
+  ["disabled: Signal<bool>", "dynamic read-only state"],
+  ["t(ui_locale.as_deref(), key, fallback)", "host-provided UI locale"],
+  ["RichTextEditorFrame", "shared editor frame component"],
+  ['profile="article".to_string()', "fixed Article profile"],
+  ["localized_richtext_frame_copy", "host-localized shared frame copy"],
+]) {
+  assertContains(richtextAdapter, marker, `${richtextAdapterPath}: missing ${description}`);
+}
+for (const [marker, description] of [
+  ["pub fn RichTextEditorFrame(", "shared controlled editor component"],
+  ["mount_richtext_frame", "shared frame mount"],
+  ['"/richtext/frame"', "canonical frame route"],
   ["serde_json::from_str::<RichTextDocument>", "typed RichTextDocument deserialization"],
   ["set_document.set(document)", "typed document state update"],
+  ["set_richtext_authoring_context", "dynamic content locale and spellcheck update"],
+  ["set_richtext_editable", "dynamic editable/read-only update"],
   ['sandbox="allow-scripts"', "isolated script-only iframe sandbox"],
   ['referrerpolicy="no-referrer"', "no-referrer iframe policy"],
   ["on_cleanup", "frame cleanup hook"],
   ["dispose_richtext_frame", "frame disposal"],
 ]) {
-  assertContains(richtextAdapter, marker, `${richtextAdapterPath}: missing ${description}`);
+  assertContains(sharedRichtextAdapter, marker, `${sharedRichtextAdapterPath}: missing ${description}`);
 }
-assertContains(
-  richtextAdapter,
-  /mount_richtext_frame\([\s\S]*?"\/richtext\/frame",\s*"article",/,
-  `${richtextAdapterPath}: owner adapter must mount the fixed Article profile through the canonical frame`,
-);
 assertNotContains(
-  richtextAdapter,
+  sharedRichtextAdapter,
   /sandbox="[^"]*allow-same-origin/,
-  `${richtextAdapterPath}: owner iframe must not grant allow-same-origin`,
+  `${sharedRichtextAdapterPath}: shared iframe must not grant allow-same-origin`,
 );
 for (const marker of ['"discussion"', "serde_json::from_str::<serde_json::Value>"]) {
   assertNotContains(richtextAdapter, marker, `${richtextAdapterPath}: owner Article adapter contains forbidden ${marker}`);
+}
+assertNotContains(
+  richtextAdapter,
+  'unwrap_or_else(|| "en".to_string())',
+  `${richtextAdapterPath}: owner wrapper must not invent a UI locale fallback`,
+);
+for (const marker of ["mount_richtext_frame", "dispose_richtext_frame", 'sandbox="allow-scripts"', "serde_json::from_str"]) {
+  assertNotContains(richtextAdapter, marker, `${richtextAdapterPath}: owner wrapper must not duplicate shared frame lifecycle ${marker}`);
 }
 assertContains(ui, "core::blog_post_admin_posts_load_view_from_list", `${uiPath}: UI must use core-owned posts load result view-list normalization policy`);
 assertContains(ui, "core::blog_post_admin_status_badge_view", `${uiPath}: UI must use core-owned status badge presentation policy`);
@@ -396,6 +419,7 @@ if (
   adminRichtextEvidence.sources?.core !== corePath ||
   adminRichtextEvidence.sources?.ui !== uiPath ||
   adminRichtextEvidence.sources?.adapter !== richtextAdapterPath ||
+  adminRichtextEvidence.sources?.shared_adapter !== sharedRichtextAdapterPath ||
   adminRichtextEvidence.sources?.locales?.en !== adminEnLocalePath ||
   adminRichtextEvidence.sources?.locales?.ru !== adminRuLocalePath ||
   adminRichtextEvidence.verifier !== "scripts/verify/verify-blog-admin-boundary.mjs" ||
@@ -411,6 +435,9 @@ for (const marker of adminRichtextEvidence.required_markers?.ui ?? []) {
 }
 for (const marker of adminRichtextEvidence.required_markers?.adapter ?? []) {
   assertContains(richtextAdapter, marker, `${richtextAdapterPath}: evidence-required owner adapter marker ${marker}`);
+}
+for (const marker of adminRichtextEvidence.required_markers?.shared_adapter ?? []) {
+  assertContains(sharedRichtextAdapter, marker, `${sharedRichtextAdapterPath}: evidence-required shared adapter marker ${marker}`);
 }
 for (const marker of adminRichtextEvidence.forbidden_adapter_markers ?? []) {
   assertNotContains(richtextAdapter, marker, `${richtextAdapterPath}: evidence-forbidden owner adapter marker ${marker}`);

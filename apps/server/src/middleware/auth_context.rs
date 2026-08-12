@@ -25,8 +25,7 @@ pub async fn resolve_optional(
 ) -> Response {
     let (mut parts, body) = req.into_parts();
     let request_path = parts.uri.path().to_string();
-    let pages_inline_authoring_surface =
-        is_pages_inline_authoring_surface(request_path.as_str());
+    let pages_inline_authoring_surface = is_pages_inline_authoring_surface(request_path.as_str());
     let pages_inline_authoring = pages_inline_authoring_surface
         || is_pages_inline_authoring_server_fn(request_path.as_str());
     let presented_credentials = parts.headers.contains_key(AUTHORIZATION);
@@ -97,10 +96,7 @@ pub async fn resolve_optional(
                         pages_inline_authoring_surface,
                     );
                 }
-                if !has_effective_permission(
-                    &current_user.permissions,
-                    &Permission::PAGES_UPDATE,
-                ) {
+                if !has_effective_permission(&current_user.permissions, &Permission::PAGES_UPDATE) {
                     return pages_inline_authoring_response(
                         (
                             StatusCode::FORBIDDEN,
@@ -342,11 +338,7 @@ mod tests {
 
     #[test]
     fn pages_authoring_responses_are_private_and_html_is_non_indexable() {
-        let html = pages_inline_authoring_response(
-            StatusCode::OK.into_response(),
-            true,
-            true,
-        );
+        let html = pages_inline_authoring_response(StatusCode::OK.into_response(), true, true);
         assert_eq!(
             html.headers()
                 .get("cache-control")
@@ -360,11 +352,8 @@ mod tests {
             Some(PAGES_AUTHORING_ROBOTS_POLICY)
         );
 
-        let server_fn = pages_inline_authoring_response(
-            StatusCode::OK.into_response(),
-            true,
-            false,
-        );
+        let server_fn =
+            pages_inline_authoring_response(StatusCode::OK.into_response(), true, false);
         assert_eq!(
             server_fn
                 .headers()

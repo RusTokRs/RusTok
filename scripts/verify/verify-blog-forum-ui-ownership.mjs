@@ -50,11 +50,15 @@ const blogNav = requireFile('apps/next-admin/packages/blog/src/nav.ts');
 const blogPostForm = requireFile(
   'apps/next-admin/packages/blog/src/components/post-form.tsx'
 );
+const blogApi = requireFile('apps/next-admin/packages/blog/src/api/posts.ts');
 const forumIndex = requireFile('apps/next-admin/packages/forum/src/index.ts');
 const forumNav = requireFile('apps/next-admin/packages/forum/src/nav.ts');
 const forumApi = requireFile('apps/next-admin/packages/forum/src/api/forum.ts');
 const forumEditor = requireFile(
   'apps/next-admin/packages/forum/src/components/forum-reply-editor.tsx'
+);
+const forumTopicEditor = requireFile(
+  'apps/next-admin/packages/forum/src/components/forum-topic-editor.tsx'
 );
 const sharedEditor = requireFile(
   'apps/next-admin/src/shared/ui/rich-text-editor.tsx'
@@ -62,6 +66,9 @@ const sharedEditor = requireFile(
 const modulesIndex = requireFile('apps/next-admin/src/modules/index.ts');
 const forumPage = requireFile(
   'apps/next-admin/src/app/dashboard/forum/reply/page.tsx'
+);
+const forumTopicPage = requireFile(
+  'apps/next-admin/src/app/dashboard/forum/topic/page.tsx'
 );
 
 for (const path of [
@@ -77,28 +84,49 @@ for (const path of [
 hasAll(blogIndex, ["id: 'blog'", "export { blogNavItems } from './nav'"], 'Blog index');
 hasNone(
   blogIndex,
-  ["id: 'forum'", 'forumNavItems', 'ForumReplyEditor', "./api/forum", 'RichTextEditor'],
+  ["name: 'Forum'", 'forumNav', 'ForumReplyEditor', "./api/forum", 'RichTextEditor'],
   'Blog index'
 );
 hasNone(blogNav, ['forumNavItems', "title: 'Forum'", '/dashboard/forum'], 'Blog navigation');
 hasAll(
   blogPostForm,
-  ["@/shared/ui/rich-text-editor", "profile='article'"],
+  [
+    "@/shared/ui/rich-text-editor",
+    "profile='article'",
+    'initialData?.requestedLocale',
+    'initialData?.effectiveLocale',
+    'contentLocale={contentLocale}',
+    'disabled={form.formState.isSubmitting}'
+  ],
   'Blog post form'
 );
 hasNone(blogPostForm, ["./rich-text-editor"], 'Blog post form');
+hasAll(
+  blogApi,
+  ['requestedLocale: string;', 'effectiveLocale: string;'],
+  'Blog GraphQL adapter'
+);
 
 hasAll(
   forumIndex,
-  ["id: 'forum'", 'forumNavItems', 'ForumReplyEditor', "export * from './api/forum'"],
+  ["id: 'forum'", 'registerAdminModule', 'navItems: [forumNav]', 'forumNav', 'ForumReplyEditor', 'ForumTopicEditor', "export * from './api/forum'"],
   'Forum index'
 );
-hasAll(forumNav, ["title: 'Forum'", '/dashboard/forum/reply'], 'Forum navigation');
+hasAll(
+  forumNav,
+  ["title: 'Forum'", '/dashboard/forum/topic', '/dashboard/forum/reply'],
+  'Forum navigation'
+);
 hasAll(
   forumApi,
   [
     'export interface GqlOpts',
+    'listForumCategories',
     'listForumTopics',
+    'getForumTopic',
+    'createForumTopic',
+    'updateForumTopic',
+    'body: RichTextDocument;',
     'createForumReply',
     'content: RichTextDocument;'
   ],
@@ -117,9 +145,40 @@ hasAll(
     "from '../api/forum'",
     'validateRichTextDocument',
     'richTextDocumentHasText',
+    'contentLocale={contentLocale}',
+    'disabled={form.formState.isSubmitting}',
     'content: doc'
   ],
   'Forum reply editor'
+);
+hasAll(
+  forumTopicEditor,
+  [
+    "@/shared/ui/rich-text-editor",
+    "profile='discussion'",
+    "from '../api/forum'",
+    'initialData?.requestedLocale',
+    'initialData?.effectiveLocale',
+    'validateRichTextDocument',
+    'richTextDocumentHasText',
+    'contentLocale={contentLocale}',
+    'disabled={form.formState.isSubmitting}',
+    'createForumTopic',
+    'updateForumTopic'
+  ],
+  'Forum topic editor'
+);
+hasNone(
+  forumTopicEditor,
+  [
+    'packages/blog',
+    '../api/posts',
+    './rich-text-editor',
+    './rt-json-format',
+    'rt_json_v1',
+    'markdown'
+  ],
+  'Forum topic editor'
 );
 hasNone(
   forumEditor,
@@ -139,6 +198,9 @@ hasAll(
   [
     "from '@rustok/richtext/react'",
     'profile: RichTextProfileId;',
+    'contentLocale: string;',
+    'disabled?: boolean;',
+    'contentLocale={contentLocale}',
     "frameUrl='/richtext/frame'"
   ],
   'Shared richtext adapter'
@@ -146,12 +208,26 @@ hasAll(
 hasAll(modulesIndex, ["import '../../packages/blog/src';", "import '../../packages/forum/src';"], 'Host module registration');
 hasAll(forumPage, ["../../../../../packages/forum/src", 'ForumReplyEditor', 'listForumTopics'], 'Forum route');
 hasNone(forumPage, ['packages/blog/src'], 'Forum route');
+hasAll(
+  forumTopicPage,
+  [
+    "../../../../../packages/forum/src",
+    'ForumTopicEditor',
+    'listForumCategories',
+    'listForumTopics',
+    'getForumTopic'
+  ],
+  'Forum topic route'
+);
+hasNone(forumTopicPage, ['packages/blog/src'], 'Forum topic route');
 
 if (
   evidence.owner_package !== 'apps/next-admin/packages/forum/src' ||
   evidence.former_owner_package !== 'apps/next-admin/packages/blog/src' ||
   evidence.shared_richtext_adapter !==
     'apps/next-admin/src/shared/ui/rich-text-editor.tsx' ||
+  evidence.topic_route !==
+    'apps/next-admin/src/app/dashboard/forum/topic/page.tsx' ||
   evidence.verifier !== 'scripts/verify/verify-blog-forum-ui-ownership.mjs'
 ) {
   fail('evidence path drift');
@@ -179,5 +255,5 @@ if (!packageJson.scripts?.['test:verify:blog:fba']?.includes('test:verify:blog:f
 requireFile('scripts/verify/verify-blog-forum-ui-ownership.test.mjs');
 
 console.log(
-  '[verify-blog-forum-ui-ownership] Forum owns its Next admin navigation, API, and canonical richtext reply editor; Blog and Forum share only the richtext lifecycle adapter'
+  '[verify-blog-forum-ui-ownership] Forum owns its Next admin navigation, API, and canonical richtext topic/reply editors; Blog and Forum share only the richtext lifecycle adapter'
 );

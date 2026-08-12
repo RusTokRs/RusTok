@@ -423,7 +423,7 @@ async fn require_public_blog_channel_enabled(ctx: &Context<'_>) -> Result<()> {
     .await
 }
 
-async fn ensure_public_blog_channel_enabled(
+pub(super) async fn ensure_public_blog_channel_enabled(
     db: &DatabaseConnection,
     request_context: Option<&RequestContext>,
     is_authenticated: bool,

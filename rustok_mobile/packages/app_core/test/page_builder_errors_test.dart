@@ -34,7 +34,7 @@ void main() {
             .resolve(
               const AppError(
                 code: 'BAD_REQUEST',
-                message: 'Validation error: invalid grapesjs_v1 JSON',
+                message: 'Validation error: invalid Page Builder JSON',
               ),
             )
             .kind,

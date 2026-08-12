@@ -11,9 +11,10 @@ channel visibility, deterministic published landing artifacts and page routes.
 - Own page storage across `pages`, `page_translations`, `page_bodies`,
   `page_channel_visibility`, scenario baselines and landing artifact tables.
 - Expose module-owned GraphQL and REST adapters.
-- Persist the current visual document in the page body with
-  `body.format = "grapesjs"` and `pages[].component` as the component-tree
-  authority.
+- Accept one Page Builder body input through the typed `document` field without
+  a caller-selected format or parallel serialized-content field, persist the
+  canonical internal `grapesjs` invariant, and use `pages[].component` as the
+  component-tree authority.
 - Validate builder feature policy and optimistic page revisions.
 - Provide the `pages/page_metadata` Translation target through exact locale
   snapshots, owner-local resource/source/target CAS, durable receipts and a

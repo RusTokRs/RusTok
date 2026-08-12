@@ -33,13 +33,9 @@ fn reactions_actor_state_change_is_typed_validated_and_enveloped() {
     event.validate().unwrap();
 
     let envelope_id = Uuid::new_v4();
-    let envelope = ContractEventEnvelope::new_with_envelope_id(
-        envelope_id,
-        Uuid::new_v4(),
-        None,
-        event,
-    )
-    .unwrap();
+    let envelope =
+        ContractEventEnvelope::new_with_envelope_id(envelope_id, Uuid::new_v4(), None, event)
+            .unwrap();
     assert_eq!(envelope.id(), envelope_id);
     assert_eq!(envelope.event_type(), "reactions.actor_state.changed");
     assert!(matches!(

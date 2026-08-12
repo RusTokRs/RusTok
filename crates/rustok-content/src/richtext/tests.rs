@@ -139,6 +139,8 @@ fn link_policy_rejects_script_credentials_and_protocol_relative_urls() {
         "data:text/html,boom",
         "//evil.example/path",
         "https://user:secret@example.com/",
+        " https://example.com/",
+        "https://example.com/ ",
     ] {
         let document = document(json!({
             "type": "doc",

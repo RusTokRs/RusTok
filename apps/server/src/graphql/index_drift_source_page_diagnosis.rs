@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use async_graphql::{
-    Context, ErrorExtensions, FieldError, InputObject, Object, Result as GraphqlResult, SimpleObject,
+    Context, ErrorExtensions, FieldError, InputObject, Object, Result as GraphqlResult,
+    SimpleObject,
 };
 use rustok_api::graphql::GraphQLError;
 use rustok_api::{Permission, has_effective_permission};
@@ -109,7 +110,9 @@ impl From<crate::services::index_replay_runtime_composition::IndexDriftSourcePag
 enum IndexDriftSourcePageTransportPreparationError {
     #[error("Index drift source-page request context is invalid")]
     InvalidContext,
-    #[error("Index drift source-page diagnosis requires a request-bound effective permission snapshot")]
+    #[error(
+        "Index drift source-page diagnosis requires a request-bound effective permission snapshot"
+    )]
     MissingRequestAuthority,
     #[error("modules:manage is required for Index drift source-page diagnosis")]
     Forbidden,
@@ -149,12 +152,7 @@ impl IndexDriftSourcePageDiagnosisMutation {
             })?;
 
         runtime
-            .diagnose_source_page_sealed(
-                operator_context,
-                schema,
-                continuation.as_deref(),
-                limit,
-            )
+            .diagnose_source_page_sealed(operator_context, schema, continuation.as_deref(), limit)
             .await
             .map(IndexDriftSourcePageDiagnosisPayload::from)
             .map_err(map_source_page_error)
@@ -205,27 +203,17 @@ fn parse_schema(
     entity_name: String,
     schema_version: String,
 ) -> std::result::Result<rustok_index::SchemaRef, IndexDriftSourcePageTransportPreparationError> {
-    let module_name = bounded_text(
-        "module_name",
-        &module_name,
-        MAX_SCHEMA_IDENTIFIER_BYTES,
-    )?;
-    let entity_name = bounded_text(
-        "entity_name",
-        &entity_name,
-        MAX_SCHEMA_IDENTIFIER_BYTES,
-    )?;
-    let schema_version = bounded_text(
-        "schema_version",
-        &schema_version,
-        MAX_SCHEMA_VERSION_BYTES,
-    )?
-    .parse::<u32>()
-    .ok()
-    .filter(|value| *value > 0)
-    .ok_or(IndexDriftSourcePageTransportPreparationError::InvalidInput {
-        field: "schema_version",
-    })?;
+    let module_name = bounded_text("module_name", &module_name, MAX_SCHEMA_IDENTIFIER_BYTES)?;
+    let entity_name = bounded_text("entity_name", &entity_name, MAX_SCHEMA_IDENTIFIER_BYTES)?;
+    let schema_version = bounded_text("schema_version", &schema_version, MAX_SCHEMA_VERSION_BYTES)?
+        .parse::<u32>()
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or(
+            IndexDriftSourcePageTransportPreparationError::InvalidInput {
+                field: "schema_version",
+            },
+        )?;
 
     Ok(rustok_index::SchemaRef {
         module: rustok_index::ModuleName::new(module_name).map_err(|_| {
@@ -265,12 +253,10 @@ fn map_preparation_error(error: IndexDriftSourcePageTransportPreparationError) -
             )
         }
         IndexDriftSourcePageTransportPreparationError::InvalidInput { field } => {
-            FieldError::new("Invalid Index drift source-page input").extend_with(
-                |_, extensions| {
-                    extensions.set("code", "BAD_USER_INPUT");
-                    extensions.set("input_field", field);
-                },
-            )
+            FieldError::new("Invalid Index drift source-page input").extend_with(|_, extensions| {
+                extensions.set("code", "BAD_USER_INPUT");
+                extensions.set("input_field", field);
+            })
         }
     }
 }
@@ -286,17 +272,13 @@ fn map_source_page_error(error: IndexDriftSourcePageDiagnosisError) -> FieldErro
             )
         }
         IndexDriftSourcePageDiagnosisError::InvalidPageLimit { .. } => {
-            <FieldError as GraphQLError>::bad_user_input(
-                "Invalid Index drift source-page limit",
-            )
+            <FieldError as GraphQLError>::bad_user_input("Invalid Index drift source-page limit")
         }
-        IndexDriftSourcePageDiagnosisError::ContinuationUnavailable => {
-            fixed_dependency_error(
-                "INDEX_SOURCE_CONTINUATION_UNAVAILABLE",
-                false,
-                "Index source continuation is unavailable",
-            )
-        }
+        IndexDriftSourcePageDiagnosisError::ContinuationUnavailable => fixed_dependency_error(
+            "INDEX_SOURCE_CONTINUATION_UNAVAILABLE",
+            false,
+            "Index source continuation is unavailable",
+        ),
         IndexDriftSourcePageDiagnosisError::ContinuationKeyringUnavailable => {
             fixed_dependency_error(
                 "INDEX_SOURCE_CONTINUATION_KEYRING_UNAVAILABLE",
@@ -304,13 +286,9 @@ fn map_source_page_error(error: IndexDriftSourcePageDiagnosisError) -> FieldErro
                 "Index source continuation dependency failed",
             )
         }
-        IndexDriftSourcePageDiagnosisError::Continuation(error) => {
-            map_continuation_error(error)
-        }
+        IndexDriftSourcePageDiagnosisError::Continuation(error) => map_continuation_error(error),
         IndexDriftSourcePageDiagnosisError::Source(error) => map_source_error(error),
-        IndexDriftSourcePageDiagnosisError::Diagnosis { source, .. } => {
-            map_diagnosis_error(source)
-        }
+        IndexDriftSourcePageDiagnosisError::Diagnosis { source, .. } => map_diagnosis_error(source),
     }
 }
 
@@ -361,13 +339,11 @@ fn map_source_error(error: rustok_index::IndexSourceError) -> FieldError {
                 failure.kind(),
                 rustok_index::IndexSourceFailureKind::Retryable
             );
-            FieldError::new("Index source page dependency failed").extend_with(
-                |_, extensions| {
-                    extensions.set("code", "INDEX_SOURCE_PAGE_DEPENDENCY_FAILED");
-                    extensions.set("retryable", retryable);
-                    extensions.set("dependency_code", failure.code());
-                },
-            )
+            FieldError::new("Index source page dependency failed").extend_with(|_, extensions| {
+                extensions.set("code", "INDEX_SOURCE_PAGE_DEPENDENCY_FAILED");
+                extensions.set("retryable", retryable);
+                extensions.set("dependency_code", failure.code());
+            })
         }
         _ => <FieldError as GraphQLError>::internal_error("Index source page failed"),
     }
@@ -386,16 +362,10 @@ fn map_diagnosis_error(error: IndexDriftDiagnosisOperatorError) -> FieldError {
         }
         IndexDriftDiagnosisOperatorError::Diagnosis(error) => match error {
             rustok_index::IndexDriftDigestError::SnapshotCaptureFailed(failure) => {
-                map_diagnosis_dependency(
-                    "INDEX_DRIFT_SNAPSHOT_CAPTURE_FAILED",
-                    failure,
-                )
+                map_diagnosis_dependency("INDEX_DRIFT_SNAPSHOT_CAPTURE_FAILED", failure)
             }
             rustok_index::IndexDriftDigestError::MismatchRecordFailed(failure) => {
-                map_diagnosis_dependency(
-                    "INDEX_DRIFT_MISMATCH_RECORD_FAILED",
-                    failure,
-                )
+                map_diagnosis_dependency("INDEX_DRIFT_MISMATCH_RECORD_FAILED", failure)
             }
             _ => <FieldError as GraphQLError>::internal_error(
                 "Index drift source-page candidate diagnosis failed",
@@ -412,13 +382,11 @@ fn map_diagnosis_dependency(
         failure.kind(),
         rustok_index::IndexDriftDependencyFailureKind::Retryable
     );
-    FieldError::new("Index drift source-page dependency failed").extend_with(
-        |_, extensions| {
-            extensions.set("code", code);
-            extensions.set("retryable", retryable);
-            extensions.set("dependency_code", failure.code());
-        },
-    )
+    FieldError::new("Index drift source-page dependency failed").extend_with(|_, extensions| {
+        extensions.set("code", code);
+        extensions.set("retryable", retryable);
+        extensions.set("dependency_code", failure.code());
+    })
 }
 
 fn fixed_dependency_error(
@@ -527,9 +495,7 @@ mod tests {
                 vec![Permission::MODULES_MANAGE],
                 UserRole::Admin,
             )),
-            async {
-                prepare_authorized_source_page_request(tenant_id, actor_id, input)
-            },
+            async { prepare_authorized_source_page_request(tenant_id, actor_id, input) },
         )
         .await
         .expect("authorized bounded page input should parse");

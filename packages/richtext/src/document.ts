@@ -10,6 +10,18 @@ export interface RichTextValidationResult {
   error?: string;
 }
 
+export interface RichTextValidationOptions {
+  /** Allow the editor's canonical empty draft even when the write profile is required. */
+  allowEmpty?: boolean;
+}
+
+interface ValidationStats {
+  nodes: number;
+  text: number;
+  links: number;
+  meaningfulText: boolean;
+}
+
 export function emptyRichTextDocument(): RichTextDocument {
   return { type: 'doc', content: [{ type: 'paragraph' }] };
 }
@@ -18,7 +30,7 @@ export function richTextDocumentHasText(document: RichTextDocument): boolean {
   const stack = [...document.content];
   while (stack.length > 0) {
     const node = stack.pop();
-    if (node?.text?.trim()) return true;
+    if (node?.text && [...node.text].some((character) => !/\s/u.test(character))) return true;
     if (node?.content) stack.push(...node.content);
   }
   return false;
@@ -26,7 +38,8 @@ export function richTextDocumentHasText(document: RichTextDocument): boolean {
 
 export function validateRichTextDocument(
   value: unknown,
-  profile: RichTextProfileManifest
+  profile: RichTextProfileManifest,
+  options: RichTextValidationOptions = {}
 ): RichTextValidationResult {
   let encoded: string;
   try {
@@ -34,7 +47,7 @@ export function validateRichTextDocument(
   } catch {
     return invalid('document is not serializable');
   }
-  if (new TextEncoder().encode(encoded).byteLength > profile.limits.max_json_bytes) {
+  if (byteLength(encoded) > profile.limits.max_json_bytes) {
     return invalid('document exceeds the profile byte limit');
   }
   if (!isRecord(value) || value.type !== 'doc' || !Array.isArray(value.content)) {
@@ -44,21 +57,31 @@ export function validateRichTextDocument(
     return invalid('document root contains unsupported fields');
   }
 
-  const stats = { nodes: 0, text: 0, links: 0 };
-  for (let index = 0; index < value.content.length; index += 1) {
-    const result = validateNode(value.content[index], profile, stats, 1);
+  const stats: ValidationStats = {
+    nodes: 1,
+    text: 0,
+    links: 0,
+    meaningfulText: false
+  };
+  if (stats.nodes > profile.limits.max_nodes) return invalid('too many nodes');
+
+  for (const child of value.content) {
+    if (!isRecord(child) || typeof child.type !== 'string' || !isBlock(child.type)) {
+      return invalid('document root accepts block nodes only');
+    }
+    const result = validateNode(child, profile, stats, 2);
     if (!result.valid) return result;
   }
-  if (stats.nodes > profile.limits.max_nodes) return invalid('too many nodes');
-  if (stats.text > profile.limits.max_text_chars) return invalid('too much text');
-  if (stats.links > profile.limits.max_links) return invalid('too many links');
+  if (!stats.meaningfulText && !profile.allow_empty && !options.allowEmpty) {
+    return invalid('document must contain non-whitespace text');
+  }
   return { valid: true };
 }
 
 function validateNode(
   value: unknown,
   profile: RichTextProfileManifest,
-  stats: { nodes: number; text: number; links: number },
+  stats: ValidationStats,
   depth: number
 ): RichTextValidationResult {
   if (depth > profile.limits.max_depth) return invalid('document is too deep');
@@ -66,78 +89,236 @@ function validateNode(
   if (!hasOnlyKeys(value, ['type', 'attrs', 'content', 'marks', 'text'])) {
     return invalid('node contains unsupported fields');
   }
-  if (!profile.nodes.includes(value.type)) return invalid(`node ${value.type} is not allowed`);
+  if (value.type === 'doc' || !profile.nodes.includes(value.type)) {
+    return invalid(`node ${value.type} is not allowed`);
+  }
+
   stats.nodes += 1;
+  if (stats.nodes > profile.limits.max_nodes) return invalid('too many nodes');
 
   const node = value as unknown as RichTextNode;
-  if (node.text !== undefined) {
-    if (node.type !== 'text' || typeof node.text !== 'string') return invalid('invalid text node');
-    stats.text += [...node.text].length;
+  if (node.type === 'text') return validateTextNode(node, profile, stats);
+  if (node.text !== undefined) return invalid(`${node.type} cannot contain text directly`);
+
+  if (node.type === 'hardBreak') {
+    if (!hasEmptyAttrs(node) || !hasNoContent(node)) return invalid('invalid hardBreak structure');
+    return validateMarks(node.marks, profile, stats);
   }
-  if (!validateNodeAttrs(node, profile)) return invalid(`invalid ${node.type} attributes`);
-  if (node.marks !== undefined) {
-    if (!Array.isArray(node.marks) || node.marks.length > profile.limits.max_marks_per_node) {
-      return invalid('invalid marks');
-    }
-    for (const mark of node.marks) {
-      const result = validateMark(mark, profile, stats);
-      if (!result.valid) return result;
-    }
+  if (!hasNoMarks(node)) return invalid(`${node.type} cannot carry marks`);
+
+  switch (node.type) {
+    case 'paragraph':
+      if (!hasEmptyAttrs(node)) return invalid('invalid paragraph attributes');
+      return validateInlineChildren(node, profile, stats, depth);
+    case 'heading':
+      if (!validateHeadingAttrs(node, profile)) return invalid('invalid heading attributes');
+      return validateInlineChildren(node, profile, stats, depth);
+    case 'bulletList':
+      if (!hasEmptyAttrs(node)) return invalid('invalid bulletList attributes');
+      return validateList(node, profile, stats, depth);
+    case 'orderedList':
+      if (!validateOrderedListAttrs(node)) return invalid('invalid orderedList attributes');
+      return validateList(node, profile, stats, depth);
+    case 'listItem':
+      if (!hasEmptyAttrs(node)) return invalid('invalid listItem attributes');
+      return validateListItem(node, profile, stats, depth);
+    case 'blockquote':
+      if (!hasEmptyAttrs(node)) return invalid('invalid blockquote attributes');
+      return validateBlockChildren(node, profile, stats, depth, true);
+    case 'codeBlock':
+      if (!hasEmptyAttrs(node)) return invalid('invalid codeBlock attributes');
+      return validateCodeBlock(node, profile, stats, depth);
+    case 'horizontalRule':
+      return hasEmptyAttrs(node) && hasNoContent(node)
+        ? { valid: true }
+        : invalid('invalid horizontalRule structure');
+    default:
+      return invalid(`node ${node.type} is not supported`);
   }
-  if (node.content !== undefined) {
-    if (!Array.isArray(node.content)) return invalid('invalid node content');
-    for (const child of node.content) {
-      const result = validateNode(child, profile, stats, depth + 1);
-      if (!result.valid) return result;
-    }
-  }
-  return { valid: true };
 }
 
-function validateNodeAttrs(node: RichTextNode, profile: RichTextProfileManifest): boolean {
-  const attrs = node.attrs;
-  if (attrs === undefined) return node.type !== 'heading';
-  if (!isRecord(attrs)) return false;
-  if (node.type === 'heading') {
-    return hasOnlyKeys(attrs, ['level']) && typeof attrs.level === 'number' && profile.heading_levels.includes(attrs.level);
-  }
-  if (node.type === 'orderedList') {
-    return hasOnlyKeys(attrs, ['start']) && (attrs.start === undefined || (Number.isInteger(attrs.start) && Number(attrs.start) >= 1));
-  }
-  return Object.keys(attrs).length === 0;
-}
-
-function validateMark(
-  value: unknown,
+function validateTextNode(
+  node: RichTextNode,
   profile: RichTextProfileManifest,
-  stats: { links: number }
+  stats: ValidationStats
 ): RichTextValidationResult {
-  if (!isRecord(value) || typeof value.type !== 'string' || !hasOnlyKeys(value, ['type', 'attrs'])) {
-    return invalid('invalid mark');
+  if (!hasEmptyAttrs(node) || !hasNoContent(node) || typeof node.text !== 'string' || node.text.length === 0) {
+    return invalid('invalid text node');
   }
-  if (!profile.marks.includes(value.type)) return invalid(`mark ${value.type} is not allowed`);
-  const mark = value as unknown as RichTextMark;
-  if (mark.type !== 'link') {
-    return mark.attrs === undefined || (isRecord(mark.attrs) && Object.keys(mark.attrs).length === 0)
-      ? { valid: true }
-      : invalid(`invalid ${mark.type} attributes`);
+  stats.text += [...node.text].length;
+  if (stats.text > profile.limits.max_text_chars) return invalid('too much text');
+  stats.meaningfulText ||= [...node.text].some((character) => !/\s/u.test(character));
+  return validateMarks(node.marks, profile, stats);
+}
+
+function validateMarks(
+  marks: RichTextMark[] | undefined,
+  profile: RichTextProfileManifest,
+  stats: ValidationStats
+): RichTextValidationResult {
+  if (marks === undefined) return { valid: true };
+  if (!Array.isArray(marks) || marks.length > profile.limits.max_marks_per_node) {
+    return invalid('invalid marks');
   }
-  if (!isRecord(mark.attrs) || !hasOnlyKeys(mark.attrs, ['href', 'target', 'rel', 'class'])) {
-    return invalid('invalid link attributes');
+  const seen = new Set<string>();
+  for (const mark of marks) {
+    if (!isRecord(mark) || typeof mark.type !== 'string' || !hasOnlyKeys(mark, ['type', 'attrs'])) {
+      return invalid('invalid mark');
+    }
+    if (!profile.marks.includes(mark.type)) return invalid(`mark ${mark.type} is not allowed`);
+    if (seen.has(mark.type)) return invalid(`duplicate ${mark.type} mark`);
+    seen.add(mark.type);
+
+    if (mark.type !== 'link') {
+      if (mark.attrs !== undefined && (!isRecord(mark.attrs) || Object.keys(mark.attrs).length > 0)) {
+        return invalid(`invalid ${mark.type} attributes`);
+      }
+      continue;
+    }
+    if (!isRecord(mark.attrs) || !hasOnlyKeys(mark.attrs, ['href', 'target', 'rel', 'class'])) {
+      return invalid('invalid link attributes');
+    }
+    if (mark.attrs.target != null || mark.attrs.rel != null || mark.attrs.class != null) {
+      return invalid('link presentation attributes must be null or absent');
+    }
+    if (
+      typeof mark.attrs.href !== 'string' ||
+      byteLength(mark.attrs.href) > profile.limits.max_attribute_bytes ||
+      !isSafeHref(mark.attrs.href, profile.limits.max_url_bytes)
+    ) {
+      return invalid('unsafe link');
+    }
+    stats.links += 1;
+    if (stats.links > profile.limits.max_links) return invalid('too many links');
   }
-  if (mark.attrs.target != null || mark.attrs.rel != null || mark.attrs.class != null) {
-    return invalid('link presentation attributes must be null or absent');
-  }
-  if (typeof mark.attrs.href !== 'string' || !isSafeHref(mark.attrs.href, profile.limits.max_url_bytes)) {
-    return invalid('unsafe link');
-  }
-  stats.links += 1;
   return { valid: true };
+}
+
+function validateInlineChildren(
+  node: RichTextNode,
+  profile: RichTextProfileManifest,
+  stats: ValidationStats,
+  depth: number
+): RichTextValidationResult {
+  if (node.content !== undefined && !Array.isArray(node.content)) return invalid('invalid node content');
+  for (const child of node.content ?? []) {
+    if (!isRecord(child) || typeof child.type !== 'string' || !isInline(child.type)) {
+      return invalid(`${node.type} accepts inline nodes only`);
+    }
+    const result = validateNode(child, profile, stats, depth + 1);
+    if (!result.valid) return result;
+  }
+  return { valid: true };
+}
+
+function validateBlockChildren(
+  node: RichTextNode,
+  profile: RichTextProfileManifest,
+  stats: ValidationStats,
+  depth: number,
+  requireChild: boolean
+): RichTextValidationResult {
+  if (node.content !== undefined && !Array.isArray(node.content)) return invalid('invalid node content');
+  const children = node.content ?? [];
+  if (requireChild && children.length === 0) return invalid(`${node.type} requires content`);
+  for (const child of children) {
+    if (!isRecord(child) || typeof child.type !== 'string' || !isBlock(child.type)) {
+      return invalid(`${node.type} accepts block nodes only`);
+    }
+    const result = validateNode(child, profile, stats, depth + 1);
+    if (!result.valid) return result;
+  }
+  return { valid: true };
+}
+
+function validateList(
+  node: RichTextNode,
+  profile: RichTextProfileManifest,
+  stats: ValidationStats,
+  depth: number
+): RichTextValidationResult {
+  if (!Array.isArray(node.content) || node.content.length === 0) return invalid(`${node.type} requires content`);
+  for (const child of node.content) {
+    if (!isRecord(child) || child.type !== 'listItem') return invalid(`${node.type} accepts listItem nodes only`);
+    const result = validateNode(child, profile, stats, depth + 1);
+    if (!result.valid) return result;
+  }
+  return { valid: true };
+}
+
+function validateListItem(
+  node: RichTextNode,
+  profile: RichTextProfileManifest,
+  stats: ValidationStats,
+  depth: number
+): RichTextValidationResult {
+  if (!Array.isArray(node.content) || node.content[0]?.type !== 'paragraph') {
+    return invalid('listItem must start with a paragraph');
+  }
+  return validateBlockChildren(node, profile, stats, depth, true);
+}
+
+function validateCodeBlock(
+  node: RichTextNode,
+  profile: RichTextProfileManifest,
+  stats: ValidationStats,
+  depth: number
+): RichTextValidationResult {
+  if (node.content !== undefined && !Array.isArray(node.content)) return invalid('invalid codeBlock content');
+  for (const child of node.content ?? []) {
+    if (!isRecord(child) || child.type !== 'text' || (Array.isArray(child.marks) && child.marks.length > 0)) {
+      return invalid('codeBlock accepts unmarked text only');
+    }
+    const result = validateNode(child, profile, stats, depth + 1);
+    if (!result.valid) return result;
+  }
+  return { valid: true };
+}
+
+function validateHeadingAttrs(node: RichTextNode, profile: RichTextProfileManifest): boolean {
+  return (
+    isRecord(node.attrs) &&
+    hasOnlyKeys(node.attrs, ['level']) &&
+    typeof node.attrs.level === 'number' &&
+    Number.isInteger(node.attrs.level) &&
+    profile.heading_levels.includes(node.attrs.level)
+  );
+}
+
+function validateOrderedListAttrs(node: RichTextNode): boolean {
+  if (node.attrs === undefined) return true;
+  if (!isRecord(node.attrs) || !hasOnlyKeys(node.attrs, ['start'])) return false;
+  const start = node.attrs.start;
+  return (
+    start === undefined ||
+    start === null ||
+    (typeof start === 'number' && Number.isInteger(start) && start >= 1 && start <= 1_000_000)
+  );
+}
+
+function hasEmptyAttrs(node: RichTextNode): boolean {
+  return node.attrs === undefined || (isRecord(node.attrs) && Object.keys(node.attrs).length === 0);
+}
+
+function hasNoContent(node: RichTextNode): boolean {
+  return node.content === undefined || (Array.isArray(node.content) && node.content.length === 0);
+}
+
+function hasNoMarks(node: RichTextNode): boolean {
+  return node.marks === undefined || (Array.isArray(node.marks) && node.marks.length === 0);
+}
+
+function isBlock(kind: string): boolean {
+  return ['paragraph', 'heading', 'bulletList', 'orderedList', 'blockquote', 'codeBlock', 'horizontalRule'].includes(kind);
+}
+
+function isInline(kind: string): boolean {
+  return kind === 'text' || kind === 'hardBreak';
 }
 
 function isSafeHref(href: string, maxBytes: number): boolean {
   if (
-    new TextEncoder().encode(href).byteLength > maxBytes ||
+    byteLength(href) > maxBytes ||
     href.trim() !== href ||
     href.length === 0 ||
     /[\u0000-\u001f\u007f]/u.test(href) ||
@@ -160,6 +341,10 @@ function isSafeHref(href: string, maxBytes: number): boolean {
   } catch {
     return false;
   }
+}
+
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }
 
 function hasOnlyKeys(value: Record<string, unknown>, allowed: string[]): boolean {

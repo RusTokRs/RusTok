@@ -17,10 +17,12 @@ attributes and mark order, enforce raw/typed size limits, render escaped
 semantic HTML, and extract plain text. The target boundary is recorded in
 the [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md):
 neutral types live in `rustok-api::richtext`, while this module implements the
-executable policy. Domain owners keep locale rows and persistence. Existing
-owner transports have not yet been switched, so `rustok-core::rt_json`, the
-generic helper, and `content_json` remain cutover work rather than supported
-new inputs.
+executable policy. Domain owners keep locale rows and persistence. Blog, Forum,
+and Comments owner transports now use typed documents. Blog/Comments initial
+schemas are canonical and their corrective migration/conversion artifacts are
+deleted. The obsolete `rustok-core` richtext/format helpers, generic
+format-bearing `NodeService`, unused entity DataLoaders, and Pages format input
+have also been removed.
 
 The canonical URL guard already rejects cross-target canonical/alias conflicts
 before state or outbox mutations; aliases are resolved before canonical routes.
@@ -47,25 +49,23 @@ procedure.
    **Done when:** targeted tests cover every public outcome and failure has no
    persisted orchestration state or outbox side effect.
 
-3. **Execute the atomic richtext boundary cutover.** Consume the implemented
-   executable target policy under `rustok-content::richtext` and neutral
-   `rustok-api::richtext` types, migrate every Blog/Forum/Comments and
-   orchestration caller, then delete `rustok-core::rt_json`, the generic legacy
-   format helper, aliases, and dual body/`content_json` paths. Keep Pages body
-   on its Page Builder/Fly contract. Direct Comments writes and destination
-   profile conversions must never bypass validation.
-   **Depends on:** the central Richtext plan, owner-local data migrations, and
-   all repository-owned transports/renderers/search projections.
-   **Current evidence:** `cargo test -p rustok-content richtext` covers the
-   accepted article fixture, profile manifest, tree grammar, links, escaping,
-   normalization, size limits, and projections. Comments storage/service/port
-   and the Blog comment consumer now use the typed contract; their migration
-   rejects non-canonical legacy rows before dropping the selector. Blog posts
-   and Forum remain pending, and orchestration fails closed when their
-   comments/replies would cross the mixed-contract boundary.
-   **Done when:** one strict validator, one safe HTML renderer, and one
-   plain-text extractor serve all owners; no internal fallback or duplicate
-   renderer remains; locale exists only in owner context/storage.
+3. **Keep the atomic richtext boundary cutover closed.** Preserve the
+   `rustok-content::richtext` policy and neutral `rustok-api::richtext` types.
+   Do not restore core format helpers, generic shared-node CRUD/DataLoaders, or
+   caller-selected Pages formats. Pages remains on its owner-owned Page
+   Builder/Fly document; a Page body never routes through richtext. Direct
+   Comments writes and cross-owner conversions continue to validate with
+   server-selected profiles.
+   **Current evidence:** Rust policy tests cover the accepted article fixture,
+   profile manifest, tree grammar, links, escaping, normalization, size limits,
+   and projections. Blog, Forum, and Comments runtime storage/service/transport
+   paths use the typed contract; browser typecheck and nine package tests cover
+   the unversioned protocol and current grammar. The 2026-08-11 audit passed
+   all nine focused `rustok-content` richtext tests after serializing the Cargo
+   run.
+   **Status:** complete for the backend/storage boundary. One strict validator,
+   one safe HTML renderer, and one plain-text extractor serve all active
+   owners; locale exists only in owner context/storage.
 
 ## Verification
 

@@ -1,13 +1,13 @@
 use rustok_auth::{AuthUserBootstrapDbWriter, AuthUserBootstrapRequest};
 use rustok_installer::{
     DatabaseEngine, InstallAdminOutcome, InstallAdminPort, InstallApplyOptions,
-    InstallDatabasePort, InstallDatabaseReady, InstallDeploymentPort, InstallExecutionError,
-    InstallPersistencePort, InstallPlan, InstallReceipt, InstallReceiptRecord,
-    InstallRoleDeployment, InstallRoleDeploymentRequest, InstallSchemaPort, InstallSeedOutcome,
-    InstallSeedPort, InstallSessionRecord, InstallState, InstallVerificationOutcome,
-    InstallVerificationPort, SeedExecutionError, SeedExecutionRequest, SeedIdentityPort,
-    SeedModulePort, SeedPrincipalPort, SeedProfile, SeedRolePort, SeedTenant, SeedTenantPort,
-    SeedTenantRequest, SeedUser, SeedUserRequest,
+    InstallDatabasePort, InstallDatabaseReady, InstallDeploymentPort,
+    InstallDistributionDeployment, InstallDistributionDeploymentRequest, InstallExecutionError,
+    InstallPersistencePort, InstallPlan, InstallReceipt, InstallReceiptRecord, InstallSchemaPort,
+    InstallSeedOutcome, InstallSeedPort, InstallSessionRecord, InstallState,
+    InstallVerificationOutcome, InstallVerificationPort, SeedExecutionError, SeedExecutionRequest,
+    SeedIdentityPort, SeedModulePort, SeedPrincipalPort, SeedProfile, SeedRolePort, SeedTenant,
+    SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest,
 };
 use rustok_migrations::Migrator;
 use rustok_modules::ModuleControlPlane;
@@ -178,11 +178,11 @@ impl InstallDeploymentPort<DatabaseConnection> for SeaOrmInstallerApplyPorts<'_>
         false
     }
 
-    async fn deploy_role(
+    async fn deploy_distribution(
         &self,
         _runtime: &DatabaseConnection,
-        _request: InstallRoleDeploymentRequest,
-    ) -> Result<InstallRoleDeployment, InstallExecutionError> {
+        _request: InstallDistributionDeploymentRequest,
+    ) -> Result<InstallDistributionDeployment, InstallExecutionError> {
         Err(InstallExecutionError::new(
             "standalone installer apply has no configured distributed deployment adapter",
         ))

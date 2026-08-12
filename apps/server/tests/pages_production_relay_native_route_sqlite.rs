@@ -21,9 +21,7 @@ use rustok_channel::{
     BindChannelModuleInput, ChannelModule, ChannelResponse, ChannelService, CreateChannelInput,
 };
 use rustok_core::events::EventHandler;
-use rustok_core::{
-    CONTENT_FORMAT_GRAPESJS, EventTransport, MigrationSource, ReliabilityLevel, SecurityContext,
-};
+use rustok_core::{EventTransport, MigrationSource, ReliabilityLevel, SecurityContext};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::entity::{Column as SysEventColumn, SysEventStatus};
 use rustok_outbox::{
@@ -145,12 +143,7 @@ impl PagesCacheReadPort for RecordingReadPort {
         self.inner.get(key).await
     }
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> Result<(), PageCacheError> {
+    async fn put(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<(), PageCacheError> {
         {
             let mut state = self
                 .state
@@ -215,8 +208,8 @@ struct PublicationEvents {
 }
 
 #[tokio::test]
-async fn production_relay_gate_rotates_registered_native_route_before_outbox_ack(
-) -> TestResult<()> {
+async fn production_relay_gate_rotates_registered_native_route_before_outbox_ack() -> TestResult<()>
+{
     let tenant_id = Uuid::new_v4();
     let db = setup_db(tenant_id).await?;
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
@@ -267,9 +260,11 @@ async fn production_relay_gate_rotates_registered_native_route_before_outbox_ack
 
     let before_published_delivery = call_storefront(&app, &tenant, &channel).await?;
     assert_eq!(before_published_delivery.status, StatusCode::OK);
-    assert!(before_published_delivery
-        .body
-        .contains(&fixture.expected_artifact_url));
+    assert!(
+        before_published_delivery
+            .body
+            .contains(&fixture.expected_artifact_url)
+    );
     assert!(before_published_delivery.body.contains("fly_artifact_url"));
     let before_rotation = read_port.snapshot();
     assert_eq!(before_rotation.generation_reads, 1);
@@ -298,11 +293,9 @@ async fn production_relay_gate_rotates_registered_native_route_before_outbox_ack
         .envelope(events.published_id)
         .ok_or_else(|| std::io::Error::other("downstream NodePublished envelope is missing"))?;
     let listener_provider = Arc::new(ServerPagesCachePort::new(&cache));
-    PageCacheInvalidationEventHandler::new(PagesCacheInvalidationRuntime::new(
-        listener_provider,
-    ))
-    .handle(&published_envelope)
-    .await?;
+    PageCacheInvalidationEventHandler::new(PagesCacheInvalidationRuntime::new(listener_provider))
+        .handle(&published_envelope)
+        .await?;
     assert_eq!(
         read_port.generations(tenant_id).await?,
         PageCacheGenerationSnapshot::new(2, 2, 1)
@@ -488,9 +481,7 @@ async fn create_reviewed_published_page(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: Some(vec!["web".to_string()]),
                 publish: false,
@@ -536,10 +527,7 @@ async fn create_reviewed_published_page(
 
     Ok(ReviewedFixture {
         page_id: draft.id,
-        expected_artifact_url: format!(
-            "/api/pages/{}/artifact?locale=en&channel=web",
-            draft.id
-        ),
+        expected_artifact_url: format!("/api/pages/{}/artifact?locale=en&channel=web", draft.id),
     })
 }
 

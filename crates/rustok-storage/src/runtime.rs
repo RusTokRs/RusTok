@@ -181,6 +181,18 @@ impl Default for StorageConfig {
     }
 }
 
+impl StorageConfig {
+    /// Binds the local adapter to a host-owned physical root.
+    ///
+    /// Object keys remain portable and content-addressed; this path is only
+    /// local placement evidence and is ignored by external storage drivers.
+    pub fn bind_local_base_dir(&mut self, base_dir: impl AsRef<std::path::Path>) {
+        if self.driver == StorageDriver::Local {
+            self.local.base_dir = base_dir.as_ref().display().to_string();
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalStorageConfig {
     pub base_dir: String,

@@ -152,10 +152,12 @@ modules.local.toml
 .github/pull_request_template.md
 
 # Agent and tool temporary directories
-.*-codex/
-*-codex/
+.codex*/
+.*-codex*/
+*-codex*/
 .codex/
 .playwright-cli/
+/output/
 
 # Athanor local store and outputs
 .athanor/*

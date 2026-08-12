@@ -47,10 +47,9 @@ const expectedCanonicalContract = {
 };
 const expectedRenderContract = {
   component: "SelectedPostCard",
-  html_sink: "inner_html=content.html",
+  html_sink: "RichTextHtml(view=content,content_locale=effective_locale)",
   fallback_sink: "selected_post_content.body",
   forbidden_storefront_markers: [
-    "RichTextDocument",
     "content.document",
     "pulldown_cmark",
     "comrak::",
@@ -166,9 +165,11 @@ for (const marker of [
 
 assertContains(model, "pub struct BlogCommentList", `${files.model}: storefront DTO must model the public comment list`);
 assertContains(model, "pub public_comments: BlogCommentList", `${files.model}: selected posts must carry public comments`);
-assertContains(model, "use rustok_api::RichTextView;", `${files.model}: selected post DTO must consume the owner RichTextView`);
+assertContains(model, "RichTextView", `${files.model}: selected post DTO must consume the owner RichTextView`);
 assertContains(model, "pub content: Option<RichTextView>", `${files.model}: selected post DTO must carry canonical richtext`);
 assertContains(model, "pub content_plain_text: Option<String>", `${files.model}: selected post DTO must carry server-derived plain text`);
+assertContains(model, "pub struct BlogCommentCreateRequest", `${files.model}: storefront must expose one typed Blog-bound comment command`);
+assertContains(model, "pub content: RichTextDocument", `${files.model}: comment command must carry the canonical write document`);
 assertNotContains(model, "pub body: Option<String>", `${files.model}: storefront DTO must not expose legacy body`);
 assertNotContains(model, "pub body_format: String", `${files.model}: storefront DTO must not expose legacy body format`);
 
@@ -180,15 +181,16 @@ assertContains(ui, "comments_pagination::comments_page_query_intent", `${files.u
 assertContains(selectedPostUi, "let content = post.content;", `${files.ui}: selected post must consume RichTextView from the storefront DTO`);
 assertContains(selectedPostUi, "post.content_plain_text", `${files.ui}: selected post must retain server-derived plain-text fallback`);
 assertContains(selectedPostUi, expectedRenderContract.fallback_sink, `${files.ui}: selected post must render the server-derived plain-text fallback`);
-
-const innerHtmlBindings = [...selectedPostUi.matchAll(/\binner_html\s*=\s*([A-Za-z0-9_.]+)/g)]
-  .map((match) => match[1]);
-if (
-  innerHtmlBindings.length !== 1 ||
-  innerHtmlBindings[0] !== "content.html"
-) {
-  fail(`${files.ui}: SelectedPostCard must have exactly one owner HTML sink bound to content.html`);
+assertContains(ui, "RichTextHtml", `${files.ui}: UI must use the shared server-projection renderer`);
+assertContains(selectedPostUi, "<CommentComposer", `${files.ui}: selected Blog post must compose the Comments-owned editor`);
+const richTextHtmlSinks = [...selectedPostUi.matchAll(/<RichTextHtml\b/g)];
+if (richTextHtmlSinks.length !== 1) {
+  fail(`${files.ui}: SelectedPostCard must have exactly one shared RichTextHtml sink`);
 }
+assertContains(selectedPostUi, "view=content", `${files.ui}: RichTextHtml must receive the typed owner projection`);
+assertContains(selectedPostUi, "content_locale=effective_locale.clone()", `${files.ui}: RichTextHtml must receive the owner effective locale`);
+assertNotContains(selectedPostUi, "inner_html=", `${files.ui}: owner UI must not bypass the shared RichTextHtml sink`);
+assertContains(cargo, "leptos-ui.workspace = true", `${files.cargo}: storefront must depend on the shared Leptos richtext view boundary`);
 assertNotContains(ui, "post.body", `${files.ui}: UI must not read legacy body`);
 assertNotContains(ui, "body_format", `${files.ui}: UI must not read legacy body format`);
 assertNotContains(ui, "crate::api", `${files.ui}: UI must not call legacy api module`);
@@ -198,6 +200,8 @@ assertContains(transport, "pub mod native_server_adapter;", `${files.transport}:
 assertContains(transport, "comments_page: u64", `${files.transport}: transport facade must carry comments page`);
 assertContains(transport, "native_server_adapter::fetch_blog(native_request, comments_page)", `${files.transport}: native path must receive comments page`);
 assertContains(transport, "graphql_adapter::fetch_blog(request, comments_page)", `${files.transport}: GraphQL path must receive comments page`);
+assertContains(transport, "pub async fn create_comment(", `${files.transport}: transport facade must expose the Blog-bound comment command`);
+assertContains(transport, "execute_selected_transport(", `${files.transport}: comment command must use the selected transport without fallback`);
 assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not delegate to legacy api module`);
 
 for (const marker of [
@@ -208,10 +212,10 @@ for (const marker of [
   "request_context.channel_slug",
   "Module '{MODULE_SLUG}' is not enabled for channel",
   "CommentService::new",
-  ".list_for_post_with_locale_fallback(",
+  "list_public_comments_with_snapshot(",
   "SecurityContext::public_read()",
-  "page: comments_page.max(1)",
-  "per_page: COMMENTS_PAGE_SIZE",
+  "comments_page,",
+  "COMMENTS_PAGE_SIZE,",
   "map_comment_list_item",
   "content: Some(post.content)",
   "content_plain_text: Some(post.content_plain_text)",
@@ -224,6 +228,8 @@ assertContains(native, "#[server(prefix = \"/api/fn\", endpoint = \"blog/storefr
 assertContains(native, "expect_context::<HostRuntimeContext>()", `${files.native}: native adapter must use the host runtime context`);
 assertContains(native, "shared_get::<TransactionalEventBus>()", `${files.native}: native adapter must receive the event bus through the host runtime context`);
 assertContains(native, "runtime_ctx.db_clone()", `${files.native}: native adapter must receive DB through the host runtime context`);
+assertContains(native, 'endpoint = "blog/comment-create"', `${files.native}: native adapter must expose the Blog-bound comment endpoint`);
+assertContains(native, ".create_public_comment(", `${files.native}: native command must validate the public Blog target before Comments writes`);
 
 assertContains(graphql, "GraphqlRequest", `${files.graphql}: GraphQL adapter must keep GraphQL request contract`);
 assertContains(graphql, "STOREFRONT_BLOG_QUERY", `${files.graphql}: GraphQL adapter must own storefront blog query`);
@@ -234,13 +240,15 @@ assertContains(graphql, "$commentsPerPage: Int!", `${files.graphql}: GraphQL que
 assertContains(graphql, "publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage)", `${files.graphql}: GraphQL storefront query must request the selected comments page`);
 assertContains(graphql, "bounded_comments_request_page(comments_page)", `${files.graphql}: GraphQL page input must be bounded before serialization`);
 assertContains(graphql, "comments_per_page: COMMENTS_PAGE_SIZE", `${files.graphql}: GraphQL and native page size must match`);
+assertContains(graphql, "CREATE_BLOG_COMMENT_MUTATION", `${files.graphql}: GraphQL adapter must expose the Blog-bound comment mutation`);
 for (const marker of [
   "pub content: RichTextView",
   "pub content_plain_text: String",
   "#[graphql(complex)]",
   "async fn public_comments(",
   "runtime.comment_service(db.clone(), event_bus.clone())",
-  "SecurityContext::public_read()",
+  "list_public_comments_with_snapshot(",
+  "runtime.public_comments_snapshot_store()",
   "GqlPublicCommentList",
 ]) {
   assertContains(graphqlTypes, marker, `${files.graphqlTypes}: missing richtext/public-comments GraphQL marker ${marker}`);
@@ -250,7 +258,7 @@ if (
   evidence.schema_version !== 2 ||
   evidence.owner !== "rustok-blog" ||
   evidence.boundary !== "storefront-post-richtext-view" ||
-  evidence.status !== "source_verified_no_compile"
+  evidence.status !== "locally_verified"
 ) {
   fail(`${files.evidence}: evidence identity/status drift`);
 }
@@ -273,10 +281,10 @@ if (
   fail(`${files.evidence}: verifier path drift`);
 }
 if (
-  evidence.validation?.tests_run !== false ||
-  evidence.validation?.verifier_run !== false ||
-  evidence.validation?.cargo_run !== false ||
-  evidence.validation?.format_run !== false ||
+  evidence.validation?.tests_run !== true ||
+  evidence.validation?.verifier_run !== true ||
+  evidence.validation?.cargo_run !== true ||
+  evidence.validation?.format_run !== true ||
   evidence.validation?.workflow_checks_run !== false ||
   evidence.validation?.ci_run !== false
 ) {
@@ -285,7 +293,7 @@ if (
 if (
   !Array.isArray(evidence.remaining) ||
   evidence.remaining.length !== 1 ||
-  evidence.remaining[0] !== "execute compile, migration, transport parity, and browser evidence"
+  evidence.remaining[0] !== "execute migration, live transport, and mounted browser evidence"
 ) {
   fail(`${files.evidence}: remaining execution contract drift`);
 }
@@ -294,7 +302,7 @@ assertContains(plan, "verify-blog-storefront-boundary.mjs", `${files.plan}: loca
 assertContains(plan, "public comments", `${files.plan}: local plan must record public comment rendering parity`);
 assertContains(plan, "storefront comment pagination", `${files.plan}: local plan must record route-owned comment pagination`);
 assertContains(plan, "server-rendered `RichTextView` HTML", `${files.plan}: local plan must record storefront owner projection`);
-assertContains(plan, "exactly one `content.html` sink", `${files.plan}: local plan must record the selected-post render sink`);
+assertContains(plan, "exactly one shared `RichTextHtml` sink", `${files.plan}: local plan must record the selected-post render sink`);
 assertContains(registry, "verify-blog-storefront-boundary.mjs", `${files.registry}: central board must mention storefront guardrail`);
 assertContains(verifierTest, "passes canonical fixture", `${files.verifierTest}: fixture tests must cover canonical pass path`);
 assertContains(verifierTest, "rejects legacy api module", `${files.verifierTest}: fixture tests must reject legacy api module`);

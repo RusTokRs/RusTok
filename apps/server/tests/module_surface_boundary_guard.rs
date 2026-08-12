@@ -170,10 +170,13 @@ fn module_owned_graphql_types_and_resolvers_do_not_live_in_server() {
 }
 
 #[test]
-fn content_graphql_entity_loaders_do_not_live_in_server() {
+fn removed_content_graphql_entity_loaders_remain_absent() {
     let graphql_dir = repo_root().join("apps/server/src/graphql");
     let forbidden = [
         "rustok_content::entities",
+        "NodeLoader::new",
+        "NodeTranslationLoader::new",
+        "NodeBodyLoader::new",
         "struct NodeLoader",
         "struct NodeTranslationLoader",
         "struct NodeBodyLoader",
@@ -196,7 +199,7 @@ fn content_graphql_entity_loaders_do_not_live_in_server() {
 
     assert!(
         offenders.is_empty(),
-        "content GraphQL entity loaders must live in rustok-content, not apps/server: {offenders:?}"
+        "removed generic content GraphQL entity loaders must remain absent: {offenders:?}"
     );
 }
 

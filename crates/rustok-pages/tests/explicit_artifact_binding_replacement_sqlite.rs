@@ -2,7 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use rustok_channel::ChannelModule;
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -14,9 +14,7 @@ use rustok_pages::entities::{
     page_published_landing_artifact, page_static_landing_artifact,
 };
 use rustok_pages::services::{PageBuilderArtifactService, PageService};
-use rustok_pages::{
-    PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT, PagesError, PagesModule,
-};
+use rustok_pages::{PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT, PagesError, PagesModule};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
     DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Set, Statement,
@@ -79,9 +77,7 @@ async fn explicit_binding_replacement_switches_exact_rebuild_and_replays() -> Te
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: Some(vec!["web".to_string()]),
                 publish: false,
@@ -174,9 +170,7 @@ async fn explicit_binding_replacement_switches_exact_rebuild_and_replays() -> Te
     ));
     assert_eq!(
         page_artifact_binding_replacement_operation::Entity::find()
-            .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
-            )
+            .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),)
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(draft.id))
             .count(&db)
             .await?,
@@ -206,7 +200,10 @@ async fn explicit_binding_replacement_switches_exact_rebuild_and_replays() -> Te
     assert!(!replaced.replayed);
     assert_eq!(replaced.rebuild_operation_id, rebuild.operation_id);
     assert_eq!(replaced.previous_artifact_id, original_artifact.id);
-    assert_eq!(replaced.replacement_artifact_id, rebuild.rebuilt_artifact_id);
+    assert_eq!(
+        replaced.replacement_artifact_id,
+        rebuild.rebuilt_artifact_id
+    );
     assert_eq!(replaced.version, page_before.version + 1);
 
     let binding_after =
@@ -232,17 +229,15 @@ async fn explicit_binding_replacement_switches_exact_rebuild_and_replays() -> Te
     );
 
     let public = PageBuilderArtifactService::new(db.clone())
-        .load_public_bound_artifact_with_fallback(
-            tenant_id,
-            draft.id,
-            "en",
-            None,
-            Some("web"),
-        )
+        .load_public_bound_artifact_with_fallback(tenant_id, draft.id, "en", None, Some("web"))
         .await?
         .ok_or_else(|| std::io::Error::other("replacement artifact is not public"))?;
     assert_eq!(public.artifact_hash, source.artifact_hash);
-    assert!(public.document_html.contains("Explicit binding replacement"));
+    assert!(
+        public
+            .document_html
+            .contains("Explicit binding replacement")
+    );
     assert!(!public.document_html.contains("corrupted current artifact"));
 
     let replay = service
@@ -258,9 +253,7 @@ async fn explicit_binding_replacement_switches_exact_rebuild_and_replays() -> Te
     assert_eq!(replay.version, replaced.version);
     assert_eq!(
         page_artifact_binding_replacement_operation::Entity::find()
-            .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
-            )
+            .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),)
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(draft.id))
             .count(&db)
             .await?,

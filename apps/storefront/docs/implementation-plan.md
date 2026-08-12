@@ -65,15 +65,19 @@ Develop `apps/storefront` as a stable SSR storefront with predictable performanc
 
 - Target contract: the
   [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md).
-- **Admin (Leptos, `apps/admin`)**: [ ] Target shared framed editor and owner
-  native `#[server]` paths are not implemented.
-- **Admin (Next.js, `apps/next-admin`)**: [~] A Blog-local legacy Tiptap
-  prototype exists, but it is not the target shared runtime and incorrectly
-  contains Forum UI.
-- **Storefront (Leptos SSR, `apps/storefront`)**: [ ] Blog/Forum/Comments still
-  need the canonical server-rendered HTML projection instead of raw payload
-  summaries.
-- **Storefront (Next.js, `apps/next-frontend`)**: [ ] Matching SSR projection,
-  locale, and route coverage are not implemented.
+- **Admin (Leptos, `apps/admin`)**: [~] Blog and Forum topic/reply authoring use
+  the shared frame and native `#[server]` paths. Comments moderation is
+  intentionally read-only and uses the shared server projection.
+- **Admin (Next.js, `apps/next-admin`)**: [~] Blog and Forum topic/reply
+  authoring use the same `@rustok/richtext` frame. Owner-copy i18n and mounted
+  browser parity remain open.
+- **Storefront (Leptos SSR, `apps/storefront`)**: [~] Blog articles and Forum
+  topics/replies render owner-provided, server-sanitized HTML projections.
+  Blog now composes the Comments-owned reusable editor with a Blog-bound native
+  command and retains the parallel GraphQL command. Mounted save/auth/error
+  evidence remains open; approved lists still use bounded projections.
+- **Storefront (Next.js, `apps/next-frontend`)**: [ ] Matching Blog detail,
+  Forum, Comments, effective-locale, and canonical HTML projection coverage is
+  not implemented.
 - Pages body remains Page Builder/Fly and is outside the richtext body
   migration. A future embedded Page component property is a separate opt-in.

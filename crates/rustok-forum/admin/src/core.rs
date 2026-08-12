@@ -5,8 +5,8 @@ use rustok_ui_core::{
 };
 
 use crate::model::{
-    CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
-    TopicListItem,
+    CategoryDetail, CategoryDraft, CategoryListItem, ReplyDraft, ReplyListItem, TopicDetail,
+    TopicDraft, TopicListItem,
 };
 
 const DEFAULT_CATEGORY_ACCENT_STYLE: &str =
@@ -650,6 +650,7 @@ pub enum ForumAdminBusyAction {
 pub enum ForumAdminBusySurface {
     Category,
     Topic,
+    Reply,
 }
 
 impl ForumAdminBusySurface {
@@ -657,6 +658,7 @@ impl ForumAdminBusySurface {
         match self {
             Self::Category => "category",
             Self::Topic => "topic",
+            Self::Reply => "reply",
         }
     }
 }
@@ -827,6 +829,22 @@ impl TopicFormSnapshot {
             return Err(ForumAdminFormError::TopicRequired);
         }
         Ok(draft)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReplyFormSnapshot {
+    pub locale: String,
+    pub content: RichTextDocument,
+}
+
+impl ReplyFormSnapshot {
+    pub fn to_draft(&self) -> Option<ReplyDraft> {
+        richtext_document_has_text(&self.content).then(|| ReplyDraft {
+            locale: self.locale.clone(),
+            content: self.content.clone(),
+            parent_reply_id: None,
+        })
     }
 }
 
@@ -1037,6 +1055,26 @@ mod tests {
             Some("category-1".to_string())
         );
         assert_eq!(topic_category_filter("   ".to_string()), None);
+    }
+
+    #[test]
+    fn reply_form_requires_text_and_builds_the_canonical_document_draft() {
+        let empty = ReplyFormSnapshot {
+            locale: "en".to_string(),
+            content: RichTextDocument::empty(),
+        };
+        assert!(empty.to_draft().is_none());
+
+        let document = RichTextDocument::single_paragraph("A useful answer");
+        let draft = ReplyFormSnapshot {
+            locale: "de".to_string(),
+            content: document.clone(),
+        }
+        .to_draft()
+        .expect("reply draft");
+        assert_eq!(draft.locale, "de");
+        assert_eq!(draft.content, document);
+        assert_eq!(draft.parent_reply_id, None);
     }
 
     #[test]

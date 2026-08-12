@@ -7,8 +7,7 @@ use crate::validation::{EventValidationError, ValidateEvent, validators};
 use crate::{EventSchema, FieldSchema};
 
 pub const RBAC_EVENT_USER_ROLE_REPLACED: &str = "rbac.user_role_replaced";
-pub const RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED: &str =
-    "rbac.user_role_assignment_repaired";
+pub const RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED: &str = "rbac.user_role_assignment_repaired";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(tag = "type", content = "data")]
@@ -56,9 +55,7 @@ impl RbacRoleMutationEvent {
     pub fn event_type(&self) -> &'static str {
         match self {
             Self::UserRoleReplaced { .. } => RBAC_EVENT_USER_ROLE_REPLACED,
-            Self::UserRoleAssignmentRepaired { .. } => {
-                RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED
-            }
+            Self::UserRoleAssignmentRepaired { .. } => RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED,
         }
     }
 
@@ -118,8 +115,7 @@ pub const RBAC_ROLE_MUTATION_EVENT_SCHEMAS: &[EventSchema] = &[
     EventSchema {
         event_type: RBAC_EVENT_USER_ROLE_ASSIGNMENT_REPAIRED,
         version: 1,
-        description:
-            "A committed RBAC mutation repaired malformed assignments while preserving the effective built-in role.",
+        description: "A committed RBAC mutation repaired malformed assignments while preserving the effective built-in role.",
         fields: RBAC_USER_ROLE_ASSIGNMENT_REPAIRED_FIELDS,
     },
 ];
@@ -173,10 +169,7 @@ impl ValidateEvent for RbacRoleMutationEvent {
     }
 }
 
-fn validate_role_slug(
-    field_name: &'static str,
-    value: &str,
-) -> Result<(), EventValidationError> {
+fn validate_role_slug(field_name: &'static str, value: &str) -> Result<(), EventValidationError> {
     validators::validate_not_empty(field_name, value)?;
     if matches!(value, "super_admin" | "admin" | "manager" | "customer") {
         Ok(())
@@ -226,12 +219,7 @@ mod tests {
         let envelope = ContractEventEnvelope::new(
             Uuid::new_v4(),
             Some(Uuid::new_v4()),
-            RbacRoleMutationEvent::user_role_replaced(
-                Uuid::new_v4(),
-                "manager",
-                "admin",
-                9,
-            ),
+            RbacRoleMutationEvent::user_role_replaced(Uuid::new_v4(), "manager", "admin", 9),
         )
         .expect("RBAC role mutation event must be registered");
 
@@ -241,29 +229,19 @@ mod tests {
 
     #[test]
     fn replacement_rejects_same_role_and_zero_generation() {
-        let same = RbacRoleMutationEvent::user_role_replaced(
-            Uuid::new_v4(),
-            "manager",
-            "manager",
-            1,
-        );
+        let same =
+            RbacRoleMutationEvent::user_role_replaced(Uuid::new_v4(), "manager", "manager", 1);
         assert!(same.validate().is_err());
 
-        let zero = RbacRoleMutationEvent::user_role_assignment_repaired(
-            Uuid::new_v4(),
-            "manager",
-            0,
-        );
+        let zero =
+            RbacRoleMutationEvent::user_role_assignment_repaired(Uuid::new_v4(), "manager", 0);
         assert!(zero.validate().is_err());
     }
 
     #[test]
     fn role_slug_is_closed_to_canonical_builtins() {
-        let event = RbacRoleMutationEvent::user_role_assignment_repaired(
-            Uuid::new_v4(),
-            "custom_owner",
-            1,
-        );
+        let event =
+            RbacRoleMutationEvent::user_role_assignment_repaired(Uuid::new_v4(), "custom_owner", 1);
         assert!(event.validate().is_err());
     }
 }

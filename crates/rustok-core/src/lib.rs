@@ -12,12 +12,10 @@ pub mod async_utils;
 mod cache;
 mod cache_atomic;
 pub mod config;
-pub mod content_format;
 pub mod context;
 pub mod error;
 pub mod events;
 pub mod field_schema;
-pub mod grapesjs;
 pub mod health;
 pub mod i18n;
 pub mod id;
@@ -27,7 +25,6 @@ pub mod module;
 pub mod rbac;
 pub mod registry;
 pub mod resilience;
-pub mod rt_json;
 pub mod search_projection;
 pub mod security;
 pub mod security_principal;
@@ -50,10 +47,6 @@ pub use config::{
     Config, ConfigError, ConfigLoader, ConfigSource, ConfigValue, DatabaseConfig, Secret,
     ServerConfig,
 };
-pub use content_format::{
-    CONTENT_FORMAT_GRAPESJS, CONTENT_FORMAT_MARKDOWN, CONTENT_FORMAT_RT_JSON_V1, PreparedContent,
-    is_grapesjs_content_format, normalize_content_format, prepare_content_payload,
-};
 pub use context::{AppContext, CacheBackend, CacheCompareAndSetOutcome, SearchBackend};
 pub use error::{
     Error, ErrorContext, ErrorKind, ErrorResponse, FieldError, Result, RichError,
@@ -73,7 +66,6 @@ pub use field_schema::{
     is_valid_locale_key, json_field_contains, json_field_eq, json_field_exists, json_field_extract,
     json_object_depth,
 };
-pub use grapesjs::validate_grapesjs_project;
 pub use health::{
     HealthCheck, HealthRegistry, HealthResult, HealthStatus, OverallHealth,
     checks::{DatabaseHealthCheck, FnHealthCheck},
@@ -93,10 +85,6 @@ pub use registry::ModuleRegistry;
 pub use resilience::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState, RetryPolicy,
     RetryStrategy,
-};
-pub use rt_json::{
-    RtJsonValidationConfig, RtJsonValidationResult, sanitize_rt_json_before_html_render,
-    validate_and_sanitize_rt_json,
 };
 pub use security::{
     AuditEvent, AuditLogger, InputValidator, RateLimitConfig, RateLimitResult, RateLimiter,

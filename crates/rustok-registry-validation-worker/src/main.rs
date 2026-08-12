@@ -1,4 +1,9 @@
-use std::{env, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    env,
+    path::{Component, Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use rustok_build_publication::CommandRegistryCredentialBroker;
 use rustok_modules::{ModuleControlPlane, ModulePlatformPublicationEvidenceProducer};
@@ -14,9 +19,12 @@ use tonic::transport::Endpoint;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = required_env("RUSTOK_REGISTRY_VALIDATION_DATABASE_URL")?;
-    let storage_config: StorageConfig = serde_json::from_str(&required_env(
+    let mut storage_config: StorageConfig = serde_json::from_str(&required_env(
         "RUSTOK_REGISTRY_VALIDATION_STORAGE_CONFIG_JSON",
     )?)?;
+    required_env("RUSTOK_INSTANCE_ROOT")?;
+    let instance_root = rustok_runtime::resolve_instance_root_from_environment()?;
+    storage_config.bind_local_base_dir(instance_root.join("storage"));
     let actor_id = required_env("RUSTOK_REGISTRY_VALIDATION_WORKER_ID")?;
     let poll_delay = Duration::from_millis(optional_u64(
         "RUSTOK_REGISTRY_VALIDATION_POLL_DELAY_MS",
@@ -44,9 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     verifier.check_readiness().await?;
     let credential_broker = Arc::new(CommandRegistryCredentialBroker::new(
-        PathBuf::from(required_env(
+        required_instance_path(
+            &instance_root,
             "RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER",
-        )?),
+        )?,
         required_env("RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER_DIGEST")?,
     )?);
     let registry_provider = Arc::new(CredentialedOciRegistryProvider::new(credential_broker)?);
@@ -96,6 +105,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn required_env(name: &str) -> Result<String, String> {
     env::var(name).map_err(|_| format!("{name} must be configured"))
+}
+
+fn required_instance_path(instance_root: &Path, name: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(required_env(name)?);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err(format!(
+            "{name} must be a path relative to RUSTOK_INSTANCE_ROOT"
+        ));
+    }
+    Ok(instance_root.join(path))
 }
 
 fn optional_u64(name: &str, default: u64) -> Result<u64, String> {

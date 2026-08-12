@@ -370,7 +370,7 @@ async fn load_bound_artifact_in_tx(
         .filter(page_body::Column::TenantId.eq(tenant_id))
         .filter(page_body::Column::PageId.eq(page_id))
         .filter(page_body::Column::Locale.eq(locale))
-        .filter(page_body::Column::Format.eq(rustok_core::CONTENT_FORMAT_GRAPESJS))
+        .filter(page_body::Column::Format.eq(rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT))
         .one(txn)
         .await?
     else {
@@ -415,8 +415,7 @@ async fn find_canonical_artifact_in_tx(
         .filter(page_static_landing_artifact::Column::BuildHash.eq(build_hash))
         .filter(page_static_landing_artifact::Column::MaterializationHash.eq(materialization_hash))
         .filter(
-            page_static_landing_artifact::Column::InstanceKey
-                .eq(CANONICAL_ARTIFACT_INSTANCE_KEY),
+            page_static_landing_artifact::Column::InstanceKey.eq(CANONICAL_ARTIFACT_INSTANCE_KEY),
         )
         .one(txn)
         .await?)

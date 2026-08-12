@@ -22,7 +22,8 @@
 
 - Used by `apps/admin` through manifest-driven generated wiring.
 - Uses the pages module GraphQL contract for list/create/edit/update/publish/delete flows.
-- Writes visual builder payload into `body.contentJson` with `body.format = grapesjs` while preserving existing `blocks` compatibility.
+- Writes the visual builder payload into the sole `body.document` field; Pages
+  selects the Page Builder format server-side.
 - Uses the shared `rustok-seo` GraphQL contract through `rustok-seo-admin-support` for explicit page SEO authoring.
 - Follows the generic host route contract `/modules/:module_slug`.
 

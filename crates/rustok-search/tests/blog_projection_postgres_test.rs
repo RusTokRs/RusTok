@@ -267,7 +267,10 @@ async fn blog_reindex_projects_attached_taxonomy_tags_not_metadata_snapshot() ->
     let document = load_blog_document(&test_db.db, tenant_id, post_id)
         .await?
         .expect("Blog post should be projected from canonical tag attachments");
-    assert_eq!(document.payload["tags"], serde_json::json!(["backend", "cms"]));
+    assert_eq!(
+        document.payload["tags"],
+        serde_json::json!(["backend", "cms"])
+    );
     assert_ne!(
         document.payload["tags"],
         serde_json::json!(["stale-metadata-only"])
@@ -533,7 +536,6 @@ async fn create_blog_projection_source_tables(
             seo_title TEXT NULL,
             seo_description TEXT NULL,
             body TEXT NOT NULL,
-            body_format TEXT NOT NULL DEFAULT 'markdown',
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
@@ -602,17 +604,19 @@ async fn insert_blog_post(
             created_at, updated_at, comment_count, view_count, version
         ) VALUES (
             '{post_id}', '{tenant_id}', '{author_id}', '{status}', '{slug}',
-            '{{"tags":["legacy-metadata-only"]}}'::jsonb,
+            '{{"tags":["metadata-only"]}}'::jsonb,
             CASE WHEN '{status}' = 'published' THEN NOW() ELSE NULL END,
             NOW(), NOW(), 4, 12, 1
         );
 
         INSERT INTO blog_post_translations (
             id, post_id, locale, title, excerpt, seo_title, seo_description,
-            body, body_format, created_at, updated_at
+            body, created_at, updated_at
         ) VALUES (
             '{translation_id}', '{post_id}', 'en', '{title}', 'Excerpt',
-            'SEO title', 'SEO description', 'Draft body', 'markdown', NOW(), NOW()
+            'SEO title', 'SEO description',
+            '{{"type":"doc","content":[{{"type":"paragraph","content":[{{"type":"text","text":"Draft body"}}]}}]}}',
+            NOW(), NOW()
         );
 
         INSERT INTO blog_post_channel_visibility (tenant_id, post_id, channel_slug)

@@ -774,7 +774,8 @@ pub enum DomainEvent {
         composition_revision: u64,
         composition_digest: String,
         outcome: String,
-        result_digest: Option<String>,
+        bundle_root_digest: Option<String>,
+        role_set_digest: Option<String>,
         completion_digest: String,
     },
     ModuleStaticDistributionReleaseActivated {
@@ -784,7 +785,8 @@ pub enum DomainEvent {
         release_revision: u64,
         composition_revision: u64,
         composition_digest: String,
-        artifact_digest: String,
+        bundle_root_digest: String,
+        role_set_digest: String,
         policy_revision: String,
     },
     ModuleStaticDistributionRollbackBuildQueued {
@@ -811,7 +813,8 @@ pub enum DomainEvent {
         rollout_state_revision: u64,
         composition_revision: u64,
         composition_digest: String,
-        artifact_digest: String,
+        bundle_root_digest: String,
+        role_set_digest: String,
         topology_digest: String,
         policy_revision: String,
         target_nodes: u32,
@@ -2621,14 +2624,16 @@ impl ValidateEvent for DomainEvent {
                 composition_revision,
                 composition_digest,
                 outcome,
-                result_digest,
+                bundle_root_digest,
+                role_set_digest,
                 completion_digest,
             } => {
                 validators::validate_not_nil_uuid("distribution_build_id", distribution_build_id)?;
                 validators::validate_not_nil_uuid("claim_id", claim_id)?;
                 if *composition_revision == 0
                     || !matches!(outcome.as_str(), "succeeded" | "failed" | "cancelled")
-                    || (outcome == "succeeded") != result_digest.is_some()
+                    || (outcome == "succeeded") != bundle_root_digest.is_some()
+                    || bundle_root_digest.is_some() != role_set_digest.is_some()
                 {
                     return Err(EventValidationError::InvalidValue(
                         "static distribution completion",
@@ -2638,8 +2643,11 @@ impl ValidateEvent for DomainEvent {
                 }
                 validate_sha256_digest("composition_digest", composition_digest)?;
                 validate_sha256_digest("completion_digest", completion_digest)?;
-                if let Some(result_digest) = result_digest {
-                    validate_sha256_digest("result_digest", result_digest)?;
+                if let Some(bundle_root_digest) = bundle_root_digest {
+                    validate_sha256_digest("bundle_root_digest", bundle_root_digest)?;
+                }
+                if let Some(role_set_digest) = role_set_digest {
+                    validate_sha256_digest("role_set_digest", role_set_digest)?;
                 }
                 Ok(())
             }
@@ -2650,7 +2658,8 @@ impl ValidateEvent for DomainEvent {
                 release_revision,
                 composition_revision,
                 composition_digest,
-                artifact_digest,
+                bundle_root_digest,
+                role_set_digest,
                 policy_revision,
             } => {
                 validators::validate_not_nil_uuid(
@@ -2683,7 +2692,8 @@ impl ValidateEvent for DomainEvent {
                     ));
                 }
                 validate_sha256_digest("composition_digest", composition_digest)?;
-                validate_sha256_digest("artifact_digest", artifact_digest)
+                validate_sha256_digest("bundle_root_digest", bundle_root_digest)?;
+                validate_sha256_digest("role_set_digest", role_set_digest)
             }
             Self::ModuleStaticDistributionRollbackBuildQueued {
                 rollback_id,
@@ -2736,7 +2746,8 @@ impl ValidateEvent for DomainEvent {
                 rollout_state_revision,
                 composition_revision,
                 composition_digest,
-                artifact_digest,
+                bundle_root_digest,
+                role_set_digest,
                 topology_digest,
                 policy_revision,
                 target_nodes,
@@ -2764,7 +2775,8 @@ impl ValidateEvent for DomainEvent {
                 }
                 validate_policy_revision(policy_revision)?;
                 validate_sha256_digest("composition_digest", composition_digest)?;
-                validate_sha256_digest("artifact_digest", artifact_digest)?;
+                validate_sha256_digest("bundle_root_digest", bundle_root_digest)?;
+                validate_sha256_digest("role_set_digest", role_set_digest)?;
                 validate_sha256_digest("topology_digest", topology_digest)
             }
             Self::ModuleStaticDistributionNodeObserved {

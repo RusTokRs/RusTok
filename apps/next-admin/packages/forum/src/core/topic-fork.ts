@@ -1,3 +1,5 @@
+import { isForumUuid, newForumUuid } from './identity';
+
 export const MAX_FORUM_TOPIC_FORK_REPLIES = 500;
 export const MAX_FORUM_TOPIC_FORK_REASON_LENGTH = 500;
 export const MAX_FORUM_TOPIC_FORK_TITLE_LENGTH = 500;
@@ -50,22 +52,10 @@ export interface ForumTopicForkReceipt {
   forkedAt: string;
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function newUuidV4(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-  const now = BigInt(Date.now());
-  const entropy = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
-  const value = ((now << 64n) ^ entropy).toString(16).padStart(32, '0').slice(-32);
-  return `${value.slice(0, 8)}-${value.slice(8, 12)}-4${value.slice(13, 16)}-8${value.slice(17, 20)}-${value.slice(20)}`;
-}
-
 export function newForumTopicForkIdentity(): ForumTopicForkIdentity {
   return {
-    operationId: newUuidV4(),
-    targetTopicId: newUuidV4()
+    operationId: newForumUuid(),
+    targetTopicId: newForumUuid()
   };
 }
 
@@ -89,16 +79,16 @@ export function buildForumTopicForkCommand(input: {
   const sourceTopicId = input.sourceTopicId.trim();
   const rootReplyId = input.rootReplyId.trim();
 
-  if (!UUID_PATTERN.test(operationId) || !UUID_PATTERN.test(targetTopicId)) {
+  if (!isForumUuid(operationId) || !isForumUuid(targetTopicId)) {
     throw new Error('Fork retry identity is invalid.');
   }
-  if (!UUID_PATTERN.test(sourceTopicId)) {
+  if (!isForumUuid(sourceTopicId)) {
     throw new Error('Choose the source topic to fork.');
   }
   if (sourceTopicId === targetTopicId) {
     throw new Error('The new topic identity must differ from the source topic.');
   }
-  if (!UUID_PATTERN.test(rootReplyId)) {
+  if (!isForumUuid(rootReplyId)) {
     throw new Error('Choose the root reply to fork.');
   }
   if (!input.replies.items.some((reply) => reply.id === rootReplyId)) {

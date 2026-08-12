@@ -1,6 +1,6 @@
 use leptos::html;
 use leptos::prelude::*;
-use rustok_api::RichTextDocument;
+use rustok_api::{RichTextDocument, RichTextView, normalize_locale_tag};
 
 #[derive(Clone, Debug)]
 pub struct RichTextFrameCopy {
@@ -49,13 +49,38 @@ pub fn localized_richtext_frame_copy(
     }
 }
 
+/// Renders only the server-derived richtext projection. This boundary accepts
+/// `RichTextView` rather than arbitrary HTML so callers do not bypass the
+/// canonical renderer with author-provided markup.
+#[component]
+pub fn RichTextHtml(
+    view: RichTextView,
+    content_locale: String,
+    #[prop(optional, into)] class: String,
+) -> impl IntoView {
+    let content_locale = normalize_locale_tag(&content_locale).unwrap_or_else(|| "und".to_string());
+
+    view! {
+        <div
+            class=class
+            data-richtext=""
+            lang=content_locale
+            dir="auto"
+            inner_html=view.html
+        ></div>
+    }
+}
+
 #[component]
 pub fn RichTextEditorFrame(
     document: ReadSignal<RichTextDocument>,
     set_document: WriteSignal<RichTextDocument>,
+    content_locale: Signal<String>,
     label: String,
     profile: String,
     copy: RichTextFrameCopy,
+    #[prop(default = Signal::derive(|| true))] spellcheck: Signal<bool>,
+    #[prop(default = Signal::derive(|| false))] disabled: Signal<bool>,
 ) -> impl IntoView {
     let iframe_ref = NodeRef::<html::Iframe>::new();
     let editor_error = RwSignal::new(None::<String>);
@@ -77,6 +102,8 @@ pub fn RichTextEditorFrame(
                 profile: &str,
                 document_json: &str,
                 messages_json: &str,
+                content_locale: &str,
+                spellcheck: bool,
                 editable: bool,
                 on_document_change: &Closure<dyn FnMut(JsValue)>,
                 on_error: &Closure<dyn FnMut(JsValue, JsValue)>,
@@ -87,6 +114,22 @@ pub fn RichTextEditorFrame(
                 js_name = setLeptosRichTextDocument
             )]
             fn set_richtext_document(handle: &JsValue, document_json: &str);
+
+            #[wasm_bindgen(
+                js_namespace = RustokRichText,
+                js_name = setLeptosRichTextAuthoringContext
+            )]
+            fn set_richtext_authoring_context(
+                handle: &JsValue,
+                content_locale: &str,
+                spellcheck: bool,
+            );
+
+            #[wasm_bindgen(
+                js_namespace = RustokRichText,
+                js_name = setLeptosRichTextEditable
+            )]
+            fn set_richtext_editable(handle: &JsValue, editable: bool);
 
             #[wasm_bindgen(
                 js_namespace = RustokRichText,
@@ -116,6 +159,23 @@ pub fn RichTextEditorFrame(
                 return;
             };
             set_richtext_document(&handle, &document_json);
+        });
+
+        Effect::new(move |_| {
+            let content_locale = content_locale.get();
+            let spellcheck = spellcheck.get();
+            let Some(handle) = editor_handle.get_value() else {
+                return;
+            };
+            set_richtext_authoring_context(&handle, content_locale.as_str(), spellcheck);
+        });
+
+        Effect::new(move |_| {
+            let editable = !disabled.get();
+            let Some(handle) = editor_handle.get_value() else {
+                return;
+            };
+            set_richtext_editable(&handle, editable);
         });
 
         let iframe_ref = iframe_ref;
@@ -164,7 +224,9 @@ pub fn RichTextEditorFrame(
                 &profile,
                 &document_json,
                 &messages_json,
-                true,
+                content_locale.get_untracked().as_str(),
+                spellcheck.get_untracked(),
+                !disabled.get_untracked(),
                 &on_document_change,
                 &on_error,
             );
@@ -189,11 +251,14 @@ pub fn RichTextEditorFrame(
         let _ = (
             document,
             set_document,
+            content_locale,
             profile,
             messages,
             serialization_error,
             invalid_payload_error,
             frame_error,
+            spellcheck,
+            disabled,
         );
     }
 
@@ -203,6 +268,8 @@ pub fn RichTextEditorFrame(
             <iframe
                 node_ref=iframe_ref
                 title=label
+                lang=move || content_locale.get()
+                aria-disabled=move || disabled.get()
                 sandbox="allow-scripts"
                 referrerpolicy="no-referrer"
                 class="h-72 w-full border-0"

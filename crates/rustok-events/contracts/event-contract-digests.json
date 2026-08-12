@@ -1,8 +1,8 @@
 {
   "format_version": 1,
-  "registry": "sha256:f9ccce2e4d787f356ab70d5fe1106fbad00560a0a9624ae2589d1d73b04fcced",
-  "root_event": "sha256:095fa5bf988f898bc1e3de762d6e1e62f0906628901da7ff12eefb6468ad231a",
-  "root_envelope": "sha256:9a44c92d615d223058f1f06405e692119d0574eacd49d585dd2aa37149a5b5c0",
-  "contract_payload": "sha256:1cbaae9c408bc86e95586112121fe9669a4caf062c94224e2d44dd30cd1e2027",
-  "contract_envelope": "sha256:346bbadad97c124f6a580a26d09f6fda26d95b95b5c29537a63ac8d143dc805a"
+  "registry": "sha256:6901dcf42fed09acb345b0faac7fe00d3ad349503bc24adf53132c3d959a1af7",
+  "root_event": "sha256:15147b0e9e8cdb809ae2a9a65c499cebc6ef33c8e57da2f273761d8e374d3266",
+  "root_envelope": "sha256:9c2ae4cd13a1b6032a1c2e88d04103213006821165d6df23b4259d77ec5be797",
+  "contract_payload": "sha256:22b23106fdda2bc3bfa28f13445178276301a39113d6a7d9016572e44f3eb174",
+  "contract_envelope": "sha256:b76dce6a4a48f331083aef7cde66ce877ec6e0e88fb1ea7208d1f8a0e14a11aa"
 }

@@ -189,7 +189,7 @@ async fn prepare_release_bundle(
     build: &Build,
     plan: &BuildExecutionPlan,
 ) -> anyhow::Result<PreparedReleaseBundle> {
-    let root_dir = resolve_artifact_root(workspace, &config.filesystem_root_dir);
+    let root_dir = resolve_artifact_root()?;
     let release_dir = root_dir.join(&release.id);
     let artifacts_dir = release_dir.join("artifacts");
 
@@ -426,13 +426,10 @@ struct RemoteReleasePublishResponse {
     storefront_artifact_url: Option<String>,
 }
 
-fn resolve_artifact_root(workspace: &DeploymentWorkspace, raw: &str) -> PathBuf {
-    let path = PathBuf::from(raw);
-    if path.is_absolute() {
-        path
-    } else {
-        workspace.root().join(path)
-    }
+fn resolve_artifact_root() -> anyhow::Result<PathBuf> {
+    Ok(rustok_runtime::resolve_instance_root_from_environment()
+        .map_err(|error| anyhow!(error.to_string()))?
+        .join("releases/platform"))
 }
 
 fn server_deployment_workspace() -> DeploymentWorkspace {
@@ -918,20 +915,12 @@ mod tests {
         ReleasePublishState, RemoteReleasePublishRequest, binary_file_name, compiled_binary_path,
         container_image_reference, container_runtime_binary_name, container_runtime_dockerfile,
         externalized_path, parse_remote_publish_state, render_rollout_command,
-        resolve_artifact_root, sanitize_image_tag_component, server_deployment_workspace,
+        sanitize_image_tag_component, server_deployment_workspace,
     };
     use crate::common::settings::BuildDeploymentSettings;
     use rustok_build::release::Model as Release;
     use rustok_build::{BuildExecutionPlan, BuildRuntimeMode};
     use std::path::{Path, PathBuf};
-
-    #[test]
-    fn resolves_relative_artifact_root_inside_workspace() {
-        let workspace = server_deployment_workspace();
-        let root = resolve_artifact_root(&workspace, "artifacts/releases");
-        assert!(root.ends_with(PathBuf::from("artifacts").join("releases")));
-        assert!(root.is_absolute());
-    }
 
     #[test]
     fn derives_binary_path_from_plan() {
@@ -963,7 +952,7 @@ mod tests {
 
     #[test]
     fn externalized_path_uses_public_base_url_when_present() {
-        let path = PathBuf::from("C:/repo/artifacts/releases/rel_1/artifacts/rustok-server.exe");
+        let path = PathBuf::from("C:/instance/releases/platform/rel_1/artifacts/rustok-server.exe");
         let url = externalized_path(&path, Some("https://artifacts.example.com/releases"));
         assert_eq!(
             url,

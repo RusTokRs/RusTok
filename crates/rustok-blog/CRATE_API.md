@@ -54,13 +54,14 @@ impl PostService {
 ### CommentService
 ```rust
 pub struct CommentService {
-    comments: CommentsService,
-    event_bus: TransactionalEventBus,
+    db: DatabaseConnection,
+    comments_thread_port: Arc<dyn CommentsThreadPort>,
 }
 
 impl CommentService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self;
-    pub async fn create_comment(tenant_id, security, post_id, input: CreateCommentInput) -> BlogResult<CommentResponse>;
+    pub fn with_comments_thread_port(db: DatabaseConnection, comments_thread_port: Arc<dyn CommentsThreadPort>) -> Self;
+    pub async fn create_public_comment(tenant_id, security, post_id, public_channel_slug: Option<&str>, input: CreateCommentInput) -> BlogResult<CommentResponse>;
     pub async fn get_comment(tenant_id, comment_id, locale: &str) -> BlogResult<CommentResponse>;
     pub async fn update_comment(tenant_id, comment_id, security, input: UpdateCommentInput) -> BlogResult<CommentResponse>;
     pub async fn moderate_comment(tenant_id, comment_id, security, input: ModerateCommentInput, fallback_locale: Option<&str>) -> BlogResult<CommentResponse>;
@@ -226,13 +227,6 @@ pub struct Archived { archived_at, reason }
 pub trait ToBlogPostStatus { fn to_status(&self) -> BlogPostStatus; }
 ```
 
-### Locale module
-```rust
-pub fn resolve_translation<'a>(translations: &'a [NodeTranslationResponse], requested: &str) -> ResolvedTranslation<'a>;
-pub fn resolve_body<'a>(bodies: &'a [BodyResponse], requested: &str) -> ResolvedBody<'a>;
-pub fn available_locales(translations: &[NodeTranslationResponse]) -> Vec<String>;
-```
-
 ### Channel visibility
 - Wire-level `channel_slugs` / `channelSlugs` contract is preserved for create,
   update, detail, and list surfaces.
@@ -240,6 +234,9 @@ pub fn available_locales(translations: &[NodeTranslationResponse]) -> Vec<String
   metadata.
 - Public GraphQL read-path filters published posts at DB level through that
   relation; empty allowlists remain globally visible.
+- Public comment creation uses only `create_public_comment`; it returns the same
+  not-found result for absent, draft, archived, or channel-hidden posts before
+  invoking the Comments port.
 
 ### Tag vocabulary
 - Wire-level `tags: Vec<String>` contract is preserved for post create, update,
@@ -265,6 +262,8 @@ pub fn available_locales(translations: &[NodeTranslationResponse]) -> Vec<String
 - Tries to add separate migrations for blog (the module uses content tables).
 - Confuses blog state-machine and content state-machine.
 - Skips permission checks (`Resource::Posts`, `Resource::Comments`).
+- Adds a second Blog comment-create command that bypasses public post/channel
+  visibility instead of extending the canonical owner command.
 - Returns the first translation without locale fallback instead of using `locale.rs`.
 - Passes `UpdateNodeInput` directly instead of `UpdatePostInput` from rustok-blog.
 - Does not pass `author_id` from `SecurityContext` when creating a post.

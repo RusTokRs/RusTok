@@ -53,6 +53,11 @@ export interface RichTextDocument {
   content: RichTextNode[];
 }
 
+export interface RichTextView {
+  document: RichTextDocument;
+  html: string;
+}
+
 export interface RichTextLimits {
   max_json_bytes: number;
   max_depth: number;

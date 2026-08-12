@@ -3,9 +3,10 @@ use std::sync::Arc;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rustok_channel::ChannelModule;
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
+use rustok_pages::PagesModule;
 use rustok_pages::dto::{
     CreatePageInput, PageBodyInput, PageBodyRevisionInput, PageTranslationInput, PublishPageInput,
     ReviewedPagePublishRuntimeInput,
@@ -14,7 +15,6 @@ use rustok_pages::entities::{
     page_body, page_published_landing_artifact, page_static_landing_artifact,
 };
 use rustok_pages::services::{PageBuilderArtifactService, PageService};
-use rustok_pages::PagesModule;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
     DbBackend, EntityTrait, QueryFilter, Set, Statement,
@@ -35,8 +35,8 @@ struct PublishedFixture {
 }
 
 #[tokio::test]
-async fn storefront_reads_selected_immutable_artifact_after_persisted_draft_mutation(
-) -> TestResult<()> {
+async fn storefront_reads_selected_immutable_artifact_after_persisted_draft_mutation()
+-> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_db(tenant_id).await?;
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
@@ -68,7 +68,11 @@ async fn storefront_reads_selected_immutable_artifact_after_persisted_draft_muta
     assert_eq!(exact_before.document_html, fixture.document_html);
     assert_eq!(fallback_before.artifact_hash, fixture.artifact_hash);
     assert_eq!(fallback_before.locale, "en");
-    assert!(exact_before.document_html.contains("Published immutable artifact"));
+    assert!(
+        exact_before
+            .document_html
+            .contains("Published immutable artifact")
+    );
     assert!(!exact_before.document_html.contains("Draft-only mutation"));
 
     persist_new_draft_body(&db, tenant_id, &fixture).await?;
@@ -114,7 +118,11 @@ async fn storefront_reads_selected_immutable_artifact_after_persisted_draft_muta
     assert_eq!(exact_after.document_html, exact_before.document_html);
     assert_eq!(fallback_after.artifact_hash, fallback_before.artifact_hash);
     assert_eq!(fallback_after.document_html, fallback_before.document_html);
-    assert!(exact_after.document_html.contains("Published immutable artifact"));
+    assert!(
+        exact_after
+            .document_html
+            .contains("Published immutable artifact")
+    );
     assert!(!exact_after.document_html.contains("Draft-only mutation"));
     assert!(!fallback_after.document_html.contains("Draft-only mutation"));
 
@@ -201,9 +209,7 @@ async fn create_reviewed_published_page(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: Some(vec!["web".to_string()]),
                 publish: false,
@@ -221,7 +227,9 @@ async fn create_reviewed_published_page(
         .filter(page_body::Column::Locale.eq("en"))
         .one(db)
         .await?
-        .ok_or_else(|| std::io::Error::other("reviewed draft body is missing from owner storage"))?;
+        .ok_or_else(|| {
+            std::io::Error::other("reviewed draft body is missing from owner storage")
+        })?;
     let body_id = body.id;
     let reviewed = PageBuilderReviewedPublishRuntime::new(
         "selected-immutable-artifact",

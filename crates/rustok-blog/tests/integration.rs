@@ -734,7 +734,7 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
                 ),
                 excerpt: None,
                 slug: None,
-                publish: false,
+                publish: true,
                 tags: vec![],
                 category_id: None,
                 featured_image_url: None,
@@ -748,10 +748,11 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
         .expect("post should be created for comment test");
 
     let result = comment_service
-        .create_comment(
+        .create_public_comment(
             tenant_id,
             security,
             post,
+            None,
             CreateCommentInput {
                 locale: "en".to_string(),
                 content: richtext("This comment should be persisted"),
@@ -784,6 +785,70 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
 }
 
 #[tokio::test]
+async fn test_public_comment_create_rejects_draft_and_hidden_channel() -> TestResult<()> {
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let comment_service = CommentService::new(db, event_bus);
+    let tenant_id = Uuid::new_v4();
+    let author = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            author.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Public comment target".to_string(),
+                content: richtext("Post body"),
+                excerpt: None,
+                slug: Some("public-comment-target".to_string()),
+                publish: false,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: Some(vec!["web".to_string()]),
+                metadata: None,
+            },
+        )
+        .await?;
+    let input = || CreateCommentInput {
+        locale: "en".to_string(),
+        content: richtext("Visible comment"),
+        parent_comment_id: None,
+    };
+
+    let draft_error = comment_service
+        .create_public_comment(tenant_id, author.clone(), post_id, Some("web"), input())
+        .await
+        .expect_err("draft posts must not accept public comments");
+    assert!(matches!(draft_error, BlogError::PostNotFound(id) if id == post_id));
+
+    post_service
+        .publish_post(tenant_id, post_id, author.clone())
+        .await?;
+    let channel_error = comment_service
+        .create_public_comment(tenant_id, author.clone(), post_id, Some("mobile"), input())
+        .await
+        .expect_err("a hidden channel must not accept public comments");
+    assert!(matches!(channel_error, BlogError::PostNotFound(id) if id == post_id));
+
+    let comment = comment_service
+        .create_public_comment(tenant_id, author, post_id, Some("web"), input())
+        .await?;
+    assert_eq!(comment.post_id, post_id);
+    assert_eq!(comment.status, "pending");
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestResult<()> {
     let db = setup_blog_test_db().await;
     ensure_blog_schema(&db).await;
@@ -811,7 +876,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
                 ),
                 excerpt: None,
                 slug: None,
-                publish: false,
+                publish: true,
                 tags: vec![],
                 category_id: None,
                 featured_image_url: None,
@@ -824,10 +889,11 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         .await?;
 
     let parent = comment_service
-        .create_comment(
+        .create_public_comment(
             tenant_id,
             admin.clone(),
             post_id,
+            None,
             CreateCommentInput {
                 locale: "en".to_string(),
                 content: richtext("Parent comment"),
@@ -837,10 +903,11 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         .await?;
 
     let child = comment_service
-        .create_comment(
+        .create_public_comment(
             tenant_id,
             admin.clone(),
             post_id,
+            None,
             CreateCommentInput {
                 locale: "fr".to_string(),
                 content: richtext("Réponse imbriquée"),
@@ -1005,10 +1072,11 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
         .await?;
 
     let comment = comment_service
-        .create_comment(
+        .create_public_comment(
             tenant_id,
             admin,
             post_id,
+            None,
             CreateCommentInput {
                 locale: "en".to_string(),
                 content: richtext("Needs moderation"),

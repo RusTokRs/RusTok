@@ -30,9 +30,8 @@ the [central implementation plan](../../docs/modules/rich-text-implementation-pl
 
 - Depends on `rustok-core` for permissions, events, and `SecurityContext`.
 - Depends on `rustok-api` for shared tenant/auth/request and GraphQL helper contracts.
-- Exposes only its shared canonical-route GraphQL query and content-owned
-  GraphQL dataloaders; product CRUD GraphQL, REST, admin, and storefront entry
-  points remain domain-owned.
+- Exposes only its shared canonical-route GraphQL query; product CRUD GraphQL,
+  REST, admin, and storefront entry points remain domain-owned.
 - Used as a shared helper dependency by `rustok-blog`, `rustok-forum`,
   `rustok-comments`, and `rustok-pages`.
 - Declares permissions via `rustok-core::Permission`.
@@ -42,17 +41,19 @@ the [central implementation plan](../../docs/modules/rich-text-implementation-pl
   shared helper layer and implement `ContentOrchestrationBridge`.
 - `rustok-content-orchestration` owns the runtime bridge implementation and its
   live GraphQL mutations for `topic ↔ post`, `split_topic`, and `merge_topics`.
-- `apps/server` only composes the owner-provided GraphQL roots, dataloaders,
-  and dashboard post analytics helper.
+- `apps/server` only composes the owner-provided GraphQL roots and dashboard
+  post analytics helper.
 
 - Conversion flows persist typed redirect/canonical state in
   `content_canonical_urls` and `content_url_aliases` and publish
   `CanonicalUrlChanged` / `UrlAliasPurged` through the outbox contract.
 
-Richtext policy is currently a target foundation. Owner write/read paths still
-need the atomic Blog/Forum/Comments cutover before this policy becomes a
-production runtime gate; no legacy path is being treated as a supported target
-contract.
+Richtext policy is the production runtime gate for Blog, Forum, and Comments.
+Their owner services select fixed profiles and keep locale in owner rows. The
+obsolete core richtext/format helpers, generic `NodeService`, and unused generic
+content entity DataLoaders are removed. Pages accepts only its owner-selected
+Page Builder document format. Blog/Comments initial schemas are canonical and
+their corrective migration/conversion artifacts are absent.
 
 ## Entry points
 
@@ -62,14 +63,9 @@ contract.
 - `load_post_stats_snapshot`
 - `ContentCountSnapshot`
 - `graphql::ContentQuery` (feature `graphql`)
-- `graphql::{NodeLoader, NodeTranslationLoader, NodeBodyLoader}` (feature `graphql`)
 - `CategoryService`
 - content DTO and entity re-exports
 - `richtext::{RichTextProfile, validate_and_normalize, render_html, plain_text}`
-
-`NodeService` remains available only under `rustok-content::services` as a
-shared-node helper surface. It is intentionally no longer part of the top-level
-crate entry points.
 
 ## Docs
 

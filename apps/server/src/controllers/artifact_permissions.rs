@@ -10,9 +10,7 @@ use axum::{
     response::Response,
     routing::put,
 };
-use rustok_api::{
-    AuthContext, AuthPrincipalContext, Permission, has_effective_permission,
-};
+use rustok_api::{AuthContext, AuthPrincipalContext, Permission, has_effective_permission};
 use rustok_events::RbacArtifactPermissionEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_rbac::{
@@ -243,9 +241,7 @@ mod tests {
         TransactionalOutboxArtifactPermissionEventPublisher,
         ensure_artifact_permission_control_plane,
     };
-    use rustok_api::{
-        AuthContext, AuthPrincipalContext, AuthPrincipalKind, Permission,
-    };
+    use rustok_api::{AuthContext, AuthPrincipalContext, AuthPrincipalKind, Permission};
     use rustok_events::RbacArtifactPermissionEvent;
     use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
     use rustok_rbac::{ArtifactPermissionAssignmentScope, ArtifactPermissionEventPublisher};
@@ -299,10 +295,7 @@ mod tests {
 
     #[test]
     fn delegated_and_service_principals_are_denied_even_with_modules_manage() {
-        for principal_kind in [
-            AuthPrincipalKind::DelegatedUser,
-            AuthPrincipalKind::Service,
-        ] {
+        for principal_kind in [AuthPrincipalKind::DelegatedUser, AuthPrincipalKind::Service] {
             let tenant_id = Uuid::new_v4();
             let auth = auth_context(tenant_id, vec![Permission::MODULES_MANAGE]);
 
@@ -378,7 +371,10 @@ mod tests {
             )
             .await
             .expect("publish typed event");
-        transaction.commit().await.expect("commit owner transaction");
+        transaction
+            .commit()
+            .await
+            .expect("commit owner transaction");
 
         let events = SysEvents::find().all(&db).await.expect("load outbox");
         assert_eq!(events.len(), 1);

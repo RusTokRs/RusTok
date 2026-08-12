@@ -36,9 +36,7 @@ async fn forum_without_moderation_keeps_forum_host_composition_available() {
         .expect("Forum-only host composition must remain available");
 
     assert!(extensions.contains::<rustok_forum::SharedForumAudienceFactsPort>());
-    assert!(
-        extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>()
-    );
+    assert!(extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>());
 }
 
 #[cfg(all(feature = "mod-moderation", not(feature = "mod-forum")))]
@@ -51,10 +49,9 @@ async fn moderation_without_forum_materializes_an_empty_subject_registry() {
     let extensions = compose(&registry)
         .await
         .expect("Moderation-only host composition must initialize");
-    let subjects = rustok_moderation::moderation_subject_adapter_registry_from_extensions(
-        extensions.as_ref(),
-    )
-    .expect("selected Moderation owner must publish a materialized subject registry");
+    let subjects =
+        rustok_moderation::moderation_subject_adapter_registry_from_extensions(extensions.as_ref())
+            .expect("selected Moderation owner must publish a materialized subject registry");
 
     assert!(subjects.is_empty());
 }
@@ -70,13 +67,15 @@ async fn forum_with_moderation_materializes_topic_and_reply_adapters() {
     let extensions = compose(&registry)
         .await
         .expect("Forum plus Moderation host composition must initialize");
-    let subjects = rustok_moderation::moderation_subject_adapter_registry_from_extensions(
-        extensions.as_ref(),
-    )
-    .expect("selected Moderation owner must publish a materialized subject registry");
+    let subjects =
+        rustok_moderation::moderation_subject_adapter_registry_from_extensions(extensions.as_ref())
+            .expect("selected Moderation owner must publish a materialized subject registry");
 
     assert_eq!(subjects.len(), 2);
-    assert!(subjects.contains("forum", rustok_moderation::ModerationSubjectKind::ForumTopic));
+    assert!(subjects.contains(
+        "forum",
+        rustok_moderation::ModerationSubjectKind::ForumTopic
+    ));
     assert!(subjects.contains("forum", rustok_moderation::ModerationSubjectKind::ForumPost));
 }
 

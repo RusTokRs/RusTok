@@ -49,10 +49,8 @@ impl IndexDriftDiagnosisOperatorRuntime {
         &self,
         context: IndexReconciliationOperatorContext,
         key: rustok_index::EntityKey,
-    ) -> std::result::Result<
-        rustok_index::IndexDriftDigestOutcome,
-        IndexDriftDiagnosisOperatorError,
-    > {
+    ) -> std::result::Result<rustok_index::IndexDriftDigestOutcome, IndexDriftDiagnosisOperatorError>
+    {
         authorize_for(&context, key.tenant_id)?;
         let request = rustok_index::IndexDriftDigestRequest::new(key)?;
         self.inner.produce(request).await.map_err(Into::into)
@@ -130,8 +128,8 @@ pub(super) fn materialize_index_drift_diagnosis_operator(
             )
         })?;
 
-    let absence = rustok_index::materialize_index_source_absence_registry(extensions)
-        .map_err(|error| {
+    let absence =
+        rustok_index::materialize_index_source_absence_registry(extensions).map_err(|error| {
             ServerError::Message(format!(
                 "Index source absence registry materialization failed: {error}"
             ))
@@ -140,11 +138,8 @@ pub(super) fn materialize_index_drift_diagnosis_operator(
         extensions.insert(absence);
     }
 
-    let reader = rustok_index::PostgresIndexDriftSnapshotReader::new(
-        db.clone(),
-        sources,
-        schemas.clone(),
-    );
+    let reader =
+        rustok_index::PostgresIndexDriftSnapshotReader::new(db.clone(), sources, schemas.clone());
     let reader = match extensions
         .get::<rustok_index::SharedIndexSourceAbsenceRegistry>()
         .cloned()
@@ -152,13 +147,8 @@ pub(super) fn materialize_index_drift_diagnosis_operator(
         Some(absence) => reader.with_absence_registry(absence),
         None => reader,
     };
-    let writer =
-        rustok_index::infrastructure::postgres::PostgresIndexDriftFindingWriter::new(db);
-    let producer = rustok_index::IndexDriftDigestProducer::new(
-        schemas.shared(),
-        reader,
-        writer,
-    );
+    let writer = rustok_index::infrastructure::postgres::PostgresIndexDriftFindingWriter::new(db);
+    let producer = rustok_index::IndexDriftDigestProducer::new(schemas.shared(), reader, writer);
     extensions.insert(IndexDriftDiagnosisOperatorRuntime::new(producer));
     Ok(())
 }
@@ -289,7 +279,11 @@ mod tests {
             .expect("test database");
         let error = materialize_index_drift_diagnosis_operator(&mut extensions, db)
             .expect_err("missing schema registry must fail");
-        assert!(error.to_string().contains("without the shared schema registry"));
+        assert!(
+            error
+                .to_string()
+                .contains("without the shared schema registry")
+        );
     }
 
     #[tokio::test]
@@ -303,9 +297,10 @@ mod tests {
             .expect("diagnosis composition");
         assert!(extensions.contains::<IndexDriftDiagnosisOperatorRuntime>());
         let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
-        assert!(host
-            .shared_get::<IndexDriftDiagnosisOperatorRuntime>()
-            .is_some());
+        assert!(
+            host.shared_get::<IndexDriftDiagnosisOperatorRuntime>()
+                .is_some()
+        );
     }
 
     #[tokio::test]

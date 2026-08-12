@@ -7,8 +7,9 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, SecurityContext, error::ErrorKind, error::RichError};
+use rustok_core::{SecurityContext, error::ErrorKind, error::RichError};
 use rustok_events::DomainEvent;
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 
 use crate::dto::{PageResponse, SavePageDocumentInput};
 use crate::entities::{page, page_body, page_translation};
@@ -32,7 +33,7 @@ impl PageService {
     ) -> PagesResult<PageResponse> {
         let body = normalize_page_body_input(Some(input.body))?
             .ok_or_else(|| PagesError::validation("Page document body is required"))?;
-        if body.format != CONTENT_FORMAT_GRAPESJS {
+        if body.format != PAGE_BUILDER_DOCUMENT_FORMAT {
             return Err(PagesError::validation(
                 "Page document save accepts only the current Fly/GrapesJS body format",
             ));

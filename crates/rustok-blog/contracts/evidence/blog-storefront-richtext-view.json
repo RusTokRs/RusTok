@@ -2,7 +2,7 @@
   "schema_version": 2,
   "owner": "rustok-blog",
   "boundary": "storefront-post-richtext-view",
-  "status": "source_verified_no_compile",
+  "status": "locally_verified",
   "scope": [
     "crates/rustok-blog/storefront/src/core.rs",
     "crates/rustok-blog/storefront/src/model.rs",
@@ -27,10 +27,9 @@
   },
   "render_contract": {
     "component": "SelectedPostCard",
-    "html_sink": "inner_html=content.html",
+    "html_sink": "RichTextHtml(view=content,content_locale=effective_locale)",
     "fallback_sink": "selected_post_content.body",
     "forbidden_storefront_markers": [
-      "RichTextDocument",
       "content.document",
       "pulldown_cmark",
       "comrak::",
@@ -42,14 +41,14 @@
   "guardrail": "scripts/verify/verify-blog-storefront-boundary.mjs",
   "guardrail_test": "scripts/verify/verify-blog-storefront-boundary.test.mjs",
   "validation": {
-    "tests_run": false,
-    "verifier_run": false,
-    "cargo_run": false,
-    "format_run": false,
+    "tests_run": true,
+    "verifier_run": true,
+    "cargo_run": true,
+    "format_run": true,
     "workflow_checks_run": false,
     "ci_run": false
   },
   "remaining": [
-    "execute compile, migration, transport parity, and browser evidence"
+    "execute migration, live transport, and mounted browser evidence"
   ]
 }

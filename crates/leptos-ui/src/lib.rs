@@ -19,7 +19,9 @@ pub mod success_message;
 pub use card::{Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle};
 pub use label::Label;
 pub use language_toggle::{LanguageToggle as ui_language_toggle, LanguageToggleOption};
-pub use richtext::{RichTextEditorFrame, RichTextFrameCopy, localized_richtext_frame_copy};
+pub use richtext::{
+    RichTextEditorFrame, RichTextFrameCopy, RichTextHtml, localized_richtext_frame_copy,
+};
 pub use separator::Separator;
 pub use success_message::SuccessMessage as ui_success_message;
 

@@ -276,12 +276,16 @@ async fn init_storage(ctx: &ServerRuntimeContext) -> Result<()> {
     use rustok_storage::StorageRuntime;
 
     let settings = ctx.settings();
-    let service = StorageRuntime::from_config(&settings.storage)
+    let mut storage = settings.storage.clone();
+    let instance_root = rustok_runtime::resolve_instance_root_from_environment()
+        .map_err(|error| Error::Message(error.to_string()))?;
+    storage.bind_local_base_dir(instance_root.join("storage"));
+    let service = StorageRuntime::from_config(&storage)
         .await
         .map_err(|error| {
             Error::Message(format!("Failed to initialize storage backend: {error}"))
         })?;
-    tracing::info!(driver = ?settings.storage.driver, "Initialized storage backend");
+    tracing::info!(driver = ?storage.driver, "Initialized storage backend");
     ctx.shared_insert(service);
     Ok(())
 }

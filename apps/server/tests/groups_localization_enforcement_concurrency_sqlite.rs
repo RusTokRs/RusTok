@@ -39,21 +39,18 @@ async fn connect(url: &str) -> DatabaseConnection {
     let db = Database::connect(options)
         .await
         .expect("Groups localization concurrency SQLite connection should open");
-    db.execute_unprepared(&format!(
-        "PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"
-    ))
-    .await
-    .expect("SQLite localization concurrency connection should configure busy timeout");
+    db.execute_unprepared(&format!("PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"))
+        .await
+        .expect("SQLite localization concurrency connection should configure busy timeout");
     db
 }
 
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply for SQLite localization concurrency evidence");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply for SQLite localization concurrency evidence",
+        );
     }
 }
 
@@ -88,7 +85,10 @@ fn read_context(tenant_id: Uuid, actor_id: Uuid) -> PortContext {
         tenant_id.to_string(),
         PortActor::user(actor_id.to_string()),
         "en",
-        format!("groups-localization-sqlite-concurrency-read-{}", Uuid::new_v4()),
+        format!(
+            "groups-localization-sqlite-concurrency-read-{}",
+            Uuid::new_v4()
+        ),
     )
     .with_deadline(Duration::from_secs(10))
 }
@@ -102,7 +102,10 @@ fn write_context(tenant_id: Uuid, actor_id: Uuid, operation: &str) -> PortContex
         tenant_id.to_string(),
         PortActor::user(actor_id.to_string()),
         "en",
-        format!("groups-localization-sqlite-concurrency-write-{}", Uuid::new_v4()),
+        format!(
+            "groups-localization-sqlite-concurrency-write-{}",
+            Uuid::new_v4()
+        ),
     )
     .with_deadline(Duration::from_secs(10))
     .with_idempotency_key(format!("{operation}-{}", Uuid::new_v4()))
@@ -125,15 +128,7 @@ async fn localization_write_and_suspension_serialize_on_sqlite_writer_reservatio
         let group_id = Uuid::new_v4();
         let owner_id = Uuid::new_v4();
         let admin_id = Uuid::new_v4();
-        seed_group_fixture(
-            &fixture_db,
-            tenant_id,
-            group_id,
-            owner_id,
-            admin_id,
-            round,
-        )
-        .await;
+        seed_group_fixture(&fixture_db, tenant_id, group_id, owner_id, admin_id, round).await;
 
         let setup_localization = GroupLocalizationService::new(fixture_db.clone());
         GroupLocalizationCommandPort::upsert_group_translation(

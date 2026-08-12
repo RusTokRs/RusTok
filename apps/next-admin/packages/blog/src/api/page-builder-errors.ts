@@ -52,7 +52,7 @@ export function resolvePageBuilderError(
         kind: PAGE_BUILDER_ERROR_CATALOG.validation,
         message: error.message,
         operatorGuidance:
-          'Check required page fields and ensure project data is valid grapesjs_v1 JSON.'
+          'Check required page fields and ensure the Page Builder project data is valid JSON.'
       };
     }
 

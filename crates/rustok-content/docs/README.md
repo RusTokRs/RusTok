@@ -4,11 +4,11 @@
 owns product CRUD for blog/forum/pages, but holds the common rich-text, locale and
 conversion contracts that domain modules rely on.
 
-For the target richtext boundary, neutral wire types live in
+For the active richtext boundary, neutral wire types live in
 `rustok-api::richtext`; this module owns executable profiles, validation,
 normalization, safe HTML rendering, and plain-text extraction. Domain modules
-retain their locale rows and body storage. The legacy executable implementation
-still lives in `rustok-core::rt_json` and is tracked for atomic removal by the
+retain their locale rows and body storage. The obsolete core richtext/format
+implementation and generic shared-node service have been removed under the
 [central plan](../../../docs/modules/rich-text-implementation-plan.md).
 
 ## Purpose
@@ -24,7 +24,6 @@ still lives in `rustok-core::rt_json` and is tracked for atomic removal by the
   persistence;
 - conversion flows `topic <-> post`, split/merge topic and canonical URL policy, including prohibition of cross-target canonical collisions and alias shadowing;
 - owner-owned GraphQL query `resolveCanonicalRoute` for canonical URL read contract;
-- content-owned GraphQL dataloaders for `nodes`, `node_translations` and `bodies`;
 - owner-owned dashboard helper `load_post_stats_snapshot` and DTO `ContentCountSnapshot` for post-statistics without SQL on `nodes` inside `apps/server`;
 - orchestration tables, audit trail and domain events;
 - absence of product-owned CRUD/runtime adapters for blog/forum/pages.
@@ -33,7 +32,8 @@ still lives in `rustok-core::rt_json` and is tracked for atomic removal by the
 
 - used by `rustok-blog`, `rustok-forum`, `rustok-pages` and `rustok-comments` as a shared helper/orchestration contract;
 - `rustok-content-orchestration` holds the integration bridge and GraphQL mutations conversion path;
-- `apps/server` only assembles GraphQL roots, registers owner-owned dataloaders from owner/support crates and composes the content-owned dashboard post analytics helper;
+- `apps/server` only assembles GraphQL roots and composes the content-owned
+  dashboard post analytics helper;
 - `rustok-index` depends on canonical URL and reindex semantics, but does not become the owner of orchestration logic;
 - RBAC, idempotency and unsafe-input validation must remain part of the module-level contract.
 
@@ -50,4 +50,3 @@ still lives in `rustok-core::rt_json` and is tracked for atomic removal by the
 - [Implementation plan](./implementation-plan.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 - [Richtext implementation plan](../../../docs/modules/rich-text-implementation-plan.md)
-- [Legacy RT JSON implementation snapshot](../../../docs/standards/rt-json-v1.md)

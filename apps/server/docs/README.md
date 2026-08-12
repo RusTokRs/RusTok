@@ -76,7 +76,6 @@ base policy revision before the server accepts the final policy revision.
   `rustok-cart::guest_access_http`; the server only composes that owner adapter.
 - Commerce surface is no longer a compile-time baseline for any server build: `controllers::commerce`, commerce-specific error mapping, and the commerce fragment in OpenAPI live only with `mod-commerce`, so a reduced/headless host can build without the ecommerce transport layer.
 - Content REST/OpenAPI surface for `blog`, `forum`, and `pages` is also no longer an unconditional part of the host binary: the corresponding server controllers and OpenAPI fragments are included only with `mod-blog`, `mod-forum`, and `mod-pages`, so a module-sliced build does not have to pull in other content transport dependencies.
-- Maintenance binary `migrate_legacy_richtext` belongs to the content storage migration path and is built only with `mod-content`; headless server profiles without the content module should not link this tool.
 - `flex` attached field-definition and standalone schemas/entries GraphQL are published via `/api/graphql`, while standalone REST remains at `/api/v1/flex/schemas*`; this is a live tenant-scoped surface with separate `flex_schemas:*` and `flex_entries:*` permission gates. GraphQL query/mutation roots, runtime handle, and DTO belong to `flex::graphql`; roots are included in the schema via `[provides.graphql]` manifest codegen, and the server builder registers only `FlexGraphqlRuntime` on top of concrete `FlexStandaloneSeaOrmService`, `FieldDefRegistry`, DB handle, and cache adapter. REST request/response DTO, command mapping, and view mapping belong to `flex::rest`; attached field-definition row-to-core/view/command mapping, create guardrails, persisted JSON shape helpers, persisted type-name normalization, lifecycle events, and cache invalidation event taxonomy belong to `flex::registry`; the server is the Axum/SeaORM adapter.
 - Health/observability surface is published via `/health*` and `/metrics`.
 - Module/runtime wiring relies on `modules.toml`, `rustok-module.toml`, and generated host integration.
@@ -280,10 +279,22 @@ base policy revision before the server accepts the final policy revision.
   no `install` parser. `rustok-installer-cli` owns `install plan`, `install
   preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   the shared executor-port extraction rather than server code.
-- When `rustok.build.enabled=true`, the HTTP installer also composes the
-  server-owned distributed deployment adapter. It derives a role-specific
-  `RoleBuildPlan`, executes/publishes the release, requires it to become
-  active, and persists a deployment receipt before installer verification.
+- The HTTP adapter binds one portable instance root before preflight. Production
+  requires host-selected `RUSTOK_INSTANCE_ROOT`; local storage and filesystem
+  release materialization derive `storage` and `releases/platform` beneath it.
+- For distributed plans the HTTP adapter discards any client-supplied bundle
+  identity. It accepts the locally configured
+  `RUSTOK_INSTALL_DISTRIBUTION_RELEASE_ID`, resolves the exact preparation,
+  bundle-root, and role-set identity from the current admitted
+  `rustok-modules` ledger. A fresh target instead configures
+  `RUSTOK_INSTALL_BASE_DISTRIBUTION_RECEIPT` and
+  `RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY`; the host strictly verifies the
+  bounded signed receipt and executable composition before mutation. The two
+  authority sources are mutually exclusive, and all client-supplied bundle or
+  receipt values are discarded. The old
+  per-role `rustok-build` activation adapter has been removed. Distributed
+  apply remains unavailable until the single owner-controlled rollout adapter
+  and verified fresh-bootstrap owner-ledger import are composed.
 - The HTTP adapter for the Leptos wizard is available as a thin surface on top of the same
   pipeline: `GET /api/install/status`, `POST /api/install/plan`,
   `POST /api/install/preflight`, `POST /api/install/apply`,

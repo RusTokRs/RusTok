@@ -3,9 +3,10 @@ use std::sync::Arc;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rustok_channel::ChannelModule;
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
+use rustok_pages::PagesModule;
 use rustok_pages::dto::{
     CreatePageInput, PageBodyInput, PageBodyRevisionInput, PageTranslationInput, PublishPageInput,
     RebuildPageArtifactInput, ReviewedPagePublishRuntimeInput,
@@ -15,7 +16,6 @@ use rustok_pages::entities::{
     page_published_landing_artifact, page_static_landing_artifact,
 };
 use rustok_pages::services::PageService;
-use rustok_pages::PagesModule;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
     DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Set, Statement,
@@ -27,7 +27,8 @@ use uuid::Uuid;
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test]
-async fn explicit_rebuild_appends_exact_artifact_without_switching_public_binding() -> TestResult<()> {
+async fn explicit_rebuild_appends_exact_artifact_without_switching_public_binding() -> TestResult<()>
+{
     let tenant_id = Uuid::new_v4();
     let db = setup_db(tenant_id).await?;
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
@@ -78,9 +79,7 @@ async fn explicit_rebuild_appends_exact_artifact_without_switching_public_bindin
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: Some(vec!["web".to_string()]),
                 publish: false,
@@ -195,14 +194,25 @@ async fn explicit_rebuild_appends_exact_artifact_without_switching_public_bindin
             .ok_or_else(|| std::io::Error::other("rebuilt artifact is missing"))?;
     assert_eq!(rebuilt_record.instance_key, rebuilt.artifact_instance_key);
     assert_eq!(rebuilt_record.artifact_hash, source.artifact_hash);
-    assert_eq!(rebuilt_record.materialization_hash, Some(source.materialization_hash.clone()));
-    assert_ne!(rebuilt_record.document_html, "<main>corrupted retained artifact</main>");
-    assert!(rebuilt_record.document_html.contains("Explicit rebuild source"));
+    assert_eq!(
+        rebuilt_record.materialization_hash,
+        Some(source.materialization_hash.clone())
+    );
+    assert_ne!(
+        rebuilt_record.document_html,
+        "<main>corrupted retained artifact</main>"
+    );
+    assert!(
+        rebuilt_record
+            .document_html
+            .contains("Explicit rebuild source")
+    );
 
-    let binding_after = page_published_landing_artifact::Entity::find_by_id(binding_before.page_body_id)
-        .one(&db)
-        .await?
-        .ok_or_else(|| std::io::Error::other("published binding disappeared"))?;
+    let binding_after =
+        page_published_landing_artifact::Entity::find_by_id(binding_before.page_body_id)
+            .one(&db)
+            .await?
+            .ok_or_else(|| std::io::Error::other("published binding disappeared"))?;
     assert_eq!(binding_after.artifact_id, binding_before.artifact_id);
     let page_after = page::Entity::find_by_id(draft.id)
         .one(&db)

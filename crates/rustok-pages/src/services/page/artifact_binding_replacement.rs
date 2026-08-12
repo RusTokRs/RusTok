@@ -1,7 +1,8 @@
 use chrono::Utc;
 use rustok_api::{Action, Resource};
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, PermissionScope, SecurityContext};
+use rustok_core::{PermissionScope, SecurityContext};
 use rustok_events::DomainEvent;
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
     DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
@@ -97,13 +98,8 @@ impl PageService {
 
         let txn = self.db.begin().await?;
         let existing_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
-        if let Some(operation) = find_operation_in_tx(
-            &txn,
-            tenant_id,
-            page_id,
-            idempotency_key.as_str(),
-        )
-        .await?
+        if let Some(operation) =
+            find_operation_in_tx(&txn, tenant_id, page_id, idempotency_key.as_str()).await?
         {
             ensure_same_request(
                 &operation,
@@ -129,16 +125,11 @@ impl PageService {
             ));
         }
 
-        let rebuild = load_rebuild_operation_in_tx(
-            &txn,
-            tenant_id,
-            page_id,
-            input.rebuild_operation_id,
-        )
-        .await?;
+        let rebuild =
+            load_rebuild_operation_in_tx(&txn, tenant_id, page_id, input.rebuild_operation_id)
+                .await?;
         verify_rebuild_receipt(&rebuild)?;
-        let source =
-            load_rebuild_source_in_tx(&txn, tenant_id, page_id, rebuild.source_id).await?;
+        let source = load_rebuild_source_in_tx(&txn, tenant_id, page_id, rebuild.source_id).await?;
         verify_rebuild_source(&source)?;
         ensure_rebuild_matches_source(&rebuild, &source)?;
         if rebuild.source_artifact_id != input.expected_current_artifact_id {
@@ -146,13 +137,8 @@ impl PageService {
                 "expected current artifact is not the source artifact of the selected rebuild receipt",
             ));
         }
-        if let Some(existing) = find_operation_for_rebuild_in_tx(
-            &txn,
-            tenant_id,
-            page_id,
-            rebuild.id,
-        )
-        .await?
+        if let Some(existing) =
+            find_operation_for_rebuild_in_tx(&txn, tenant_id, page_id, rebuild.id).await?
         {
             verify_replacement_operation(&existing)?;
             return Err(replacement_current_conflict(
@@ -160,13 +146,9 @@ impl PageService {
             ));
         }
 
-        let binding = load_binding_for_update_in_tx(
-            &txn,
-            tenant_id,
-            page_id,
-            rebuild.locale.as_str(),
-        )
-        .await?;
+        let binding =
+            load_binding_for_update_in_tx(&txn, tenant_id, page_id, rebuild.locale.as_str())
+                .await?;
         let page_body_id = match binding {
             Some(binding) => {
                 if binding.page_body_id != source.page_body_id {
@@ -489,9 +471,13 @@ async fn resolve_missing_binding_recovery_anchor_in_tx(
             "rollback activation anchor failed identity or hash validation",
         ));
     }
-    let rollback_expected_version = rollback.result_version.checked_sub(1).filter(|v| *v > 0).ok_or_else(|| {
-        replacement_current_conflict("rollback activation anchor has an invalid result version")
-    })?;
+    let rollback_expected_version = rollback
+        .result_version
+        .checked_sub(1)
+        .filter(|v| *v > 0)
+        .ok_or_else(|| {
+            replacement_current_conflict("rollback activation anchor has an invalid result version")
+        })?;
     let expected_request_hash = stable_replacement_hash(&(
         PAGE_ROLLBACK_ACTIVATION_ANCHOR_FORMAT,
         tenant_id,
@@ -537,9 +523,7 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
 
     let query = || {
         page_artifact_binding_replacement_operation::Entity::find()
-            .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
-            )
+            .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id))
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(page_id))
             .filter(
                 page_artifact_binding_replacement_operation::Column::ResultVersion
@@ -564,10 +548,8 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
     }
 
     let mut cursor = anchor_version;
-    let mut latest_by_locale = std::collections::BTreeMap::<
-        String,
-        (Uuid, page_artifact_rebuild_operation::Model),
-    >::new();
+    let mut latest_by_locale =
+        std::collections::BTreeMap::<String, (Uuid, page_artifact_rebuild_operation::Model)>::new();
     for operation in operations {
         verify_replacement_operation(&operation)?;
         if operation.expected_version != cursor || operation.result_version != cursor + 1 {
@@ -590,13 +572,9 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
             ));
         }
 
-        let prior_rebuild = load_rebuild_operation_in_tx(
-            txn,
-            tenant_id,
-            page_id,
-            operation.rebuild_operation_id,
-        )
-        .await?;
+        let prior_rebuild =
+            load_rebuild_operation_in_tx(txn, tenant_id, page_id, operation.rebuild_operation_id)
+                .await?;
         verify_rebuild_receipt(&prior_rebuild)?;
         let prior_source =
             load_rebuild_source_in_tx(txn, tenant_id, page_id, prior_rebuild.source_id).await?;
@@ -646,7 +624,8 @@ async fn ensure_sequential_missing_binding_recovery_version_chain_in_tx(
     }
 
     for (locale, (page_body_id, latest_rebuild)) in latest_by_locale {
-        let binding = load_binding_for_update_in_tx(txn, tenant_id, page_id, locale.as_str()).await?;
+        let binding =
+            load_binding_for_update_in_tx(txn, tenant_id, page_id, locale.as_str()).await?;
         if locale == target_locale {
             if binding.is_some() {
                 return Err(replacement_current_conflict(
@@ -756,9 +735,7 @@ async fn find_operation_in_tx(
 ) -> PagesResult<Option<page_artifact_binding_replacement_operation::Model>> {
     let query = || {
         page_artifact_binding_replacement_operation::Entity::find()
-            .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
-            )
+            .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id))
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(page_id))
             .filter(
                 page_artifact_binding_replacement_operation::Column::IdempotencyKey
@@ -779,9 +756,7 @@ async fn find_operation_for_rebuild_in_tx(
 ) -> PagesResult<Option<page_artifact_binding_replacement_operation::Model>> {
     let query = || {
         page_artifact_binding_replacement_operation::Entity::find()
-            .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
-            )
+            .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id))
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(page_id))
             .filter(
                 page_artifact_binding_replacement_operation::Column::RebuildOperationId
@@ -849,7 +824,7 @@ fn verify_rebuild_source(source: &page_publish_rebuild_source::Model) -> PagesRe
         || source.artifact_id.is_nil()
         || source.locale.trim().is_empty()
         || source.locale.trim() != source.locale
-        || source.source_format != CONTENT_FORMAT_GRAPESJS
+        || source.source_format != PAGE_BUILDER_DOCUMENT_FORMAT
         || source.source_revision.trim().is_empty()
     {
         return Err(replacement_target_invalid(

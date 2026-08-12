@@ -28,11 +28,10 @@ pub struct PageTranslationInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PageBodyInput {
     pub locale: String,
-    pub content: String,
-    pub format: Option<String>,
-    pub content_json: Option<Value>,
+    pub document: Value,
 }
 
 /// Metadata-only write contract.
@@ -177,6 +176,40 @@ fn default_page() -> u64 {
 
 fn default_per_page() -> u64 {
     20
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PageBodyInput;
+
+    #[test]
+    fn page_body_input_accepts_only_the_canonical_document_field() {
+        let document = serde_json::json!({"pages": []});
+        let input: PageBodyInput = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "document": document,
+        }))
+        .expect("canonical Page Builder body");
+
+        assert_eq!(input.locale, "en");
+        assert_eq!(input.document, document);
+        assert!(
+            serde_json::from_value::<PageBodyInput>(serde_json::json!({
+                "locale": "en",
+                "content": "{}",
+                "content_json": {"pages": []},
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<PageBodyInput>(serde_json::json!({
+                "locale": "en",
+                "document": {"pages": []},
+                "content": "{}",
+            }))
+            .is_err()
+        );
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

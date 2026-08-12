@@ -10,6 +10,8 @@ use crate::model::{PageBody, PageDetail, PageList, PageListItem, PageTranslation
 const MODULE_SLUG: &str = "pages";
 #[cfg(feature = "ssr")]
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
+#[cfg(feature = "ssr")]
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 
 pub async fn fetch_storefront_pages_server(
     tenant_slug: Option<String>,
@@ -170,7 +172,7 @@ async fn storefront_pages_native(
             Some(page) => {
                 let page_id = page.id;
                 let body = match page.body {
-                    Some(body) if body.format.eq_ignore_ascii_case("grapesjs") => {
+                    Some(body) if body.format == PAGE_BUILDER_DOCUMENT_FORMAT => {
                         let published = PageBuilderArtifactService::new(runtime_ctx.db_clone())
                             .load_public_bound_artifact_with_fallback(
                                 tenant_id,
@@ -187,11 +189,7 @@ async fn storefront_pages_native(
                             public_channel_slug.as_deref(),
                         )
                     }
-                    Some(body) => Some(PageBody {
-                        locale: body.locale,
-                        content: body.content,
-                        format: body.format,
-                    }),
+                    Some(_) => None,
                     None => None,
                 };
 

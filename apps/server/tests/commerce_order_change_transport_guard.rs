@@ -63,9 +63,8 @@ fn order_change_application_uses_commerce_orchestration() {
     assert!(
         graphql_runtime.contains("OrderChangeOrchestrationService::from_order_ports(")
             && graphql_runtime.contains("runtime.order_read_runtime().order_read_port()")
-            && graphql_runtime.contains(
-                "runtime.order_post_order_command_runtime().command_port()"
-            ),
+            && graphql_runtime
+                .contains("runtime.order_post_order_command_runtime().command_port()"),
         "mounted GraphQL runtime must inject host-selected Order owner ports"
     );
 
@@ -82,7 +81,10 @@ fn order_change_application_uses_commerce_orchestration() {
         orchestration.contains("pub async fn apply_order_change("),
         "directly embedded compatibility entrypoint remains explicit for later cleanup"
     );
-    for operation in [".apply_exchange_order_change(", ".apply_claim_order_change("] {
+    for operation in [
+        ".apply_exchange_order_change(",
+        ".apply_claim_order_change(",
+    ] {
         assert!(
             orchestration.contains(operation),
             "order-change orchestration must retain {operation}"

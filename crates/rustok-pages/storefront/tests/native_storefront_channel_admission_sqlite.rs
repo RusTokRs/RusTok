@@ -111,12 +111,7 @@ impl PagesCacheReadPort for RecordingCachePort {
         Ok(state.values.get(key).cloned())
     }
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> Result<(), PageCacheError> {
+    async fn put(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<(), PageCacheError> {
         let mut state = self
             .state
             .lock()
@@ -155,9 +150,9 @@ async fn native_storefront_channel_admission_precedes_cache_lookup() -> TestResu
         )
         .await?;
 
-    let cache = Arc::new(RecordingCachePort::new(
-        PageCacheGenerationSnapshot::new(3, 5, 7),
-    ));
+    let cache = Arc::new(RecordingCachePort::new(PageCacheGenerationSnapshot::new(
+        3, 5, 7,
+    )));
     let cache_port: Arc<dyn PagesCacheReadPort> = cache.clone();
     let host = HostRuntimeContext::new(db.clone())
         .with_shared_value(event_bus)
@@ -332,9 +327,10 @@ async fn create_published_page(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: "<main>channel-admission-source</main>".to_string(),
-                    format: Some("html".to_string()),
-                    content_json: None,
+                    document: serde_json::json!({
+                        "pages": [],
+                        "test_content": "channel-admission-source",
+                    }),
                 }),
                 channel_slugs: None,
                 publish: false,

@@ -6,7 +6,10 @@ license.workspace = true
 
 [features]
 default = []
-hydrate = ["leptos/hydrate"]
+hydrate = [
+  "leptos/hydrate",
+  "rustok-comments-storefront-support/hydrate",
+]
 ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
@@ -15,16 +18,20 @@ ssr = [
   "dep:rustok-core",
   "dep:rustok-outbox",
   "dep:rustok-tenant",
+  "dep:uuid",
   "rustok-api/server",
+  "rustok-comments-storefront-support/ssr",
 ]
 
 [dependencies]
 rustok-ui-core.workspace = true
 leptos.workspace = true
+leptos-auth.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true
 rustok-ui-transport.workspace = true
 leptos-ui-routing.workspace = true
+leptos-ui.workspace = true
 serde = { workspace = true, features = ["derive"] }
 rustok-core = { workspace = true, optional = true }
 rustok-blog = { workspace = true, optional = true }
@@ -33,3 +40,5 @@ rustok-ui-i18n-leptos.workspace = true
 rustok-channel = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
+rustok-comments-storefront-support = { path = "../../rustok-comments-storefront-support", default-features = false }

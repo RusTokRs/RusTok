@@ -1,5 +1,5 @@
 import { graphqlRequest } from '@/lib/graphql';
-import type { RichTextDocument } from '@rustok/richtext';
+import type { RichTextDocument, RichTextView } from '@rustok/richtext';
 
 // ---------- GqlOpts ----------
 
@@ -26,13 +26,12 @@ export interface PostSummary {
 
 export interface PostResponse {
   id: string;
+  requestedLocale: string;
+  effectiveLocale: string;
   title: string;
   slug: string | null;
   excerpt: string | null;
-  content?: {
-    document: RichTextDocument;
-    html: string;
-  } | null;
+  content?: RichTextView | null;
   contentPlainText?: string | null;
   status: BlogPostStatus;
   authorId: string | null;
@@ -109,6 +108,8 @@ const POST_QUERY = `
 query Post($tenantId: UUID!, $id: UUID!) {
   post(tenantId: $tenantId, id: $id) {
     id
+    requestedLocale
+    effectiveLocale
     title
     slug
     excerpt

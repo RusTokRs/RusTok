@@ -18,11 +18,11 @@ use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_pages::dto::{CreatePageInput, PageBodyInput, PageTranslationInput};
 use rustok_pages::entities::page_body;
+use rustok_pages::services::PageService;
 use rustok_pages::{
     PAGES_STOREFRONT_CACHE_TTL_SECS, PageCacheError, PageCacheGenerationSnapshot,
     PagesCacheReadPort, PagesCacheReadRuntime, PagesModule,
 };
-use rustok_pages::services::PageService;
 use rustok_pages_storefront as _;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait,
@@ -141,12 +141,7 @@ impl PagesCacheReadPort for RecordingCachePort {
         Ok(state.values.get(key).cloned())
     }
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> Result<(), PageCacheError> {
+    async fn put(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<(), PageCacheError> {
         let mut state = self
             .state
             .lock()
@@ -164,9 +159,9 @@ async fn native_storefront_server_fn_misses_hits_rotates_and_fails_open() -> Tes
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let tenant_id = Uuid::new_v4();
     let page_id = create_published_page(&db, event_bus.clone(), tenant_id).await?;
-    let cache = Arc::new(RecordingCachePort::new(
-        PageCacheGenerationSnapshot::new(3, 5, 7),
-    ));
+    let cache = Arc::new(RecordingCachePort::new(PageCacheGenerationSnapshot::new(
+        3, 5, 7,
+    )));
     let cache_port: Arc<dyn PagesCacheReadPort> = cache.clone();
     let host = HostRuntimeContext::new(db.clone())
         .with_shared_value(event_bus)
@@ -320,9 +315,10 @@ async fn create_published_page(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: "<main>source-v1</main>".to_string(),
-                    format: Some("html".to_string()),
-                    content_json: None,
+                    document: serde_json::json!({
+                        "pages": [],
+                        "test_content": "source-v1",
+                    }),
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -340,11 +336,7 @@ async fn create_published_page(
     Ok(published.id)
 }
 
-async fn update_body(
-    db: &DatabaseConnection,
-    page_id: Uuid,
-    content: &str,
-) -> TestResult<()> {
+async fn update_body(db: &DatabaseConnection, page_id: Uuid, content: &str) -> TestResult<()> {
     let body = page_body::Entity::find()
         .filter(page_body::Column::PageId.eq(page_id))
         .one(db)

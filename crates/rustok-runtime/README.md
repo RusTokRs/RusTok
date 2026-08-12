@@ -11,13 +11,17 @@ adapters away from framework-specific runtime contexts.
 - Keep typed shared-handle lookup errors consistent across backend adapters.
 - Keep executable runtime helper code outside `rustok-api` as the API contract crate is
   reduced back to stable contracts.
+- Resolve the single portable `RUSTOK_INSTANCE_ROOT` and reject paths that
+  escape it when executable adapters derive local subtrees.
 
 ## Entry Points
 
 - `HostRuntimeContext`
 - `RuntimeComposition` for host-neutral DB, settings and typed-handle composition.
 - `RuntimeComposition::from_environment` for the CLI bootstrap (`RUSTOK_DATABASE_URL` or
-  `DATABASE_URL`, plus optional `RUSTOK_SETTINGS_JSON`).
+  `DATABASE_URL`, optional `RUSTOK_SETTINGS_JSON`, and `RUSTOK_INSTANCE_ROOT`).
+- `RuntimeComposition::instance_root`, `RuntimeComposition::instance_path`, and
+  `resolve_instance_root_from_environment`.
 - `db_clone`
 - `require_shared`
 - `RuntimeHandleError`

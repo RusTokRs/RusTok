@@ -9,7 +9,9 @@ use rustok_groups::{
     GroupMembershipEnforcementCommandPort, GroupMembershipEnforcementCommandService,
     ListGroupTranslationsRequest, SuspendGroupMembershipRequest, UpsertGroupTranslationRequest,
 };
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -36,7 +38,9 @@ async fn install_groups_schema(db: &DatabaseConnection) {
 }
 
 fn sqlite_fixture_url(temp: &TempDir) -> String {
-    let path = temp.path().join("groups-localization-enforcement-expiry.sqlite");
+    let path = temp
+        .path()
+        .join("groups-localization-enforcement-expiry.sqlite");
     format!("sqlite://{}?mode=rwc", path.display())
 }
 
@@ -126,7 +130,8 @@ async fn group_member_count(db: &DatabaseConnection, tenant_id: Uuid, group_id: 
 
 #[tokio::test]
 async fn localization_management_follows_effective_suspension_and_owner_clock_expiry_sqlite() {
-    let temp = tempfile::tempdir().expect("temporary Groups localization expiry directory should create");
+    let temp =
+        tempfile::tempdir().expect("temporary Groups localization expiry directory should create");
     let url = sqlite_fixture_url(&temp);
     let db = connect(&url).await;
     install_groups_schema(&db).await;
@@ -185,7 +190,10 @@ async fn localization_management_follows_effective_suspension_and_owner_clock_ex
     let (stored_status_during_suspension, stored_revision_during_suspension) =
         membership_snapshot(&db, tenant_id, admin_id).await;
     assert_eq!(stored_status_during_suspension, "active");
-    assert_eq!(stored_revision_during_suspension, suspended.membership_revision);
+    assert_eq!(
+        stored_revision_during_suspension,
+        suspended.membership_revision
+    );
     assert_eq!(group_member_count(&db, tenant_id, group_id).await, 2);
 
     let read_error = GroupLocalizationReadPort::list_group_translations(
@@ -221,7 +229,11 @@ async fn localization_management_follows_effective_suspension_and_owner_clock_ex
     )
     .await
     .expect("owner should still read translations while administrator is suspended");
-    assert_eq!(owner_during.len(), 1, "failed suspended write must not create French translation");
+    assert_eq!(
+        owner_during.len(),
+        1,
+        "failed suspended write must not create French translation"
+    );
 
     tokio::time::sleep(Duration::from_millis(2300)).await;
 
@@ -258,7 +270,11 @@ async fn localization_management_follows_effective_suspension_and_owner_clock_ex
     .await
     .expect("restored administrator should read both translations");
     assert_eq!(final_translations.len(), 2);
-    assert!(final_translations.iter().any(|translation| translation.locale == "fr"));
+    assert!(
+        final_translations
+            .iter()
+            .any(|translation| translation.locale == "fr")
+    );
 
     let (stored_status_after_expiry, stored_revision_after_expiry) =
         membership_snapshot(&db, tenant_id, admin_id).await;

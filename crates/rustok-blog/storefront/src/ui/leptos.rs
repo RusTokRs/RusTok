@@ -1,5 +1,8 @@
 use leptos::prelude::*;
+use leptos_auth::hooks::use_token;
+use leptos_ui::{RichTextHtml, localized_richtext_frame_copy};
 use leptos_ui_routing::{read_route_query_value, use_route_query_value, use_route_query_writer};
+use rustok_comments_storefront_support::{CommentComposer, CommentComposerCopy};
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
@@ -101,6 +104,7 @@ fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
 #[component]
 fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let token = use_token();
     let Some(post) = post else {
         let empty_state = core::selected_post_empty_state_typed_view(
             t(
@@ -127,6 +131,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
         .into_any();
     };
 
+    let post_id = post.id;
     let effective_locale = post.effective_locale;
     let status = post.status;
     let (slug, excerpt, published_at) = core::selected_post_fallback_fields(
@@ -179,6 +184,76 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     let selected_post_content = core::selected_post_content_view(excerpt, content_plain_text);
     let selected_post_header =
         core::selected_post_header_view(post.title, selected_post_meta, selected_post_status);
+    let comment_post_id = post_id.clone();
+    let comment_locale = effective_locale.clone();
+    let submit_comment = Action::new_local(move |content: &rustok_api::RichTextDocument| {
+        let request = crate::model::BlogCommentCreateRequest::for_post(
+            comment_post_id.clone(),
+            comment_locale.clone(),
+            content.clone(),
+        );
+        let token = token.get_untracked();
+        async move {
+            transport::create_comment(token, request)
+                .await
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        }
+    });
+    let richtext_locale = locale.clone();
+    let comment_composer_copy = CommentComposerCopy {
+        title: t(
+            locale.as_deref(),
+            "blog.comments.composer.title",
+            "Join the discussion",
+        ),
+        editor_label: t(
+            locale.as_deref(),
+            "blog.comments.composer.editorLabel",
+            "Comment",
+        ),
+        hint: t(
+            locale.as_deref(),
+            "blog.comments.composer.hint",
+            "Formatting is preserved with the shared richtext editor.",
+        ),
+        submit: t(
+            locale.as_deref(),
+            "blog.comments.composer.submit",
+            "Submit comment",
+        ),
+        submitting: t(
+            locale.as_deref(),
+            "blog.comments.composer.submitting",
+            "Submitting...",
+        ),
+        success: t(
+            locale.as_deref(),
+            "blog.comments.composer.success",
+            "Your comment was submitted for moderation.",
+        ),
+        sign_in_required: t(
+            locale.as_deref(),
+            "blog.comments.composer.signInRequired",
+            "Sign in to join the discussion.",
+        ),
+        empty_error: t(
+            locale.as_deref(),
+            "blog.comments.composer.emptyError",
+            "Write a comment before submitting.",
+        ),
+        richtext: localized_richtext_frame_copy(|key, fallback| {
+            t(richtext_locale.as_deref(), key, fallback)
+        }),
+    };
+    let comment_composer = view! {
+        <CommentComposer
+            content_locale=effective_locale.clone()
+            submit_action=submit_comment
+            copy=comment_composer_copy
+        />
+    }
+    .into_any();
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
@@ -199,10 +274,11 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
             <p class="mt-3 text-sm text-muted-foreground">{selected_post_content.excerpt}</p>
             {match content {
                 Some(content) => view! {
-                    <div
+                    <RichTextHtml
+                        view=content
+                        content_locale=effective_locale.clone()
                         class="mt-4 text-sm leading-7 text-foreground"
-                        inner_html=content.html
-                    ></div>
+                    />
                 }
                 .into_any(),
                 None => view! {
@@ -232,6 +308,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
             } else {
                 ().into_any()
             }}
+            {comment_composer}
             <PublicCommentsList comments=public_comments comments_page />
         </article>
     }
@@ -269,7 +346,8 @@ fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl Int
     };
 
     if comments.availability != BlogCommentsAvailability::Available && !comments.cached_snapshot {
-        let message = degraded_message.expect("degraded comments without a snapshot need a message");
+        let message =
+            degraded_message.expect("degraded comments without a snapshot need a message");
         return view! {
             <section class="mt-8 border-t border-border pt-6">
                 <h4 class="text-lg font-semibold text-foreground">{title}</h4>

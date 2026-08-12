@@ -13,16 +13,14 @@ and server-derived plain text under the fixed `article` profile. Production DTOs
 do not expose `body`, `body_format`, `content_json`, Markdown aliases, raw JSON
 write fields, caller-selected profiles, or local renderers.
 
-The owner-specific offline backfill lives at
-`crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs`. Dry-run is the
-default, reports are content-free NDJSON, writes require `--apply`, and historical
-Markdown conversion requires explicit `--allow-markdown-plain-text`
-acknowledgement. The utility does not execute the irreversible migration or
-trigger Search reindex.
+The pre-release initial migration creates the target schema directly: article
+body is canonical richtext JSON in `blog_post_translations.body`, with no format
+selector. Corrective cutover migrations and conversion executables are forbidden;
+`scripts/verify/verify-blog-fba.mjs` rejects their reintroduction.
 
 The Blog storefront selected-post path consumes the owner projection through
-both transports. The selected post has exactly one `content.html` sink for
-server-rendered `RichTextView` HTML and uses server-derived plain text as
+both transports. The selected post has exactly one shared `RichTextHtml` sink
+for server-rendered `RichTextView` HTML and uses server-derived plain text as
 fallback. The public comments projection is Comments-owned and approved-only.
 The storefront comment pagination is route-owned and bounded consistently
 across GraphQL and native SSR. Public comment reads carry typed `AVAILABLE`,
@@ -458,12 +456,12 @@ at `1c27a58320db2d91179beabfda064f22bcf82619`, their machine evidence, and the
 registered source gates. No compile, database, browser, workflow, or CI status
 was promoted; execution remains maintainer-owned.
 
-The audit confirmed the latest admin, GraphQL, storefront, offline-backfill,
-Forum ownership, and aggregate FBA evidence. It also found later commit
+The audit confirmed the latest admin, GraphQL, storefront, Forum ownership, and
+aggregate FBA evidence. It also found later commit
 `2f1a4f20f530b1ec8e3cee3c1f51efc36aa5017f` widening the private AI Blog shim
 with an unused `migrations` re-export. Slice 35 removes that drift, binds the
 exact owner-only surface to machine evidence and a negative fixture, reconciles
-the richtext inventory, and registers the new gate in the Blog FBA
+the canonical AI richtext boundary, and registers the new gate in the Blog FBA
 verify/test chain.
 
 The continuation audit at `ce3b1690bbf7d67e5ea80cad071180deae7e62dc`
@@ -839,6 +837,14 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
+- Richtext UI evidence: the shared Next and Leptos adapters now receive the
+  owner-selected article locale separately from host UI messages, propagate
+  derived direction and spellcheck, and follow dynamic form busy/read-only
+  state. Next edit hydration uses the post's requested/effective translation
+  locale and reserves the host UI locale for new posts. `npm run verify
+  --prefix packages/richtext`, the Chromium frame
+  harness, native Blog admin check and shared WASM check cover this slice;
+  mounted Blog save/reload and dirty locale-switch evidence remain open.
 - Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v13
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
   self-tests, the Comments projection classifier, deterministic retry policy,
@@ -847,7 +853,7 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
   concurrency, PostgreSQL, same-process restart, and process-restart harnesses,
   plus aggregate/consumer bindings for admin, storefront, Comments port boundary,
   Comments event projection, category Search reindex, GraphQL rate limiting,
-  GraphQL richtext, AI richtext, offline backfill, Forum ownership, and runtime
+  GraphQL richtext, AI richtext, Forum ownership, and runtime
   order. The existing Comments port leaf requires HTTP, GraphQL, storefront
   native, and admin native composition verifiers plus focused fixtures through
   aggregate-locked imports; package order remains unchanged.
@@ -892,8 +898,9 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 - Search Blog projection harness: Search-owned `executable_no_run`; evidence,
   verifier, focused fixture, exact npm leaf commands, test targets, and Search FBA
   ordering are locked. Routing and PostgreSQL execution remain maintainer-owned.
-- Blog article richtext cutover: `implemented_source_verified_no_compile`.
-- Blog article offline backfill: `executable_no_run`.
+- Blog article richtext storage: `implemented_source_verified_no_compile`; the
+  initial schema is canonical and the source gate forbids corrective migration
+  and conversion artifacts.
 - Next admin Forum UI ownership: `source_verified_no_compile`.
 - Blog admin canonical richtext guardrail: `source_verified_no_compile`.
 - Blog GraphQL richtext boundary: `implemented_source_verified_no_compile`.
@@ -951,11 +958,8 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 - `crates/rustok-blog/contracts/evidence/blog-graphql-richtext-boundary.json`
 - `crates/rustok-blog/contracts/evidence/blog-storefront-richtext-view.json`
 - `crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json`
-- `crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json`
-- `crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json`
 - `crates/rustok-blog/contracts/evidence/blog-forum-ui-ownership.json`
 - `crates/rustok-blog/contracts/evidence/blog-admin-richtext-boundary.json`
-- `crates/rustok-blog/docs/richtext-cutover-inventory.md`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
 - `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
 - `scripts/verify/verify-blog-comments-port-boundary.mjs`
@@ -984,8 +988,6 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 - `scripts/verify/verify-blog-storefront-boundary.test.mjs`
 - `scripts/verify/verify-blog-ai-richtext-boundary.mjs`
 - `scripts/verify/verify-blog-ai-richtext-boundary.test.mjs`
-- `scripts/verify/verify-blog-richtext-offline-backfill.mjs`
-- `scripts/verify/verify-blog-richtext-offline-backfill.test.mjs`
 - `scripts/verify/verify-blog-forum-ui-ownership.mjs`
 - `scripts/verify/verify-blog-forum-ui-ownership.test.mjs`
 - `scripts/verify/verify-blog-fba.mjs`
@@ -1033,7 +1035,8 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 21. Completed target-only source cutover and removed runtime compatibility paths.
 22. Added Blog admin native CRUD/moderation adapters over owner services.
 23. Mounted the shared framed editor through a browser-only hydration bridge.
-24. Added the dry-run-first owner-specific offline backfill.
+24. Consolidated the pre-release initial schema and deleted corrective
+    migration/conversion artifacts.
 25. Moved Forum Next admin ownership out of Blog and shared the React lifecycle
     adapter at host scope.
 26. Reconciled the Blog admin guardrail with the canonical editor.
@@ -1201,6 +1204,31 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
     search-path fallback, and added focused fail-closed verifier regressions. The
     12 integration cases pass; retained runtime evidence and status promotion
     remain pending.
+68. Added the Blog-owned `createBlogComment` GraphQL mutation and
+    `blog/comment-create` native server function over one transport-neutral
+    storefront request/result contract. Both paths require authenticated
+    `comments:create`, exact tenant scope, enabled Blog tenant/channel state,
+    and a published post visible in the current channel before invoking the
+    Comments port. The Leptos Blog detail now composes the reusable
+    `rustok-comments-storefront-support::CommentComposer`; the component owns
+    editor/form state and receives no arbitrary Comments target identity.
+69. Added the matching Comments-owned React composer and composed it into the
+    selected Next Blog detail surface. The detail renders the Blog-provided safe
+    HTML projection and approved comment previews, while the write passes the
+    exact post id only to the Blog-owned GraphQL command. Shared Next frame
+    route handling now lives in `@rustok/richtext/next` and is reused by both
+    Next hosts. Next storefront, Next admin, and richtext package typechecks
+    pass. Removed the superseded Blog service create method that checked only
+    post existence, so all Blog-owned comment creation now uses the single
+    public target policy. A focused integration test proves draft and hidden
+    channel rejection followed by a pending write for the visible channel;
+    mounted auth/save/rejection/reload evidence remains pending.
+70. Reconciled the remaining executable Search PostgreSQL fixture with the
+    canonical Blog schema by deleting its `body_format` column and Markdown
+    value and storing a valid richtext document directly in `body`. The focused
+    Search projection target compiles. Blog module validation now passes after
+    synchronizing its required `outbox` dependency and correcting the validator
+    so always-linked required modules do not require invented `mod-*` features.
 
 ## Next results
 
@@ -1230,14 +1258,19 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
    `CommentService::with_comments_thread_port`, and retain all-seven-operation
    adapter parity, naturally contended PostgreSQL retry-frequency evidence, full
    server-host restart recovery, browser parity for typed unavailable/timeout
-   article rendering, cached thread snapshots, comment-form fallback,
-   approved-only reads, moderation, pagination, first-thread identity, and
+   article rendering, cached thread snapshots, selected-path comment-form
+   failures, approved-only reads, moderation, pagination, first-thread identity, and
    unrelated insert storage error propagation.
-6. **Execute and retain Blog article richtext cutover evidence.** Run the offline
-   backfill in default dry-run mode, review its report, apply accepted conversion,
-   execute the irreversible migration, reindex/rollback Search, and retain
-   Next/Leptos, GraphQL/native, AI draft persistence, and browser evidence on the
-   same commit.
+6. **Execute and retain canonical Blog article evidence.** Apply all migrations
+   from zero on PostgreSQL and SQLite, then retain Next/Leptos, GraphQL/native,
+   AI draft persistence, Search reindex, and browser save/reload evidence on the
+   same commit. No conversion or corrective migration path may be restored.
+7. **Complete public comment storefront parity.** The Comments-owned React
+   composer is connected to the selected Next Blog detail surface through the
+   implemented Blog-bound GraphQL mutation. Retain mounted auth,
+   hidden/draft/channel rejection,
+   canonical document submission, moderation-pending, and save/reload evidence
+   for Next and Leptos. Do not add a generic Comments target mutation.
 
 ## Verification
 
@@ -1287,8 +1320,6 @@ should run the relevant subset, including:
 - `npm run test:verify:blog:storefront-boundary`
 - `npm run verify:blog:ai-richtext-boundary`
 - `npm run test:verify:blog:ai-richtext-boundary`
-- `npm run verify:blog:richtext-offline-backfill`
-- `npm run test:verify:blog:richtext-offline-backfill`
 - `npm run verify:blog:forum-ui-ownership`
 - `npm run test:verify:blog:forum-ui-ownership`
 - `npm run verify:blog:admin-boundary`
@@ -1305,7 +1336,6 @@ should run the relevant subset, including:
 - `npm run test:verify:comments:thread-write-invariants`
 - `npm run verify:comments:fba`
 - `npm run test:verify:comments:fba`
-- `cargo run -p rustok-blog --bin blog_article_richtext_backfill -- --help`
 - `cargo test -p rustok-blog --test graphql_rate_limit_policy_test`
 - `cargo test -p rustok-blog graphql::rate_limit`
 - `cargo test -p rustok-server graphql_http_response_preserves_extension_headers`

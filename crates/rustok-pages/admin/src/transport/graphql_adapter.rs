@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::model::{
-    CreatePageDraft, PageDetail, PageList, PageMutationResult, PublishPageReceipt,
-    RollbackPageReceipt,
+    CreatePageDraft, PageDetail, PageList, PageMetadataPatch, PageMutationResult,
+    PublishPageReceipt, RollbackPageReceipt,
 };
 
 pub type ApiError = GraphqlHttpError;
@@ -198,10 +198,7 @@ struct PageTranslationWriteInput {
 #[derive(Debug, Serialize)]
 struct PageBodyWriteInput {
     locale: String,
-    content: String,
-    format: Option<String>,
-    #[serde(rename = "contentJson")]
-    content_json: Option<Value>,
+    document: Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -335,9 +332,7 @@ pub async fn create_page(
                 template: draft.template,
                 body: Some(PageBodyWriteInput {
                     locale: draft.locale,
-                    content: draft.body_content,
-                    format: Some(draft.body_format),
-                    content_json: Some(draft.body_content_json),
+                    document: draft.document,
                 }),
                 channel_slugs: Some(draft.channel_slugs),
                 publish: Some(false),
@@ -350,39 +345,26 @@ pub async fn create_page(
     Ok(response.create_page)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn patch_page_metadata(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    id: String,
-    expected_version: i32,
-    locale: String,
-    title: String,
-    slug: String,
-    meta_title: Option<String>,
-    meta_description: Option<String>,
-    template: Option<String>,
-    channel_slugs: Vec<String>,
-) -> Result<PageDetail, ApiError> {
+pub async fn patch_page_metadata(patch: PageMetadataPatch) -> Result<PageDetail, ApiError> {
     let response: PatchPageMetadataResponse = request(
         PATCH_PAGE_METADATA_MUTATION,
         PageWriteVariables {
-            id,
+            id: patch.page_id,
             input: PatchPageMetadataInput {
-                expected_version,
+                expected_version: patch.expected_version,
                 translations: Some(vec![PageTranslationWriteInput {
-                    locale,
-                    title,
-                    slug: Some(slug),
-                    meta_title,
-                    meta_description,
+                    locale: patch.locale,
+                    title: patch.title,
+                    slug: Some(patch.slug),
+                    meta_title: patch.meta_title,
+                    meta_description: patch.meta_description,
                 }]),
-                template,
-                channel_slugs: Some(channel_slugs),
+                template: patch.template,
+                channel_slugs: Some(patch.channel_slugs),
             },
         },
-        token,
-        tenant_slug,
+        patch.token,
+        patch.tenant_slug,
     )
     .await?;
     Ok(response.patch_page_metadata)
@@ -404,9 +386,7 @@ pub async fn save_page_document(
                 expected_revision,
                 body: PageBodyWriteInput {
                     locale,
-                    content: String::new(),
-                    format: Some("grapesjs".to_string()),
-                    content_json: Some(project_data),
+                    document: project_data,
                 },
             },
         },

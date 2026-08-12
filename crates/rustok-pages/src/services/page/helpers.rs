@@ -14,11 +14,8 @@ use rustok_api::{
 use rustok_content::{
     available_locales_from, entities::node::ContentStatus, normalize_locale_code,
 };
-use rustok_core::{
-    CONTENT_FORMAT_GRAPESJS, CONTENT_FORMAT_RT_JSON_V1, normalize_content_format,
-    prepare_content_payload,
-};
 use rustok_events::DomainEvent;
+use rustok_page_builder::{PAGE_BUILDER_DOCUMENT_FORMAT, validate_page_builder_document};
 
 use crate::dto::{PageBodyInput, PageBodyResponse, PageTranslationInput, PageTranslationResponse};
 use crate::entities::{page, page_body, page_channel_visibility, page_translation};
@@ -60,33 +57,12 @@ pub(super) fn normalize_page_body_input(
         return Ok(None);
     };
     let locale = normalize_locale(&body.locale)?;
-    let format =
-        normalize_content_format(body.format.as_deref()).map_err(PagesError::validation)?;
-    if body_requires_json_payload(&format)
-        && body.content_json.is_none()
-        && body.content.trim().is_empty()
-    {
-        return Err(PagesError::validation(format!(
-            "content_json is required for {format} format"
-        )));
-    }
-    let markdown_source = if body.content.trim().is_empty() {
-        None
-    } else {
-        Some(body.content.as_str())
-    };
-    let prepared_body = prepare_content_payload(
-        Some(&format),
-        markdown_source,
-        body.content_json.as_ref(),
-        &locale,
-        "Body",
-    )
-    .map_err(PagesError::validation)?;
+    let document = body.document;
+    validate_page_builder_document(&document).map_err(PagesError::validation)?;
     Ok(Some(PreparedPageBody {
         locale,
-        content: prepared_body.body,
-        format: prepared_body.format,
+        content: document.to_string(),
+        format: PAGE_BUILDER_DOCUMENT_FORMAT.to_string(),
     }))
 }
 
@@ -156,7 +132,7 @@ pub(super) fn is_builder_properties_enabled(settings: &serde_json::Value) -> boo
 }
 
 pub(super) fn body_uses_builder_capability(body: Option<&PreparedPageBody>) -> bool {
-    body.is_some_and(|item| item.format == CONTENT_FORMAT_GRAPESJS)
+    body.is_some_and(|item| item.format == PAGE_BUILDER_DOCUMENT_FORMAT)
 }
 
 pub(super) fn resolve_translation_record<'a>(
@@ -207,13 +183,13 @@ pub(super) fn collect_builder_sources(
     let mut sources = BTreeMap::<String, String>::new();
     if include_existing {
         for body in existing_bodies {
-            if body.format == CONTENT_FORMAT_GRAPESJS {
+            if body.format == PAGE_BUILDER_DOCUMENT_FORMAT {
                 sources.insert(body.locale.clone(), body.content.clone());
             }
         }
     }
     if let Some(candidate) = candidate {
-        if candidate.format == CONTENT_FORMAT_GRAPESJS {
+        if candidate.format == PAGE_BUILDER_DOCUMENT_FORMAT {
             sources.insert(candidate.locale.clone(), candidate.content.clone());
         } else {
             sources.remove(&candidate.locale);
@@ -440,12 +416,11 @@ pub(super) fn page_translation_response(
 }
 
 pub(super) fn page_body_response(body: &page_body::Model) -> PageBodyResponse {
-    let content_json =
-        if body.format == CONTENT_FORMAT_RT_JSON_V1 || body.format == CONTENT_FORMAT_GRAPESJS {
-            serde_json::from_str(&body.content).ok()
-        } else {
-            None
-        };
+    let content_json = if body.format == PAGE_BUILDER_DOCUMENT_FORMAT {
+        serde_json::from_str(&body.content).ok()
+    } else {
+        None
+    };
     PageBodyResponse {
         locale: body.locale.clone(),
         content: body.content.clone(),
@@ -453,10 +428,6 @@ pub(super) fn page_body_response(body: &page_body::Model) -> PageBodyResponse {
         content_json,
         updated_at: body.updated_at.to_string(),
     }
-}
-
-fn body_requires_json_payload(format: &str) -> bool {
-    matches!(format, CONTENT_FORMAT_RT_JSON_V1 | CONTENT_FORMAT_GRAPESJS)
 }
 
 pub(super) fn available_locales(translations: &[page_translation::Model]) -> Vec<String> {
@@ -520,9 +491,7 @@ mod tests {
     fn builder_body_locale_is_normalized_before_source_collection() {
         let prepared = normalize_page_body_input(Some(PageBodyInput {
             locale: " EN ".to_string(),
-            content: String::new(),
-            format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-            content_json: Some(serde_json::json!({})),
+            document: serde_json::json!({}),
         }))
         .expect("valid builder body")
         .expect("prepared body");

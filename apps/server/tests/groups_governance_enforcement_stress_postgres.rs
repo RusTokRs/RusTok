@@ -42,10 +42,9 @@ async fn connect(url: &str) -> DatabaseConnection {
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply for PostgreSQL governance stress evidence");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply for PostgreSQL governance stress evidence",
+        );
     }
 }
 
@@ -207,15 +206,7 @@ async fn governance_enforcement_fanout_contention_is_deadlock_free_postgres() {
         let targets = (0..TARGETS_PER_ROUND)
             .map(|_| Uuid::new_v4())
             .collect::<Vec<_>>();
-        seed_group_fixture(
-            &fixture_db,
-            tenant_id,
-            group_id,
-            owner_id,
-            &targets,
-            round,
-        )
-        .await;
+        seed_group_fixture(&fixture_db, tenant_id, group_id, owner_id, &targets, round).await;
 
         let base_version = group_version(&fixture_db, tenant_id, group_id).await;
         assert_eq!(
@@ -290,10 +281,12 @@ async fn governance_enforcement_fanout_contention_is_deadlock_free_postgres() {
                 tokio::join!(role_task, suspension_task)
             })
             .await
-            .expect("PostgreSQL governance/enforcement stress pair must not deadlock or exceed timeout");
+            .expect(
+                "PostgreSQL governance/enforcement stress pair must not deadlock or exceed timeout",
+            );
 
-            let role_result = role_join
-                .expect("PostgreSQL governance stress task should join without panic");
+            let role_result =
+                role_join.expect("PostgreSQL governance stress task should join without panic");
             let suspension_result = suspension_join
                 .expect("PostgreSQL enforcement stress task should join without panic");
 

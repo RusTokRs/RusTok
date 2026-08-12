@@ -1,10 +1,9 @@
 # FORUM-20AV reply-create audience enforcement
 
-Status: source-ready / unvalidated.
+Status: source-ready / partially validated.
 
 This note records the delivered owner boundary only. The canonical Forum roadmap
-remains [`implementation-plan.md`](implementation-plan.md); this file does not
-replace or duplicate its backlog.
+remains [`implementation-plan.md`](implementation-plan.md); this file does not replace or duplicate its backlog.
 
 ## Delivered
 
@@ -19,19 +18,18 @@ replace or duplicate its backlog.
   closed before the raw reply owner is called.
 - `ReplyService::create` and `ReplyService::create_command` both route through
   the owner gate. Additive context-aware variants support exact future transport
-  composition without changing existing DTOs.
+  composition without changing the canonical DTOs.
 - Authorization completes before reply-body/relation preparation and before
   reply, body, relation, counter, user-stat, or domain-event writes.
 - Denials use one generic public message and do not disclose the failing
   category layer.
 
-## Compatibility
+## Current boundary
 
-Categories without a configured reply-create layer retain historical behavior.
+Categories without a configured reply-create layer use the canonical unrestricted policy.
 No migration, DTO, GraphQL, REST, OpenAPI, or dependency change was introduced
-in this owner slice. At the original FORUM-20AV boundary GraphQL and REST still
-called context-free methods; `FORUM-20AW` subsequently composed exact
-authenticated transport context without changing DTOs.
+in this owner slice. GraphQL and REST now compose exact authenticated transport
+context through the delivered `FORUM-20AW` boundary.
 
 Authoritative Forum trust is now published by the Forum owner and host-composed
 through `ForumUserTrustAudienceFactsPort`. This slice did not create that trust
@@ -45,6 +43,6 @@ and existing moderation transport composition through `FORUM-20AZ`.
 
 ## Verification status
 
-The implementation agent did not run tests, Cargo commands, formatting,
-verifiers, workflow checks, or CI. Maintainer commands are recorded in
+The source verifier was executed on 2026-08-11. The retained SQLite/runtime
+evidence, workflows, and CI remain pending and are recorded in
 `forum-reply-create-audience-enforcement.json`.

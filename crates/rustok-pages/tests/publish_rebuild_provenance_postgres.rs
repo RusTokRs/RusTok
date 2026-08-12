@@ -2,19 +2,20 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
+use rustok_pages::PagesModule;
 use rustok_pages::dto::{
     CreatePageInput, PageBodyInput, PageBodyRevisionInput, PageTranslationInput, PublishPageInput,
     ReviewedPagePublishRuntimeInput, SavePageDocumentInput,
 };
 use rustok_pages::entities::{
-    page_body, page_publish_operation, page_publish_operation_artifact, page_publish_rebuild_source,
-    page_published_landing_artifact, page_static_landing_artifact,
+    page_body, page_publish_operation, page_publish_operation_artifact,
+    page_publish_rebuild_source, page_published_landing_artifact, page_static_landing_artifact,
 };
 use rustok_pages::services::PageService;
-use rustok_pages::PagesModule;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
     DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set, Statement,
@@ -82,8 +83,8 @@ impl TestDatabase {
 }
 
 #[tokio::test]
-async fn reviewed_publish_retains_exact_provenance_and_rolls_back_aggregate_mismatch_on_postgres(
-) -> TestResult<()> {
+async fn reviewed_publish_retains_exact_provenance_and_rolls_back_aggregate_mismatch_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -128,9 +129,7 @@ async fn reviewed_publish_retains_exact_provenance_and_rolls_back_aggregate_mism
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&en_project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: en_project.clone(),
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -153,9 +152,7 @@ async fn reviewed_publish_retains_exact_provenance_and_rolls_back_aggregate_mism
                 expected_revision: format!("page:{}:initial", draft.id),
                 body: PageBodyInput {
                     locale: "fr".to_string(),
-                    content: serde_json::to_string(&fr_project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: fr_project.clone(),
                 },
             },
         )
@@ -202,7 +199,10 @@ async fn reviewed_publish_retains_exact_provenance_and_rolls_back_aggregate_mism
         .await?;
     assert_eq!(sources.len(), 2);
     assert_eq!(
-        sources.iter().map(|source| source.locale.as_str()).collect::<Vec<_>>(),
+        sources
+            .iter()
+            .map(|source| source.locale.as_str())
+            .collect::<Vec<_>>(),
         vec!["en", "fr"]
     );
 
@@ -255,7 +255,7 @@ async fn assert_source_matches_published_locale(
 ) -> TestResult<()> {
     assert_eq!(source.tenant_id, tenant_id);
     assert_eq!(source.page_id, page_id);
-    assert_eq!(source.source_format, CONTENT_FORMAT_GRAPESJS);
+    assert_eq!(source.source_format, PAGE_BUILDER_DOCUMENT_FORMAT);
     assert_eq!(source.source_revision, expected_revision);
     assert_eq!(source.review_hash, expected_review_hash);
     assert_eq!(source.sanitized_hash.len(), 64);
@@ -293,7 +293,10 @@ async fn assert_source_matches_published_locale(
         artifact.materialization_identity.as_ref(),
         Some(&source.materialization_identity)
     );
-    assert_eq!(artifact.runtime_snapshots.as_ref(), Some(&source.runtime_snapshots));
+    assert_eq!(
+        artifact.runtime_snapshots.as_ref(),
+        Some(&source.runtime_snapshots)
+    );
     Ok(())
 }
 
@@ -350,10 +353,12 @@ async fn assert_aggregate_mismatch_rolls_back(
     }
     txn.rollback().await?;
 
-    assert!(page_publish_operation::Entity::find_by_id(fake_operation_id)
-        .one(db)
-        .await?
-        .is_none());
+    assert!(
+        page_publish_operation::Entity::find_by_id(fake_operation_id)
+            .one(db)
+            .await?
+            .is_none()
+    );
     assert_eq!(
         page_publish_operation_artifact::Entity::find()
             .filter(page_publish_operation_artifact::Column::OperationId.eq(fake_operation_id))
@@ -415,10 +420,12 @@ async fn assert_provenance_survives_artifact_row_loss(
         .exec(db)
         .await?;
     assert_eq!(deleted.rows_affected, 1);
-    assert!(page_static_landing_artifact::Entity::find_by_id(source.artifact_id)
-        .one(db)
-        .await?
-        .is_none());
+    assert!(
+        page_static_landing_artifact::Entity::find_by_id(source.artifact_id)
+            .one(db)
+            .await?
+            .is_none()
+    );
 
     let retained_after = page_publish_rebuild_source::Entity::find_by_id(source.id)
         .one(db)

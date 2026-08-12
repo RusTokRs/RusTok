@@ -1,4 +1,4 @@
-use rustok_api::RichTextView;
+use rustok_api::{RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -58,6 +58,42 @@ pub struct BlogCommentListItem {
     pub parent_comment_id: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlogCommentCreateRequest {
+    pub post_id: String,
+    pub locale: String,
+    pub content: RichTextDocument,
+    pub parent_comment_id: Option<String>,
+}
+
+impl BlogCommentCreateRequest {
+    pub fn for_post(post_id: String, locale: String, content: RichTextDocument) -> Self {
+        Self {
+            post_id,
+            locale,
+            content,
+            parent_comment_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlogCommentDetail {
+    pub id: String,
+    pub requested_locale: String,
+    pub effective_locale: String,
+    pub post_id: String,
+    pub author_id: Option<String>,
+    pub content: RichTextView,
+    pub content_plain_text: String,
+    pub status: String,
+    pub parent_comment_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

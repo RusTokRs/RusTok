@@ -3,8 +3,8 @@ use leptos::task::spawn_local;
 use leptos_use::use_interval_fn;
 use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
-    InstallProfile, InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode, SecretRef,
-    SecretValue, SeedProfile, TenantBootstrap,
+    InstallProfile, InstallTopology, InstallTopologyMode, InstancePlacement, ModuleSelection,
+    SecretMode, SecretRef, SecretValue, SeedProfile, TenantBootstrap,
 };
 
 use crate::features::installer::transport;
@@ -25,6 +25,7 @@ where
 #[component]
 pub fn InstallerPage() -> impl IntoView {
     let (setup_token, set_setup_token) = signal(String::new());
+    let (instance_root, set_instance_root) = signal("rustok-instance".to_string());
     let (environment, set_environment) = signal("local".to_string());
     let (profile, set_profile) = signal("dev_local".to_string());
     let (database_engine, set_database_engine) = signal("postgres".to_string());
@@ -90,6 +91,7 @@ pub fn InstallerPage() -> impl IntoView {
 
     let build_plan = move || {
         build_install_plan(
+            instance_root.get_untracked(),
             environment.get_untracked(),
             profile.get_untracked(),
             database_engine.get_untracked(),
@@ -255,6 +257,13 @@ pub fn InstallerPage() -> impl IntoView {
                         </div>
 
                         <div class="grid gap-4 md:grid-cols-2">
+                            <TextField
+                                label="Instance root"
+                                value=instance_root
+                                set_value=set_instance_root
+                                type_="text"
+                                placeholder=". or D:\\Sites\\shop-a"
+                            />
                             <SelectField
                                 label="Environment"
                                 value=environment
@@ -274,7 +283,6 @@ pub fn InstallerPage() -> impl IntoView {
                                     ("dev_local".to_string(), "Dev local".to_string()),
                                     ("monolith".to_string(), "Monolith".to_string()),
                                     ("hybrid_admin".to_string(), "Hybrid admin".to_string()),
-                                    ("headless_next".to_string(), "Headless Next".to_string()),
                                     ("headless_leptos".to_string(), "Headless Leptos".to_string()),
                                 ]
                             />
@@ -679,6 +687,7 @@ fn CheckboxField(
 
 #[allow(clippy::too_many_arguments)]
 fn build_install_plan(
+    instance_root: String,
     environment: String,
     profile: String,
     database_engine: String,
@@ -698,12 +707,14 @@ fn build_install_plan(
     disable_modules: String,
 ) -> Result<InstallPlan, String> {
     let tenant_slug = require_text("Tenant slug", tenant_slug)?;
+    let instance_root = require_text("Instance root", instance_root)?;
     let tenant_name = require_text("Tenant name", tenant_name)?;
     let admin_email = require_text("Admin email", admin_email)?;
     require_secret("Database URL", &database_url, &database_secret_key)?;
     require_secret("Admin password", &admin_password, &admin_secret_key)?;
 
     Ok(InstallPlan {
+        placement: InstancePlacement::new(instance_root),
         environment: parse_environment(&environment)?,
         profile: parse_profile(&profile)?,
         database: DatabaseConfig {
@@ -814,7 +825,6 @@ fn parse_profile(value: &str) -> Result<InstallProfile, String> {
         "dev_local" => Ok(InstallProfile::DevLocal),
         "monolith" => Ok(InstallProfile::Monolith),
         "hybrid_admin" => Ok(InstallProfile::HybridAdmin),
-        "headless_next" => Ok(InstallProfile::HeadlessNext),
         "headless_leptos" => Ok(InstallProfile::HeadlessLeptos),
         _ => Err(format!("Unknown profile `{value}`.")),
     }

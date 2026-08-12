@@ -1,12 +1,16 @@
 use crate::comments_pagination::{COMMENTS_PAGE_SIZE, bounded_comments_request_page};
 use crate::core::BlogStorefrontFetchRequest;
-use crate::model::{BlogPostDetail, BlogPostList, StorefrontBlogData};
+use crate::model::{
+    BlogCommentCreateRequest, BlogCommentDetail, BlogPostDetail, BlogPostList, StorefrontBlogData,
+};
+use rustok_api::RichTextDocument;
 use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use super::{ApiError, configured_tenant_slug};
 
 const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String, $commentsPage: Int!, $commentsPerPage: Int!) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt content { document html } contentPlainText status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { availability cachedSnapshot total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status publishedAt } } }";
+const CREATE_BLOG_COMMENT_MUTATION: &str = "mutation CreateBlogComment($postId: UUID!, $input: CreateBlogCommentInput!) { createBlogComment(postId: $postId, input: $input) { id requestedLocale effectiveLocale postId authorId content { document html } contentPlainText status parentCommentId createdAt updatedAt } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontBlogResponse {
@@ -25,6 +29,27 @@ struct StorefrontBlogVariables {
     comments_page: u64,
     #[serde(rename = "commentsPerPage")]
     comments_per_page: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateBlogCommentResponse {
+    #[serde(rename = "createBlogComment")]
+    create_blog_comment: BlogCommentDetail,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateBlogCommentVariables {
+    #[serde(rename = "postId")]
+    post_id: String,
+    input: CreateBlogCommentInput,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateBlogCommentInput {
+    locale: String,
+    content: RichTextDocument,
+    #[serde(rename = "parentCommentId")]
+    parent_comment_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -56,7 +81,7 @@ fn graphql_url() -> String {
     }
 }
 
-async fn request<V, T>(query: &str, variables: V) -> Result<T, ApiError>
+async fn request<V, T>(query: &str, variables: V, token: Option<String>) -> Result<T, ApiError>
 where
     V: Serialize,
     T: for<'de> Deserialize<'de>,
@@ -64,7 +89,7 @@ where
     execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(query, Some(variables)),
-        None,
+        token,
         configured_tenant_slug(),
         None,
     )
@@ -90,6 +115,7 @@ pub async fn fetch_blog(
             comments_page: bounded_comments_request_page(comments_page),
             comments_per_page: COMMENTS_PAGE_SIZE,
         },
+        None,
     )
     .await?;
 
@@ -97,4 +123,25 @@ pub async fn fetch_blog(
         selected_post: response.selected_post,
         posts: response.posts,
     })
+}
+
+pub async fn create_comment(
+    token: Option<String>,
+    request_data: BlogCommentCreateRequest,
+) -> Result<BlogCommentDetail, ApiError> {
+    let response: CreateBlogCommentResponse = request(
+        CREATE_BLOG_COMMENT_MUTATION,
+        CreateBlogCommentVariables {
+            post_id: request_data.post_id,
+            input: CreateBlogCommentInput {
+                locale: request_data.locale,
+                content: request_data.content,
+                parent_comment_id: request_data.parent_comment_id,
+            },
+        },
+        token,
+    )
+    .await?;
+
+    Ok(response.create_blog_comment)
 }

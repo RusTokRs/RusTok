@@ -23,8 +23,16 @@ const projectionHarnessCommand = 'cargo test -p rustok-blog --lib services::comm
 const projectionPostgresHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_postgres_test';
 const projectionRestartHarnessCommand = 'RUSTOK_BLOG_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-blog --test comment_projection_restart_postgres_test';
 const projectionPostgresHarnessEnvironment = 'RUSTOK_BLOG_TEST_DATABASE_URL';
-const richtextInventoryPath = 'crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json';
-const richtextInventoryDocPath = 'crates/rustok-blog/docs/richtext-cutover-inventory.md';
+const blogInitialMigrationPath = 'crates/rustok-blog/src/migrations/m20260328_000001_create_blog_post_tables.rs';
+const removedRichtextArtifacts = [
+  'crates/rustok-blog/src/migrations/m20260730_000006_cutover_blog_article_richtext.rs',
+  'crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs',
+  'crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json',
+  'crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json',
+  'crates/rustok-blog/docs/richtext-cutover-inventory.md',
+  'scripts/verify/verify-blog-richtext-offline-backfill.mjs',
+  'scripts/verify/verify-blog-richtext-offline-backfill.test.mjs',
+];
 const categorySearchReindexPath = 'crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json';
 const graphqlRateLimitPath = 'crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json';
 const aiRichtextBoundaryPath = 'crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json';
@@ -37,7 +45,6 @@ const consumerRuntimeOrderSmoke = json(consumerRuntimeOrderSmokePath);
 const commentsEventProjection = json(commentsEventProjectionPath);
 const projectionPostgresHarness = read(projectionPostgresHarnessPath);
 const projectionRestartHarness = read(projectionRestartHarnessPath);
-const richtextInventory = json(richtextInventoryPath);
 const categorySearchReindex = json(categorySearchReindexPath);
 const graphqlRateLimit = json(graphqlRateLimitPath);
 const aiRichtextBoundary = json(aiRichtextBoundaryPath);
@@ -96,8 +103,6 @@ sameSet(
   ['restarted_handler_reuses_delivery_ledger_without_reapplying_counter'],
   'comments event projection restart cases',
 );
-if (registry.evidence.richtext_cutover_inventory !== richtextInventoryPath) fail('richtext cutover inventory registry path drift');
-if (registry.evidence.richtext_cutover_inventory_doc !== richtextInventoryDocPath) fail('richtext cutover inventory doc registry path drift');
 if (registry.evidence.category_search_reindex !== categorySearchReindexPath) fail('category Search reindex registry path drift');
 if (categorySearchReindex.module !== 'blog' || categorySearchReindex.surface !== 'category_search_reindex') fail('category Search reindex identity drift');
 if (categorySearchReindex.status !== 'source_verified_no_compile' || categorySearchReindex.compile_policy !== 'not_run_by_request') fail('category Search reindex status drift');
@@ -118,84 +123,20 @@ sameSet(dependency.fallback_profiles, provider.consumers?.find(c => c.module ===
 sameSet(dependency.degraded_modes, provider.consumers?.find(c => c.module === 'blog')?.degraded_modes ?? [], 'consumer/provider degraded modes');
 if (dependency.context !== 'rustok_api::ports::PortContext' || dependency.error !== 'rustok_api::ports::PortError') fail('consumer context/error drift');
 
-if (richtextInventory.schema_version !== 3) fail('richtext cutover inventory schema_version drift');
-if (richtextInventory.module !== 'blog' || richtextInventory.surface !== 'article_richtext_cutover') fail('richtext cutover inventory identity drift');
-if (richtextInventory.status !== 'implemented_source_verified_no_compile') fail('richtext cutover inventory status drift');
-if (richtextInventory.compile_policy !== 'not_run_by_request' || richtextInventory.atomicity !== 'required') fail('richtext cutover inventory execution/atomicity drift');
-if (richtextInventory.owner_contract?.write !== 'rustok_api::RichTextDocument'
-  || richtextInventory.owner_contract?.read !== 'rustok_api::RichTextView'
-  || richtextInventory.owner_contract?.plain_text !== 'server_derived'
-  || richtextInventory.owner_contract?.profile !== 'article') {
-  fail('richtext cutover owner contract drift');
-}
-const allowedRichtextStatuses = new Set([
-  'implemented_source_verified_no_compile',
-  'executable_no_run',
-]);
-for (const check of richtextInventory.checks ?? []) {
-  if (!check.name || !check.path || !allowedRichtextStatuses.has(check.status)) {
-    fail(`invalid richtext inventory check ${JSON.stringify(check)}`);
-  }
-  const source = read(check.path);
-  hasAll(source, check.required_markers ?? [], `richtext inventory ${check.name}`);
-  hasNone(source, check.forbidden_markers ?? [], `richtext inventory ${check.name}`);
-}
-sameSet(
-  richtextInventory.blocking_surfaces ?? [],
-  [],
-  'richtext cutover blockers',
-);
-const richtextCheckNames = new Set((richtextInventory.checks ?? []).map((check) => check.name));
-for (const requiredCheck of [
-  'owner_article_projection',
-  'storage_schema',
-  'storage_migration',
-  'offline_backfill',
-  'graphql_transport',
-  'next_admin',
-  'leptos_storefront_model',
-  'leptos_storefront_graphql',
-  'leptos_storefront_native',
-  'leptos_storefront_rendering',
-  'leptos_storefront_legacy_removal',
-  'search_projection',
-  'seo_projection',
-  'ai_blog_draft_writer',
-  'content_orchestration_guard',
-]) {
-  if (!richtextCheckNames.has(requiredCheck)) fail(`richtext cutover inventory missing check ${requiredCheck}`);
-}
+const blogInitialMigration = read(blogInitialMigrationPath);
 hasAll(
-  richtextInventory.completion_conditions ?? [],
-  [
-    'storage_schema_uses_canonical_document_and_server_plain_text',
-    'legacy_rows_have_owner_specific_dry_run_backfill',
-    'search_indexes_server_derived_plain_text',
-    'seo_uses_server_derived_plain_text',
-    'ai_blog_drafts_write_richtext_document',
-    'no_markdown_format_alias_or_raw_json_write_path_remains',
-  ],
-  'richtext cutover completion conditions',
+  blogInitialMigration,
+  ['ColumnDef::new(BlogPostTranslations::Body).text().not_null()'],
+  'canonical Blog richtext storage schema',
 );
-const richtextInventoryDoc = read(richtextInventoryDocPath);
-hasAll(
-  richtextInventoryDoc,
-  [
-    richtextInventoryPath,
-    'Storage schema',
-    'crates/rustok-blog/src/bin/blog_article_richtext_backfill.rs',
-    'crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json',
-    'scripts/verify/verify-blog-richtext-offline-backfill.mjs',
-    'Search projection',
-    'SEO projection',
-    'AI Blog draft writer',
-    'AI Blog owner shim',
-    aiRichtextBoundaryPath,
-    'scripts/verify/verify-blog-ai-richtext-boundary.mjs',
-    'scripts/verify/verify-blog-fba.mjs',
-  ],
-  'richtext cutover inventory documentation',
+hasNone(
+  blogInitialMigration,
+  ['BodyFormat', 'body_format'],
+  'canonical Blog richtext storage schema',
 );
+for (const removedPath of removedRichtextArtifacts) {
+  if (fs.existsSync(removedPath)) fail(`removed Blog richtext artifact was restored: ${removedPath}`);
+}
 
 const manifest = read('crates/rustok-blog/rustok-module.toml');
 hasAll(manifest, ['[fba.consumer]', 'registry = "contracts/blog-fba-registry.json"', 'profile = "blog_post_comments"', 'comments.thread.v1'], 'manifest');

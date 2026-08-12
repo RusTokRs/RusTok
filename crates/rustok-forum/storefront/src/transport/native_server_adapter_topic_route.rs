@@ -1,7 +1,6 @@
-use crate::model::{
-    StorefrontForumTopicRouteDescriptor, StorefrontForumTopicRouteDisposition,
-    StorefrontForumTopicRouteResolution,
-};
+use crate::model::StorefrontForumTopicRouteResolution;
+#[cfg(feature = "ssr")]
+use crate::model::{StorefrontForumTopicRouteDescriptor, StorefrontForumTopicRouteDisposition};
 
 pub async fn resolve_storefront_topic_route_server(
     locale: String,
@@ -92,11 +91,7 @@ async fn storefront_topic_route_native(
                 )
             })?;
             let disclose = ForumTopicRouteTombstoneVisibilityService::new(db.clone())
-                .can_disclose_public_gone(
-                    tenant.id,
-                    topic_id,
-                    request.channel_slug.as_deref(),
-                )
+                .can_disclose_public_gone(tenant.id, topic_id, request.channel_slug.as_deref())
                 .await
                 .map_err(server_error)?;
             if !disclose {
@@ -106,9 +101,7 @@ async fn storefront_topic_route_native(
         }
 
         let canonical = resolution.canonical.as_ref().ok_or_else(|| {
-            ServerFnError::new(
-                "Forum topic route resolution did not provide a canonical target",
-            )
+            ServerFnError::new("Forum topic route resolution did not provide a canonical target")
         })?;
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
@@ -118,9 +111,7 @@ async fn storefront_topic_route_native(
                 )
             })?;
         let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
-            Some(facts) => {
-                ForumTopicAudienceReadService::with_audience_facts(db, event_bus, facts)
-            }
+            Some(facts) => ForumTopicAudienceReadService::with_audience_facts(db, event_bus, facts),
             None => ForumTopicAudienceReadService::new(db, event_bus),
         };
         let visible = if let Some(auth) = auth.as_ref() {

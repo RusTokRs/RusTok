@@ -28,6 +28,11 @@ pub use ui::leptos::CommentsAdmin;
 ${options.includeLeptos ? "use leptos::prelude::*;" : ""}
 pub(crate) struct CommentThreadsRequest;
 pub(crate) struct SetCommentStatusCommand;
+use rustok_api::RichTextView;
+pub(crate) struct CommentRowViewModel { pub body: RichTextView }
+fn map_comment(comment: CommentRecord) -> CommentRowViewModel {
+    CommentRowViewModel { body: comment.body.clone() }
+}
 pub(crate) const COMMENTS_ADMIN_THREAD_QUERY_KEY: &str = "thread_id";
 pub(crate) const COMMENTS_ADMIN_LOCALE_QUERY_KEY: &str = "locale";
 pub(crate) struct UiRouteQueryIntent;
@@ -37,12 +42,14 @@ pub(crate) fn comments_admin_locale_query_intent() -> UiRouteQueryIntent { UiRou
   writeFixtureFile(root, "crates/rustok-comments/admin/src/ui/leptos.rs", `
 use crate::core::{comments_admin_locale_query_intent, comments_admin_select_thread_query_intent};
 use crate::transport;
+use leptos_ui::RichTextHtml;
 
 pub fn CommentsAdmin() {
     let _ = comments_admin_select_thread_query_intent;
     let _ = comments_admin_locale_query_intent;
     let _ = transport::fetch_threads;
     let _ = apply_query_intent;
+    ${options.plainTextProjection ? "{comment_view_model.body};" : "<RichTextHtml view=comment_view_model.body content_locale=comment_view_model.effective_locale.clone() />;"}
     ${options.rawRoutePolicy ? 'let _ = AdminQueryKey::new("thread_id"); push_value("thread_id", "1");' : ""}
     ${options.rawTransport ? "let _ = native_server_adapter::fetch_threads;" : ""}
     ${options.rawApi ? "crate::api::fetch_threads().await;" : ""}
@@ -85,6 +92,7 @@ ssr = ["leptos/ssr", "rustok-api/server"]
 
 [dependencies]
 rustok-api = { workspace = true, default-features = false }
+leptos-ui.workspace = true
 `);
   writeFixtureFile(root, "crates/rustok-comments/docs/implementation-plan.md", `
 native-only comments admin exception
@@ -92,8 +100,9 @@ Host-neutral native admin transport
 HostRuntimeContext
 UiRouteQueryIntent
 verify-comments-admin-boundary.mjs
+shared \`RichTextHtml\`
 `);
-  writeFixtureFile(root, "docs/modules/registry.md", "verify-comments-admin-boundary.mjs\n");
+  writeFixtureFile(root, "docs/modules/registry.md", "verify-comments-admin-boundary.mjs Comments moderation renders server-derived richtext through the shared `RichTextHtml` boundary\n");
   if (options.legacyApiFile) {
     writeFixtureFile(root, "crates/rustok-comments/admin/src/api.rs", "pub async fn fetch_threads() {}\n");
   }
@@ -136,6 +145,10 @@ test("comments admin boundary verifier rejects legacy api facade", () => {
 
 test("comments admin boundary verifier rejects Leptos-specific core", () => {
   expectFailure({ includeLeptos: true }, /core must stay Leptos\/server-function free/);
+});
+
+test("comments admin boundary verifier rejects plain-text richtext rendering", () => {
+  expectFailure({ plainTextProjection: true }, /must render the typed owner projection|must not collapse the projection into a text node/);
 });
 
 test("comments admin boundary verifier rejects UI-owned route policy", () => {

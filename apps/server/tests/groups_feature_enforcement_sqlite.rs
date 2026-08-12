@@ -38,11 +38,9 @@ async fn connect(url: &str) -> DatabaseConnection {
     let db = Database::connect(options)
         .await
         .expect("Groups feature enforcement SQLite connection should open");
-    db.execute_unprepared(&format!(
-        "PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"
-    ))
-    .await
-    .expect("Groups feature enforcement SQLite connection should configure busy timeout");
+    db.execute_unprepared(&format!("PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"))
+        .await
+        .expect("Groups feature enforcement SQLite connection should configure busy timeout");
     db
 }
 
@@ -199,8 +197,8 @@ async fn feature_phase(
 
 #[tokio::test]
 async fn feature_settings_follow_suspension_and_owner_clock_expiry_sqlite() {
-    let temp = tempfile::tempdir()
-        .expect("temporary Groups feature enforcement directory should create");
+    let temp =
+        tempfile::tempdir().expect("temporary Groups feature enforcement directory should create");
     let url = sqlite_fixture_url(&temp);
     let db = connect(&url).await;
     db.execute_unprepared("PRAGMA journal_mode = WAL;")
@@ -272,7 +270,9 @@ async fn feature_settings_follow_suspension_and_owner_clock_expiry_sqlite() {
         "denied feature write must not advance the aggregate"
     );
     assert_eq!(
-        feature_phase(db.clone(), tenant_id, owner_id, group_id).await.as_deref(),
+        feature_phase(db.clone(), tenant_id, owner_id, group_id)
+            .await
+            .as_deref(),
         Some("before-suspension")
     );
 
@@ -287,7 +287,10 @@ async fn feature_settings_follow_suspension_and_owner_clock_expiry_sqlite() {
     )
     .await
     .expect("owner should read suspended feature administrator state");
-    assert_eq!(during.effective_status, GroupMembershipEffectiveStatus::Suspended);
+    assert_eq!(
+        during.effective_status,
+        GroupMembershipEffectiveStatus::Suspended
+    );
 
     let remaining = expires_at
         .signed_duration_since(Utc::now())
@@ -305,7 +308,10 @@ async fn feature_settings_follow_suspension_and_owner_clock_expiry_sqlite() {
     )
     .await
     .expect("owner-clock expiry should restore effective admin membership");
-    assert_eq!(after_expiry.effective_status, GroupMembershipEffectiveStatus::Active);
+    assert_eq!(
+        after_expiry.effective_status,
+        GroupMembershipEffectiveStatus::Active
+    );
     assert_eq!(after_expiry.membership_revision, Some(2));
 
     GroupCommandPort::set_group_feature(
@@ -326,7 +332,9 @@ async fn feature_settings_follow_suspension_and_owner_clock_expiry_sqlite() {
     );
     assert_eq!(member_count(&db, tenant_id, group_id).await, 2);
     assert_eq!(
-        feature_phase(db.clone(), tenant_id, owner_id, group_id).await.as_deref(),
+        feature_phase(db.clone(), tenant_id, owner_id, group_id)
+            .await
+            .as_deref(),
         Some("after-expiry")
     );
 
@@ -339,8 +347,8 @@ async fn feature_settings_follow_suspension_and_owner_clock_expiry_sqlite() {
 
 #[tokio::test]
 async fn feature_write_and_suspension_serialize_on_sqlite_group_writer() {
-    let temp = tempfile::tempdir()
-        .expect("temporary Groups feature concurrency directory should create");
+    let temp =
+        tempfile::tempdir().expect("temporary Groups feature concurrency directory should create");
     let url = sqlite_fixture_url(&temp);
     let fixture_db = connect(&url).await;
     fixture_db
@@ -410,13 +418,7 @@ async fn feature_write_and_suspension_serialize_on_sqlite_group_writer() {
         assert_eq!(suspension.membership_revision, 2);
         assert_eq!(suspension.member_count, 2);
 
-        let phase = feature_phase(
-            fixture_db.clone(),
-            tenant_id,
-            owner_id,
-            group_id,
-        )
-        .await;
+        let phase = feature_phase(fixture_db.clone(), tenant_id, owner_id, group_id).await;
         match feature_result {
             Ok(feature) => {
                 assert_eq!(feature.feature_key, "forum.discussions");

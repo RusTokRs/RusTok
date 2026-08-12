@@ -146,7 +146,7 @@ for (const marker of [
   "Resource::Pages",
   "Action::Update",
   "ensure_document_is_mutable(&page)?",
-  "CONTENT_FORMAT_GRAPESJS",
+  "PAGE_BUILDER_DOCUMENT_FORMAT",
 ]) need(grant, marker, "Pages inline grant owner");
 forbid(grant, "default-secret", "Pages inline grant owner");
 
@@ -284,8 +284,8 @@ for (const marker of [
   "authenticated route mount remains open",
 ]) need(plan, marker, "canonical plan");
 for (const marker of [
-  "authenticated inline grant issuer",
-  "document-only save transport",
+  "authenticated inline grants/save transport",
+  "document-only persistence owner",
   "authenticated route mount remains open",
 ]) need(localPlan, marker, "Pages local plan");
 for (const marker of [
@@ -293,7 +293,7 @@ for (const marker of [
   "direct authenticated user session",
   "fresh edit-session UUID",
   "existing `PageService::save_document` owner",
-  "authenticated route mount remains open",
+  "Route mount: open",
   "Execution evidence remains pending",
 ]) need(packet, marker, "authenticated inline consumer packet");
 

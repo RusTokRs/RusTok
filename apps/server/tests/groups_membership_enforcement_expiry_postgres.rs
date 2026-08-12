@@ -37,10 +37,9 @@ async fn connect(url: &str) -> DatabaseConnection {
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply in PostgreSQL expiry evidence schema");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply in PostgreSQL expiry evidence schema",
+        );
     }
 }
 
@@ -209,7 +208,8 @@ async fn postgres_group_membership_enforcement_expiry_and_revoke_restore_without
     let expiring_initial_revision =
         membership_revision(&fixture, tenant_id, expiring_user_id).await;
     let expiring_until = Utc::now() + chrono::Duration::seconds(2);
-    let expiring_command = GroupMembershipEnforcementCommandService::new(connect(&scoped_url).await);
+    let expiring_command =
+        GroupMembershipEnforcementCommandService::new(connect(&scoped_url).await);
     let expiring_suspension = GroupMembershipEnforcementCommandPort::suspend_membership(
         &expiring_command,
         user_write_context(
@@ -238,14 +238,8 @@ async fn postgres_group_membership_enforcement_expiry_and_revoke_restore_without
     assert_eq!(expiring_suspension.member_count, 3);
     assert_eq!(group_member_count(&fixture, tenant_id, group_id).await, 3);
 
-    let during_expiry = read_effective_state(
-        &fixture,
-        tenant_id,
-        owner_id,
-        group_id,
-        expiring_user_id,
-    )
-    .await;
+    let during_expiry =
+        read_effective_state(&fixture, tenant_id, owner_id, group_id, expiring_user_id).await;
     assert_eq!(
         during_expiry.effective_status,
         GroupMembershipEffectiveStatus::Suspended
@@ -260,14 +254,8 @@ async fn postgres_group_membership_enforcement_expiry_and_revoke_restore_without
 
     tokio::time::sleep(Duration::from_millis(2300)).await;
 
-    let after_expiry = read_effective_state(
-        &fixture,
-        tenant_id,
-        owner_id,
-        group_id,
-        expiring_user_id,
-    )
-    .await;
+    let after_expiry =
+        read_effective_state(&fixture, tenant_id, owner_id, group_id, expiring_user_id).await;
     assert_eq!(
         after_expiry.effective_status,
         GroupMembershipEffectiveStatus::Active
@@ -318,7 +306,8 @@ async fn postgres_group_membership_enforcement_expiry_and_revoke_restore_without
     );
     assert_eq!(group_member_count(&fixture, tenant_id, group_id).await, 3);
 
-    let before_revoke_projection = enforcement_projection(&fixture, tenant_id, revoked_user_id).await;
+    let before_revoke_projection =
+        enforcement_projection(&fixture, tenant_id, revoked_user_id).await;
     assert!(!before_revoke_projection.2);
     assert_eq!(before_revoke_projection.3, "direct_local");
 
@@ -338,7 +327,10 @@ async fn postgres_group_membership_enforcement_expiry_and_revoke_restore_without
     )
     .await
     .expect("owner should revoke an active direct-local suspension on PostgreSQL");
-    assert_eq!(revoked.effective_status, GroupMembershipEffectiveStatus::Active);
+    assert_eq!(
+        revoked.effective_status,
+        GroupMembershipEffectiveStatus::Active
+    );
     assert!(revoked.revoked_at.is_some());
     assert_eq!(
         revoked.membership_revision,
@@ -347,14 +339,8 @@ async fn postgres_group_membership_enforcement_expiry_and_revoke_restore_without
     assert_eq!(revoked.member_count, 3);
     assert_eq!(group_member_count(&fixture, tenant_id, group_id).await, 3);
 
-    let after_revoke = read_effective_state(
-        &fixture,
-        tenant_id,
-        owner_id,
-        group_id,
-        revoked_user_id,
-    )
-    .await;
+    let after_revoke =
+        read_effective_state(&fixture, tenant_id, owner_id, group_id, revoked_user_id).await;
     assert_eq!(
         after_revoke.effective_status,
         GroupMembershipEffectiveStatus::Active
@@ -368,7 +354,8 @@ async fn postgres_group_membership_enforcement_expiry_and_revoke_restore_without
     assert!(revoked_projection.revoked_at.is_some());
     assert_eq!(revoked_projection.source_kind.as_str(), "direct_local");
 
-    let after_revoke_projection = enforcement_projection(&fixture, tenant_id, revoked_user_id).await;
+    let after_revoke_projection =
+        enforcement_projection(&fixture, tenant_id, revoked_user_id).await;
     assert_eq!(
         after_revoke_projection.0,
         before_revoke_projection.0 + 1,

@@ -33,4 +33,4 @@ proptest = "1.11"
 
 [features]
 default = []
-graphql = ["dep:async-graphql", "async-graphql/dataloader", "rustok-api/server"]
+graphql = ["dep:async-graphql", "rustok-api/server"]

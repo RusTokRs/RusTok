@@ -40,11 +40,9 @@ async fn connect(url: &str) -> DatabaseConnection {
     let db = Database::connect(options)
         .await
         .expect("Groups governance stress SQLite connection should open");
-    db.execute_unprepared(&format!(
-        "PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"
-    ))
-    .await
-    .expect("Groups governance stress SQLite connection should configure busy timeout");
+    db.execute_unprepared(&format!("PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"))
+        .await
+        .expect("Groups governance stress SQLite connection should configure busy timeout");
     db
 }
 
@@ -196,8 +194,8 @@ async fn active_enforcement_count(
 
 #[tokio::test]
 async fn governance_enforcement_fanout_contention_is_deadlock_free_sqlite() {
-    let temp = tempfile::tempdir()
-        .expect("temporary Groups governance stress directory should create");
+    let temp =
+        tempfile::tempdir().expect("temporary Groups governance stress directory should create");
     let url = sqlite_fixture_url(&temp);
     let fixture_db = connect(&url).await;
     fixture_db
@@ -213,15 +211,7 @@ async fn governance_enforcement_fanout_contention_is_deadlock_free_sqlite() {
         let targets = (0..TARGETS_PER_ROUND)
             .map(|_| Uuid::new_v4())
             .collect::<Vec<_>>();
-        seed_group_fixture(
-            &fixture_db,
-            tenant_id,
-            group_id,
-            owner_id,
-            &targets,
-            round,
-        )
-        .await;
+        seed_group_fixture(&fixture_db, tenant_id, group_id, owner_id, &targets, round).await;
 
         let base_version = group_version(&fixture_db, tenant_id, group_id).await;
         assert_eq!(
@@ -296,12 +286,14 @@ async fn governance_enforcement_fanout_contention_is_deadlock_free_sqlite() {
                 tokio::join!(role_task, suspension_task)
             })
             .await
-            .expect("SQLite governance/enforcement stress pair must not deadlock or exceed timeout");
+            .expect(
+                "SQLite governance/enforcement stress pair must not deadlock or exceed timeout",
+            );
 
-            let role_result = role_join
-                .expect("SQLite governance stress task should join without panic");
-            let suspension_result = suspension_join
-                .expect("SQLite enforcement stress task should join without panic");
+            let role_result =
+                role_join.expect("SQLite governance stress task should join without panic");
+            let suspension_result =
+                suspension_join.expect("SQLite enforcement stress task should join without panic");
 
             match (role_result, suspension_result) {
                 (Ok(role), Err(error)) => {

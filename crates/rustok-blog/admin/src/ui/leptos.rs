@@ -682,7 +682,9 @@ pub fn BlogAdmin() -> impl IntoView {
                             <BlogRichTextEditor
                                 document=content
                                 set_document=set_content
+                                content_locale=locale
                                 label=form_copy_view.content_label.clone()
+                                disabled=Signal::derive(move || busy_key.get().is_some())
                             />
 
                             <label class=shell_classes.locale_filter_label>

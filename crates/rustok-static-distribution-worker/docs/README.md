@@ -21,19 +21,21 @@ receipt; the singular path must not remain as a fallback publisher.
 
 Startup requires the following fixed deployment configuration:
 
-- `RUSTOK_STATIC_DISTRIBUTION_JOB_LAUNCHER` and its
+- `RUSTOK_INSTANCE_ROOT`;
+- instance-relative `RUSTOK_STATIC_DISTRIBUTION_JOB_LAUNCHER` and its
   `RUSTOK_STATIC_DISTRIBUTION_JOB_LAUNCHER_DIGEST`;
-- `RUSTOK_STATIC_DISTRIBUTION_JOB_CONFIG` and its
+- instance-relative `RUSTOK_STATIC_DISTRIBUTION_JOB_CONFIG` and its
   `RUSTOK_STATIC_DISTRIBUTION_JOB_CONFIG_DIGEST`;
-- `RUSTOK_STATIC_DISTRIBUTION_WORK_ROOT`;
 - `RUSTOK_STATIC_DISTRIBUTION_TOOLCHAIN_DIGEST`;
 - `RUSTOK_STATIC_DISTRIBUTION_BUILD_TARGET`;
 - the `RUSTOK_STATIC_DISTRIBUTION_*` mTLS listener settings owned by
   `rustok-worker-transport`.
 
-The launcher and configuration must be absolute non-symlink regular files and
+The launcher and configuration are resolved beneath the selected instance root
+and must be non-symlink regular files
 must match their lowercase SHA-256 digests at startup, readiness, and execution.
-The work root must be an absolute non-symlink directory. Readiness fails closed
+The work root is always `<instance-root>/work/static-distribution` and must be
+a non-symlink directory. Readiness fails closed
 when any of these identities changes.
 For the default local installation, the trusted installer derives the work
 root from `<instance-root>/work/static-distribution`; a dedicated build host may

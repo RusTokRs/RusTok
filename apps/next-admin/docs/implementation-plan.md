@@ -37,9 +37,17 @@ entrypoints must not re-export `src/features/*` implementations.
   the shared framed vanilla Tiptap runtime is now wired through
   `@rustok/richtext`; `/richtext/frame` and its hashed assets are auth-exempt,
   immutable capability routes, and the Blog/Forum editor adapters consume
-  host `next-intl` messages. Remaining work is the atomic owner transport/data
-  cutover, moving Forum UI/API/navigation to its owner package, and removing
-  the legacy migration fields without adding a second Markdown/raw-JSON mode.
+  host `next-intl` messages. Owner-selected content locale, derived direction,
+  spellcheck and dynamic read-only state now update without remounting the
+  iframe; the Blog edit form takes that locale from the post's requested or
+  effective translation instead of overwriting it with the host UI locale.
+  Read-only Blog detail uses the editor-free `@rustok/richtext/view` boundary
+  over the typed server projection, so Tiptap is not imported for display.
+  The Forum owner package now provides matching topic create/edit and reply
+  composition routes over its GraphQL transport; the topic editor preserves
+  the requested/effective content locale and keeps route/category operations
+  separate from translation editing. Remaining work is complete mounted owner
+  parity without adding a second Markdown/raw-JSON mode.
 
 ## Open Improvement Areas
 
@@ -54,9 +62,15 @@ entrypoints must not re-export `src/features/*` implementations.
   save/reload coverage for the shared richtext editor and server-rendered view.
 
 The Chromium frame spike currently covers opaque-origin isolation, private
-channel sequencing, CSP headers, and canonical document changes. The Leptos
-Trunk/SSR host now copies the same immutable assets; Firefox/WebKit coverage
-and the first owner Leptos form wiring are still open evidence items.
+channel sequencing, CSP headers, canonical document changes, owner content
+locale/direction/spellcheck updates and dynamic read-only/editable transitions.
+The Leptos Trunk/SSR host copies the same immutable assets, and Blog article plus
+Forum topic forms mount the shared frame with owner locale and busy state. Next
+admin now mounts Forum topic create/edit and reply creation through the owner
+package, and the Leptos owner package now provides matching reply creation over
+native SSR/hydrate and GraphQL CSR paths. Firefox/WebKit coverage, comment
+authoring, dirty-locale-switch policy and mounted save/reload evidence remain
+open.
 
 ## Verification
 

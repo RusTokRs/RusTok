@@ -40,7 +40,7 @@ bootstrap logic.
 - `rustok-installer-cli`, selected by `rustok-cli`, provides `install plan`,
   `install preflight`, `install apply`, `install status`, and `seed apply`
   through the shared executor; it does not import `apps/server`.
-- The target local CLI accepts `--root <path>`, including a relative path
+- The local CLI requires `--root <path>`, including a relative path
   resolved from its invocation directory. The web wizard consumes only a
   root selected or allowed by its trusted local host adapter and cannot submit
   an unrestricted filesystem path.
@@ -56,14 +56,22 @@ bootstrap logic.
   `rustok-installer-persistence`; this foundation crate deliberately keeps no
   database adapter.
 - `rustok-distribution` supplies a composition revision/hash compatibility
-  check. Before preflight/apply, the trusted host additionally binds the exact
-  public `preparation_id`, distribution release, OCI bundle root, and role-set
-  digest from owner admission or the signed fresh-bootstrap receipt.
+  check. The distributed target additionally requires the trusted host to bind
+  the exact public `preparation_id`, distribution release, OCI bundle root, and
+  role-set digest from owner admission or the signed fresh-bootstrap receipt.
+  The HTTP host now resolves an exact locally selected release through the
+  current admitted `rustok-modules` ledger. HTTP and CLI hosts now verify the
+  bounded Ed25519 signature, signer-key digest, validity interval, immutable
+  bundle identity, and executable-composition match of a fresh-bootstrap
+  receipt before mutation. Importing that verified receipt into the sole owner
+  ledger before the remaining schema is applied remains open.
 - Under the accepted target, `rustok-build` constructs/validates the role plan,
   `rustok-static-distribution-worker` alone executes/publishes the complete
   bundle, and `rustok-modules` owns admission and desired/observed rollout. The
-  current per-role `rustok-build` active-release adapter is an atomic-cutover
-  gap, not an alternate production contract.
+  unsafe per-role `rustok-build` active-release adapter has been removed.
+  Distributed apply still fails closed until the desired/observed rollout
+  adapter is composed; the standalone CLI additionally needs its trusted owner
+  resolver.
 - The deployment controller and node agent are a separately signed,
   digest-pinned host-provisioning prerequisite. Installer preflight binds their
   exact tool release and external protocol revision, but installer apply and
@@ -71,17 +79,19 @@ bootstrap logic.
   `rustok-modules` coordinates their `operations_tool_maintenance` in the same
   canonical operation ledger and fleet fence; the host supervisor remains a
   narrow assignment executor with the predecessor tools retained.
-- The current install plan does not yet carry the portable instance placement;
-  adapter-specific absolute roots are an implementation gap to remove during
-  the same installer-layout cutover, not an alternative target contract.
+- The install plan carries one typed instance placement. Native apply creates
+  only the canonical relative layout, records `state/instance.json`, resumes
+  only the matching instance (including its exact create-new pending marker
+  after process loss), and rejects nonempty unmarked or overlapping roots
+  without deleting user-owned entries.
 
 ## Feature Boundary
 
 - The feature-neutral crate surface contains install plans, state, receipts,
   preflight, deployment hand-offs, secret references, and executor ports. It is
   safe for browser clients that only consume installer contracts.
-- `seed-runtime` is enabled by default for native server and CLI consumers. It
-  adds the seed workflow and its platform role dependency.
+- `host-runtime` and `seed-runtime` are enabled by default for native server and
+  CLI consumers. They add safe filesystem preparation and the seed workflow.
 - Browser consumers must disable default features; they do not execute tenant,
   identity, role, or module seed operations.
 
@@ -95,6 +105,9 @@ The current foundation API is exposed from the crate root:
 - `InstallReceipt`
 - `PreflightReport`
 - `evaluate_preflight`
+- `InstallDistributionBinding`
+- `InstallDistributionDeploymentRequest`
+- `execute_distributed_deployment`
 
 ## Verification
 

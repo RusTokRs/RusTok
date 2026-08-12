@@ -1,3 +1,5 @@
+import { isForumUuid, newForumUuid } from './identity';
+
 export const MAX_FORUM_TOPIC_MERGE_REASON_LENGTH = 500;
 
 export interface ForumTopicMergeCandidate {
@@ -48,13 +50,7 @@ export function forumTopicMergeCandidateLabel(
 }
 
 export function newForumTopicMergeOperationId(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-  const now = BigInt(Date.now());
-  const entropy = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
-  const value = ((now << 64n) ^ entropy).toString(16).padStart(32, '0').slice(-32);
-  return `${value.slice(0, 8)}-${value.slice(8, 12)}-4${value.slice(13, 16)}-8${value.slice(17, 20)}-${value.slice(20)}`;
+  return newForumUuid();
 }
 
 export function buildForumTopicMergeCommand(input: {
@@ -65,7 +61,7 @@ export function buildForumTopicMergeCommand(input: {
   winner?: ForumTopicMergeWinner;
 }): ForumTopicMergeCommand {
   const operationId = input.operationId.trim();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)) {
+  if (!isForumUuid(operationId)) {
     throw new Error('Merge operation identity is invalid.');
   }
   if (input.source.id === input.target.id) {

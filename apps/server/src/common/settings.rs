@@ -927,20 +927,6 @@ impl RustokSettings {
             )));
         }
 
-        if parsed.build.deployment.backend == BuildDeploymentBackendKind::Filesystem
-            && parsed
-                .build
-                .deployment
-                .filesystem_root_dir
-                .trim()
-                .is_empty()
-        {
-            return Err(serde_json::Error::io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "rustok.build.deployment.filesystem_root_dir must not be empty when backend=filesystem",
-            )));
-        }
-
         if parsed.build.deployment.backend == BuildDeploymentBackendKind::Http {
             let endpoint_url = parsed
                 .build
@@ -1867,33 +1853,12 @@ mod tests {
             settings.build.deployment.backend,
             BuildDeploymentBackendKind::RecordOnly
         );
-        assert_eq!(
-            settings.build.deployment.filesystem_root_dir,
-            "artifacts/releases"
-        );
         assert!(settings.build.deployment.public_base_url.is_none());
         assert!(settings.build.deployment.endpoint_url.is_none());
         assert!(settings.build.deployment.bearer_token.is_none());
         assert_eq!(settings.build.deployment.docker_bin, "docker");
         assert!(settings.build.deployment.image_repository.is_none());
         assert!(settings.build.deployment.rollout_command.is_none());
-
-        let raw = serde_json::json!({
-            "rustok": {
-                "build": {
-                    "deployment": {
-                        "backend": "filesystem",
-                        "filesystem_root_dir": ""
-                    }
-                }
-            }
-        });
-        let err = RustokSettings::from_settings(&Some(raw))
-            .expect_err("filesystem deployment validation");
-        assert!(
-            err.to_string()
-                .contains("rustok.build.deployment.filesystem_root_dir must not be empty")
-        );
 
         let raw = serde_json::json!({
             "rustok": {

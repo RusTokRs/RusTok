@@ -40,7 +40,9 @@ async fn install_groups_schema(db: &DatabaseConnection) {
 }
 
 fn sqlite_fixture_url(temp: &TempDir) -> String {
-    let path = temp.path().join("forum-groups-owner-backed-audience.sqlite");
+    let path = temp
+        .path()
+        .join("forum-groups-owner-backed-audience.sqlite");
     format!("sqlite://{}?mode=rwc", path.display())
 }
 
@@ -219,7 +221,8 @@ async fn exercise_owner_backed_forum_group_facts(db: &DatabaseConnection) {
 
 #[tokio::test]
 async fn forum_group_facts_follow_groups_owner_clock_sqlite() {
-    let temp = tempfile::tempdir().expect("temporary Forum Groups audience directory should create");
+    let temp =
+        tempfile::tempdir().expect("temporary Forum Groups audience directory should create");
     let url = sqlite_fixture_url(&temp);
     let db = connect(&url).await;
     assert_eq!(db.get_database_backend(), DatabaseBackend::Sqlite);

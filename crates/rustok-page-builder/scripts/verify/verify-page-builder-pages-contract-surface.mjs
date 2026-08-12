@@ -13,39 +13,52 @@ const checks = [
     file: "crates/rustok-pages/tests/integration.rs",
     label: "page CRUD and body sanitization contract tests",
     tokens: [
-      "test_page_lifecycle",
-      "test_create_page_rt_json_v1_sanitizes_payload",
-      "test_update_page_rt_json_v1_sanitizes_payload",
+      "page_create_emits_domain_event",
+      "document: serde_json::json!",
+    ],
+  },
+  {
+    file: "crates/rustok-pages/src/dto/page.rs",
+    label: "single Page Builder document write DTO",
+    tokens: [
+      "pub struct PageBodyInput {\n    pub locale: String,\n    pub document: Value,\n}",
+    ],
+  },
+  {
+    file: "crates/rustok-pages/src/graphql/types.rs",
+    label: "single Page Builder document GraphQL input",
+    tokens: [
+      "pub struct GqlPageBodyInput {\n    pub locale: String,\n    pub document: Value,\n}",
+    ],
+  },
+  {
+    file: "crates/rustok-pages/admin/src/transport/graphql_adapter.rs",
+    label: "single Page Builder document admin transport",
+    tokens: [
+      "struct PageBodyWriteInput {\n    locale: String,\n    document: Value,\n}",
+      "document: draft.document",
+      "document: project_data",
     ],
   },
   {
     file: "crates/rustok-pages/tests/page_builder_roundtrip.rs",
     label: "visual builder and page content bridge contract tests",
     tokens: [
-      "grapesjs_body_round_trips_on_create_and_get",
-      "grapesjs_body_round_trips_on_update",
-      "current_block_driven_page_round_trips_without_body",
-      "grapesjs_body_update_preserves_current_blocks",
+      "pages_write_api_is_split_by_owner_and_revision",
+      "document_and_metadata_services_cannot_cross_write",
+      "non_builder_publish_checks_locked_document_revisions_before_transition",
+      "current_fly_tree_remains_the_only_document_authority",
     ],
   },
   {
     file: "crates/rustok-pages/tests/page_service_kind_guard.rs",
-    label: "builder fallback and page/block kind guard contract tests",
+    label: "Pages lifecycle and Page Builder ownership guard tests",
     tokens: [
-      "publish_returns_page_not_found_for_block_id_and_keeps_page_status",
-      "delete_returns_page_not_found_for_block_id_and_keeps_page_record",
-      "pages_builder_fallback_all_on_allows_publish_and_keeps_read_list_paths",
-      "pages_builder_fallback_publish_off_blocks_grapesjs_publish_but_keeps_read_list_paths",
-      "pages_builder_fallback_preview_off_blocks_preview_publish_but_keeps_read_list_paths",
-      "pages_builder_fallback_builder_off_keeps_read_and_list_paths",
-      "preview_capability_returns_feature_disabled_when_preview_toggle_is_false",
-      "properties_capability_returns_feature_disabled_when_properties_toggle_is_false",
+      "lifecycle_operations_reject_unknown_page_ids",
+      "explicit_non_builder_publish_and_unpublish_advance_metadata_version",
+      "non_builder_lifecycle_rejects_builder_documents_with_stable_code",
+      "published_pages_must_be_unpublished_before_delete",
     ],
-  },
-  {
-    file: "crates/rustok-pages/tests/menu_service.rs",
-    label: "menu service contract tests",
-    tokens: ["menu_round_trip_uses_module_owned_storage"],
   },
   {
     file: "crates/rustok-pages/tests/page_locale_fallback.rs",
@@ -60,11 +73,8 @@ const checks = [
     file: "crates/rustok-pages/tests/rbac.rs",
     label: "RBAC and channel visibility contract tests",
     tokens: [
-      "manager_cannot_publish_via_create_or_update",
-      "customer_cannot_read_drafts_and_list_only_returns_published_pages",
-      "customer_cannot_mutate_blocks_or_menus",
-      "admin_bypasses_draft_status_filter_while_customer_is_restricted_to_published",
-      "public_channel_visibility_filters_pages_but_admin_list_bypasses_allowlist",
+      "manager_cannot_publish_during_create_or_non_builder_lifecycle_transition",
+      "customer_reads_only_published_pages",
     ],
   },
   {
@@ -89,7 +99,7 @@ for (const check of checks) {
   if (!fs.existsSync(filePath)) {
     fail(`${check.label}: missing file ${check.file}`);
   }
-  const content = fs.readFileSync(filePath, "utf8");
+  const content = fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
   for (const token of check.tokens) {
     if (!content.includes(token)) {
       fail(`${check.label}: ${check.file} missing token '${token}'`);

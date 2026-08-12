@@ -111,7 +111,9 @@ impl TryFrom<rustok_index::IndexReplayRunOutcome> for IndexReplayRunPayload {
                 rustok_index::IndexReplayRunStatus::AlreadyComplete => {
                     IndexReplayGraphqlRunStatus::AlreadyComplete
                 }
-                rustok_index::IndexReplayRunStatus::Complete => IndexReplayGraphqlRunStatus::Complete,
+                rustok_index::IndexReplayRunStatus::Complete => {
+                    IndexReplayGraphqlRunStatus::Complete
+                }
                 rustok_index::IndexReplayRunStatus::Cancelled => {
                     IndexReplayGraphqlRunStatus::Cancelled
                 }
@@ -186,9 +188,7 @@ impl TryFrom<IndexReplayShadowTransportOutcome> for IndexReplayShadowRunPayload 
             mutations_scanned: bounded_count(outcome.mutation_count())?,
             upsert_count: bounded_count(outcome.upsert_count())?,
             delete_count: bounded_count(outcome.delete_count())?,
-            continuation: outcome
-                .next_token()
-                .map(|token| token.as_str().to_owned()),
+            continuation: outcome.next_token().map(|token| token.as_str().to_owned()),
         })
     }
 }
@@ -264,8 +264,8 @@ impl IndexReplayMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let (operator_context, request) =
-            prepare_authorized_run(tenant.id, auth.user_id, input).map_err(map_preparation_error)?;
+        let (operator_context, request) = prepare_authorized_run(tenant.id, auth.user_id, input)
+            .map_err(map_preparation_error)?;
         let runtime = replay_runtime(ctx)?;
         let stop_handle = ctx.data::<StopHandle>()?.clone();
         runtime
@@ -337,9 +337,8 @@ impl IndexReplayMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let (operator_context, job_id) =
-            prepare_authorized_cancel(tenant.id, auth.user_id, input)
-                .map_err(map_preparation_error)?;
+        let (operator_context, job_id) = prepare_authorized_cancel(tenant.id, auth.user_id, input)
+            .map_err(map_preparation_error)?;
         let runtime = replay_runtime(ctx)?;
         runtime
             .request_cancel(operator_context, job_id)
@@ -374,7 +373,10 @@ fn prepare_authorized_run(
     actor_id: Uuid,
     input: IndexReplayRunInput,
 ) -> std::result::Result<
-    (IndexReplayOperatorContext, rustok_index::IndexReplayRunRequest),
+    (
+        IndexReplayOperatorContext,
+        rustok_index::IndexReplayRunRequest,
+    ),
     IndexReplayTransportPreparationError,
 > {
     let context = authorize(tenant_id, actor_id)?;
@@ -414,7 +416,10 @@ fn prepare_authorized_targeted_run(
     actor_id: Uuid,
     input: IndexReplayTargetedRunInput,
 ) -> std::result::Result<
-    (IndexReplayOperatorContext, rustok_index::IndexSourceLoadRequest),
+    (
+        IndexReplayOperatorContext,
+        rustok_index::IndexSourceLoadRequest,
+    ),
     IndexReplayTransportPreparationError,
 > {
     let context = authorize(tenant_id, actor_id)?;
@@ -503,17 +508,13 @@ fn parse_schema(
 ) -> std::result::Result<rustok_index::SchemaRef, IndexReplayTransportPreparationError> {
     let module_name = bounded_text("module_name", &module_name, MAX_SCHEMA_IDENTIFIER_BYTES)?;
     let entity_name = bounded_text("entity_name", &entity_name, MAX_SCHEMA_IDENTIFIER_BYTES)?;
-    let schema_version = bounded_text(
-        "schema_version",
-        &schema_version,
-        MAX_SCHEMA_VERSION_BYTES,
-    )?
-    .parse::<u32>()
-    .ok()
-    .filter(|value| *value > 0)
-    .ok_or(IndexReplayTransportPreparationError::InvalidInput {
-        field: "schema_version",
-    })?;
+    let schema_version = bounded_text("schema_version", &schema_version, MAX_SCHEMA_VERSION_BYTES)?
+        .parse::<u32>()
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or(IndexReplayTransportPreparationError::InvalidInput {
+            field: "schema_version",
+        })?;
 
     Ok(rustok_index::SchemaRef {
         module: rustok_index::ModuleName::new(module_name).map_err(|_| {
@@ -536,9 +537,8 @@ fn parse_locale(
     locale
         .map(|locale| {
             let locale = bounded_text("locale", &locale, MAX_LOCALE_BYTES)?;
-            rustok_index::LocaleKey::new(locale).map_err(|_| {
-                IndexReplayTransportPreparationError::InvalidInput { field: "locale" }
-            })
+            rustok_index::LocaleKey::new(locale)
+                .map_err(|_| IndexReplayTransportPreparationError::InvalidInput { field: "locale" })
         })
         .transpose()
 }
@@ -590,9 +590,9 @@ fn map_operator_error(error: IndexReplayOperatorError) -> FieldError {
                 "Permission denied: modules:manage required",
             )
         }
-        IndexReplayOperatorError::Replay(rustok_index::IndexReplayRunError::UnknownSchemaSource(_)) => {
-            <FieldError as GraphQLError>::bad_user_input("Unknown Index replay schema")
-        }
+        IndexReplayOperatorError::Replay(
+            rustok_index::IndexReplayRunError::UnknownSchemaSource(_),
+        ) => <FieldError as GraphQLError>::bad_user_input("Unknown Index replay schema"),
         IndexReplayOperatorError::Replay(_) => {
             <FieldError as GraphQLError>::internal_error("Index replay command failed")
         }
@@ -648,9 +648,9 @@ fn map_shadow_transport_error(error: IndexReplayShadowTransportError) -> FieldEr
             map_shadow_continuation_error(error)
         }
         IndexReplayShadowTransportError::Request(error) => map_shadow_dry_run_error(error),
-        IndexReplayShadowTransportError::Shadow(
-            IndexReplayShadowOperatorError::Authorization(error),
-        ) => map_operator_error(error),
+        IndexReplayShadowTransportError::Shadow(IndexReplayShadowOperatorError::Authorization(
+            error,
+        )) => map_operator_error(error),
         IndexReplayShadowTransportError::Shadow(IndexReplayShadowOperatorError::DryRun(error)) => {
             map_shadow_dry_run_error(error)
         }
@@ -664,7 +664,9 @@ fn map_shadow_continuation_error(error: rustok_index::IndexSourceContinuationErr
         Error::UnknownSchemaSource(_) => {
             <FieldError as GraphQLError>::bad_user_input("Unknown Index replay schema")
         }
-        Error::Expired => shadow_continuation_input_error("INDEX_REPLAY_SHADOW_CONTINUATION_EXPIRED"),
+        Error::Expired => {
+            shadow_continuation_input_error("INDEX_REPLAY_SHADOW_CONTINUATION_EXPIRED")
+        }
         Error::EmptyToken
         | Error::TokenTooLarge { .. }
         | Error::DecodedTokenTooLarge { .. }
@@ -729,10 +731,10 @@ mod tests {
 
     use super::{
         GRAPHQL_REPLAY_HEARTBEAT_EVERY_PAGES, GRAPHQL_REPLAY_LEASE_SECONDS,
-        GRAPHQL_REPLAY_MAX_PAGES, GRAPHQL_REPLAY_PAGE_LIMIT, MAX_CONTINUATION_BYTES,
-        MAX_TARGETED_KEYS, IndexReplayCancelInput, IndexReplayRunInput,
-        IndexReplayShadowRunInput, IndexReplayTargetedKeyInput, IndexReplayTargetedRunInput,
-        IndexReplayTransportPreparationError, prepare_authorized_cancel, prepare_authorized_run,
+        GRAPHQL_REPLAY_MAX_PAGES, GRAPHQL_REPLAY_PAGE_LIMIT, IndexReplayCancelInput,
+        IndexReplayRunInput, IndexReplayShadowRunInput, IndexReplayTargetedKeyInput,
+        IndexReplayTargetedRunInput, IndexReplayTransportPreparationError, MAX_CONTINUATION_BYTES,
+        MAX_TARGETED_KEYS, prepare_authorized_cancel, prepare_authorized_run,
         prepare_authorized_shadow_run, prepare_authorized_targeted_run,
     };
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
@@ -872,13 +874,26 @@ mod tests {
         assert_eq!(request.schema().version.get(), 4);
         assert_eq!(request.keys().len(), 2);
         assert_eq!(request.keys()[0].entity_id, first_id);
-        assert_eq!(request.keys()[0].locale.as_ref().map(|locale| locale.as_str()), Some("en-US"));
+        assert_eq!(
+            request.keys()[0]
+                .locale
+                .as_ref()
+                .map(|locale| locale.as_str()),
+            Some("en-US")
+        );
         assert_eq!(request.keys()[1].entity_id, second_id);
-        assert_eq!(request.keys()[1].locale.as_ref().map(|locale| locale.as_str()), Some("de"));
+        assert_eq!(
+            request.keys()[1]
+                .locale
+                .as_ref()
+                .map(|locale| locale.as_str()),
+            Some("de")
+        );
     }
 
     #[tokio::test]
-    async fn targeted_transport_rejects_empty_oversized_and_duplicate_target_sets_after_authorization() {
+    async fn targeted_transport_rejects_empty_oversized_and_duplicate_target_sets_after_authorization()
+     {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let scope = RbacRequestScope::new(
@@ -984,9 +999,7 @@ mod tests {
                 vec![Permission::MODULES_READ],
                 UserRole::Admin,
             )),
-            async {
-                prepare_authorized_shadow_run(tenant_id, actor_id, malformed_shadow_run())
-            },
+            async { prepare_authorized_shadow_run(tenant_id, actor_id, malformed_shadow_run()) },
         )
         .await
         .expect_err("modules:read must fail before Shadow input parsing");
@@ -1087,7 +1100,10 @@ mod tests {
         .expect("authorized replay request should parse");
 
         assert_eq!(request.page_request().tenant_id(), tenant_id);
-        assert_eq!(request.page_request().schema().module.as_str(), "rustok-product");
+        assert_eq!(
+            request.page_request().schema().module.as_str(),
+            "rustok-product"
+        );
         assert_eq!(request.page_request().schema().entity.as_str(), "product");
         assert_eq!(request.page_request().schema().version.get(), 4);
         assert!(request.locale().is_none());
@@ -1131,7 +1147,10 @@ mod tests {
         .await
         .expect("authorized locale replay request should parse");
 
-        assert_eq!(request.locale().map(|locale| locale.as_str()), Some("en-US"));
+        assert_eq!(
+            request.locale().map(|locale| locale.as_str()),
+            Some("en-US")
+        );
     }
 
     #[tokio::test]

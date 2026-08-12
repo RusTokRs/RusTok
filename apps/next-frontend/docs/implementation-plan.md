@@ -61,15 +61,33 @@ Develop `apps/next-frontend` as the primary Next.js storefront with clear API/UI
 
 - Target contract: the
   [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md).
-- **Admin (Leptos, `apps/admin`)**: [ ] Target shared framed editor and owner
-  native `#[server]` paths are not implemented.
-- **Admin (Next.js, `apps/next-admin`)**: [~] A Blog-local legacy Tiptap
-  prototype exists, but it is not the target shared runtime and incorrectly
-  contains Forum UI.
-- **Storefront (Leptos SSR, `apps/storefront`)**: [ ] Canonical server-rendered
-  HTML projection is not integrated.
-- **Storefront (Next.js, `apps/next-frontend`)**: [ ] Blog detail/Forum packages,
-  effective-locale use, and canonical server-rendered HTML projection are not
-  integrated.
+- **Admin (Leptos, `apps/admin`)**: [~] Blog and Forum topic/reply authoring use
+  the shared frame and native `#[server]` paths. Comments moderation is
+  intentionally read-only and uses the shared server projection.
+- **Admin (Next.js, `apps/next-admin`)**: [~] Blog and Forum topic/reply
+  authoring use the same `@rustok/richtext` frame. Owner-copy i18n and mounted
+  browser parity remain open.
+- **Storefront (Leptos SSR, `apps/storefront`)**: [~] Blog articles and Forum
+  topics/replies render owner-provided, server-sanitized HTML projections.
+  Blog composes the Comments-owned reusable editor with Blog-bound native and
+  parallel GraphQL commands; mounted evidence remains open.
+- **Storefront (Next.js, `apps/next-frontend`)**: [~] The selected Blog detail
+  surface renders the server-owned canonical HTML projection and approved
+  comment previews, and composes the Comments-owned React editor with the
+  Blog-bound GraphQL mutation. The host passes route locale and query state
+  through `StorefrontRenderContext`; the browser never selects an arbitrary
+  Comments target. Forum storefront, full comment-body rendering, and mounted
+  auth/save/error/browser evidence remain open.
 - Pages body remains Page Builder/Fly and is outside the richtext body
   migration. A future embedded Page component property is a separate opt-in.
+
+The Blog/Comments Next source slice was verified locally on 2026-08-11 with
+`npm run typecheck`, `npm run lint`, and a successful production `npm run build`.
+The generated route table includes `/richtext/frame` and its immutable asset
+route. Mounted authenticated submission and save/reload browser evidence remain
+open and are not implied by these source/build checks.
+
+Server-rendered module GraphQL uses `NEXT_PUBLIC_API_URL`, then
+`RUSTOK_API_URL`, then the local server default `http://localhost:5150`.
+Browser calls use the public configured origin or same-origin `/api/graphql`;
+module packages do not invent another endpoint resolver.

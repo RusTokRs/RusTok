@@ -12,7 +12,6 @@ export const BLOG_FBA_VERIFICATION_STEPS = [
   'npm run verify:blog:graphql-rate-limit',
   'npm run verify:blog:graphql-richtext-boundary',
   'npm run verify:blog:ai-richtext-boundary',
-  'npm run verify:blog:richtext-offline-backfill',
   'npm run verify:blog:forum-ui-ownership',
   'node scripts/verify/verify-consumer-fba-runtime-order.mjs',
 ];
@@ -93,13 +92,6 @@ export const BLOG_FBA_SOURCE_GATES = {
     self_test: 'scripts/verify/verify-blog-ai-richtext-boundary.test.mjs',
     evidence: 'crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json',
   },
-  richtext_offline_backfill: {
-    package_script: 'verify:blog:richtext-offline-backfill',
-    test_package_script: 'test:verify:blog:richtext-offline-backfill',
-    verifier: 'scripts/verify/verify-blog-richtext-offline-backfill.mjs',
-    self_test: 'scripts/verify/verify-blog-richtext-offline-backfill.test.mjs',
-    evidence: 'crates/rustok-blog/contracts/evidence/blog-richtext-offline-backfill.json',
-  },
   forum_ui_ownership: {
     package_script: 'verify:blog:forum-ui-ownership',
     test_package_script: 'test:verify:blog:forum-ui-ownership',
@@ -127,7 +119,6 @@ export const BLOG_FBA_TEST_STEPS = [
   'npm run test:verify:blog:graphql-rate-limit',
   'npm run test:verify:blog:graphql-richtext-boundary',
   'npm run test:verify:blog:ai-richtext-boundary',
-  'npm run test:verify:blog:richtext-offline-backfill',
   'npm run test:verify:blog:forum-ui-ownership',
   'npm run test:verify:consumer:fba-runtime-order',
 ];

@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_ui::RichTextHtml;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_comments::{CommentStatus, CommentThreadStatus};
 use rustok_ui_core::UiRouteContext;
@@ -449,9 +450,11 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                                 />
                                                             </div>
                                                         </div>
-                                                        <div class="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-sm text-card-foreground">
-                                                            {comment_view_model.body}
-                                                        </div>
+                                                        <RichTextHtml
+                                                            view=comment_view_model.body
+                                                            content_locale=comment_view_model.effective_locale.clone()
+                                                            class="richtext mt-3 rounded-lg bg-muted/40 px-3 py-2 text-sm text-card-foreground"
+                                                        />
                                                         <div class="mt-2 text-xs text-muted-foreground">
                                                             {t(
                                                                 locale.get().as_str().into(),

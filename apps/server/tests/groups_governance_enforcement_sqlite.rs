@@ -341,7 +341,10 @@ async fn sqlite_groups_governance_and_enforcement_are_replay_safe_serialized_and
                 membership_role(&fixture, tenant_id, race_target_id).await,
                 "moderator"
             );
-            assert_eq!(enforcement_count(&fixture, tenant_id, race_target_id).await, 0);
+            assert_eq!(
+                enforcement_count(&fixture, tenant_id, race_target_id).await,
+                0
+            );
         }
         (Err(role_error), Ok(suspension)) => {
             assert_eq!(role_error.code, "groups.membership_suspended");
@@ -350,7 +353,10 @@ async fn sqlite_groups_governance_and_enforcement_are_replay_safe_serialized_and
                 membership_role(&fixture, tenant_id, race_target_id).await,
                 "member"
             );
-            assert_eq!(enforcement_count(&fixture, tenant_id, race_target_id).await, 1);
+            assert_eq!(
+                enforcement_count(&fixture, tenant_id, race_target_id).await,
+                1
+            );
         }
         (role_result, suspension_result) => panic!(
             "SQLite governance/enforcement race must produce exactly one safe commit: role={role_result:?}, suspension={suspension_result:?}"
@@ -379,8 +385,14 @@ async fn sqlite_groups_governance_and_enforcement_are_replay_safe_serialized_and
     .await
     .expect("platform manager should recover SQLite ownership from valid suspended current owner");
     assert_eq!(recovered.current_role, GroupRole::Owner);
-    assert_eq!(group_owner(&fixture, tenant_id, group_id).await, replacement_owner_id);
-    assert_eq!(membership_role(&fixture, tenant_id, owner_id).await, "admin");
+    assert_eq!(
+        group_owner(&fixture, tenant_id, group_id).await,
+        replacement_owner_id
+    );
+    assert_eq!(
+        membership_role(&fixture, tenant_id, owner_id).await,
+        "admin"
+    );
     assert_eq!(
         membership_role(&fixture, tenant_id, replacement_owner_id).await,
         "owner"

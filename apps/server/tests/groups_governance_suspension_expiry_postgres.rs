@@ -36,10 +36,9 @@ async fn connect(url: &str) -> DatabaseConnection {
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply for PostgreSQL governance expiry evidence");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply for PostgreSQL governance expiry evidence",
+        );
     }
 }
 
@@ -102,7 +101,8 @@ async fn membership_snapshot(
         .expect("PostgreSQL membership snapshot query should succeed")
         .expect("membership should exist");
     (
-        row.try_get("", "role").expect("membership role should decode"),
+        row.try_get("", "role")
+            .expect("membership role should decode"),
         row.try_get("", "status")
             .expect("membership status should decode"),
         row.try_get("", "revision")

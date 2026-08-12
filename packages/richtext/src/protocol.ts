@@ -3,21 +3,19 @@ import type {
   RichTextProfileId
 } from './generated/contracts';
 import type { RichTextMessages } from './messages';
+import type { RichTextAuthoringContext } from './authoring';
 
 export const RICH_TEXT_PROTOCOL = 'rustok.richtext';
-export const RICH_TEXT_PROTOCOL_REVISION = 1;
 export const MAX_PROTOCOL_OVERHEAD_BYTES = 16 * 1024;
 
 export interface RichTextHandshakeReady {
   protocol: typeof RICH_TEXT_PROTOCOL;
-  revision: typeof RICH_TEXT_PROTOCOL_REVISION;
   type: 'ready';
   nonce: string;
 }
 
 export interface RichTextHandshakeConnect {
   protocol: typeof RICH_TEXT_PROTOCOL;
-  revision: typeof RICH_TEXT_PROTOCOL_REVISION;
   type: 'connect';
   nonce: string;
   session: string;
@@ -27,12 +25,14 @@ export interface RichTextInitializePayload {
   profile: RichTextProfileId;
   document: RichTextDocument;
   messages: RichTextMessages;
+  authoring_context: RichTextAuthoringContext;
   editable: boolean;
 }
 
 export type RichTextHostCommand =
   | { type: 'initialize'; payload: RichTextInitializePayload }
   | { type: 'set_document'; payload: { document: RichTextDocument } }
+  | { type: 'set_authoring_context'; payload: RichTextAuthoringContext }
   | { type: 'set_editable'; payload: { editable: boolean } }
   | { type: 'focus'; payload: Record<string, never> }
   | { type: 'request_document'; payload: Record<string, never> }
@@ -47,7 +47,6 @@ export type RichTextFrameEvent =
 
 export interface RichTextEnvelope<T> {
   protocol: typeof RICH_TEXT_PROTOCOL;
-  revision: typeof RICH_TEXT_PROTOCOL_REVISION;
   session: string;
   sequence: number;
   message: T;
@@ -60,7 +59,6 @@ export function createEnvelope<T>(
 ): RichTextEnvelope<T> {
   return {
     protocol: RICH_TEXT_PROTOCOL,
-    revision: RICH_TEXT_PROTOCOL_REVISION,
     session,
     sequence,
     message
@@ -76,7 +74,6 @@ export function isEnvelope(
   if (measureMessage(value) > maxBytes || !isRecord(value)) return false;
   return (
     value.protocol === RICH_TEXT_PROTOCOL &&
-    value.revision === RICH_TEXT_PROTOCOL_REVISION &&
     value.session === session &&
     Number.isSafeInteger(value.sequence) &&
     Number(value.sequence) > lastSequence &&
@@ -99,7 +96,6 @@ export function isHandshakeReady(
   return (
     isRecord(value) &&
     value.protocol === RICH_TEXT_PROTOCOL &&
-    value.revision === RICH_TEXT_PROTOCOL_REVISION &&
     value.type === 'ready' &&
     value.nonce === nonce
   );
@@ -112,7 +108,6 @@ export function isHandshakeConnect(
   return (
     isRecord(value) &&
     value.protocol === RICH_TEXT_PROTOCOL &&
-    value.revision === RICH_TEXT_PROTOCOL_REVISION &&
     value.type === 'connect' &&
     value.nonce === nonce &&
     typeof value.session === 'string' &&

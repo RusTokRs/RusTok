@@ -68,8 +68,7 @@ pub(super) struct IndexSourceContinuationKeyringRuntime {
 }
 
 impl IndexSourceContinuationKeyringRuntime {
-    pub(super) fn from_environment(
-    ) -> Result<Option<Self>, IndexSourceContinuationKeyringError> {
+    pub(super) fn from_environment() -> Result<Option<Self>, IndexSourceContinuationKeyringError> {
         let Some(raw) = std::env::var_os(KEYRING_ENV) else {
             return Ok(None);
         };
@@ -143,8 +142,8 @@ impl fmt::Debug for IndexSourceContinuationKeyringRuntime {
     }
 }
 
-pub(super) fn materialize_index_source_continuation_keyring(
-) -> Result<Option<IndexSourceContinuationKeyringRuntime>, IndexSourceContinuationKeyringError> {
+pub(super) fn materialize_index_source_continuation_keyring()
+-> Result<Option<IndexSourceContinuationKeyringRuntime>, IndexSourceContinuationKeyringError> {
     IndexSourceContinuationKeyringRuntime::from_environment()
 }
 
@@ -175,9 +174,7 @@ fn valid_key_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_KEY_ID_BYTES
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || matches!(byte, b'-' | b'_' | b'.')
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
         })
 }
 
@@ -187,9 +184,9 @@ fn valid_secret_reference(reference: &SecretRef) -> bool {
         && !key.is_empty()
         && key.len() <= MAX_SECRET_REFERENCE_BYTES
         && key == key.trim()
-        && key.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'/')
-        })
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'/'))
 }
 
 fn local_secret_registry(

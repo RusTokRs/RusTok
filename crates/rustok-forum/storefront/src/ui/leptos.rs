@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_ui::RichTextHtml;
 use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::UiRouteContext;
 
@@ -376,6 +377,7 @@ fn ForumTopicFeed(
                             </div>
                         </a>
                     }
+                    .into_any()
                 }).collect_view()}
             </div>
         </section>
@@ -412,7 +414,8 @@ fn ForumThreadPanel(
     let topic_id = topic.id.clone();
     let author_id = topic.author_id.clone();
     let status_class = topic_status_class(topic.status.as_str());
-    let body_html = topic.body.html.clone();
+    let body = topic.body.clone();
+    let body_locale = topic.effective_locale.clone();
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
     let mark_read_label = t(
@@ -462,10 +465,11 @@ fn ForumThreadPanel(
                     <p class="mt-2 text-sm text-muted-foreground">{crate::core::forum_storefront_slug_label(slug_template.as_str(), topic.slug.as_str())}</p>
                 </div>
                 <ForumAuthorBadge author_id />
-                <div
+                <RichTextHtml
+                    view=body
+                    content_locale=body_locale
                     class="richtext text-sm leading-7 text-muted-foreground"
-                    inner_html=body_html
-                ></div>
+                />
                 {read_state_available.then(|| {
                     let topic_id = topic_id.clone();
                     view! {
@@ -526,7 +530,8 @@ fn ForumThreadPanel(
 fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
     let author_id = reply.author_id.clone();
     let status_class = topic_status_class(reply.status.as_str());
-    let content_html = reply.content.html.clone();
+    let content = reply.content.clone();
+    let content_locale = reply.effective_locale.clone();
 
     view! {
         <article class="rounded-[1.15rem] border border-border bg-card p-4">
@@ -539,10 +544,11 @@ fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
             <div class="mt-3">
                 <ForumAuthorBadge author_id />
             </div>
-            <div
+            <RichTextHtml
+                view=content
+                content_locale=content_locale
                 class="richtext mt-3 text-sm leading-6 text-muted-foreground"
-                inner_html=content_html
-            ></div>
+            />
         </article>
     }
 }

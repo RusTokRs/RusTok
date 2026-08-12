@@ -1,4 +1,4 @@
-use rustok_core::CONTENT_FORMAT_GRAPESJS;
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseTransaction, DbBackend, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect,
@@ -234,8 +234,7 @@ async fn load_recovered_current_publish_set_in_tx(
                 ))
             })?;
         if current.artifact_hash != source.artifact_hash
-            || current.materialization_hash.as_deref()
-                != Some(source.materialization_hash.as_str())
+            || current.materialization_hash.as_deref() != Some(source.materialization_hash.as_str())
         {
             return Err(PagesError::rollback_target_unavailable(format!(
                 "current locale `{}` does not match retained publish provenance",
@@ -253,22 +252,16 @@ async fn load_recovered_current_publish_set_in_tx(
             continue;
         }
         repaired_locales += 1;
-        if !manifest_row_survives
-            && source_artifact_exists_in_tx(txn, operation, source).await?
-        {
+        if !manifest_row_survives && source_artifact_exists_in_tx(txn, operation, source).await? {
             return Err(PagesError::rollback_target_unavailable(format!(
                 "repaired locale `{}` is missing its manifest while the source artifact still exists",
                 source.locale
             )));
         }
 
-        let rebuild = load_rebuild_for_current_artifact_in_tx(
-            txn,
-            operation,
-            source,
-            current.artifact_id,
-        )
-        .await?;
+        let rebuild =
+            load_rebuild_for_current_artifact_in_tx(txn, operation, source, current.artifact_id)
+                .await?;
         verify_rebuild_receipt_for_rollback(&rebuild)?;
         ensure_rebuild_matches_source_for_rollback(&rebuild, source)?;
 
@@ -334,12 +327,8 @@ async fn verify_physical_loss_activation_prefix_in_tx(
         ));
     }
 
-    let anchor_version = resolve_repair_activation_anchor_in_tx(
-        txn,
-        operation,
-        current_page_version,
-    )
-    .await?;
+    let anchor_version =
+        resolve_repair_activation_anchor_in_tx(txn, operation, current_page_version).await?;
     if anchor_version > current_page_version {
         return Err(PagesError::rollback_target_unavailable(
             "repair activation anchor is newer than the current page version",
@@ -349,9 +338,12 @@ async fn verify_physical_loss_activation_prefix_in_tx(
     let query = || {
         page_artifact_binding_replacement_operation::Entity::find()
             .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(operation.tenant_id),
+                page_artifact_binding_replacement_operation::Column::TenantId
+                    .eq(operation.tenant_id),
             )
-            .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(operation.page_id))
+            .filter(
+                page_artifact_binding_replacement_operation::Column::PageId.eq(operation.page_id),
+            )
             .filter(
                 page_artifact_binding_replacement_operation::Column::ResultVersion
                     .gt(anchor_version),
@@ -385,10 +377,8 @@ async fn verify_physical_loss_activation_prefix_in_tx(
         .collect::<PagesResult<std::collections::BTreeMap<_, _>>>()?;
 
     let mut cursor = anchor_version;
-    let mut latest_by_locale = std::collections::BTreeMap::<
-        String,
-        (Uuid, page_artifact_rebuild_operation::Model),
-    >::new();
+    let mut latest_by_locale =
+        std::collections::BTreeMap::<String, (Uuid, page_artifact_rebuild_operation::Model)>::new();
     let mut proven_required_locales = std::collections::BTreeSet::new();
     for (index, activation) in activations.into_iter().enumerate() {
         if index >= MAX_RECOVERED_ACTIVATION_PREFIX {
@@ -448,10 +438,7 @@ async fn verify_physical_loss_activation_prefix_in_tx(
             ));
         }
 
-        latest_by_locale.insert(
-            activation.locale.clone(),
-            (source.page_body_id, rebuild),
-        );
+        latest_by_locale.insert(activation.locale.clone(), (source.page_body_id, rebuild));
         if required_current_artifacts
             .get(&activation.locale)
             .is_some_and(|artifact_id| *artifact_id == activation.replacement_artifact_id)
@@ -630,7 +617,7 @@ fn verify_rebuild_source_for_rollback(
         || source.artifact_id.is_nil()
         || source.locale.trim().is_empty()
         || source.locale.trim() != source.locale
-        || source.source_format != CONTENT_FORMAT_GRAPESJS
+        || source.source_format != PAGE_BUILDER_DOCUMENT_FORMAT
         || source.source_revision.trim().is_empty()
         || source.review_hash != operation.review_hash
     {
@@ -763,9 +750,12 @@ async fn load_activation_for_current_artifact_in_tx(
     let query = || {
         page_artifact_binding_replacement_operation::Entity::find()
             .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(operation.tenant_id),
+                page_artifact_binding_replacement_operation::Column::TenantId
+                    .eq(operation.tenant_id),
             )
-            .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(operation.page_id))
+            .filter(
+                page_artifact_binding_replacement_operation::Column::PageId.eq(operation.page_id),
+            )
             .filter(
                 page_artifact_binding_replacement_operation::Column::RebuildOperationId
                     .eq(rebuild_operation_id),
@@ -900,7 +890,7 @@ pub(super) async fn replace_current_published_set_in_tx(
     for member in members {
         if !bodies
             .iter()
-            .any(|body| body.locale == member.locale && body.format == CONTENT_FORMAT_GRAPESJS)
+            .any(|body| body.locale == member.locale && body.format == PAGE_BUILDER_DOCUMENT_FORMAT)
         {
             return Err(PagesError::rollback_target_unavailable(format!(
                 "rollback target locale `{}` has no current Page Builder body",

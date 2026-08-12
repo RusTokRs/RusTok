@@ -137,11 +137,6 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(BlogPostTranslations::SeoDescription).text())
                     .col(ColumnDef::new(BlogPostTranslations::Body).text().not_null())
                     .col(
-                        ColumnDef::new(BlogPostTranslations::BodyFormat)
-                            .string_len(32)
-                            .not_null(),
-                    )
-                    .col(
                         ColumnDef::new(BlogPostTranslations::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
@@ -222,7 +217,6 @@ enum BlogPostTranslations {
     SeoTitle,
     SeoDescription,
     Body,
-    BodyFormat,
     CreatedAt,
     UpdatedAt,
 }

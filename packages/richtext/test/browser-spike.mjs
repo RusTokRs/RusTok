@@ -102,6 +102,55 @@ try {
   // are both denied because allow-same-origin is absent.
   assert.equal(originEvidence.cookie, 'blocked');
   assert.equal(originEvidence.parentSameOrigin, 'blocked');
+  const initialAuthoringContext = await child.locator('[contenteditable="true"]').evaluate((element) => ({
+    locale: element.lang,
+    direction: element.dir,
+    spellcheck: element.spellcheck,
+    readOnly: element.getAttribute('aria-readonly')
+  }));
+  assert.deepEqual(initialAuthoringContext, {
+    locale: 'ar',
+    direction: 'rtl',
+    spellcheck: true,
+    readOnly: 'false'
+  });
+  await page.evaluate(() => {
+    window.RustokRichText.setLeptosRichTextAuthoringContext(
+      window.__richTextState.handle,
+      'fr',
+      false
+    );
+    window.RustokRichText.setLeptosRichTextEditable(
+      window.__richTextState.handle,
+      false
+    );
+  });
+  await child.waitForFunction(() =>
+    document.querySelector('[contenteditable="false"]')?.getAttribute('lang') === 'fr'
+  );
+  const readOnlyContext = await child.locator('[contenteditable="false"]').evaluate((element) => ({
+    locale: element.lang,
+    direction: element.dir,
+    spellcheck: element.spellcheck,
+    readOnly: element.getAttribute('aria-readonly'),
+    toolbarHidden: document.getElementById('richtext-toolbar')?.hidden
+  }));
+  assert.deepEqual(readOnlyContext, {
+    locale: 'fr',
+    direction: 'ltr',
+    spellcheck: false,
+    readOnly: 'true',
+    toolbarHidden: true
+  });
+  await page.evaluate(() => {
+    window.RustokRichText.setLeptosRichTextEditable(
+      window.__richTextState.handle,
+      true
+    );
+  });
+  await child.waitForFunction(() =>
+    document.querySelector('[contenteditable="true"]') !== null
+  );
   await page.evaluate(() => {
     const controlled = {
       type: 'doc',
@@ -148,6 +197,8 @@ state.handle = window.RustokRichText.mountLeptosRichTextFrame(
   'article',
   JSON.stringify(doc),
   JSON.stringify(messages),
+  'en',
+  true,
   true,
   (documentJson) => {
     state.changed = true;
@@ -156,6 +207,11 @@ state.handle = window.RustokRichText.mountLeptosRichTextFrame(
   (code, message) => {
     throw new Error(code + ': ' + message);
   }
+);
+window.RustokRichText.setLeptosRichTextAuthoringContext(
+  state.handle,
+  'ar',
+  true
 );
 state.handle.controller.ready.then(() => { state.initialized = true; });
 </script>`;

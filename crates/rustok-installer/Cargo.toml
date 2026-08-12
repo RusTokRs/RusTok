@@ -6,7 +6,8 @@ license.workspace = true
 description = "Installer foundation contracts for RusToK"
 
 [features]
-default = ["seed-runtime"]
+default = ["host-runtime", "seed-runtime"]
+host-runtime = []
 seed-runtime = ["dep:rustok-core"]
 
 [dependencies]
@@ -19,8 +20,11 @@ sha2.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 rustok-core = { workspace = true, optional = true }
+rustok-modules.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 

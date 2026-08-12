@@ -176,7 +176,8 @@ async fn read_effective_state(
 
 #[tokio::test]
 async fn sqlite_group_membership_enforcement_expiry_and_revoke_restore_without_cleanup() {
-    let temp = tempfile::tempdir().expect("temporary SQLite expiry evidence directory should create");
+    let temp =
+        tempfile::tempdir().expect("temporary SQLite expiry evidence directory should create");
     let url = sqlite_fixture_url(&temp);
     let fixture = connect(&url).await;
     install_groups_schema(&fixture).await;
@@ -229,14 +230,8 @@ async fn sqlite_group_membership_enforcement_expiry_and_revoke_restore_without_c
     assert_eq!(expiring_suspension.member_count, 3);
     assert_eq!(group_member_count(&fixture, tenant_id, group_id).await, 3);
 
-    let during_expiry = read_effective_state(
-        &fixture,
-        tenant_id,
-        owner_id,
-        group_id,
-        expiring_user_id,
-    )
-    .await;
+    let during_expiry =
+        read_effective_state(&fixture, tenant_id, owner_id, group_id, expiring_user_id).await;
     assert_eq!(
         during_expiry.effective_status,
         GroupMembershipEffectiveStatus::Suspended
@@ -251,14 +246,8 @@ async fn sqlite_group_membership_enforcement_expiry_and_revoke_restore_without_c
 
     tokio::time::sleep(Duration::from_millis(2300)).await;
 
-    let after_expiry = read_effective_state(
-        &fixture,
-        tenant_id,
-        owner_id,
-        group_id,
-        expiring_user_id,
-    )
-    .await;
+    let after_expiry =
+        read_effective_state(&fixture, tenant_id, owner_id, group_id, expiring_user_id).await;
     assert_eq!(
         after_expiry.effective_status,
         GroupMembershipEffectiveStatus::Active
@@ -309,7 +298,8 @@ async fn sqlite_group_membership_enforcement_expiry_and_revoke_restore_without_c
     );
     assert_eq!(group_member_count(&fixture, tenant_id, group_id).await, 3);
 
-    let before_revoke_projection = enforcement_projection(&fixture, tenant_id, revoked_user_id).await;
+    let before_revoke_projection =
+        enforcement_projection(&fixture, tenant_id, revoked_user_id).await;
     assert!(before_revoke_projection.2.is_none());
     assert_eq!(before_revoke_projection.3, "direct_local");
 
@@ -329,7 +319,10 @@ async fn sqlite_group_membership_enforcement_expiry_and_revoke_restore_without_c
     )
     .await
     .expect("owner should revoke an active direct-local suspension");
-    assert_eq!(revoked.effective_status, GroupMembershipEffectiveStatus::Active);
+    assert_eq!(
+        revoked.effective_status,
+        GroupMembershipEffectiveStatus::Active
+    );
     assert!(revoked.revoked_at.is_some());
     assert_eq!(
         revoked.membership_revision,
@@ -338,14 +331,8 @@ async fn sqlite_group_membership_enforcement_expiry_and_revoke_restore_without_c
     assert_eq!(revoked.member_count, 3);
     assert_eq!(group_member_count(&fixture, tenant_id, group_id).await, 3);
 
-    let after_revoke = read_effective_state(
-        &fixture,
-        tenant_id,
-        owner_id,
-        group_id,
-        revoked_user_id,
-    )
-    .await;
+    let after_revoke =
+        read_effective_state(&fixture, tenant_id, owner_id, group_id, revoked_user_id).await;
     assert_eq!(
         after_revoke.effective_status,
         GroupMembershipEffectiveStatus::Active
@@ -359,7 +346,8 @@ async fn sqlite_group_membership_enforcement_expiry_and_revoke_restore_without_c
     assert!(revoked_projection.revoked_at.is_some());
     assert_eq!(revoked_projection.source_kind.as_str(), "direct_local");
 
-    let after_revoke_projection = enforcement_projection(&fixture, tenant_id, revoked_user_id).await;
+    let after_revoke_projection =
+        enforcement_projection(&fixture, tenant_id, revoked_user_id).await;
     assert_eq!(
         after_revoke_projection.0,
         before_revoke_projection.0 + 1,

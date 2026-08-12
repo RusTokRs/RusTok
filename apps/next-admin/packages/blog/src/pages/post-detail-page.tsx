@@ -2,6 +2,7 @@ import { getPost } from '../api/posts';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { RichTextHtml } from '@rustok/richtext/view';
 
 interface PostDetailPageProps {
   postId: string;
@@ -60,9 +61,10 @@ export default async function PostDetailPage({
           <p className='text-muted-foreground italic'>{post.excerpt}</p>
         )}
         {post.content?.html && (
-          <div
+          <RichTextHtml
+            view={post.content}
+            contentLocale={post.effectiveLocale}
             className='prose max-w-none'
-            dangerouslySetInnerHTML={{ __html: post.content.html }}
           />
         )}
         {post.tags.length > 0 && (

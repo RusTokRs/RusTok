@@ -1,7 +1,7 @@
 # Documentation `rustok-core`
 
 `rustok-core` is the base foundation crate of the platform. It defines shared typed
-contracts, errors, security primitives, content helpers and other invariants that
+contracts, errors, security primitives and other invariants that
 the remaining RusToK modules rely on.
 
 ## Purpose
@@ -16,9 +16,8 @@ the remaining RusToK modules rely on.
 - basic error/validation helpers and security contracts;
 - foundation event contracts: canonical event re-exports, in-memory transport, bus stats, observability for backpressure, dispatcher retry semantics and dispatch delay hooks;
 - reject invalid root envelopes at the in-memory event-bus ingress through the canonical `rustok-events` validation contract;
-- content/rich-text helper contracts used by multiple modules (`rt_json`, `grapesjs`, `content_format`);
 - flex/custom-fields schema contracts (`field_schema`);
-- compatibility re-exports and shared API surface for the foundation layer;
+- shared API surface for the foundation layer;
 - absence of domain-owned runtime orchestration and transport-specific logic.
 - absence of neutral module-port DTO/error contracts: `Port*` belong to `rustok-api` and are not re-exported from core/prelude.
 
@@ -34,7 +33,7 @@ the remaining RusToK modules rely on.
 
 - `cargo xtask module validate core`
 - `cargo xtask module test core`
-- targeted tests for typed primitives, validation helpers, security contracts, event observability contracts, dispatcher retry/latency contracts and compatibility exports
+- targeted tests for typed primitives, validation helpers, security contracts, event observability contracts and dispatcher retry/latency contracts
 
 ## Related documents
 

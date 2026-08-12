@@ -1,5 +1,8 @@
 import { auth } from '@/auth';
-import { ForumTopicReplyRange, listForumTopics } from '@/packages/forum';
+import {
+  ForumTopicReplyRange,
+  listForumTopics
+} from '../../../../../packages/forum/src';
 import { PageContainer } from '@/widgets/app-shell';
 
 export const metadata = {

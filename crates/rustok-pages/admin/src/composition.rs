@@ -239,7 +239,6 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
                 title: &title_value,
                 slug: &slug_value,
                 channel_slugs: &channels_value,
-                publish: false,
             },
             core::default_project_data(&title_value),
         );
@@ -445,7 +444,7 @@ fn PageWorkspace(
         .body
         .as_ref()
         .map(|body| body.format.clone())
-        .unwrap_or_else(|| core::GRAPESJS_FORMAT.to_string());
+        .unwrap_or_else(|| rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT.to_string());
     let channels = if page.channel_slugs.is_empty() {
         "all".to_string()
     } else {

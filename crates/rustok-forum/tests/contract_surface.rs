@@ -39,7 +39,7 @@ fn module_manifest_declares_optional_forum_widget_catalog_contract() {
             .get("contract")
             .and_then(toml::Value::as_str)
             .expect("fba.builder_consumer.contract is required"),
-        "grapesjs_v1"
+        "grapesjs"
     );
     assert_eq!(
         builder_consumer

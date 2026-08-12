@@ -168,7 +168,8 @@ async fn group_snapshot(db: &DatabaseConnection, fixture: Fixture) -> (i64, i64)
         .expect("PostgreSQL concurrency group snapshot should succeed")
         .expect("group should exist");
     (
-        row.try_get("", "version").expect("group version should decode"),
+        row.try_get("", "version")
+            .expect("group version should decode"),
         row.try_get("", "member_count")
             .expect("member_count should decode"),
     )
@@ -295,11 +296,10 @@ async fn run_same_key_suspend(scoped_url: &str, fixture_db: &DatabaseConnection)
     });
 
     barrier.wait().await;
-    let (left_join, right_join) = tokio::time::timeout(PAIR_TIMEOUT, async {
-        tokio::join!(left, right)
-    })
-    .await
-    .expect("PostgreSQL same-key concurrent suspend must not deadlock or exceed timeout");
+    let (left_join, right_join) =
+        tokio::time::timeout(PAIR_TIMEOUT, async { tokio::join!(left, right) })
+            .await
+            .expect("PostgreSQL same-key concurrent suspend must not deadlock or exceed timeout");
     let left = left_join
         .expect("left PostgreSQL same-key task should join without panic")
         .expect("left PostgreSQL same-key command should succeed");
@@ -360,11 +360,12 @@ async fn run_distinct_key_suspend(scoped_url: &str, fixture_db: &DatabaseConnect
     });
 
     barrier.wait().await;
-    let (left_join, right_join) = tokio::time::timeout(PAIR_TIMEOUT, async {
-        tokio::join!(left, right)
-    })
-    .await
-    .expect("PostgreSQL distinct-key concurrent suspend must not deadlock or exceed timeout");
+    let (left_join, right_join) =
+        tokio::time::timeout(PAIR_TIMEOUT, async { tokio::join!(left, right) })
+            .await
+            .expect(
+                "PostgreSQL distinct-key concurrent suspend must not deadlock or exceed timeout",
+            );
     let left = left_join.expect("left PostgreSQL distinct-key task should join without panic");
     let right = right_join.expect("right PostgreSQL distinct-key task should join without panic");
 
@@ -446,11 +447,12 @@ async fn run_distinct_key_revoke(scoped_url: &str, fixture_db: &DatabaseConnecti
     });
 
     barrier.wait().await;
-    let (left_join, right_join) = tokio::time::timeout(PAIR_TIMEOUT, async {
-        tokio::join!(left, right)
-    })
-    .await
-    .expect("PostgreSQL distinct-key concurrent revoke must not deadlock or exceed timeout");
+    let (left_join, right_join) =
+        tokio::time::timeout(PAIR_TIMEOUT, async { tokio::join!(left, right) })
+            .await
+            .expect(
+                "PostgreSQL distinct-key concurrent revoke must not deadlock or exceed timeout",
+            );
     let left = left_join.expect("left PostgreSQL revoke task should join without panic");
     let right = right_join.expect("right PostgreSQL revoke task should join without panic");
 

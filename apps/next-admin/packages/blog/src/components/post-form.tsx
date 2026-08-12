@@ -51,7 +51,8 @@ export default function PostForm({
 }) {
   const router = useRouter();
   const hostLocale = useLocale();
-  const defaultLocale = hostLocale;
+  const defaultLocale =
+    initialData?.requestedLocale ?? initialData?.effectiveLocale ?? hostLocale;
   const initialDoc = useMemo(
     () => resolveInitialDoc(initialData),
     [initialData]
@@ -74,6 +75,7 @@ export default function PostForm({
     resolver: zodResolver(formSchema) as Resolver<FormValues>,
     defaultValues
   });
+  const contentLocale = form.watch('locale');
 
   async function onSubmit(values: FormValues) {
     const tags = values.tags
@@ -184,6 +186,8 @@ export default function PostForm({
             label='Content'
             profile='article'
             value={content}
+            contentLocale={contentLocale}
+            disabled={form.formState.isSubmitting}
             onChange={setContent}
           />
 
@@ -225,7 +229,7 @@ export default function PostForm({
             />
           )}
 
-          <Button type='submit'>
+          <Button type='submit' disabled={form.formState.isSubmitting}>
             {initialData ? 'Update Post' : 'Create Post'}
           </Button>
         </Form>

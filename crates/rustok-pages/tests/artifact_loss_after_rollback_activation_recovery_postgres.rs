@@ -2,7 +2,7 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -93,14 +93,15 @@ struct RollbackActivatedFixture {
 }
 
 #[tokio::test]
-async fn rollback_activated_publish_recovers_two_lost_locales_sequentially_on_postgres(
-) -> TestResult<()> {
+async fn rollback_activated_publish_recovers_two_lost_locales_sequentially_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("success").await? else {
         return Ok(());
     };
     let db = database.connection().await?;
     let service = page_service(&db);
-    let fixture = create_rollback_activated_fixture(&db, &service, "rollback-anchor-success").await?;
+    let fixture =
+        create_rollback_activated_fixture(&db, &service, "rollback-anchor-success").await?;
 
     remove_source_artifact(&db, &fixture.first_en_source).await?;
     remove_source_artifact(&db, &fixture.first_fr_source).await?;
@@ -224,8 +225,8 @@ async fn rollback_activated_publish_recovers_two_lost_locales_sequentially_on_po
 }
 
 #[tokio::test]
-async fn rollback_activated_recovery_rejects_noncanonical_rollback_anchor_hash_on_postgres(
-) -> TestResult<()> {
+async fn rollback_activated_recovery_rejects_noncanonical_rollback_anchor_hash_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("anchor_hash").await? else {
         return Ok(());
     };
@@ -279,7 +280,10 @@ async fn rollback_activated_recovery_rejects_noncanonical_rollback_anchor_hash_o
             },
         )
         .await;
-    assert!(matches!(result, Err(PagesError::RollbackTargetUnavailable(_))));
+    assert!(matches!(
+        result,
+        Err(PagesError::RollbackTargetUnavailable(_))
+    ));
     let after = page::Entity::find_by_id(fixture.page_id)
         .one(&db)
         .await?
@@ -312,13 +316,15 @@ async fn rollback_activated_recovery_rejects_noncanonical_rollback_anchor_hash_o
 }
 
 #[tokio::test]
-async fn rollback_activated_recovery_rejects_unexplained_version_drift_on_postgres() -> TestResult<()> {
+async fn rollback_activated_recovery_rejects_unexplained_version_drift_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("version_drift").await? else {
         return Ok(());
     };
     let db = database.connection().await?;
     let service = page_service(&db);
-    let fixture = create_rollback_activated_fixture(&db, &service, "rollback-anchor-version-drift").await?;
+    let fixture =
+        create_rollback_activated_fixture(&db, &service, "rollback-anchor-version-drift").await?;
 
     remove_source_artifact(&db, &fixture.first_en_source).await?;
     let rebuild = service
@@ -362,7 +368,10 @@ async fn rollback_activated_recovery_rejects_unexplained_version_drift_on_postgr
             },
         )
         .await;
-    assert!(matches!(result, Err(PagesError::RollbackTargetUnavailable(_))));
+    assert!(matches!(
+        result,
+        Err(PagesError::RollbackTargetUnavailable(_))
+    ));
     let current = page::Entity::find_by_id(fixture.page_id)
         .one(&db)
         .await?
@@ -430,9 +439,7 @@ async fn create_rollback_activated_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("home-en", "Rollback activated A EN", "home")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-en", "Rollback activated A EN", "home")?,
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -454,9 +461,7 @@ async fn create_rollback_activated_fixture(
                 expected_revision: format!("page:{}:initial", draft.id),
                 body: PageBodyInput {
                     locale: "fr".to_string(),
-                    content: project_json("home-fr", "Rollback activé A FR", "accueil")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-fr", "Rollback activé A FR", "accueil")?,
                 },
             },
         )
@@ -511,9 +516,7 @@ async fn create_rollback_activated_fixture(
                 expected_revision: en_before.updated_at.to_string(),
                 body: PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("home-en", "Rollback activated B EN", "home")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-en", "Rollback activated B EN", "home")?,
                 },
             },
         )
@@ -528,9 +531,7 @@ async fn create_rollback_activated_fixture(
                 expected_revision: fr_before.updated_at.to_string(),
                 body: PageBodyInput {
                     locale: "fr".to_string(),
-                    content: project_json("home-fr", "Rollback activé B FR", "accueil")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-fr", "Rollback activé B FR", "accueil")?,
                 },
             },
         )
@@ -571,7 +572,10 @@ async fn create_rollback_activated_fixture(
             },
         )
         .await?;
-    assert_eq!(rollback.target_publish_operation_id, first_publish.operation_id);
+    assert_eq!(
+        rollback.target_publish_operation_id,
+        first_publish.operation_id
+    );
     assert_eq!(rollback.version, second_publish.version + 1);
 
     let bindings = current_bindings(db, tenant_id, draft.id).await?;
@@ -677,8 +681,8 @@ fn reviewed_input(reviewed: &PageBuilderReviewedPublishRuntime) -> ReviewedPageP
     }
 }
 
-fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<String> {
-    Ok(serde_json::to_string(&json!({
+fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<serde_json::Value> {
+    Ok(json!({
         "pages": [{
             "id": page_id,
             "flyPageMeta": {
@@ -697,7 +701,7 @@ fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<String> {
                 }]
             }
         }]
-    }))?)
+    }))
 }
 
 fn page_service(db: &DatabaseConnection) -> PageService {

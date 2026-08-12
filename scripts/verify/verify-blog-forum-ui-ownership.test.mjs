@@ -19,37 +19,59 @@ function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-blog-forum-ui-ownership-'));
   writeFixtureFile(root, 'apps/next-admin/packages/blog/src/index.ts',
     options.blogOwnsForum
-      ? "id: 'blog'\nid: 'forum'\nforumNavItems\nForumReplyEditor\nexport { blogNavItems } from './nav'"
+      ? "id: 'blog'\nname: 'Forum'\nforumNav\nForumReplyEditor\nexport { blogNavItems } from './nav'"
       : "id: 'blog'\nexport { blogNavItems } from './nav'");
   writeFixtureFile(root, 'apps/next-admin/packages/blog/src/nav.ts', 'export const blogNavItems = [];');
   writeFixtureFile(root, 'apps/next-admin/packages/blog/src/components/post-form.tsx',
-    "@/shared/ui/rich-text-editor\nprofile='article'");
+    `@/shared/ui/rich-text-editor
+profile='article'
+${options.blogUsesHostLocale ? '' : 'initialData?.requestedLocale\ninitialData?.effectiveLocale'}
+contentLocale={contentLocale}
+disabled={form.formState.isSubmitting}`);
+  writeFixtureFile(root, 'apps/next-admin/packages/blog/src/api/posts.ts',
+    'requestedLocale: string;\neffectiveLocale: string;');
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/index.ts',
-    "id: 'forum'\nforumNavItems\nForumReplyEditor\nexport * from './api/forum'");
+    "id: 'forum'\nregisterAdminModule\nnavItems: [forumNav]\nforumNav\nForumReplyEditor\nForumTopicEditor\nexport * from './api/forum'");
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/nav.ts',
-    "title: 'Forum'\n/dashboard/forum/reply");
+    "title: 'Forum'\n/dashboard/forum/topic\n/dashboard/forum/reply");
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/api/forum.ts',
-    'export interface GqlOpts\nlistForumTopics\ncreateForumReply\ncontent: RichTextDocument;');
+    'export interface GqlOpts\nlistForumCategories\nlistForumTopics\ngetForumTopic\ncreateForumTopic\nupdateForumTopic\nbody: RichTextDocument;\ncreateForumReply\ncontent: RichTextDocument;');
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/components/forum-reply-editor.tsx',
     `@/shared/ui/rich-text-editor
 profile='${options.articleProfile ? 'article' : 'discussion'}'
 from '../api/forum'
 validateRichTextDocument
 richTextDocumentHasText
+contentLocale={contentLocale}
+disabled={form.formState.isSubmitting}
 content: doc
 ${options.legacyAdapterImport ? "from './rt-json-format'" : ''}`);
+  writeFixtureFile(root, 'apps/next-admin/packages/forum/src/components/forum-topic-editor.tsx',
+    `@/shared/ui/rich-text-editor
+profile='discussion'
+from '../api/forum'
+initialData?.requestedLocale
+initialData?.effectiveLocale
+validateRichTextDocument
+richTextDocumentHasText
+contentLocale={contentLocale}
+disabled={form.formState.isSubmitting}
+createForumTopic
+updateForumTopic`);
   if (options.legacyAdapterFile) {
     writeFixtureFile(root, 'apps/next-admin/packages/forum/src/components/rt-json-format.ts',
       "normalizeRtJsonPayload\nstringifyRtDoc\nversion: 'rt_json_v1'");
   }
   writeFixtureFile(root, 'apps/next-admin/src/shared/ui/rich-text-editor.tsx',
-    "from '@rustok/richtext/react'\nprofile: RichTextProfileId;\nframeUrl='/richtext/frame'");
+    "from '@rustok/richtext/react'\nprofile: RichTextProfileId;\ncontentLocale: string;\ndisabled?: boolean;\ncontentLocale={contentLocale}\nframeUrl='/richtext/frame'");
   writeFixtureFile(root, 'apps/next-admin/src/modules/index.ts',
     "import '../../packages/blog/src';\nimport '../../packages/forum/src';");
   writeFixtureFile(root, 'apps/next-admin/src/app/dashboard/forum/reply/page.tsx',
     options.blogRoute
       ? "../../../../../packages/forum/src\n../../../../../packages/blog/src\nForumReplyEditor\nlistForumTopics"
       : "../../../../../packages/forum/src\nForumReplyEditor\nlistForumTopics");
+  writeFixtureFile(root, 'apps/next-admin/src/app/dashboard/forum/topic/page.tsx',
+    "../../../../../packages/forum/src\nForumTopicEditor\nlistForumCategories\nlistForumTopics\ngetForumTopic");
   if (options.blogOwnsForum) {
     writeFixtureFile(root, 'apps/next-admin/packages/blog/src/api/forum.ts', 'legacy owner');
   }
@@ -65,6 +87,7 @@ ${options.legacyAdapterImport ? "from './rt-json-format'" : ''}`);
         : 'apps/next-admin/packages/forum/src',
       former_owner_package: 'apps/next-admin/packages/blog/src',
       shared_richtext_adapter: 'apps/next-admin/src/shared/ui/rich-text-editor.tsx',
+      topic_route: 'apps/next-admin/src/app/dashboard/forum/topic/page.tsx',
       verifier: 'scripts/verify/verify-blog-forum-ui-ownership.mjs',
     }));
   writeFixtureFile(root, 'scripts/verify/verify-blog-forum-ui-ownership.test.mjs', 'fixture marker');
@@ -101,6 +124,12 @@ test('Blog Forum UI ownership verifier rejects the Article profile in Forum edit
   const result = run(fixture({ articleProfile: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Forum reply editor missing profile='discussion'/);
+});
+
+test('Blog Forum UI ownership verifier rejects host locale as the edit-content locale', () => {
+  const result = run(fixture({ blogUsesHostLocale: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Blog post form missing initialData\?\.requestedLocale/);
 });
 
 test('Blog Forum UI ownership verifier rejects a restored Forum format adapter', () => {

@@ -145,9 +145,7 @@ pub struct GqlPageTranslationInput {
 #[derive(InputObject)]
 pub struct GqlPageBodyInput {
     pub locale: String,
-    pub content: String,
-    pub format: Option<String>,
-    pub content_json: Option<Value>,
+    pub document: Value,
 }
 
 #[derive(InputObject)]

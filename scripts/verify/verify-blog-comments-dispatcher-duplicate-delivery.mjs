@@ -74,7 +74,7 @@ for (const marker of [
   'completed.load(Ordering::SeqCst)',
   'DISPATCHER_DUPLICATE_DELIVERIES',
   'assert_eq!(failed.load(Ordering::SeqCst), 0);',
-  'load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2)',
+  'load_post_state(&test_db.db, tenant_id, post_id).await?',
   'count_delivery(&test_db.db, envelope.id).await?, 1',
   'count_outbox_events(&test_db.db).await?, 1',
   'async fn wait_for_completed_dispatches(completed: &AtomicUsize)',

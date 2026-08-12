@@ -17,7 +17,8 @@ pub struct MediaCommandProvider {
 
 impl MediaCommandProvider {
     fn storage_config(&self) -> CliCoreResult<StorageConfig> {
-        self.runtime
+        let mut config: StorageConfig = self
+            .runtime
             .settings()
             .get("storage")
             .cloned()
@@ -26,7 +27,15 @@ impl MediaCommandProvider {
             .map_err(|error| CliCoreError::InvalidInput {
                 message: format!("invalid storage settings for media CLI: {error}"),
             })
-            .map(|config| config.unwrap_or_default())
+            .map(|config| config.unwrap_or_default())?;
+        let storage_root =
+            self.runtime
+                .instance_path("storage")
+                .map_err(|error| CliCoreError::InvalidInput {
+                    message: error.to_string(),
+                })?;
+        config.bind_local_base_dir(storage_root);
+        Ok(config)
     }
 
     async fn reconcile(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {

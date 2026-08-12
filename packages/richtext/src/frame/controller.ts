@@ -3,15 +3,20 @@ import type {
   RichTextProfileId
 } from '../generated/contracts';
 import { getRichTextProfile } from '../profiles';
+import { validateRichTextDocument } from '../document';
 import type { RichTextMessages } from '../messages';
+import {
+  createRichTextAuthoringContext,
+  type RichTextAuthoringContext,
+  type RichTextAuthoringContextInput
+} from '../authoring';
 import {
   MAX_PROTOCOL_OVERHEAD_BYTES,
   RICH_TEXT_PROTOCOL,
-  RICH_TEXT_PROTOCOL_REVISION,
   createEnvelope,
   isEnvelope,
   isHandshakeReady,
-  type RichTextFrameEvent,
+  isRecord,
   type RichTextHostCommand
 } from '../protocol';
 
@@ -21,6 +26,9 @@ export interface ConnectRichTextFrameOptions {
   profile: RichTextProfileId;
   document: RichTextDocument;
   messages: RichTextMessages;
+  contentLocale: string;
+  direction?: RichTextAuthoringContextInput['direction'];
+  spellcheck?: boolean;
   editable?: boolean;
   timeoutMs?: number;
   onDocumentChange(document: RichTextDocument): void;
@@ -35,6 +43,9 @@ export class RichTextFrameController {
   private outboundSequence = 0;
   private inboundSequence = 0;
   private destroyed = false;
+  private document: RichTextDocument;
+  private editable: boolean;
+  private authoringContext: RichTextAuthoringContext;
   private readonly maxMessageBytes: number;
   private resolveReady!: () => void;
   private rejectReady!: (reason: Error) => void;
@@ -42,6 +53,13 @@ export class RichTextFrameController {
 
   constructor(private readonly options: ConnectRichTextFrameOptions) {
     this.session = crypto.randomUUID();
+    this.document = options.document;
+    this.editable = options.editable ?? true;
+    this.authoringContext = createRichTextAuthoringContext({
+      contentLocale: options.contentLocale,
+      direction: options.direction,
+      spellcheck: options.spellcheck
+    });
     this.maxMessageBytes =
       getRichTextProfile(options.profile).limits.max_json_bytes +
       MAX_PROTOCOL_OVERHEAD_BYTES;
@@ -53,11 +71,33 @@ export class RichTextFrameController {
   }
 
   setDocument(document: RichTextDocument): void {
+    const validation = validateRichTextDocument(
+      document,
+      getRichTextProfile(this.options.profile),
+      { allowEmpty: true }
+    );
+    if (!validation.valid) {
+      this.options.onError?.(
+        'invalid_document',
+        validation.error ?? 'The host supplied an invalid richtext document.'
+      );
+      return;
+    }
+    this.document = document;
     this.send({ type: 'set_document', payload: { document } });
   }
 
   setEditable(editable: boolean): void {
+    this.editable = editable;
     this.send({ type: 'set_editable', payload: { editable } });
+  }
+
+  setAuthoringContext(input: RichTextAuthoringContextInput): void {
+    this.authoringContext = createRichTextAuthoringContext(input);
+    this.send({
+      type: 'set_authoring_context',
+      payload: this.authoringContext
+    });
   }
 
   focus(): void {
@@ -102,7 +142,6 @@ export class RichTextFrameController {
       this.options.iframe.contentWindow?.postMessage(
         {
           protocol: RICH_TEXT_PROTOCOL,
-          revision: RICH_TEXT_PROTOCOL_REVISION,
           type: 'connect',
           nonce,
           session: this.session
@@ -114,9 +153,10 @@ export class RichTextFrameController {
         type: 'initialize',
         payload: {
           profile: this.options.profile,
-          document: this.options.document,
+          document: this.document,
           messages: this.options.messages,
-          editable: this.options.editable ?? true
+          authoring_context: this.authoringContext,
+          editable: this.editable
         }
       });
     };
@@ -149,22 +189,59 @@ export class RichTextFrameController {
       return;
     }
     this.inboundSequence = value.sequence;
-    const message = value.message as RichTextFrameEvent;
+    const message = value.message;
+    if (!isRecord(message) || typeof message.type !== 'string' || !isRecord(message.payload)) {
+      this.options.onError?.('invalid_message', 'The editor frame returned an invalid message.');
+      return;
+    }
     switch (message.type) {
-      case 'initialized':
+      case 'initialized': {
+        if (!this.acceptDocument(message.payload.document)) return;
         this.resolveReady();
         break;
+      }
       case 'document_changed':
-      case 'document':
-        this.options.onDocumentChange(message.payload.document);
+      case 'document': {
+        const document = this.acceptDocument(message.payload.document);
+        if (!document) return;
+        this.options.onDocumentChange(document);
         break;
-      case 'focus_changed':
+      }
+      case 'focus_changed': {
+        if (typeof message.payload.focused !== 'boolean') {
+          this.options.onError?.('invalid_message', 'The editor frame returned an invalid focus state.');
+          return;
+        }
         this.options.onFocusChange?.(message.payload.focused);
         break;
-      case 'error':
+      }
+      case 'error': {
+        if (typeof message.payload.code !== 'string' || typeof message.payload.message !== 'string') {
+          this.options.onError?.('invalid_message', 'The editor frame returned an invalid error message.');
+          return;
+        }
         this.options.onError?.(message.payload.code, message.payload.message);
         break;
+      }
+      default:
+        this.options.onError?.('invalid_message', 'The editor frame returned an unsupported message.');
     }
+  }
+
+  private acceptDocument(value: unknown): RichTextDocument | undefined {
+    const validation = validateRichTextDocument(
+      value,
+      getRichTextProfile(this.options.profile),
+      { allowEmpty: true }
+    );
+    if (!validation.valid) {
+      this.options.onError?.(
+        'invalid_document',
+        validation.error ?? 'The editor frame returned an invalid richtext document.'
+      );
+      return undefined;
+    }
+    return value as RichTextDocument;
   }
 }
 

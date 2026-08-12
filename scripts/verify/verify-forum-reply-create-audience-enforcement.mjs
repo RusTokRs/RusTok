@@ -202,11 +202,11 @@ for (const marker of [
 
 for (const marker of [
   "# FORUM-20AV reply-create audience enforcement",
-  "source-ready / unvalidated",
+  "source-ready / partially validated",
   "does not replace or duplicate its backlog",
-  "GraphQL and REST still call the context-free methods",
-  "did not run tests, Cargo commands, formatting",
-  "canonical plan was not rewritten",
+  "GraphQL and REST now compose exact authenticated transport",
+  "source verifier was executed on 2026-08-11",
+  "Canonical plan synchronization",
 ]) {
   requireText(note, marker, `reply-create owner note is missing ${marker}`);
 }

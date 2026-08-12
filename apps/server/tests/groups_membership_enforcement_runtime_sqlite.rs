@@ -45,10 +45,9 @@ async fn connect(url: &str) -> DatabaseConnection {
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply for direct enforcement runtime evidence");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply for direct enforcement runtime evidence",
+        );
     }
 }
 
@@ -77,12 +76,7 @@ fn fresh_fixture() -> GroupFixture {
     }
 }
 
-async fn seed_group(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    fixture: GroupFixture,
-    handle: &str,
-) {
+async fn seed_group(db: &DatabaseConnection, tenant_id: Uuid, fixture: GroupFixture, handle: &str) {
     db.execute_unprepared(&format!(
         r#"
 INSERT INTO groups (id, tenant_id, owner_user_id, handle, member_count)
@@ -123,11 +117,7 @@ VALUES
     .expect("Groups direct enforcement runtime fixture should seed");
 }
 
-fn write_context(
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    idempotency_key: &str,
-) -> PortContext {
+fn write_context(tenant_id: Uuid, actor_id: Uuid, idempotency_key: &str) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
         PortActor::user(actor_id.to_string()),
@@ -138,19 +128,11 @@ fn write_context(
     .with_idempotency_key(idempotency_key)
 }
 
-fn platform_context(
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    idempotency_key: &str,
-) -> PortContext {
+fn platform_context(tenant_id: Uuid, actor_id: Uuid, idempotency_key: &str) -> PortContext {
     write_context(tenant_id, actor_id, idempotency_key).with_claim("groups:moderate")
 }
 
-async fn group_snapshot(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    group_id: Uuid,
-) -> (i64, i64) {
+async fn group_snapshot(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> (i64, i64) {
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Sqlite,
@@ -162,7 +144,8 @@ async fn group_snapshot(
         .expect("group snapshot query should succeed")
         .expect("group should exist");
     (
-        row.try_get("", "version").expect("group version should decode"),
+        row.try_get("", "version")
+            .expect("group version should decode"),
         row.try_get("", "member_count")
             .expect("member_count should decode"),
     )
@@ -185,7 +168,8 @@ async fn membership_snapshot(
         .expect("membership snapshot query should succeed")
         .expect("membership should exist");
     (
-        row.try_get("", "role").expect("membership role should decode"),
+        row.try_get("", "role")
+            .expect("membership role should decode"),
         row.try_get("", "status")
             .expect("membership status should decode"),
         row.try_get("", "revision")
@@ -193,11 +177,7 @@ async fn membership_snapshot(
     )
 }
 
-async fn enforcement_count(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    group_id: Uuid,
-) -> i64 {
+async fn enforcement_count(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> i64 {
     scalar_count(
         db,
         format!(
@@ -250,7 +230,10 @@ async fn assert_no_material_change(
     tenant_id: Uuid,
     fixture: GroupFixture,
 ) {
-    assert_eq!(group_snapshot(db, tenant_id, fixture.group_id).await, (1, 6));
+    assert_eq!(
+        group_snapshot(db, tenant_id, fixture.group_id).await,
+        (1, 6)
+    );
     for user_id in [
         fixture.owner_id,
         fixture.admin_id,
@@ -267,7 +250,10 @@ async fn assert_no_material_change(
         );
     }
     assert_eq!(enforcement_count(db, tenant_id, fixture.group_id).await, 0);
-    assert_eq!(ledger_counts(db, tenant_id, fixture.group_id).await, (0, 0, 0));
+    assert_eq!(
+        ledger_counts(db, tenant_id, fixture.group_id).await,
+        (0, 0, 0)
+    );
 }
 
 async fn suspend(
@@ -552,30 +538,32 @@ async fn direct_enforcement_hierarchy_and_platform_bypass_are_exact_sqlite() {
     assert_eq!(platform_revoke.membership_revision, 3);
     assert_eq!(platform_revoke.group_version, 9);
 
-    assert_eq!(group_snapshot(&db, tenant_id, fixture.group_id).await, (9, 6));
     assert_eq!(
-        membership_snapshot(&db, tenant_id, fixture.group_id, fixture.admin_id)
-            .await,
+        group_snapshot(&db, tenant_id, fixture.group_id).await,
+        (9, 6)
+    );
+    assert_eq!(
+        membership_snapshot(&db, tenant_id, fixture.group_id, fixture.admin_id).await,
         ("admin".to_string(), "active".to_string(), 3)
     );
     assert_eq!(
-        membership_snapshot(&db, tenant_id, fixture.group_id, fixture.moderator_id)
-            .await,
+        membership_snapshot(&db, tenant_id, fixture.group_id, fixture.moderator_id).await,
         ("moderator".to_string(), "active".to_string(), 3)
     );
     for user_id in [fixture.member_a_id, fixture.member_b_id] {
         assert_eq!(
-            membership_snapshot(&db, tenant_id, fixture.group_id, user_id)
-                .await,
+            membership_snapshot(&db, tenant_id, fixture.group_id, user_id).await,
             ("member".to_string(), "active".to_string(), 3)
         );
     }
     assert_eq!(
-        membership_snapshot(&db, tenant_id, fixture.group_id, fixture.member_c_id)
-            .await,
+        membership_snapshot(&db, tenant_id, fixture.group_id, fixture.member_c_id).await,
         ("member".to_string(), "active".to_string(), 1)
     );
-    assert_eq!(ledger_counts(&db, tenant_id, fixture.group_id).await, (8, 8, 8));
+    assert_eq!(
+        ledger_counts(&db, tenant_id, fixture.group_id).await,
+        (8, 8, 8)
+    );
 
     drop(service);
     drop(db);
@@ -609,7 +597,10 @@ async fn direct_enforcement_receipt_audit_and_event_lifecycle_is_atomic_sqlite()
     assert_eq!(suspended.group_version, 2);
     assert_eq!(suspended.member_count, 6);
     assert!(!suspended.replayed);
-    assert_eq!(ledger_counts(&db, tenant_id, fixture.group_id).await, (1, 1, 1));
+    assert_eq!(
+        ledger_counts(&db, tenant_id, fixture.group_id).await,
+        (1, 1, 1)
+    );
     assert_ledger_fact(
         &db,
         tenant_id,
@@ -635,7 +626,10 @@ async fn direct_enforcement_receipt_audit_and_event_lifecycle_is_atomic_sqlite()
     .expect("exact suspension receipt should replay");
     assert!(replay.replayed);
     assert_eq!(replay.group_version, suspended.group_version);
-    assert_eq!(ledger_counts(&db, tenant_id, fixture.group_id).await, (1, 1, 1));
+    assert_eq!(
+        ledger_counts(&db, tenant_id, fixture.group_id).await,
+        (1, 1, 1)
+    );
 
     let changed_key = suspend(
         &service,
@@ -650,14 +644,20 @@ async fn direct_enforcement_receipt_audit_and_event_lifecycle_is_atomic_sqlite()
     assert_eq!(changed_key.kind, PortErrorKind::Conflict);
     assert_eq!(changed_key.code, "groups.conflict");
     assert!(!changed_key.retryable);
-    assert_eq!(group_snapshot(&db, tenant_id, fixture.group_id).await, (2, 6));
+    assert_eq!(
+        group_snapshot(&db, tenant_id, fixture.group_id).await,
+        (2, 6)
+    );
     assert_eq!(
         membership_snapshot(&db, tenant_id, fixture.group_id, fixture.member_c_id)
             .await
             .2,
         2
     );
-    assert_eq!(ledger_counts(&db, tenant_id, fixture.group_id).await, (1, 1, 1));
+    assert_eq!(
+        ledger_counts(&db, tenant_id, fixture.group_id).await,
+        (1, 1, 1)
+    );
 
     let revoke_key = "atomic-revoke";
     let revoked = revoke(
@@ -675,7 +675,10 @@ async fn direct_enforcement_receipt_audit_and_event_lifecycle_is_atomic_sqlite()
     assert_eq!(revoked.member_count, 6);
     assert!(revoked.revoked_at.is_some());
     assert!(!revoked.replayed);
-    assert_eq!(ledger_counts(&db, tenant_id, fixture.group_id).await, (2, 2, 2));
+    assert_eq!(
+        ledger_counts(&db, tenant_id, fixture.group_id).await,
+        (2, 2, 2)
+    );
     assert_ledger_fact(
         &db,
         tenant_id,
@@ -701,7 +704,10 @@ async fn direct_enforcement_receipt_audit_and_event_lifecycle_is_atomic_sqlite()
     .expect("exact revoke receipt should replay after current enforcement became inactive");
     assert!(revoke_replay.replayed);
     assert_eq!(revoke_replay.group_version, revoked.group_version);
-    assert_eq!(ledger_counts(&db, tenant_id, fixture.group_id).await, (2, 2, 2));
+    assert_eq!(
+        ledger_counts(&db, tenant_id, fixture.group_id).await,
+        (2, 2, 2)
+    );
 
     let enforcement = db
         .query_one(Statement::from_string(
@@ -734,10 +740,12 @@ async fn direct_enforcement_receipt_audit_and_event_lifecycle_is_atomic_sqlite()
     assert_eq!(actor_id, fixture.owner_id.to_string());
     assert_eq!(enforcement_revision, revoked.enforcement_revision);
     assert_eq!(revoked_marker, 1);
-    assert_eq!(group_snapshot(&db, tenant_id, fixture.group_id).await, (3, 6));
     assert_eq!(
-        membership_snapshot(&db, tenant_id, fixture.group_id, fixture.member_c_id)
-            .await,
+        group_snapshot(&db, tenant_id, fixture.group_id).await,
+        (3, 6)
+    );
+    assert_eq!(
+        membership_snapshot(&db, tenant_id, fixture.group_id, fixture.member_c_id).await,
         ("member".to_string(), "active".to_string(), 3)
     );
 

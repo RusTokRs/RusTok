@@ -11,6 +11,7 @@ import type {
   RichTextProfileId
 } from './generated/contracts';
 import type { RichTextMessages } from './messages';
+import type { RichTextDirection } from './authoring';
 import {
   connectRichTextFrame,
   type RichTextFrameController
@@ -27,6 +28,9 @@ export interface RichTextEditorProps {
   profile: RichTextProfileId;
   value: RichTextDocument;
   messages: RichTextMessages;
+  contentLocale: string;
+  direction?: RichTextDirection;
+  spellcheck?: boolean;
   disabled?: boolean;
   className?: string;
   onChange(document: RichTextDocument): void;
@@ -58,6 +62,9 @@ export const RichTextEditor = forwardRef<
       profile: props.profile,
       document: props.value,
       messages: props.messages,
+      contentLocale: props.contentLocale,
+      direction: props.direction,
+      spellcheck: props.spellcheck,
       editable: !props.disabled,
       onDocumentChange: (document) => onChangeRef.current(document),
       onError: (code, message) => onErrorRef.current?.(code, message)
@@ -83,10 +90,19 @@ export const RichTextEditor = forwardRef<
     controllerRef.current?.setEditable(!props.disabled);
   }, [props.disabled]);
 
+  useEffect(() => {
+    controllerRef.current?.setAuthoringContext({
+      contentLocale: props.contentLocale,
+      direction: props.direction,
+      spellcheck: props.spellcheck
+    });
+  }, [props.contentLocale, props.direction, props.spellcheck]);
+
   return (
     <iframe
       ref={iframeRef}
       title={props.label}
+      aria-disabled={props.disabled}
       sandbox='allow-scripts'
       className={props.className}
       referrerPolicy='no-referrer'

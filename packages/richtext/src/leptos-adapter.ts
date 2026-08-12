@@ -4,9 +4,11 @@ import type {
   RichTextProfileId
 } from './generated/contracts';
 import type { RichTextMessages } from './messages';
+import type { RichTextAuthoringContextInput } from './authoring';
 
 type RichTextHandle = {
   setDocument(document: RichTextDocument): void;
+  setAuthoringContext(input: RichTextAuthoringContextInput): void;
   setEditable(editable: boolean): void;
   dispose(): void;
 };
@@ -20,6 +22,8 @@ declare global {
         profile: RichTextProfileId,
         documentJson: string,
         messagesJson: string,
+        contentLocale: string,
+        spellcheck: boolean,
         editable: boolean,
         onDocumentChange: (documentJson: string) => void,
         onError: (code: string, message: string) => void
@@ -31,6 +35,11 @@ declare global {
       setLeptosRichTextEditable(
         handle: RichTextHandle,
         editable: boolean
+      ): void;
+      setLeptosRichTextAuthoringContext(
+        handle: RichTextHandle,
+        contentLocale: string,
+        spellcheck: boolean
       ): void;
       disposeLeptosRichTextFrame(handle: RichTextHandle): void;
     };
@@ -44,6 +53,8 @@ window.RustokRichText = {
     profile,
     documentJson,
     messagesJson,
+    contentLocale,
+    spellcheck,
     editable,
     onDocumentChange,
     onError
@@ -53,6 +64,8 @@ window.RustokRichText = {
       profile,
       document: JSON.parse(documentJson),
       messages: JSON.parse(messagesJson) as RichTextMessages,
+      contentLocale,
+      spellcheck,
       editable,
       onDocumentChange: (document) => onDocumentChange(JSON.stringify(document)),
       onError
@@ -72,6 +85,9 @@ window.RustokRichText = {
   },
   setLeptosRichTextEditable(handle, editable) {
     handle.setEditable(editable);
+  },
+  setLeptosRichTextAuthoringContext(handle, contentLocale, spellcheck) {
+    handle.setAuthoringContext({ contentLocale, spellcheck });
   },
   disposeLeptosRichTextFrame(handle) {
     handle.dispose();

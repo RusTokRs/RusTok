@@ -267,7 +267,9 @@ async fn feature_settings_follow_suspension_expiry_and_serialization_postgres() 
         suspended.group_version as i64
     );
     assert_eq!(
-        feature_phase(db.clone(), tenant_id, owner_id, group_id).await.as_deref(),
+        feature_phase(db.clone(), tenant_id, owner_id, group_id)
+            .await
+            .as_deref(),
         Some("before-suspension")
     );
 
@@ -282,7 +284,10 @@ async fn feature_settings_follow_suspension_expiry_and_serialization_postgres() 
     )
     .await
     .expect("owner should read suspended PostgreSQL feature administrator state");
-    assert_eq!(during.effective_status, GroupMembershipEffectiveStatus::Suspended);
+    assert_eq!(
+        during.effective_status,
+        GroupMembershipEffectiveStatus::Suspended
+    );
 
     let remaining = expires_at
         .signed_duration_since(Utc::now())
@@ -300,7 +305,10 @@ async fn feature_settings_follow_suspension_expiry_and_serialization_postgres() 
     )
     .await
     .expect("owner-clock expiry should restore PostgreSQL feature authority");
-    assert_eq!(after_expiry.effective_status, GroupMembershipEffectiveStatus::Active);
+    assert_eq!(
+        after_expiry.effective_status,
+        GroupMembershipEffectiveStatus::Active
+    );
     assert_eq!(after_expiry.membership_revision, Some(2));
 
     GroupCommandPort::set_group_feature(
@@ -320,7 +328,9 @@ async fn feature_settings_follow_suspension_expiry_and_serialization_postgres() 
     );
     assert_eq!(member_count(&db, tenant_id, group_id).await, 2);
     assert_eq!(
-        feature_phase(db.clone(), tenant_id, owner_id, group_id).await.as_deref(),
+        feature_phase(db.clone(), tenant_id, owner_id, group_id)
+            .await
+            .as_deref(),
         Some("after-expiry")
     );
 

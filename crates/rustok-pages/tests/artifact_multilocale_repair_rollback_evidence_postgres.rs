@@ -2,7 +2,7 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -15,9 +15,7 @@ use rustok_pages::entities::{
     page_publish_rebuild_source, page_published_landing_artifact, page_static_landing_artifact,
 };
 use rustok_pages::services::PageService;
-use rustok_pages::{
-    PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT, PagesError, PagesModule,
-};
+use rustok_pages::{PAGE_ARTIFACT_BINDING_REPLACEMENT_OPERATION_FORMAT, PagesError, PagesModule};
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Statement,
@@ -106,13 +104,15 @@ struct RecoveredCurrent {
 }
 
 #[tokio::test]
-async fn rollback_continues_after_two_locale_physical_loss_recovery_on_postgres() -> TestResult<()> {
+async fn rollback_continues_after_two_locale_physical_loss_recovery_on_postgres() -> TestResult<()>
+{
     let Some(database) = TestDatabase::setup("success").await? else {
         return Ok(());
     };
     let db = database.connection().await?;
     let service = page_service(&db);
-    let fixture = create_multi_publish_fixture(&db, &service, "multilocale-rollback-success").await?;
+    let fixture =
+        create_multi_publish_fixture(&db, &service, "multilocale-rollback-success").await?;
     let recovered = recover_second_publish(&db, &service, &fixture, "success").await?;
 
     let input = RollbackPageInput {
@@ -157,14 +157,15 @@ async fn rollback_continues_after_two_locale_physical_loss_recovery_on_postgres(
 }
 
 #[tokio::test]
-async fn rollback_rejects_repaired_cursor_with_noncanonical_activation_request_hash_on_postgres(
-) -> TestResult<()> {
+async fn rollback_rejects_repaired_cursor_with_noncanonical_activation_request_hash_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("request_hash").await? else {
         return Ok(());
     };
     let db = database.connection().await?;
     let service = page_service(&db);
-    let fixture = create_multi_publish_fixture(&db, &service, "multilocale-rollback-request-hash").await?;
+    let fixture =
+        create_multi_publish_fixture(&db, &service, "multilocale-rollback-request-hash").await?;
     let recovered = recover_second_publish(&db, &service, &fixture, "request-hash").await?;
 
     let activation = page_artifact_binding_replacement_operation::Entity::find_by_id(
@@ -196,14 +197,15 @@ async fn rollback_rejects_repaired_cursor_with_noncanonical_activation_request_h
 }
 
 #[tokio::test]
-async fn rollback_rejects_individually_valid_but_noncontiguous_activation_prefix_on_postgres(
-) -> TestResult<()> {
+async fn rollback_rejects_individually_valid_but_noncontiguous_activation_prefix_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("prefix_gap").await? else {
         return Ok(());
     };
     let db = database.connection().await?;
     let service = page_service(&db);
-    let fixture = create_multi_publish_fixture(&db, &service, "multilocale-rollback-prefix-gap").await?;
+    let fixture =
+        create_multi_publish_fixture(&db, &service, "multilocale-rollback-prefix-gap").await?;
     let recovered = recover_second_publish(&db, &service, &fixture, "prefix-gap").await?;
 
     let activation = page_artifact_binding_replacement_operation::Entity::find_by_id(
@@ -271,7 +273,10 @@ async fn assert_rollback_rejected_without_binding_change(
             },
         )
         .await;
-    assert!(matches!(result, Err(PagesError::RollbackTargetUnavailable(_))));
+    assert!(matches!(
+        result,
+        Err(PagesError::RollbackTargetUnavailable(_))
+    ));
     let after = page::Entity::find_by_id(fixture.page_id)
         .one(db)
         .await?
@@ -403,9 +408,7 @@ async fn create_multi_publish_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("home-en", "Repair rollback A EN", "home")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-en", "Repair rollback A EN", "home")?,
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -427,9 +430,7 @@ async fn create_multi_publish_fixture(
                 expected_revision: format!("page:{}:initial", draft.id),
                 body: PageBodyInput {
                     locale: "fr".to_string(),
-                    content: project_json("home-fr", "Réparation rollback A FR", "accueil")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-fr", "Réparation rollback A FR", "accueil")?,
                 },
             },
         )
@@ -484,9 +485,7 @@ async fn create_multi_publish_fixture(
                 expected_revision: en_before.updated_at.to_string(),
                 body: PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("home-en", "Repair rollback B EN", "home")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-en", "Repair rollback B EN", "home")?,
                 },
             },
         )
@@ -501,9 +500,7 @@ async fn create_multi_publish_fixture(
                 expected_revision: fr_before.updated_at.to_string(),
                 body: PageBodyInput {
                     locale: "fr".to_string(),
-                    content: project_json("home-fr", "Réparation rollback B FR", "accueil")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-fr", "Réparation rollback B FR", "accueil")?,
                 },
             },
         )
@@ -660,8 +657,8 @@ fn reviewed_input(reviewed: &PageBuilderReviewedPublishRuntime) -> ReviewedPageP
     }
 }
 
-fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<String> {
-    Ok(serde_json::to_string(&json!({
+fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<serde_json::Value> {
+    Ok(json!({
         "pages": [{
             "id": page_id,
             "flyPageMeta": {
@@ -680,7 +677,7 @@ fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<String> {
                 }]
             }
         }]
-    }))?)
+    }))
 }
 
 fn page_service(db: &DatabaseConnection) -> PageService {

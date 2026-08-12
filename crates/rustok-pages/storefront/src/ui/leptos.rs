@@ -257,10 +257,6 @@ fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
 }
 
 fn summarize_content(locale: Option<&str>, content: &str, format: &str) -> String {
-    if format.eq_ignore_ascii_case("markdown") {
-        return content.trim().to_string();
-    }
-
     core::raw_body_format_summary(
         format,
         content.chars().count(),
@@ -302,27 +298,30 @@ mod tests {
                 body: Some(PageBody {
                     locale: "en".to_string(),
                     content: "Hello".to_string(),
-                    format: "markdown".to_string(),
+                    format: "grapesjs".to_string(),
                 }),
             },
             |content, format| summarize_content(Some("en"), content, format),
             "empty".to_string(),
         );
 
-        assert_eq!(summary, "Hello");
+        assert_eq!(
+            summary,
+            "Stored in `grapesjs` format. Raw body length: 5 characters."
+        );
     }
 
     #[test]
     fn raw_body_format_summary_uses_template_placeholders() {
         let summary = core::raw_body_format_summary(
-            "rt_json_v1",
+            "grapesjs",
             42,
             "Stored in `{format}` format. Raw body length: {count} characters.",
         );
 
         assert_eq!(
             summary,
-            "Stored in `rt_json_v1` format. Raw body length: 42 characters."
+            "Stored in `grapesjs` format. Raw body length: 42 characters."
         );
     }
 

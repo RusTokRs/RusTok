@@ -47,21 +47,20 @@ async fn connect(url: &str) -> DatabaseConnection {
     let db = Database::connect(options)
         .await
         .expect("Groups direct enforcement concurrency SQLite connection should open");
-    db.execute_unprepared(&format!(
-        "PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"
-    ))
-    .await
-    .expect("Groups direct enforcement concurrency SQLite connection should configure busy timeout");
+    db.execute_unprepared(&format!("PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"))
+        .await
+        .expect(
+            "Groups direct enforcement concurrency SQLite connection should configure busy timeout",
+        );
     db
 }
 
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply for direct enforcement concurrency evidence");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply for direct enforcement concurrency evidence",
+        );
     }
 }
 
@@ -177,7 +176,8 @@ async fn group_snapshot(db: &DatabaseConnection, fixture: Fixture) -> (i64, i64)
         .expect("SQLite concurrency group snapshot should succeed")
         .expect("group should exist");
     (
-        row.try_get("", "version").expect("group version should decode"),
+        row.try_get("", "version")
+            .expect("group version should decode"),
         row.try_get("", "member_count")
             .expect("member_count should decode"),
     )
@@ -285,21 +285,34 @@ async fn identical_concurrent_suspend_commits_once_and_replays_once_sqlite() {
     let left = tokio::spawn(async move {
         let service = GroupMembershipEnforcementCommandService::new(left_db);
         left_barrier.wait().await;
-        suspend(&service, fixture, "same-key-suspend", 1, "same_key_concurrency").await
+        suspend(
+            &service,
+            fixture,
+            "same-key-suspend",
+            1,
+            "same_key_concurrency",
+        )
+        .await
     });
     let right_barrier = barrier.clone();
     let right = tokio::spawn(async move {
         let service = GroupMembershipEnforcementCommandService::new(right_db);
         right_barrier.wait().await;
-        suspend(&service, fixture, "same-key-suspend", 1, "same_key_concurrency").await
+        suspend(
+            &service,
+            fixture,
+            "same-key-suspend",
+            1,
+            "same_key_concurrency",
+        )
+        .await
     });
 
     barrier.wait().await;
-    let (left_join, right_join) = tokio::time::timeout(PAIR_TIMEOUT, async {
-        tokio::join!(left, right)
-    })
-    .await
-    .expect("same-key concurrent suspend must not deadlock or exceed timeout");
+    let (left_join, right_join) =
+        tokio::time::timeout(PAIR_TIMEOUT, async { tokio::join!(left, right) })
+            .await
+            .expect("same-key concurrent suspend must not deadlock or exceed timeout");
     let left = left_join
         .expect("left same-key task should join without panic")
         .expect("left same-key command should succeed");
@@ -344,21 +357,34 @@ async fn distinct_concurrent_suspend_commits_once_and_revision_conflicts_once_sq
     let left = tokio::spawn(async move {
         let service = GroupMembershipEnforcementCommandService::new(left_db);
         left_barrier.wait().await;
-        suspend(&service, fixture, "distinct-suspend-left", 1, "distinct_key_concurrency").await
+        suspend(
+            &service,
+            fixture,
+            "distinct-suspend-left",
+            1,
+            "distinct_key_concurrency",
+        )
+        .await
     });
     let right_barrier = barrier.clone();
     let right = tokio::spawn(async move {
         let service = GroupMembershipEnforcementCommandService::new(right_db);
         right_barrier.wait().await;
-        suspend(&service, fixture, "distinct-suspend-right", 1, "distinct_key_concurrency").await
+        suspend(
+            &service,
+            fixture,
+            "distinct-suspend-right",
+            1,
+            "distinct_key_concurrency",
+        )
+        .await
     });
 
     barrier.wait().await;
-    let (left_join, right_join) = tokio::time::timeout(PAIR_TIMEOUT, async {
-        tokio::join!(left, right)
-    })
-    .await
-    .expect("distinct-key concurrent suspend must not deadlock or exceed timeout");
+    let (left_join, right_join) =
+        tokio::time::timeout(PAIR_TIMEOUT, async { tokio::join!(left, right) })
+            .await
+            .expect("distinct-key concurrent suspend must not deadlock or exceed timeout");
     let left = left_join.expect("left distinct-key task should join without panic");
     let right = right_join.expect("right distinct-key task should join without panic");
 
@@ -434,11 +460,10 @@ async fn distinct_concurrent_revoke_commits_once_and_revision_conflicts_once_sql
     });
 
     barrier.wait().await;
-    let (left_join, right_join) = tokio::time::timeout(PAIR_TIMEOUT, async {
-        tokio::join!(left, right)
-    })
-    .await
-    .expect("distinct-key concurrent revoke must not deadlock or exceed timeout");
+    let (left_join, right_join) =
+        tokio::time::timeout(PAIR_TIMEOUT, async { tokio::join!(left, right) })
+            .await
+            .expect("distinct-key concurrent revoke must not deadlock or exceed timeout");
     let left = left_join.expect("left revoke task should join without panic");
     let right = right_join.expect("right revoke task should join without panic");
 

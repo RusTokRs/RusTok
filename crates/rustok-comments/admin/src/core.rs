@@ -3,6 +3,7 @@
 //! This layer owns request/view policy that can be reused by future host adapters
 //! without depending on framework runtime types.
 
+use rustok_api::RichTextView;
 use rustok_comments::{
     CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus, CommentThreadSummary,
 };
@@ -142,12 +143,12 @@ impl CommentThreadDetailViewModel {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CommentRowViewModel {
     pub id: String,
     pub author_id: String,
     pub created_at: String,
-    pub body: String,
+    pub body: RichTextView,
     pub requested_locale: String,
     pub effective_locale: String,
 }
@@ -158,7 +159,7 @@ impl CommentRowViewModel {
             id: comment.id.to_string(),
             author_id: comment.author_id.to_string(),
             created_at: comment.created_at.clone(),
-            body: comment.body_text.clone(),
+            body: comment.body.clone(),
             requested_locale: comment.requested_locale.clone(),
             effective_locale: comment.effective_locale.clone(),
         }
@@ -368,7 +369,7 @@ mod tests {
         assert_eq!(view_model.id, comment.id.to_string());
         assert_eq!(view_model.author_id, comment.author_id.to_string());
         assert_eq!(view_model.created_at, "2026-06-07T00:00:00Z");
-        assert_eq!(view_model.body, "Moderation body");
+        assert_eq!(view_model.body, comment.body);
         assert_eq!(view_model.requested_locale, "ru");
         assert_eq!(view_model.effective_locale, "ru");
     }

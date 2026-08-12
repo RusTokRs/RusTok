@@ -67,23 +67,24 @@ endpoint URLs and provider error text. `rustok-modules` owns the catalog port;
    **Done when:** the documentation and `verify:api:surface-contract` describe
    the same dependency direction and owner responsibilities.
 
-4. **Complete neutral richtext transport adoption during the atomic cutover.**
-   The structural contract is implemented; the remaining work is to adopt it
-   atomically in every owner transport. Own
+4. **Keep the adopted neutral richtext transport canonical during closeout.**
+   Blog, Forum, and Comments owner transports use the structural contract. This
+   crate continues to own
    `RichTextDocument`, neutral `RichTextProfileId`, the read-only
    `RichTextView`, generated schema, and optional transport adapters without
    importing Tiptap or executable content policy. Validation, rendering,
    profile definitions, and plain-text extraction remain in
    `rustok-content::richtext`.
-   **Depends on:** the
+   **Depends on:** deletion of the old core/generic format paths under the
    [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
    and synchronized Blog/Forum/Comments transports.
    **Current evidence:** `cargo test -p rustok-api` and
    `cargo test -p rustok-api --features server` cover the structural contract,
    removed envelope, unknown-field rejection, generated schema shape, and
    GraphQL feature compilation.
-   **Done when:** repository-owned transports use one typed document instead of
-   a body string plus `content_json`, and this crate remains dependency-neutral.
+   **Done when:** repository-owned richtext transports use one typed document,
+   the separate `rustok-core::rt_json` implementation is absent, and this crate
+   remains dependency-neutral.
 
 ## Delivered result: explicit authenticated principal kind
 

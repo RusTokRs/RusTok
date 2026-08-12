@@ -9,9 +9,9 @@ use rustok_api::{
 use rustok_moderation::{
     AssignModerationCaseCommand, DecideModerationCaseCommand, ModerationApplicationRecoveryRecord,
     ModerationCaseRecord, ModerationCaseStatus, ModerationCommandPort, ModerationDecisionEffect,
-    ModerationDecisionKind, ModerationReadPort, ModerationReasonCode, ModerationRecoveryCommandPort,
-    ModerationService, OpenModerationCaseCommand, ReconcileLegacyModerationApplicationCommand,
-    RequeueModerationApplicationCommand,
+    ModerationDecisionKind, ModerationReadPort, ModerationReasonCode,
+    ModerationRecoveryCommandPort, ModerationService, OpenModerationCaseCommand,
+    ReconcileLegacyModerationApplicationCommand, RequeueModerationApplicationCommand,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::{Value as JsonValue, json};
@@ -124,28 +124,24 @@ impl ModerationRecoveryMutation {
             &policy_snapshot,
         )?;
 
-        let source_decision = ModerationReadPort::read_decision(
-            &service,
-            base_context.clone(),
-            source_decision_id,
-        )
-        .await
-        .map_err(map_port_error)?
-        .ok_or_else(|| {
-            <FieldError as GraphQLError>::not_found("source moderation decision was not found")
-        })?;
-        let source_case = ModerationReadPort::read_case(
-            &service,
-            base_context.clone(),
-            source_decision.case_id,
-        )
-        .await
-        .map_err(map_port_error)?
-        .ok_or_else(|| {
-            <FieldError as GraphQLError>::internal_error(
-                "source moderation decision references a missing case",
-            )
-        })?;
+        let source_decision =
+            ModerationReadPort::read_decision(&service, base_context.clone(), source_decision_id)
+                .await
+                .map_err(map_port_error)?
+                .ok_or_else(|| {
+                    <FieldError as GraphQLError>::not_found(
+                        "source moderation decision was not found",
+                    )
+                })?;
+        let source_case =
+            ModerationReadPort::read_case(&service, base_context.clone(), source_decision.case_id)
+                .await
+                .map_err(map_port_error)?
+                .ok_or_else(|| {
+                    <FieldError as GraphQLError>::internal_error(
+                        "source moderation decision references a missing case",
+                    )
+                })?;
 
         validate_rereview_source(
             &source_case,
@@ -275,9 +271,7 @@ fn require_recovery_authority<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContex
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
     let tenant = ctx.data::<TenantContext>().map_err(|_| {
-        <FieldError as GraphQLError>::internal_error(
-            "Moderation tenant context is not registered",
-        )
+        <FieldError as GraphQLError>::internal_error("Moderation tenant context is not registered")
     })?;
 
     if auth.tenant_id != tenant.id {
@@ -315,9 +309,7 @@ fn recovery_port_context(
     }
 
     let tenant = ctx.data::<TenantContext>().map_err(|_| {
-        <FieldError as GraphQLError>::internal_error(
-            "Moderation tenant context is not registered",
-        )
+        <FieldError as GraphQLError>::internal_error("Moderation tenant context is not registered")
     })?;
     let locale = ctx
         .data_opt::<RequestContext>()

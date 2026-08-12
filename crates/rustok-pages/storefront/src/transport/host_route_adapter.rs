@@ -26,6 +26,7 @@ pub struct StorefrontPageRouteDecision {
     pub artifact_generation: Option<u64>,
 }
 
+#[cfg(feature = "ssr")]
 impl StorefrontPageRouteDecision {
     fn terminal(disposition: StorefrontPageRouteDisposition) -> Self {
         Self {
@@ -113,7 +114,9 @@ async fn storefront_page_route_native(
             )
         };
 
-        let channel_id = request_context.as_ref().and_then(|context| context.channel_id);
+        let channel_id = request_context
+            .as_ref()
+            .and_then(|context| context.channel_id);
         if let Some(channel_id) = channel_id {
             let enabled = ChannelService::new(runtime_ctx.db_clone())
                 .is_module_enabled(channel_id, MODULE_SLUG)
@@ -152,9 +155,7 @@ async fn storefront_page_route_native(
             {
                 Ok(resolution) => resolution,
                 Err(error) if page_error_code(&error) == Some(PAGE_ROUTE_NOT_FOUND) => continue,
-                Err(error)
-                    if page_error_code(&error) == Some(PAGE_ROUTE_RESOLUTION_CONFLICT) =>
-                {
+                Err(error) if page_error_code(&error) == Some(PAGE_ROUTE_RESOLUTION_CONFLICT) => {
                     return Ok(StorefrontPageRouteDecision::terminal(
                         StorefrontPageRouteDisposition::Conflict,
                     ));
@@ -209,23 +210,22 @@ async fn storefront_page_route_native(
             } else {
                 StorefrontPageRouteDisposition::Canonical
             };
-            let generations = if let Some(cache_runtime) =
-                runtime_ctx.shared_get::<PagesCacheReadRuntime>()
-            {
-                match cache_runtime.generation_snapshot(tenant_id).await {
-                    Ok(generations) => Some(generations),
-                    Err(error) => {
-                        tracing::warn!(
-                            %error,
-                            %tenant_id,
-                            "Pages host route generation read failed; composition ETag disabled"
-                        );
-                        None
+            let generations =
+                if let Some(cache_runtime) = runtime_ctx.shared_get::<PagesCacheReadRuntime>() {
+                    match cache_runtime.generation_snapshot(tenant_id).await {
+                        Ok(generations) => Some(generations),
+                        Err(error) => {
+                            tracing::warn!(
+                                %error,
+                                %tenant_id,
+                                "Pages host route generation read failed; composition ETag disabled"
+                            );
+                            None
+                        }
                     }
-                }
-            } else {
-                None
-            };
+                } else {
+                    None
+                };
             return Ok(StorefrontPageRouteDecision {
                 disposition,
                 canonical_path: Some(encoded_page_route_path(

@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 fn test_plan(email: &str) -> InstallPlan {
     InstallPlan {
+        placement: rustok_installer::InstancePlacement::new("."),
         environment: InstallEnvironment::Test,
         profile: InstallProfile::Monolith,
         database: DatabaseConfig {

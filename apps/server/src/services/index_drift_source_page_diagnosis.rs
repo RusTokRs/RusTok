@@ -17,13 +17,13 @@ const MAX_SOURCE_PAGE_DIAGNOSIS_SIZE: usize = 32;
 
 #[derive(Debug, Error)]
 pub enum IndexDriftSourcePageDiagnosisError {
-    #[error("Index drift source-page diagnosis requires a request-bound effective permission snapshot")]
+    #[error(
+        "Index drift source-page diagnosis requires a request-bound effective permission snapshot"
+    )]
     MissingRequestAuthority,
     #[error("modules:manage is required for Index drift source-page diagnosis")]
     Forbidden,
-    #[error(
-        "Index drift source-page diagnosis limit is invalid: actual={actual}, max={max}"
-    )]
+    #[error("Index drift source-page diagnosis limit is invalid: actual={actual}, max={max}")]
     InvalidPageLimit { actual: usize, max: usize },
     #[error("Index drift source-page continuation keyring is not configured")]
     ContinuationUnavailable,
@@ -195,10 +195,8 @@ impl IndexDriftSourcePageDiagnosisRuntime {
         schema: rustok_index::SchemaRef,
         cursor: Option<rustok_index::IndexSourceCursor>,
         limit: usize,
-    ) -> std::result::Result<
-        IndexDriftSourcePageDiagnosisOutcome,
-        IndexDriftSourcePageDiagnosisError,
-    > {
+    ) -> std::result::Result<IndexDriftSourcePageDiagnosisOutcome, IndexDriftSourcePageDiagnosisError>
+    {
         let request = authorize_and_build_scan_request(context, schema, cursor, limit)?;
         self.diagnose_request(context, request).await
     }
@@ -237,12 +235,8 @@ impl IndexDriftSourcePageDiagnosisRuntime {
         let cursor = continuation
             .map(|encoded| codec.open_encoded(&scope, encoded, Utc::now()))
             .transpose()?;
-        let request = rustok_index::IndexSourceScanRequest::new(
-            context.tenant_id(),
-            schema,
-            cursor,
-            limit,
-        )?;
+        let request =
+            rustok_index::IndexSourceScanRequest::new(context.tenant_id(), schema, cursor, limit)?;
         let outcome = self.diagnose_request(context, request).await?;
         let next_token = outcome
             .next_cursor
@@ -258,10 +252,8 @@ impl IndexDriftSourcePageDiagnosisRuntime {
         &self,
         context: IndexReconciliationOperatorContext,
         request: rustok_index::IndexSourceScanRequest,
-    ) -> std::result::Result<
-        IndexDriftSourcePageDiagnosisOutcome,
-        IndexDriftSourcePageDiagnosisError,
-    > {
+    ) -> std::result::Result<IndexDriftSourcePageDiagnosisOutcome, IndexDriftSourcePageDiagnosisError>
+    {
         let page = self.sources.scan(request).await?;
         diagnose_page_with(page, |position, key| {
             let exact = self.exact.clone();
@@ -283,7 +275,10 @@ impl fmt::Debug for IndexDriftSourcePageDiagnosisRuntime {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("IndexDriftSourcePageDiagnosisRuntime")
-            .field("sealed_continuation_configured", &self.continuation.is_some())
+            .field(
+                "sealed_continuation_configured",
+                &self.continuation.is_some(),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -326,10 +321,7 @@ fn authorize_and_build_scan_request(
 async fn diagnose_page_with<Diagnose, DiagnoseFuture>(
     page: rustok_index::IndexSourcePage,
     mut diagnose: Diagnose,
-) -> std::result::Result<
-    IndexDriftSourcePageDiagnosisOutcome,
-    IndexDriftSourcePageDiagnosisError,
->
+) -> std::result::Result<IndexDriftSourcePageDiagnosisOutcome, IndexDriftSourcePageDiagnosisError>
 where
     Diagnose: FnMut(usize, rustok_index::EntityKey) -> DiagnoseFuture,
     DiagnoseFuture: Future<
@@ -568,10 +560,7 @@ mod tests {
             receipts: Vec::new(),
         };
         let token = IndexSourceContinuationToken::parse("opaque-token").unwrap();
-        let sealed = IndexDriftSourcePageDiagnosisSealedOutcome::from_raw(
-            raw,
-            Some(token.clone()),
-        );
+        let sealed = IndexDriftSourcePageDiagnosisSealedOutcome::from_raw(raw, Some(token.clone()));
 
         assert_eq!(sealed.next_token(), Some(&token));
         assert_eq!(sealed.scanned_mutation_count(), 3);

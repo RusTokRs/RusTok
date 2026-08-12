@@ -54,6 +54,9 @@ The host-owned installer feature is a thin REST wizard over the server installer
 live in `src/features/installer/model.rs`, HTTP request code lives only in
 `src/features/installer/transport/mod.rs`, and the page calls that transport facade instead of
 holding raw REST wiring. The removed `src/features/installer/api.rs` facade must not be restored.
+The wizard includes one instance-root field. The server normalizes and binds it;
+production ignores unrestricted client placement and requires the host-selected
+`RUSTOK_INSTANCE_ROOT`.
 
 The host-owned cache health operator page keeps its read model in
 `src/features/cache/model.rs` and selects native or GraphQL transport only through

@@ -10,7 +10,8 @@ use rustok_build_publication::{
 };
 use rustok_distribution::GeneratedStaticDistributionManifest;
 use rustok_modules::{
-    ModuleStaticDistributionBuildEvidence, OciArtifactPublicationTarget,
+    ModuleStaticDistributionBuildEvidence, ModuleStaticDistributionRole,
+    ModuleStaticDistributionRoleArtifact, OciArtifactPublicationTarget,
     OciBuildPublicationArtifact, OciBuildPublicationBlob, OciDistributionArtifactPublisher,
 };
 use serde::{Deserialize, Serialize};
@@ -166,6 +167,8 @@ struct StaticDistributionArtifactConfig<'a> {
     build_target: &'a str,
     resolved_lock_digest: &'a str,
     artifact_digest: &'a str,
+    role_set_digest: &'a str,
+    roles: &'a [ModuleStaticDistributionRoleArtifact],
 }
 
 pub async fn run_static_distribution_publisher(
@@ -235,6 +238,9 @@ async fn publish(
         .join(&config.artifact_file_name);
     let artifact_bytes = read_bounded_regular(&artifact_path, config.max_artifact_bytes)?;
     let artifact_digest = digest_bytes(&artifact_bytes);
+    let roles = canonical_role_artifacts(&artifact_digest);
+    let role_set_digest = ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
+        .map_err(|error| StaticDistributionPublisherError::InvalidInput(error.to_string()))?;
     let artifact_config = StaticDistributionArtifactConfig {
         contract: ARTIFACT_CONFIG_CONTRACT,
         distribution_build_id: request.distribution_build_id,
@@ -247,6 +253,8 @@ async fn publish(
         build_target: &request.build_target,
         resolved_lock_digest: &request.resolved_lock_digest,
         artifact_digest: &artifact_digest,
+        role_set_digest: &role_set_digest,
+        roles: &roles,
     };
     let artifact_config_bytes = serde_json::to_vec_pretty(&artifact_config)
         .map_err(|error| StaticDistributionPublisherError::Io(error.to_string()))?;
@@ -357,8 +365,10 @@ async fn publish(
         resolved_lock_digest: request.resolved_lock_digest,
         test_evidence_payload_digest: request.test_evidence_digest,
         evidence: ModuleStaticDistributionBuildEvidence {
-            artifact_reference: artifact.canonical(),
-            artifact_digest: artifact.digest,
+            bundle_reference: artifact.canonical(),
+            bundle_root_digest: artifact.digest,
+            role_set_digest,
+            roles,
             sbom_reference: sbom.canonical(),
             sbom_digest: sbom.digest,
             provenance_reference: provenance.canonical(),
@@ -372,6 +382,23 @@ async fn publish(
     let receipt_bytes = serde_json::to_vec_pretty(&receipt)
         .map_err(|error| StaticDistributionPublisherError::Io(error.to_string()))?;
     write_new_file(&paths.receipt, &receipt_bytes)
+}
+
+fn canonical_role_artifacts(artifact_digest: &str) -> Vec<ModuleStaticDistributionRoleArtifact> {
+    [
+        ModuleStaticDistributionRole::Monolith,
+        ModuleStaticDistributionRole::Api,
+        ModuleStaticDistributionRole::AdminSsr,
+        ModuleStaticDistributionRole::StorefrontSsr,
+        ModuleStaticDistributionRole::Worker,
+        ModuleStaticDistributionRole::Registry,
+    ]
+    .into_iter()
+    .map(|role| ModuleStaticDistributionRoleArtifact {
+        role,
+        artifact_digest: artifact_digest.to_string(),
+    })
+    .collect()
 }
 
 fn validate_request(

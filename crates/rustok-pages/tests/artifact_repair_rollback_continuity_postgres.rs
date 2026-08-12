@@ -2,7 +2,7 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -93,7 +93,8 @@ struct TwoPublishFixture {
 }
 
 #[tokio::test]
-async fn rollback_continues_after_physical_loss_rebuild_and_activation_on_postgres() -> TestResult<()> {
+async fn rollback_continues_after_physical_loss_rebuild_and_activation_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("success").await? else {
         return Ok(());
     };
@@ -128,7 +129,10 @@ async fn rollback_continues_after_physical_loss_rebuild_and_activation_on_postgr
             },
         )
         .await?;
-    assert_eq!(activation.replacement_artifact_id, rebuild.rebuilt_artifact_id);
+    assert_eq!(
+        activation.replacement_artifact_id,
+        rebuild.rebuilt_artifact_id
+    );
     assert_eq!(
         page_publish_operation_artifact::Entity::find()
             .filter(
@@ -228,7 +232,10 @@ async fn historical_target_still_requires_original_manifest_on_postgres() -> Tes
             },
         )
         .await;
-    assert!(matches!(result, Err(PagesError::RollbackTargetUnavailable(_))));
+    assert!(matches!(
+        result,
+        Err(PagesError::RollbackTargetUnavailable(_))
+    ));
     let after = page::Entity::find_by_id(fixture.page_id)
         .one(&db)
         .await?
@@ -247,13 +254,15 @@ async fn historical_target_still_requires_original_manifest_on_postgres() -> Tes
 }
 
 #[tokio::test]
-async fn surviving_manifest_identity_mismatch_is_not_healed_by_repair_on_postgres() -> TestResult<()> {
+async fn surviving_manifest_identity_mismatch_is_not_healed_by_repair_on_postgres() -> TestResult<()>
+{
     let Some(database) = TestDatabase::setup("manifest_mismatch").await? else {
         return Ok(());
     };
     let db = database.connection().await?;
     let service = page_service(&db);
-    let fixture = create_two_publish_fixture(&db, &service, "repair-rollback-manifest-mismatch").await?;
+    let fixture =
+        create_two_publish_fixture(&db, &service, "repair-rollback-manifest-mismatch").await?;
 
     let rebuild = service
         .rebuild_immutable_artifact(
@@ -298,7 +307,9 @@ async fn surviving_manifest_identity_mismatch_is_not_healed_by_repair_on_postgre
     let before = page::Entity::find_by_id(fixture.page_id)
         .one(&db)
         .await?
-        .ok_or_else(|| std::io::Error::other("page is missing before manifest mismatch rollback"))?;
+        .ok_or_else(|| {
+            std::io::Error::other("page is missing before manifest mismatch rollback")
+        })?;
     let result = service
         .rollback_to_previous(
             fixture.tenant_id,
@@ -310,11 +321,16 @@ async fn surviving_manifest_identity_mismatch_is_not_healed_by_repair_on_postgre
             },
         )
         .await;
-    assert!(matches!(result, Err(PagesError::RollbackTargetUnavailable(_))));
+    assert!(matches!(
+        result,
+        Err(PagesError::RollbackTargetUnavailable(_))
+    ));
     let after = page::Entity::find_by_id(fixture.page_id)
         .one(&db)
         .await?
-        .ok_or_else(|| std::io::Error::other("page disappeared after manifest mismatch rejection"))?;
+        .ok_or_else(|| {
+            std::io::Error::other("page disappeared after manifest mismatch rejection")
+        })?;
     assert_eq!(after.version, before.version);
     let binding = page_published_landing_artifact::Entity::find()
         .filter(page_published_landing_artifact::Column::TenantId.eq(fixture.tenant_id))
@@ -322,20 +338,28 @@ async fn surviving_manifest_identity_mismatch_is_not_healed_by_repair_on_postgre
         .filter(page_published_landing_artifact::Column::Locale.eq("en"))
         .one(&db)
         .await?
-        .ok_or_else(|| std::io::Error::other("repaired binding disappeared after manifest mismatch"))?;
+        .ok_or_else(|| {
+            std::io::Error::other("repaired binding disappeared after manifest mismatch")
+        })?;
     assert_eq!(binding.artifact_id, rebuild.rebuilt_artifact_id);
 
     database.cleanup().await
 }
 
 #[tokio::test]
-async fn missing_current_manifest_is_not_healed_while_source_artifact_still_exists_on_postgres() -> TestResult<()> {
+async fn missing_current_manifest_is_not_healed_while_source_artifact_still_exists_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("manifest_missing_source_live").await? else {
         return Ok(());
     };
     let db = database.connection().await?;
     let service = page_service(&db);
-    let fixture = create_two_publish_fixture(&db, &service, "repair-rollback-manifest-missing-source-live").await?;
+    let fixture = create_two_publish_fixture(
+        &db,
+        &service,
+        "repair-rollback-manifest-missing-source-live",
+    )
+    .await?;
 
     let rebuild = service
         .rebuild_immutable_artifact(
@@ -382,7 +406,9 @@ async fn missing_current_manifest_is_not_healed_while_source_artifact_still_exis
     let before = page::Entity::find_by_id(fixture.page_id)
         .one(&db)
         .await?
-        .ok_or_else(|| std::io::Error::other("page is missing before live-source manifest rejection"))?;
+        .ok_or_else(|| {
+            std::io::Error::other("page is missing before live-source manifest rejection")
+        })?;
     let result = service
         .rollback_to_previous(
             fixture.tenant_id,
@@ -394,11 +420,16 @@ async fn missing_current_manifest_is_not_healed_while_source_artifact_still_exis
             },
         )
         .await;
-    assert!(matches!(result, Err(PagesError::RollbackTargetUnavailable(_))));
+    assert!(matches!(
+        result,
+        Err(PagesError::RollbackTargetUnavailable(_))
+    ));
     let after = page::Entity::find_by_id(fixture.page_id)
         .one(&db)
         .await?
-        .ok_or_else(|| std::io::Error::other("page disappeared after live-source manifest rejection"))?;
+        .ok_or_else(|| {
+            std::io::Error::other("page disappeared after live-source manifest rejection")
+        })?;
     assert_eq!(after.version, before.version);
     let binding = page_published_landing_artifact::Entity::find()
         .filter(page_published_landing_artifact::Column::TenantId.eq(fixture.tenant_id))
@@ -406,7 +437,11 @@ async fn missing_current_manifest_is_not_healed_while_source_artifact_still_exis
         .filter(page_published_landing_artifact::Column::Locale.eq("en"))
         .one(&db)
         .await?
-        .ok_or_else(|| std::io::Error::other("repaired binding disappeared after live-source manifest rejection"))?;
+        .ok_or_else(|| {
+            std::io::Error::other(
+                "repaired binding disappeared after live-source manifest rejection",
+            )
+        })?;
     assert_eq!(binding.artifact_id, rebuild.rebuilt_artifact_id);
 
     database.cleanup().await
@@ -438,9 +473,7 @@ async fn create_two_publish_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("Publish A")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("Publish A")?,
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -500,9 +533,7 @@ async fn create_two_publish_fixture(
                 expected_revision: current_body.updated_at.to_string(),
                 body: PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("Publish B")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("Publish B")?,
                 },
             },
         )
@@ -575,9 +606,10 @@ async fn remove_current_source_artifact(
         .exec(db)
         .await?;
     assert_eq!(removed_manifest.rows_affected, 1);
-    let deleted = page_static_landing_artifact::Entity::delete_by_id(fixture.second_source.artifact_id)
-        .exec(db)
-        .await?;
+    let deleted =
+        page_static_landing_artifact::Entity::delete_by_id(fixture.second_source.artifact_id)
+            .exec(db)
+            .await?;
     assert_eq!(deleted.rows_affected, 1);
     Ok(())
 }
@@ -591,8 +623,8 @@ fn reviewed_input(reviewed: &PageBuilderReviewedPublishRuntime) -> ReviewedPageP
     }
 }
 
-fn project_json(title: &str) -> TestResult<String> {
-    Ok(serde_json::to_string(&json!({
+fn project_json(title: &str) -> TestResult<serde_json::Value> {
+    Ok(json!({
         "pages": [{
             "id": "home",
             "flyPageMeta": {
@@ -611,7 +643,7 @@ fn project_json(title: &str) -> TestResult<String> {
                 }]
             }
         }]
-    }))?)
+    }))
 }
 
 fn page_service(db: &DatabaseConnection) -> PageService {

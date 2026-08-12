@@ -272,6 +272,7 @@ mod tests {
     #[test]
     fn install_plan_redaction_removes_plaintext_values() {
         let plan = InstallPlan {
+            placement: crate::InstancePlacement::new("."),
             environment: crate::InstallEnvironment::Local,
             profile: crate::InstallProfile::DevLocal,
             database: crate::DatabaseConfig {

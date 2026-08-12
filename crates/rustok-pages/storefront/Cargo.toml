@@ -42,6 +42,7 @@ serde_json.workspace = true
 tracing.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-i18n-leptos.workspace = true
+rustok-page-builder = { path = "../../rustok-page-builder", default-features = false }
 rustok-page-builder-storefront = { path = "../../rustok-page-builder-storefront" }
 rustok-channel = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
@@ -56,7 +57,6 @@ async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
 rustok-events.workspace = true
-rustok-page-builder.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 tokio.workspace = true

@@ -164,7 +164,7 @@ test('Blog FBA verification-chain policy rejects package verify-chain drift', ()
 test('Blog FBA verification-chain policy rejects removal of a leaf self-test step', () => {
   const registry = canonicalRegistry();
   registry.verification_chain.test_steps = registry.verification_chain.test_steps.filter(
-    (step) => step !== 'npm run test:verify:blog:richtext-offline-backfill',
+    (step) => step !== 'npm run test:verify:blog:ai-richtext-boundary',
   );
   assert.ok(failures({ registry }).includes('registry test chain steps drift'));
 });
@@ -313,10 +313,10 @@ test('Blog FBA verification-chain policy rejects a missing registered verifier f
 
 test('Blog FBA verification-chain policy rejects a missing leaf self-test file', () => {
   const existingPaths = canonicalExistingPaths();
-  existingPaths.delete(BLOG_FBA_SOURCE_GATES.richtext_offline_backfill.self_test);
+  existingPaths.delete(BLOG_FBA_SOURCE_GATES.ai_richtext_boundary.self_test);
   assert.ok(
     failures({ existingPaths }).includes(
-      `registry source gate richtext_offline_backfill missing ${BLOG_FBA_SOURCE_GATES.richtext_offline_backfill.self_test}`,
+      `registry source gate ai_richtext_boundary missing ${BLOG_FBA_SOURCE_GATES.ai_richtext_boundary.self_test}`,
     ),
   );
 });

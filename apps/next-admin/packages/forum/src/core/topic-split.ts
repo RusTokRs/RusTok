@@ -1,3 +1,5 @@
+import { isForumUuid, newForumUuid } from './identity';
+
 export const MAX_FORUM_TOPIC_SPLIT_REPLIES = 500;
 export const MAX_FORUM_TOPIC_SPLIT_REASON_LENGTH = 500;
 export const MAX_FORUM_TOPIC_SPLIT_TITLE_LENGTH = 500;
@@ -47,22 +49,10 @@ export interface ForumTopicSplitReceipt {
   splitAt: string;
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function newUuidV4(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-  const now = BigInt(Date.now());
-  const entropy = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
-  const value = ((now << 64n) ^ entropy).toString(16).padStart(32, '0').slice(-32);
-  return `${value.slice(0, 8)}-${value.slice(8, 12)}-4${value.slice(13, 16)}-8${value.slice(17, 20)}-${value.slice(20)}`;
-}
-
 export function newForumTopicSplitIdentity(): ForumTopicSplitIdentity {
   return {
-    operationId: newUuidV4(),
-    targetTopicId: newUuidV4()
+    operationId: newForumUuid(),
+    targetTopicId: newForumUuid()
   };
 }
 
@@ -84,10 +74,10 @@ export function buildForumTopicSplitCommand(input: {
   const operationId = input.identity.operationId.trim();
   const targetTopicId = input.identity.targetTopicId.trim();
   const sourceTopicId = input.sourceTopicId.trim();
-  if (!UUID_PATTERN.test(operationId) || !UUID_PATTERN.test(targetTopicId)) {
+  if (!isForumUuid(operationId) || !isForumUuid(targetTopicId)) {
     throw new Error('Split retry identity is invalid.');
   }
-  if (!UUID_PATTERN.test(sourceTopicId)) {
+  if (!isForumUuid(sourceTopicId)) {
     throw new Error('Choose the source topic to split.');
   }
   if (sourceTopicId === targetTopicId) {
@@ -117,7 +107,7 @@ export function buildForumTopicSplitCommand(input: {
   }
 
   const replyIds = input.selectedReplyIds.map((value) => value.trim()).sort();
-  if (replyIds.some((value) => !UUID_PATTERN.test(value))) {
+  if (replyIds.some((value) => !isForumUuid(value))) {
     throw new Error('Every selected reply identity must be a UUID.');
   }
   if (new Set(replyIds).size !== replyIds.length) {

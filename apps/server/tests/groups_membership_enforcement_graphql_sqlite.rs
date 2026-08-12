@@ -33,10 +33,9 @@ async fn connect(url: &str) -> DatabaseConnection {
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply for enforcement GraphQL parity evidence");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply for enforcement GraphQL parity evidence",
+        );
     }
 }
 
@@ -101,11 +100,7 @@ fn auth_context(tenant_id: Uuid, owner_id: Uuid) -> AuthContext {
     }
 }
 
-fn native_write_context(
-    tenant_id: Uuid,
-    owner_id: Uuid,
-    idempotency_key: &str,
-) -> PortContext {
+fn native_write_context(tenant_id: Uuid, owner_id: Uuid, idempotency_key: &str) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
         PortActor::user(owner_id.to_string()),
@@ -243,7 +238,9 @@ async fn owner_snapshot(
         .expect("enforcement row should exist");
 
     (
-        group.try_get("", "version").expect("group version should decode"),
+        group
+            .try_get("", "version")
+            .expect("group version should decode"),
         group
             .try_get("", "member_count")
             .expect("member_count should decode"),
@@ -360,7 +357,10 @@ mutation {{
     .await
     .expect("native suspension receipt should replay while currently suspended");
     assert!(native_suspend_replay.replayed);
-    assert_eq!(native_suspend_replay.group_version, native_suspend.group_version);
+    assert_eq!(
+        native_suspend_replay.group_version,
+        native_suspend.group_version
+    );
 
     let graphql_suspend_replay = response_json(
         execute_graphql(
@@ -466,7 +466,10 @@ mutation {{
     assert_eq!(native_revoke.membership_revision, 3);
     assert_eq!(native_revoke.member_count, 2);
     assert!(native_revoke.revoked_at.is_some());
-    assert_eq!(native_revoke.group_version, native_suspend.group_version + 1);
+    assert_eq!(
+        native_revoke.group_version,
+        native_suspend.group_version + 1
+    );
     assert!(!native_revoke.replayed);
 
     let graphql_revoke = response_json(
@@ -501,21 +504,23 @@ mutation {{
         false,
     );
 
-    let native_revoke_replay =
-        GroupMembershipEnforcementCommandPort::revoke_membership_suspension(
-            &native,
-            native_write_context(tenant_id, owner_id, "native-revoke"),
-            RevokeGroupMembershipSuspensionRequest {
-                group_id: native_group_id,
-                target_user_id: target_id,
-                expected_membership_revision: 2,
-                reason_code: "transport_parity_release".to_string(),
-            },
-        )
-        .await
-        .expect("native revoke receipt should replay after suspension is no longer active");
+    let native_revoke_replay = GroupMembershipEnforcementCommandPort::revoke_membership_suspension(
+        &native,
+        native_write_context(tenant_id, owner_id, "native-revoke"),
+        RevokeGroupMembershipSuspensionRequest {
+            group_id: native_group_id,
+            target_user_id: target_id,
+            expected_membership_revision: 2,
+            reason_code: "transport_parity_release".to_string(),
+        },
+    )
+    .await
+    .expect("native revoke receipt should replay after suspension is no longer active");
     assert!(native_revoke_replay.replayed);
-    assert_eq!(native_revoke_replay.group_version, native_revoke.group_version);
+    assert_eq!(
+        native_revoke_replay.group_version,
+        native_revoke.group_version
+    );
 
     let graphql_revoke_replay = response_json(
         execute_graphql(

@@ -2,9 +2,10 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxModule, OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
+use rustok_pages::PagesModule;
 use rustok_pages::dto::{
     CreatePageInput, PageBodyInput, PageBodyRevisionInput, PageTranslationInput, PublishPageInput,
     RebuildPageArtifactInput, ReviewedPagePublishRuntimeInput,
@@ -14,7 +15,6 @@ use rustok_pages::entities::{
     page_publish_rebuild_source, page_published_landing_artifact, page_static_landing_artifact,
 };
 use rustok_pages::services::PageService;
-use rustok_pages::PagesModule;
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
     EntityTrait, PaginatorTrait, QueryFilter, Statement,
@@ -81,8 +81,8 @@ impl TestDatabase {
 }
 
 #[tokio::test]
-async fn explicit_rebuild_reproduces_missing_source_artifact_from_retained_provenance_on_postgres(
-) -> TestResult<()> {
+async fn explicit_rebuild_reproduces_missing_source_artifact_from_retained_provenance_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -139,9 +139,7 @@ async fn explicit_rebuild_reproduces_missing_source_artifact_from_retained_prove
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: None,
                 publish: false,

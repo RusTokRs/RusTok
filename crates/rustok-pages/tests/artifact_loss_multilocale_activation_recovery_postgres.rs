@@ -2,7 +2,7 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxModule, OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -15,9 +15,7 @@ use rustok_pages::entities::{
     page_publish_rebuild_source, page_published_landing_artifact, page_static_landing_artifact,
 };
 use rustok_pages::services::PageService;
-use rustok_pages::{
-    PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT, PagesError, PagesModule,
-};
+use rustok_pages::{PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT, PagesError, PagesModule};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
     DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set, Statement,
@@ -93,8 +91,8 @@ struct MultiLocaleFixture {
 }
 
 #[tokio::test]
-async fn missing_binding_activation_recovers_two_lost_locales_sequentially_on_postgres(
-) -> TestResult<()> {
+async fn missing_binding_activation_recovers_two_lost_locales_sequentially_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("success").await? else {
         return Ok(());
     };
@@ -150,7 +148,10 @@ async fn missing_binding_activation_recovers_two_lost_locales_sequentially_on_po
         )
         .await?;
     assert_eq!(fr_activation.version, fixture.publish_version + 2);
-    assert_eq!(fr_activation.replacement_artifact_id, fr_rebuild.rebuilt_artifact_id);
+    assert_eq!(
+        fr_activation.replacement_artifact_id,
+        fr_rebuild.rebuilt_artifact_id
+    );
 
     let bindings = page_published_landing_artifact::Entity::find()
         .filter(page_published_landing_artifact::Column::TenantId.eq(fixture.tenant_id))
@@ -188,7 +189,10 @@ async fn missing_binding_activation_recovers_two_lost_locales_sequentially_on_po
             .await?,
         2
     );
-    assert_eq!(SysEvents::find().count(&db).await?, events_before_activation + 4);
+    assert_eq!(
+        SysEvents::find().count(&db).await?,
+        events_before_activation + 4
+    );
 
     let replay = service
         .replace_rebuilt_artifact_binding(
@@ -201,14 +205,17 @@ async fn missing_binding_activation_recovers_two_lost_locales_sequentially_on_po
     assert!(replay.replayed);
     assert_eq!(replay.operation_id, fr_activation.operation_id);
     assert_eq!(replay.version, fr_activation.version);
-    assert_eq!(SysEvents::find().count(&db).await?, events_before_activation + 4);
+    assert_eq!(
+        SysEvents::find().count(&db).await?,
+        events_before_activation + 4
+    );
 
     database.cleanup().await
 }
 
 #[tokio::test]
-async fn missing_binding_activation_rejects_unexplained_version_between_locales_on_postgres(
-) -> TestResult<()> {
+async fn missing_binding_activation_rejects_unexplained_version_between_locales_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("unexplained_version").await? else {
         return Ok(());
     };
@@ -250,7 +257,9 @@ async fn missing_binding_activation_rejects_unexplained_version_between_locales_
     let current = page::Entity::find_by_id(fixture.page_id)
         .one(&db)
         .await?
-        .ok_or_else(|| std::io::Error::other("page is missing before unexplained version fixture"))?;
+        .ok_or_else(|| {
+            std::io::Error::other("page is missing before unexplained version fixture")
+        })?;
     let mut advanced: page::ActiveModel = current.into();
     advanced.version = Set(en_activation.version + 1);
     advanced.update(&db).await?;
@@ -338,9 +347,7 @@ async fn create_multilocale_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("home-en", "Multi-locale recovery", "home")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-en", "Multi-locale recovery", "home")?,
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -362,9 +369,7 @@ async fn create_multilocale_fixture(
                 expected_revision: format!("page:{}:initial", draft.id),
                 body: PageBodyInput {
                     locale: "fr".to_string(),
-                    content: project_json("home-fr", "Récupération multi-locale", "accueil")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-fr", "Récupération multi-locale", "accueil")?,
                 },
             },
         )
@@ -403,7 +408,9 @@ async fn create_multilocale_fixture(
         .all(db)
         .await?;
     if sources.len() != 2 || sources[0].locale != "en" || sources[1].locale != "fr" {
-        return Err(std::io::Error::other("published provenance did not retain en/fr sources").into());
+        return Err(
+            std::io::Error::other("published provenance did not retain en/fr sources").into(),
+        );
     }
 
     Ok(MultiLocaleFixture {
@@ -472,8 +479,8 @@ fn reviewed_input(reviewed: &PageBuilderReviewedPublishRuntime) -> ReviewedPageP
     }
 }
 
-fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<String> {
-    Ok(serde_json::to_string(&json!({
+fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<serde_json::Value> {
+    Ok(json!({
         "pages": [{
             "id": page_id,
             "flyPageMeta": {
@@ -492,7 +499,7 @@ fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<String> {
                 }]
             }
         }]
-    }))?)
+    }))
 }
 
 fn page_service(db: &DatabaseConnection) -> PageService {

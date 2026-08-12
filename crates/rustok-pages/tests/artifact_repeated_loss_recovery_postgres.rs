@@ -2,7 +2,7 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxModule, OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -537,9 +537,7 @@ async fn create_multilocale_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("home-en", "Repeated recovery", "home")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-en", "Repeated recovery", "home")?,
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -561,9 +559,7 @@ async fn create_multilocale_fixture(
                 expected_revision: format!("page:{}:initial", draft.id),
                 body: PageBodyInput {
                     locale: "fr".to_string(),
-                    content: project_json("home-fr", "Récupération répétée", "accueil")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home-fr", "Récupération répétée", "accueil")?,
                 },
             },
         )
@@ -641,9 +637,7 @@ async fn create_rollback_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("home", "Repeated rollback A", "home")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home", "Repeated rollback A", "home")?,
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -698,9 +692,7 @@ async fn create_rollback_fixture(
                 expected_revision: current_body.updated_at.to_string(),
                 body: PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("home", "Repeated rollback B", "home")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("home", "Repeated rollback B", "home")?,
                 },
             },
         )
@@ -876,8 +868,8 @@ fn reviewed_input(reviewed: &PageBuilderReviewedPublishRuntime) -> ReviewedPageP
     }
 }
 
-fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<String> {
-    Ok(serde_json::to_string(&json!({
+fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<serde_json::Value> {
+    Ok(json!({
         "pages": [{
             "id": page_id,
             "flyPageMeta": {
@@ -896,7 +888,7 @@ fn project_json(page_id: &str, title: &str, slug: &str) -> TestResult<String> {
                 }]
             }
         }]
-    }))?)
+    }))
 }
 
 fn page_service(db: &DatabaseConnection) -> PageService {

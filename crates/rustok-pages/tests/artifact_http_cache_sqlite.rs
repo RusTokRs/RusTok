@@ -8,7 +8,8 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
 use chrono::Utc;
 use rustok_api::{HostRuntimeContext, TenantContext, TenantContextExtension};
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource};
+use rustok_core::MigrationSource;
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_page_builder::static_landing::StaticLandingCompiler;
 use rustok_pages::entities::{
     page, page_body, page_published_landing_artifact, page_static_landing_artifact,
@@ -18,9 +19,7 @@ use rustok_pages::{
     PagesCacheReadRuntime, PagesModule, controllers,
 };
 use rustok_test_utils::mock_transactional_event_bus;
-use sea_orm::{
-    ActiveModelTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, Set,
-};
+use sea_orm::{ActiveModelTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, Set};
 use sea_orm_migration::SchemaManager;
 use serde_json::json;
 use tower::ServiceExt;
@@ -118,12 +117,7 @@ impl PagesCacheReadPort for RecordingCachePort {
         Ok(state.values.get(key).cloned())
     }
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> Result<(), PageCacheError> {
+    async fn put(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<(), PageCacheError> {
         let mut state = self
             .state
             .lock()
@@ -136,13 +130,13 @@ impl PagesCacheReadPort for RecordingCachePort {
 }
 
 #[tokio::test]
-async fn artifact_http_misses_refills_hits_and_returns_conditional_304_across_generation_change(
-) -> TestResult<()> {
+async fn artifact_http_misses_refills_hits_and_returns_conditional_304_across_generation_change()
+-> TestResult<()> {
     let db = setup_db().await?;
     let fixture = insert_published_artifact(&db).await?;
-    let cache = Arc::new(RecordingCachePort::new(
-        PageCacheGenerationSnapshot::new(3, 5, 7),
-    ));
+    let cache = Arc::new(RecordingCachePort::new(PageCacheGenerationSnapshot::new(
+        3, 5, 7,
+    )));
     let cache_port: Arc<dyn PagesCacheReadPort> = cache.clone();
     let host = HostRuntimeContext::new(db.clone())
         .with_shared_value(mock_transactional_event_bus())
@@ -180,7 +174,11 @@ async fn artifact_http_misses_refills_hits_and_returns_conditional_304_across_ge
         .await?;
     assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
     assert_not_modified_headers(&second, &fixture.artifact_hash)?;
-    assert!(to_bytes(second.into_body(), RESPONSE_BODY_LIMIT).await?.is_empty());
+    assert!(
+        to_bytes(second.into_body(), RESPONSE_BODY_LIMIT)
+            .await?
+            .is_empty()
+    );
 
     let second_cache = cache.snapshot();
     assert_eq!(second_cache.get_keys.len(), 2);
@@ -218,7 +216,11 @@ async fn artifact_http_misses_refills_hits_and_returns_conditional_304_across_ge
         .await?;
     assert_eq!(fourth.status(), StatusCode::NOT_MODIFIED);
     assert_not_modified_headers(&fourth, &fixture.artifact_hash)?;
-    assert!(to_bytes(fourth.into_body(), RESPONSE_BODY_LIMIT).await?.is_empty());
+    assert!(
+        to_bytes(fourth.into_body(), RESPONSE_BODY_LIMIT)
+            .await?
+            .is_empty()
+    );
 
     let fourth_cache = cache.snapshot();
     assert_eq!(fourth_cache.get_keys.len(), 4);
@@ -301,7 +303,7 @@ async fn insert_published_artifact(db: &DatabaseConnection) -> TestResult<Artifa
         page_id: Set(page_id),
         locale: Set("en".to_string()),
         content: Set(serde_json::to_string(&project)?),
-        format: Set(CONTENT_FORMAT_GRAPESJS.to_string()),
+        format: Set(PAGE_BUILDER_DOCUMENT_FORMAT.to_string()),
         updated_at: Set(now),
     }
     .insert(db)
@@ -373,10 +375,7 @@ async fn delete_binding(db: &DatabaseConnection, body_id: Uuid) -> TestResult<()
 
 fn artifact_request(fixture: &ArtifactFixture, if_none_match: Option<&str>) -> Request<Body> {
     let mut builder = Request::builder()
-        .uri(format!(
-            "/api/pages/{}/artifact?locale=en",
-            fixture.page_id
-        ))
+        .uri(format!("/api/pages/{}/artifact?locale=en", fixture.page_id))
         .header("X-Tenant-ID", fixture.tenant_id.to_string());
     if let Some(etag) = if_none_match {
         builder = builder.header(header::IF_NONE_MATCH, etag);
@@ -465,7 +464,9 @@ fn assert_success_headers(
         response
             .headers()
             .get("x-content-type-options")
-            .ok_or_else(|| std::io::Error::other("artifact response is missing X-Content-Type-Options"))?
+            .ok_or_else(|| std::io::Error::other(
+                "artifact response is missing X-Content-Type-Options"
+            ))?
             .to_str()?,
         "nosniff"
     );
@@ -497,7 +498,9 @@ fn assert_not_modified_headers(
         response
             .headers()
             .get(header::CONTENT_LANGUAGE)
-            .ok_or_else(|| std::io::Error::other("artifact 304 response is missing Content-Language"))?
+            .ok_or_else(|| std::io::Error::other(
+                "artifact 304 response is missing Content-Language"
+            ))?
             .to_str()?,
         "en"
     );

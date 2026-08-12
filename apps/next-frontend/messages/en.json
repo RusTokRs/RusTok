@@ -20,5 +20,52 @@
     "chips": ["React Query", "Zod", "Next SEO", "Lucide", "Tailwind"],
     "alertTitle": "Localization",
     "alertDescription": "Localization is wired via next-intl (ru/en)."
+  },
+  "Blog": {
+    "latest": {
+      "title": "Latest from the Blog",
+      "subtitle": "Recent posts and updates"
+    },
+    "comments": {
+      "title": "Comments",
+      "empty": "No approved comments have been published yet.",
+      "unavailableCached": "Comments are temporarily unavailable. Showing a recent cached snapshot.",
+      "unavailable": "Comments are temporarily unavailable. The article is still available.",
+      "timeoutCached": "Comments took too long to load. Showing a recent cached snapshot.",
+      "timeout": "Comments took too long to load. The article is still available."
+    }
+  },
+  "Comments": {
+    "composer": {
+      "title": "Join the discussion",
+      "editorLabel": "Comment",
+      "hint": "Write a useful, respectful comment.",
+      "submit": "Submit comment",
+      "submitting": "Submitting...",
+      "success": "Your comment was submitted for moderation.",
+      "signInRequired": "Sign in to publish a comment.",
+      "emptyError": "Enter a comment before publishing.",
+      "submitError": "The comment could not be submitted."
+    }
+  },
+  "richText": {
+    "bold": "Bold",
+    "italic": "Italic",
+    "strike": "Strikethrough",
+    "code": "Inline code",
+    "heading": "Heading",
+    "bullet_list": "Bulleted list",
+    "ordered_list": "Numbered list",
+    "blockquote": "Block quote",
+    "code_block": "Code block",
+    "horizontal_rule": "Horizontal rule",
+    "link": "Link",
+    "link_url": "Link URL",
+    "apply_link": "Apply link",
+    "remove_link": "Remove link",
+    "clear_formatting": "Clear formatting",
+    "undo": "Undo",
+    "redo": "Redo",
+    "editor": "Rich text editor"
   }
 }

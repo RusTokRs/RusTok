@@ -98,11 +98,18 @@ for (const marker of [
 }
 assertContains(core, "CommentThreadsRequest", `${corePath}: core must own thread-list request construction`);
 assertContains(core, "SetCommentStatusCommand", `${corePath}: core must own comment-status command construction`);
+assertContains(core, "use rustok_api::RichTextView;", `${corePath}: moderation view-model must keep the typed server projection`);
+assertContains(core, "pub body: RichTextView", `${corePath}: moderation row must not collapse richtext to plain text`);
+assertContains(core, "body: comment.body.clone()", `${corePath}: moderation row must preserve the owner projection`);
 
 assertContains(ui, "use crate::core::", `${uiPath}: Leptos adapter must consume core helpers`);
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must consume transport facade`);
 assertContains(ui, "transport::fetch_threads", `${uiPath}: Leptos adapter must call module-owned transport facade`);
 assertContains(ui, "apply_query_intent", `${uiPath}: Leptos adapter must apply prepared route-query writes`);
+assertContains(ui, "use leptos_ui::RichTextHtml;", `${uiPath}: moderation UI must use the shared server-projection renderer`);
+assertContains(ui, "view=comment_view_model.body", `${uiPath}: moderation UI must render the typed owner projection`);
+assertContains(ui, "content_locale=comment_view_model.effective_locale.clone()", `${uiPath}: moderation UI must render with the effective content locale`);
+assertNotContains(ui, "{comment_view_model.body}", `${uiPath}: moderation UI must not collapse the projection into a text node`);
 for (const marker of [
   "AdminQueryKey",
   "push_value(",
@@ -128,12 +135,15 @@ assertContains(nativeAdapter, "CommentsService::new", `${nativeAdapterPath}: nat
 assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
 assertContains(nativeAdapter, "comments_threads_native", `${nativeAdapterPath}: native adapter must own thread list server function`);
 assertContains(nativeAdapter, "comments_set_comment_status_native", `${nativeAdapterPath}: native adapter must own comment status server function`);
+assertContains(cargoToml, "leptos-ui.workspace = true", `${cargoPath}: comments admin must depend on the shared Leptos richtext view boundary`);
 
 assertContains(localPlan, "native-only comments admin exception", `${localPlanPath}: local plan must document native-only exception`);
 assertContains(localPlan, "HostRuntimeContext", `${localPlanPath}: local plan must record host-neutral native transport evidence`);
 assertContains(localPlan, "UiRouteQueryIntent", `${localPlanPath}: local plan must document shared route-query contract`);
 assertContains(localPlan, "verify-comments-admin-boundary.mjs", `${localPlanPath}: local plan must record fast boundary guardrail evidence`);
+assertContains(localPlan, "shared `RichTextHtml`", `${localPlanPath}: local plan must record typed moderation rendering`);
 assertContains(registry, "verify-comments-admin-boundary.mjs", `${registryPath}: central registry must record comments admin boundary guardrail`);
+assertContains(registry, "Comments moderation renders server-derived richtext through the shared `RichTextHtml` boundary", `${registryPath}: central registry must record comments richtext read parity`);
 
 if (failures.length > 0) {
   console.error("comments admin boundary verification failed:");

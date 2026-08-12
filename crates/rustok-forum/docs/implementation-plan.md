@@ -5,7 +5,7 @@ language: en
 status: active
 owners:
   - rustok-forum
-last_reviewed: 2026-08-08
+last_reviewed: 2026-08-11
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -26,6 +26,36 @@ migration or degraded-mode behavior. A task is `done` only after implementation,
 integration, migration/backfill, tests, public contracts, documentation and
 required runtime evidence are complete. Source-ready slices remain
 `in_progress`.
+
+## Current state
+
+Forum owns canonical topic/reply storage, transports, revisions, projections,
+and module UI packages. Shared richtext storage and server projection are live;
+Leptos and Next topic create/edit plus reply composition use the shared frame,
+while storefront topic/reply reads use the editor-free shared `RichTextHtml`
+boundary. Leptos reply writes select a native server function for SSR/hydrate
+and the canonical GraphQL mutation for CSR/headless use without fallback. Dirty
+locale-switch policy, full mounted save/reload evidence, and the broader
+product/runtime gates listed below remain open. The native Forum storefront
+check, whole-host Next typecheck,
+and the updated ownership verifier/self-test pass; its WASM check still stops in the existing
+`Resource::new_blocking`/non-`Send` GraphQL future and missing direct `web_sys`
+dependency path, outside the richtext renderer.
+`cargo xtask module validate forum` still stops before module checks because
+`modules.toml` declares `page_builder` while `rustok-module.toml` does not; this
+pre-existing manifest mismatch is not a richtext or authoring failure.
+
+## FFA/FBA status
+
+- FFA status: `in_progress`.
+- FBA status: `boundary_ready` (`core_transport_ui`).
+- Richtext UI evidence: the shared Next/Leptos topic and reply adapters now
+  receive the owner-selected content locale separately from host UI messages,
+  propagate derived direction and spellcheck, and follow dynamic form
+  busy/read-only state. Package typecheck/unit tests, the Chromium frame harness,
+  native Forum admin check, SSR/hydrate checks, and 63 Forum admin tests cover
+  this slice. Comments authoring, dirty locale-switch policy and full mounted
+  save/reload evidence remain open.
 
 ## Product model
 
@@ -100,6 +130,12 @@ revisions/tombstones, bounded reads, subscription levels, accepted solutions,
 tags, Forum statistics, transactional events, visibility-aware Search/SEO,
 shared rich text, module-owned admin/storefront packages and Page Builder
 contracts.
+
+Topic and reply storefront reads now render the typed server-derived
+`RichTextView` through the shared `RichTextHtml` boundary with the effective
+content locale. Forum UI no longer owns direct `inner_html` sinks, and the
+editor/Tiptap runtime remains absent from read-only rendering. This contract is
+locked by `verify-forum-storefront-boundary.mjs` and its negative fixture.
 
 Forum Page Builder contribution metadata, Fly identity, owner-preview and
 owner-property source are now source-ready. Canonical `rustok-module.toml` owns
@@ -237,7 +273,7 @@ remain pending.
 | `FORUM-25` | `planned` | Forum Translation provider and complete multilingual/RTL UI. |
 | `FORUM-26` | `in_progress` | Forum trust/posting facts exist. Add Moderation/Reputation facts, persistence/enforcement, shared rate limits, transports/UI and evidence. |
 | `FORUM-27` | `planned` | Compose Profiles directory/profile with Forum stats/activity and permitted reputation/achievements. |
-| `FORUM-28` | `done` | Shared editor, renderer, projections and Next/Leptos adapters. |
+| `FORUM-28` | `in_progress` | Canonical storage, renderer, projections, shared editor runtime, Leptos and Next topic create/edit and reply composition, native SSR/hydrate plus GraphQL CSR reply writes, owner content-locale/direction/spellcheck propagation and dynamic read-only state are implemented. Complete owner-copy i18n, dirty locale-switch policy and mounted save/reload/browser parity evidence. |
 | `FORUM-29` | `planned` | Shared realtime transport with Forum cursors/revisions and canonical reload. |
 | `FORUM-30` | `planned` | Complete Forum admin by composing Forum and shared owners. |
 | `FORUM-31` | `planned` | Complete Forum storefront by composing Profiles, Media, Reactions, Notifications and Search. |
@@ -871,7 +907,7 @@ Hosts register/mount packages and do not absorb policy.
   and only owner-normalized Fly `props` may be persisted. It must not create a
   second Forum data authority.
 
-## Required verification
+## Verification
 
 ```bash
 node scripts/verify/verify-forum-counter-reconciliation-source.mjs

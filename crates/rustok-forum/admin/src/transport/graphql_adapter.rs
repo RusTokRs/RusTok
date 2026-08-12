@@ -6,7 +6,8 @@ use rustok_ui_core::normalize_ui_text;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    CategoryDetail, CategoryDraft, ReplyListItem, TopicDetail, TopicDraft, TopicListItem,
+    CategoryDetail, CategoryDraft, ReplyDraft, ReplyListItem, TopicDetail, TopicDraft,
+    TopicListItem,
 };
 
 pub type ApiError = String;
@@ -24,6 +25,7 @@ const UPDATE_TOPIC_MUTATION: &str = "mutation ForumAdminUpdateTopic($id: UUID!, 
 const DELETE_TOPIC_MUTATION: &str =
     "mutation ForumAdminDeleteTopic($id: UUID!) { deleteForumTopic(id: $id) }";
 const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status parent_reply_id: parentReplyId created_at: createdAt } } }";
+const CREATE_REPLY_MUTATION: &str = "mutation ForumAdminCreateReply($topicId: UUID!, $input: CreateForumReplyInput!) { createForumReply(topicId: $topicId, input: $input) { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: contentPlainText status parent_reply_id: parentReplyId created_at: createdAt } }";
 
 #[derive(Debug, Deserialize)]
 struct CategoryResponse {
@@ -86,6 +88,12 @@ struct RepliesResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct CreateReplyResponse {
+    #[serde(rename = "createForumReply")]
+    create_forum_reply: ReplyListItem,
+}
+
+#[derive(Debug, Deserialize)]
 struct TopicConnection {
     items: Vec<TopicListItem>,
 }
@@ -127,6 +135,13 @@ struct RepliesVariables {
     topic_id: String,
     locale: Option<String>,
     pagination: PaginationInput,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateReplyVariables {
+    #[serde(rename = "topicId")]
+    topic_id: String,
+    input: CreateReplyInput,
 }
 
 #[derive(Debug, Serialize)]
@@ -218,6 +233,14 @@ struct UpdateTopicInput {
     tags: Option<Vec<String>>,
     #[serde(rename = "channelSlugs")]
     channel_slugs: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateReplyInput {
+    locale: String,
+    content: RichTextDocument,
+    #[serde(rename = "parentReplyId")]
+    parent_reply_id: Option<String>,
 }
 
 fn graphql_url() -> String {
@@ -482,6 +505,29 @@ pub async fn fetch_replies(
     )
     .await?;
     Ok(response.forum_replies.items)
+}
+
+pub async fn create_reply(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    topic_id: String,
+    draft: ReplyDraft,
+) -> Result<ReplyListItem, ApiError> {
+    let response: CreateReplyResponse = request(
+        CREATE_REPLY_MUTATION,
+        CreateReplyVariables {
+            topic_id,
+            input: CreateReplyInput {
+                locale: draft.locale,
+                content: draft.content,
+                parent_reply_id: draft.parent_reply_id,
+            },
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.create_forum_reply)
 }
 
 fn create_category_input(draft: CategoryDraft) -> CreateCategoryInput {

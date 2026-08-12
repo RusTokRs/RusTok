@@ -8,13 +8,13 @@ mod transport;
 mod ui;
 
 pub use builder::{
-    GRAPESJS_FORMAT_BODY_FORMAT, PageBuilderPageBody, STATIC_LANDING_URL_BODY_FORMAT,
+    PAGE_BUILDER_DOCUMENT_FORMAT, PageBuilderPageBody, STATIC_LANDING_URL_BODY_FORMAT,
     decode_page_builder_body, is_page_builder_body,
 };
 #[cfg(feature = "inline-edit")]
 pub use inline_edit::{
-    PagesAuthenticatedInlineEditSurface, PagesInlineEditBootstrap,
-    commit_pages_inline_edit, fetch_pages_inline_edit_bootstrap,
+    PagesAuthenticatedInlineEditSurface, PagesInlineEditBootstrap, commit_pages_inline_edit,
+    fetch_pages_inline_edit_bootstrap,
 };
 pub use transport::{
     StorefrontPageRouteDecision, StorefrontPageRouteDisposition, resolve_storefront_page_route,

@@ -38,11 +38,9 @@ async fn connect(url: &str) -> DatabaseConnection {
     let db = Database::connect(options)
         .await
         .expect("Groups leave enforcement SQLite connection should open");
-    db.execute_unprepared(&format!(
-        "PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"
-    ))
-    .await
-    .expect("Groups leave enforcement SQLite connection should configure busy timeout");
+    db.execute_unprepared(&format!("PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"))
+        .await
+        .expect("Groups leave enforcement SQLite connection should configure busy timeout");
     db
 }
 
@@ -133,11 +131,7 @@ fn read_context(tenant_id: Uuid, owner_id: Uuid) -> PortContext {
     .with_claim("groups:access:read")
 }
 
-async fn group_snapshot(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    group_id: Uuid,
-) -> (i64, i64) {
+async fn group_snapshot(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> (i64, i64) {
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Sqlite,
@@ -149,7 +143,8 @@ async fn group_snapshot(
         .expect("group snapshot query should succeed")
         .expect("group should exist");
     (
-        row.try_get("", "version").expect("group version should decode"),
+        row.try_get("", "version")
+            .expect("group version should decode"),
         row.try_get("", "member_count")
             .expect("group member_count should decode"),
     )
@@ -201,7 +196,8 @@ async fn active_enforcement_count(
 
 #[tokio::test]
 async fn leave_preserves_legacy_ban_and_suspension_projection_sqlite() {
-    let temp = tempfile::tempdir().expect("temporary Groups leave evidence directory should create");
+    let temp =
+        tempfile::tempdir().expect("temporary Groups leave evidence directory should create");
     let url = sqlite_fixture_url(&temp);
     let db = connect(&url).await;
     db.execute_unprepared("PRAGMA journal_mode = WAL;")
@@ -213,14 +209,7 @@ async fn leave_preserves_legacy_ban_and_suspension_projection_sqlite() {
     let banned_group_id = Uuid::new_v4();
     let owner_id = Uuid::new_v4();
     let banned_user_id = Uuid::new_v4();
-    seed_banned_member(
-        &db,
-        tenant_id,
-        banned_group_id,
-        owner_id,
-        banned_user_id,
-    )
-    .await;
+    seed_banned_member(&db, tenant_id, banned_group_id, owner_id, banned_user_id).await;
     let banned_base = group_snapshot(&db, tenant_id, banned_group_id).await;
     let groups = GroupsService::new(db.clone());
     let banned_error = GroupCommandPort::leave_group(
@@ -238,7 +227,10 @@ async fn leave_preserves_legacy_ban_and_suspension_projection_sqlite() {
         membership_snapshot(&db, tenant_id, banned_group_id, banned_user_id).await,
         ("banned".to_string(), 1)
     );
-    assert_eq!(group_snapshot(&db, tenant_id, banned_group_id).await, banned_base);
+    assert_eq!(
+        group_snapshot(&db, tenant_id, banned_group_id).await,
+        banned_base
+    );
 
     let suspended_group_id = Uuid::new_v4();
     let suspended_user_id = Uuid::new_v4();
@@ -309,7 +301,10 @@ async fn leave_preserves_legacy_ban_and_suspension_projection_sqlite() {
         while_suspended.effective_status,
         GroupMembershipEffectiveStatus::Suspended
     );
-    assert_eq!(while_suspended.stored_status, Some(GroupMembershipStatus::Left));
+    assert_eq!(
+        while_suspended.stored_status,
+        Some(GroupMembershipStatus::Left)
+    );
 
     let revoked = GroupMembershipEnforcementCommandPort::revoke_membership_suspension(
         &enforcement,
@@ -323,7 +318,10 @@ async fn leave_preserves_legacy_ban_and_suspension_projection_sqlite() {
     )
     .await
     .expect("owner should revoke preserved direct-local suspension after leave");
-    assert_eq!(revoked.effective_status, GroupMembershipEffectiveStatus::Inactive);
+    assert_eq!(
+        revoked.effective_status,
+        GroupMembershipEffectiveStatus::Inactive
+    );
     assert_eq!(revoked.membership_revision, 4);
     assert_eq!(revoked.member_count, 1);
     assert_eq!(
@@ -425,7 +423,10 @@ async fn leave_and_suspension_serialize_on_sqlite_group_writer() {
                     active_enforcement_count(&fixture_db, tenant_id, group_id, user_id).await,
                     0
                 );
-                assert_eq!(group_snapshot(&fixture_db, tenant_id, group_id).await, (base.0 + 1, 1));
+                assert_eq!(
+                    group_snapshot(&fixture_db, tenant_id, group_id).await,
+                    (base.0 + 1, 1)
+                );
             }
             Ok(suspension) => {
                 assert_eq!(suspension.membership_revision, 2);
@@ -438,7 +439,10 @@ async fn leave_and_suspension_serialize_on_sqlite_group_writer() {
                     active_enforcement_count(&fixture_db, tenant_id, group_id, user_id).await,
                     1
                 );
-                assert_eq!(group_snapshot(&fixture_db, tenant_id, group_id).await, (base.0 + 2, 1));
+                assert_eq!(
+                    group_snapshot(&fixture_db, tenant_id, group_id).await,
+                    (base.0 + 2, 1)
+                );
             }
         }
     }

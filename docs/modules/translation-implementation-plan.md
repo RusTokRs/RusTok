@@ -308,7 +308,7 @@ Four related planes must remain distinct:
 | Baseline verification | Current i18n/DB verifiers contain stale paths and owner markers and are not all green | Repair the existing contract and documentation before adding translation-specific verification |
 | Owner identity | Pages/Navigation, Content/SEO, Product/Commerce Foundation, and Blog/Taxonomy contain ownership drift or duplicate schema evidence | Assign exactly one owner and remove superseded schema/entity paths before target registration |
 | Settings | Host/platform and tenant-module settings are unversioned JSON without localized-leaf semantics | Assign owners, add typed localization metadata, parallel localized storage, revisions, and events |
-| Richtext | The shared richtext owner cutover is incomplete | Translate validated text segments only after the relevant owner profile is canonical |
+| Richtext | Blog, Forum, and Comments use canonical owner profiles, while UI parity and obsolete shared-helper/migration cleanup remain open | Translate only validated canonical document segments; do not wait for editor-host parity or reintroduce a format/version branch |
 | Page Builder | Fly translation state is project-local and not a platform target provider | Add a Page Builder owner adapter with lossless segment identity and revision checks |
 | Flex exact-locale behavior | Some attached and standalone paths seed or read through fallback/default locale | Add exact read/apply operations and finish the parallel localized-record cutover before onboarding |
 | Static catalogs | `rustok-core` match tables and compiled UI bundles are separate systems | Finish the Fluent/catalog ownership track before claiming all platform copy is editable |

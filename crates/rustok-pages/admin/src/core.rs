@@ -1,8 +1,7 @@
 use crate::model::{CreatePageDraft, PageDetail};
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_ui_core::{normalize_ui_text, parse_ui_csv};
 use serde_json::{Value, json};
-
-pub const GRAPESJS_FORMAT: &str = "grapesjs";
 
 pub fn slugify(value: &str) -> String {
     value
@@ -51,7 +50,6 @@ pub struct PageDraftFormInput<'a> {
     pub title: &'a str,
     pub slug: &'a str,
     pub channel_slugs: &'a str,
-    pub publish: bool,
 }
 
 pub fn build_create_page_draft(
@@ -62,12 +60,9 @@ pub fn build_create_page_draft(
         locale: ui_text_or_default(input.locale),
         title: ui_text_or_default(input.title),
         slug: ui_text_or_default(input.slug),
-        body_content: String::new(),
-        body_format: GRAPESJS_FORMAT.to_string(),
-        body_content_json: project_data,
+        document: project_data,
         template: Some("default".to_string()),
         channel_slugs: parse_channel_slugs(input.channel_slugs),
-        publish: input.publish,
     }
 }
 
@@ -141,7 +136,7 @@ fn body_to_project_data(body: &crate::model::PageBody) -> Option<Value> {
         return Some(project.clone());
     }
 
-    if body.format.eq_ignore_ascii_case(GRAPESJS_FORMAT) {
+    if body.format == PAGE_BUILDER_DOCUMENT_FORMAT {
         serde_json::from_str::<Value>(body.content.as_str()).ok()
     } else {
         None

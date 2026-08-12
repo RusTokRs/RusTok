@@ -9,6 +9,7 @@
   "shared_richtext_adapter": "apps/next-admin/src/shared/ui/rich-text-editor.tsx",
   "host_registration": "apps/next-admin/src/modules/index.ts",
   "route": "apps/next-admin/src/app/dashboard/forum/reply/page.tsx",
+  "topic_route": "apps/next-admin/src/app/dashboard/forum/topic/page.tsx",
   "verifier": "scripts/verify/verify-blog-forum-ui-ownership.mjs",
   "invariants": {
     "blog_registers_forum": false,
@@ -16,6 +17,7 @@
     "blog_contains_forum_graphql_adapter": false,
     "forum_registers_own_navigation": true,
     "forum_owns_reply_editor": true,
+    "forum_owns_topic_editor": true,
     "forum_owns_graphql_adapter": true,
     "forum_owns_legacy_format_adapter": false,
     "forum_writes_canonical_richtext_document": true,

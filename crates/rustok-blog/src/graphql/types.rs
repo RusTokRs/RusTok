@@ -10,10 +10,10 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    BlogPostStatus, CommentListItem as DomainCommentListItem,
-    CreatePostInput as DomainCreatePostInput, ListCommentsFilter,
-    ModerateCommentStatus as DomainModerateCommentStatus, PostResponse, PostSummary,
-    PublicCommentsAvailability, UpdatePostInput as DomainUpdatePostInput,
+    BlogPostStatus, CommentListItem as DomainCommentListItem, CommentResponse,
+    CreateCommentInput as DomainCreateCommentInput, CreatePostInput as DomainCreatePostInput,
+    ListCommentsFilter, ModerateCommentStatus as DomainModerateCommentStatus, PostResponse,
+    PostSummary, PublicCommentsAvailability, UpdatePostInput as DomainUpdatePostInput,
     list_public_comments_with_snapshot,
 };
 
@@ -124,6 +124,22 @@ pub struct GqlPublicCommentListItem {
     pub content_preview: String,
     pub parent_comment_id: Option<Uuid>,
     pub created_at: String,
+}
+
+#[derive(SimpleObject)]
+#[graphql(name = "BlogComment")]
+pub struct GqlBlogComment {
+    pub id: Uuid,
+    pub requested_locale: String,
+    pub effective_locale: String,
+    pub post_id: Uuid,
+    pub author_id: Option<Uuid>,
+    pub content: RichTextView,
+    pub content_plain_text: String,
+    pub status: String,
+    pub parent_comment_id: Option<Uuid>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(SimpleObject)]
@@ -310,6 +326,14 @@ pub struct CreatePostInput {
 }
 
 #[derive(InputObject)]
+#[graphql(name = "CreateBlogCommentInput")]
+pub struct GqlCreateBlogCommentInput {
+    pub locale: String,
+    pub content: RichTextDocument,
+    pub parent_comment_id: Option<Uuid>,
+}
+
+#[derive(InputObject)]
 pub struct UpdatePostInput {
     pub locale: Option<String>,
     pub title: Option<String>,
@@ -375,6 +399,34 @@ impl From<DomainCommentListItem> for GqlPublicCommentListItem {
             content_preview: comment.content_preview,
             parent_comment_id: comment.parent_comment_id,
             created_at: comment.created_at,
+        }
+    }
+}
+
+impl From<CommentResponse> for GqlBlogComment {
+    fn from(comment: CommentResponse) -> Self {
+        Self {
+            id: comment.id,
+            requested_locale: comment.requested_locale,
+            effective_locale: comment.effective_locale,
+            post_id: comment.post_id,
+            author_id: comment.author_id,
+            content: comment.content,
+            content_plain_text: comment.content_text,
+            status: comment.status,
+            parent_comment_id: comment.parent_comment_id,
+            created_at: comment.created_at,
+            updated_at: comment.updated_at,
+        }
+    }
+}
+
+impl From<GqlCreateBlogCommentInput> for DomainCreateCommentInput {
+    fn from(input: GqlCreateBlogCommentInput) -> Self {
+        Self {
+            locale: input.locale,
+            content: input.content,
+            parent_comment_id: input.parent_comment_id,
         }
     }
 }

@@ -10,8 +10,8 @@ use crate::{CommentService, PublicCommentsSnapshotStore};
 /// Manifest-attached Blog GraphQL runtime capabilities.
 ///
 /// A host may publish transport-neutral Comments and public snapshot capabilities
-/// through `HostRuntimeContext`. Their absence preserves the existing in-process
-/// Blog compatibility profile and empty degraded payload behavior.
+/// through `HostRuntimeContext`. Their absence selects the canonical in-process
+/// Comments adapter and empty degraded snapshot behavior.
 #[derive(Clone, Default)]
 pub struct BlogGraphqlRuntimeData {
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
@@ -21,8 +21,7 @@ pub struct BlogGraphqlRuntimeData {
 pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> {
     Ok(BlogGraphqlRuntimeData {
         comments_thread_port: inputs.shared_get::<Arc<dyn CommentsThreadPort>>(),
-        public_comments_snapshot_store: inputs
-            .shared_get::<Arc<dyn PublicCommentsSnapshotStore>>(),
+        public_comments_snapshot_store: inputs.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>(),
     })
 }
 

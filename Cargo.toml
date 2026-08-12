@@ -108,6 +108,7 @@ sea-orm-migration = { version = "1.1", default-features = false, features = ["ru
 async-graphql = { version = "7.2.1", features = ["uuid", "chrono"] }
 async-graphql-value = "7.2.1"
 base64 = "0.22"
+ed25519-dalek = "3.0.0"
 
 # IDs
 uuid = { version = "1.23.3", features = ["v4", "serde", "js"] }

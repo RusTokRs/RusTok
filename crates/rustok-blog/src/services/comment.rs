@@ -15,13 +15,14 @@ use rustok_core::{SecurityActorKind, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 use std::sync::Arc;
 
+use crate::BlogPostStatus;
 use crate::dto::{
     CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
     UpdateCommentInput,
 };
-use crate::entities::blog_post;
+use crate::entities::{blog_post, blog_post_channel_visibility};
 use crate::error::{BlogError, BlogResult};
-use crate::services::rbac::enforce_scope;
+use crate::services::{is_post_visible_for_channel, post::storage_to_status, rbac::enforce_scope};
 
 const TARGET_TYPE_BLOG_POST: &str = "blog_post";
 const PUBLIC_COMMENTS_PORT_ACTOR: &str = "rustok-blog.public-comments";
@@ -47,16 +48,32 @@ impl CommentService {
         }
     }
 
+    /// Creates a comment only when the owning Blog post is publicly visible in
+    /// the current channel. Browser-facing transports must use this command so
+    /// callers cannot submit an arbitrary Comments target or comment on drafts.
     #[instrument(skip(self, security, input))]
-    pub async fn create_comment(
+    pub async fn create_public_comment(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        post_id: Uuid,
+        public_channel_slug: Option<&str>,
+        input: CreateCommentInput,
+    ) -> BlogResult<CommentResponse> {
+        self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
+            .await?;
+
+        self.create_validated_comment(tenant_id, security, post_id, input)
+            .await
+    }
+
+    async fn create_validated_comment(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         post_id: Uuid,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
-        self.ensure_post_exists(tenant_id, post_id).await?;
-
         if security.user_id.is_none() {
             return Err(BlogError::AuthorRequired);
         }
@@ -334,6 +351,39 @@ impl CommentService {
         Ok(())
     }
 
+    async fn ensure_public_post_visible(
+        &self,
+        tenant_id: Uuid,
+        post_id: Uuid,
+        public_channel_slug: Option<&str>,
+    ) -> BlogResult<()> {
+        let Some(post) = blog_post::Entity::find_by_id(post_id)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await
+            .map_err(BlogError::from)?
+        else {
+            return Err(BlogError::post_not_found(post_id));
+        };
+
+        let status = storage_to_status(&post.status)?;
+        let channel_slugs = blog_post_channel_visibility::Entity::find()
+            .filter(blog_post_channel_visibility::Column::TenantId.eq(tenant_id))
+            .filter(blog_post_channel_visibility::Column::PostId.eq(post_id))
+            .all(&self.db)
+            .await
+            .map_err(BlogError::from)?
+            .into_iter()
+            .map(|item| item.channel_slug)
+            .collect::<Vec<_>>();
+
+        if !is_public_comment_target(status, &channel_slugs, public_channel_slug) {
+            return Err(BlogError::post_not_found(post_id));
+        }
+
+        Ok(())
+    }
+
     fn ensure_blog_target(record: &DomainCommentRecord) -> BlogResult<Uuid> {
         if record.target_type != TARGET_TYPE_BLOG_POST {
             return Err(BlogError::comment_not_found(record.id));
@@ -374,6 +424,15 @@ impl CommentService {
             created_at: item.created_at,
         }
     }
+}
+
+fn is_public_comment_target(
+    status: BlogPostStatus,
+    channel_slugs: &[String],
+    public_channel_slug: Option<&str>,
+) -> bool {
+    status == BlogPostStatus::Published
+        && is_post_visible_for_channel(channel_slugs, public_channel_slug)
 }
 
 fn comment_status_label(status: DomainCommentStatus) -> &'static str {
@@ -536,5 +595,45 @@ mod rich_content_tests {
 
         assert_eq!(response.content.document, document);
         assert_eq!(response.content_text, "Hello");
+    }
+}
+
+#[cfg(test)]
+mod public_target_tests {
+    use super::is_public_comment_target;
+    use crate::BlogPostStatus;
+
+    #[test]
+    fn public_comment_target_requires_a_published_post() {
+        assert!(!is_public_comment_target(
+            BlogPostStatus::Draft,
+            &[],
+            Some("web")
+        ));
+        assert!(!is_public_comment_target(
+            BlogPostStatus::Archived,
+            &[],
+            Some("web")
+        ));
+    }
+
+    #[test]
+    fn public_comment_target_enforces_the_channel_allowlist() {
+        let channels = vec!["web".to_string()];
+        assert!(is_public_comment_target(
+            BlogPostStatus::Published,
+            &channels,
+            Some("web")
+        ));
+        assert!(!is_public_comment_target(
+            BlogPostStatus::Published,
+            &channels,
+            Some("mobile")
+        ));
+        assert!(!is_public_comment_target(
+            BlogPostStatus::Published,
+            &channels,
+            None
+        ));
     }
 }

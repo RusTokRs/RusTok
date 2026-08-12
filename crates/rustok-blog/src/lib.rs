@@ -54,7 +54,6 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
-pub mod locale;
 pub mod migrations;
 pub mod openapi;
 pub mod public_comments_snapshot;

@@ -70,13 +70,8 @@ pub(crate) fn validate_module_server_registry_contract(
         );
     }
 
-    let expected_module_features = spec
-        .depends_on
-        .as_deref()
-        .unwrap_or(&[])
-        .iter()
-        .map(|dependency| format!("mod-{}", dependency.trim()))
-        .collect::<HashSet<_>>();
+    let expected_module_features =
+        optional_dependency_features(spec.depends_on.as_deref().unwrap_or(&[]), &server_features);
     let actual_module_features = feature_entries
         .iter()
         .filter(|entry| entry.starts_with("mod-"))
@@ -107,6 +102,36 @@ pub(crate) fn validate_module_server_registry_contract(
     }
 
     Ok(())
+}
+
+fn optional_dependency_features(
+    dependencies: &[String],
+    server_features: &HashMap<String, HashSet<String>>,
+) -> HashSet<String> {
+    dependencies
+        .iter()
+        .map(|dependency| format!("mod-{}", dependency.trim()))
+        .filter(|feature| server_features.contains_key(feature))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn optional_dependency_features_excludes_always_linked_modules() {
+        let server_features = HashMap::from([
+            ("mod-blog".to_string(), HashSet::new()),
+            ("mod-content".to_string(), HashSet::new()),
+        ]);
+        let dependencies = vec!["content".to_string(), "outbox".to_string()];
+
+        assert_eq!(
+            optional_dependency_features(&dependencies, &server_features),
+            HashSet::from(["mod-content".to_string()])
+        );
+    }
 }
 
 fn server_modules_registers_direct_entry(

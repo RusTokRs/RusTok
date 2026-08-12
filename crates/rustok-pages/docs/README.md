@@ -24,7 +24,9 @@ channel visibility and deterministic published artifacts.
 - per-locale revisions and a content-free owner change journal; Translation
   never receives direct Pages table-write access;
 - GraphQL/REST adapters and Leptos admin/storefront packages;
-- canonical Fly writes through `body.format = "grapesjs"`;
+- canonical Fly writes carry one typed `document` field and select the Page
+  Builder format server-side; callers do not submit a body format or a parallel
+  serialized-content field;
 - deterministic publish/build/integrity and storefront artifact delivery;
 - typed permission, feature-gate, revision and artifact-integrity failures.
 

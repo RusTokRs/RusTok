@@ -38,11 +38,9 @@ async fn connect(url: &str) -> DatabaseConnection {
     let db = Database::connect(options)
         .await
         .expect("Groups join enforcement SQLite connection should open");
-    db.execute_unprepared(&format!(
-        "PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"
-    ))
-    .await
-    .expect("Groups join enforcement SQLite connection should configure busy timeout");
+    db.execute_unprepared(&format!("PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS};"))
+        .await
+        .expect("Groups join enforcement SQLite connection should configure busy timeout");
     db
 }
 
@@ -106,11 +104,7 @@ fn enforcement_read_context(tenant_id: Uuid, owner_id: Uuid) -> PortContext {
     .with_claim("groups:access:read")
 }
 
-async fn group_snapshot(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    group_id: Uuid,
-) -> (i64, i64) {
+async fn group_snapshot(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> (i64, i64) {
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Sqlite,
@@ -187,15 +181,7 @@ async fn join_is_denied_until_suspension_expires_without_cleanup_sqlite() {
     let group_id = Uuid::new_v4();
     let owner_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
-    seed_left_member(
-        &db,
-        tenant_id,
-        group_id,
-        owner_id,
-        user_id,
-        "join-expiry",
-    )
-    .await;
+    seed_left_member(&db, tenant_id, group_id, owner_id, user_id, "join-expiry").await;
 
     let (base_version, base_member_count) = group_snapshot(&db, tenant_id, group_id).await;
     assert_eq!(base_member_count, 1);
@@ -256,7 +242,10 @@ async fn join_is_denied_until_suspension_expires_without_cleanup_sqlite() {
     )
     .await
     .expect("owner should read suspended re-entry state");
-    assert_eq!(during.effective_status, GroupMembershipEffectiveStatus::Suspended);
+    assert_eq!(
+        during.effective_status,
+        GroupMembershipEffectiveStatus::Suspended
+    );
 
     let remaining = expires_at
         .signed_duration_since(Utc::now())
@@ -271,7 +260,10 @@ async fn join_is_denied_until_suspension_expires_without_cleanup_sqlite() {
     )
     .await
     .expect("owner-clock expiry should fall back to stored left lifecycle state");
-    assert_eq!(expired.effective_status, GroupMembershipEffectiveStatus::Inactive);
+    assert_eq!(
+        expired.effective_status,
+        GroupMembershipEffectiveStatus::Inactive
+    );
     assert_eq!(expired.membership_revision, Some(2));
 
     let joined = GroupCommandPort::join_group(

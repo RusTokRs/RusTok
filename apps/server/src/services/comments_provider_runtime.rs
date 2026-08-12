@@ -70,7 +70,9 @@ mod keyring_schedule_audit_recovery_postgres {
 mod keyring_schedule_audit_operator {
     include!("comments_provider_runtime_keyring_schedule_audit_operator.rs");
     include!("comments_provider_runtime_keyring_schedule_audit_operator_postgres_evidence.rs");
-    include!("comments_provider_runtime_keyring_schedule_audit_restart_ambiguity_postgres_evidence.rs");
+    include!(
+        "comments_provider_runtime_keyring_schedule_audit_restart_ambiguity_postgres_evidence.rs"
+    );
 }
 
 mod keyring_schedule_persisted_trigger {
@@ -113,8 +115,7 @@ pub use keyring_schedule::{
 pub use keyring_schedule_audit_canonical_writer::RustokOutboxCommentsTcpDelegationScheduleAuditCanonicalWriter;
 pub use keyring_schedule_audit_handoff_postgres::{
     COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_MAX_CLAIM_SECONDS,
-    CommentsTcpDelegationScheduleAuditHandoffClaim,
-    CommentsTcpDelegationScheduleAuditHandoffError,
+    CommentsTcpDelegationScheduleAuditHandoffClaim, CommentsTcpDelegationScheduleAuditHandoffError,
     PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff,
 };
 pub use keyring_schedule_audit_handoff_worker::{

@@ -37,7 +37,15 @@ export type FrontendGraphqlOptions<V> = {
 
 const apolloClients = new Map<string, ApolloClient>();
 
-function apolloClientFor(baseUrl = ""): ApolloClient {
+function defaultGraphqlBaseUrl(): string {
+  const configured =
+    process.env.NEXT_PUBLIC_API_URL ??
+    (typeof window === "undefined" ? process.env.RUSTOK_API_URL : undefined);
+  if (configured) return configured.replace(/\/$/, "");
+  return typeof window === "undefined" ? "http://localhost:5150" : "";
+}
+
+function apolloClientFor(baseUrl = defaultGraphqlBaseUrl()): ApolloClient {
   const endpoint = `${baseUrl}${GRAPHQL_ENDPOINT}`;
   const existing = apolloClients.get(endpoint);
   if (existing) return existing;

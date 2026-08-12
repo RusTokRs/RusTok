@@ -100,11 +100,7 @@ fn enforcement_read_context(tenant_id: Uuid, owner_id: Uuid) -> PortContext {
     .with_claim("groups:access:read")
 }
 
-async fn group_snapshot(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    group_id: Uuid,
-) -> (i64, i64) {
+async fn group_snapshot(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> (i64, i64) {
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Postgres,
@@ -253,7 +249,10 @@ async fn join_suspension_expiry_and_contention_share_owner_serialization_postgre
     )
     .await
     .expect("owner should read suspended PostgreSQL re-entry state");
-    assert_eq!(during.effective_status, GroupMembershipEffectiveStatus::Suspended);
+    assert_eq!(
+        during.effective_status,
+        GroupMembershipEffectiveStatus::Suspended
+    );
 
     let remaining = expires_at
         .signed_duration_since(Utc::now())
@@ -268,7 +267,10 @@ async fn join_suspension_expiry_and_contention_share_owner_serialization_postgre
     )
     .await
     .expect("owner-clock expiry should restore PostgreSQL left lifecycle state");
-    assert_eq!(expired.effective_status, GroupMembershipEffectiveStatus::Inactive);
+    assert_eq!(
+        expired.effective_status,
+        GroupMembershipEffectiveStatus::Inactive
+    );
     assert_eq!(expired.membership_revision, Some(2));
 
     let joined = GroupCommandPort::join_group(
@@ -350,10 +352,9 @@ async fn join_suspension_expiry_and_contention_share_owner_serialization_postgre
         })
         .await
         .expect("PostgreSQL join/enforcement race must not deadlock or time out");
-        let join_result = join_joined
-            .expect("PostgreSQL join race task should join without panic");
-        let suspension_result = enforcement_joined
-            .expect("PostgreSQL enforcement race task should join without panic");
+        let join_result = join_joined.expect("PostgreSQL join race task should join without panic");
+        let suspension_result =
+            enforcement_joined.expect("PostgreSQL enforcement race task should join without panic");
 
         match (join_result, suspension_result) {
             (Ok(joined), Err(error)) => {

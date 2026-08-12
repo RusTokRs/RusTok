@@ -1,8 +1,20 @@
 use sha2::Digest;
 
 pub fn hash_manifest<T: serde::Serialize>(manifest: &T) -> Result<String, serde_json::Error> {
-    let snapshot = canonical_manifest_snapshot_json(manifest)?;
-    Ok(hash_manifest_snapshot(&snapshot))
+    let bytes = canonical_json_bytes(manifest)?;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(bytes);
+    Ok(hex::encode(hasher.finalize()))
+}
+
+/// Serializes a value with recursively sorted JSON object keys.
+///
+/// This is the shared byte contract for digest and signature inputs. Arrays
+/// retain their declared order and no insignificant whitespace is emitted.
+pub fn canonical_json_bytes<T: serde::Serialize>(
+    value: &T,
+) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(&canonical_manifest_snapshot_json(value)?)
 }
 
 pub fn canonical_manifest_snapshot_json<T: serde::Serialize>(
@@ -79,7 +91,7 @@ mod tests {
 
 #[cfg(test)]
 mod serialize_tests {
-    use super::{canonical_manifest_snapshot_json, hash_manifest};
+    use super::{canonical_json_bytes, canonical_manifest_snapshot_json, hash_manifest};
 
     #[test]
     fn hash_manifest_matches_snapshot_hash_for_serializable_input() {
@@ -106,6 +118,26 @@ mod serialize_tests {
                 "a": 0,
                 "b": {"a": 2, "z": 1}
             })
+        );
+    }
+
+    #[test]
+    fn canonical_json_bytes_are_independent_of_object_insertion_order() {
+        let left = canonical_json_bytes(&serde_json::json!({
+            "b": {"z": 1, "a": 2},
+            "a": 0
+        }))
+        .unwrap();
+        let right = canonical_json_bytes(&serde_json::json!({
+            "a": 0,
+            "b": {"a": 2, "z": 1}
+        }))
+        .unwrap();
+
+        assert_eq!(left, right);
+        assert_eq!(
+            String::from_utf8(left).unwrap(),
+            r#"{"a":0,"b":{"a":2,"z":1}}"#
         );
     }
 }

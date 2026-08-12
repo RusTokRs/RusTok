@@ -7,10 +7,11 @@ thread status/moderation, and comment-domain observability. It is separate from
 forum replies and shared content storage. Blog uses the module on its production
 read/write path; page-like surfaces require explicit opt-in.
 
-The admin moderation surface is an intentional native-only exception: it has a
+The admin moderation surface is the documented native-only comments admin exception: it has a
 module-owned core, native transport facade, and Leptos adapter backed by
 `HostRuntimeContext`. Thread and locale route/query policy is core-owned, and UI
-does not call raw transport.
+applies the prepared shared `UiRouteQueryIntent`; it does not call raw
+transport.
 
 Thread write consistency is owner-enforced below the service facade. Transactional
 comment inserts lock the tenant thread row before assigning the next position.
@@ -40,9 +41,15 @@ the first owner cut over to them. `CreateCommentInput` and
 `UpdateCommentInput` accept only `RichTextDocument`; `CommentRecord` returns
 `RichTextView` plus the server-derived plain-text projection. Comment body rows
 persist canonical ProseMirror/Tiptap JSON without a format selector, and public
-previews use the plain-text projection. The cutover migration fails closed on
-pre-existing non-canonical rows so an offline conversion can be completed
-before the schema column is dropped.
+previews use the plain-text projection. Non-canonical rows fail closed; the
+repository contains no compatibility reader, dual-write path, or retained
+format converter.
+
+Comments moderation preserves each typed server-derived `RichTextView` in its
+framework-agnostic row view-model and renders it through the shared
+`RichTextHtml` Leptos boundary with the effective content locale. It no longer
+collapses moderation content to a plain-text node, does not own a direct HTML
+sink, and does not load the editor runtime for read-only moderation.
 
 ## FFA/FBA boundary
 
@@ -93,16 +100,20 @@ before the schema column is dropped.
   `crates/rustok-comments/src/entities/thread_insert_error_tests.rs`,
   `crates/rustok-comments/tests/thread_write_invariants.rs`, and
   `crates/rustok-comments/tests/thread_creation_concurrency.rs`.
-- Both PostgreSQL targets use two independent one-connection pools, an isolated
+- Both concurrent PostgreSQL targets use two independent one-connection pools, an isolated
   schema, and `RUSTOK_COMMENTS_TEST_DATABASE_URL` or PostgreSQL `DATABASE_URL`.
 - Public-port create/delete publish `comment.created` and `comment.deleted`
   through `TransactionalEventBus::publish_in_tx`. Blog's idempotent reply-count
   projection is implemented statically under
   `DECISIONS/2026-07-16-comments-blog-event-projection.md`; runtime delivery,
   retry, and recovery evidence remain open.
-- The remote adapter remains pending. Consumer degraded modes
-  `hide_comment_form` and `show_cached_thread_snapshot` remain planned; this
-  source-only slice does not claim fallback UI implementation.
+- The remote adapter remains pending. The Blog consumer now fails its selected
+  native or GraphQL write path directly and never retries through another
+  transport; remote-provider runtime evidence remains pending.
+- `verify-comments-admin-boundary.mjs` and its focused self-test require the
+  shared `RichTextHtml` moderation projection and reject a return to plain-text
+  rendering while preserving the documented native-only comments admin
+  exception.
 
 ## 2026-07-30 source continuation audit
 
@@ -181,6 +192,12 @@ workflow, browser, or CI execution is recorded.
     provider verifier/self-test and exact npm leaf commands, upgraded registry
     schema v4 and provider matrix schema v2, and retained all runtime/fallback
     evidence as pending.
+15. Added `rustok-comments-storefront-support`, which owns the reusable Leptos
+    composer state, shared `discussion` frame, blank-document validation,
+    authentication gate, busy state, and accessible result feedback. Blog now
+    composes it with one post-bound action and exposes matching native and
+    GraphQL commands. Both commands enforce tenant, permission, module/channel,
+    published-status, and channel-visibility policy before Comments writes.
 
 ## Open results
 
@@ -231,18 +248,54 @@ workflow, browser, or CI execution is recorded.
    write accepts the typed `RichTextDocument`, selects the `comment` profile
    server-side, and passes the strict validator. `comment_bodies` no longer
    stores a format selector; reads use canonical HTML/plain-text projections.
-   The remaining verification is runtime evidence for every consumer and the
-   offline conversion procedure for existing Markdown rows.
+   The remaining verification is runtime evidence for every consumer.
    **Depends on:** the
    [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
    and synchronized Blog consumer contract.
    **Done when:** invalid/empty/oversized documents fail at every entry point,
    no direct port bypass exists, and Next/Leptos reads share the server renderer.
 
+8. **Complete the reusable public comment composer without a generic
+   target-write bypass.** The Comments-owned Leptos and React bindings and the
+   Blog-owned native/GraphQL target commands are implemented. Both storefront
+   hosts compose the editor into the selected Blog detail surface. Add mounted
+   save/error/auth/browser evidence. The browser must never
+   submit arbitrary `target_type`/`target_id` pairs directly to
+   `CommentsService`. Product reviews and later consumers repeat only the
+   target adapter, not the editor/form implementation.
+   **Depends on:** authenticated storefront write policy, Blog target binding,
+   and the shared richtext frame.
+   **Done when:** Leptos and Next Blog detail submit the same canonical comment
+   document through native/GraphQL paths, invalid or hidden targets fail before
+   Comments writes, the moderation admin stays read-only, and no consumer owns
+   a copied comment composer.
+
 ## Verification
 
-Execution is intentionally not recorded by this source-only update. Maintainers
-should run the relevant subset, including:
+The shared moderation-rendering slice was checked locally on 2026-08-11 with
+`cargo xtask module validate comments`, `cargo xtask module test comments`,
+native and `wasm32-unknown-unknown` Comments admin checks, all 11 Comments admin
+unit tests, the Comments admin boundary verifier and its eight focused fixture
+tests. This does not promote the pending PostgreSQL concurrency, delivery,
+remote-provider, or retained runtime evidence below.
+
+The first public authoring slice was checked locally on 2026-08-11 with
+`cargo check -p rustok-blog`, default/SSR/hydrate checks for
+`rustok-blog-storefront`, and three passing
+`rustok-comments-storefront-support` unit tests. The broad filtered Blog
+GraphQL test command still encounters four existing channel tests whose SQLite
+setup now rejects PostgreSQL-only channel migrations; this does not promote
+mounted or PostgreSQL runtime evidence.
+
+The matching Next source slice was checked locally on 2026-08-11 with the
+whole `apps/next-frontend` typecheck, the shared `packages/richtext` typecheck,
+the existing Next admin typecheck after extracting the common richtext frame
+route adapter, and a successful Next storefront production build. The Blog
+integration test proves draft and hidden-channel rejection and a pending write
+for the visible channel. This is not mounted browser evidence; authentication,
+submission UX, and save/reload behavior remain open.
+
+Maintainers should run the relevant broader subset, including:
 
 - `npm run verify:comments:port-boundary`
 - `npm run test:verify:comments:port-boundary`

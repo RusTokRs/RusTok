@@ -5,15 +5,15 @@
 `rustok-installer` owns the neutral install-plan, preflight, state-machine,
 secret-reference, receipt, checksum, and seed-workflow contracts. Its
 `InstallProfile` expresses frontend/build intent (`dev_local`, `monolith`,
-`hybrid_admin`, `headless_next`, and `headless_leptos`) and is not deployment
-authority. `InstallTopology` records the selected role-to-surface assignment,
-but its current adapter does not yet implement the canonical role-bundle
-deployment lifecycle.
+`hybrid_admin`, and `headless_leptos`) and is not deployment
+authority. `InstallTopology` records the selected role-to-surface assignment
+and an optional host-only `InstallDistributionBinding` containing the exact
+public preparation ID, distribution release ID, bundle-root digest, and
+role-set digest. Distributed topology is invalid without that binding.
 
-`headless_next` is a current profile gap. The target removes it and every
-repository-owned caller/fixture/document atomically: Next.js is optional,
-external, and manually deployed, so it is not installer topology or apply
-state. No compatibility alias remains.
+Next.js is optional, external, and manually deployed, so it is not installer
+topology or apply state. The former Next-specific profile and compatibility
+alias have been removed from the canonical executable contract.
 
 The canonical apply sequencing now runs in `rustok-installer`; `apps/server`
 provides only HTTP composition for the setup surface. The shared
@@ -25,15 +25,16 @@ platform CLI has `install plan`, `install preflight`, `install apply`,
 a shared SeaORM adapter; this is monolith bootstrap plumbing, not evidence
 that distributed installation is implemented.
 
-The current Axum distributed adapter submits and activates independent
-`rustok-build` releases for each role. This is not the target production
-authority: it can split the serving composition and bypass the
-`rustok-modules` release and rollout owner. It must be removed together with
-its repository-owned callers when the single role-bundle deployment boundary
-is implemented; it must not remain as a compatibility path.
+The independent Axum-to-`rustok-build` per-role activation adapter has been
+removed with all repository-owned callers. The shared executor creates one
+complete distribution deployment request and accepts one receipt containing
+exact per-role observations. The server HTTP adapter now resolves a
+host-selected release through the current admitted `rustok-modules` ledger;
+it still reports distributed deployment unavailable until the
+desired/observed rollout controller is composed. The standalone CLI also
+remains unavailable until it receives the same trusted owner resolver.
 
-The current plan also lacks one canonical instance placement and leaves
-storage/work roots to individual adapters. The target accepts one trusted
+The current plan contains one canonical instance placement. It accepts one trusted
 operator-selected instance root on any supported operating system, resolves a
 relative input against the installer invocation directory, and derives one
 portable relative layout. Its normalized physical path is restart/placement
@@ -98,30 +99,38 @@ performed afterwards.
 ## Open results
 
 1. **Complete the canonical placement and topology descriptor.**
-   Add one trusted operator-selected instance root and canonical relative
-   layout to the shared installer input. Accept supported Windows, Unix, and
-   relative paths, normalize them once for local placement/restart receipts,
-   require an absent/empty root or exact resumable instance marker, reject
-   unsafe, nonempty/unmarked, overlapping, or conflicting roots, and keep the
-   physical path out of
-   distribution/module/migration/object identity. Define `InstallTopology`,
+   The shared installer input now carries one trusted operator-selected
+   instance root and canonical relative layout. The host accepts Windows, Unix,
+   and relative paths, normalizes them once, requires an absent/empty root or
+   exact resumable marker/pending marker, rejects nonempty unmarked and nested
+   roots, and keeps the physical path out of release/module/migration/object
+   identity. `InstallTopology` defines
    role identifiers, role-to-surface assignments,
    composition revision/hash, and validation that every selected surface has
    exactly one owner. Map existing `InstallProfile` values into this descriptor
    without treating them as deployment topology aliases.
-   Remove `headless_next` from `InstallProfile` and all callers in the same
-   change; external Next.js deployment is never represented as an installer
-   role, surface, readiness check, or completion gate.
+   External Next.js deployment is never represented as an installer role,
+   surface, readiness check, or completion gate.
    Extend the canonical unversioned install plan in place so the trusted host
    binds the exact public `preparation_id`, owner distribution release, OCI
    bundle root, and role-set digest from owner admission or a signed
    fresh-bootstrap receipt. Include
    them in preflight, checksum, deployment request, observations, and terminal
    receipt; a wizard-supplied value is ignored/rejected.
-   The descriptor and trusted selected-distribution revision/hash binding are
-   implemented. A plan represents monolith and distributed topology, serializes
-   deterministically, and rejects duplicated/missing role ownership. Distributed
-   apply remains explicitly unavailable until a deployment adapter is added.
+   The placement, descriptor, and trusted selected-distribution revision/hash
+   binding are implemented. A plan represents monolith and distributed
+   topology, serializes deterministically, and rejects duplicated/missing role
+   ownership. The canonical exact-bundle type and distributed validation are
+   implemented. HTTP clears any client-supplied binding and now resolves a
+   host-selected release ID through the current admitted `rustok-modules`
+   ledger, which returns the exact preparation, bundle-root, and role-set
+   identity. Strict signed fresh-bootstrap receipt resolution is implemented
+   for HTTP and CLI hosts: the signature, signer-key digest, validity interval,
+   exact bundle identity, and host composition are checked before mutation,
+   and ambiguous owner-ledger/receipt configuration is rejected. Import into
+   the owner ledger, distributed apply, and bounded failed-install cleanup
+   remain open; failed layout preparation currently preserves its exact marker
+   for safe resume and never deletes the selected root.
    **Done when:** a trusted local plan can select any supported instance root,
    derive the same logical layout, represent monolith and distributed
    installations, serialize deterministically, and reject unsafe roots plus
@@ -192,11 +201,13 @@ performed afterwards.
    resume using the independently installed controller/agent package.
 
 5. **Add distributed topology to the shared installation pipeline.**
-   Replace the current independent per-role build/release hand-off atomically.
-   Produce one immutable deployment descriptor for the exact admitted or
-   fresh-bootstrap role bundle and wait for the owner-controlled
-   desired/observed rollout to converge. Record one
-   durable deployment receipt with per-node, per-role observations. Do not
+   The independent per-role build/release hand-off has been removed. The
+   shared contract produces one immutable deployment descriptor for the exact
+   admitted or fresh-bootstrap role bundle and waits for the owner-controlled
+   desired/observed rollout to converge. It records one durable deployment
+   receipt with per-role observations and validates exact role/surface coverage,
+   artifact digests, and health references. The owner-controlled resolver,
+   controller, and per-node convergence remain open. Do not
    expose an independent active-release mutation or release head through
    `rustok-build`, `apps/server`, HTTP, GraphQL, native, or CLI adapters.
    The schema, tenant seed, and admin provisioning stages run once for the

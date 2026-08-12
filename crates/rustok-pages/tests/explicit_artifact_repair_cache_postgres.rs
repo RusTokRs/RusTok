@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use rustok_core::events::EventHandler;
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::{OutboxModule, OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
@@ -156,8 +156,8 @@ impl PageCacheInvalidationPort for RecordingCachePort {
 }
 
 #[tokio::test]
-async fn rebuilt_bytes_and_activation_cache_rotate_only_after_committed_events_on_postgres(
-) -> TestResult<()> {
+async fn rebuilt_bytes_and_activation_cache_rotate_only_after_committed_events_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -212,9 +212,7 @@ async fn rebuilt_bytes_and_activation_cache_rotate_only_after_committed_events_o
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -351,18 +349,16 @@ async fn rebuilt_bytes_and_activation_cache_rotate_only_after_committed_events_o
         .await?;
     assert!(!replaced.replayed);
     assert_eq!(replaced.version, page_before.version + 1);
-    assert_eq!(replaced.replacement_artifact_id, rebuilt.rebuilt_artifact_id);
+    assert_eq!(
+        replaced.replacement_artifact_id,
+        rebuilt.rebuilt_artifact_id
+    );
 
     // The owner command has committed here, but cache generations cannot move until durable
     // lifecycle envelopes are delivered to the cache handler.
     assert_eq!(cache_port.generations(), initial_generations);
-    let (updated_envelope, published_envelope) = activation_envelopes(
-        &db,
-        &events_before_activation,
-        tenant_id,
-        draft.id,
-    )
-    .await?;
+    let (updated_envelope, published_envelope) =
+        activation_envelopes(&db, &events_before_activation, tenant_id, draft.id).await?;
 
     cache_handler.handle(&updated_envelope).await?;
     assert_eq!(
@@ -422,7 +418,10 @@ fn assert_cache_receipts(
     assert_eq!(receipts[1].correlation_id, published.correlation_id);
     assert_eq!(receipts[1].route_generation, Some(final_generations.route));
     assert_eq!(receipts[1].page_generation, Some(final_generations.page));
-    assert_eq!(receipts[1].artifact_generation, Some(final_generations.artifact));
+    assert_eq!(
+        receipts[1].artifact_generation,
+        Some(final_generations.artifact)
+    );
     Ok(())
 }
 

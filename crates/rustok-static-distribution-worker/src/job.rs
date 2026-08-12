@@ -1071,7 +1071,7 @@ fn evidence_matches_target(
 ) -> bool {
     let target = publisher_config.publication_target();
     [
-        (&evidence.artifact_reference, &evidence.artifact_digest),
+        (&evidence.bundle_reference, &evidence.bundle_root_digest),
         (&evidence.sbom_reference, &evidence.sbom_digest),
         (&evidence.provenance_reference, &evidence.provenance_digest),
         (&evidence.signature_reference, &evidence.signature_digest),

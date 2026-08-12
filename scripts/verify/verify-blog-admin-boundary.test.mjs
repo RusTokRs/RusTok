@@ -105,7 +105,13 @@ use super::richtext::BlogRichTextEditor;
 
 pub fn BlogAdmin() {
     let (content, set_content) = signal(RichTextDocument::empty());
-    <BlogRichTextEditor document=content set_document=set_content />;
+    let (locale, _set_locale) = signal(String::new());
+    <BlogRichTextEditor
+        document=content
+        set_document=set_content
+        content_locale=locale
+        disabled=Signal::derive(move || false)
+    />;
     let _posts = transport::fetch_posts;
     ${omitSaveCommand ? "" : "let _save = core::prepare_blog_post_save_command;\n    let _op = core::BlogPostSaveOperation::Create;"}
     let _load = core::blog_post_load_result_view;
@@ -136,29 +142,45 @@ pub fn BlogAdmin() {
 
 function richtextAdapterSource({
   wrongProfile = false,
+} = {}) {
+  return `
+use leptos_ui::{RichTextEditorFrame, localized_richtext_frame_copy};
+use rustok_api::RichTextDocument;
+pub fn BlogRichTextEditor(
+    document: ReadSignal<RichTextDocument>,
+    set_document: WriteSignal<RichTextDocument>,
+    content_locale: ReadSignal<String>,
+    disabled: Signal<bool>,
+) {
+    let ui_locale = use_ui_route_context().map(|context| context.locale);
+    let copy = localized_richtext_frame_copy(|key, fallback| {
+        t(ui_locale.as_deref(), key, fallback)
+    });
+    <RichTextEditorFrame
+        document=document
+        set_document=set_document
+        content_locale=Signal::from(content_locale)
+        disabled=disabled
+        profile="${wrongProfile ? "discussion" : "article"}".to_string()
+        copy=copy
+    />;
+}
+`;
+}
+
+function sharedRichtextAdapterSource({
   unsafeSandbox = false,
   untypedPayload = false,
   missingCleanup = false,
 } = {}) {
   return `
 use rustok_api::RichTextDocument;
-pub fn BlogRichTextEditor(
-    document: ReadSignal<RichTextDocument>,
-    set_document: WriteSignal<RichTextDocument>,
-) {
-    let document_json = "{}";
-    let mounted_handle = mount_richtext_frame(
-        &iframe,
-        "/richtext/frame",
-        "${wrongProfile ? "discussion" : "article"}",
-        document_json,
-        messages_json,
-        true,
-        &on_document_change,
-        &on_error,
-    );
+pub fn RichTextEditorFrame() {
+    mount_richtext_frame("/richtext/frame");
     ${untypedPayload ? "serde_json::from_str::<serde_json::Value>(document_json);" : "serde_json::from_str::<RichTextDocument>(document_json);"}
     set_document.set(document);
+    set_richtext_authoring_context(&mounted_handle, content_locale.get(), spellcheck.get());
+    set_richtext_editable(&mounted_handle, !disabled.get());
     sandbox="${unsafeSandbox ? "allow-scripts allow-same-origin" : "allow-scripts"}";
     referrerpolicy="no-referrer";
     ${missingCleanup ? "" : "on_cleanup(move || { dispose_richtext_frame(&mounted_handle); });"}
@@ -259,6 +281,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-blog/admin/src/model.rs", "pub struct BlogPostDraft; pub struct BlogPostDetail;");
   writeFixtureFile(root, "crates/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/ui/richtext.rs", richtextAdapterSource(options));
+  writeFixtureFile(root, "crates/leptos-ui/src/richtext.rs", sharedRichtextAdapterSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/moderation.rs", moderationSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/mod.rs", transportSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
@@ -289,6 +312,7 @@ function withFixture(options = {}) {
       core: "crates/rustok-blog/admin/src/core.rs",
       ui: "crates/rustok-blog/admin/src/ui/leptos.rs",
       adapter: "crates/rustok-blog/admin/src/ui/richtext.rs",
+      shared_adapter: "crates/leptos-ui/src/richtext.rs",
       locales: {
         en: "crates/rustok-blog/admin/locales/en.json",
         ru: "crates/rustok-blog/admin/locales/ru.json"
@@ -297,9 +321,10 @@ function withFixture(options = {}) {
     required_markers: {
       core: ["RichTextDocument", "content: &'a RichTextDocument", "content: RichTextDocument", "has_required_draft_fields"],
       ui: ["use super::richtext::BlogRichTextEditor;", "let (content, set_content) = signal(RichTextDocument::empty());", "<BlogRichTextEditor", "document=content", "set_document=set_content"],
-      adapter: ["pub fn BlogRichTextEditor(", "ReadSignal<RichTextDocument>", "WriteSignal<RichTextDocument>", "mount_richtext_frame", "\"/richtext/frame\"", "\"article\"", "serde_json::from_str::<RichTextDocument>", "set_document.set(document)", "sandbox=\"allow-scripts\"", "referrerpolicy=\"no-referrer\"", "on_cleanup", "dispose_richtext_frame"]
+      adapter: ["pub fn BlogRichTextEditor(", "ReadSignal<RichTextDocument>", "WriteSignal<RichTextDocument>", "RichTextEditorFrame", "profile=\"article\".to_string()", "localized_richtext_frame_copy"],
+      shared_adapter: ["pub fn RichTextEditorFrame(", "mount_richtext_frame", "\"/richtext/frame\"", "serde_json::from_str::<RichTextDocument>", "set_document.set(document)", "sandbox=\"allow-scripts\"", "referrerpolicy=\"no-referrer\"", "on_cleanup", "dispose_richtext_frame"]
     },
-    forbidden_adapter_markers: ["\"discussion\"", "allow-same-origin", "serde_json::from_str::<serde_json::Value>"],
+    forbidden_adapter_markers: ["\"discussion\"", "allow-same-origin", "serde_json::from_str::<serde_json::Value>", "mount_richtext_frame", "dispose_richtext_frame", "sandbox=\"allow-scripts\"", "serde_json::from_str"],
     forbidden_markers: ["blog_post_admin_body_format_select_view", "blog_post_admin_body_format_change_view", "normalize_blog_post_body_format", "blog_post_admin_raw_body_warning_view"],
     forbidden_locale_keys: ["blog.form.bodyFormat", "blog.form.rawWarning"],
     verifier: "scripts/verify/verify-blog-admin-boundary.mjs",

@@ -1,17 +1,13 @@
 use crate::model::PageBody;
 use leptos::prelude::*;
+pub use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_page_builder_storefront::{PageBuilderStorefront, PageSelection};
 use serde_json::Value;
 
-pub const GRAPESJS_FORMAT_BODY_FORMAT: &str = "grapesjs";
 pub const STATIC_LANDING_URL_BODY_FORMAT: &str = "fly_artifact_url";
 
 pub fn is_page_builder_body(body: &PageBody) -> bool {
-    body.format
-        .eq_ignore_ascii_case(GRAPESJS_FORMAT_BODY_FORMAT)
-        || body
-            .format
-            .eq_ignore_ascii_case(STATIC_LANDING_URL_BODY_FORMAT)
+    body.format == PAGE_BUILDER_DOCUMENT_FORMAT || body.format == STATIC_LANDING_URL_BODY_FORMAT
 }
 
 pub fn decode_page_builder_body(body: &PageBody) -> Result<Value, serde_json::Error> {
@@ -36,10 +32,7 @@ pub fn PageBuilderPageBody(
         .into_any();
     }
 
-    if body
-        .format
-        .eq_ignore_ascii_case(STATIC_LANDING_URL_BODY_FORMAT)
-    {
+    if body.format == STATIC_LANDING_URL_BODY_FORMAT {
         return view! {
             <iframe
                 class=class
@@ -88,12 +81,16 @@ mod tests {
     }
 
     #[test]
-    fn detects_builder_body_case_insensitively() {
-        assert!(is_page_builder_body(&body("GRAPESJS", "{}".to_string())));
+    fn accepts_only_canonical_builder_body_formats() {
         assert!(is_page_builder_body(&body(
-            "FLY_ARTIFACT_URL",
+            PAGE_BUILDER_DOCUMENT_FORMAT,
+            "{}".to_string()
+        )));
+        assert!(is_page_builder_body(&body(
+            STATIC_LANDING_URL_BODY_FORMAT,
             "/api/pages/id/artifact".to_string(),
         )));
+        assert!(!is_page_builder_body(&body("GRAPESJS", "{}".to_string())));
         assert!(!is_page_builder_body(&body(
             "markdown",
             "# Hello".to_string()
@@ -108,7 +105,7 @@ mod tests {
             }]
         });
         let decoded = decode_page_builder_body(&body(
-            GRAPESJS_FORMAT_BODY_FORMAT,
+            PAGE_BUILDER_DOCUMENT_FORMAT,
             serde_json::to_string(&project).expect("project json"),
         ))
         .expect("decode project");
@@ -118,7 +115,7 @@ mod tests {
     #[test]
     fn invalid_builder_json_is_rejected() {
         assert!(
-            decode_page_builder_body(&body(GRAPESJS_FORMAT_BODY_FORMAT, "{invalid".to_string(),))
+            decode_page_builder_body(&body(PAGE_BUILDER_DOCUMENT_FORMAT, "{invalid".to_string(),))
                 .is_err()
         );
     }

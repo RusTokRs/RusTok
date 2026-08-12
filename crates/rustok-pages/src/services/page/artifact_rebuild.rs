@@ -1,6 +1,7 @@
 use chrono::Utc;
 use rustok_api::{Action, Resource};
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, PermissionScope, SecurityContext};
+use rustok_core::{PermissionScope, SecurityContext};
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_page_builder::{
     PageBuilderPublishRuntimeReviewError, PageBuilderReviewedPublishRuntime,
     PageBuilderStaticLandingMaterializationIdentity, compile_materialized_static_landing,
@@ -19,8 +20,8 @@ use crate::entities::{page_artifact_rebuild_operation, page_publish_rebuild_sour
 use crate::error::{PagesError, PagesResult};
 use crate::services::page_builder_artifact::{CompiledLandingArtifact, PageBuilderArtifactService};
 
-use super::publish_manifest::{RebuildSourceProvenance, is_sha256, rebuild_source_provenance_hash};
 use super::PageService;
+use super::publish_manifest::{RebuildSourceProvenance, is_sha256, rebuild_source_provenance_hash};
 
 pub const PAGE_ARTIFACT_REBUILD_OPERATION_FORMAT: &str = "page_artifact_rebuild_operation_v1";
 pub const PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT: &str =
@@ -56,10 +57,13 @@ impl PageService {
             ));
         }
         let idempotency_key = normalize_idempotency_key(&input.idempotency_key)?;
-        let reviewed: PageBuilderReviewedPublishRuntime = input
-            .runtime
-            .try_into()
-            .map_err(|error: PageBuilderPublishRuntimeReviewError| PagesError::publish_runtime_review_invalid(error.to_string()))?;
+        let reviewed: PageBuilderReviewedPublishRuntime =
+            input
+                .runtime
+                .try_into()
+                .map_err(|error: PageBuilderPublishRuntimeReviewError| {
+                    PagesError::publish_runtime_review_invalid(error.to_string())
+                })?;
         let request_hash = stable_rebuild_hash(&(
             PAGE_ARTIFACT_REBUILD_OPERATION_FORMAT,
             tenant_id,
@@ -70,13 +74,8 @@ impl PageService {
         ))?;
 
         let txn = self.db.begin().await?;
-        if let Some(operation) = find_operation_in_tx(
-            &txn,
-            tenant_id,
-            page_id,
-            idempotency_key.as_str(),
-        )
-        .await?
+        if let Some(operation) =
+            find_operation_in_tx(&txn, tenant_id, page_id, idempotency_key.as_str()).await?
         {
             ensure_same_request(
                 &operation,
@@ -169,9 +168,7 @@ async fn find_operation_in_tx(
         page_artifact_rebuild_operation::Entity::find()
             .filter(page_artifact_rebuild_operation::Column::TenantId.eq(tenant_id))
             .filter(page_artifact_rebuild_operation::Column::PageId.eq(page_id))
-            .filter(
-                page_artifact_rebuild_operation::Column::IdempotencyKey.eq(idempotency_key),
-            )
+            .filter(page_artifact_rebuild_operation::Column::IdempotencyKey.eq(idempotency_key))
     };
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
@@ -183,11 +180,12 @@ fn compile_exact_rebuild(
     source: &page_publish_rebuild_source::Model,
     reviewed: &PageBuilderReviewedPublishRuntime,
 ) -> PagesResult<CompiledLandingArtifact> {
-    let sanitized = sanitize_static_landing_project(&source.sanitized_project).map_err(|error| {
-        rebuild_source_invalid(format!(
-            "retained source failed canonical sanitization: {error}",
-        ))
-    })?;
+    let sanitized =
+        sanitize_static_landing_project(&source.sanitized_project).map_err(|error| {
+            rebuild_source_invalid(format!(
+                "retained source failed canonical sanitization: {error}",
+            ))
+        })?;
     sanitized.verify_integrity().map_err(|error| {
         rebuild_source_invalid(format!(
             "retained sanitization envelope failed integrity: {error}",
@@ -244,16 +242,18 @@ fn compile_exact_rebuild(
             "rebuilt artifact identities do not match retained publish provenance",
         ));
     }
-    let materialization_identity = serde_json::to_value(&materialized.identity).map_err(|error| {
-        PagesError::artifact_integrity(format!(
-            "unable to encode rebuilt materialization identity: {error}",
-        ))
-    })?;
-    let runtime_snapshots = serde_json::to_value(&materialized.runtime_snapshots).map_err(|error| {
-        PagesError::artifact_integrity(format!(
-            "unable to encode rebuilt runtime snapshots: {error}",
-        ))
-    })?;
+    let materialization_identity =
+        serde_json::to_value(&materialized.identity).map_err(|error| {
+            PagesError::artifact_integrity(format!(
+                "unable to encode rebuilt materialization identity: {error}",
+            ))
+        })?;
+    let runtime_snapshots =
+        serde_json::to_value(&materialized.runtime_snapshots).map_err(|error| {
+            PagesError::artifact_integrity(format!(
+                "unable to encode rebuilt runtime snapshots: {error}",
+            ))
+        })?;
     if materialization_identity != source.materialization_identity
         || runtime_snapshots != source.runtime_snapshots
     {
@@ -281,10 +281,12 @@ fn verify_source(source: &page_publish_rebuild_source::Model) -> PagesResult<()>
         || source.artifact_id.is_nil()
         || source.locale.trim().is_empty()
         || source.locale.trim() != source.locale
-        || source.source_format != CONTENT_FORMAT_GRAPESJS
+        || source.source_format != PAGE_BUILDER_DOCUMENT_FORMAT
         || source.source_revision.trim().is_empty()
     {
-        return Err(rebuild_source_invalid("retained source identity is invalid"));
+        return Err(rebuild_source_invalid(
+            "retained source identity is invalid",
+        ));
     }
     for value in [
         source.sanitized_hash.as_str(),

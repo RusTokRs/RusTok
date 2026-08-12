@@ -151,9 +151,11 @@ impl SeaOrmModuleAuthoringPublishService {
     pub async fn from_storage_settings(
         db: DatabaseConnection,
         settings: serde_json::Value,
+        local_storage_root: &std::path::Path,
     ) -> Result<Self, ModuleAuthoringPublishError> {
-        let config: StorageConfig = serde_json::from_value(settings)
+        let mut config: StorageConfig = serde_json::from_value(settings)
             .map_err(|error| ModuleAuthoringPublishError::Storage(error.to_string()))?;
+        config.bind_local_base_dir(local_storage_root);
         let storage = StorageRuntime::from_config(&config)
             .await
             .map_err(|error| ModuleAuthoringPublishError::Storage(error.to_string()))?;

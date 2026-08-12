@@ -3,22 +3,18 @@ use std::sync::Arc;
 
 use rustok_api::{Action, Resource};
 use rustok_channel::ChannelModule;
-use rustok_core::{
-    CONTENT_FORMAT_GRAPESJS, MigrationSource, PermissionScope, SecurityContext,
-};
+use rustok_core::{MigrationSource, PermissionScope, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
     CreatePageInput, PageBodyInput, PageBodyRevisionInput, PageTranslationInput, PublishPageInput,
     RebuildPageArtifactInput, ReviewedPagePublishRuntimeInput,
 };
-use rustok_pages::entities::{
-    page_publish_rebuild_source, page_static_landing_artifact,
-};
+use rustok_pages::entities::{page_publish_rebuild_source, page_static_landing_artifact};
 use rustok_pages::services::PageService;
 use rustok_pages::{
-    AuditPageArtifactsInput, PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT,
-    PAGE_ARTIFACT_INTEGRITY_INVALID, PagesError, PagesModule,
+    AuditPageArtifactsInput, PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT, PAGE_ARTIFACT_INTEGRITY_INVALID,
+    PagesError, PagesModule,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
@@ -59,7 +55,9 @@ async fn audit_manage_scope_is_all_or_none_and_public_read_is_denied() -> TestRe
             tenant_id,
             public,
             Uuid::new_v4(),
-            AuditPageArtifactsInput { max_records: Some(1) },
+            AuditPageArtifactsInput {
+                max_records: Some(1),
+            },
         )
         .await;
     assert!(matches!(
@@ -71,8 +69,8 @@ async fn audit_manage_scope_is_all_or_none_and_public_read_is_denied() -> TestRe
 }
 
 #[tokio::test]
-async fn audit_accepts_canonical_and_rebuilt_records_and_truncates_at_requested_limit(
-) -> TestResult<()> {
+async fn audit_accepts_canonical_and_rebuilt_records_and_truncates_at_requested_limit()
+-> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_db(tenant_id).await?;
     let service = page_service(&db);
@@ -98,7 +96,9 @@ async fn audit_accepts_canonical_and_rebuilt_records_and_truncates_at_requested_
             tenant_id,
             SecurityContext::system(),
             fixture.page_id,
-            AuditPageArtifactsInput { max_records: Some(2) },
+            AuditPageArtifactsInput {
+                max_records: Some(2),
+            },
         )
         .await?;
     assert_eq!(complete.format, PAGE_ARTIFACT_INTEGRITY_AUDIT_FORMAT);
@@ -117,7 +117,9 @@ async fn audit_accepts_canonical_and_rebuilt_records_and_truncates_at_requested_
             tenant_id,
             SecurityContext::system(),
             fixture.page_id,
-            AuditPageArtifactsInput { max_records: Some(1) },
+            AuditPageArtifactsInput {
+                max_records: Some(1),
+            },
         )
         .await?;
     assert_eq!(bounded.max_records, 1);
@@ -149,7 +151,9 @@ async fn audit_reports_corrupted_immutable_payload_with_hashed_finding() -> Test
             tenant_id,
             SecurityContext::system(),
             fixture.page_id,
-            AuditPageArtifactsInput { max_records: Some(1) },
+            AuditPageArtifactsInput {
+                max_records: Some(1),
+            },
         )
         .await?;
     assert_eq!(result.scanned_artifact_count, 1);
@@ -168,7 +172,8 @@ async fn audit_reports_corrupted_immutable_payload_with_hashed_finding() -> Test
 }
 
 #[tokio::test]
-async fn audit_reports_partial_materialization_evidence_without_exposing_payloads() -> TestResult<()> {
+async fn audit_reports_partial_materialization_evidence_without_exposing_payloads() -> TestResult<()>
+{
     let tenant_id = Uuid::new_v4();
     let db = setup_db(tenant_id).await?;
     let service = page_service(&db);
@@ -189,7 +194,9 @@ async fn audit_reports_partial_materialization_evidence_without_exposing_payload
             tenant_id,
             SecurityContext::system(),
             fixture.page_id,
-            AuditPageArtifactsInput { max_records: Some(1) },
+            AuditPageArtifactsInput {
+                max_records: Some(1),
+            },
         )
         .await?;
     assert_eq!(result.scanned_artifact_count, 1);
@@ -251,9 +258,7 @@ async fn publish_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: None,
                 publish: false,

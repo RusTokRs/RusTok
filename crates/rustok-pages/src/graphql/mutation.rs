@@ -245,9 +245,7 @@ fn page_translation_input(input: GqlPageTranslationInput) -> PageTranslationInpu
 fn page_body_input(input: GqlPageBodyInput) -> PageBodyInput {
     PageBodyInput {
         locale: input.locale,
-        content: input.content,
-        format: input.format,
-        content_json: input.content_json,
+        document: input.document,
     }
 }
 

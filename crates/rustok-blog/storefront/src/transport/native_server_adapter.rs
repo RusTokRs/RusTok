@@ -1,8 +1,9 @@
+#[cfg(feature = "ssr")]
 use crate::comments_pagination::COMMENTS_PAGE_SIZE;
 use crate::core::BlogStorefrontFetchRequest;
 #[cfg(feature = "ssr")]
 use crate::model::BlogPostListItem;
-use crate::model::StorefrontBlogData;
+use crate::model::{BlogCommentCreateRequest, BlogCommentDetail, StorefrontBlogData};
 #[cfg(feature = "ssr")]
 use crate::model::{
     BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostDetail, BlogPostList,
@@ -31,6 +32,114 @@ pub async fn fetch_blog(
     .await
 }
 
+pub async fn create_comment(
+    request: BlogCommentCreateRequest,
+) -> Result<BlogCommentDetail, ApiError> {
+    create_blog_comment_native(request)
+        .await
+        .map_err(ApiError::from)
+}
+
+#[server(prefix = "/api/fn", endpoint = "blog/comment-create")]
+async fn create_blog_comment_native(
+    request: BlogCommentCreateRequest,
+) -> Result<BlogCommentDetail, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use rustok_api::{Action, HostRuntimeContext, Permission, Resource};
+        use rustok_outbox::TransactionalEventBus;
+
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        if auth.tenant_id != tenant.id {
+            return Err(ServerFnError::new(
+                "Blog comment creation must use the current authenticated tenant",
+            ));
+        }
+        if !rustok_api::has_any_effective_permission(
+            &auth.permissions,
+            &[Permission::new(Resource::Comments, Action::Create)],
+        ) {
+            return Err(ServerFnError::new("comments:create required"));
+        }
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        match rustok_api::is_tenant_module_enabled(runtime_ctx.db(), tenant.id, MODULE_SLUG).await {
+            Ok(true) => {}
+            Ok(false) => return Err(ServerFnError::new("Blog module is not enabled")),
+            Err(error) => {
+                return Err(ServerFnError::new(format!(
+                    "Blog module state is unavailable: {error}"
+                )));
+            }
+        }
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "blog/comment-create requires TransactionalEventBus in host runtime context",
+                )
+            })?;
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .ok();
+        require_blog_channel_enabled(&runtime_ctx, request_context.as_ref()).await?;
+
+        let post_id = uuid::Uuid::parse_str(request.post_id.trim())
+            .map_err(|_| ServerFnError::new("Invalid post_id"))?;
+        let parent_comment_id = request
+            .parent_comment_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(uuid::Uuid::parse_str)
+            .transpose()
+            .map_err(|_| ServerFnError::new("Invalid parent_comment_id"))?;
+        let locale = request.locale.trim();
+        let locale = if locale.is_empty() {
+            tenant.default_locale.clone()
+        } else {
+            locale.to_string()
+        };
+        let public_channel_slug = request_context
+            .as_ref()
+            .and_then(|context| context.channel_slug.as_deref());
+
+        let comment = comment_service(&runtime_ctx, event_bus)
+            .create_public_comment(
+                tenant.id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+                post_id,
+                public_channel_slug,
+                rustok_blog::CreateCommentInput {
+                    locale,
+                    content: request.content,
+                    parent_comment_id,
+                },
+            )
+            .await
+            .map_err(|error| ServerFnError::new(error.to_string()))?;
+
+        Ok(map_comment_detail(comment))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = request;
+        Err(ServerFnError::new(
+            "blog/comment-create requires the `ssr` feature",
+        ))
+    }
+}
+
 async fn fetch_storefront_blog_server(
     tenant_slug: Option<String>,
     post_slug: String,
@@ -57,7 +166,6 @@ async fn storefront_blog_native(
             BlogPostStatus, PostListQuery, PostService, PublicCommentsSnapshotStore,
             list_public_comments_with_snapshot,
         };
-        use rustok_channel::ChannelService;
         use rustok_core::SecurityContext;
         use rustok_outbox::TransactionalEventBus;
         use rustok_tenant::TenantService;
@@ -101,20 +209,7 @@ async fn storefront_blog_native(
             (tenant.id, fallback)
         };
 
-        if let Some(request_context) = request_context.as_ref() {
-            if let Some(channel_id) = request_context.channel_id {
-                let enabled = ChannelService::new(runtime_ctx.db_clone())
-                    .is_module_enabled(channel_id, MODULE_SLUG)
-                    .await
-                    .map_err(ServerFnError::new)?;
-                if !enabled {
-                    return Err(ServerFnError::new(format!(
-                        "Module '{MODULE_SLUG}' is not enabled for channel '{}'",
-                        request_context.channel_slug.as_deref().unwrap_or("current"),
-                    )));
-                }
-            }
-        }
+        require_blog_channel_enabled(&runtime_ctx, request_context.as_ref()).await?;
 
         let requested_locale = locale
             .as_deref()
@@ -145,8 +240,7 @@ async fn storefront_blog_native(
 
         let selected_post = if let Some(post) = selected_post {
             let comments = comment_service(&runtime_ctx, event_bus.clone());
-            let snapshot_store =
-                runtime_ctx.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>();
+            let snapshot_store = runtime_ctx.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>();
             let public_comments = list_public_comments_with_snapshot(
                 &comments,
                 snapshot_store.as_ref(),
@@ -226,6 +320,50 @@ fn comment_service(
         )
     } else {
         rustok_blog::CommentService::new(runtime_ctx.db_clone(), event_bus)
+    }
+}
+
+#[cfg(feature = "ssr")]
+async fn require_blog_channel_enabled(
+    runtime_ctx: &rustok_api::HostRuntimeContext,
+    request_context: Option<&rustok_api::RequestContext>,
+) -> Result<(), ServerFnError> {
+    use rustok_channel::ChannelService;
+
+    let Some(request_context) = request_context else {
+        return Ok(());
+    };
+    let Some(channel_id) = request_context.channel_id else {
+        return Ok(());
+    };
+    let enabled = ChannelService::new(runtime_ctx.db_clone())
+        .is_module_enabled(channel_id, MODULE_SLUG)
+        .await
+        .map_err(ServerFnError::new)?;
+    if enabled {
+        Ok(())
+    } else {
+        Err(ServerFnError::new(format!(
+            "Module '{MODULE_SLUG}' is not enabled for channel '{}'",
+            request_context.channel_slug.as_deref().unwrap_or("current"),
+        )))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_comment_detail(comment: rustok_blog::CommentResponse) -> BlogCommentDetail {
+    BlogCommentDetail {
+        id: comment.id.to_string(),
+        requested_locale: comment.requested_locale,
+        effective_locale: comment.effective_locale,
+        post_id: comment.post_id.to_string(),
+        author_id: comment.author_id.map(|value| value.to_string()),
+        content: comment.content,
+        content_plain_text: comment.content_text,
+        status: comment.status,
+        parent_comment_id: comment.parent_comment_id.map(|value| value.to_string()),
+        created_at: comment.created_at,
+        updated_at: comment.updated_at,
     }
 }
 
@@ -334,9 +472,8 @@ mod tests {
             &rustok_api::HostRuntimeContext,
             rustok_outbox::TransactionalEventBus,
         ) -> rustok_blog::CommentService = comment_service;
-        let mapper: fn(
-            rustok_blog::PublicCommentsAvailability,
-        ) -> BlogCommentsAvailability = map_comments_availability;
+        let mapper: fn(rustok_blog::PublicCommentsAvailability) -> BlogCommentsAvailability =
+            map_comments_availability;
         let _ = (selector, mapper);
     }
 }

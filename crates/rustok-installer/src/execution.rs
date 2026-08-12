@@ -49,7 +49,7 @@ pub struct InstallApplyOutput {
     pub verify_receipt_checksum: String,
     pub finalize_receipt_id: Uuid,
     pub finalize_receipt_checksum: String,
-    pub deployment_receipts: Vec<crate::InstallRoleDeploymentReceipt>,
+    pub deployment_receipt: Option<crate::InstallDistributionDeploymentReceipt>,
     pub next: Option<String>,
 }
 
@@ -199,6 +199,7 @@ pub trait InstallVerificationPort<R>: Send + Sync {
 /// Executes the canonical installer state machine through host-provided stage
 /// ports. HTTP and CLI adapters must invoke this function rather than duplicate
 /// stage ordering, state transitions, or receipt construction.
+#[cfg(feature = "host-runtime")]
 pub async fn execute_install_apply<P>(
     ports: &P,
     plan: InstallPlan,
@@ -220,6 +221,15 @@ where
     if !report.passed() {
         return Err(InstallExecutionError::new("installer preflight failed"));
     }
+    let invocation_dir = std::env::current_dir().map_err(|error| {
+        InstallExecutionError::new(format!(
+            "failed to resolve installer invocation directory: {error}"
+        ))
+    })?;
+    let layout = crate::InstanceLayout::resolve(plan.placement.clone(), invocation_dir)
+        .map_err(|error| InstallExecutionError::new(error.to_string()))?;
+    let layout_preparation = crate::prepare_instance_layout(&layout)
+        .map_err(|error| InstallExecutionError::new(error.to_string()))?;
     let database_url = crate::resolve_local_secret_value(&plan.database.url, "database URL")
         .map_err(|error| InstallExecutionError::new(error.to_string()))?;
     let database = ports
@@ -262,7 +272,8 @@ where
         serde_json::json!({
             "source": "installer",
             "secrets_mode": plan.secrets_mode,
-            "redacted": true
+            "redacted": true,
+            "instance_layout": layout_preparation
         }),
     )
     .await?;
@@ -354,8 +365,8 @@ where
             InstallState::AdminProvisioned,
         )
         .await?;
-    let deployment_receipts = if plan.topology.mode == crate::InstallTopologyMode::Distributed {
-        let output = crate::execute_distributed_role_deployments(
+    let deployment_receipt = if plan.topology.mode == crate::InstallTopologyMode::Distributed {
+        let output = crate::execute_distributed_deployment(
             ports,
             &database.runtime,
             &plan,
@@ -364,9 +375,9 @@ where
         )
         .await?;
         session = output.session;
-        output.receipts
+        Some(output.receipt)
     } else {
-        Vec::new()
+        None
     };
     let verify_outcome = ports
         .verify_installation(&database.runtime, &plan, seed_outcome.tenant_id)
@@ -427,11 +438,12 @@ where
         verify_receipt_checksum: verify.input_checksum,
         finalize_receipt_id: finalize.id,
         finalize_receipt_checksum: finalize.input_checksum,
-        deployment_receipts,
+        deployment_receipt,
         next: None,
     })
 }
 
+#[cfg(feature = "host-runtime")]
 async fn record_success<P>(
     ports: &P,
     runtime: &P::Runtime,

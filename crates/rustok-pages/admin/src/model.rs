@@ -177,15 +177,26 @@ pub struct PageBuilderScenarioReleaseStatus {
 }
 
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub struct CreatePageDraft {
     pub locale: String,
     pub title: String,
     pub slug: String,
-    pub body_content: String,
-    pub body_format: String,
-    pub body_content_json: Value,
+    pub document: Value,
     pub template: Option<String>,
     pub channel_slugs: Vec<String>,
-    pub publish: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PageMetadataPatch {
+    pub token: Option<String>,
+    pub tenant_slug: Option<String>,
+    pub page_id: String,
+    pub expected_version: i32,
+    pub locale: String,
+    pub title: String,
+    pub slug: String,
+    pub meta_title: Option<String>,
+    pub meta_description: Option<String>,
+    pub template: Option<String>,
+    pub channel_slugs: Vec<String>,
 }

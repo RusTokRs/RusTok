@@ -19,9 +19,7 @@ pub enum ForumSearchProjectionEvent {
 impl ForumSearchProjectionEvent {
     pub fn event_type(&self) -> &'static str {
         match self {
-            Self::InvalidationIssued { .. } => {
-                "forum.search_projection.invalidation_issued"
-            }
+            Self::InvalidationIssued { .. } => "forum.search_projection.invalidation_issued",
         }
     }
 
@@ -100,9 +98,7 @@ impl ValidateEvent for ForumSearchProjectionEvent {
     }
 }
 
-pub fn forum_search_projection_event_schema(
-    event_type: &str,
-) -> Option<&'static EventSchema> {
+pub fn forum_search_projection_event_schema(event_type: &str) -> Option<&'static EventSchema> {
     FORUM_SEARCH_PROJECTION_EVENT_SCHEMAS
         .iter()
         .find(|schema| schema.event_type == event_type)

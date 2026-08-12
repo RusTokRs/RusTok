@@ -47,7 +47,8 @@ pub enum ModuleDefinitionSource {
         registry_release_id: String,
         promotion_id: uuid::Uuid,
         promotion_revision: u64,
-        distribution_artifact_digest: String,
+        distribution_bundle_root_digest: String,
+        distribution_role_set_digest: String,
         executor_mode: ModuleStaticDistributionExecutorMode,
     },
     Artifact {
@@ -276,7 +277,8 @@ impl ModuleDefinitionCatalog {
                 registry_release_id: item.release_id.clone(),
                 promotion_id: item.promotion_id,
                 promotion_revision: item.promotion_revision,
-                distribution_artifact_digest: release.evidence.artifact_digest.clone(),
+                distribution_bundle_root_digest: release.evidence.bundle_root_digest.clone(),
+                distribution_role_set_digest: release.evidence.role_set_digest.clone(),
                 executor_mode: item.executor_mode,
             };
         }

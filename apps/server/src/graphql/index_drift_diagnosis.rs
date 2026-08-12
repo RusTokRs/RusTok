@@ -134,9 +134,8 @@ impl IndexDriftDiagnosisMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let (operator_context, key) =
-            prepare_authorized_request(tenant.id, auth.user_id, input)
-                .map_err(map_preparation_error)?;
+        let (operator_context, key) = prepare_authorized_request(tenant.id, auth.user_id, input)
+            .map_err(map_preparation_error)?;
 
         let runtime = ctx
             .data::<Arc<ModuleRuntimeExtensions>>()?
@@ -209,9 +208,7 @@ fn parse_entity_key(
     )?)
     .ok()
     .filter(|value| !value.is_nil())
-    .ok_or(IndexDriftDiagnosisTransportPreparationError::InvalidInput {
-        field: "entity_id",
-    })?;
+    .ok_or(IndexDriftDiagnosisTransportPreparationError::InvalidInput { field: "entity_id" })?;
     let locale = input
         .locale
         .map(|locale| {
@@ -422,6 +419,9 @@ mod tests {
         assert_eq!(key.schema.module.as_str(), "rustok-product");
         assert_eq!(key.schema.entity.as_str(), "product");
         assert_eq!(key.schema.version.get(), 2);
-        assert_eq!(key.locale.as_ref().map(|locale| locale.as_str()), Some("en-US"));
+        assert_eq!(
+            key.locale.as_ref().map(|locale| locale.as_str()),
+            Some("en-US")
+        );
     }
 }

@@ -729,8 +729,6 @@ mod tests {
         assert_eq!(view.locale_meta, "locale: en".to_string());
     }
 
-
-
     #[test]
     fn error_and_href_helpers_format_expected_values() {
         assert_eq!(

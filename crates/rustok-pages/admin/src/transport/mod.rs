@@ -6,8 +6,8 @@ mod scenario_baseline_cas_adapter;
 mod scenario_release_adapter;
 
 use crate::model::{
-    CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMutationResult,
-    PagePublicationResult,
+    CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMetadataPatch,
+    PageMutationResult, PagePublicationResult,
 };
 use rustok_page_builder::health::ProviderHealthSnapshot;
 use rustok_page_builder::rollout::BuilderCapabilityFlags;
@@ -34,7 +34,14 @@ pub async fn fetch_page(
 pub async fn fetch_page_builder_rollout_snapshot(
     token: Option<String>,
     tenant_slug: Option<String>,
-) -> Result<(String, BuilderCapabilityFlags, Option<ProviderHealthSnapshot>), TransportError> {
+) -> Result<
+    (
+        String,
+        BuilderCapabilityFlags,
+        Option<ProviderHealthSnapshot>,
+    ),
+    TransportError,
+> {
     builder_rollout_adapter::fetch(token, tenant_slug).await
 }
 
@@ -90,34 +97,8 @@ pub async fn create_page(
     graphql_adapter::create_page(token, tenant_slug, draft).await
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn patch_page_metadata(
-    token: Option<String>,
-    tenant_slug: Option<String>,
-    id: String,
-    expected_version: i32,
-    locale: String,
-    title: String,
-    slug: String,
-    meta_title: Option<String>,
-    meta_description: Option<String>,
-    template: Option<String>,
-    channel_slugs: Vec<String>,
-) -> Result<PageDetail, TransportError> {
-    graphql_adapter::patch_page_metadata(
-        token,
-        tenant_slug,
-        id,
-        expected_version,
-        locale,
-        title,
-        slug,
-        meta_title,
-        meta_description,
-        template,
-        channel_slugs,
-    )
-    .await
+pub async fn patch_page_metadata(request: PageMetadataPatch) -> Result<PageDetail, TransportError> {
+    graphql_adapter::patch_page_metadata(request).await
 }
 
 pub async fn save_page_document(

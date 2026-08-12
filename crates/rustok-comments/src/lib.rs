@@ -175,7 +175,7 @@ mod tests {
     }
 
     #[test]
-    fn module_has_no_migrations_yet() {
+    fn module_registers_owned_migrations() {
         let module = CommentsModule;
         assert!(!module.migrations().is_empty());
     }

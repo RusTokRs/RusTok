@@ -21,8 +21,8 @@ use crate::{
     ModuleStaticDistributionItem, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
     distribution::{
-        advance_distribution_state, distribution_composition_digest, insert_build, load_build,
-        load_distribution_state,
+        advance_distribution_state, insert_build, load_build, load_distribution_state,
+        module_static_distribution_composition_digest,
     },
     promotion::{
         digest_json, load_platform_build_evidence, load_promotion, valid_cas_source_reference,
@@ -70,7 +70,7 @@ pub struct ModuleStaticDistributionReleaseAdmission {
 }
 
 impl ModuleStaticDistributionReleaseAdmission {
-    fn admitted(&self) -> bool {
+    pub(crate) fn admitted(&self) -> bool {
         self.signature_verified
             && self.provenance_verified
             && self.sbom_verified
@@ -167,6 +167,52 @@ pub struct ModuleStaticDistributionRelease {
     pub verified_at: chrono::DateTime<chrono::Utc>,
     pub admission: ModuleStaticDistributionReleaseAdmission,
     pub items: Vec<ModuleStaticDistributionItem>,
+}
+
+/// Exact immutable bundle identity that an installer may consume.
+///
+/// The installer never derives this projection from transport input. The
+/// release owner resolves it from the admitted current release ledger and the
+/// deployment owner revalidates it before mutation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleStaticDistributionInstallBinding {
+    pub preparation_id: Uuid,
+    pub distribution_release_id: Uuid,
+    pub bundle_root_digest: String,
+    pub role_set_digest: String,
+}
+
+/// Resolves one installer binding from the sole static-distribution owner.
+/// Superseded and revoked releases are intentionally ineligible for a new
+/// installation even though their immutable bytes may be retained for an
+/// already-running recovery operation.
+pub async fn resolve_static_distribution_install_binding(
+    db: &DatabaseConnection,
+    distribution_release_id: Uuid,
+) -> Result<ModuleStaticDistributionInstallBinding, ModuleStaticDistributionReleaseError> {
+    if distribution_release_id.is_nil() {
+        return Err(ModuleStaticDistributionReleaseError::InvalidCommand);
+    }
+    let transaction = db.begin().await.map_err(store_error)?;
+    let state = lock_release_state(&transaction).await?;
+    if state.active_release_id != Some(distribution_release_id) {
+        return Err(ModuleStaticDistributionReleaseError::InstallReleaseNotCurrent);
+    }
+    let release = load_release_record(&transaction, distribution_release_id, true).await?;
+    if release.status != ModuleStaticDistributionReleaseStatus::Active
+        || !release.admission.admitted()
+    {
+        return Err(ModuleStaticDistributionReleaseError::InstallReleaseNotCurrent);
+    }
+    release.evidence.validate().map_err(distribution_error)?;
+    let binding = ModuleStaticDistributionInstallBinding {
+        preparation_id: release.distribution_build_id,
+        distribution_release_id: release.distribution_release_id,
+        bundle_root_digest: release.evidence.bundle_root_digest,
+        role_set_digest: release.evidence.role_set_digest,
+    };
+    transaction.commit().await.map_err(store_error)?;
+    Ok(binding)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -370,13 +416,13 @@ where
             if target_release.status != ModuleStaticDistributionReleaseStatus::Superseded {
                 return Err(ModuleStaticDistributionReleaseError::RollbackTargetInvalid);
             }
-            let rebuilt_artifact_digest = current_build
+            let rebuilt_bundle_root_digest = current_build
                 .result
                 .as_ref()
                 .ok_or(ModuleStaticDistributionReleaseError::BuildNotSucceeded)?
-                .artifact_digest
+                .bundle_root_digest
                 .as_str();
-            if rebuilt_artifact_digest != target_release.evidence.artifact_digest.as_str() {
+            if rebuilt_bundle_root_digest != target_release.evidence.bundle_root_digest.as_str() {
                 return Err(ModuleStaticDistributionReleaseError::RollbackBuildNotReproducible);
             }
         }
@@ -389,14 +435,21 @@ where
         if let Some(active_release_id) = release_state.active_release_id {
             supersede_release(&transaction, active_release_id).await?;
         }
-        insert_release(
+        let current_evidence = current_build
+            .result
+            .as_ref()
+            .ok_or(ModuleStaticDistributionReleaseError::BuildNotSucceeded)?;
+        insert_release_from_parts(
             &transaction,
             distribution_release_id,
             release_state.active_release_id,
             release_revision,
             command.actor_id,
             activated_at.to_owned(),
-            &current_build,
+            current_build.distribution_build_id,
+            current_build.composition_revision,
+            &current_build.composition_digest,
+            current_evidence,
         )
         .await?;
         insert_admission(
@@ -446,7 +499,8 @@ where
                         release_revision,
                         composition_revision: current_build.composition_revision,
                         composition_digest: current_build.composition_digest,
-                        artifact_digest: evidence.artifact_digest.clone(),
+                        bundle_root_digest: evidence.bundle_root_digest.clone(),
+                        role_set_digest: evidence.role_set_digest.clone(),
                         policy_revision: admission.policy_revision,
                     },
                 ),
@@ -833,6 +887,10 @@ pub enum ModuleStaticDistributionReleaseError {
     ReleaseAlreadyRevoked,
     #[error("static distribution release was not found")]
     ReleaseNotFound,
+    #[error("static distribution installer selection is not the current admitted release")]
+    InstallReleaseNotCurrent,
+    #[error("static distribution bootstrap import requires an empty owner ledger")]
+    BootstrapLedgerNotFresh,
     #[error(
         "static distribution release revision conflict: expected {expected}, current {current}"
     )]
@@ -911,7 +969,7 @@ fn valid_reason(value: &str) -> bool {
         && !value.chars().any(char::is_control)
 }
 
-fn validate_admission(
+pub(crate) fn validate_admission(
     admission: &ModuleStaticDistributionReleaseAdmission,
     expected_policy_revision: &str,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
@@ -937,6 +995,9 @@ fn ensure_build_ready(
         .result
         .as_ref()
         .ok_or(ModuleStaticDistributionReleaseError::BuildNotSucceeded)?;
+    evidence
+        .validate()
+        .map_err(|_| ModuleStaticDistributionReleaseError::BuildNotSucceeded)?;
     if build.distribution_build_id.is_nil()
         || build
             .predecessor_build_id
@@ -953,11 +1014,24 @@ fn ensure_build_ready(
         || build.status != ModuleStaticDistributionBuildStatus::Succeeded
         || build.failure.is_some()
         || build.requested_by.is_nil()
-        || build.attempt_count == 0
-        || build.active_claim_id.is_none_or(|value| value.is_nil())
-        || build.claimed_by.as_deref().is_none_or(|value| {
-            value.trim().is_empty() || value.trim() != value || value.chars().any(char::is_control)
-        })
+        || (build.preparation_source == crate::ModuleStaticDistributionPreparationSource::Built
+            && (build.attempt_count == 0
+                || build.active_claim_id.is_none_or(|value| value.is_nil())
+                || build.claimed_by.as_deref().is_none_or(|value| {
+                    value.trim().is_empty()
+                        || value.trim() != value
+                        || value.chars().any(char::is_control)
+                })
+                || build.bootstrap_receipt_digest.is_some()))
+        || (build.preparation_source
+            == crate::ModuleStaticDistributionPreparationSource::SignedBootstrap
+            && (build.attempt_count != 0
+                || build.active_claim_id.is_some()
+                || build.claimed_by.is_some()
+                || build
+                    .bootstrap_receipt_digest
+                    .as_deref()
+                    .is_none_or(|value| !valid_digest(value))))
         || build
             .completion_digest
             .as_deref()
@@ -966,7 +1040,7 @@ fn ensure_build_ready(
         return Err(ModuleStaticDistributionReleaseError::BuildNotSucceeded);
     }
     for (reference, digest) in [
-        (&evidence.artifact_reference, &evidence.artifact_digest),
+        (&evidence.bundle_reference, &evidence.bundle_root_digest),
         (&evidence.sbom_reference, &evidence.sbom_digest),
         (&evidence.provenance_reference, &evidence.provenance_digest),
         (&evidence.signature_reference, &evidence.signature_digest),
@@ -979,7 +1053,7 @@ fn ensure_build_ready(
             return Err(ModuleStaticDistributionReleaseError::BuildNotSucceeded);
         }
     }
-    let expected_composition_digest = distribution_composition_digest(
+    let expected_composition_digest = module_static_distribution_composition_digest(
         &build.platform_source_reference,
         &build.platform_source_digest,
         &build.toolchain_digest,
@@ -990,23 +1064,28 @@ fn ensure_build_ready(
     if build.composition_digest != expected_composition_digest {
         return Err(ModuleStaticDistributionReleaseError::BuildNotSucceeded);
     }
-    let completion_command = ModuleStaticDistributionCompletionCommand {
-        claim_id: build
-            .active_claim_id
-            .ok_or(ModuleStaticDistributionReleaseError::BuildNotSucceeded)?,
-        runner_id: build
-            .claimed_by
-            .clone()
-            .ok_or(ModuleStaticDistributionReleaseError::BuildNotSucceeded)?,
-        distribution_build_id: build.distribution_build_id,
-        composition_revision: build.composition_revision,
-        composition_digest: build.composition_digest.clone(),
-        outcome: ModuleStaticDistributionCompletionOutcome::Succeeded {
-            evidence: evidence.clone(),
-        },
-    };
-    let expected_completion_digest = digest_json(&completion_command).map_err(promotion_error)?;
-    if build.completion_digest.as_deref() != Some(expected_completion_digest.as_str()) {
+    if build.preparation_source == crate::ModuleStaticDistributionPreparationSource::Built {
+        let completion_command = ModuleStaticDistributionCompletionCommand {
+            claim_id: build
+                .active_claim_id
+                .ok_or(ModuleStaticDistributionReleaseError::BuildNotSucceeded)?,
+            runner_id: build
+                .claimed_by
+                .clone()
+                .ok_or(ModuleStaticDistributionReleaseError::BuildNotSucceeded)?,
+            distribution_build_id: build.distribution_build_id,
+            composition_revision: build.composition_revision,
+            composition_digest: build.composition_digest.clone(),
+            outcome: ModuleStaticDistributionCompletionOutcome::Succeeded {
+                evidence: evidence.clone(),
+            },
+        };
+        let expected_completion_digest =
+            digest_json(&completion_command).map_err(promotion_error)?;
+        if build.completion_digest.as_deref() != Some(expected_completion_digest.as_str()) {
+            return Err(ModuleStaticDistributionReleaseError::BuildNotSucceeded);
+        }
+    } else if build.completion_digest != build.bootstrap_receipt_digest {
         return Err(ModuleStaticDistributionReleaseError::BuildNotSucceeded);
     }
     Ok(())
@@ -1034,6 +1113,10 @@ async fn revalidate_promotions(
     transaction: &DatabaseTransaction,
     build: &ModuleStaticDistributionBuild,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
+    if build.preparation_source == crate::ModuleStaticDistributionPreparationSource::SignedBootstrap
+    {
+        return Ok(());
+    }
     for item in &build.items {
         let promotion = load_promotion(transaction, item.promotion_id)
             .await
@@ -1102,19 +1185,20 @@ async fn lock_build_for_activation(
     Ok(())
 }
 
-async fn insert_release(
+pub(crate) async fn insert_release_from_parts(
     transaction: &DatabaseTransaction,
     distribution_release_id: Uuid,
     predecessor_release_id: Option<Uuid>,
     release_revision: u64,
     actor_id: Uuid,
     activated_at: chrono::DateTime<chrono::Utc>,
-    build: &ModuleStaticDistributionBuild,
+    distribution_build_id: Uuid,
+    composition_revision: u64,
+    composition_digest: &str,
+    evidence: &ModuleStaticDistributionBuildEvidence,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
-    let evidence = build
-        .result
-        .as_ref()
-        .ok_or(ModuleStaticDistributionReleaseError::BuildNotSucceeded)?;
+    let role_artifacts_json = serde_json::to_string(&evidence.roles)
+        .map_err(|error| ModuleStaticDistributionReleaseError::Store(error.to_string()))?;
     let backend = transaction.get_database_backend();
     let inserted = transaction
         .execute(Statement::from_sql_and_values(
@@ -1123,11 +1207,11 @@ async fn insert_release(
                 "INSERT INTO module_static_distribution_releases
                  (distribution_release_id, distribution_build_id, predecessor_release_id,
                   release_revision, composition_revision, composition_digest,
-                  artifact_reference, artifact_digest, sbom_reference, sbom_digest,
-                  provenance_reference, provenance_digest, signature_reference,
-                  signature_digest, test_evidence_reference, test_evidence_digest,
+                  bundle_reference, bundle_root_digest, role_set_digest, role_artifacts_json,
+                  sbom_reference, sbom_digest, provenance_reference, provenance_digest,
+                  signature_reference, signature_digest, test_evidence_reference, test_evidence_digest,
                   status, activated_by, activated_at)
-                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {},
                          'active', {}, {})
                  ON CONFLICT (distribution_build_id) DO NOTHING",
                 placeholder(backend, 1),
@@ -1148,16 +1232,20 @@ async fn insert_release(
                 placeholder(backend, 16),
                 placeholder(backend, 17),
                 placeholder(backend, 18),
+                placeholder(backend, 19),
+                placeholder(backend, 20),
             ),
             vec![
                 uuid_value(distribution_release_id, backend),
-                uuid_value(build.distribution_build_id, backend),
+                uuid_value(distribution_build_id, backend),
                 optional_uuid_value(predecessor_release_id, backend),
                 revision_value(release_revision)?,
-                revision_value(build.composition_revision)?,
-                build.composition_digest.clone().into(),
-                evidence.artifact_reference.clone().into(),
-                evidence.artifact_digest.clone().into(),
+                revision_value(composition_revision)?,
+                composition_digest.to_owned().into(),
+                evidence.bundle_reference.clone().into(),
+                evidence.bundle_root_digest.clone().into(),
+                evidence.role_set_digest.clone().into(),
+                role_artifacts_json.into(),
                 evidence.sbom_reference.clone().into(),
                 evidence.sbom_digest.clone().into(),
                 evidence.provenance_reference.clone().into(),
@@ -1178,7 +1266,7 @@ async fn insert_release(
     Ok(())
 }
 
-async fn insert_admission(
+pub(crate) async fn insert_admission(
     transaction: &DatabaseTransaction,
     admission_id: Uuid,
     distribution_release_id: Uuid,
@@ -1293,7 +1381,7 @@ pub(crate) async fn load_release_state<C: ConnectionTrait>(
     })
 }
 
-async fn advance_release_state(
+pub(crate) async fn advance_release_state(
     transaction: &DatabaseTransaction,
     expected_revision: u64,
     next_revision: u64,
@@ -2132,7 +2220,8 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
                 "SELECT release.distribution_release_id, release.distribution_build_id,
                         release.predecessor_release_id, release.release_revision,
                         release.composition_revision, release.composition_digest,
-                        release.artifact_reference, release.artifact_digest,
+                        release.bundle_reference, release.bundle_root_digest,
+                        release.role_set_digest, release.role_artifacts_json,
                         release.sbom_reference, release.sbom_digest,
                         release.provenance_reference, release.provenance_digest,
                         release.signature_reference, release.signature_digest,
@@ -2166,8 +2255,14 @@ pub(crate) async fn load_release_record<C: ConnectionTrait>(
         composition_revision: revision_from_row(&row, "composition_revision", false)?,
         composition_digest: row.try_get("", "composition_digest").map_err(store_error)?,
         evidence: ModuleStaticDistributionBuildEvidence {
-            artifact_reference: row.try_get("", "artifact_reference").map_err(store_error)?,
-            artifact_digest: row.try_get("", "artifact_digest").map_err(store_error)?,
+            bundle_reference: row.try_get("", "bundle_reference").map_err(store_error)?,
+            bundle_root_digest: row.try_get("", "bundle_root_digest").map_err(store_error)?,
+            role_set_digest: row.try_get("", "role_set_digest").map_err(store_error)?,
+            roles: serde_json::from_str(
+                &row.try_get::<String>("", "role_artifacts_json")
+                    .map_err(store_error)?,
+            )
+            .map_err(store_error)?,
             sbom_reference: row.try_get("", "sbom_reference").map_err(store_error)?,
             sbom_digest: row.try_get("", "sbom_digest").map_err(store_error)?,
             provenance_reference: row

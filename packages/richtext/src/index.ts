@@ -4,16 +4,28 @@ export type {
   RichTextMark,
   RichTextNode,
   RichTextProfileId,
-  RichTextProfileManifest
+  RichTextProfileManifest,
+  RichTextView
 } from './generated/contracts';
 export type { RichTextMessages } from './messages';
-export type { RichTextValidationResult } from './document';
+export type {
+  RichTextAuthoringContext,
+  RichTextAuthoringContextInput,
+  RichTextDirection
+} from './authoring';
+export type { RichTextValidationOptions, RichTextValidationResult } from './document';
 export {
   emptyRichTextDocument,
   richTextDocumentHasText,
   validateRichTextDocument
 } from './document';
 export { RICH_TEXT_MESSAGE_KEYS, isRichTextMessages } from './messages';
+export {
+  canonicalRichTextLocale,
+  createRichTextAuthoringContext,
+  isRichTextAuthoringContext,
+  richTextDirectionForLocale
+} from './authoring';
 export {
   RICH_TEXT_PROFILES,
   getRichTextProfile,

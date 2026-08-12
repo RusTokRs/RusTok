@@ -1,7 +1,14 @@
-import { registerNavContribution } from '@/shared/lib/app-shell/module-nav-registry';
+import { registerAdminModule } from '@/modules/registry';
 import { forumNav } from './nav';
 
+registerAdminModule({
+  id: 'forum',
+  name: 'Forum',
+  navItems: [forumNav]
+});
+
 export { ForumReplyEditor } from './components/forum-reply-editor';
+export { ForumTopicEditor } from './components/forum-topic-editor';
 export { ForumTopicFork } from './components/forum-topic-fork';
 export { ForumTopicMerge } from './components/forum-topic-merge';
 export { ForumTopicReplyRange } from './components/forum-topic-reply-range';
@@ -15,12 +22,3 @@ export * from './core/topic-reply-range';
 export * from './core/topic-slug-rename';
 export * from './core/topic-split';
 export { forumNav } from './nav';
-
-export function registerForumAdmin(): void {
-  registerNavContribution({
-    id: 'forum.admin',
-    moduleSlug: 'forum',
-    order: 80,
-    item: forumNav
-  });
-}

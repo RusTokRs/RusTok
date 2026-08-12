@@ -7,8 +7,9 @@ use axum::{
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use rustok_installer::{
-    InstallApplyOptions, InstallApplyOutput, InstallExecutor, InstallPlan,
-    evaluate_preflight_with_deployment, redact_install_plan,
+    InstallApplyOptions, InstallApplyOutput, InstallComposition, InstallDistributionBinding,
+    InstallExecutor, InstallPlan, InstallTopologyMode, bind_instance_placement,
+    evaluate_preflight_with_deployment, load_base_distribution_receipt, redact_install_plan,
 };
 use rustok_installer_persistence::{InstallerPersistenceService, entities::install_step_receipt};
 use rustok_web::HttpError;
@@ -135,10 +136,11 @@ async fn status(State(ctx): State<ServerRuntimeContext>) -> Result<Json<InstallS
 
 async fn plan(
     headers: HeaderMap,
+    State(ctx): State<ServerRuntimeContext>,
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPlanResponse>> {
     require_setup_token(&headers, plan.environment.is_production())?;
-    let plan = bind_selected_composition(plan);
+    let plan = bind_host_install_plan(&ctx, plan).await?;
     Ok(Json(InstallPlanResponse {
         redacted_plan: redact_install_plan(&plan),
     }))
@@ -150,8 +152,8 @@ async fn preflight(
     Json(plan): Json<InstallPlan>,
 ) -> Result<Json<InstallPreflightResponse>> {
     require_setup_token(&headers, plan.environment.is_production())?;
-    let plan = bind_selected_composition(plan);
-    let report = evaluate_preflight_with_deployment(&plan, ctx.settings().build.enabled);
+    let plan = bind_host_install_plan(&ctx, plan).await?;
+    let report = evaluate_preflight_with_deployment(&plan, false);
     Ok(Json(InstallPreflightResponse {
         passed: report.passed(),
         report,
@@ -165,7 +167,7 @@ async fn apply(
     Json(request): Json<InstallApplyRequest>,
 ) -> Result<(StatusCode, Json<InstallApplyJobResponse>)> {
     require_setup_token(&headers, request.plan.environment.is_production())?;
-    let plan = bind_selected_composition(request.plan);
+    let plan = bind_host_install_plan(&ctx, request.plan).await?;
     let job_id = rustok_core::generate_id();
     let submitted_at = Utc::now();
     let apply_options = InstallApplyOptions {
@@ -183,7 +185,7 @@ async fn apply(
                 "static module registry is unavailable before installer execution".to_string(),
             )
         })?;
-    let executor = ServerInstallExecutor::new(ctx.settings().build.clone(), registry);
+    let executor = ServerInstallExecutor::new(registry);
     INSTALL_JOBS.lock().await.insert(
         job_id,
         InstallJobStatusResponse {
@@ -233,12 +235,117 @@ async fn apply(
     ))
 }
 
-fn bind_selected_composition(mut plan: InstallPlan) -> InstallPlan {
+async fn bind_host_install_plan(
+    ctx: &ServerRuntimeContext,
+    mut plan: InstallPlan,
+) -> Result<InstallPlan> {
     let composition = rustok_distribution::composition_identity();
-    plan.topology = plan
-        .topology
-        .bind_composition(composition.revision, composition.hash);
-    plan
+    let host_composition = InstallComposition {
+        revision: composition.revision,
+        hash: composition.hash,
+    };
+    plan.topology = plan.topology.bind_composition(
+        host_composition.revision.clone(),
+        host_composition.hash.clone(),
+    );
+    // Bundle identity is release-owner authority, never wizard input.
+    plan.topology.distribution = None;
+    if plan.topology.mode == InstallTopologyMode::Distributed {
+        plan.topology.distribution =
+            Some(resolve_host_distribution_binding(ctx, &host_composition).await?);
+    }
+    let configured_root = std::env::var("RUSTOK_INSTANCE_ROOT")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    if plan.environment.is_production() && configured_root.is_none() {
+        return Err(bad_request_error(
+            "production installer HTTP requests require a host-selected RUSTOK_INSTANCE_ROOT",
+        ));
+    }
+    let requested_root = configured_root.unwrap_or_else(|| plan.placement.root.clone());
+    let invocation_dir = std::env::current_dir().map_err(|error| {
+        internal_error(format!(
+            "failed to resolve server invocation directory: {error}"
+        ))
+    })?;
+    plan.placement = bind_instance_placement(requested_root, invocation_dir)
+        .map_err(|error| bad_request_error(error.to_string()))?;
+    Ok(plan)
+}
+
+async fn resolve_host_distribution_binding(
+    ctx: &ServerRuntimeContext,
+    host_composition: &InstallComposition,
+) -> Result<InstallDistributionBinding> {
+    let release_id = configured_value("RUSTOK_INSTALL_DISTRIBUTION_RELEASE_ID");
+    let receipt_path = configured_value("RUSTOK_INSTALL_BASE_DISTRIBUTION_RECEIPT");
+    let receipt_public_key = configured_value("RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY");
+
+    match (release_id, receipt_path, receipt_public_key) {
+        (Some(_), Some(_), _) | (Some(_), _, Some(_)) => Err(bad_request_error(
+            "configure either an owner-ledger distribution release or a signed base-distribution receipt, not both",
+        )),
+        (Some(release_id), None, None) => {
+            let release_id = release_id.parse::<Uuid>().map_err(|_| {
+                bad_request_error("RUSTOK_INSTALL_DISTRIBUTION_RELEASE_ID must be a canonical UUID")
+            })?;
+            let binding = rustok_modules::resolve_static_distribution_install_binding(
+                ctx.db(),
+                release_id,
+            )
+            .await
+            .map_err(|error| match error {
+                rustok_modules::ModuleStaticDistributionReleaseError::InvalidCommand
+                | rustok_modules::ModuleStaticDistributionReleaseError::ReleaseNotFound
+                | rustok_modules::ModuleStaticDistributionReleaseError::InstallReleaseNotCurrent => {
+                    bad_request_error(
+                        "host-selected distribution release is not the current admitted release",
+                    )
+                }
+                _ => internal_error("failed to resolve the host-selected distribution release"),
+            })?;
+            Ok(InstallDistributionBinding {
+                preparation_id: binding.preparation_id,
+                distribution_release_id: binding.distribution_release_id,
+                bundle_root_digest: binding.bundle_root_digest,
+                role_set_digest: binding.role_set_digest,
+                bootstrap_receipt: None,
+            })
+        }
+        (None, Some(receipt_path), Some(receipt_public_key)) => {
+            let receipt =
+                load_base_distribution_receipt(receipt_path, &receipt_public_key, Utc::now())
+                    .map_err(|_| {
+                        bad_request_error(
+                            "configured base-distribution receipt could not be verified",
+                        )
+                    })?;
+            if receipt.payload().host_composition_revision != host_composition.revision
+                || receipt.payload().host_composition_hash != host_composition.hash
+            {
+                return Err(bad_request_error(
+                    "signed base-distribution receipt is not compatible with this installer host",
+                ));
+            }
+            receipt.into_binding().map_err(|_| {
+                bad_request_error(
+                    "configured base-distribution receipt could not be bound to the install plan",
+                )
+            })
+        }
+        (None, None, None) => Err(bad_request_error(
+            "distributed installation requires an owner-ledger release or a signed base-distribution receipt",
+        )),
+        (None, _, _) => Err(bad_request_error(
+            "signed base-distribution installation requires both RUSTOK_INSTALL_BASE_DISTRIBUTION_RECEIPT and RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY",
+        )),
+    }
+}
+
+fn configured_value(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 async fn job_status(
@@ -313,6 +420,14 @@ fn installer_schema_missing(error: &sea_orm::DbErr) -> bool {
 
 fn forbidden_error(description: impl Into<String>) -> Error {
     http_error(HttpError::forbidden("forbidden", description))
+}
+
+fn bad_request_error(description: impl Into<String>) -> Error {
+    http_error(HttpError::new(
+        StatusCode::BAD_REQUEST,
+        "invalid_install_plan",
+        description,
+    ))
 }
 
 fn not_found_error(description: impl Into<String>) -> Error {

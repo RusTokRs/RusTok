@@ -1,7 +1,10 @@
 # rustok-core / CRATE_API
 
 ## Public Modules
-`async_utils`, `cache`, `config`, `content_format`, `context`, `error`, `events`, `field_schema`, `grapesjs`, `health`, `i18n`, `id`, `locale`, `metrics`, `migrations`, `module`, `permissions`, `rbac`, `registry`, `resilience`, `rt_json`, `security`, `state_machine`, `tenant_validation`, `tracing`, `typed_error`, `types`, `utils`.
+`async_utils`, `cache`, `config`, `context`, `error`, `events`, `field_schema`,
+`health`, `i18n`, `id`, `metrics`, `migrations`, `module`, `rbac`, `registry`,
+`resilience`, `search_projection`, `security`, `security_principal`,
+`state_machine`, `tenant_validation`, `tracing`, `typed_error`, `types`, `utils`.
 
 ## Primary Public Types and Signatures
 - `pub trait RusToKModule` — base contract for platform modules.

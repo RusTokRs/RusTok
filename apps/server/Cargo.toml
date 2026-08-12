@@ -6,11 +6,6 @@ license.workspace = true
 description.workspace = true
 build = "build.rs"
 
-[[bin]]
-name = "migrate_legacy_richtext"
-path = "src/bin/migrate_legacy_richtext.rs"
-required-features = ["mod-content"]
-
 [features]
 default = [
     "redis-cache",

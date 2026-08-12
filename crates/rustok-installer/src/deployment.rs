@@ -1,83 +1,92 @@
-//! Typed distributed-role deployment contracts owned by the installer.
+//! Typed immutable-distribution deployment contracts owned by the installer.
 //!
 //! This module deliberately has no build-system, container, HTTP, or cloud
-//! dependency. A host adapter translates a request into `rustok-build` work
-//! and waits until the resulting release is active.
+//! dependency. Installer apply hands one already admitted role bundle to a
+//! host adapter and waits for complete per-role observations. It never creates
+//! independent build or release heads for individual roles.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    InstallComposition, InstallEnvironment, InstallExecutionError, InstallPersistencePort,
-    InstallPlan, InstallReceipt, InstallRole, InstallSessionRecord, InstallState, InstallStep,
-    InstallSurface, InstallTopologyMode,
+    InstallComposition, InstallDistributionBinding, InstallEnvironment, InstallExecutionError,
+    InstallPersistencePort, InstallPlan, InstallReceipt, InstallRole, InstallRoleAssignment,
+    InstallSessionRecord, InstallState, InstallStep, InstallSurface, InstallTopologyMode,
 };
 
-/// One immutable role hand-off produced from a distributed install topology.
+/// One immutable hand-off for the complete admitted distribution role bundle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct InstallRoleDeploymentRequest {
+#[serde(deny_unknown_fields)]
+pub struct InstallDistributionDeploymentRequest {
     pub session_id: Uuid,
     pub tenant_id: Uuid,
     pub environment: InstallEnvironment,
     pub composition: InstallComposition,
+    pub distribution: InstallDistributionBinding,
+    pub roles: Vec<InstallRoleAssignment>,
+}
+
+/// Healthy observation for one role from the owner-controlled rollout.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InstallRoleDeploymentObservation {
     pub role: InstallRole,
     pub surfaces: Vec<InstallSurface>,
+    pub artifact_digest: String,
+    pub health_evidence_reference: String,
 }
 
-/// Durable identity returned when one distributed role is active.
-///
-/// Adapters must return the existing matching release on retry. They must not
-/// rebuild or redeploy a role whose composition, role, and surface set already
-/// have an active receipt.
+/// Durable result returned only after the complete bundle converges healthy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct InstallRoleDeployment {
-    pub role: InstallRole,
+#[serde(deny_unknown_fields)]
+pub struct InstallDistributionDeployment {
     pub composition: InstallComposition,
-    pub build_id: String,
-    pub release_id: String,
+    pub distribution: InstallDistributionBinding,
+    pub rollout_id: Uuid,
     pub deployment_reference: String,
+    pub observations: Vec<InstallRoleDeploymentObservation>,
 }
 
-/// Installer receipt linking one active role release to a durable session.
+/// Installer receipt linking one converged distribution rollout to a session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct InstallRoleDeploymentReceipt {
-    pub deployment: InstallRoleDeployment,
+pub struct InstallDistributionDeploymentReceipt {
+    pub deployment: InstallDistributionDeployment,
     pub receipt_id: Uuid,
     pub receipt_checksum: String,
 }
 
-/// Result of recording all distributed role deployments for an install session.
+/// Result of recording the complete distribution deployment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DistributedDeploymentOutput {
     pub session: InstallSessionRecord,
-    pub receipts: Vec<InstallRoleDeploymentReceipt>,
+    pub receipt: InstallDistributionDeploymentReceipt,
 }
 
-/// Host boundary for one role-specific build and deployment.
+/// Host boundary for one owner-controlled distribution rollout.
 ///
-/// The adapter owns the `rustok-build` request, release publication, polling,
-/// and provider-specific idempotency. It must return only after the matching
-/// role is active and must reject a release for another composition.
+/// The adapter consumes an already admitted immutable bundle. It may reconcile
+/// and observe deployment, but it may not compile, publish, activate a second
+/// release head, or substitute another bundle identity.
 #[async_trait::async_trait]
 pub trait InstallDeploymentPort<R>: Send + Sync {
     fn supports_distributed_deployment(&self) -> bool;
 
-    async fn deploy_role(
+    async fn deploy_distribution(
         &self,
         runtime: &R,
-        request: InstallRoleDeploymentRequest,
-    ) -> Result<InstallRoleDeployment, InstallExecutionError>;
+        request: InstallDistributionDeploymentRequest,
+    ) -> Result<InstallDistributionDeployment, InstallExecutionError>;
 }
 
-/// Creates a deterministic set of independent distributed-role hand-offs.
-pub fn distributed_deployment_requests(
+/// Creates the single deterministic deployment request for a distributed plan.
+pub fn distributed_deployment_request(
     plan: &InstallPlan,
     session_id: Uuid,
     tenant_id: Uuid,
-) -> Result<Vec<InstallRoleDeploymentRequest>, InstallExecutionError> {
+) -> Result<InstallDistributionDeploymentRequest, InstallExecutionError> {
     if plan.topology.mode != InstallTopologyMode::Distributed {
         return Err(InstallExecutionError::new(
-            "role deployment requests require a distributed install topology",
+            "distribution deployment requires a distributed install topology",
         ));
     }
     plan.topology
@@ -86,35 +95,31 @@ pub fn distributed_deployment_requests(
     let composition = plan.topology.composition.clone().ok_or_else(|| {
         InstallExecutionError::new("distributed install topology requires a composition")
     })?;
-    let mut assignments = plan.topology.roles.clone();
-    assignments.sort_by_key(|assignment| role_sort_key(assignment.role));
+    let distribution = plan.topology.distribution.clone().ok_or_else(|| {
+        InstallExecutionError::new(
+            "distributed install topology requires an admitted distribution bundle",
+        )
+    })?;
+    let mut roles = plan.topology.roles.clone();
+    roles.sort_by_key(|assignment| role_sort_key(assignment.role));
+    for assignment in &mut roles {
+        assignment
+            .surfaces
+            .sort_by_key(|surface| surface_sort_key(*surface));
+    }
 
-    Ok(assignments
-        .into_iter()
-        .map(|mut assignment| {
-            assignment
-                .surfaces
-                .sort_by_key(|surface| surface_sort_key(*surface));
-            InstallRoleDeploymentRequest {
-                session_id,
-                tenant_id,
-                environment: plan.environment,
-                composition: composition.clone(),
-                role: assignment.role,
-                surfaces: assignment.surfaces,
-            }
-        })
-        .collect())
+    Ok(InstallDistributionDeploymentRequest {
+        session_id,
+        tenant_id,
+        environment: plan.environment,
+        composition,
+        distribution,
+        roles,
+    })
 }
 
-/// Deploys every distributed role exactly once through a host adapter and
-/// records a receipt for every active release.
-///
-/// Callers invoke this after the shared database, schema, tenant, and admin
-/// stages. The adapter is responsible for retrying a matching active role
-/// release instead of issuing another build. The receipt checksum is derived
-/// from the immutable role request, so each role remains independently auditable.
-pub async fn execute_distributed_role_deployments<P, R>(
+/// Reconciles one complete role bundle and records one bound deployment receipt.
+pub async fn execute_distributed_deployment<P, R>(
     ports: &P,
     runtime: &R,
     plan: &InstallPlan,
@@ -125,66 +130,103 @@ where
     P: InstallPersistencePort<R> + InstallDeploymentPort<R>,
     R: Send + Sync,
 {
-    let requests = distributed_deployment_requests(plan, session.id, tenant_id)?;
+    let request = distributed_deployment_request(plan, session.id, tenant_id)?;
     let session = ports
         .set_state(runtime, session.id, InstallState::Deploying)
         .await?;
-    let mut receipts = Vec::with_capacity(requests.len());
+    let deployment = ports.deploy_distribution(runtime, request.clone()).await?;
+    validate_deployment(&request, &deployment)?;
+    let receipt = InstallReceipt::success(
+        session.id.to_string(),
+        InstallStep::Deploy,
+        &request,
+        serde_json::json!({
+            "composition": &deployment.composition,
+            "distribution": &deployment.distribution,
+            "rollout_id": deployment.rollout_id,
+            "deployment_reference": &deployment.deployment_reference,
+            "observations": &deployment.observations,
+        }),
+    )
+    .map_err(|error| InstallExecutionError::new(error.to_string()))?;
+    let recorded = ports.record_receipt(runtime, &receipt).await?;
 
-    for request in requests {
-        let deployment = ports.deploy_role(runtime, request.clone()).await?;
-        validate_deployment(&request, &deployment)?;
-        let receipt = InstallReceipt::success(
-            session.id.to_string(),
-            InstallStep::Deploy,
-            &request,
-            serde_json::json!({
-                "role": deployment.role,
-                "surfaces": &request.surfaces,
-                "composition": &deployment.composition,
-                "build_id": &deployment.build_id,
-                "release_id": &deployment.release_id,
-                "deployment_reference": &deployment.deployment_reference,
-            }),
-        )
-        .map_err(|error| InstallExecutionError::new(error.to_string()))?;
-        let recorded = ports.record_receipt(runtime, &receipt).await?;
-        receipts.push(InstallRoleDeploymentReceipt {
+    Ok(DistributedDeploymentOutput {
+        session,
+        receipt: InstallDistributionDeploymentReceipt {
             deployment,
             receipt_id: recorded.id,
             receipt_checksum: recorded.input_checksum,
-        });
-    }
-
-    Ok(DistributedDeploymentOutput { session, receipts })
+        },
+    })
 }
 
 fn validate_deployment(
-    request: &InstallRoleDeploymentRequest,
-    deployment: &InstallRoleDeployment,
+    request: &InstallDistributionDeploymentRequest,
+    deployment: &InstallDistributionDeployment,
 ) -> Result<(), InstallExecutionError> {
-    if deployment.role != request.role {
-        return Err(InstallExecutionError::new(
-            "deployment adapter returned a release for a different role",
-        ));
-    }
     if deployment.composition != request.composition {
         return Err(InstallExecutionError::new(
-            "deployment adapter returned a release for a different composition",
+            "deployment adapter observed a different composition",
         ));
     }
-    for (label, value) in [
-        ("build_id", &deployment.build_id),
-        ("release_id", &deployment.release_id),
-        ("deployment_reference", &deployment.deployment_reference),
-    ] {
-        if value.trim().is_empty() {
-            return Err(InstallExecutionError::new(format!(
-                "deployment adapter returned an empty {label}"
-            )));
+    if deployment.distribution != request.distribution {
+        return Err(InstallExecutionError::new(
+            "deployment adapter observed a different distribution bundle",
+        ));
+    }
+    if deployment.rollout_id.is_nil() {
+        return Err(InstallExecutionError::new(
+            "deployment adapter returned a nil rollout ID",
+        ));
+    }
+    if deployment.deployment_reference.trim().is_empty() {
+        return Err(InstallExecutionError::new(
+            "deployment adapter returned an empty deployment reference",
+        ));
+    }
+    if deployment.observations.len() != request.roles.len() {
+        return Err(InstallExecutionError::new(
+            "deployment adapter did not return exactly one observation per role",
+        ));
+    }
+
+    let mut expected = request.roles.clone();
+    expected.sort_by_key(|assignment| role_sort_key(assignment.role));
+    let mut observed = deployment.observations.clone();
+    observed.sort_by_key(|observation| role_sort_key(observation.role));
+    for (assignment, observation) in expected.iter_mut().zip(observed.iter_mut()) {
+        assignment
+            .surfaces
+            .sort_by_key(|surface| surface_sort_key(*surface));
+        observation
+            .surfaces
+            .sort_by_key(|surface| surface_sort_key(*surface));
+        if assignment.role != observation.role || assignment.surfaces != observation.surfaces {
+            return Err(InstallExecutionError::new(
+                "deployment adapter returned an observation for a different role assignment",
+            ));
+        }
+        if !valid_sha256_digest(&observation.artifact_digest) {
+            return Err(InstallExecutionError::new(
+                "deployment role observation requires a canonical artifact digest",
+            ));
+        }
+        if observation.health_evidence_reference.trim().is_empty() {
+            return Err(InstallExecutionError::new(
+                "deployment role observation requires health evidence",
+            ));
         }
     }
     Ok(())
+}
+
+fn valid_sha256_digest(value: &str) -> bool {
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value[7..]
+            .chars()
+            .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
 }
 
 fn role_sort_key(role: InstallRole) -> u8 {
@@ -216,14 +258,15 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        InstallComposition, InstallExecutionError, InstallPersistencePort, InstallPlan,
-        InstallReceipt, InstallReceiptRecord, InstallRole, InstallRoleAssignment,
-        InstallSessionRecord, InstallState, InstallSurface, InstallTopology, InstallTopologyMode,
+        InstallComposition, InstallDeploymentPort, InstallDistributionBinding,
+        InstallDistributionDeployment, InstallDistributionDeploymentRequest, InstallExecutionError,
+        InstallPersistencePort, InstallPlan, InstallReceipt, InstallReceiptRecord, InstallRole,
+        InstallRoleDeploymentObservation, InstallSessionRecord, InstallState, InstallTopology,
+        InstallTopologyMode,
     };
 
     use super::{
-        InstallDeploymentPort, InstallRoleDeployment, InstallRoleDeploymentRequest,
-        distributed_deployment_requests, execute_distributed_role_deployments, validate_deployment,
+        distributed_deployment_request, execute_distributed_deployment, validate_deployment,
     };
 
     #[derive(Default)]
@@ -297,93 +340,92 @@ mod tests {
             true
         }
 
-        async fn deploy_role(
+        async fn deploy_distribution(
             &self,
             _runtime: &(),
-            request: InstallRoleDeploymentRequest,
-        ) -> Result<InstallRoleDeployment, InstallExecutionError> {
-            Ok(InstallRoleDeployment {
-                role: request.role,
-                composition: request.composition,
-                build_id: format!("build_{:?}", request.role),
-                release_id: format!("release_{:?}", request.role),
-                deployment_reference: format!("deployment_{:?}", request.role),
-            })
+            request: InstallDistributionDeploymentRequest,
+        ) -> Result<InstallDistributionDeployment, InstallExecutionError> {
+            Ok(successful_deployment(&request))
         }
     }
 
     #[test]
-    fn distributed_requests_are_role_and_surface_deterministic() {
-        let mut topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
-            .bind_composition("distribution@1".to_string(), "a".repeat(64));
-        topology.roles.reverse();
-        topology.roles[0] = InstallRoleAssignment {
-            role: InstallRole::Worker,
-            surfaces: vec![InstallSurface::Worker],
-        };
+    fn distributed_request_contains_one_sorted_complete_bundle() {
         let mut plan = sample_plan();
-        plan.topology = topology;
+        plan.topology.roles.reverse();
 
-        let requests = distributed_deployment_requests(&plan, Uuid::nil(), Uuid::nil()).unwrap();
+        let request = distributed_deployment_request(&plan, Uuid::nil(), Uuid::nil()).unwrap();
 
-        assert_eq!(requests.len(), 4);
-        assert_eq!(requests[0].role, InstallRole::Api);
-        assert_eq!(requests[3].role, InstallRole::Worker);
-        assert!(requests.iter().all(|request| request.composition
-            == InstallComposition {
-                revision: "distribution@1".to_string(),
-                hash: "a".repeat(64),
-            }));
+        assert_eq!(request.roles.len(), 4);
+        assert_eq!(request.roles[0].role, InstallRole::Api);
+        assert_eq!(request.roles[3].role, InstallRole::Worker);
+        assert_eq!(request.distribution, distribution());
     }
 
     #[test]
-    fn deployment_result_must_match_the_requested_role_and_composition() {
-        let mut plan = sample_plan();
-        plan.topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
-            .bind_composition("distribution@1".to_string(), "a".repeat(64));
-        let request = distributed_deployment_requests(&plan, Uuid::nil(), Uuid::nil())
-            .unwrap()
-            .remove(0);
-        let invalid = InstallRoleDeployment {
-            role: InstallRole::Worker,
-            composition: request.composition.clone(),
-            build_id: "build_1".to_string(),
-            release_id: "release_1".to_string(),
-            deployment_reference: "deployment_1".to_string(),
-        };
-
+    fn deployment_must_match_bundle_and_complete_role_set() {
+        let request =
+            distributed_deployment_request(&sample_plan(), Uuid::nil(), Uuid::nil()).unwrap();
+        let mut invalid = successful_deployment(&request);
+        invalid.distribution.bundle_root_digest = format!("sha256:{}", "f".repeat(64));
         assert!(validate_deployment(&request, &invalid).is_err());
+
+        let mut incomplete = successful_deployment(&request);
+        incomplete.observations.pop();
+        assert!(validate_deployment(&request, &incomplete).is_err());
     }
 
     #[tokio::test]
-    async fn distributed_deployments_record_one_receipt_per_role() {
-        let mut plan = sample_plan();
-        plan.topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
-            .bind_composition("distribution@1".to_string(), "a".repeat(64));
+    async fn distribution_deployment_records_one_receipt() {
         let ports = FakePorts::default();
 
         let output =
-            execute_distributed_role_deployments(&ports, &(), &plan, session(), Uuid::nil())
+            execute_distributed_deployment(&ports, &(), &sample_plan(), session(), Uuid::nil())
                 .await
                 .unwrap();
 
-        assert_eq!(output.receipts.len(), 4);
-        assert!(
-            output
-                .receipts
-                .iter()
-                .all(|receipt| receipt.deployment.composition.hash == "a".repeat(64))
-        );
-        assert_eq!(ports.receipts.lock().unwrap().len(), 4);
+        assert_eq!(output.receipt.deployment.distribution, distribution());
+        assert_eq!(ports.receipts.lock().unwrap().len(), 1);
         assert_eq!(
             ports.states.lock().unwrap().as_slice(),
             &[InstallState::Deploying]
         );
     }
 
+    fn successful_deployment(
+        request: &InstallDistributionDeploymentRequest,
+    ) -> InstallDistributionDeployment {
+        InstallDistributionDeployment {
+            composition: request.composition.clone(),
+            distribution: request.distribution.clone(),
+            rollout_id: Uuid::new_v4(),
+            deployment_reference: "owner-rollout:1".to_string(),
+            observations: request
+                .roles
+                .iter()
+                .map(|assignment| InstallRoleDeploymentObservation {
+                    role: assignment.role,
+                    surfaces: assignment.surfaces.clone(),
+                    artifact_digest: format!("sha256:{}", "c".repeat(64)),
+                    health_evidence_reference: format!("health://{}", assignment.role.as_str()),
+                })
+                .collect(),
+        }
+    }
+
+    fn distribution() -> InstallDistributionBinding {
+        InstallDistributionBinding {
+            preparation_id: Uuid::from_u128(1),
+            distribution_release_id: Uuid::from_u128(2),
+            bundle_root_digest: format!("sha256:{}", "a".repeat(64)),
+            role_set_digest: format!("sha256:{}", "b".repeat(64)),
+            bootstrap_receipt: None,
+        }
+    }
+
     fn session() -> InstallSessionRecord {
         InstallSessionRecord {
-            id: Uuid::nil(),
+            id: Uuid::from_u128(3),
             tenant_id: None,
             lock_owner: None,
             lock_expires_at: None,
@@ -391,7 +433,8 @@ mod tests {
     }
 
     fn sample_plan() -> InstallPlan {
-        InstallPlan::production_minimal(
+        let mut plan = InstallPlan::production_minimal(
+            crate::InstancePlacement::new("."),
             crate::SecretValue::Reference {
                 reference: crate::SecretRef {
                     backend: "environment".to_string(),
@@ -415,6 +458,10 @@ mod tests {
                 revision: "distribution@1".to_string(),
                 hash: "a".repeat(64),
             },
-        )
+        );
+        plan.topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
+            .bind_composition("distribution@1".to_string(), "a".repeat(64))
+            .bind_distribution(distribution());
+        plan
     }
 }

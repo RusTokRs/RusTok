@@ -59,16 +59,23 @@ pub enum IndexReconciliationOperatorError {
     InvalidContext,
     #[error("Index reconciliation request tenant does not match the authorized operator tenant")]
     TenantMismatch,
-    #[error("Index reconciliation operations require a request-bound effective permission snapshot")]
+    #[error(
+        "Index reconciliation operations require a request-bound effective permission snapshot"
+    )]
     MissingRequestAuthority,
     #[error("modules:manage is required for Index reconciliation operations")]
     Forbidden,
     #[error(transparent)]
     Reconciliation(#[from] rustok_index::IndexReconciliationRunError),
     #[error(transparent)]
-    Inspection(#[from] rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspectionError),
+    Inspection(
+        #[from]
+        rustok_index::infrastructure::postgres::IndexReconciliationDeadLetterInspectionError,
+    ),
     #[error(transparent)]
-    DriftInspection(#[from] rustok_index::infrastructure::postgres::IndexDriftFindingInspectionError),
+    DriftInspection(
+        #[from] rustok_index::infrastructure::postgres::IndexDriftFindingInspectionError,
+    ),
     #[error(transparent)]
     Recovery(#[from] rustok_index::infrastructure::postgres::IndexReconciliationRecoveryError),
 }
@@ -84,7 +91,8 @@ pub enum IndexReconciliationOperatorError {
 #[derive(Clone)]
 pub struct IndexReconciliationOperatorRuntime {
     inner: rustok_index::PostgresIndexReconciliationRunner,
-    dead_letters: rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,
+    dead_letters:
+        rustok_index::infrastructure::postgres::PostgresIndexReconciliationDeadLetterInspector,
     drift_findings: rustok_index::infrastructure::postgres::PostgresIndexDriftFindingInspector,
     recovery: rustok_index::infrastructure::postgres::PostgresIndexReconciliationRecoveryStore,
 }
@@ -366,7 +374,11 @@ mod tests {
 
         let error = materialize_index_reconciliation_operator(&mut extensions, db)
             .expect_err("missing shared schema registry must fail");
-        assert!(error.to_string().contains("without the shared schema registry"));
+        assert!(
+            error
+                .to_string()
+                .contains("without the shared schema registry")
+        );
     }
 
     #[tokio::test]

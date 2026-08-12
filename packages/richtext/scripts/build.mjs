@@ -60,7 +60,7 @@ await cp(resolve(temporary, 'core.mjs'), resolve(dist, 'core.mjs'));
 await cp(resolve(temporary, 'leptos-adapter.mjs'), resolve(dist, 'leptos-adapter.mjs'));
 
 const html = `<!doctype html>
-<html lang="en">
+<html lang="und" dir="auto">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -85,7 +85,6 @@ await writeFile(
   resolve(dist, 'asset-manifest.json'),
   `${JSON.stringify(
     {
-      revision: 1,
       frame: frameName,
       script: scriptName,
       style: styleName,

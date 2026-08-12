@@ -211,7 +211,7 @@
 - Existing `TopicService::create/update` and `ReplyService::create/update` convert legacy DTOs to command DTOs, so legacy body edits preserve quotes.
 - Omitted-update preservation records the expected relation revision, locks the active source inside the transaction and returns retryable `FORUM_RELATION_REVISION_CONFLICT` if the stream changed concurrently.
 - REST uses the existing topic/reply create and update routes with command DTOs.
-- GraphQL adds `createForumTopicWithQuotes`, `updateForumTopicWithQuotes`, `createForumReplyWithQuotes` and `updateForumReplyWithQuotes` while retaining legacy mutations.
+- GraphQL exposes `createForumTopicWithQuotes`, `updateForumTopicWithQuotes`, `createForumReplyWithQuotes` and `updateForumReplyWithQuotes` alongside the standard content mutations.
 - Soft-deleted sources reject inline relation updates; quote references remain bounded to 32 raw entries.
 - Run `node scripts/verify/verify-forum-quote-commands.mjs` after changing this boundary.
 ### CreateTopicInput

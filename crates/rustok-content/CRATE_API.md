@@ -17,8 +17,8 @@
 
 ## Runtime Role
 - `rustok-content` no longer exposes product GraphQL/REST CRUD surfaces.
-- The crate remains a shared helper layer for locale, slug, rich-text, and legacy content helpers.
-- `NodeService` remains available only via `rustok_content::services::NodeService` as a shared-node helper and migration surface, but must not be used as the new primary persistence model for `blog`, `forum`, `pages`, or `comments`.
+- The crate remains a shared helper layer for locale, slug, richtext, canonical
+  routes and cross-owner orchestration.
 - `ContentOrchestrationService` is a port-based orchestration core. It owns RBAC checks, idempotency, audit logging, and event publication, while domain conversion work is delegated through `ContentOrchestrationBridge`.
 
 ## Orchestration Contract
@@ -28,7 +28,8 @@
   - `split_topic`
   - `merge_topics`
 - `ContentOrchestrationBridge` is the only extension point for runtime adapters that know how to read/write `blog`, `forum`, and `comments` domain data.
-- The crate must not reintroduce direct `NodeService`-based child rebinding for orchestration flows.
+- The crate must not reintroduce generic shared-node CRUD or child rebinding for
+  owner-domain orchestration flows.
 
 ## Events
 - The crate publishes orchestration events through `TransactionalEventBus`.

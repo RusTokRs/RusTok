@@ -28,10 +28,9 @@ async fn connect(url: &str) -> DatabaseConnection {
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply for localization GraphQL parity evidence");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply for localization GraphQL parity evidence",
+        );
     }
 }
 
@@ -174,14 +173,7 @@ async fn localization_native_and_final_graphql_share_owner_semantics_sqlite() {
     let native_group_id = Uuid::new_v4();
     let graphql_group_id = Uuid::new_v4();
     let owner_id = Uuid::new_v4();
-    seed_group_fixture(
-        &db,
-        tenant_id,
-        native_group_id,
-        graphql_group_id,
-        owner_id,
-    )
-    .await;
+    seed_group_fixture(&db, tenant_id, native_group_id, graphql_group_id, owner_id).await;
 
     let native = GroupLocalizationService::new(db.clone());
     let schema = graphql_schema(db.clone());
@@ -230,7 +222,10 @@ mutation {{
     );
     let graphql_en = &graphql_en["upsertGroupTranslation"];
     assert_eq!(graphql_en["created"].as_bool(), Some(native_en.created));
-    assert_eq!(graphql_en["groupVersion"].as_u64(), Some(native_en.group_version));
+    assert_eq!(
+        graphql_en["groupVersion"].as_u64(),
+        Some(native_en.group_version)
+    );
     assert_eq!(
         graphql_en["translation"]["locale"].as_str(),
         Some(native_en.translation.locale.as_str())
@@ -293,7 +288,10 @@ mutation {{
     );
     let graphql_fr = &graphql_fr["upsertGroupTranslation"];
     assert_eq!(graphql_fr["created"].as_bool(), Some(native_fr.created));
-    assert_eq!(graphql_fr["groupVersion"].as_u64(), Some(native_fr.group_version));
+    assert_eq!(
+        graphql_fr["groupVersion"].as_u64(),
+        Some(native_fr.group_version)
+    );
     assert_eq!(
         graphql_fr["translation"]["locale"].as_str(),
         Some(native_fr.translation.locale.as_str())
@@ -337,9 +335,18 @@ query {{
         .expect("GraphQL localization list should be an array");
     assert_eq!(graphql_list.len(), native_list.len());
     for (graphql_item, native_item) in graphql_list.iter().zip(native_list.iter()) {
-        assert_eq!(graphql_item["locale"].as_str(), Some(native_item.locale.as_str()));
-        assert_eq!(graphql_item["title"].as_str(), Some(native_item.title.as_str()));
-        assert_eq!(graphql_item["summary"].as_str(), native_item.summary.as_deref());
+        assert_eq!(
+            graphql_item["locale"].as_str(),
+            Some(native_item.locale.as_str())
+        );
+        assert_eq!(
+            graphql_item["title"].as_str(),
+            Some(native_item.title.as_str())
+        );
+        assert_eq!(
+            graphql_item["summary"].as_str(),
+            native_item.summary.as_deref()
+        );
         assert_eq!(graphql_item["body"].as_str(), native_item.body.as_deref());
     }
 

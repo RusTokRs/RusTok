@@ -284,10 +284,7 @@ async fn replay_database() -> DatabaseConnection {
     db
 }
 
-async fn graphql_runtime(
-    db: &DatabaseConnection,
-    gate: Option<ScanGate>,
-) -> ReplayGraphqlRuntime {
+async fn graphql_runtime(db: &DatabaseConnection, gate: Option<ScanGate>) -> ReplayGraphqlRuntime {
     let source_calls = Arc::new(AtomicUsize::new(0));
     let registry = ModuleRegistry::new()
         .register(IndexModule)

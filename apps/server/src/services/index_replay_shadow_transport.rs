@@ -111,10 +111,8 @@ impl IndexReplayShadowTransportRuntime {
         continuation: Option<&str>,
         page_limit: usize,
         max_pages: usize,
-    ) -> std::result::Result<
-        IndexReplayShadowTransportOutcome,
-        IndexReplayShadowTransportError,
-    > {
+    ) -> std::result::Result<IndexReplayShadowTransportOutcome, IndexReplayShadowTransportError>
+    {
         context.authorize_for(context.tenant_id())?;
         let keyring = self
             .continuation
@@ -163,8 +161,7 @@ impl IndexReplayShadowTransportRuntime {
             .map(|cursor| codec.seal(&scope, cursor, Utc::now(), keyring.lifetime()))
             .transpose()?;
         Ok(IndexReplayShadowTransportOutcome::from_dry_run(
-            outcome,
-            next_token,
+            outcome, next_token,
         ))
     }
 }

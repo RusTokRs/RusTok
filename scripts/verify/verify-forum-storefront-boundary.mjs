@@ -9,6 +9,7 @@ const files = {
   ui: "crates/rustok-forum/storefront/src/ui/leptos.rs",
   transport: "crates/rustok-forum/storefront/src/transport/mod.rs",
   graphqlAdapter: "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs",
+  cargo: "crates/rustok-forum/storefront/Cargo.toml",
   removedApi: "crates/rustok-forum/storefront/src/api.rs",
   plan: "crates/rustok-forum/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
@@ -28,6 +29,7 @@ const core = text(files.core);
 const ui = text(files.ui);
 const transport = text(files.transport);
 const graphqlAdapter = text(files.graphqlAdapter);
+const cargo = text(files.cargo);
 const plan = text(files.plan);
 const registry = text(files.registry);
 const verifierTest = text(files.verifierTest);
@@ -54,8 +56,15 @@ assertContains(ui, "forum_storefront_category_card_view_model", `${files.ui}: UI
 assertContains(ui, "forum_storefront_topic_card_view_model", `${files.ui}: UI must consume core-owned topic card view-model`);
 assertContains(ui, "forum_storefront_status_badge_class", `${files.ui}: UI must consume core-owned status badge class policy`);
 assertContains(ui, "forum_storefront_count_label", `${files.ui}: UI must consume core-owned count label policy`);
+assertContains(ui, "use leptos_ui::RichTextHtml;", `${files.ui}: UI must use the shared server-projection renderer`);
+assertContains(ui, "view=body", `${files.ui}: topic projection must use RichTextHtml`);
+assertContains(ui, "content_locale=body_locale", `${files.ui}: topic projection must keep the effective locale`);
+assertContains(ui, "view=content", `${files.ui}: reply projection must use RichTextHtml`);
+assertContains(ui, "content_locale=content_locale", `${files.ui}: reply projection must keep the effective locale`);
+assertNotContains(ui, "inner_html=", `${files.ui}: owner UI must not bypass the shared RichTextHtml sink`);
+assertContains(cargo, "leptos-ui.workspace = true", `${files.cargo}: storefront must depend on the shared Leptos richtext view boundary`);
 assertContains(transport, "fetch_storefront_forum", `${files.transport}: storefront transport facade must expose fetch_storefront_forum`);
-assertContains(transport, "mod graphql_adapter;", `${files.transport}: transport facade must own GraphQL adapter module`);
+assertContains(transport, "mod graphql_adapter {", `${files.transport}: transport facade must own the canonical GraphQL adapter module`);
 assertContains(transport, "graphql_adapter::fetch_storefront_forum", `${files.transport}: transport facade must delegate through GraphQL adapter`);
 assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not delegate to the removed api module`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${files.graphqlAdapter}: storefront GraphQL adapter must keep GraphQL-backed read contract`);
@@ -65,9 +74,11 @@ if (existsSync(files.removedApi)) {
 assertNotContains(lib, "mod api;", `${files.lib}: lib must not wire the removed api module`);
 assertContains(lib, "pub use ui::leptos::ForumView", `${files.lib}: lib must only wire and re-export ForumView`);
 assertContains(plan, "verify-forum-storefront-boundary.mjs", `${files.plan}: local plan must mention storefront fast boundary guardrail`);
+assertContains(plan, "shared `RichTextHtml`", `${files.plan}: local plan must record the shared read-only richtext boundary`);
 assertContains(registry, "verify-forum-storefront-boundary.mjs", `${files.registry}: central readiness board must mention storefront fast boundary guardrail`);
 assertContains(verifierTest, "passes canonical fixture", `${files.verifierTest}: verifier fixture tests must cover the canonical pass path`);
 assertContains(verifierTest, "rejects Leptos-specific core", `${files.verifierTest}: verifier fixture tests must cover framework leakage`);
+assertContains(verifierTest, "rejects direct richtext HTML rendering", `${files.verifierTest}: verifier fixture tests must cover shared richtext rendering`);
 
 const scripts = pkg.scripts ?? {};
 if (scripts["verify:forum:storefront-boundary"] !== "node scripts/verify/verify-forum-storefront-boundary.mjs") {

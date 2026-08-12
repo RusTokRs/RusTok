@@ -72,6 +72,8 @@ impl MigrationTrait for Migration {
                     platform_source_digest TEXT NOT NULL CHECK (platform_source_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     toolchain_digest TEXT NOT NULL CHECK (toolchain_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     build_target TEXT NOT NULL CHECK (length(trim(build_target)) BETWEEN 1 AND 128),\
+                    preparation_source TEXT NOT NULL DEFAULT 'built' CHECK (preparation_source IN ('built', 'signed_bootstrap')),\
+                    bootstrap_receipt_digest TEXT NULL CHECK (bootstrap_receipt_digest IS NULL OR bootstrap_receipt_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),\
                     requested_by UUID NOT NULL,\
                     requested_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
@@ -80,8 +82,10 @@ impl MigrationTrait for Migration {
                     claimed_by TEXT NULL,\
                     lease_expires_at TIMESTAMPTZ NULL,\
                     last_heartbeat_at TIMESTAMPTZ NULL,\
-                    result_reference TEXT NULL,\
-                    result_digest TEXT NULL CHECK (result_digest IS NULL OR result_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    bundle_reference TEXT NULL,\
+                    bundle_root_digest TEXT NULL CHECK (bundle_root_digest IS NULL OR bundle_root_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    role_set_digest TEXT NULL CHECK (role_set_digest IS NULL OR role_set_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    role_artifacts_json TEXT NULL,\
                     sbom_reference TEXT NULL,\
                     sbom_digest TEXT NULL CHECK (sbom_digest IS NULL OR sbom_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     provenance_reference TEXT NULL,\
@@ -96,10 +100,10 @@ impl MigrationTrait for Migration {
                     started_at TIMESTAMPTZ NULL,\
                     completed_at TIMESTAMPTZ NULL,\
                     CHECK (\
-                        (status = 'queued' AND active_claim_id IS NULL AND claimed_by IS NULL AND lease_expires_at IS NULL AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
-                        OR (status = 'running' AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NOT NULL AND started_at IS NOT NULL AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
-                        OR (status = 'succeeded' AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NULL AND result_reference IS NOT NULL AND result_digest IS NOT NULL AND sbom_reference IS NOT NULL AND sbom_digest IS NOT NULL AND provenance_reference IS NOT NULL AND provenance_digest IS NOT NULL AND signature_reference IS NOT NULL AND signature_digest IS NOT NULL AND test_evidence_reference IS NOT NULL AND test_evidence_digest IS NOT NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
-                        OR (status IN ('failed', 'cancelled') AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NULL AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NOT NULL AND failure_detail IS NOT NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
+                        (status = 'queued' AND active_claim_id IS NULL AND claimed_by IS NULL AND lease_expires_at IS NULL AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
+                        OR (status = 'running' AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NOT NULL AND started_at IS NOT NULL AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
+                        OR (status = 'succeeded' AND lease_expires_at IS NULL AND bundle_reference IS NOT NULL AND bundle_root_digest IS NOT NULL AND role_set_digest IS NOT NULL AND role_artifacts_json IS NOT NULL AND sbom_reference IS NOT NULL AND sbom_digest IS NOT NULL AND provenance_reference IS NOT NULL AND provenance_digest IS NOT NULL AND signature_reference IS NOT NULL AND signature_digest IS NOT NULL AND test_evidence_reference IS NOT NULL AND test_evidence_digest IS NOT NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL AND ((preparation_source = 'built' AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND attempt_count > 0 AND bootstrap_receipt_digest IS NULL) OR (preparation_source = 'signed_bootstrap' AND active_claim_id IS NULL AND claimed_by IS NULL AND attempt_count = 0 AND bootstrap_receipt_digest IS NOT NULL)))\
+                        OR (status IN ('failed', 'cancelled') AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NULL AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NOT NULL AND failure_detail IS NOT NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
                     )\
                 )",
                 "CREATE INDEX module_static_distribution_builds_queue_idx ON module_static_distribution_builds (status, requested_at, distribution_build_id)",
@@ -111,8 +115,10 @@ impl MigrationTrait for Migration {
                     status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed', 'cancelled', 'lease_expired')),\
                     lease_expires_at TIMESTAMPTZ NOT NULL,\
                     last_heartbeat_at TIMESTAMPTZ NOT NULL,\
-                    result_reference TEXT NULL,\
-                    result_digest TEXT NULL CHECK (result_digest IS NULL OR result_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    bundle_reference TEXT NULL,\
+                    bundle_root_digest TEXT NULL CHECK (bundle_root_digest IS NULL OR bundle_root_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    role_set_digest TEXT NULL CHECK (role_set_digest IS NULL OR role_set_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    role_artifacts_json TEXT NULL,\
                     sbom_reference TEXT NULL,\
                     sbom_digest TEXT NULL CHECK (sbom_digest IS NULL OR sbom_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     provenance_reference TEXT NULL,\
@@ -128,10 +134,10 @@ impl MigrationTrait for Migration {
                     completed_at TIMESTAMPTZ NULL,\
                     UNIQUE (distribution_build_id, attempt_number),\
                     CHECK (\
-                        (status = 'running' AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
-                        OR (status = 'lease_expired' AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NOT NULL)\
-                        OR (status = 'succeeded' AND result_reference IS NOT NULL AND result_digest IS NOT NULL AND sbom_reference IS NOT NULL AND sbom_digest IS NOT NULL AND provenance_reference IS NOT NULL AND provenance_digest IS NOT NULL AND signature_reference IS NOT NULL AND signature_digest IS NOT NULL AND test_evidence_reference IS NOT NULL AND test_evidence_digest IS NOT NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
-                        OR (status IN ('failed', 'cancelled') AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NOT NULL AND failure_detail IS NOT NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
+                        (status = 'running' AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
+                        OR (status = 'lease_expired' AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NOT NULL)\
+                        OR (status = 'succeeded' AND bundle_reference IS NOT NULL AND bundle_root_digest IS NOT NULL AND role_set_digest IS NOT NULL AND role_artifacts_json IS NOT NULL AND sbom_reference IS NOT NULL AND sbom_digest IS NOT NULL AND provenance_reference IS NOT NULL AND provenance_digest IS NOT NULL AND signature_reference IS NOT NULL AND signature_digest IS NOT NULL AND test_evidence_reference IS NOT NULL AND test_evidence_digest IS NOT NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
+                        OR (status IN ('failed', 'cancelled') AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NOT NULL AND failure_detail IS NOT NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
                     )\
                 )",
                 "CREATE TABLE module_static_distribution_state (\
@@ -145,9 +151,9 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_static_distribution_items (\
                     distribution_build_id UUID NOT NULL REFERENCES module_static_distribution_builds(distribution_build_id) ON DELETE RESTRICT,\
                     ordinal INTEGER NOT NULL CHECK (ordinal >= 0),\
-                    promotion_id UUID NOT NULL REFERENCES module_static_promotions(promotion_id) ON DELETE RESTRICT,\
+                    promotion_id UUID NOT NULL,\
                     promotion_revision BIGINT NOT NULL CHECK (promotion_revision > 0),\
-                    release_id TEXT NOT NULL REFERENCES registry_module_releases(id) ON DELETE RESTRICT,\
+                    release_id TEXT NOT NULL,\
                     module_slug TEXT NOT NULL CHECK (length(trim(module_slug)) BETWEEN 1 AND 128),\
                     module_version TEXT NOT NULL CHECK (length(trim(module_version)) BETWEEN 1 AND 128),\
                     cargo_package TEXT NOT NULL CHECK (length(trim(cargo_package)) BETWEEN 1 AND 128),\
@@ -179,8 +185,10 @@ impl MigrationTrait for Migration {
                     release_revision BIGINT NOT NULL UNIQUE CHECK (release_revision > 0),\
                     composition_revision BIGINT NOT NULL CHECK (composition_revision > 0),\
                     composition_digest TEXT NOT NULL CHECK (composition_digest ~ '^sha256:[0-9a-f]{64}$'),\
-                    artifact_reference TEXT NOT NULL CHECK (length(trim(artifact_reference)) BETWEEN 1 AND 512),\
-                    artifact_digest TEXT NOT NULL CHECK (artifact_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    bundle_reference TEXT NOT NULL CHECK (length(trim(bundle_reference)) BETWEEN 1 AND 512),\
+                    bundle_root_digest TEXT NOT NULL CHECK (bundle_root_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    role_set_digest TEXT NOT NULL CHECK (role_set_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    role_artifacts_json TEXT NOT NULL,\
                     sbom_reference TEXT NOT NULL CHECK (length(trim(sbom_reference)) BETWEEN 1 AND 512),\
                     sbom_digest TEXT NOT NULL CHECK (sbom_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     provenance_reference TEXT NOT NULL CHECK (length(trim(provenance_reference)) BETWEEN 1 AND 512),\
@@ -279,7 +287,7 @@ impl MigrationTrait for Migration {
                 )",
                 "CREATE TABLE module_static_distribution_release_idempotency_keys (\
                     idempotency_key UUID PRIMARY KEY,\
-                    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('activate', 'rollback', 'revoke')),\
+                    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('bootstrap_import', 'activate', 'rollback', 'revoke')),\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     actor_id UUID NOT NULL,\
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP\
@@ -346,6 +354,8 @@ impl MigrationTrait for Migration {
                     platform_source_digest TEXT NOT NULL CHECK (length(platform_source_digest) = 71 AND substr(platform_source_digest, 1, 7) = 'sha256:' AND substr(platform_source_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     toolchain_digest TEXT NOT NULL CHECK (length(toolchain_digest) = 71 AND substr(toolchain_digest, 1, 7) = 'sha256:' AND substr(toolchain_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     build_target TEXT NOT NULL CHECK (length(trim(build_target)) BETWEEN 1 AND 128),\
+                    preparation_source TEXT NOT NULL DEFAULT 'built' CHECK (preparation_source IN ('built', 'signed_bootstrap')),\
+                    bootstrap_receipt_digest TEXT NULL CHECK (bootstrap_receipt_digest IS NULL OR (length(bootstrap_receipt_digest) = 71 AND substr(bootstrap_receipt_digest, 1, 7) = 'sha256:' AND substr(bootstrap_receipt_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
                     status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),\
                     requested_by TEXT NOT NULL,\
                     requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
@@ -354,8 +364,10 @@ impl MigrationTrait for Migration {
                     claimed_by TEXT NULL,\
                     lease_expires_at TEXT NULL,\
                     last_heartbeat_at TEXT NULL,\
-                    result_reference TEXT NULL,\
-                    result_digest TEXT NULL CHECK (result_digest IS NULL OR (length(result_digest) = 71 AND substr(result_digest, 1, 7) = 'sha256:' AND substr(result_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
+                    bundle_reference TEXT NULL,\
+                    bundle_root_digest TEXT NULL CHECK (bundle_root_digest IS NULL OR (length(bundle_root_digest) = 71 AND substr(bundle_root_digest, 1, 7) = 'sha256:' AND substr(bundle_root_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
+                    role_set_digest TEXT NULL CHECK (role_set_digest IS NULL OR (length(role_set_digest) = 71 AND substr(role_set_digest, 1, 7) = 'sha256:' AND substr(role_set_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
+                    role_artifacts_json TEXT NULL,\
                     sbom_reference TEXT NULL,\
                     sbom_digest TEXT NULL CHECK (sbom_digest IS NULL OR (length(sbom_digest) = 71 AND substr(sbom_digest, 1, 7) = 'sha256:' AND substr(sbom_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
                     provenance_reference TEXT NULL,\
@@ -370,10 +382,10 @@ impl MigrationTrait for Migration {
                     started_at TEXT NULL,\
                     completed_at TEXT NULL,\
                     CHECK (\
-                        (status = 'queued' AND active_claim_id IS NULL AND claimed_by IS NULL AND lease_expires_at IS NULL AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
-                        OR (status = 'running' AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NOT NULL AND started_at IS NOT NULL AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
-                        OR (status = 'succeeded' AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NULL AND result_reference IS NOT NULL AND result_digest IS NOT NULL AND sbom_reference IS NOT NULL AND sbom_digest IS NOT NULL AND provenance_reference IS NOT NULL AND provenance_digest IS NOT NULL AND signature_reference IS NOT NULL AND signature_digest IS NOT NULL AND test_evidence_reference IS NOT NULL AND test_evidence_digest IS NOT NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
-                        OR (status IN ('failed', 'cancelled') AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NULL AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NOT NULL AND failure_detail IS NOT NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
+                        (status = 'queued' AND active_claim_id IS NULL AND claimed_by IS NULL AND lease_expires_at IS NULL AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
+                        OR (status = 'running' AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NOT NULL AND started_at IS NOT NULL AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
+                        OR (status = 'succeeded' AND lease_expires_at IS NULL AND bundle_reference IS NOT NULL AND bundle_root_digest IS NOT NULL AND role_set_digest IS NOT NULL AND role_artifacts_json IS NOT NULL AND sbom_reference IS NOT NULL AND sbom_digest IS NOT NULL AND provenance_reference IS NOT NULL AND provenance_digest IS NOT NULL AND signature_reference IS NOT NULL AND signature_digest IS NOT NULL AND test_evidence_reference IS NOT NULL AND test_evidence_digest IS NOT NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL AND ((preparation_source = 'built' AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND attempt_count > 0 AND bootstrap_receipt_digest IS NULL) OR (preparation_source = 'signed_bootstrap' AND active_claim_id IS NULL AND claimed_by IS NULL AND attempt_count = 0 AND bootstrap_receipt_digest IS NOT NULL)))\
+                        OR (status IN ('failed', 'cancelled') AND active_claim_id IS NOT NULL AND claimed_by IS NOT NULL AND lease_expires_at IS NULL AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NOT NULL AND failure_detail IS NOT NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
                     )\
                 )",
                 "CREATE INDEX module_static_distribution_builds_queue_idx ON module_static_distribution_builds (status, requested_at, distribution_build_id)",
@@ -385,8 +397,10 @@ impl MigrationTrait for Migration {
                     status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed', 'cancelled', 'lease_expired')),\
                     lease_expires_at TEXT NOT NULL,\
                     last_heartbeat_at TEXT NOT NULL,\
-                    result_reference TEXT NULL,\
-                    result_digest TEXT NULL CHECK (result_digest IS NULL OR (length(result_digest) = 71 AND substr(result_digest, 1, 7) = 'sha256:' AND substr(result_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
+                    bundle_reference TEXT NULL,\
+                    bundle_root_digest TEXT NULL CHECK (bundle_root_digest IS NULL OR (length(bundle_root_digest) = 71 AND substr(bundle_root_digest, 1, 7) = 'sha256:' AND substr(bundle_root_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
+                    role_set_digest TEXT NULL CHECK (role_set_digest IS NULL OR (length(role_set_digest) = 71 AND substr(role_set_digest, 1, 7) = 'sha256:' AND substr(role_set_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
+                    role_artifacts_json TEXT NULL,\
                     sbom_reference TEXT NULL,\
                     sbom_digest TEXT NULL CHECK (sbom_digest IS NULL OR (length(sbom_digest) = 71 AND substr(sbom_digest, 1, 7) = 'sha256:' AND substr(sbom_digest, 8) NOT GLOB '*[^0-9a-f]*')),\
                     provenance_reference TEXT NULL,\
@@ -402,10 +416,10 @@ impl MigrationTrait for Migration {
                     completed_at TEXT NULL,\
                     UNIQUE (distribution_build_id, attempt_number),\
                     CHECK (\
-                        (status = 'running' AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
-                        OR (status = 'lease_expired' AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NOT NULL)\
-                        OR (status = 'succeeded' AND result_reference IS NOT NULL AND result_digest IS NOT NULL AND sbom_reference IS NOT NULL AND sbom_digest IS NOT NULL AND provenance_reference IS NOT NULL AND provenance_digest IS NOT NULL AND signature_reference IS NOT NULL AND signature_digest IS NOT NULL AND test_evidence_reference IS NOT NULL AND test_evidence_digest IS NOT NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
-                        OR (status IN ('failed', 'cancelled') AND result_reference IS NULL AND result_digest IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NOT NULL AND failure_detail IS NOT NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
+                        (status = 'running' AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NULL)\
+                        OR (status = 'lease_expired' AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NULL AND completed_at IS NOT NULL)\
+                        OR (status = 'succeeded' AND bundle_reference IS NOT NULL AND bundle_root_digest IS NOT NULL AND role_set_digest IS NOT NULL AND role_artifacts_json IS NOT NULL AND sbom_reference IS NOT NULL AND sbom_digest IS NOT NULL AND provenance_reference IS NOT NULL AND provenance_digest IS NOT NULL AND signature_reference IS NOT NULL AND signature_digest IS NOT NULL AND test_evidence_reference IS NOT NULL AND test_evidence_digest IS NOT NULL AND failure_code IS NULL AND failure_detail IS NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
+                        OR (status IN ('failed', 'cancelled') AND bundle_reference IS NULL AND bundle_root_digest IS NULL AND role_set_digest IS NULL AND role_artifacts_json IS NULL AND sbom_reference IS NULL AND sbom_digest IS NULL AND provenance_reference IS NULL AND provenance_digest IS NULL AND signature_reference IS NULL AND signature_digest IS NULL AND test_evidence_reference IS NULL AND test_evidence_digest IS NULL AND failure_code IS NOT NULL AND failure_detail IS NOT NULL AND completion_digest IS NOT NULL AND completed_at IS NOT NULL)\
                     )\
                 )",
                 "CREATE TABLE module_static_distribution_state (\
@@ -419,9 +433,9 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_static_distribution_items (\
                     distribution_build_id TEXT NOT NULL REFERENCES module_static_distribution_builds(distribution_build_id) ON DELETE RESTRICT,\
                     ordinal INTEGER NOT NULL CHECK (ordinal >= 0),\
-                    promotion_id TEXT NOT NULL REFERENCES module_static_promotions(promotion_id) ON DELETE RESTRICT,\
+                    promotion_id TEXT NOT NULL,\
                     promotion_revision INTEGER NOT NULL CHECK (promotion_revision > 0),\
-                    release_id TEXT NOT NULL REFERENCES registry_module_releases(id) ON DELETE RESTRICT,\
+                    release_id TEXT NOT NULL,\
                     module_slug TEXT NOT NULL CHECK (length(trim(module_slug)) BETWEEN 1 AND 128),\
                     module_version TEXT NOT NULL CHECK (length(trim(module_version)) BETWEEN 1 AND 128),\
                     cargo_package TEXT NOT NULL CHECK (length(trim(cargo_package)) BETWEEN 1 AND 128),\
@@ -453,8 +467,10 @@ impl MigrationTrait for Migration {
                     release_revision INTEGER NOT NULL UNIQUE CHECK (release_revision > 0),\
                     composition_revision INTEGER NOT NULL CHECK (composition_revision > 0),\
                     composition_digest TEXT NOT NULL CHECK (length(composition_digest) = 71 AND substr(composition_digest, 1, 7) = 'sha256:' AND substr(composition_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
-                    artifact_reference TEXT NOT NULL CHECK (length(trim(artifact_reference)) BETWEEN 1 AND 512),\
-                    artifact_digest TEXT NOT NULL CHECK (length(artifact_digest) = 71 AND substr(artifact_digest, 1, 7) = 'sha256:' AND substr(artifact_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
+                    bundle_reference TEXT NOT NULL CHECK (length(trim(bundle_reference)) BETWEEN 1 AND 512),\
+                    bundle_root_digest TEXT NOT NULL CHECK (length(bundle_root_digest) = 71 AND substr(bundle_root_digest, 1, 7) = 'sha256:' AND substr(bundle_root_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
+                    role_set_digest TEXT NOT NULL CHECK (length(role_set_digest) = 71 AND substr(role_set_digest, 1, 7) = 'sha256:' AND substr(role_set_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
+                    role_artifacts_json TEXT NOT NULL,\
                     sbom_reference TEXT NOT NULL CHECK (length(trim(sbom_reference)) BETWEEN 1 AND 512),\
                     sbom_digest TEXT NOT NULL CHECK (length(sbom_digest) = 71 AND substr(sbom_digest, 1, 7) = 'sha256:' AND substr(sbom_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     provenance_reference TEXT NOT NULL CHECK (length(trim(provenance_reference)) BETWEEN 1 AND 512),\
@@ -553,7 +569,7 @@ impl MigrationTrait for Migration {
                 )",
                 "CREATE TABLE module_static_distribution_release_idempotency_keys (\
                     idempotency_key TEXT PRIMARY KEY,\
-                    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('activate', 'rollback', 'revoke')),\
+                    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('bootstrap_import', 'activate', 'rollback', 'revoke')),\
                     request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     actor_id TEXT NOT NULL,\
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\

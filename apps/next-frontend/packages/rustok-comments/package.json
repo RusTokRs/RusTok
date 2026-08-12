@@ -1,0 +1,14 @@
+{
+  "name": "@rustok/comments-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@rustok/richtext": "file:../../../../packages/richtext",
+    "next-intl": "^4.13.2",
+    "react": "^19.2.7"
+  },
+  "license": "BUSL-1.1"
+}
+

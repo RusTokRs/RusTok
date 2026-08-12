@@ -1,7 +1,9 @@
 import type { Editor } from '@tiptap/core';
 import {
   createRichTextEditor,
-  setEditorDocument
+  setEditorAuthoringContext,
+  setEditorDocument,
+  setEditorEditable
 } from '../editor';
 import type {
   RichTextDocument,
@@ -12,7 +14,6 @@ import { isRichTextMessages, type RichTextMessages } from '../messages';
 import {
   MAX_PROTOCOL_OVERHEAD_BYTES,
   RICH_TEXT_PROTOCOL,
-  RICH_TEXT_PROTOCOL_REVISION,
   createEnvelope,
   isEnvelope,
   isHandshakeConnect,
@@ -22,6 +23,10 @@ import {
 } from '../protocol';
 import { getRichTextProfile, isRichTextProfileId } from '../profiles';
 import { mountToolbar } from '../toolbar';
+import {
+  isRichTextAuthoringContext,
+  type RichTextAuthoringContext
+} from '../authoring';
 
 const nonce = new URLSearchParams(window.location.hash.slice(1)).get('nonce');
 const maximumDocumentBytes = Math.max(
@@ -40,6 +45,7 @@ let session = '';
 let editor: Editor | undefined;
 let profile: RichTextProfileManifest | undefined;
 let messages: RichTextMessages | undefined;
+let authoringContext: RichTextAuthoringContext | undefined;
 let inboundSequence = 0;
 let outboundSequence = 0;
 let unmountToolbar: (() => void) | undefined;
@@ -66,7 +72,6 @@ window.addEventListener('message', onWindowMessage);
 window.parent.postMessage(
   {
     protocol: RICH_TEXT_PROTOCOL,
-    revision: RICH_TEXT_PROTOCOL_REVISION,
     type: 'ready',
     nonce
   },
@@ -90,9 +95,12 @@ function receive(value: unknown): void {
     case 'set_document':
       applyDocument(message.payload?.document);
       break;
+    case 'set_authoring_context':
+      applyAuthoringContext(message.payload);
+      break;
     case 'set_editable':
       if (!editor || typeof message.payload?.editable !== 'boolean') return sendError('not_initialized', 'The editor is not initialized.');
-      editor.setEditable(message.payload.editable);
+      applyEditable(message.payload.editable);
       break;
     case 'focus':
       editor?.commands.focus();
@@ -110,35 +118,59 @@ function receive(value: unknown): void {
 
 function initialize(payload: unknown): void {
   if (editor || !isRecord(payload)) return sendError('invalid_initialize', 'The editor initialization payload is invalid.');
-  if (!isRichTextProfileId(payload.profile) || !isRichTextMessages(payload.messages) || typeof payload.editable !== 'boolean') {
+  if (!isRichTextProfileId(payload.profile) || !isRichTextMessages(payload.messages) || !isRichTextAuthoringContext(payload.authoring_context) || typeof payload.editable !== 'boolean') {
     return sendError('invalid_initialize', 'The editor initialization payload is invalid.');
   }
   const selectedProfile = getRichTextProfile(payload.profile);
-  const validation = validateRichTextDocument(payload.document, selectedProfile);
+  const validation = validateRichTextDocument(payload.document, selectedProfile, { allowEmpty: true });
   if (!validation.valid) return sendError('invalid_document', validation.error ?? 'The document is invalid.');
 
   profile = selectedProfile;
   messages = payload.messages;
+  authoringContext = payload.authoring_context;
   editor = createRichTextEditor({
     element: editorElement,
     profile,
     document: payload.document as RichTextDocument,
+    authoringContext,
     editable: payload.editable,
     onChange: (document) => {
-      const result = validateRichTextDocument(document, profile!);
+      const result = validateRichTextDocument(document, profile!, { allowEmpty: true });
       if (result.valid) send({ type: 'document_changed', payload: { document } });
       else sendError('invalid_editor_document', result.error ?? 'The editor produced an invalid document.');
     },
     onFocusChange: (focused) => send({ type: 'focus_changed', payload: { focused } })
   });
+  applyAuthoringContext(authoringContext);
+  applyEditable(payload.editable);
   editorElement.setAttribute('aria-label', messages.editor);
   unmountToolbar = mountToolbar(toolbarElement, editor, profile, messages);
+  toolbarElement.hidden = !payload.editable;
   send({ type: 'initialized', payload: { document: editor.getJSON() as RichTextDocument } });
+}
+
+function applyAuthoringContext(value: unknown): void {
+  if (!isRichTextAuthoringContext(value)) {
+    return sendError('invalid_authoring_context', 'The editor authoring context is invalid.');
+  }
+  authoringContext = value;
+  document.documentElement.lang = value.locale;
+  document.documentElement.dir = value.direction;
+  editorElement.lang = value.locale;
+  editorElement.dir = value.direction;
+  editorElement.spellcheck = value.spellcheck;
+  if (editor) setEditorAuthoringContext(editor, value);
+}
+
+function applyEditable(editable: boolean): void {
+  if (!editor) return sendError('not_initialized', 'The editor is not initialized.');
+  setEditorEditable(editor, editable);
+  toolbarElement.hidden = !editable;
 }
 
 function applyDocument(document: unknown): void {
   if (!editor || !profile) return sendError('not_initialized', 'The editor is not initialized.');
-  const validation = validateRichTextDocument(document, profile);
+  const validation = validateRichTextDocument(document, profile, { allowEmpty: true });
   if (!validation.valid) return sendError('invalid_document', validation.error ?? 'The document is invalid.');
   setEditorDocument(editor, document as RichTextDocument);
 }
@@ -157,6 +189,7 @@ function destroy(): void {
   unmountToolbar?.();
   editor?.destroy();
   editor = undefined;
+  authoringContext = undefined;
   port?.close();
   port = undefined;
 }

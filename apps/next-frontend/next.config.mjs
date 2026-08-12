@@ -14,7 +14,11 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  transpilePackages: ["@rustok/blog-frontend"],
+  transpilePackages: [
+    "@rustok/blog-frontend",
+    "@rustok/comments-frontend",
+    "@rustok/richtext",
+  ],
   webpack(config) {
     config.resolve.alias = {
       ...config.resolve.alias,

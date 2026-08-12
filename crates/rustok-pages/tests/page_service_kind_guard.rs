@@ -5,6 +5,7 @@ use rustok_pages::dto::{CreatePageInput, PageBodyInput, PageTranslationInput};
 use rustok_pages::error::PagesError;
 use rustok_pages::services::{PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED, PageService};
 use rustok_test_utils::{db::setup_test_db, helpers::admin_context};
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use serde_json::json;
 use std::sync::Arc;
@@ -17,6 +18,21 @@ async fn setup() -> (PageService, Uuid, SecurityContext) {
         .up(&schema)
         .await
         .expect("outbox migrations");
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE tenant_modules (\
+            id TEXT PRIMARY KEY NOT NULL, \
+            tenant_id TEXT NOT NULL, \
+            module_slug TEXT NOT NULL, \
+            enabled INTEGER NOT NULL, \
+            settings TEXT NOT NULL, \
+            created_at TEXT NOT NULL, \
+            updated_at TEXT NOT NULL\
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("tenant_modules schema");
     for migration in PagesModule.migrations() {
         migration.up(&schema).await.expect("pages migrations");
     }
@@ -71,9 +87,7 @@ async fn create_builder_draft(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: String::new(),
-                    format: Some("grapesjs".to_string()),
-                    content_json: Some(json!({
+                    document: json!({
                         "assets": [],
                         "styles": [],
                         "pages": [{
@@ -84,7 +98,7 @@ async fn create_builder_draft(
                                 "components": []
                             }
                         }]
-                    })),
+                    }),
                 }),
                 channel_slugs: None,
                 publish: false,

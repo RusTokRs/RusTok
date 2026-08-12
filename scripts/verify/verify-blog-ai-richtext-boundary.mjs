@@ -43,18 +43,14 @@ function sameList(actual, expected) {
 }
 
 const evidencePath = 'crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json';
-const inventoryPath = 'crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json';
 const planPath = 'crates/rustok-blog/docs/implementation-plan.md';
-const inventoryDocPath = 'crates/rustok-blog/docs/richtext-cutover-inventory.md';
 const registryPath = 'crates/rustok-blog/contracts/blog-fba-registry.json';
 const selfTestPath = 'scripts/verify/verify-blog-ai-richtext-boundary.test.mjs';
 const packagePath = 'package.json';
 
 for (const requiredPath of [
   evidencePath,
-  inventoryPath,
   planPath,
-  inventoryDocPath,
   registryPath,
   selfTestPath,
   packagePath,
@@ -127,32 +123,6 @@ if (writerPath && existsSync(repoPath(writerPath))) {
   }
 }
 
-const inventory = readJson(inventoryPath);
-if (
-  evidence.inventory?.path !== inventoryPath ||
-  evidence.inventory?.check !== 'ai_blog_draft_writer' ||
-  evidence.inventory?.completion_condition !== 'ai_blog_drafts_write_richtext_document'
-) {
-  fail('evidence inventory binding drift');
-}
-const inventoryCheck = inventory.checks?.find(
-  (entry) => entry.name === evidence.inventory?.check,
-);
-if (
-  !inventoryCheck ||
-  inventoryCheck.status !== 'implemented_source_verified_no_compile' ||
-  inventoryCheck.path !== writerPath
-) {
-  fail('richtext inventory AI writer check drift');
-}
-if (
-  !inventory.completion_conditions?.includes(
-    evidence.inventory?.completion_condition,
-  )
-) {
-  fail('richtext inventory AI completion condition missing');
-}
-
 const packageJson = readJson(packagePath);
 if (
   packageJson.scripts?.['verify:blog:ai-richtext-boundary'] !==
@@ -204,15 +174,6 @@ for (const marker of [
 ]) {
   assertContains(plan, marker, `${planPath}: audited AI richtext plan`);
 }
-const inventoryDoc = readRepo(inventoryDocPath);
-for (const marker of [
-  'AI Blog owner shim',
-  evidencePath,
-  'scripts/verify/verify-blog-ai-richtext-boundary.mjs',
-]) {
-  assertContains(inventoryDoc, marker, `${inventoryDocPath}: AI boundary documentation`);
-}
-
 if (failures.length > 0) {
   console.error('Blog AI richtext boundary verification failed:');
   for (const failure of failures) console.error(`- ${failure}`);

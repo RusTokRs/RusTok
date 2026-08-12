@@ -23,6 +23,8 @@ Current entry points:
 - `RuntimeComposition` for optional DB/host handles plus a host-neutral settings snapshot.
 - `RuntimeComposition::from_environment` for the external CLI bootstrap without a server
   dependency.
+- The normalized `RUSTOK_INSTANCE_ROOT` plus bounded instance-relative path
+  resolution for executable storage, source, work, cache, and release adapters.
 - `db_clone` for explicit DB handle cloning from host runtime context.
 - `require_shared` and `RuntimeHandleError` for typed shared-handle lookup.
 

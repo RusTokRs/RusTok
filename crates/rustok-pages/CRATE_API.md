@@ -17,7 +17,10 @@
 
 ## Current document contract
 
-- Page visual content is stored in `PageBodyInput` with format `grapesjs`.
+- `PageBodyInput` accepts a localized Page Builder JSON value through its sole
+  `document` payload field. It has no caller-selected format and no parallel
+  serialized-content field; Pages persists the canonical internal `grapesjs`
+  invariant.
 - `pages[].component` is the component-tree authority.
 - Page metadata, channel visibility and the Fly document are Pages-owned data.
 - Published storefront output is selected through immutable landing artifacts.

@@ -36,12 +36,14 @@ async fn forum_without_reactions_keeps_forum_host_composition_available() {
         .expect("Forum-only host composition must remain available");
 
     assert!(extensions.contains::<rustok_forum::SharedForumAudienceFactsPort>());
-    assert!(
-        extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>()
-    );
+    assert!(extensions.contains::<rustok_forum::SharedForumNotificationRecipientContextPort>());
 }
 
-#[cfg(all(feature = "mod-reactions", not(feature = "mod-forum"), not(feature = "mod-blog")))]
+#[cfg(all(
+    feature = "mod-reactions",
+    not(feature = "mod-forum"),
+    not(feature = "mod-blog")
+))]
 #[tokio::test]
 async fn reactions_without_forum_materializes_an_empty_subject_registry() {
     let registry = ModuleRegistry::new()
@@ -51,10 +53,9 @@ async fn reactions_without_forum_materializes_an_empty_subject_registry() {
     let extensions = compose(&registry)
         .await
         .expect("Reactions-only host composition must initialize");
-    let subjects = rustok_reactions::api::reaction_subject_registry_from_extensions(
-        extensions.as_ref(),
-    )
-    .expect("selected Reactions owner must publish a materialized subject registry");
+    let subjects =
+        rustok_reactions::api::reaction_subject_registry_from_extensions(extensions.as_ref())
+            .expect("selected Reactions owner must publish a materialized subject registry");
 
     assert!(subjects.is_empty());
 }
@@ -70,10 +71,9 @@ async fn forum_with_reactions_materializes_topic_and_reply_provider() {
     let extensions = compose(&registry)
         .await
         .expect("Forum plus Reactions host composition must initialize");
-    let subjects = rustok_reactions::api::reaction_subject_registry_from_extensions(
-        extensions.as_ref(),
-    )
-    .expect("selected Reactions owner must publish a materialized subject registry");
+    let subjects =
+        rustok_reactions::api::reaction_subject_registry_from_extensions(extensions.as_ref())
+            .expect("selected Reactions owner must publish a materialized subject registry");
     let forum = subjects
         .get_by_str("forum")
         .expect("Forum producer must materialize when both modules are selected");
@@ -98,10 +98,9 @@ async fn blog_with_reactions_materializes_post_provider() {
     let extensions = compose(&registry)
         .await
         .expect("Blog plus Reactions host composition must initialize");
-    let subjects = rustok_reactions::api::reaction_subject_registry_from_extensions(
-        extensions.as_ref(),
-    )
-    .expect("selected Reactions owner must publish a materialized subject registry");
+    let subjects =
+        rustok_reactions::api::reaction_subject_registry_from_extensions(extensions.as_ref())
+            .expect("selected Reactions owner must publish a materialized subject registry");
     let blog = subjects
         .get_by_str("blog")
         .expect("Blog producer must materialize when both modules are selected");

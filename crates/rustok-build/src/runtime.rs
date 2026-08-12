@@ -22,11 +22,10 @@ pub enum DeploymentBackend {
 /// Secret resolution and host-specific process execution remain outside this
 /// contract. A host passes the already resolved HTTP bearer token when needed.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DeploymentSettings {
     #[serde(default)]
     pub backend: DeploymentBackend,
-    #[serde(default = "default_filesystem_root_dir")]
-    pub filesystem_root_dir: String,
     #[serde(default)]
     pub public_base_url: Option<String>,
     #[serde(default)]
@@ -45,7 +44,6 @@ impl Default for DeploymentSettings {
     fn default() -> Self {
         Self {
             backend: DeploymentBackend::RecordOnly,
-            filesystem_root_dir: default_filesystem_root_dir(),
             public_base_url: None,
             endpoint_url: None,
             bearer_token: None,
@@ -54,10 +52,6 @@ impl Default for DeploymentSettings {
             rollout_command: None,
         }
     }
-}
-
-fn default_filesystem_root_dir() -> String {
-    "artifacts/releases".to_string()
 }
 
 fn default_docker_bin() -> String {
@@ -157,8 +151,18 @@ mod tests {
         let settings = DeploymentSettings::default();
 
         assert_eq!(settings.backend, DeploymentBackend::RecordOnly);
-        assert_eq!(settings.filesystem_root_dir, "artifacts/releases");
         assert_eq!(settings.docker_bin, "docker");
+    }
+
+    #[test]
+    fn deployment_settings_reject_a_second_filesystem_root() {
+        let error = serde_json::from_value::<DeploymentSettings>(serde_json::json!({
+            "backend": "filesystem",
+            "filesystem_root_dir": "another-root"
+        }))
+        .expect_err("the instance root is the only local placement root");
+
+        assert!(error.to_string().contains("filesystem_root_dir"));
     }
 
     #[test]

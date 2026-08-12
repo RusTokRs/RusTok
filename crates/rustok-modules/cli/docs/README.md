@@ -56,20 +56,9 @@ policy, and commits the immutable request plus transactional outbox fact. The
 command never calls a worker. The independent dispatcher consumes that fact
 and invokes the isolated worker through mTLS.
 
-The current operations CLI runtime requires a database and an existing source
-CAS directory in `RUSTOK_SETTINGS_JSON`. It may be located anywhere supported
-by the host operating system. Replace `<instance-root>` below with the chosen
-installation directory; the accepted installer cutover derives this field from
-the canonical `sources` subtree instead of asking the operator to configure a
-second unrelated root:
-
-```json
-{
-  "module_build": {
-    "source_cas_root": "<instance-root>/sources"
-  }
-}
-```
+The operations CLI runtime requires a database and `RUSTOK_INSTANCE_ROOT`.
+Module build always uses the canonical `<instance-root>/sources` subtree; there
+is no independent source-CAS path setting.
 
 The control-plane process needs write access to this directory. Build jobs see
 the same content as a read-only mount through
@@ -93,18 +82,15 @@ operator review transition. `module publish --dry-run` validates the project,
 metadata, UUID identities, and serialized bundle without requiring a database
 or object storage.
 
-Non-dry-run publication also requires the platform storage configuration in
-`RUSTOK_SETTINGS_JSON`. The current local driver uses one base directory;
-replace the placeholder with the selected installation directory. The accepted
-portable-layout cutover resolves the executable release and owner-data planes
-from that same root rather than requiring a Linux-specific location:
+Non-dry-run publication also requires the platform storage driver configuration
+in `RUSTOK_SETTINGS_JSON`. For the local driver, the CLI always derives
+`<instance-root>/storage`; `base_dir` is not an independent operator setting:
 
 ```json
 {
   "storage": {
     "driver": "local",
     "local": {
-      "base_dir": "<instance-root>/storage",
       "base_url": "/media",
       "fsync": true
     }

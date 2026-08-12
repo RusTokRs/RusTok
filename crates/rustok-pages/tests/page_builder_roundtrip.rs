@@ -37,22 +37,25 @@ fn document_and_metadata_services_cannot_cross_write() {
 }
 
 #[test]
-fn publish_binds_only_the_locked_document_revision() {
+fn non_builder_publish_checks_locked_document_revisions_before_transition() {
     let lifecycle = include_str!("../src/services/page/lifecycle.rs");
+    let load = lifecycle
+        .find("load_bodies_for_publish")
+        .expect("publish must load locked bodies");
+    let builder_guard = lifecycle
+        .find("collect_builder_sources(&current_bodies")
+        .expect("non-builder publish must reject Page Builder bodies");
     let revision_check = lifecycle
         .find("current_revisions != expected_revisions")
         .expect("publish must compare body revisions");
-    let compile = lifecycle
-        .find("compile_builder_sources(&current_bodies")
-        .expect("publish must compile locked bodies");
-    let bind = lifecycle
-        .find("bind_existing_body_in_tx")
-        .expect("publish must bind the artifact");
+    let transition = lifecycle
+        .find("apply_transition(&mut active")
+        .expect("publish must apply the lifecycle transition");
 
-    assert!(lifecycle.contains("load_bodies_for_publish"));
     assert!(lifecycle.contains("lock_exclusive"));
-    assert!(revision_check < compile);
-    assert!(compile < bind);
+    assert!(load < builder_guard);
+    assert!(builder_guard < revision_check);
+    assert!(revision_check < transition);
 }
 
 #[test]

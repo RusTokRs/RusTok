@@ -17,6 +17,8 @@ const threadWriteVerifierPath = 'scripts/verify/verify-comments-thread-write-inv
 const threadWriteSelfTestPath = 'scripts/verify/verify-comments-thread-write-invariants.test.mjs';
 const entitiesModulePath = 'crates/rustok-comments/src/entities/mod.rs';
 const classifierTestPath = 'crates/rustok-comments/src/entities/thread_insert_error_tests.rs';
+const initialMigrationPath = 'crates/rustok-comments/src/migrations/m20260328_000001_create_comments_tables.rs';
+const removedRichtextCutoverPath = 'crates/rustok-comments/src/migrations/m20260723_000008_cutover_comment_richtext.rs';
 const packageJsonPath = 'package.json';
 const expectedOperations = [
   'create_comment',
@@ -116,6 +118,20 @@ hasAll(dto, [
 if (dto.includes('body_format') || dto.includes('content_json')) fail('comments DTO restored a removed richtext compatibility field');
 const bodyEntity = read('crates/rustok-comments/src/entities/comment_body.rs');
 if (bodyEntity.includes('body_format')) fail('comment body entity restored the removed format selector');
+const initialMigration = read(initialMigrationPath);
+hasAll(
+  initialMigration,
+  ['ColumnDef::new(CommentBodies::Body).text().not_null()'],
+  'canonical Comments richtext storage schema',
+);
+hasNone(
+  initialMigration,
+  ['BodyFormat', 'body_format'],
+  'canonical Comments richtext storage schema',
+);
+if (fs.existsSync(removedRichtextCutoverPath)) {
+  fail(`removed Comments richtext cutover was restored: ${removedRichtextCutoverPath}`);
+}
 const richtext = read('crates/rustok-comments/src/richtext.rs');
 hasAll(richtext, [
   'RichTextProfile::Comment',

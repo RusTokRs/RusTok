@@ -21,9 +21,7 @@ use rustok_channel::{
     BindChannelModuleInput, ChannelModule, ChannelResponse, ChannelService, CreateChannelInput,
 };
 use rustok_core::events::EventHandler;
-use rustok_core::{
-    CONTENT_FORMAT_GRAPESJS, EventTransport, MigrationSource, ReliabilityLevel, SecurityContext,
-};
+use rustok_core::{EventTransport, MigrationSource, ReliabilityLevel, SecurityContext};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::entity::{Column as SysEventColumn, SysEventStatus};
 use rustok_outbox::{
@@ -165,12 +163,7 @@ impl PagesCacheReadPort for ContinuityCachePort {
         Ok(state.values.get(key).cloned())
     }
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> Result<(), PageCacheError> {
+    async fn put(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<(), PageCacheError> {
         let mut state = self
             .state
             .lock()
@@ -231,8 +224,8 @@ struct PublicationEvents {
 }
 
 #[tokio::test]
-async fn reviewed_node_published_relay_rotates_registered_native_route_key_before_refill(
-) -> TestResult<()> {
+async fn reviewed_node_published_relay_rotates_registered_native_route_key_before_refill()
+-> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_db(tenant_id).await?;
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
@@ -247,9 +240,9 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     assert_eq!(receipt.result_version, 2);
     let events = publication_events(&db, tenant_id, fixture.page_id).await?;
 
-    let cache = Arc::new(ContinuityCachePort::new(
-        PageCacheGenerationSnapshot::new(3, 5, 7),
-    ));
+    let cache = Arc::new(ContinuityCachePort::new(PageCacheGenerationSnapshot::new(
+        3, 5, 7,
+    )));
     let invalidation_port: Arc<dyn PageCacheInvalidationPort> = cache.clone();
     let read_port: Arc<dyn PagesCacheReadPort> = cache.clone();
     let handler = PageCacheInvalidationEventHandler::new(PagesCacheInvalidationRuntime::new(
@@ -265,7 +258,10 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     assert_outbox_status(&db, events.updated_id, SysEventStatus::Pending).await?;
     assert_outbox_status(&db, events.published_id, SysEventStatus::Pending).await?;
     let after_created = cache.snapshot();
-    assert_eq!(after_created.generations, PageCacheGenerationSnapshot::new(3, 5, 7));
+    assert_eq!(
+        after_created.generations,
+        PageCacheGenerationSnapshot::new(3, 5, 7)
+    );
     assert!(after_created.requests.is_empty());
     assert!(after_created.receipts.is_empty());
 
@@ -277,12 +273,18 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     assert_outbox_status(&db, events.updated_id, SysEventStatus::Dispatched).await?;
     assert_outbox_status(&db, events.published_id, SysEventStatus::Pending).await?;
     let after_updated = cache.snapshot();
-    assert_eq!(after_updated.generations, PageCacheGenerationSnapshot::new(4, 6, 7));
+    assert_eq!(
+        after_updated.generations,
+        PageCacheGenerationSnapshot::new(4, 6, 7)
+    );
     assert_eq!(after_updated.requests.len(), 1);
     assert_eq!(after_updated.receipts.len(), 1);
     assert_eq!(after_updated.requests[0].event_id, events.updated_id);
     assert_eq!(after_updated.requests[0].correlation_id, events.updated_id);
-    assert_eq!(after_updated.requests[0].cause, PageCacheInvalidationCause::Updated);
+    assert_eq!(
+        after_updated.requests[0].cause,
+        PageCacheInvalidationCause::Updated
+    );
     assert_eq!(
         after_updated.requests[0].scopes(),
         &[PageCacheScope::Route, PageCacheScope::Page]
@@ -301,12 +303,17 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
 
     let before_published_delivery = call_storefront(&app, &tenant, &channel).await?;
     assert_eq!(before_published_delivery.status, StatusCode::OK);
-    assert!(before_published_delivery
-        .body
-        .contains(&fixture.expected_artifact_url));
+    assert!(
+        before_published_delivery
+            .body
+            .contains(&fixture.expected_artifact_url)
+    );
     assert!(before_published_delivery.body.contains("fly_artifact_url"));
     let old_cache = cache.snapshot();
-    assert_eq!(old_cache.generations, PageCacheGenerationSnapshot::new(4, 6, 7));
+    assert_eq!(
+        old_cache.generations,
+        PageCacheGenerationSnapshot::new(4, 6, 7)
+    );
     assert_eq!(old_cache.generation_reads, 1);
     assert_eq!(old_cache.get_keys.len(), 1);
     assert_eq!(old_cache.put_keys.len(), 1);
@@ -325,14 +332,23 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     );
     assert_outbox_status(&db, events.published_id, SysEventStatus::Dispatched).await?;
     let after_published = cache.snapshot();
-    assert_eq!(after_published.generations, PageCacheGenerationSnapshot::new(5, 7, 8));
+    assert_eq!(
+        after_published.generations,
+        PageCacheGenerationSnapshot::new(5, 7, 8)
+    );
     assert_eq!(after_published.requests.len(), 2);
     assert_eq!(after_published.receipts.len(), 2);
     assert_eq!(after_published.requests[1].tenant_id, tenant_id);
     assert_eq!(after_published.requests[1].page_id, fixture.page_id);
     assert_eq!(after_published.requests[1].event_id, events.published_id);
-    assert_eq!(after_published.requests[1].correlation_id, events.published_id);
-    assert_eq!(after_published.requests[1].cause, PageCacheInvalidationCause::Published);
+    assert_eq!(
+        after_published.requests[1].correlation_id,
+        events.published_id
+    );
+    assert_eq!(
+        after_published.requests[1].cause,
+        PageCacheInvalidationCause::Published
+    );
     assert_eq!(
         after_published.requests[1].scopes(),
         &[
@@ -342,7 +358,10 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
         ]
     );
     assert_eq!(after_published.receipts[1].event_id, events.published_id);
-    assert_eq!(after_published.receipts[1].correlation_id, events.published_id);
+    assert_eq!(
+        after_published.receipts[1].correlation_id,
+        events.published_id
+    );
     assert_eq!(after_published.receipts[1].route_generation, Some(5));
     assert_eq!(after_published.receipts[1].page_generation, Some(7));
     assert_eq!(after_published.receipts[1].artifact_generation, Some(8));
@@ -354,7 +373,10 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     assert_eq!(after_rotation.body, before_published_delivery.body);
     assert!(after_rotation.body.contains(&fixture.expected_artifact_url));
     let refilled = cache.snapshot();
-    assert_eq!(refilled.generations, PageCacheGenerationSnapshot::new(5, 7, 8));
+    assert_eq!(
+        refilled.generations,
+        PageCacheGenerationSnapshot::new(5, 7, 8)
+    );
     assert_eq!(refilled.generation_reads, 2);
     assert_eq!(refilled.get_keys.len(), 2);
     assert_eq!(refilled.put_keys.len(), 2);
@@ -530,9 +552,7 @@ async fn create_reviewed_published_page(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: Some(vec!["web".to_string()]),
                 publish: false,
@@ -579,10 +599,7 @@ async fn create_reviewed_published_page(
     Ok(ReviewedFixture {
         page_id: draft.id,
         publish_operation_id: publish.operation_id,
-        expected_artifact_url: format!(
-            "/api/pages/{}/artifact?locale=en&channel=web",
-            draft.id
-        ),
+        expected_artifact_url: format!("/api/pages/{}/artifact?locale=en&channel=web", draft.id),
     })
 }
 

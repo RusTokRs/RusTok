@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     fs::{self, OpenOptions},
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::Stdio,
     sync::{Arc, Mutex},
     time::Duration,
@@ -82,11 +82,16 @@ pub struct StaticDistributionWorker {
 
 impl StaticDistributionWorker {
     pub fn from_env(execution_timeout: Duration) -> Result<Self, String> {
-        let launcher_path = required_absolute_path("RUSTOK_STATIC_DISTRIBUTION_JOB_LAUNCHER")?;
+        required_text("RUSTOK_INSTANCE_ROOT", 4_096)?;
+        let instance_root = rustok_runtime::resolve_instance_root_from_environment()
+            .map_err(|error| error.to_string())?;
+        let launcher_path =
+            required_instance_path(&instance_root, "RUSTOK_STATIC_DISTRIBUTION_JOB_LAUNCHER")?;
         let launcher_digest = required_digest("RUSTOK_STATIC_DISTRIBUTION_JOB_LAUNCHER_DIGEST")?;
-        let job_config_path = required_absolute_path("RUSTOK_STATIC_DISTRIBUTION_JOB_CONFIG")?;
+        let job_config_path =
+            required_instance_path(&instance_root, "RUSTOK_STATIC_DISTRIBUTION_JOB_CONFIG")?;
         let job_config_digest = required_digest("RUSTOK_STATIC_DISTRIBUTION_JOB_CONFIG_DIGEST")?;
-        let work_root = required_absolute_path("RUSTOK_STATIC_DISTRIBUTION_WORK_ROOT")?;
+        let work_root = instance_root.join("work/static-distribution");
         let toolchain_digest = required_digest("RUSTOK_STATIC_DISTRIBUTION_TOOLCHAIN_DIGEST")?;
         let build_target = required_text("RUSTOK_STATIC_DISTRIBUTION_BUILD_TARGET", 128)?;
         Self::new(
@@ -409,8 +414,9 @@ fn validate_outcome(outcome: &ModuleStaticDistributionCompletionOutcome) -> Resu
 pub(crate) fn validate_evidence(
     evidence: &ModuleStaticDistributionBuildEvidence,
 ) -> Result<(), ()> {
+    evidence.validate().map_err(|_| ())?;
     for (reference, digest) in [
-        (&evidence.artifact_reference, &evidence.artifact_digest),
+        (&evidence.bundle_reference, &evidence.bundle_root_digest),
         (&evidence.sbom_reference, &evidence.sbom_digest),
         (&evidence.provenance_reference, &evidence.provenance_digest),
         (&evidence.signature_reference, &evidence.signature_digest),
@@ -489,14 +495,19 @@ fn path_entry_exists(path: &Path) -> Result<bool, String> {
     }
 }
 
-fn required_absolute_path(name: &str) -> Result<PathBuf, String> {
+fn required_instance_path(instance_root: &Path, name: &str) -> Result<PathBuf, String> {
     let path =
         PathBuf::from(std::env::var(name).map_err(|_| format!("{name} must be configured"))?);
-    if path.is_absolute() {
-        Ok(path)
-    } else {
-        Err(format!("{name} must be an absolute path"))
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err(format!(
+            "{name} must be a path relative to RUSTOK_INSTANCE_ROOT"
+        ));
     }
+    Ok(instance_root.join(path))
 }
 
 fn required_digest(name: &str) -> Result<String, String> {

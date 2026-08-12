@@ -2,7 +2,9 @@ use semver::{Version, VersionReq};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use super::validation::{default_manifest_path, module_package_manifest_path, resolve_module_specs};
+use super::validation::{
+    default_manifest_path, module_package_manifest_path, resolve_module_specs,
+};
 use super::{ManifestError, ManifestManager, ManifestModuleSpec, ModulesManifest};
 
 type ModulePolicyCoRequisites = BTreeMap<String, BTreeMap<String, String>>;

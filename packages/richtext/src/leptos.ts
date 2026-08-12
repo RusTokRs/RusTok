@@ -7,6 +7,10 @@ import {
   connectRichTextFrame,
   type RichTextFrameController
 } from './frame/controller';
+import type {
+  RichTextAuthoringContextInput,
+  RichTextDirection
+} from './authoring';
 
 /**
  * Leptos' `on_mount`/`on_cleanup` adapter. The Rust component owns the iframe
@@ -20,6 +24,9 @@ export function mountLeptosRichTextFrame(
     profile: RichTextProfileId;
     document: RichTextDocument;
     messages: RichTextMessages;
+    contentLocale: string;
+    direction?: RichTextDirection;
+    spellcheck?: boolean;
     editable?: boolean;
     onDocumentChange(document: RichTextDocument): void;
     onError?(code: string, message: string): void;
@@ -27,6 +34,7 @@ export function mountLeptosRichTextFrame(
 ): {
   controller: RichTextFrameController;
   setDocument(document: RichTextDocument): void;
+  setAuthoringContext(input: RichTextAuthoringContextInput): void;
   setEditable(editable: boolean): void;
   dispose(): void;
 } {
@@ -34,6 +42,7 @@ export function mountLeptosRichTextFrame(
   return {
     controller,
     setDocument: (document) => controller.setDocument(document),
+    setAuthoringContext: (input) => controller.setAuthoringContext(input),
     setEditable: (editable) => controller.setEditable(editable),
     dispose: () => controller.destroy()
   };

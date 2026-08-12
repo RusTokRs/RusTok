@@ -1,5 +1,5 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_api::Permission;
+use rustok_api::{Action, Permission, RequestContext, Resource};
 use rustok_api::{
     AuthContext, TenantContext,
     graphql::{GraphQLError, require_module_enabled},
@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::{ModerateCommentInput, PostService};
 
+use super::query::ensure_public_blog_channel_enabled;
 use super::runtime_data::BlogGraphqlRuntimeData;
 use super::types::*;
 
@@ -221,6 +222,47 @@ impl BlogMutation {
             .await?;
 
         Ok(true)
+    }
+
+    async fn create_blog_comment(
+        &self,
+        ctx: &Context<'_>,
+        post_id: Uuid,
+        input: GqlCreateBlogCommentInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlBlogComment> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        ensure_public_blog_channel_enabled(db, ctx.data_opt::<RequestContext>(), false).await?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let runtime = ctx.data::<BlogGraphqlRuntimeData>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::new(Resource::Comments, Action::Create)],
+            "Permission denied: comments:create required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+        let public_channel_slug = ctx
+            .data_opt::<RequestContext>()
+            .and_then(|request| request.channel_slug.as_deref());
+
+        let comment = runtime
+            .comment_service(db.clone(), event_bus.clone())
+            .create_public_comment(
+                tenant_id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+                post_id,
+                public_channel_slug,
+                input.into(),
+            )
+            .await?;
+
+        Ok(comment.into())
     }
 
     async fn moderate_comment(

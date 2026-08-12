@@ -32,6 +32,8 @@ these contracts. `RoleBuildPlan` binds compiled surfaces to
 every release target. `DeploymentSettings` and `DeploymentWorkspace` keep
 backend configuration and artifact/runtime paths portable while
 `ReleasePublisherPort` leaves filesystem, HTTP, and container rollout execution
-in a host adapter consumed by installer/CLI orchestration.
+in a host adapter consumed by installer/CLI orchestration. The local filesystem
+adapter has no independent publication root; its host derives
+`<instance-root>/releases/platform` from `RUSTOK_INSTANCE_ROOT`.
 
 See [docs](docs/README.md).

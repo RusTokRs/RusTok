@@ -44,7 +44,7 @@ let task_a = spawn_projection(worker_a, Arc::clone(&start), envelope.clone());
 let task_b = spawn_projection(worker_b, Arc::clone(&start), envelope.clone());
 ${missingBlockedWorkerObservation ? '' : 'wait_for_both_workers_to_block(&test_db.control).await?;'}
 lock_txn.commit().await?;
-assert_eq!(success_count, 1
+success_count, 1,
 assert_eq!(
         failure_count, 1
 load_post_state(&test_db.db, tenant_id, post_id).await?, (1, 2)

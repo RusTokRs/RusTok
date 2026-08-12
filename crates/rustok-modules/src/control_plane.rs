@@ -30,9 +30,9 @@ use crate::{
     SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService,
     SeaOrmModuleBuildService, SeaOrmModuleCompositionService, SeaOrmModuleGovernanceService,
     SeaOrmModulePolicyRevisionConsumer, SeaOrmModulePromotionService,
-    SeaOrmModuleStaticDistributionReleaseService, SeaOrmModuleStaticDistributionRolloutService,
-    SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
-    StorageArtifactBlobStore,
+    SeaOrmModuleStaticDistributionBootstrapService, SeaOrmModuleStaticDistributionReleaseService,
+    SeaOrmModuleStaticDistributionRolloutService, SeaOrmModuleStaticDistributionService,
+    SeaOrmModuleStaticDistributionWorkerService, StorageArtifactBlobStore,
 };
 use rustok_storage::StorageRuntime;
 
@@ -244,6 +244,16 @@ impl ModuleControlPlane {
             self.db.clone(),
             authorizer,
             verifier,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the sole-owner fresh-target bootstrap importer. It only admits
+    /// one signed base preparation while both release and preparation heads are
+    /// empty; later lifecycle always uses the normal release owner.
+    pub fn static_distribution_bootstrap(&self) -> SeaOrmModuleStaticDistributionBootstrapService {
+        SeaOrmModuleStaticDistributionBootstrapService::with_infrastructure(
+            self.db.clone(),
             self.infrastructure.clone(),
         )
     }

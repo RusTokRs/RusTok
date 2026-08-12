@@ -136,8 +136,10 @@ fn blog_post_revision(version: i32) -> ReactionProviderResult<u64> {
 fn blog_reaction_catalog_v1() -> ReactionProviderResult<ReactionCatalog> {
     ReactionCatalog::try_new(
         ReactionSelectionPolicy::Single,
-        vec![ReactionKey::new(BLOG_REACTION_V1_KEY)
-            .map_err(|_| ReactionProviderError::Internal { retryable: false })?],
+        vec![
+            ReactionKey::new(BLOG_REACTION_V1_KEY)
+                .map_err(|_| ReactionProviderError::Internal { retryable: false })?,
+        ],
     )
     .map_err(|_| ReactionProviderError::Internal { retryable: false })
 }

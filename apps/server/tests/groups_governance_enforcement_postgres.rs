@@ -19,9 +19,7 @@ const POSTGRES_URL_ENV: &str = "RUSTOK_GROUPS_TEST_POSTGRES_URL";
 
 fn schema_url(base: &str, schema: &str) -> String {
     let separator = if base.contains('?') { '&' } else { '?' };
-    format!(
-        "{base}{separator}options=-csearch_path%3D{schema}%2Cpublic"
-    )
+    format!("{base}{separator}options=-csearch_path%3D{schema}%2Cpublic")
 }
 
 async fn connect(url: &str) -> DatabaseConnection {
@@ -336,14 +334,11 @@ async fn postgres_groups_governance_and_enforcement_are_replay_safe_serialized_a
     // the effective denial. They must never both commit against the same reviewed revision.
     let race_revision = membership_revision(&fixture, tenant_id, race_target_id).await;
     let race_governance = GroupGovernanceService::new(connect(&scoped_url).await);
-    let race_enforcement = GroupMembershipEnforcementCommandService::new(connect(&scoped_url).await);
+    let race_enforcement =
+        GroupMembershipEnforcementCommandService::new(connect(&scoped_url).await);
     let role_future = GroupGovernanceCommandPort::change_group_role(
         &race_governance,
-        user_write_context(
-            tenant_id,
-            owner_id,
-            format!("race-role-{}", Uuid::new_v4()),
-        ),
+        user_write_context(tenant_id, owner_id, format!("race-role-{}", Uuid::new_v4())),
         ChangeGroupRoleRequest {
             group_id,
             target_user_id: race_target_id,
@@ -377,7 +372,10 @@ async fn postgres_groups_governance_and_enforcement_are_replay_safe_serialized_a
                 membership_role(&fixture, tenant_id, race_target_id).await,
                 "moderator"
             );
-            assert_eq!(enforcement_count(&fixture, tenant_id, race_target_id).await, 0);
+            assert_eq!(
+                enforcement_count(&fixture, tenant_id, race_target_id).await,
+                0
+            );
         }
         (Err(role_error), Ok(suspension)) => {
             assert_eq!(role_error.code, "groups.membership_suspended");
@@ -386,7 +384,10 @@ async fn postgres_groups_governance_and_enforcement_are_replay_safe_serialized_a
                 membership_role(&fixture, tenant_id, race_target_id).await,
                 "member"
             );
-            assert_eq!(enforcement_count(&fixture, tenant_id, race_target_id).await, 1);
+            assert_eq!(
+                enforcement_count(&fixture, tenant_id, race_target_id).await,
+                1
+            );
         }
         (role_result, suspension_result) => panic!(
             "governance/enforcement race must produce exactly one safe commit: role={role_result:?}, suspension={suspension_result:?}"
@@ -420,8 +421,14 @@ async fn postgres_groups_governance_and_enforcement_are_replay_safe_serialized_a
     .expect("platform manager should recover ownership from a valid suspended current owner");
     assert_eq!(recovered.current_role, GroupRole::Owner);
     assert_eq!(recovered.target_user_id, replacement_owner_id);
-    assert_eq!(group_owner(&fixture, tenant_id, group_id).await, replacement_owner_id);
-    assert_eq!(membership_role(&fixture, tenant_id, owner_id).await, "admin");
+    assert_eq!(
+        group_owner(&fixture, tenant_id, group_id).await,
+        replacement_owner_id
+    );
+    assert_eq!(
+        membership_role(&fixture, tenant_id, owner_id).await,
+        "admin"
+    );
     assert_eq!(
         membership_role(&fixture, tenant_id, replacement_owner_id).await,
         "owner"

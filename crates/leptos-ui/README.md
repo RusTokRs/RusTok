@@ -10,6 +10,8 @@
 - Re-export selected `iu_leptos` components behind a consistent RusToK package boundary.
 - Keep common Leptos UI building blocks out of app-local duplication.
 - Keep presentational helpers host-driven; locale controls receive their available locales from the caller.
+- Render typed server-derived `RichTextView` projections through `RichTextHtml`
+  without loading the editor runtime or accepting arbitrary HTML strings.
 
 ## Entry points
 
@@ -27,6 +29,8 @@
 - `Label`
 - `Separator`
 - `LanguageToggle`
+- `RichTextHtml`
+- `RichTextEditorFrame`
 
 ## Interactions
 

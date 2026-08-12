@@ -11,7 +11,8 @@
       "en": "crates/rustok-blog/admin/locales/en.json",
       "ru": "crates/rustok-blog/admin/locales/ru.json"
     },
-    "adapter": "crates/rustok-blog/admin/src/ui/richtext.rs"
+    "adapter": "crates/rustok-blog/admin/src/ui/richtext.rs",
+    "shared_adapter": "crates/leptos-ui/src/richtext.rs"
   },
   "required_markers": {
     "core": [
@@ -31,9 +32,14 @@
       "pub fn BlogRichTextEditor(",
       "ReadSignal<RichTextDocument>",
       "WriteSignal<RichTextDocument>",
+      "RichTextEditorFrame",
+      "profile=\"article\".to_string()",
+      "localized_richtext_frame_copy"
+    ],
+    "shared_adapter": [
+      "pub fn RichTextEditorFrame(",
       "mount_richtext_frame",
       "\"/richtext/frame\"",
-      "\"article\"",
       "serde_json::from_str::<RichTextDocument>",
       "set_document.set(document)",
       "sandbox=\"allow-scripts\"",
@@ -67,6 +73,10 @@
   "forbidden_adapter_markers": [
     "\"discussion\"",
     "allow-same-origin",
-    "serde_json::from_str::<serde_json::Value>"
+    "serde_json::from_str::<serde_json::Value>",
+    "mount_richtext_frame",
+    "dispose_richtext_frame",
+    "sandbox=\"allow-scripts\"",
+    "serde_json::from_str"
   ]
 }

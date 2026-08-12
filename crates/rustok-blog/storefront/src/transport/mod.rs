@@ -2,7 +2,7 @@ pub mod graphql_adapter;
 pub mod native_server_adapter;
 
 use crate::core::BlogStorefrontFetchRequest;
-use crate::model::StorefrontBlogData;
+use crate::model::{BlogCommentCreateRequest, BlogCommentDetail, StorefrontBlogData};
 use leptos::prelude::ServerFnError;
 use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_transport};
 use serde::{Deserialize, Serialize};
@@ -73,6 +73,20 @@ pub async fn fetch_blog(
         selected_transport_path(),
         move || native_server_adapter::fetch_blog(native_request, comments_page),
         move || graphql_adapter::fetch_blog(request, comments_page),
+    )
+    .await
+}
+
+pub async fn create_comment(
+    token: Option<String>,
+    request: BlogCommentCreateRequest,
+) -> Result<BlogCommentDetail, BlogTransportError> {
+    let native_request = request.clone();
+    execute_selected_transport(
+        "blog_comment_create",
+        selected_transport_path(),
+        move || native_server_adapter::create_comment(native_request),
+        move || graphql_adapter::create_comment(token, request),
     )
     .await
 }

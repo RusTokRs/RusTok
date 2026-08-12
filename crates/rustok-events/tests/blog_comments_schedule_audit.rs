@@ -36,8 +36,14 @@ fn registered_contract_envelope_round_trips_without_payload_drift() {
     let envelope = ContractEventEnvelope::new(tenant_id, Some(actor_id), event)
         .expect("registered Blog audit envelope should validate");
 
-    assert_eq!(envelope.event_type(), BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_TYPE);
-    assert_eq!(envelope.schema_version(), BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION);
+    assert_eq!(
+        envelope.event_type(),
+        BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_TYPE
+    );
+    assert_eq!(
+        envelope.schema_version(),
+        BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION
+    );
     assert_eq!(envelope.tenant_id(), tenant_id);
 
     let encoded = serde_json::to_vec(&envelope).expect("envelope should serialize");

@@ -39,10 +39,9 @@ async fn connect(url: &str) -> DatabaseConnection {
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply for localization concurrency evidence");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply for localization concurrency evidence",
+        );
     }
 }
 
@@ -117,15 +116,7 @@ async fn localization_write_and_suspension_serialize_on_group_owner_lock_postgre
         let group_id = Uuid::new_v4();
         let owner_id = Uuid::new_v4();
         let admin_id = Uuid::new_v4();
-        seed_group_fixture(
-            &fixture_db,
-            tenant_id,
-            group_id,
-            owner_id,
-            admin_id,
-            round,
-        )
-        .await;
+        seed_group_fixture(&fixture_db, tenant_id, group_id, owner_id, admin_id, round).await;
 
         let setup_localization = GroupLocalizationService::new(fixture_db.clone());
         GroupLocalizationCommandPort::upsert_group_translation(

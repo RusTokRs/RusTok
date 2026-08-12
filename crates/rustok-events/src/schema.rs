@@ -576,7 +576,8 @@ const MODULE_STATIC_DISTRIBUTION_BUILD_COMPLETED_FIELDS: &[FieldSchema] = &[
     field!("composition_revision", "uint64"),
     field!("composition_digest", "string"),
     field!("outcome", "string"),
-    field!("result_digest", "string", optional),
+    field!("bundle_root_digest", "string", optional),
+    field!("role_set_digest", "string", optional),
     field!("completion_digest", "string"),
 ];
 const MODULE_STATIC_DISTRIBUTION_RELEASE_ACTIVATED_FIELDS: &[FieldSchema] = &[
@@ -586,7 +587,8 @@ const MODULE_STATIC_DISTRIBUTION_RELEASE_ACTIVATED_FIELDS: &[FieldSchema] = &[
     field!("release_revision", "uint64"),
     field!("composition_revision", "uint64"),
     field!("composition_digest", "string"),
-    field!("artifact_digest", "string"),
+    field!("bundle_root_digest", "string"),
+    field!("role_set_digest", "string"),
     field!("policy_revision", "string"),
 ];
 const MODULE_STATIC_DISTRIBUTION_ROLLBACK_BUILD_QUEUED_FIELDS: &[FieldSchema] = &[
@@ -613,7 +615,8 @@ const MODULE_STATIC_DISTRIBUTION_ROLLOUT_REQUESTED_FIELDS: &[FieldSchema] = &[
     field!("rollout_state_revision", "uint64"),
     field!("composition_revision", "uint64"),
     field!("composition_digest", "string"),
-    field!("artifact_digest", "string"),
+    field!("bundle_root_digest", "string"),
+    field!("role_set_digest", "string"),
     field!("topology_digest", "string"),
     field!("policy_revision", "string"),
     field!("target_nodes", "uint64"),

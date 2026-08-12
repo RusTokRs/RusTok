@@ -2,7 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use rustok_channel::ChannelModule;
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -125,7 +125,10 @@ async fn rebuild_rejects_reviewed_runtime_mismatch_atomically() -> TestResult<()
             },
         )
         .await;
-    assert!(matches!(result, Err(PagesError::PublishRuntimeReviewInvalid(_))));
+    assert!(matches!(
+        result,
+        Err(PagesError::PublishRuntimeReviewInvalid(_))
+    ));
 
     let after = repair_state(&db, tenant_id, fixture.page_id).await?;
     assert_eq!(after, before);
@@ -174,10 +177,11 @@ async fn activation_rejects_invalid_replacement_atomically() -> TestResult<()> {
     let service = page_service(&db);
     let fixture = rebuild_fixture(&service, &db, tenant_id).await?;
 
-    let replacement = page_static_landing_artifact::Entity::find_by_id(fixture.rebuilt.rebuilt_artifact_id)
-        .one(&db)
-        .await?
-        .ok_or_else(|| std::io::Error::other("rebuilt replacement artifact is missing"))?;
+    let replacement =
+        page_static_landing_artifact::Entity::find_by_id(fixture.rebuilt.rebuilt_artifact_id)
+            .one(&db)
+            .await?
+            .ok_or_else(|| std::io::Error::other("rebuilt replacement artifact is missing"))?;
     let mut replacement_active: page_static_landing_artifact::ActiveModel = replacement.into();
     replacement_active.artifact_hash = Set("0".repeat(64));
     replacement_active.update(&db).await?;
@@ -300,9 +304,7 @@ async fn publish_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -422,9 +424,7 @@ async fn repair_state(
             .count(db)
             .await?,
         activation_receipts: page_artifact_binding_replacement_operation::Entity::find()
-            .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
-            )
+            .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id))
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(page_id))
             .count(db)
             .await?,

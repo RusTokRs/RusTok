@@ -97,7 +97,10 @@ fn locale_page(
                 .expect("locale evidence cursor should be an integer") as usize
         })
         .unwrap_or(0);
-    assert!(ordinal < page_count, "locale cursor must remain within fixture pages");
+    assert!(
+        ordinal < page_count,
+        "locale cursor must remain within fixture pages"
+    );
     let mutation = locale_mutation(
         request.tenant_id(),
         &locale,
@@ -485,18 +488,12 @@ async fn job_state(db: &DatabaseConnection, job_id: Uuid) -> String {
 async fn job_attempt_count(db: &DatabaseConnection, job_id: Uuid) -> i64 {
     scalar_i64(
         db,
-        &format!(
-            "SELECT attempt_count AS value FROM index_jobs WHERE job_id = '{job_id}'"
-        ),
+        &format!("SELECT attempt_count AS value FROM index_jobs WHERE job_id = '{job_id}'"),
     )
     .await
 }
 
-async fn job_scope_count(
-    db: &DatabaseConnection,
-    scope_kind: &str,
-    locale: Option<&str>,
-) -> i64 {
+async fn job_scope_count(db: &DatabaseConnection, scope_kind: &str, locale: Option<&str>) -> i64 {
     let locale_clause = match locale {
         Some(locale) => format!("locale_key = '{locale}'"),
         None => "locale_key IS NULL".to_owned(),

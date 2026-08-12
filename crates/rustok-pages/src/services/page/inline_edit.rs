@@ -7,9 +7,10 @@ use std::{
 
 use rustok_api::{Action, Resource, SHA256_DIGEST_BYTES, fixed_work_sha256_eq, hmac_sha256};
 use rustok_core::{
-    CONTENT_FORMAT_GRAPESJS, SecurityActorKind, SecurityContext,
+    SecurityActorKind, SecurityContext,
     error::{ErrorKind, RichError},
 };
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -19,9 +20,9 @@ use crate::entities::{page_body, page_translation};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_owned_scope;
 
+use super::PageService;
 use super::document::{ensure_document_is_mutable, page_document_revision};
 use super::helpers::normalize_locale;
-use super::PageService;
 
 pub const PAGE_INLINE_EDIT_GRANT_INVALID: &str = "PAGE_INLINE_EDIT_GRANT_INVALID";
 pub const PAGE_INLINE_EDIT_GRANT_EXPIRED: &str = "PAGE_INLINE_EDIT_GRANT_EXPIRED";
@@ -167,8 +168,8 @@ impl PageInlineEditKeyring {
     }
 
     pub fn with_ttl(mut self, ttl: Duration) -> Result<Self, PageInlineEditConfigError> {
-        let ttl_ms = u64::try_from(ttl.as_millis())
-            .map_err(|_| PageInlineEditConfigError::InvalidTtl)?;
+        let ttl_ms =
+            u64::try_from(ttl.as_millis()).map_err(|_| PageInlineEditConfigError::InvalidTtl)?;
         if ttl_ms == 0 || ttl_ms > MAX_PAGE_INLINE_EDIT_GRANT_TTL_MS {
             return Err(PageInlineEditConfigError::InvalidTtl);
         }
@@ -247,8 +248,8 @@ impl PageInlineEditKeyring {
         if signed.payload.len() > MAX_PAGE_INLINE_EDIT_PAYLOAD_BYTES {
             return Err(invalid_inline_edit_grant());
         }
-        let key_id = PageInlineEditKeyId::new(&signed.key_id)
-            .map_err(|_| invalid_inline_edit_grant())?;
+        let key_id =
+            PageInlineEditKeyId::new(&signed.key_id).map_err(|_| invalid_inline_edit_grant())?;
         let secret = self
             .keys
             .get(&key_id)
@@ -296,12 +297,7 @@ pub struct PageInlineEditGrantClaims {
 }
 
 impl PageInlineEditGrantClaims {
-    fn validate(
-        &self,
-        now_unix_ms: u64,
-        max_ttl_ms: u64,
-        clock_skew_ms: u64,
-    ) -> PagesResult<()> {
+    fn validate(&self, now_unix_ms: u64, max_ttl_ms: u64, clock_skew_ms: u64) -> PagesResult<()> {
         let ttl_ms = self
             .expires_at_unix_ms
             .checked_sub(self.issued_at_unix_ms)
@@ -411,12 +407,7 @@ impl PageService {
         self.ensure_builder_inline_edit_enabled_for_tenant(tenant_id)
             .await?;
         let page = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(
-            &security,
-            Resource::Pages,
-            Action::Update,
-            page.author_id,
-        )?;
+        enforce_owned_scope(&security, Resource::Pages, Action::Update, page.author_id)?;
         if security.actor_kind != SecurityActorKind::User || security.user_id.is_none() {
             return Err(inline_edit_context_mismatch(
                 "Authenticated user authority is required for inline editing",
@@ -447,7 +438,7 @@ impl PageService {
                     "Inline editing requires an existing localized page body",
                 )
             })?;
-        if body.format != CONTENT_FORMAT_GRAPESJS {
+        if body.format != PAGE_BUILDER_DOCUMENT_FORMAT {
             return Err(inline_edit_document_unavailable(
                 "Inline editing accepts only the current Fly/GrapesJS document format",
             ));
@@ -566,9 +557,8 @@ mod tests {
 
     #[test]
     fn grant_roundtrip_binds_auth_and_edit_sessions_and_redacts_secret_material() {
-        let keyring = PageInlineEditKeyring::single(secret(
-            "pages-inline-edit-secret-material-00000001",
-        ));
+        let keyring =
+            PageInlineEditKeyring::single(secret("pages-inline-edit-secret-material-00000001"));
         let issued = keyring.issue(context(), 1_000).expect("issued");
         let verified = keyring
             .verify(issued.authorization_proof(), 2_000)
@@ -581,9 +571,8 @@ mod tests {
 
     #[test]
     fn grant_rejects_tampering_and_expiry() {
-        let keyring = PageInlineEditKeyring::single(secret(
-            "pages-inline-edit-secret-material-00000002",
-        ));
+        let keyring =
+            PageInlineEditKeyring::single(secret("pages-inline-edit-secret-material-00000002"));
         let issued = keyring.issue(context(), 1_000).expect("issued");
         let mut signed: SignedPageInlineEditGrant =
             serde_json::from_str(issued.authorization_proof()).expect("signed");
@@ -599,9 +588,8 @@ mod tests {
 
     #[test]
     fn grant_rejects_nil_identity() {
-        let keyring = PageInlineEditKeyring::single(secret(
-            "pages-inline-edit-secret-material-00000003",
-        ));
+        let keyring =
+            PageInlineEditKeyring::single(secret("pages-inline-edit-secret-material-00000003"));
         let mut invalid = context();
         invalid.auth_session_id = Uuid::nil();
         assert!(keyring.issue(invalid, 1_000).is_err());

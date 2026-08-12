@@ -1,6 +1,7 @@
 use chrono::Utc;
 use rustok_api::{Action, Resource};
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, SecurityContext};
+use rustok_core::SecurityContext;
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_page_builder::runtime_scenario_release::{
     PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE, PageBuilderRuntimeScenarioReleaseRequest,
     RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleasePolicy,
@@ -331,7 +332,7 @@ impl PageBuilderScenarioBaselineService {
         };
         let body = page_body::Entity::find()
             .filter(page_body::Column::PageId.eq(page_id))
-            .filter(page_body::Column::Format.eq(CONTENT_FORMAT_GRAPESJS))
+            .filter(page_body::Column::Format.eq(PAGE_BUILDER_DOCUMENT_FORMAT))
             .order_by_desc(page_body::Column::UpdatedAt)
             .one(&self.db)
             .await?
@@ -368,7 +369,7 @@ impl PageBuilderScenarioBaselineService {
         };
         let bodies = page_body::Entity::find()
             .filter(page_body::Column::PageId.eq(page_id))
-            .filter(page_body::Column::Format.eq(CONTENT_FORMAT_GRAPESJS))
+            .filter(page_body::Column::Format.eq(PAGE_BUILDER_DOCUMENT_FORMAT))
             .all(&self.db)
             .await?;
         if bodies.is_empty() {

@@ -30,33 +30,129 @@ pub const REACTIONS_EVENT_SCHEMAS: &[EventSchema] = &[
 ];
 
 const REACTIONS_ACTOR_STATE_CHANGED_FIELDS: &[FieldSchema] = &[
-    FieldSchema { name: "command_id", data_type: "uuid", optional: false },
-    FieldSchema { name: "source_slug", data_type: "string", optional: false },
-    FieldSchema { name: "subject_kind", data_type: "string", optional: false },
-    FieldSchema { name: "subject_id", data_type: "uuid", optional: false },
-    FieldSchema { name: "subject_revision", data_type: "int64", optional: false },
-    FieldSchema { name: "actor_id", data_type: "uuid", optional: false },
-    FieldSchema { name: "requested_reaction", data_type: "string", optional: false },
-    FieldSchema { name: "action", data_type: "string", optional: false },
-    FieldSchema { name: "state_revision", data_type: "int64", optional: false },
-    FieldSchema { name: "selected_keys", data_type: "array", optional: false },
-    FieldSchema { name: "added_keys", data_type: "array", optional: false },
-    FieldSchema { name: "removed_keys", data_type: "array", optional: false },
+    FieldSchema {
+        name: "command_id",
+        data_type: "uuid",
+        optional: false,
+    },
+    FieldSchema {
+        name: "source_slug",
+        data_type: "string",
+        optional: false,
+    },
+    FieldSchema {
+        name: "subject_kind",
+        data_type: "string",
+        optional: false,
+    },
+    FieldSchema {
+        name: "subject_id",
+        data_type: "uuid",
+        optional: false,
+    },
+    FieldSchema {
+        name: "subject_revision",
+        data_type: "int64",
+        optional: false,
+    },
+    FieldSchema {
+        name: "actor_id",
+        data_type: "uuid",
+        optional: false,
+    },
+    FieldSchema {
+        name: "requested_reaction",
+        data_type: "string",
+        optional: false,
+    },
+    FieldSchema {
+        name: "action",
+        data_type: "string",
+        optional: false,
+    },
+    FieldSchema {
+        name: "state_revision",
+        data_type: "int64",
+        optional: false,
+    },
+    FieldSchema {
+        name: "selected_keys",
+        data_type: "array",
+        optional: false,
+    },
+    FieldSchema {
+        name: "added_keys",
+        data_type: "array",
+        optional: false,
+    },
+    FieldSchema {
+        name: "removed_keys",
+        data_type: "array",
+        optional: false,
+    },
 ];
 
 const REACTIONS_SUBJECT_RECONCILED_FIELDS: &[FieldSchema] = &[
-    FieldSchema { name: "repair_command_id", data_type: "uuid", optional: false },
-    FieldSchema { name: "source_slug", data_type: "string", optional: false },
-    FieldSchema { name: "subject_kind", data_type: "string", optional: false },
-    FieldSchema { name: "subject_id", data_type: "uuid", optional: false },
-    FieldSchema { name: "subject_revision", data_type: "int64", optional: false },
-    FieldSchema { name: "catalog_revision", data_type: "int64", optional: false },
-    FieldSchema { name: "actor_states_scanned", data_type: "int64", optional: false },
-    FieldSchema { name: "aggregate_rows_before", data_type: "int64", optional: false },
-    FieldSchema { name: "aggregate_rows_after", data_type: "int64", optional: false },
-    FieldSchema { name: "changed_key_count", data_type: "int64", optional: false },
-    FieldSchema { name: "changed_keys", data_type: "array", optional: false },
-    FieldSchema { name: "changed_keys_truncated", data_type: "bool", optional: false },
+    FieldSchema {
+        name: "repair_command_id",
+        data_type: "uuid",
+        optional: false,
+    },
+    FieldSchema {
+        name: "source_slug",
+        data_type: "string",
+        optional: false,
+    },
+    FieldSchema {
+        name: "subject_kind",
+        data_type: "string",
+        optional: false,
+    },
+    FieldSchema {
+        name: "subject_id",
+        data_type: "uuid",
+        optional: false,
+    },
+    FieldSchema {
+        name: "subject_revision",
+        data_type: "int64",
+        optional: false,
+    },
+    FieldSchema {
+        name: "catalog_revision",
+        data_type: "int64",
+        optional: false,
+    },
+    FieldSchema {
+        name: "actor_states_scanned",
+        data_type: "int64",
+        optional: false,
+    },
+    FieldSchema {
+        name: "aggregate_rows_before",
+        data_type: "int64",
+        optional: false,
+    },
+    FieldSchema {
+        name: "aggregate_rows_after",
+        data_type: "int64",
+        optional: false,
+    },
+    FieldSchema {
+        name: "changed_key_count",
+        data_type: "int64",
+        optional: false,
+    },
+    FieldSchema {
+        name: "changed_keys",
+        data_type: "array",
+        optional: false,
+    },
+    FieldSchema {
+        name: "changed_keys_truncated",
+        data_type: "bool",
+        optional: false,
+    },
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
@@ -199,25 +295,44 @@ impl ValidateEvent for ReactionsEvent {
                 validate_segment("subject_kind", subject_kind)?;
                 validators::validate_range("subject_revision", *subject_revision, 1, i64::MAX)?;
                 validators::validate_range("catalog_revision", *catalog_revision, 1, i64::MAX)?;
-                validators::validate_range("actor_states_scanned", *actor_states_scanned, 0, i64::MAX)?;
-                validators::validate_range("aggregate_rows_before", *aggregate_rows_before, 0, i64::MAX)?;
-                validators::validate_range("aggregate_rows_after", *aggregate_rows_after, 0, i64::MAX)?;
+                validators::validate_range(
+                    "actor_states_scanned",
+                    *actor_states_scanned,
+                    0,
+                    i64::MAX,
+                )?;
+                validators::validate_range(
+                    "aggregate_rows_before",
+                    *aggregate_rows_before,
+                    0,
+                    i64::MAX,
+                )?;
+                validators::validate_range(
+                    "aggregate_rows_after",
+                    *aggregate_rows_after,
+                    0,
+                    i64::MAX,
+                )?;
                 validators::validate_range("changed_key_count", *changed_key_count, 1, i64::MAX)?;
                 validate_keys("changed_keys", changed_keys)?;
                 if changed_keys.is_empty() {
                     return Err(EventValidationError::InvalidValue(
                         "changed_keys",
-                        "a reconciliation event must contain a bounded changed-key sample".to_string(),
+                        "a reconciliation event must contain a bounded changed-key sample"
+                            .to_string(),
                     ));
                 }
-                if !*changed_keys_truncated && i64::try_from(changed_keys.len()).ok() != Some(*changed_key_count) {
+                if !*changed_keys_truncated
+                    && i64::try_from(changed_keys.len()).ok() != Some(*changed_key_count)
+                {
                     return Err(EventValidationError::InvalidValue(
                         "changed_key_count",
                         "untruncated changed-key count must equal the sample length".to_string(),
                     ));
                 }
                 if *changed_keys_truncated
-                    && i64::try_from(changed_keys.len()).is_ok_and(|length| length >= *changed_key_count)
+                    && i64::try_from(changed_keys.len())
+                        .is_ok_and(|length| length >= *changed_key_count)
                 {
                     return Err(EventValidationError::InvalidValue(
                         "changed_keys_truncated",
@@ -230,10 +345,7 @@ impl ValidateEvent for ReactionsEvent {
     }
 }
 
-fn validate_segment(
-    field: &'static str,
-    value: &str,
-) -> Result<(), EventValidationError> {
+fn validate_segment(field: &'static str, value: &str) -> Result<(), EventValidationError> {
     validators::validate_not_empty(field, value)?;
     validators::validate_max_length(field, value, MAX_REACTIONS_EVENT_SEGMENT_BYTES)?;
     if value.trim() != value
@@ -242,10 +354,7 @@ fn validate_segment(
         || value.ends_with('-')
         || value.ends_with('_')
         || !value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || byte == b'-'
-                || byte == b'_'
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'_'
         })
     {
         return Err(EventValidationError::InvalidCharacters(field));
@@ -253,10 +362,7 @@ fn validate_segment(
     Ok(())
 }
 
-fn validate_keys(
-    field: &'static str,
-    keys: &[String],
-) -> Result<(), EventValidationError> {
+fn validate_keys(field: &'static str, keys: &[String]) -> Result<(), EventValidationError> {
     if keys.len() > MAX_REACTIONS_EVENT_KEYS {
         return Err(EventValidationError::InvalidValue(
             field,

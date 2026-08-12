@@ -39,8 +39,8 @@ const SERVER_FN_PATH: &str = "/api/fn/pages/route-decision";
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[tokio::test]
-async fn registered_host_route_decision_respects_admission_aliases_and_terminal_states(
-) -> TestResult<()> {
+async fn registered_host_route_decision_respects_admission_aliases_and_terminal_states()
+-> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_db(tenant_id).await?;
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
@@ -81,16 +81,7 @@ async fn registered_host_route_decision_respects_admission_aliases_and_terminal_
     assert_eq!(missing.status, StatusCode::OK);
     assert!(missing.body.contains("not_found"));
 
-    insert_route_alias(
-        &db,
-        tenant_id,
-        page_id,
-        "removed",
-        "gone",
-        None,
-        None,
-    )
-    .await?;
+    insert_route_alias(&db, tenant_id, page_id, "removed", "gone", None, None).await?;
     let gone = call_route(&app, &tenant, &channel_context, "removed", "en").await?;
     assert_eq!(gone.status, StatusCode::OK);
     assert!(gone.body.contains("gone"));
@@ -221,9 +212,10 @@ async fn create_and_rename_published_page(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: "<main>host-route-source</main>".to_string(),
-                    format: Some("html".to_string()),
-                    content_json: None,
+                    document: serde_json::json!({
+                        "pages": [],
+                        "test_content": "host-route-source",
+                    }),
                 }),
                 channel_slugs: Some(vec!["web".to_string()]),
                 publish: false,

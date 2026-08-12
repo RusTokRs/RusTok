@@ -5,10 +5,10 @@
   "scope": "GraphQL, REST, and host-runtime composition for exact reply-create audience facts",
   "transport_context_file": "crates/rustok-forum/src/reply_create_transport.rs",
   "graphql_runtime_file": "crates/rustok-forum/src/graphql/runtime_data.rs",
-  "graphql_legacy_mutation_file": "crates/rustok-forum/src/graphql/mutation.rs",
+  "graphql_standard_mutation_file": "crates/rustok-forum/src/graphql/mutation.rs",
   "graphql_command_mutation_file": "crates/rustok-forum/src/graphql/content_commands.rs",
   "http_runtime_file": "crates/rustok-forum/src/controllers/mod.rs",
-  "http_legacy_create_file": "crates/rustok-forum/src/controllers/replies.rs",
+  "http_standard_create_file": "crates/rustok-forum/src/controllers/replies.rs",
   "http_command_create_file": "crates/rustok-forum/src/controllers/content_commands.rs",
   "owner_enforcement_file": "crates/rustok-forum/src/services/reply_facade.rs",
   "owner_note": "crates/rustok-forum/docs/forum-20aw-reply-create-audience-transport-composition.md",
@@ -22,15 +22,15 @@
     "read_deadline_semantics": true,
     "permission_claim_forwarding": true,
     "resolved_route_channel_forwarding": true,
-    "graphql_legacy_create_composed": true,
+    "graphql_standard_create_composed": true,
     "graphql_command_create_composed": true,
-    "rest_legacy_create_composed": true,
+    "rest_standard_create_composed": true,
     "rest_command_create_composed": true,
     "graphql_runtime_facts_consumed": true,
     "http_runtime_facts_consumed": true,
     "host_extension_facts_reused": true,
     "missing_provider_fail_closed": true,
-    "local_policy_compatibility_preserved": true,
+    "local_policy_semantics_preserved": true,
     "owner_authorization_before_writes_preserved": true,
     "migration_changed": false,
     "reply_create_dto_changed": false,
@@ -64,6 +64,6 @@
       "node scripts/verify/verify-forum-reply-create-audience-enforcement.mjs",
       "cargo xtask module validate forum"
     ],
-    "execution_status": "not_run_by_implementation_agent"
+    "execution_status": "source_verified_runtime_pending"
   }
 }

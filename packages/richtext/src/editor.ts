@@ -20,11 +20,13 @@ import type {
   RichTextDocument,
   RichTextProfileManifest
 } from './generated/contracts';
+import type { RichTextAuthoringContext } from './authoring';
 
 export interface CreateRichTextEditorOptions {
   element: HTMLElement;
   profile: RichTextProfileManifest;
   document: RichTextDocument;
+  authoringContext: RichTextAuthoringContext;
   editable: boolean;
   onChange(document: RichTextDocument): void;
   onFocusChange(focused: boolean): void;
@@ -43,7 +45,11 @@ export function createRichTextEditor(
       attributes: {
         class: 'richtext-editor__content',
         role: 'textbox',
-        'aria-multiline': 'true'
+        'aria-multiline': 'true',
+        'aria-readonly': String(!options.editable),
+        lang: options.authoringContext.locale,
+        dir: options.authoringContext.direction,
+        spellcheck: String(options.authoringContext.spellcheck)
       }
     },
     onUpdate: ({ editor }) => {
@@ -52,6 +58,21 @@ export function createRichTextEditor(
     onFocus: () => options.onFocusChange(true),
     onBlur: () => options.onFocusChange(false)
   });
+}
+
+export function setEditorAuthoringContext(
+  editor: Editor,
+  context: RichTextAuthoringContext
+): void {
+  const element = editor.view.dom;
+  element.lang = context.locale;
+  element.dir = context.direction;
+  element.spellcheck = context.spellcheck;
+}
+
+export function setEditorEditable(editor: Editor, editable: boolean): void {
+  editor.setEditable(editable);
+  editor.view.dom.setAttribute('aria-readonly', String(!editable));
 }
 
 export function extensionsForProfile(

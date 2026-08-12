@@ -4,7 +4,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use chrono::{Duration as ChronoDuration, Utc};
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::{OutboxModule, OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
@@ -18,8 +18,8 @@ use rustok_pages::entities::{
 };
 use rustok_pages::services::PageService;
 use rustok_pages::{
-    PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT,
-    PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT, PAGES_CACHE_ENTITY_KIND, PagesError, PagesModule,
+    PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT, PAGE_ARTIFACT_REBUILD_IDEMPOTENCY_CONFLICT,
+    PAGES_CACHE_ENTITY_KIND, PagesError, PagesModule,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
@@ -48,10 +48,7 @@ impl TestDatabase {
             return Ok(None);
         };
         let control = connect(&database_url).await?;
-        let schema_name = format!(
-            "rustok_pages_explicit_repair_{}",
-            Uuid::new_v4().simple()
-        );
+        let schema_name = format!("rustok_pages_explicit_repair_{}", Uuid::new_v4().simple());
         control
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;
@@ -144,9 +141,7 @@ async fn explicit_repair_receipts_and_activation_are_atomic_on_postgres() -> Tes
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -282,7 +277,10 @@ async fn explicit_repair_receipts_and_activation_are_atomic_on_postgres() -> Tes
         .await?;
     assert!(rebuild_replay.replayed);
     assert_eq!(rebuild_replay.operation_id, rebuilt.operation_id);
-    assert_eq!(rebuild_replay.rebuilt_artifact_id, rebuilt.rebuilt_artifact_id);
+    assert_eq!(
+        rebuild_replay.rebuilt_artifact_id,
+        rebuilt.rebuilt_artifact_id
+    );
 
     let rebuild_conflict = service
         .rebuild_immutable_artifact(
@@ -339,9 +337,7 @@ async fn explicit_repair_receipts_and_activation_are_atomic_on_postgres() -> Tes
     ));
     assert_eq!(
         page_artifact_binding_replacement_operation::Entity::find()
-            .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
-            )
+            .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),)
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(draft.id))
             .count(&db)
             .await?,
@@ -374,7 +370,10 @@ async fn explicit_repair_receipts_and_activation_are_atomic_on_postgres() -> Tes
     assert!(!replaced.replayed);
     assert_eq!(replaced.rebuild_operation_id, rebuilt.operation_id);
     assert_eq!(replaced.previous_artifact_id, original_artifact.id);
-    assert_eq!(replaced.replacement_artifact_id, rebuilt.rebuilt_artifact_id);
+    assert_eq!(
+        replaced.replacement_artifact_id,
+        rebuilt.rebuilt_artifact_id
+    );
     assert_eq!(replaced.version, page_before.version + 1);
 
     let binding_after =
@@ -416,9 +415,7 @@ async fn explicit_repair_receipts_and_activation_are_atomic_on_postgres() -> Tes
     assert_eq!(activation_replay.version, replaced.version);
     assert_eq!(
         page_artifact_binding_replacement_operation::Entity::find()
-            .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
-            )
+            .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),)
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(draft.id))
             .count(&db)
             .await?,
@@ -453,9 +450,7 @@ async fn explicit_repair_receipts_and_activation_are_atomic_on_postgres() -> Tes
     ));
     assert_eq!(
         page_artifact_binding_replacement_operation::Entity::find()
-            .filter(
-                page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),
-            )
+            .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id),)
             .filter(page_artifact_binding_replacement_operation::Column::PageId.eq(draft.id))
             .count(&db)
             .await?,
@@ -644,7 +639,12 @@ async fn assert_activation_receipt_conflict_rolls_back_page_and_outbox(
             .version,
         page_before.version
     );
-    assert!(SysEvents::find_by_id(rolled_back_event_id).one(db).await?.is_none());
+    assert!(
+        SysEvents::find_by_id(rolled_back_event_id)
+            .one(db)
+            .await?
+            .is_none()
+    );
     assert_eq!(
         page_artifact_binding_replacement_operation::Entity::find()
             .filter(page_artifact_binding_replacement_operation::Column::TenantId.eq(tenant_id))

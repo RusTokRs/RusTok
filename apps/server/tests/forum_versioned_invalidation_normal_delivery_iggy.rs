@@ -610,7 +610,9 @@ async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixtur
                 category_id: category.id,
                 title: format!("D10 normal delivery {TOPIC_MARKER}"),
                 slug: Some("d10-normal-delivery-topic".to_string()),
-                body: RichTextDocument::single_paragraph(format!("Current Forum owner body {TOPIC_MARKER}")),
+                body: RichTextDocument::single_paragraph(format!(
+                    "Current Forum owner body {TOPIC_MARKER}"
+                )),
                 metadata: json!({}),
                 tags: Vec::new(),
                 channel_slugs: None,
@@ -979,13 +981,15 @@ async fn load_checkpoint(
             vec![tenant_id.into()],
         ))
         .await?;
-    row.map(|row| -> std::result::Result<CheckpointSnapshot, sea_orm::DbErr> {
-        Ok(CheckpointSnapshot {
-            owner_revision: row.try_get("", "owner_revision")?,
-            event_id: row.try_get("", "event_id")?,
-            outcome: row.try_get("", "outcome")?,
-        })
-    })
+    row.map(
+        |row| -> std::result::Result<CheckpointSnapshot, sea_orm::DbErr> {
+            Ok(CheckpointSnapshot {
+                owner_revision: row.try_get("", "owner_revision")?,
+                event_id: row.try_get("", "event_id")?,
+                outcome: row.try_get("", "outcome")?,
+            })
+        },
+    )
     .transpose()
     .map_err(Into::into)
 }

@@ -126,12 +126,6 @@ pub(crate) struct ProductStorefrontIndexBudgetedProjectionExecutor {
 }
 
 impl ProductStorefrontIndexBudgetedProjectionExecutor {
-    pub(crate) fn new(shadow: ProductStorefrontIndexShadowExecutor) -> Self {
-        Self {
-            phases: Arc::new(shadow),
-        }
-    }
-
     #[cfg(test)]
     pub(crate) fn from_phases(phases: Arc<dyn ProductStorefrontIndexProjectionPhases>) -> Self {
         Self { phases }

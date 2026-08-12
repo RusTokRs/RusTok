@@ -397,7 +397,7 @@
       "module_slug": "forum",
       "crate": "rustok-forum",
       "provider_module": "page-builder",
-      "contract": "grapesjs_v1",
+      "contract": "grapesjs",
       "contract_version": "1.0",
       "builder_contract_version": "1.0",
       "consumer_min_version": "1.0",

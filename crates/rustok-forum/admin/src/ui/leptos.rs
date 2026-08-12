@@ -13,7 +13,7 @@ use crate::core::{
     ForumAdminCategoryRenderLabels, ForumAdminCollectionState, ForumAdminFormError,
     ForumAdminFormErrorLabels, ForumAdminHeaderLabels, ForumAdminMetricSurface,
     ForumAdminQuerySurface, ForumAdminSeoSurface, ForumAdminTitleEnvelopeLabels,
-    ForumAdminTopicRenderLabels, TopicFormSnapshot, category_card_view_model,
+    ForumAdminTopicRenderLabels, ReplyFormSnapshot, TopicFormSnapshot, category_card_view_model,
     category_select_options, category_sidebar_total_count, category_sidebar_view_model,
     format_count, forum_admin_action_button_class, forum_admin_busy_key,
     forum_admin_category_form_labels, forum_admin_category_matrix_labels,
@@ -124,6 +124,21 @@ pub fn ForumAdmin() -> impl IntoView {
         "forum.error.saveTopic",
         "Failed to save topic",
     );
+    let reply_required_error = t(
+        ui_locale.as_deref(),
+        "forum.error.replyRequired",
+        "Reply content is required.",
+    );
+    let reply_topic_required_error = t(
+        ui_locale.as_deref(),
+        "forum.error.replyTopicRequired",
+        "Open a topic before posting a reply.",
+    );
+    let save_reply_error = t(
+        ui_locale.as_deref(),
+        "forum.error.saveReply",
+        "Failed to post reply",
+    );
     let delete_category_error = t(
         ui_locale.as_deref(),
         "forum.error.deleteCategory",
@@ -162,6 +177,7 @@ pub fn ForumAdmin() -> impl IntoView {
     let (topic_body, set_topic_body) = signal(RichTextDocument::empty());
     let (topic_tags, set_topic_tags) = signal(String::new());
     let (topic_filter_category_id, set_topic_filter_category_id) = signal(String::new());
+    let (reply_body, set_reply_body) = signal(RichTextDocument::empty());
 
     let categories = local_resource(
         move || {
@@ -483,6 +499,44 @@ pub fn ForumAdmin() -> impl IntoView {
         });
     };
 
+    let submit_reply = Callback::new(move |ev: SubmitEvent| {
+        ev.prevent_default();
+        set_error.set(None);
+        let Some(topic_id) = editing_topic_id.get_untracked() else {
+            set_error.set(Some(reply_topic_required_error.clone()));
+            return;
+        };
+        let Some(draft) = (ReplyFormSnapshot {
+            locale: topic_locale.get_untracked(),
+            content: reply_body.get_untracked(),
+        })
+        .to_draft() else {
+            set_error.set(Some(reply_required_error.clone()));
+            return;
+        };
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let save_reply_error = save_reply_error.clone();
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Reply,
+            ForumAdminBusyAction::Save,
+            Some(topic_id.as_str()),
+        )));
+        spawn_local(async move {
+            match transport::create_reply(token_value, tenant_value, topic_id, draft).await {
+                Ok(_) => {
+                    set_reply_body.set(RichTextDocument::empty());
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(err) => set_error.set(Some(forum_admin_transport_error_message(
+                    save_reply_error.as_str(),
+                    err,
+                ))),
+            }
+            set_busy_key.set(None);
+        });
+    });
+
     let delete_category_query_writer = query_writer.clone();
     let delete_category = Callback::new(move |category_id: String| {
         let token_value = token.get_untracked();
@@ -702,6 +756,8 @@ pub fn ForumAdmin() -> impl IntoView {
                         categories=categories
                         topics=topics
                         replies=replies
+                        reply_body=reply_body
+                        set_reply_body=set_reply_body
                         busy_key=busy_key
                         editing_id=editing_topic_id
                         locale=topic_locale
@@ -721,6 +777,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         on_edit=open_topic
                         on_delete=delete_topic
                         on_submit=submit_topic
+                        on_submit_reply=submit_reply
                         on_reset=reset_topic
                     />
                 }.into_any()
@@ -1187,6 +1244,8 @@ fn TopicsPage(
     categories: LocalResource<Result<Vec<CategoryListItem>, String>>,
     topics: LocalResource<Result<Vec<TopicListItem>, String>>,
     replies: LocalResource<Result<Vec<ReplyListItem>, String>>,
+    reply_body: ReadSignal<RichTextDocument>,
+    set_reply_body: WriteSignal<RichTextDocument>,
     busy_key: ReadSignal<Option<String>>,
     editing_id: ReadSignal<Option<String>>,
     locale: ReadSignal<String>,
@@ -1206,6 +1265,7 @@ fn TopicsPage(
     on_edit: Callback<String>,
     on_delete: Callback<String>,
     on_submit: impl Fn(SubmitEvent) + 'static,
+    on_submit_reply: Callback<SubmitEvent>,
     on_reset: Callback<()>,
 ) -> impl IntoView {
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
@@ -1343,6 +1403,13 @@ fn TopicsPage(
         t(ui_locale.as_deref(), "forum.topics.previewTitle", "Replies"),
         t(ui_locale.as_deref(), "forum.topics.shown", "{count} shown"),
     );
+    let reply_body_label = t(ui_locale.as_deref(), "forum.replies.body", "Reply content");
+    let reply_body_hint = t(
+        ui_locale.as_deref(),
+        "forum.replies.bodyHint",
+        "Write a focused response using the shared discussion editor.",
+    );
+    let post_reply_label = t(ui_locale.as_deref(), "forum.replies.submit", "Post reply");
     let edit_topic_title = t(ui_locale.as_deref(), "forum.topics.editTitle", "Edit topic");
     let compose_topic_title = t(
         ui_locale.as_deref(),
@@ -1570,7 +1637,9 @@ fn TopicsPage(
                         <ForumRichTextEditor
                             document=body
                             set_document=set_body
+                            content_locale=locale
                             label=topic_form_labels.body_label.clone()
+                            disabled=Signal::derive(move || busy_key.get().is_some())
                         />
                         <p class="text-xs text-muted-foreground">{topic_form_labels.body_hint.clone()}</p>
 
@@ -1605,6 +1674,25 @@ fn TopicsPage(
                             {move || reply_preview_labels.shown_template.replace("{count}", reply_count_label(replies.get()).to_string().as_str())}
                         </span>
                     </div>
+                    {move || editing_id.get().is_some().then(|| view! {
+                        <form class="mt-6 space-y-3" on:submit=move |ev| on_submit_reply.run(ev)>
+                            <ForumRichTextEditor
+                                document=reply_body
+                                set_document=set_reply_body
+                                content_locale=locale
+                                label=reply_body_label.clone()
+                                disabled=Signal::derive(move || busy_key.get().is_some())
+                            />
+                            <p class="text-xs text-muted-foreground">{reply_body_hint.clone()}</p>
+                            <button
+                                type="submit"
+                                class="rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition hover:opacity-95"
+                                disabled=move || busy_key.get().is_some()
+                            >
+                                {post_reply_label.clone()}
+                            </button>
+                        </form>
+                    })}
                     <Suspense fallback=move || view! { <div class="mt-6 h-40 animate-pulse rounded-[1.5rem] bg-muted"></div> }>
                         {move || replies.get().map(|result| render_reply_stack(result, replies_locale.clone()))}
                     </Suspense>

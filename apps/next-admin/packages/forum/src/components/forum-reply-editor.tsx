@@ -29,6 +29,7 @@ export function ForumReplyEditor({
   const form = useForm<{ locale: string }>({
     defaultValues: { locale: hostLocale }
   });
+  const contentLocale = form.watch('locale');
   const [doc, setDoc] = useState<RichTextDocument>(emptyRichTextDocument());
 
   async function submit(values: { locale: string }) {
@@ -67,9 +68,13 @@ export function ForumReplyEditor({
             label='Reply content'
             profile='discussion'
             value={doc}
+            contentLocale={contentLocale}
+            disabled={form.formState.isSubmitting}
             onChange={setDoc}
           />
-          <Button type='submit'>Send reply</Button>
+          <Button type='submit' disabled={form.formState.isSubmitting}>
+            Send reply
+          </Button>
         </CardContent>
       </Form>
     </Card>

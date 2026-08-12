@@ -7,11 +7,11 @@ use rustok_api::{
     has_effective_permission,
 };
 use rustok_core::ModuleRuntimeExtensions;
+use rustok_notifications::api::NotificationSourceRegistry;
 use rustok_notifications::{
     NotificationError, NotificationInboxReconcileRequest, NotificationInboxReconcileService,
     NotificationRecipientPolicyRuntime,
 };
-use rustok_notifications::api::NotificationSourceRegistry;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -117,10 +117,8 @@ impl ForumNotificationReconciliationQuery {
 
 fn require_operator_permissions(auth: &AuthContext) -> Result<()> {
     let settings_read = has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ);
-    let categories_manage = has_effective_permission(
-        &auth.permissions,
-        &Permission::FORUM_CATEGORIES_MANAGE,
-    );
+    let categories_manage =
+        has_effective_permission(&auth.permissions, &Permission::FORUM_CATEGORIES_MANAGE);
     let topics_manage =
         has_effective_permission(&auth.permissions, &Permission::FORUM_TOPICS_MANAGE);
     if settings_read && categories_manage && topics_manage {
@@ -137,7 +135,9 @@ fn parse_limit(limit: Option<i32>) -> Result<u16> {
         None => Ok(0),
         Some(limit) if limit >= 0 => u16::try_from(limit)
             .map_err(|_| FieldError::new("notification reconciliation limit is invalid")),
-        Some(_) => Err(FieldError::new("notification reconciliation limit is invalid")),
+        Some(_) => Err(FieldError::new(
+            "notification reconciliation limit is invalid",
+        )),
     }
 }
 

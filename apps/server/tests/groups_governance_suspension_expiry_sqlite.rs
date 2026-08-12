@@ -38,7 +38,9 @@ async fn install_groups_schema(db: &DatabaseConnection) {
 }
 
 fn sqlite_fixture_url(temp: &TempDir) -> String {
-    let path = temp.path().join("groups-governance-suspension-expiry.sqlite");
+    let path = temp
+        .path()
+        .join("groups-governance-suspension-expiry.sqlite");
     format!("sqlite://{}?mode=rwc", path.display())
 }
 
@@ -101,7 +103,8 @@ async fn membership_snapshot(
         .expect("membership snapshot query should succeed")
         .expect("membership should exist");
     (
-        row.try_get("", "role").expect("membership role should decode"),
+        row.try_get("", "role")
+            .expect("membership role should decode"),
         row.try_get("", "status")
             .expect("membership status should decode"),
         row.try_get("", "revision")
@@ -126,8 +129,8 @@ async fn group_member_count(db: &DatabaseConnection, tenant_id: Uuid, group_id: 
 
 #[tokio::test]
 async fn governance_authority_follows_temporary_suspension_and_owner_clock_expiry_sqlite() {
-    let temp = tempfile::tempdir()
-        .expect("temporary Groups governance expiry directory should create");
+    let temp =
+        tempfile::tempdir().expect("temporary Groups governance expiry directory should create");
     let url = sqlite_fixture_url(&temp);
     let db = connect(&url).await;
     install_groups_schema(&db).await;

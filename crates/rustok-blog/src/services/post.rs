@@ -921,10 +921,8 @@ impl PostService {
             .await
             .map_err(BlogError::from)?;
 
-        let mut translations_by_category: HashMap<
-            Uuid,
-            Vec<blog_category_translation::Model>,
-        > = HashMap::new();
+        let mut translations_by_category: HashMap<Uuid, Vec<blog_category_translation::Model>> =
+            HashMap::new();
         for translation in translations {
             translations_by_category
                 .entry(translation.category_id)
@@ -1155,15 +1153,10 @@ impl PostService {
         )
         .await?;
         let category_name = if let Some(category_id) = post.category_id {
-            self.load_category_names_map(
-                post.tenant_id,
-                &[category_id],
-                locale,
-                fallback_locale,
-            )
-            .await?
-            .get(&category_id)
-            .cloned()
+            self.load_category_names_map(post.tenant_id, &[category_id], locale, fallback_locale)
+                .await?
+                .get(&category_id)
+                .cloned()
         } else {
             None
         };
@@ -1502,7 +1495,7 @@ fn extract_tags(metadata: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn storage_to_status(status: &str) -> BlogResult<BlogPostStatus> {
+pub(crate) fn storage_to_status(status: &str) -> BlogResult<BlogPostStatus> {
     match status {
         "draft" => Ok(BlogPostStatus::Draft),
         "published" => Ok(BlogPostStatus::Published),

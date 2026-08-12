@@ -286,6 +286,10 @@ You need to:
 - keep `module.ui_classification` in line with actual wiring;
 - not leave orphaned host dependencies or feature entries after refactoring.
 
+An optional module's server feature includes `mod-<dependency>` only for an
+optional dependency that has its own server feature. Required, always-linked
+modules remain in `depends_on` but do not get an invented `mod-*` feature.
+
 Canon:
 
 - manifest/UI wiring: [manifest.md](./manifest.md)

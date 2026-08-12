@@ -4,6 +4,7 @@ use std::{path::PathBuf, time::Duration};
 
 use axum::Router;
 use sea_orm::{ConnectOptions, Database};
+use sea_orm_migration::MigratorTrait;
 use serde::Deserialize;
 
 use crate::{
@@ -43,6 +44,8 @@ struct ServerConfig {
 struct DatabaseConfig {
     uri: String,
     #[serde(default)]
+    auto_migrate: bool,
+    #[serde(default)]
     enable_logging: bool,
     #[serde(default)]
     connect_timeout: u64,
@@ -70,6 +73,7 @@ pub async fn run() -> Result<()> {
     let config = load_config()?;
     let database_uri = resolve_database_uri(&config.database.uri);
     let db = connect_database(&config.database, &database_uri).await?;
+    migrate_database_if_enabled(&db, config.database.auto_migrate).await?;
     let rustok_settings = RustokSettings::from_settings(&Some(config.settings.clone()))
         .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
     let production = is_production_environment();
@@ -105,6 +109,26 @@ pub async fn run() -> Result<()> {
         .with_graceful_shutdown(shutdown_signal(runtime_ctx))
         .await
         .map_err(Error::Io)
+}
+
+async fn migrate_database_if_enabled(
+    db: &sea_orm::DatabaseConnection,
+    auto_migrate: bool,
+) -> Result<()> {
+    if !auto_migrate {
+        return Ok(());
+    }
+
+    rustok_migrations::Migrator::up(db, None).await?;
+    let pending = rustok_migrations::Migrator::get_pending_migrations(db).await?;
+    if !pending.is_empty() {
+        return Err(Error::Message(format!(
+            "database migration completed with {} migration(s) still pending",
+            pending.len()
+        )));
+    }
+    tracing::info!("All database migrations are applied");
+    Ok(())
 }
 
 fn validate_https_deployment(production: bool, https_declared: bool) -> Result<()> {

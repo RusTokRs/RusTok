@@ -24,9 +24,7 @@ pub enum RbacArtifactPermissionEvent {
 impl RbacArtifactPermissionEvent {
     pub fn event_type(&self) -> &'static str {
         match self {
-            Self::AssignmentChanged { .. } => {
-                "rbac.artifact_role_permission.assignment_changed"
-            }
+            Self::AssignmentChanged { .. } => "rbac.artifact_role_permission.assignment_changed",
         }
     }
 
@@ -112,18 +110,14 @@ impl ValidateEvent for RbacArtifactPermissionEvent {
             permission_key,
             MAX_PERMISSION_KEY_LENGTH,
         )?;
-        if permission_key.trim() != permission_key
-            || permission_key.chars().any(char::is_control)
-        {
+        if permission_key.trim() != permission_key || permission_key.chars().any(char::is_control) {
             return Err(EventValidationError::InvalidCharacters("permission_key"));
         }
         Ok(())
     }
 }
 
-pub fn rbac_artifact_permission_event_schema(
-    event_type: &str,
-) -> Option<&'static EventSchema> {
+pub fn rbac_artifact_permission_event_schema(event_type: &str) -> Option<&'static EventSchema> {
     RBAC_ARTIFACT_PERMISSION_EVENT_SCHEMAS
         .iter()
         .find(|schema| schema.event_type == event_type)

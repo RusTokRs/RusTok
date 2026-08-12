@@ -1,13 +1,13 @@
-#[path = "index_reconciliation_operator.rs"]
-mod reconciliation_operator;
 #[path = "index_drift_diagnosis_operator.rs"]
 mod drift_diagnosis_operator;
-#[path = "index_source_continuation_runtime.rs"]
-mod source_continuation_runtime;
 #[path = "index_drift_source_page_diagnosis.rs"]
 mod drift_source_page_diagnosis;
+#[path = "index_reconciliation_operator.rs"]
+mod reconciliation_operator;
 #[path = "index_replay_shadow_transport.rs"]
 mod replay_shadow_transport;
+#[path = "index_source_continuation_runtime.rs"]
+mod source_continuation_runtime;
 
 pub use drift_diagnosis_operator::{
     IndexDriftDiagnosisOperatorError, IndexDriftDiagnosisOperatorRuntime,
@@ -231,8 +231,8 @@ pub(crate) fn materialize_index_replay_runtime(
 
     let runtime = rustok_index::materialize_postgres_index_replay_runtime(extensions, db.clone())
         .map_err(|error| {
-            ServerError::Message(format!("Index replay runtime composition failed: {error}"))
-        })?;
+        ServerError::Message(format!("Index replay runtime composition failed: {error}"))
+    })?;
     if let Some(runtime) = runtime {
         let shadow = extensions
             .get::<rustok_index::SharedIndexReplayDryRunRuntime>()
@@ -434,13 +434,18 @@ mod tests {
 
         let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
         assert!(host.shared_get::<IndexReplayOperatorRuntime>().is_some());
-        assert!(host.shared_get::<IndexReplayShadowTransportRuntime>().is_some());
-        assert!(host
-            .shared_get::<IndexDriftDiagnosisOperatorRuntime>()
-            .is_some());
-        assert!(host
-            .shared_get::<IndexDriftSourcePageDiagnosisRuntime>()
-            .is_some());
+        assert!(
+            host.shared_get::<IndexReplayShadowTransportRuntime>()
+                .is_some()
+        );
+        assert!(
+            host.shared_get::<IndexDriftDiagnosisOperatorRuntime>()
+                .is_some()
+        );
+        assert!(
+            host.shared_get::<IndexDriftSourcePageDiagnosisRuntime>()
+                .is_some()
+        );
     }
 
     #[tokio::test]
@@ -523,14 +528,8 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let context = IndexReplayOperatorContext::new(tenant_id, actor_id).unwrap();
-        let request = IndexReplayDryRunRequest::new(
-            tenant_id,
-            demo_schema().reference,
-            None,
-            10,
-            1,
-        )
-        .unwrap();
+        let request =
+            IndexReplayDryRunRequest::new(tenant_id, demo_schema().reference, None, 10, 1).unwrap();
 
         let forbidden = with_rbac_request_scope(
             Some(RbacRequestScope::new(

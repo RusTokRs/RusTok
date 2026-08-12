@@ -6,6 +6,7 @@
 
 mod deployment;
 mod execution;
+mod layout;
 mod plan;
 mod preflight;
 mod receipt;
@@ -15,27 +16,41 @@ mod seed;
 mod state;
 
 pub use deployment::{
-    DistributedDeploymentOutput, InstallDeploymentPort, InstallRoleDeployment,
-    InstallRoleDeploymentReceipt, InstallRoleDeploymentRequest, distributed_deployment_requests,
-    execute_distributed_role_deployments,
+    DistributedDeploymentOutput, InstallDeploymentPort, InstallDistributionDeployment,
+    InstallDistributionDeploymentReceipt, InstallDistributionDeploymentRequest,
+    InstallRoleDeploymentObservation, distributed_deployment_request,
+    execute_distributed_deployment,
 };
+#[cfg(feature = "host-runtime")]
+pub use execution::execute_install_apply;
 pub use execution::{
     InstallAdminOutcome, InstallAdminPort, InstallApplyOptions, InstallApplyOutput,
     InstallDatabasePort, InstallDatabaseReady, InstallExecutionError, InstallExecutor,
     InstallPersistencePort, InstallReceiptRecord, InstallSchemaPort, InstallSeedOutcome,
     InstallSeedPort, InstallSessionRecord, InstallVerificationOutcome, InstallVerificationPort,
-    execute_install_apply,
 };
+pub use layout::{
+    INSTANCE_LAYOUT_REVISION, InstanceLayout, InstanceLayoutError, InstanceLayoutMarker,
+    InstanceLayoutPreparation, InstancePlacement,
+};
+#[cfg(feature = "host-runtime")]
+pub use layout::{bind_instance_placement, prepare_instance_layout};
 pub use plan::{
-    AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallComposition, InstallEnvironment,
-    InstallPlan, InstallProfile, InstallRole, InstallRoleAssignment, InstallSurface,
-    InstallTopology, InstallTopologyMode, ModuleSelection, SeedProfile, TenantBootstrap,
+    AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallComposition, InstallDistributionBinding,
+    InstallEnvironment, InstallPlan, InstallProfile, InstallRole, InstallRoleAssignment,
+    InstallSurface, InstallTopology, InstallTopologyMode, ModuleSelection, SeedProfile,
+    TenantBootstrap,
 };
 pub use preflight::{
     PreflightIssue, PreflightReport, PreflightSeverity, evaluate_preflight,
     evaluate_preflight_with_deployment,
 };
-pub use receipt::{InstallReceipt, ReceiptError, ReceiptOutcome, checksum_json};
+#[cfg(feature = "host-runtime")]
+pub use receipt::load_base_distribution_receipt;
+pub use receipt::{
+    InstallReceipt, ReceiptError, ReceiptOutcome, VerifiedInstallBaseDistributionReceipt,
+    checksum_json,
+};
 pub use secrets::{
     SecretMode, SecretRef, SecretResolutionError, SecretValue, redact_install_plan, redact_secret,
     resolve_local_secret_value,

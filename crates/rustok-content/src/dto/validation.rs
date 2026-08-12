@@ -5,18 +5,6 @@
 /// FIXED: Added i18n support for error messages
 use validator::ValidationError;
 
-/// Custom validator for body format
-///
-/// `rt_json_v1` is canonical rich-text format; `rt_json` is an existing compatibility alias.
-/// `grapesjs` is the canonical page-builder project payload format; `grapesjs_v1` is accepted as an input compatibility alias.
-pub fn validate_body_format(format: &str) -> Result<(), ValidationError> {
-    match format {
-        "markdown" | "html" | "plain" | "json" | "rt_json_v1" | "rt_json" | "grapesjs"
-        | "grapesjs_v1" => Ok(()),
-        _ => Err(ValidationError::new("invalid_format")),
-    }
-}
-
 /// Custom validator for kind
 ///
 /// Accepts built-in kinds (post, page, article, custom) plus domain-specific kinds
@@ -143,25 +131,6 @@ pub fn validate_slug(slug: &str) -> Result<(), ValidationError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_validate_body_format_valid() {
-        assert!(validate_body_format("markdown").is_ok());
-        assert!(validate_body_format("html").is_ok());
-        assert!(validate_body_format("plain").is_ok());
-        assert!(validate_body_format("json").is_ok());
-        assert!(validate_body_format("rt_json_v1").is_ok());
-        assert!(validate_body_format("rt_json").is_ok());
-        assert!(validate_body_format("grapesjs").is_ok());
-        assert!(validate_body_format("grapesjs_v1").is_ok());
-    }
-
-    #[test]
-    fn test_validate_body_format_invalid() {
-        assert!(validate_body_format("xml").is_err());
-        assert!(validate_body_format("unknown").is_err());
-        assert!(validate_body_format("").is_err());
-    }
 
     #[test]
     fn test_validate_kind_valid() {

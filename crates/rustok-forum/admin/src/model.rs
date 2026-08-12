@@ -346,6 +346,13 @@ pub struct TopicDraft {
     pub tags: Vec<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ReplyDraft {
+    pub locale: String,
+    pub content: RichTextDocument,
+    pub parent_reply_id: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

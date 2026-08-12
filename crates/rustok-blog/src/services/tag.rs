@@ -16,8 +16,9 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyScopeType,
-    TaxonomyService, TaxonomyTermKind, delete_module_term_in_tx, update_module_term_in_tx,
+    TaxonomyService, TaxonomyTermKind, delete_module_term_in_tx,
     entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
+    update_module_term_in_tx,
 };
 
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
@@ -438,7 +439,8 @@ pub(crate) async fn find_post_ids_by_tag(
 
     let alias_ids = taxonomy_term_alias::Entity::find()
         .join(
-            JoinType::InnerJoin, taxonomy_term_alias::Relation::Term.def(),
+            JoinType::InnerJoin,
+            taxonomy_term_alias::Relation::Term.def(),
         )
         .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
         .filter(taxonomy_term_alias::Column::Slug.eq(&normalized_slug))
@@ -628,7 +630,10 @@ mod pagination_tests {
     fn tag_page_size_is_bounded_by_owner_service() {
         assert_eq!(bounded_tag_page_size(0), 1);
         assert_eq!(bounded_tag_page_size(20), 20);
-        assert_eq!(bounded_tag_page_size(MAX_TAGS_PER_PAGE + 1), MAX_TAGS_PER_PAGE);
+        assert_eq!(
+            bounded_tag_page_size(MAX_TAGS_PER_PAGE + 1),
+            MAX_TAGS_PER_PAGE
+        );
     }
 
     #[test]

@@ -198,13 +198,7 @@ impl ContractEventEnvelope {
     where
         E: EventContract,
     {
-        Self::new_with_identity(
-            envelope_id,
-            tenant_id,
-            actor_id,
-            Some(causation_id),
-            event,
-        )
+        Self::new_with_identity(envelope_id, tenant_id, actor_id, Some(causation_id), event)
     }
 
     /// Creates a typed envelope that is causally linked to one exact durable
@@ -564,9 +558,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            EventContractEnvelopeError::Validation(EventValidationError::NilUuid(
-                "causation_id"
-            ))
+            EventContractEnvelopeError::Validation(EventValidationError::NilUuid("causation_id"))
         ));
     }
 }

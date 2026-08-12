@@ -42,11 +42,11 @@ const contractPath =
 const contract = JSON.parse(read(contractPath) || "{}");
 const transport = read(contract.transport_context_file ?? "");
 const graphqlRuntime = read(contract.graphql_runtime_file ?? "");
-const graphqlLegacy = read(contract.graphql_legacy_mutation_file ?? "");
+const graphqlStandard = read(contract.graphql_standard_mutation_file ?? "");
 const graphqlCommand = read(contract.graphql_command_mutation_file ?? "");
 const graphqlTypes = read("crates/rustok-forum/src/graphql/types.rs");
 const httpRuntime = read(contract.http_runtime_file ?? "");
-const httpLegacy = read(contract.http_legacy_create_file ?? "");
+const httpStandard = read(contract.http_standard_create_file ?? "");
 const httpCommand = read(contract.http_command_create_file ?? "");
 const owner = read(contract.owner_enforcement_file ?? "");
 const note = read(contract.owner_note ?? "");
@@ -59,8 +59,8 @@ if (
 ) {
   failures.push("reply-create transport contract must identify FORUM-20AW after FORUM-20AV");
 }
-if (contract.verification?.execution_status !== "not_run_by_implementation_agent") {
-  failures.push("reply-create transport contract must not claim unexecuted evidence");
+if (contract.verification?.execution_status !== "source_verified_runtime_pending") {
+  failures.push("reply-create transport contract must record current source verification status");
 }
 for (const key of [
   "shared_exact_transport_context_builder",
@@ -69,15 +69,15 @@ for (const key of [
   "read_deadline_semantics",
   "permission_claim_forwarding",
   "resolved_route_channel_forwarding",
-  "graphql_legacy_create_composed",
+  "graphql_standard_create_composed",
   "graphql_command_create_composed",
-  "rest_legacy_create_composed",
+  "rest_standard_create_composed",
   "rest_command_create_composed",
   "graphql_runtime_facts_consumed",
   "http_runtime_facts_consumed",
   "host_extension_facts_reused",
   "missing_provider_fail_closed",
-  "local_policy_compatibility_preserved",
+  "local_policy_semantics_preserved",
   "owner_authorization_before_writes_preserved",
 ]) {
   if (contract.composition?.[key] !== true) {
@@ -138,11 +138,11 @@ for (const marker of [
   requireText(graphqlRuntime, marker, `Forum GraphQL runtime data is missing ${marker}`);
 }
 
-const legacyGraphqlCreate = between(
-  graphqlLegacy,
+const standardGraphqlCreate = between(
+  graphqlStandard,
   "async fn create_forum_reply(",
   "async fn set_forum_topic_vote(",
-  "legacy GraphQL reply-create",
+  "standard GraphQL reply-create",
 );
 const commandGraphqlCreate = between(
   graphqlCommand,
@@ -151,7 +151,7 @@ const commandGraphqlCreate = between(
   "command GraphQL reply-create",
 );
 for (const [source, label, commandMarker] of [
-  [legacyGraphqlCreate, "legacy GraphQL reply-create", ".create_with_audience_context("],
+  [standardGraphqlCreate, "standard GraphQL reply-create", ".create_with_audience_context("],
   [commandGraphqlCreate, "command GraphQL reply-create", ".create_command_with_audience_context("],
 ]) {
   for (const marker of [
@@ -165,21 +165,31 @@ for (const [source, label, commandMarker] of [
     requireText(source, marker, `${label} is missing ${marker}`);
   }
 }
+for (const marker of [
+  "tenant_id: Option<Uuid>",
+  "resolve_tenant_scope(tenant, tenant_id)?",
+]) {
+  requireText(
+    standardGraphqlCreate,
+    marker,
+    `standard GraphQL reply-create must derive optional tenant scope: ${marker}`,
+  );
+}
 
 for (const marker of [
-  "audience_facts: Option<crate::SharedForumAudienceFactsPort>",
-  "runtime.shared_get::<crate::SharedForumAudienceFactsPort>()",
+  "audience_facts: Option<SharedForumAudienceFactsPort>",
+  "runtime.shared_get::<SharedForumAudienceFactsPort>()",
   "fn reply_service(&self) -> crate::ReplyService",
   "ReplyService::with_audience_facts",
   "ReplyService::new",
 ]) {
   requireText(httpRuntime, marker, `Forum HTTP runtime is missing ${marker}`);
 }
-const legacyRestCreate = between(
-  httpLegacy,
+const standardRestCreate = between(
+  httpStandard,
   "pub async fn create_reply(",
   "pub async fn update_reply(",
-  "legacy REST reply-create",
+  "standard REST reply-create",
 );
 const commandRestCreate = between(
   httpCommand,
@@ -188,7 +198,7 @@ const commandRestCreate = between(
   "command REST reply-create",
 );
 for (const [source, label, commandMarker] of [
-  [legacyRestCreate, "legacy REST reply-create", ".create_with_audience_context("],
+  [standardRestCreate, "standard REST reply-create", ".create_with_audience_context("],
   [commandRestCreate, "command REST reply-create", ".create_command_with_audience_context("],
 ]) {
   for (const marker of [
@@ -221,11 +231,11 @@ if (
   failures.push("transport composition must preserve reply audience authorization before owner writes");
 }
 
-const legacyInput = between(
+const standardInput = between(
   graphqlTypes,
   "pub struct CreateForumReplyInput",
   "pub struct CreateForumCategoryInput",
-  "legacy GraphQL reply-create input",
+  "standard GraphQL reply-create input",
 );
 const commandInput = between(
   graphqlCommand,
@@ -234,7 +244,7 @@ const commandInput = between(
   "command GraphQL reply-create input",
 );
 for (const [input, label] of [
-  [legacyInput, "legacy GraphQL reply-create input"],
+  [standardInput, "standard GraphQL reply-create input"],
   [commandInput, "command GraphQL reply-create input"],
 ]) {
   for (const forbidden of ["user_id", "actor_id", "recipient_id", "request_tenant_id"]) {
@@ -244,12 +254,12 @@ for (const [input, label] of [
 
 for (const marker of [
   "# FORUM-20AW reply-create audience transport composition",
-  "source-ready / unvalidated",
+  "source-verified / runtime evidence pending",
   "Tenant and actor identity come only from authenticated transport extensions",
   "same optional `SharedForumAudienceFactsPort`",
   "No Forum-to-Groups crate dependency was added",
-  "Canonical plan debt",
-  "not run by the implementation agent",
+  "Canonical plan synchronization",
+  "Source checks executed on 2026-08-11",
 ]) {
   requireText(note, marker, `reply-create transport owner note is missing ${marker}`);
 }

@@ -96,7 +96,7 @@ function rejects(mutator) {
 }
 
 function removeMarker(file, marker) {
-  return (root) => mutate(root, file, (source) => source.replace(marker, ''));
+  return (root) => mutate(root, file, (source) => source.replaceAll(marker, ''));
 }
 
 test('accepts the canonical Blog Comments consumer and cached snapshot boundary', () => {

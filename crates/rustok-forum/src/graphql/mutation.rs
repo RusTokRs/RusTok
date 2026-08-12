@@ -370,7 +370,7 @@ impl ForumMutation {
     async fn create_forum_reply(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
+        tenant_id: Option<Uuid>,
         topic_id: Uuid,
         input: CreateForumReplyInput,
     ) -> Result<GqlForumReply> {
@@ -384,7 +384,7 @@ impl ForumMutation {
         )?;
 
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, Some(tenant_id))?;
+        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let audience_context = reply_create_audience_port_context(
             ForumReplyCreateTransport::Graphql,
             tenant_id,

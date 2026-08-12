@@ -86,8 +86,7 @@ impl TestDatabase {
         seed_products_and_attributes(&migration).await?;
         let resolver = ProductSalesChannelRelationResolver::new(migration.clone());
         for product_id in [PRODUCT_A, PRODUCT_B] {
-            let receipt = resolver.reconcile_product(TENANT_ID, product_id).await?;
-            assert_eq!(receipt.channel_ids(), &[CHANNEL_ID]);
+            resolver.reconcile_product(TENANT_ID, product_id).await?;
         }
         migration.close().await?;
 

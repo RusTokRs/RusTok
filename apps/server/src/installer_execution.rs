@@ -24,12 +24,11 @@ const INSTALLER_TENANT_READ_DEADLINE: Duration = Duration::from_secs(15);
 pub async fn apply_plan(
     plan: InstallPlan,
     options: InstallApplyOptions,
-    build_settings: crate::common::settings::BuildRuntimeSettings,
     registry: rustok_core::ModuleRegistry,
 ) -> Result<InstallApplyOutput> {
     let ports = ServerInstallerPorts {
         registry,
-        deployment: ServerInstallerDeploymentAdapter::new(build_settings),
+        deployment: ServerInstallerDeploymentAdapter,
     };
     rustok_installer::execute_install_apply(&ports, plan, options)
         .await
@@ -39,19 +38,12 @@ pub async fn apply_plan(
 /// HTTP-host adapter for the portable installer executor contract.
 #[derive(Clone)]
 pub struct ServerInstallExecutor {
-    build_settings: crate::common::settings::BuildRuntimeSettings,
     registry: rustok_core::ModuleRegistry,
 }
 
 impl ServerInstallExecutor {
-    pub fn new(
-        build_settings: crate::common::settings::BuildRuntimeSettings,
-        registry: rustok_core::ModuleRegistry,
-    ) -> Self {
-        Self {
-            build_settings,
-            registry,
-        }
+    pub fn new(registry: rustok_core::ModuleRegistry) -> Self {
+        Self { registry }
     }
 }
 
@@ -62,14 +54,9 @@ impl InstallExecutor for ServerInstallExecutor {
         plan: InstallPlan,
         options: InstallApplyOptions,
     ) -> std::result::Result<InstallApplyOutput, InstallExecutionError> {
-        apply_plan(
-            plan,
-            options,
-            self.build_settings.clone(),
-            self.registry.clone(),
-        )
-        .await
-        .map_err(|error| InstallExecutionError::new(error.to_string()))
+        apply_plan(plan, options, self.registry.clone())
+            .await
+            .map_err(|error| InstallExecutionError::new(error.to_string()))
     }
 }
 
@@ -86,13 +73,18 @@ impl rustok_installer::InstallDeploymentPort<DatabaseConnection> for ServerInsta
         rustok_installer::InstallDeploymentPort::supports_distributed_deployment(&self.deployment)
     }
 
-    async fn deploy_role(
+    async fn deploy_distribution(
         &self,
         runtime: &DatabaseConnection,
-        request: rustok_installer::InstallRoleDeploymentRequest,
-    ) -> std::result::Result<rustok_installer::InstallRoleDeployment, InstallExecutionError> {
-        rustok_installer::InstallDeploymentPort::deploy_role(&self.deployment, runtime, request)
-            .await
+        request: rustok_installer::InstallDistributionDeploymentRequest,
+    ) -> std::result::Result<rustok_installer::InstallDistributionDeployment, InstallExecutionError>
+    {
+        rustok_installer::InstallDeploymentPort::deploy_distribution(
+            &self.deployment,
+            runtime,
+            request,
+        )
+        .await
     }
 }
 

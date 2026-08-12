@@ -2,6 +2,7 @@ pub mod adapters;
 pub mod browser_host;
 #[cfg(feature = "server")]
 pub mod composition;
+pub mod document;
 pub mod dto;
 pub mod health;
 pub mod landing;
@@ -28,6 +29,7 @@ pub mod static_landing_materialization;
 pub mod static_publish_policy;
 pub mod transport;
 
+pub use document::{PAGE_BUILDER_DOCUMENT_FORMAT, validate_page_builder_document};
 pub use fly::{
     ComponentRegistryManifest, LandingRenderer, LandingRendererManifest, LandingSectionSnapshot,
     PageHead, RuntimeContextExamplePolicy, RuntimeContextScenario, StaticLandingArtifact,

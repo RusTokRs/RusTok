@@ -52,9 +52,15 @@ rustok-cli install plan --root /home/operator/shop-a
 The resulting plan derives the same relative layout in every case. An
 independent installation selects another root and separate database/object
 authority. The web wizard uses only a root chosen or allowlisted by its trusted
-local host adapter. This target CLI input is part of the open installer
-placement cutover below; current adapters still require their individual
-storage/work settings.
+local host adapter. The shared installer executor and current CLI/HTTP adapters
+already use this placement contract; storage, release materialization, build
+work, caches, logs, and runtime files derive from the selected root.
+
+Multiple instances do not need separate binaries or a machine-global install
+directory. Each process receives its own `RUSTOK_INSTANCE_ROOT`, database
+credentials, object-store namespace, listen address, and process supervisor
+unit. The same immutable release may be materialized independently in those
+roots without changing its release ID or digests.
 
 Apply accepts an absent/empty root or the exact marker for resuming the same
 installation. It never recursively deletes the selected directory or unrelated
@@ -103,14 +109,13 @@ thin HTTP adapter; `rustok-cli install plan|preflight|apply|status` and
 standalone apply adapter opens the target database itself, so a requested
 database may be created before a CLI runtime database exists.
 
-The current adapters still receive storage/work roots independently. The
-accepted cutover adds one trusted instance-root selection to the shared
-installer contract and derives those roots from its portable layout. Local CLI
-input may select any directory, including `.` resolved against the invocation
-directory. The HTTP wizard may display and consume a host-approved root but
-cannot inject an unrestricted path. Independent installations use independent
-roots, database authority, and object-store namespaces; a platform-specific
-path never enters bundle or module identity.
+The current adapters derive storage/work roots from the trusted instance-root
+selection in the shared installer contract. Local CLI input may select any
+directory, including `.` resolved against the invocation directory. The HTTP
+wizard may display and consume a host-approved root but cannot inject an
+unrestricted path. Independent installations use independent roots, database
+authority, and object-store namespaces; a platform-specific path never enters
+bundle or module identity.
 
 An apply operation resolves local secret refs `env:<VAR>`, `file:<path>`,
 `mounted-file:<path>`, `dotenv:<path>#<VAR>` and `dotenv:<VAR>`. External
@@ -127,7 +132,8 @@ background job; the UI must not duplicate migration, seed, or admin logic.
 
 The topology contract distinguishes a one-role `monolith` from a distributed
 deployment descriptor. Trusted CLI and HTTP hosts bind the selected
-distribution revision/hash as a compatibility check and also bind the exact
+distribution revision/hash as a compatibility check and, before distributed
+apply becomes available, must also bind the exact
 `distribution_release_id`, OCI bundle-root digest, and role-set digest before
 preflight and apply; a wizard never supplies those identities. They resolve
 from the owner admission ledger or, only for a fresh target, a platform-signed
@@ -155,13 +161,21 @@ release head. Fresh bootstrap pre-stages the exact candidate bundle, verifies
 its recovery boundary, creates the minimal owner schema, imports/revalidates
 the signed receipt into the sole `rustok-modules` ledger, and only then applies
 the remaining schema, tenant seed, and admin provisioning once. Build and
-publication are never `install apply` dependencies. The current Axum adapter
-instead maps independent role requests to `rustok-build` active releases. That
-path is a known cutover gap and must be replaced atomically with all
-repository-owned callers; it is not an alternate production contract.
-Standalone CLI preflight
-remains unavailable for distributed apply until it is configured with the
-canonical deployment control adapter. See the
+publication are never `install apply` dependencies. The independent per-role
+Axum-to-`rustok-build` path has been removed. The typed installer now creates
+one request and one receipt for the complete admitted bundle and requires
+exact per-role observations. The server HTTP host ignores a client-supplied
+bundle and resolves `RUSTOK_INSTALL_DISTRIBUTION_RELEASE_ID` through the
+current admitted `rustok-modules` ledger. For a fresh target, the trusted host
+instead requires both `RUSTOK_INSTALL_BASE_DISTRIBUTION_RECEIPT` and
+`RUSTOK_INSTALL_BASE_DISTRIBUTION_PUBLIC_KEY`; it verifies the bounded regular
+file, strict Ed25519 signature, signer-key digest, validity interval, immutable
+bundle identity, and executable-composition match before binding the receipt
+to the checksummed plan. Configuring this pair together with
+`RUSTOK_INSTALL_DISTRIBUTION_RELEASE_ID` is rejected. The CLI accepts the same
+environment inputs or matching `--base-distribution-*` options. Owner-ledger
+import and the owner-controlled deployment adapter remain fail-closed
+implementation gaps. See the
 [implementation plan](implementation-plan.md) and the
 [release and rollback plan](../../../docs/modules/module-release-rollback-plan.md)
 for ownership and rollout.

@@ -34,14 +34,12 @@ async fn page_create_emits_domain_event() -> TestResult<()> {
                 }],
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: String::new(),
-                    format: Some("grapesjs".to_string()),
-                    content_json: Some(serde_json::json!({
+                    document: serde_json::json!({
                         "pages": [{
                             "id": "main",
                             "component": {"id": "root", "type": "wrapper", "components": []}
                         }]
-                    })),
+                    }),
                 }),
                 channel_slugs: None,
             },

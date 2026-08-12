@@ -52,8 +52,6 @@ use rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery};
 use rustok_blog::graphql::{BlogGraphqlRateLimitPolicy, BlogGraphqlRateLimiterHandle};
 #[cfg(feature = "mod-commerce")]
 use rustok_commerce::graphql_runtime::CommerceShippingOptionReadScope;
-#[cfg(feature = "mod-content")]
-use rustok_content::graphql::{NodeBodyLoader, NodeLoader, NodeTranslationLoader};
 #[cfg(feature = "mod-forum")]
 use rustok_forum::graphql::ForumGraphqlErrorExtension;
 use rustok_mcp::graphql::{McpMutation, McpQuery};
@@ -98,8 +96,7 @@ pub struct Mutation(
     IndexDriftDiagnosisMutation,
     IndexDriftSourcePageDiagnosisMutation,
     IndexReplayMutation,
-    #[cfg(feature = "mod-moderation")]
-    ModerationRecoveryMutation,
+    #[cfg(feature = "mod-moderation")] ModerationRecoveryMutation,
     #[cfg(all(
         feature = "mod-content",
         feature = "mod-blog",
@@ -230,18 +227,6 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
 
     #[cfg(feature = "mod-profiles")]
     let builder = builder.extension(ProfileSummaryAudiencePolicy);
-
-    #[cfg(feature = "mod-content")]
-    let builder = builder
-        .data(DataLoader::new(NodeLoader::new(db.clone()), tokio::spawn))
-        .data(DataLoader::new(
-            NodeTranslationLoader::new(db.clone()),
-            tokio::spawn,
-        ))
-        .data(DataLoader::new(
-            NodeBodyLoader::new(db.clone()),
-            tokio::spawn,
-        ));
 
     #[cfg(feature = "mod-profiles")]
     let builder = builder.data(DataLoader::new(

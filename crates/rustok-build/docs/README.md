@@ -5,7 +5,9 @@ including the typed `ReleasePublisherPort` hand-off and portable
 `DeploymentSettings`/`DeploymentBackend` configuration plus
 `DeploymentWorkspace` artifact/runtime paths. Runtime worker and
 concrete filesystem, HTTP, or container deployment adapters remain host
-responsibilities.
+responsibilities. The local filesystem adapter is physically contained under
+`<instance-root>/releases/platform`; `DeploymentSettings` cannot select a
+second local root.
 
 `BuildRuntimeMode` and `RoleBuildPlan` carry the selected host lifecycle with
 the immutable execution plan. The server manifest composer is the adapter that

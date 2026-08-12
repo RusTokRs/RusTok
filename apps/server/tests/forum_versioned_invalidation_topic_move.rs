@@ -642,7 +642,9 @@ async fn create_forum_fixture(db: &DatabaseConnection) -> TestResult<ForumFixtur
             topic.id,
             CreateReplyInput {
                 locale: "en".to_string(),
-                content: RichTextDocument::single_paragraph(format!("D16 approved reply {REPLY_MARKER}")),
+                content: RichTextDocument::single_paragraph(format!(
+                    "D16 approved reply {REPLY_MARKER}"
+                )),
                 parent_reply_id: None,
             },
         )

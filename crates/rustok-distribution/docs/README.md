@@ -18,7 +18,10 @@ machine provider and manual Translation workflows remain available.
 registry. Trusted CLI and HTTP hosts bind this identity into the installer
 topology before preflight and apply, rather than accepting a host-local or
 manually entered distribution label. Distributed role deployment is still
-pending its `rustok-build` host adapter and durable per-role receipts.
+pending the trusted owner-admission resolver and desired/observed rollout
+adapter. Installer apply uses one exact bundle request and one receipt with
+per-role observations; it never creates per-role release heads through
+`rustok-build`.
 
 `generate_static_distribution()` accepts only a complete running owner claim
 that passes `ModuleStaticDistributionWorkItem::validate()`. It emits three

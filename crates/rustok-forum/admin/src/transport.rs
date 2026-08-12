@@ -1,5 +1,7 @@
 mod category_tree_graphql_adapter;
 mod graphql_adapter;
+mod native_server_support;
+mod reply_create_native_server_adapter;
 mod topic_fork_graphql_adapter;
 mod topic_merge_graphql_adapter;
 mod topic_merge_native_server_adapter;
@@ -10,8 +12,8 @@ mod topic_split_graphql_adapter;
 use rustok_ui_transport::{UiTransportPath, execute_selected_transport};
 
 use crate::model::{
-    CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,
-    TopicListItem,
+    CategoryDetail, CategoryDraft, CategoryListItem, ReplyDraft, ReplyListItem, TopicDetail,
+    TopicDraft, TopicListItem,
 };
 use crate::topic_fork_model::{
     ForumTopicForkCandidate, ForumTopicForkCommand, ForumTopicForkReceipt,
@@ -33,7 +35,7 @@ use crate::topic_split_model::{
 
 pub type ApiError = String;
 
-fn selected_topic_merge_transport_path() -> UiTransportPath {
+fn selected_admin_transport_path() -> UiTransportPath {
     #[cfg(any(feature = "ssr", feature = "hydrate"))]
     {
         UiTransportPath::NativeServer
@@ -183,6 +185,26 @@ pub async fn fetch_replies(
     graphql_adapter::fetch_replies(token, tenant_slug, topic_id, locale).await
 }
 
+pub async fn create_reply(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    topic_id: String,
+    draft: ReplyDraft,
+) -> Result<ReplyListItem, ApiError> {
+    let native_topic_id = topic_id.clone();
+    let native_draft = draft.clone();
+    execute_selected_transport(
+        "forum_reply_create_admin",
+        selected_admin_transport_path(),
+        move || {
+            reply_create_native_server_adapter::create_reply_native(native_topic_id, native_draft)
+        },
+        move || graphql_adapter::create_reply(token, tenant_slug, topic_id, draft),
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
 pub async fn fetch_topic_merge_candidates(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -191,7 +213,7 @@ pub async fn fetch_topic_merge_candidates(
     let native_locale = locale.clone();
     execute_selected_transport(
         "forum_topic_merge_admin",
-        selected_topic_merge_transport_path(),
+        selected_admin_transport_path(),
         move || {
             topic_merge_native_server_adapter::fetch_topic_merge_candidates_native(native_locale)
         },
@@ -209,7 +231,7 @@ pub async fn merge_topic(
     let native_command = command.clone();
     execute_selected_transport(
         "forum_topic_merge_admin",
-        selected_topic_merge_transport_path(),
+        selected_admin_transport_path(),
         move || topic_merge_native_server_adapter::merge_topic_native(native_command),
         move || topic_merge_graphql_adapter::merge_topic(token, tenant_slug, command),
     )
@@ -322,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_forum_admin_operations_keep_one_explicit_graphql_transport() {
+    fn established_forum_admin_operations_keep_one_explicit_graphql_transport() {
         for operation in [
             "fetch_category_tree",
             "fetch_category",
@@ -349,6 +371,16 @@ mod tests {
     }
 
     #[test]
+    fn reply_create_selects_native_or_graphql_without_fallback() {
+        let source = function_source("create_reply");
+        assert!(source.contains("execute_selected_transport"));
+        assert!(source.contains("reply_create_native_server_adapter::"));
+        assert!(source.contains("graphql_adapter::create_reply"));
+        assert!(!source.contains("or_else"));
+        assert!(!source.contains("fallback"));
+    }
+
+    #[test]
     fn topic_merge_selects_native_or_graphql_without_fallback() {
         for operation in ["fetch_topic_merge_candidates", "merge_topic"] {
             let source = function_source(operation);
@@ -366,10 +398,7 @@ mod tests {
 
     #[test]
     fn topic_slug_rename_uses_the_update_graphql_transport_without_fallback() {
-        for operation in [
-            "fetch_topic_slug_rename_candidates",
-            "rename_topic_slug",
-        ] {
+        for operation in ["fetch_topic_slug_rename_candidates", "rename_topic_slug"] {
             let source = function_source(operation);
             assert!(source.contains("topic_slug_rename_graphql_adapter::"));
             assert!(!source.contains("native_server_adapter"));

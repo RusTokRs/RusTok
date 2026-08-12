@@ -34,19 +34,6 @@ pub(crate) struct ProductStorefrontIndexShadowExecution {
     pub(crate) comparison: Option<ProductStorefrontIndexShadowComparison>,
 }
 
-impl ProductStorefrontIndexShadowExecution {
-    pub(crate) fn public_projected_result(
-        &self,
-    ) -> Option<&Result<IndexQueryPage, ProductStorefrontIndexPublicProjectionError>> {
-        self.public_projected.as_ref()
-    }
-
-    pub(crate) fn tag_hydration_result(
-        &self,
-    ) -> Option<&Result<ProductStorefrontTagHydration, ProductStorefrontIndexTagHydrationError>> {
-        self.tag_hydration.as_ref()
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ProductStorefrontIndexShadowComparison {

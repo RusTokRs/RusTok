@@ -1,4 +1,4 @@
-use rustok_core::CONTENT_FORMAT_GRAPESJS;
+use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_page_builder::sanitize_static_landing_project;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait,
@@ -111,7 +111,7 @@ where
                     binding.page_body_id
                 ))
             })?;
-        if body.format != CONTENT_FORMAT_GRAPESJS {
+        if body.format != PAGE_BUILDER_DOCUMENT_FORMAT {
             return Err(PagesError::publish_operation_integrity(format!(
                 "published source body `{}` is not a Page Builder document",
                 body.id

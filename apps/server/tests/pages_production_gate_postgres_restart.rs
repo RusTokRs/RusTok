@@ -18,8 +18,8 @@ use rustok_outbox::{
 };
 use rustok_pages::{
     PAGES_CACHE_ENTITY_KIND, PageCacheGenerationSnapshot, PageCacheInvalidationEventHandler,
-    PageCacheScope, PagesCacheInvalidationRuntime, PagesCacheReadRuntime,
-    PagesModule, page_cache_key, storefront_pages_cache_key,
+    PageCacheScope, PagesCacheInvalidationRuntime, PagesCacheReadRuntime, PagesModule,
+    page_cache_key, storefront_pages_cache_key,
 };
 use rustok_server::common::settings::RustokSettings;
 use rustok_server::services::pages_cache_invalidation::ServerPagesCachePort;
@@ -55,10 +55,7 @@ impl TestDatabase {
             return Ok(None);
         };
         let control = connect(&database_url).await?;
-        let schema_name = format!(
-            "rustok_pages_production_gate_{}",
-            Uuid::new_v4().simple()
-        );
+        let schema_name = format!("rustok_pages_production_gate_{}", Uuid::new_v4().simple());
         control
             .execute_unprepared(&format!(r#"CREATE SCHEMA "{schema_name}""#))
             .await?;
@@ -163,8 +160,8 @@ struct KeyCycle {
 }
 
 #[tokio::test]
-async fn production_gate_correlates_postgres_publish_rollback_and_restart_retry(
-) -> TestResult<()> {
+async fn production_gate_correlates_postgres_publish_rollback_and_restart_retry() -> TestResult<()>
+{
     let Some(database) = TestDatabase::setup().await? else {
         return Ok(());
     };
@@ -188,12 +185,7 @@ async fn production_gate_correlates_postgres_publish_rollback_and_restart_retry(
     )
     .await?;
     assert_eq!(
-        read_receipt_version(
-            &db,
-            "page_publish_operations",
-            publish_operation_id,
-        )
-        .await?,
+        read_receipt_version(&db, "page_publish_operations", publish_operation_id,).await?,
         2
     );
 
@@ -206,14 +198,7 @@ async fn production_gate_correlates_postgres_publish_rollback_and_restart_retry(
 
     let publish_before = reads.generation_snapshot(tenant_id).await?;
     assert_eq!(publish_before, PageCacheGenerationSnapshot::default());
-    let publish_keys = seed_old_keys(
-        &reads,
-        tenant_id,
-        page_id,
-        publish_before,
-        "publish",
-    )
-    .await?;
+    let publish_keys = seed_old_keys(&reads, tenant_id, page_id, publish_before, "publish").await?;
 
     let publish_target: Arc<dyn EventTransport> = Arc::new(TenantGenerationDeliveryGate::new(
         downstream.clone(),
@@ -242,23 +227,12 @@ async fn production_gate_correlates_postgres_publish_rollback_and_restart_retry(
     )
     .await?;
     assert_eq!(
-        read_receipt_version(
-            &db,
-            "page_rollback_operations",
-            rollback_operation_id,
-        )
-        .await?,
+        read_receipt_version(&db, "page_rollback_operations", rollback_operation_id,).await?,
         3
     );
     let rollback_envelope = read_envelope(&db, rollback_event_id, tenant_id, page_id).await?;
-    let rollback_keys = seed_old_keys(
-        &reads,
-        tenant_id,
-        page_id,
-        publish_after,
-        "rollback",
-    )
-    .await?;
+    let rollback_keys =
+        seed_old_keys(&reads, tenant_id, page_id, publish_after, "rollback").await?;
 
     downstream.fail_next();
     let failing_target: Arc<dyn EventTransport> = Arc::new(TenantGenerationDeliveryGate::new(
@@ -301,9 +275,9 @@ async fn production_gate_correlates_postgres_publish_rollback_and_restart_retry(
         PageCacheGenerationSnapshot::new(2, 2, 2)
     );
 
-    let delivered_rollback = downstream
-        .envelope(rollback_event_id)
-        .ok_or_else(|| std::io::Error::other("restarted relay did not deliver rollback envelope"))?;
+    let delivered_rollback = downstream.envelope(rollback_event_id).ok_or_else(|| {
+        std::io::Error::other("restarted relay did not deliver rollback envelope")
+    })?;
     assert_eq!(delivered_rollback.id, rollback_envelope.id);
     assert_eq!(
         delivered_rollback.correlation_id,
@@ -339,8 +313,7 @@ async fn seed_old_keys(
 ) -> TestResult<KeyCycle> {
     let storefront_variant = format!("{operation}|home|en|en|web");
     let artifact_variant = format!("{operation}|en|en|web");
-    let old_storefront_key =
-        storefront_pages_cache_key(tenant_id, before, &storefront_variant)?;
+    let old_storefront_key = storefront_pages_cache_key(tenant_id, before, &storefront_variant)?;
     let old_artifact_key = page_cache_key(
         PageCacheScope::Artifact,
         tenant_id,
@@ -348,13 +321,9 @@ async fn seed_old_keys(
         before.artifact,
         &artifact_variant,
     )?;
-    let after = PageCacheGenerationSnapshot::new(
-        before.route + 1,
-        before.page + 1,
-        before.artifact + 1,
-    );
-    let new_storefront_key =
-        storefront_pages_cache_key(tenant_id, after, &storefront_variant)?;
+    let after =
+        PageCacheGenerationSnapshot::new(before.route + 1, before.page + 1, before.artifact + 1);
+    let new_storefront_key = storefront_pages_cache_key(tenant_id, after, &storefront_variant)?;
     let new_artifact_key = page_cache_key(
         PageCacheScope::Artifact,
         tenant_id,
@@ -386,7 +355,10 @@ async fn assert_new_keys_miss_and_old_keys_remain(
 ) -> TestResult<()> {
     assert_ne!(keys.new_storefront_key, keys.old_storefront_key);
     assert_ne!(keys.new_artifact_key, keys.old_artifact_key);
-    assert_eq!(reads.get_json::<Value>(&keys.new_storefront_key).await?, None);
+    assert_eq!(
+        reads.get_json::<Value>(&keys.new_storefront_key).await?,
+        None
+    );
     assert_eq!(reads.get_json::<Value>(&keys.new_artifact_key).await?, None);
     assert_eq!(
         reads.get_json::<Value>(&keys.old_storefront_key).await?,
@@ -450,11 +422,7 @@ async fn assert_old_and_new_values(
     Ok(())
 }
 
-async fn insert_page(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    page_id: Uuid,
-) -> TestResult<()> {
+async fn insert_page(db: &DatabaseConnection, tenant_id: Uuid, page_id: Uuid) -> TestResult<()> {
     db.execute(Statement::from_sql_and_values(
         DbBackend::Postgres,
         r#"

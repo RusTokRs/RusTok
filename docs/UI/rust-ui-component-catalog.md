@@ -64,6 +64,9 @@ Current set of components with an explicit shared surface:
 - `Label`
 - `Separator`
 - `LanguageToggle`
+- `RichTextHtml` for editor-free rendering of a typed, server-derived
+  `RichTextView`
+- `RichTextEditorFrame` for the isolated shared authoring runtime
 
 This crate is needed where a simple shared primitive layer is insufficient and a stable package boundary within the Rust workspace is required.
 

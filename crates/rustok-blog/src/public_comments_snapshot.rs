@@ -7,9 +7,7 @@ use uuid::Uuid;
 use rustok_api::sha256_digest;
 use rustok_core::error::ErrorKind;
 
-use crate::{
-    BlogError, BlogResult, CommentListItem, CommentService, ListCommentsFilter,
-};
+use crate::{BlogError, BlogResult, CommentListItem, CommentService, ListCommentsFilter};
 
 const SNAPSHOT_SCHEMA_VERSION: u16 = 1;
 pub const MAX_PUBLIC_COMMENTS_SNAPSHOT_BYTES: usize = 256 * 1024;

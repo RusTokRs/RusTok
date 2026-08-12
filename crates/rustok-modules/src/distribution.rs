@@ -47,6 +47,25 @@ pub enum ModuleStaticDistributionBuildStatus {
     Cancelled,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleStaticDistributionPreparationSource {
+    Built,
+    SignedBootstrap,
+}
+
+impl ModuleStaticDistributionPreparationSource {
+    fn parse(value: &str) -> Result<Self, ModuleStaticDistributionError> {
+        match value {
+            "built" => Ok(Self::Built),
+            "signed_bootstrap" => Ok(Self::SignedBootstrap),
+            _ => Err(ModuleStaticDistributionError::Store(
+                "static distribution preparation source is invalid".to_string(),
+            )),
+        }
+    }
+}
+
 impl ModuleStaticDistributionBuildStatus {
     fn parse(value: &str) -> Result<Self, ModuleStaticDistributionError> {
         match value {
@@ -74,7 +93,7 @@ pub enum ModuleStaticDistributionExecutorMode {
 }
 
 impl ModuleStaticDistributionExecutorMode {
-    const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::StaticNative => "static_native",
         }
@@ -133,6 +152,8 @@ pub struct ModuleStaticDistributionBuild {
     pub platform_source_digest: String,
     pub toolchain_digest: String,
     pub build_target: String,
+    pub preparation_source: ModuleStaticDistributionPreparationSource,
+    pub bootstrap_receipt_digest: Option<String>,
     pub status: ModuleStaticDistributionBuildStatus,
     pub requested_by: Uuid,
     pub attempt_count: u32,
@@ -177,8 +198,10 @@ pub struct ModuleStaticDistributionHeartbeatCommand {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleStaticDistributionBuildEvidence {
-    pub artifact_reference: String,
-    pub artifact_digest: String,
+    pub bundle_reference: String,
+    pub bundle_root_digest: String,
+    pub role_set_digest: String,
+    pub roles: Vec<ModuleStaticDistributionRoleArtifact>,
     pub sbom_reference: String,
     pub sbom_digest: String,
     pub provenance_reference: String,
@@ -187,6 +210,71 @@ pub struct ModuleStaticDistributionBuildEvidence {
     pub signature_digest: String,
     pub test_evidence_reference: String,
     pub test_evidence_digest: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleStaticDistributionRole {
+    Monolith,
+    Api,
+    AdminSsr,
+    StorefrontSsr,
+    Worker,
+    Registry,
+}
+
+impl ModuleStaticDistributionRole {
+    const fn ordinal(self) -> u8 {
+        match self {
+            Self::Monolith => 0,
+            Self::Api => 1,
+            Self::AdminSsr => 2,
+            Self::StorefrontSsr => 3,
+            Self::Worker => 4,
+            Self::Registry => 5,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleStaticDistributionRoleArtifact {
+    pub role: ModuleStaticDistributionRole,
+    pub artifact_digest: String,
+}
+
+impl ModuleStaticDistributionBuildEvidence {
+    pub fn role_set_digest(
+        roles: &[ModuleStaticDistributionRoleArtifact],
+    ) -> Result<String, ModuleStaticDistributionError> {
+        digest_json(&roles).map_err(|error| ModuleStaticDistributionError::Store(error.to_string()))
+    }
+
+    pub fn validate(&self) -> Result<(), ModuleStaticDistributionError> {
+        if !valid_reference(&self.bundle_reference)
+            || !valid_digest(&self.bundle_root_digest)
+            || !valid_digest(&self.role_set_digest)
+            || self.roles.is_empty()
+            || self.roles.len() > 6
+        {
+            return Err(ModuleStaticDistributionError::InvalidCommand);
+        }
+        let mut seen = HashSet::with_capacity(self.roles.len());
+        let mut previous = None;
+        for role in &self.roles {
+            if !valid_digest(&role.artifact_digest)
+                || !seen.insert(role.role)
+                || previous.is_some_and(|value| value >= role.role.ordinal())
+            {
+                return Err(ModuleStaticDistributionError::InvalidCommand);
+            }
+            previous = Some(role.role.ordinal());
+        }
+        if Self::role_set_digest(&self.roles)? != self.role_set_digest {
+            return Err(ModuleStaticDistributionError::InvalidCommand);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -246,6 +334,8 @@ impl ModuleStaticDistributionWorkItem {
             || build.build_target.trim() != build.build_target
             || build.build_target.len() > 128
             || build.build_target.chars().any(char::is_control)
+            || build.preparation_source != ModuleStaticDistributionPreparationSource::Built
+            || build.bootstrap_receipt_digest.is_some()
             || build.status != ModuleStaticDistributionBuildStatus::Running
             || build.requested_by.is_nil()
             || build.attempt_count != self.attempt_number
@@ -286,7 +376,7 @@ impl ModuleStaticDistributionWorkItem {
         {
             return Err(ModuleStaticDistributionError::InvalidCommand);
         }
-        let expected_digest = distribution_composition_digest(
+        let expected_digest = module_static_distribution_composition_digest(
             &build.platform_source_reference,
             &build.platform_source_digest,
             &build.toolchain_digest,
@@ -348,7 +438,7 @@ struct CompositionDigestInput<'a> {
     items: &'a [ModuleStaticDistributionItem],
 }
 
-pub(crate) fn distribution_composition_digest(
+pub fn module_static_distribution_composition_digest(
     platform_source_reference: &str,
     platform_source_digest: &str,
     toolchain_digest: &str,
@@ -501,7 +591,7 @@ where
         {
             return Err(ModuleStaticDistributionError::DuplicateModuleSelection);
         }
-        let composition_digest = distribution_composition_digest(
+        let composition_digest = module_static_distribution_composition_digest(
             &command.platform_source_reference,
             &command.platform_source_digest,
             &command.toolchain_digest,
@@ -775,7 +865,8 @@ where
                         composition_revision: command.composition_revision,
                         composition_digest: command.composition_digest,
                         outcome: terminal.status.to_string(),
-                        result_digest: terminal.result_digest.clone(),
+                        bundle_root_digest: terminal.bundle_root_digest.clone(),
+                        role_set_digest: terminal.role_set_digest.clone(),
                         completion_digest: completion_digest.clone(),
                     },
                 ),
@@ -910,8 +1001,10 @@ struct ClaimedBuildRecord {
 
 struct TerminalBuildFields {
     status: &'static str,
-    result_reference: Option<String>,
-    result_digest: Option<String>,
+    bundle_reference: Option<String>,
+    bundle_root_digest: Option<String>,
+    role_set_digest: Option<String>,
+    role_artifacts_json: Option<String>,
     sbom_reference: Option<String>,
     sbom_digest: Option<String>,
     provenance_reference: Option<String>,
@@ -929,8 +1022,13 @@ impl TerminalBuildFields {
         match outcome {
             ModuleStaticDistributionCompletionOutcome::Succeeded { evidence } => Self {
                 status: "succeeded",
-                result_reference: Some(evidence.artifact_reference.clone()),
-                result_digest: Some(evidence.artifact_digest.clone()),
+                bundle_reference: Some(evidence.bundle_reference.clone()),
+                bundle_root_digest: Some(evidence.bundle_root_digest.clone()),
+                role_set_digest: Some(evidence.role_set_digest.clone()),
+                role_artifacts_json: Some(
+                    serde_json::to_string(&evidence.roles)
+                        .expect("validated role artifacts must serialize"),
+                ),
                 sbom_reference: Some(evidence.sbom_reference.clone()),
                 sbom_digest: Some(evidence.sbom_digest.clone()),
                 provenance_reference: Some(evidence.provenance_reference.clone()),
@@ -947,8 +1045,10 @@ impl TerminalBuildFields {
                 failure_detail,
             } => Self {
                 status: "failed",
-                result_reference: None,
-                result_digest: None,
+                bundle_reference: None,
+                bundle_root_digest: None,
+                role_set_digest: None,
+                role_artifacts_json: None,
                 sbom_reference: None,
                 sbom_digest: None,
                 provenance_reference: None,
@@ -965,8 +1065,10 @@ impl TerminalBuildFields {
                 failure_detail,
             } => Self {
                 status: "cancelled",
-                result_reference: None,
-                result_digest: None,
+                bundle_reference: None,
+                bundle_root_digest: None,
+                role_set_digest: None,
+                role_artifacts_json: None,
                 sbom_reference: None,
                 sbom_digest: None,
                 provenance_reference: None,
@@ -1294,8 +1396,10 @@ async fn complete_claim(
     let terminal_values = || -> Vec<sea_orm::Value> {
         vec![
             terminal.status.into(),
-            terminal.result_reference.clone().into(),
-            terminal.result_digest.clone().into(),
+            terminal.bundle_reference.clone().into(),
+            terminal.bundle_root_digest.clone().into(),
+            terminal.role_set_digest.clone().into(),
+            terminal.role_artifacts_json.clone().into(),
             terminal.sbom_reference.clone().into(),
             terminal.sbom_digest.clone().into(),
             terminal.provenance_reference.clone().into(),
@@ -1319,10 +1423,11 @@ async fn complete_claim(
             backend,
             format!(
                 "UPDATE module_static_distribution_attempts
-                 SET status = {}, result_reference = {}, result_digest = {},
-                     sbom_reference = {}, sbom_digest = {}, provenance_reference = {},
-                     provenance_digest = {}, signature_reference = {}, signature_digest = {},
-                     test_evidence_reference = {}, test_evidence_digest = {}, failure_code = {}, failure_detail = {},
+                 SET status = {}, bundle_reference = {}, bundle_root_digest = {},
+                     role_set_digest = {}, role_artifacts_json = {}, sbom_reference = {},
+                     sbom_digest = {}, provenance_reference = {}, provenance_digest = {},
+                     signature_reference = {}, signature_digest = {}, test_evidence_reference = {},
+                     test_evidence_digest = {}, failure_code = {}, failure_detail = {},
                      completion_digest = {}, completed_at = {}
                  WHERE claim_id = {} AND runner_id = {} AND status = 'running'
                    AND lease_expires_at >= {}",
@@ -1340,9 +1445,11 @@ async fn complete_claim(
                 placeholder(backend, 12),
                 placeholder(backend, 13),
                 placeholder(backend, 14),
-                now_expression(backend),
                 placeholder(backend, 15),
                 placeholder(backend, 16),
+                now_expression(backend),
+                placeholder(backend, 17),
+                placeholder(backend, 18),
                 now_expression(backend),
             ),
             attempt_values,
@@ -1363,10 +1470,11 @@ async fn complete_claim(
             backend,
             format!(
                 "UPDATE module_static_distribution_builds
-                 SET status = {}, result_reference = {}, result_digest = {},
-                     sbom_reference = {}, sbom_digest = {}, provenance_reference = {},
-                     provenance_digest = {}, signature_reference = {}, signature_digest = {},
-                     test_evidence_reference = {}, test_evidence_digest = {}, failure_code = {}, failure_detail = {},
+                 SET status = {}, bundle_reference = {}, bundle_root_digest = {},
+                     role_set_digest = {}, role_artifacts_json = {}, sbom_reference = {},
+                     sbom_digest = {}, provenance_reference = {}, provenance_digest = {},
+                     signature_reference = {}, signature_digest = {}, test_evidence_reference = {},
+                     test_evidence_digest = {}, failure_code = {}, failure_detail = {},
                      completion_digest = {}, lease_expires_at = NULL, completed_at = {}
                  WHERE distribution_build_id = {} AND active_claim_id = {} AND claimed_by = {}
                    AND status = 'running' AND lease_expires_at >= {}",
@@ -1384,10 +1492,12 @@ async fn complete_claim(
                 placeholder(backend, 12),
                 placeholder(backend, 13),
                 placeholder(backend, 14),
-                now_expression(backend),
                 placeholder(backend, 15),
                 placeholder(backend, 16),
+                now_expression(backend),
                 placeholder(backend, 17),
+                placeholder(backend, 18),
+                placeholder(backend, 19),
                 now_expression(backend),
             ),
             build_values,
@@ -1437,8 +1547,8 @@ pub(crate) async fn insert_build(
                 "INSERT INTO module_static_distribution_builds
                  (distribution_build_id, predecessor_build_id, composition_revision,
                   composition_digest, platform_source_reference, platform_source_digest,
-                  toolchain_digest, build_target, status, requested_by, requested_at)
-                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, 'queued', {}, {})",
+                  toolchain_digest, build_target, preparation_source, status, requested_by, requested_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, 'built', 'queued', {}, {})",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -1752,8 +1862,10 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
             format!(
                 "SELECT distribution_build_id, predecessor_build_id, composition_revision,
                         composition_digest, platform_source_reference, platform_source_digest,
-                        toolchain_digest, build_target, status, requested_by, attempt_count,
-                        active_claim_id, claimed_by, result_reference, result_digest,
+                        toolchain_digest, build_target, preparation_source,
+                        bootstrap_receipt_digest, status, requested_by, attempt_count,
+                        active_claim_id, claimed_by, bundle_reference, bundle_root_digest,
+                        role_set_digest, role_artifacts_json,
                         sbom_reference, sbom_digest, provenance_reference, provenance_digest,
                         signature_reference, signature_digest, test_evidence_reference,
                         test_evidence_digest, failure_code, failure_detail, completion_digest
@@ -1784,14 +1896,37 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
         .iter()
         .map(|item| item_from_row(item, backend))
         .collect::<Result<Vec<_>, _>>()?;
-    let result_reference: Option<String> =
-        row.try_get("", "result_reference").map_err(store_error)?;
-    let result_digest: Option<String> = row.try_get("", "result_digest").map_err(store_error)?;
-    let result = match (result_reference, result_digest) {
-        (Some(artifact_reference), Some(artifact_digest)) => {
-            Some(ModuleStaticDistributionBuildEvidence {
-                artifact_reference,
-                artifact_digest,
+    let bundle_reference: Option<String> =
+        row.try_get("", "bundle_reference").map_err(store_error)?;
+    let bundle_root_digest: Option<String> =
+        row.try_get("", "bundle_root_digest").map_err(store_error)?;
+    let role_set_digest: Option<String> =
+        row.try_get("", "role_set_digest").map_err(store_error)?;
+    let role_artifacts_json: Option<String> = row
+        .try_get("", "role_artifacts_json")
+        .map_err(store_error)?;
+    let result = match (
+        bundle_reference,
+        bundle_root_digest,
+        role_set_digest,
+        role_artifacts_json,
+    ) {
+        (
+            Some(bundle_reference),
+            Some(bundle_root_digest),
+            Some(role_set_digest),
+            Some(role_artifacts_json),
+        ) => {
+            let roles = serde_json::from_str(&role_artifacts_json).map_err(|error| {
+                ModuleStaticDistributionError::Store(format!(
+                    "static distribution role artifacts are invalid: {error}"
+                ))
+            })?;
+            let evidence = ModuleStaticDistributionBuildEvidence {
+                bundle_reference,
+                bundle_root_digest,
+                role_set_digest,
+                roles,
                 sbom_reference: required_optional_string(&row, "sbom_reference")?,
                 sbom_digest: required_optional_string(&row, "sbom_digest")?,
                 provenance_reference: required_optional_string(&row, "provenance_reference")?,
@@ -1800,9 +1935,15 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
                 signature_digest: required_optional_string(&row, "signature_digest")?,
                 test_evidence_reference: required_optional_string(&row, "test_evidence_reference")?,
                 test_evidence_digest: required_optional_string(&row, "test_evidence_digest")?,
-            })
+            };
+            evidence.validate().map_err(|_| {
+                ModuleStaticDistributionError::Store(
+                    "persisted static distribution bundle identity is invalid".to_string(),
+                )
+            })?;
+            Some(evidence)
         }
-        (None, None) => None,
+        (None, None, None, None) => None,
         _ => {
             return Err(ModuleStaticDistributionError::Store(
                 "static distribution result identity is incomplete".to_string(),
@@ -1835,6 +1976,13 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
             .map_err(store_error)?,
         toolchain_digest: row.try_get("", "toolchain_digest").map_err(store_error)?,
         build_target: row.try_get("", "build_target").map_err(store_error)?,
+        preparation_source: ModuleStaticDistributionPreparationSource::parse(
+            &row.try_get::<String>("", "preparation_source")
+                .map_err(store_error)?,
+        )?,
+        bootstrap_receipt_digest: row
+            .try_get("", "bootstrap_receipt_digest")
+            .map_err(store_error)?,
         status: ModuleStaticDistributionBuildStatus::parse(
             &row.try_get::<String>("", "status").map_err(store_error)?,
         )?,
@@ -1953,8 +2101,8 @@ fn validate_completion_command(
     validate_runner_id(&command.runner_id)?;
     match &command.outcome {
         ModuleStaticDistributionCompletionOutcome::Succeeded { evidence } => {
+            evidence.validate()?;
             for (reference, digest) in [
-                (&evidence.artifact_reference, &evidence.artifact_digest),
                 (&evidence.sbom_reference, &evidence.sbom_digest),
                 (&evidence.provenance_reference, &evidence.provenance_digest),
                 (&evidence.signature_reference, &evidence.signature_digest),
@@ -2115,6 +2263,10 @@ mod tests {
 
     #[test]
     fn successful_completion_requires_signature_evidence() {
+        let roles = vec![ModuleStaticDistributionRoleArtifact {
+            role: ModuleStaticDistributionRole::Monolith,
+            artifact_digest: digest('b'),
+        }];
         let command = ModuleStaticDistributionCompletionCommand {
             claim_id: Uuid::new_v4(),
             runner_id: "distribution-worker".to_string(),
@@ -2123,8 +2275,11 @@ mod tests {
             composition_digest: digest('a'),
             outcome: ModuleStaticDistributionCompletionOutcome::Succeeded {
                 evidence: ModuleStaticDistributionBuildEvidence {
-                    artifact_reference: "oci://distribution".to_string(),
-                    artifact_digest: digest('b'),
+                    bundle_reference: "oci://distribution".to_string(),
+                    bundle_root_digest: digest('b'),
+                    role_set_digest: ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
+                        .unwrap(),
+                    roles,
                     sbom_reference: "oci://distribution/sbom".to_string(),
                     sbom_digest: digest('c'),
                     provenance_reference: "oci://distribution/provenance".to_string(),

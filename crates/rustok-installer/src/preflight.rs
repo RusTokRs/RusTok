@@ -37,13 +37,18 @@ pub fn evaluate_preflight(plan: &InstallPlan) -> PreflightReport {
 
 /// Evaluates installer policy with the deployment capability selected by a host.
 ///
-/// A plan alone cannot prove whether a host can build and activate distributed
-/// roles, so CLI and HTTP adapters must supply that capability explicitly.
+/// A plan alone cannot prove whether a host can reconcile and observe the
+/// exact admitted distribution bundle, so CLI and HTTP adapters must supply
+/// that capability explicitly.
 pub fn evaluate_preflight_with_deployment(
     plan: &InstallPlan,
     distributed_deployment_available: bool,
 ) -> PreflightReport {
     let mut issues = Vec::new();
+
+    if let Err(layout_error) = plan.placement.validate() {
+        issues.push(error("invalid_instance_root", &layout_error.to_string()));
+    }
 
     if plan.environment == InstallEnvironment::Production
         && plan.database.engine != DatabaseEngine::Postgres
@@ -69,7 +74,7 @@ pub fn evaluate_preflight_with_deployment(
     {
         issues.push(error(
             "distributed_topology_unavailable",
-            "Distributed topology requires a deployment adapter and is not available for apply yet.",
+            "Distributed topology requires the owner-controlled distribution rollout adapter and is not available for apply yet.",
         ));
     }
 
@@ -94,8 +99,8 @@ pub fn evaluate_preflight_with_deployment(
                 ));
             }
 
-            if let Some(sample) = known_sample_secret(value) {
-                let message = format!("{name} contains known sample secret `{sample}`.");
+            if known_sample_secret(value).is_some() {
+                let message = format!("{name} contains a known sample secret.");
                 if plan.environment.is_production() {
                     issues.push(error("sample_secret", &message));
                 } else {
@@ -151,8 +156,9 @@ fn known_sample_secret(value: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     use crate::{
-        AdminBootstrap, DatabaseConfig, InstallProfile, InstallTopology, InstallTopologyMode,
-        ModuleSelection, SecretRef, SecretValue, SeedProfile, TenantBootstrap,
+        AdminBootstrap, DatabaseConfig, InstallDistributionBinding, InstallProfile,
+        InstallTopology, InstallTopologyMode, ModuleSelection, SecretRef, SecretValue, SeedProfile,
+        TenantBootstrap,
     };
 
     fn production_plan(
@@ -160,6 +166,7 @@ mod tests {
         admin_password: SecretValue,
     ) -> InstallPlan {
         InstallPlan {
+            placement: crate::InstancePlacement::new("."),
             environment: InstallEnvironment::Production,
             profile: InstallProfile::Monolith,
             database: DatabaseConfig {
@@ -268,7 +275,8 @@ mod tests {
             },
         );
         plan.topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
-            .bind_composition("distribution@1".to_string(), "a".repeat(64));
+            .bind_composition("distribution@1".to_string(), "a".repeat(64))
+            .bind_distribution(distribution());
 
         let report = evaluate_preflight(&plan);
 
@@ -284,9 +292,20 @@ mod tests {
         assert!(adapter_report.passed());
     }
 
+    fn distribution() -> InstallDistributionBinding {
+        InstallDistributionBinding {
+            preparation_id: uuid::Uuid::from_u128(1),
+            distribution_release_id: uuid::Uuid::from_u128(2),
+            bundle_root_digest: format!("sha256:{}", "b".repeat(64)),
+            role_set_digest: format!("sha256:{}", "c".repeat(64)),
+            bootstrap_receipt: None,
+        }
+    }
+
     #[test]
     fn local_sample_secret_warns_without_failing() {
         let plan = InstallPlan {
+            placement: crate::InstancePlacement::new("."),
             environment: InstallEnvironment::Local,
             profile: InstallProfile::DevLocal,
             database: DatabaseConfig {

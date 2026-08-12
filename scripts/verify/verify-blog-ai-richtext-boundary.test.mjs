@@ -74,11 +74,6 @@ function fixture(options = {}) {
         'content_json:',
       ],
     },
-    inventory: {
-      path: 'crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json',
-      check: 'ai_blog_draft_writer',
-      completion_condition: 'ai_blog_drafts_write_richtext_document',
-    },
     guardrail: 'scripts/verify/verify-blog-ai-richtext-boundary.mjs',
     guardrail_test: 'scripts/verify/verify-blog-ai-richtext-boundary.test.mjs',
   };
@@ -86,20 +81,6 @@ function fixture(options = {}) {
     root,
     'crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json',
     JSON.stringify(evidence),
-  );
-  writeFixtureFile(
-    root,
-    'crates/rustok-blog/contracts/evidence/blog-richtext-cutover-inventory.json',
-    JSON.stringify({
-      checks: [
-        {
-          name: 'ai_blog_draft_writer',
-          status: 'implemented_source_verified_no_compile',
-          path: 'crates/rustok-ai/src/direct.rs',
-        },
-      ],
-      completion_conditions: ['ai_blog_drafts_write_richtext_document'],
-    }),
   );
   writeFixtureFile(
     root,
@@ -111,15 +92,6 @@ function fixture(options = {}) {
       'scripts/verify/verify-blog-ai-richtext-boundary.mjs',
       'scripts/verify/verify-blog-ai-richtext-boundary.test.mjs',
       '35. Bound the AI Blog owner shim.',
-    ].join('\n'),
-  );
-  writeFixtureFile(
-    root,
-    'crates/rustok-blog/docs/richtext-cutover-inventory.md',
-    [
-      'AI Blog owner shim',
-      'crates/rustok-blog/contracts/evidence/blog-ai-richtext-boundary.json',
-      'scripts/verify/verify-blog-ai-richtext-boundary.mjs',
     ].join('\n'),
   );
   writeFixtureFile(

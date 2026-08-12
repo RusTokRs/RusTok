@@ -49,7 +49,9 @@ pub fn attach_commerce_provider_registries(
         let runtime = host
             .shared_get::<rustok_payment::PaymentCartReadRuntime>()
             .or_else(|| server.shared_get::<rustok_payment::PaymentCartReadRuntime>())
-            .unwrap_or_else(|| rustok_payment::PaymentCartReadRuntime::in_process(server.db_clone()));
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentCartReadRuntime::in_process(server.db_clone())
+            });
         server.shared_insert(runtime.clone());
         host.with_shared_value(runtime)
     };
@@ -85,11 +87,11 @@ pub fn attach_commerce_provider_registries(
     let host = {
         let runtime = host
             .shared_get::<rustok_fulfillment::ShippingOptionAdminCommandRuntime>()
-            .or_else(|| server.shared_get::<rustok_fulfillment::ShippingOptionAdminCommandRuntime>())
+            .or_else(|| {
+                server.shared_get::<rustok_fulfillment::ShippingOptionAdminCommandRuntime>()
+            })
             .unwrap_or_else(|| {
-                rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(
-                    server.db_clone(),
-                )
+                rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(server.db_clone())
             });
         server.shared_insert(runtime.clone());
         host.with_shared_value(runtime)
@@ -183,7 +185,9 @@ pub fn attach_commerce_provider_registries(
         let runtime = host
             .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
             .or_else(|| server.shared_get::<rustok_payment::PaymentOrderReadRuntime>())
-            .unwrap_or_else(|| rustok_payment::PaymentOrderReadRuntime::in_process(server.db_clone()));
+            .unwrap_or_else(|| {
+                rustok_payment::PaymentOrderReadRuntime::in_process(server.db_clone())
+            });
         server.shared_insert(runtime.clone());
         host.with_shared_value(runtime)
     };
@@ -308,10 +312,7 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(runtime)
     };
 
-    #[cfg(all(
-        feature = "commerce-marketplace-financial",
-        feature = "mod-payment"
-    ))]
+    #[cfg(all(feature = "commerce-marketplace-financial", feature = "mod-payment"))]
     let host = {
         let observers = server
             .shared_get::<rustok_payment::PaymentProviderEventObservers>()

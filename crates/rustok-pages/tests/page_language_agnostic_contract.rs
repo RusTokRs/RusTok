@@ -43,14 +43,12 @@ fn translation(locale: &str, title: &str, slug: Option<&str>) -> PageTranslation
 fn builder_body(locale: &str) -> PageBodyInput {
     PageBodyInput {
         locale: locale.to_string(),
-        content: String::new(),
-        format: Some("grapesjs".to_string()),
-        content_json: Some(serde_json::json!({
+        document: serde_json::json!({
             "pages": [{
                 "id": "main",
                 "component": {"id": "root", "type": "wrapper", "components": []}
             }]
-        })),
+        }),
     }
 }
 

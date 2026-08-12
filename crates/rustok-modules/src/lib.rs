@@ -18,6 +18,7 @@ mod definition;
 mod dependency;
 mod dispatcher;
 mod distribution;
+mod distribution_bootstrap;
 mod distribution_release;
 mod distribution_rollout;
 mod event_delivery;
@@ -182,20 +183,32 @@ pub use distribution::{
     ModuleStaticDistributionExecutorError, ModuleStaticDistributionExecutorMode,
     ModuleStaticDistributionExecutorReadiness, ModuleStaticDistributionFailure,
     ModuleStaticDistributionHeartbeatCommand, ModuleStaticDistributionHeartbeatReceipt,
-    ModuleStaticDistributionItem, ModuleStaticDistributionSelection, ModuleStaticDistributionState,
+    ModuleStaticDistributionItem, ModuleStaticDistributionPreparationSource,
+    ModuleStaticDistributionRole, ModuleStaticDistributionRoleArtifact,
+    ModuleStaticDistributionSelection, ModuleStaticDistributionState,
     ModuleStaticDistributionWorkItem, ModuleStaticDistributionWorkerAuthorizer,
     SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
+    module_static_distribution_composition_digest,
+};
+pub use distribution_bootstrap::{
+    MODULE_STATIC_DISTRIBUTION_BOOTSTRAP_RECEIPT_CONTRACT,
+    ModuleStaticDistributionBootstrapImportCommand, ModuleStaticDistributionBootstrapImportReceipt,
+    ModuleStaticDistributionBootstrapPreparation, ModuleStaticDistributionBootstrapReceipt,
+    ModuleStaticDistributionBootstrapReceiptError, ModuleStaticDistributionBootstrapReceiptPayload,
+    SeaOrmModuleStaticDistributionBootstrapService,
+    VerifiedModuleStaticDistributionBootstrapReceipt,
 };
 pub use distribution_release::{
     ModuleStaticDistributionActivationCommand, ModuleStaticDistributionActivationReceipt,
-    ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseAdmission,
-    ModuleStaticDistributionReleaseAuthorizer, ModuleStaticDistributionReleaseError,
-    ModuleStaticDistributionReleaseState, ModuleStaticDistributionReleaseStatus,
-    ModuleStaticDistributionReleaseVerificationRequest, ModuleStaticDistributionReleaseVerifier,
-    ModuleStaticDistributionRevocationCommand, ModuleStaticDistributionRevocationReceipt,
-    ModuleStaticDistributionRollback, ModuleStaticDistributionRollbackCommand,
-    ModuleStaticDistributionRollbackReceipt, ModuleStaticDistributionRollbackStatus,
-    SeaOrmModuleStaticDistributionReleaseService,
+    ModuleStaticDistributionInstallBinding, ModuleStaticDistributionRelease,
+    ModuleStaticDistributionReleaseAdmission, ModuleStaticDistributionReleaseAuthorizer,
+    ModuleStaticDistributionReleaseError, ModuleStaticDistributionReleaseState,
+    ModuleStaticDistributionReleaseStatus, ModuleStaticDistributionReleaseVerificationRequest,
+    ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionRevocationCommand,
+    ModuleStaticDistributionRevocationReceipt, ModuleStaticDistributionRollback,
+    ModuleStaticDistributionRollbackCommand, ModuleStaticDistributionRollbackReceipt,
+    ModuleStaticDistributionRollbackStatus, SeaOrmModuleStaticDistributionReleaseService,
+    resolve_static_distribution_install_binding,
 };
 pub use distribution_rollout::{
     ModuleStaticDistributionHealthEvidence, ModuleStaticDistributionNodeFailure,

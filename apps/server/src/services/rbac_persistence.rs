@@ -66,8 +66,6 @@ where
     Ok(())
 }
 
-
-
 fn record_authz_entrypoint_call(entry_point: &str, path: &str) {
     metrics::record_module_entrypoint_call("rbac", entry_point, path);
 }

@@ -2,7 +2,7 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxModule, OutboxTransport, SysEvents, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -15,9 +15,7 @@ use rustok_pages::entities::{
     page_static_landing_artifact,
 };
 use rustok_pages::services::PageService;
-use rustok_pages::{
-    PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT, PagesError, PagesModule,
-};
+use rustok_pages::{PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT, PagesError, PagesModule};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
     DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Set, Statement,
@@ -93,14 +91,15 @@ struct PublishedFixture {
 }
 
 #[tokio::test]
-async fn missing_binding_activation_recovers_after_physical_source_artifact_loss_on_postgres(
-) -> TestResult<()> {
+async fn missing_binding_activation_recovers_after_physical_source_artifact_loss_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("success").await? else {
         return Ok(());
     };
     let db = database.connection().await?;
     let service = page_service(&db);
-    let fixture = create_published_fixture(&db, &service, "artifact-loss-activation-success").await?;
+    let fixture =
+        create_published_fixture(&db, &service, "artifact-loss-activation-success").await?;
     let source_before = fixture.source.clone();
 
     remove_binding_manifest_and_source_artifact(
@@ -110,7 +109,8 @@ async fn missing_binding_activation_recovers_after_physical_source_artifact_loss
         &fixture.source,
     )
     .await?;
-    let rebuild = rebuild_from_fixture(&service, &fixture, "artifact-loss-activation-rebuild-v1").await?;
+    let rebuild =
+        rebuild_from_fixture(&service, &fixture, "artifact-loss-activation-rebuild-v1").await?;
     let rebuild_record = page_artifact_rebuild_operation::Entity::find_by_id(rebuild.operation_id)
         .one(&db)
         .await?
@@ -133,7 +133,10 @@ async fn missing_binding_activation_recovers_after_physical_source_artifact_loss
         .await?;
     assert!(!activated.replayed);
     assert_eq!(activated.previous_artifact_id, fixture.source.artifact_id);
-    assert_eq!(activated.replacement_artifact_id, rebuild.rebuilt_artifact_id);
+    assert_eq!(
+        activated.replacement_artifact_id,
+        rebuild.rebuilt_artifact_id
+    );
     assert_eq!(activated.version, fixture.page_version + 1);
 
     let binding = page_published_landing_artifact::Entity::find()
@@ -178,7 +181,10 @@ async fn missing_binding_activation_recovers_after_physical_source_artifact_loss
             .await?,
         1
     );
-    assert_eq!(SysEvents::find().count(&db).await?, events_before_activation + 2);
+    assert_eq!(
+        SysEvents::find().count(&db).await?,
+        events_before_activation + 2
+    );
     let page_after = page::Entity::find_by_id(fixture.page_id)
         .one(&db)
         .await?
@@ -197,7 +203,10 @@ async fn missing_binding_activation_recovers_after_physical_source_artifact_loss
     assert!(replay.replayed);
     assert_eq!(replay.operation_id, activated.operation_id);
     assert_eq!(replay.version, activated.version);
-    assert_eq!(SysEvents::find().count(&db).await?, events_before_activation + 2);
+    assert_eq!(
+        SysEvents::find().count(&db).await?,
+        events_before_activation + 2
+    );
     assert_eq!(
         page_artifact_binding_replacement_operation::Entity::find()
             .filter(
@@ -216,14 +225,15 @@ async fn missing_binding_activation_recovers_after_physical_source_artifact_loss
 }
 
 #[tokio::test]
-async fn missing_binding_activation_rejects_when_source_artifact_still_exists_on_postgres(
-) -> TestResult<()> {
+async fn missing_binding_activation_rejects_when_source_artifact_still_exists_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("source_present").await? else {
         return Ok(());
     };
     let db = database.connection().await?;
     let service = page_service(&db);
-    let fixture = create_published_fixture(&db, &service, "artifact-loss-activation-source-present").await?;
+    let fixture =
+        create_published_fixture(&db, &service, "artifact-loss-activation-source-present").await?;
     let rebuild = rebuild_from_fixture(&service, &fixture, "source-present-rebuild-v1").await?;
 
     let removed = page_published_landing_artifact::Entity::delete_many()
@@ -287,14 +297,15 @@ async fn missing_binding_activation_rejects_when_source_artifact_still_exists_on
 }
 
 #[tokio::test]
-async fn missing_binding_activation_rejects_stale_source_publish_version_on_postgres(
-) -> TestResult<()> {
+async fn missing_binding_activation_rejects_stale_source_publish_version_on_postgres()
+-> TestResult<()> {
     let Some(database) = TestDatabase::setup("stale_publish").await? else {
         return Ok(());
     };
     let db = database.connection().await?;
     let service = page_service(&db);
-    let fixture = create_published_fixture(&db, &service, "artifact-loss-activation-stale-publish").await?;
+    let fixture =
+        create_published_fixture(&db, &service, "artifact-loss-activation-stale-publish").await?;
 
     remove_binding_manifest_and_source_artifact(
         &db,
@@ -412,9 +423,7 @@ async fn create_published_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: None,
                 publish: false,

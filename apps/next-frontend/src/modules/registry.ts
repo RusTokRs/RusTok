@@ -5,6 +5,7 @@ export type StorefrontSlot = "home:afterHero";
 
 export type StorefrontRenderContext = {
   locale: string;
+  searchParams: Record<string, string | string[] | undefined>;
   enabledModules: string[];
   tenantSlug: string | null;
   tenantId: string | null;

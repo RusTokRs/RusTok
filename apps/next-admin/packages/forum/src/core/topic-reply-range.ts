@@ -1,3 +1,5 @@
+import { isForumUuid, newForumUuid } from './identity';
+
 export const MAX_FORUM_REPLY_RANGE_MOVE_REASON_LENGTH = 500;
 
 export interface ForumReplyRangeMoveIdentity {
@@ -36,29 +38,8 @@ export interface ForumReplyRangeMoveReceipt {
   movedAt: string;
 }
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function newUuidV4(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-  const now = BigInt(Date.now());
-  const entropy = BigInt(
-    Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-  );
-  const value = ((now << 64n) ^ entropy)
-    .toString(16)
-    .padStart(32, '0')
-    .slice(-32);
-  return `${value.slice(0, 8)}-${value.slice(8, 12)}-4${value.slice(
-    13,
-    16
-  )}-8${value.slice(17, 20)}-${value.slice(20)}`;
-}
-
 export function newForumReplyRangeMoveIdentity(): ForumReplyRangeMoveIdentity {
-  return { operationId: newUuidV4() };
+  return { operationId: newForumUuid() };
 }
 
 export function buildForumReplyRangeMoveCommand(input: {
@@ -73,13 +54,13 @@ export function buildForumReplyRangeMoveCommand(input: {
   const sourceTopicId = input.sourceTopicId.trim();
   const targetTopicId = input.targetTopicId.trim();
 
-  if (!UUID_PATTERN.test(operationId)) {
+  if (!isForumUuid(operationId)) {
     throw new Error('Reply-range retry identity is invalid.');
   }
-  if (!UUID_PATTERN.test(sourceTopicId)) {
+  if (!isForumUuid(sourceTopicId)) {
     throw new Error('Choose the source topic.');
   }
-  if (!UUID_PATTERN.test(targetTopicId)) {
+  if (!isForumUuid(targetTopicId)) {
     throw new Error('Choose the target topic.');
   }
   if (sourceTopicId === targetTopicId) {

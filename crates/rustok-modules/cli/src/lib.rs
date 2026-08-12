@@ -73,19 +73,10 @@ impl ModuleCommandProvider {
         }
         let source_cas_root = self
             .runtime
-            .settings()
-            .get("module_build")
-            .and_then(|settings| settings.get("source_cas_root"))
-            .and_then(serde_json::Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| {
-                command_failed(
-                    "module build requires module_build.source_cas_root in RUSTOK_SETTINGS_JSON",
-                )
-            })?;
-        let service =
-            SeaOrmModuleAuthoringBuildService::new(db_clone(host), PathBuf::from(source_cas_root))
-                .map_err(command_failed)?;
+            .instance_path("sources")
+            .map_err(command_failed)?;
+        let service = SeaOrmModuleAuthoringBuildService::new(db_clone(host), source_cas_root)
+            .map_err(command_failed)?;
         let shared = SharedModuleAuthoringBuildControl(Arc::new(service));
         Ok(shared)
     }
@@ -97,12 +88,22 @@ impl ModuleCommandProvider {
         if let Some(shared) = host.shared_get::<SharedModuleAuthoringPublishControl>() {
             return Ok(shared);
         }
-        let storage_settings = self.runtime.settings().get("storage").ok_or_else(|| {
-            command_failed("module publish requires storage in RUSTOK_SETTINGS_JSON")
-        })?;
+        let storage_settings =
+            self.runtime
+                .settings()
+                .get("storage")
+                .cloned()
+                .ok_or_else(|| {
+                    command_failed("module publish requires storage in RUSTOK_SETTINGS_JSON")
+                })?;
+        let storage_root = self
+            .runtime
+            .instance_path("storage")
+            .map_err(command_failed)?;
         let service = SeaOrmModuleAuthoringPublishService::from_storage_settings(
             db_clone(host),
-            storage_settings.clone(),
+            storage_settings,
+            &storage_root,
         )
         .await
         .map_err(command_failed)?;

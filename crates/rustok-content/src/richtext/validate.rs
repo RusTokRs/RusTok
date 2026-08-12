@@ -453,6 +453,7 @@ fn ensure_only_keys(
 
 pub(crate) fn is_safe_link(href: &str) -> bool {
     if href.is_empty()
+        || href.trim() != href
         || href.chars().any(char::is_control)
         || href.contains('\\')
         || href.starts_with("//")

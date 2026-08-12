@@ -157,7 +157,8 @@ pub struct ModuleStaticDistributionNodeReport {
     pub distribution_release_revision: u64,
     pub composition_revision: u64,
     pub composition_digest: String,
-    pub artifact_digest: String,
+    pub bundle_root_digest: String,
+    pub role_set_digest: String,
     pub policy_revision: String,
     pub executor_mode: ModuleStaticDistributionExecutorMode,
     pub health_evidence: Option<ModuleStaticDistributionHealthEvidence>,
@@ -207,8 +208,9 @@ pub struct ModuleStaticDistributionRollout {
     pub distribution_release_revision: u64,
     pub composition_revision: u64,
     pub composition_digest: String,
-    pub artifact_reference: String,
-    pub artifact_digest: String,
+    pub bundle_reference: String,
+    pub bundle_root_digest: String,
+    pub role_set_digest: String,
     pub executor_mode: ModuleStaticDistributionExecutorMode,
     pub topology_reference: String,
     pub topology_digest: String,
@@ -413,7 +415,8 @@ where
                         rollout_state_revision,
                         composition_revision: release.composition_revision,
                         composition_digest: release.composition_digest,
-                        artifact_digest: release.evidence.artifact_digest,
+                        bundle_root_digest: release.evidence.bundle_root_digest,
+                        role_set_digest: release.evidence.role_set_digest,
                         topology_digest: topology.topology_digest,
                         policy_revision: command.policy_revision,
                         target_nodes: u32::try_from(topology.node_ids.len())
@@ -923,7 +926,8 @@ fn validate_report(
         || command.distribution_release_revision == 0
         || command.composition_revision == 0
         || !valid_digest(&command.composition_digest)
-        || !valid_digest(&command.artifact_digest)
+        || !valid_digest(&command.bundle_root_digest)
+        || !valid_digest(&command.role_set_digest)
         || !valid_text(&command.policy_revision, MAX_POLICY_REVISION_BYTES)
         || command.executor_mode != ModuleStaticDistributionExecutorMode::StaticNative
         || !phase_payload_valid
@@ -943,7 +947,8 @@ fn validate_report_identity(
         || command.distribution_release_revision != rollout.distribution_release_revision
         || command.composition_revision != rollout.composition_revision
         || command.composition_digest != rollout.composition_digest
-        || command.artifact_digest != rollout.artifact_digest
+        || command.bundle_root_digest != rollout.bundle_root_digest
+        || command.role_set_digest != rollout.role_set_digest
         || command.policy_revision != rollout.policy_revision
         || command.executor_mode != rollout.executor_mode
     {
@@ -1001,10 +1006,10 @@ async fn insert_rollout(
                 "INSERT INTO module_static_distribution_rollouts
                  (rollout_id, predecessor_rollout_id, distribution_release_id,
                   rollout_revision, distribution_release_revision, composition_revision,
-                  composition_digest, artifact_reference, artifact_digest, executor_mode,
+                  composition_digest, bundle_reference, bundle_root_digest, role_set_digest, executor_mode,
                   topology_reference, topology_digest, policy_revision, target_node_count,
                   status, requested_by, requested_at, status_changed_at)
-                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, 'static_native', {}, {}, {}, {},
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'static_native', {}, {}, {}, {},
                          'preparing', {}, {}, {})",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -1020,6 +1025,7 @@ async fn insert_rollout(
                 placeholder(backend, 12),
                 placeholder(backend, 13),
                 placeholder(backend, 14),
+                placeholder(backend, 15),
                 now_expression(backend),
                 now_expression(backend),
             ),
@@ -1031,8 +1037,9 @@ async fn insert_rollout(
                 revision_value(release.release_revision)?,
                 revision_value(release.composition_revision)?,
                 release.composition_digest.clone().into(),
-                release.evidence.artifact_reference.clone().into(),
-                release.evidence.artifact_digest.clone().into(),
+                release.evidence.bundle_reference.clone().into(),
+                release.evidence.bundle_root_digest.clone().into(),
+                release.evidence.role_set_digest.clone().into(),
                 topology.topology_reference.clone().into(),
                 topology.topology_digest.clone().into(),
                 command.policy_revision.clone().into(),
@@ -1106,7 +1113,8 @@ async fn update_rollout_node(
                 "UPDATE module_static_distribution_rollout_nodes
                  SET observation_revision = {}, phase = {}, observed_release_id = {},
                      observed_release_revision = {}, observed_composition_revision = {},
-                     observed_composition_digest = {}, observed_artifact_digest = {},
+                     observed_composition_digest = {}, observed_bundle_root_digest = {},
+                     observed_role_set_digest = {},
                      observed_policy_revision = {}, observed_executor_mode = 'static_native',
                      health_evidence_reference = {}, health_evidence_digest = {},
                      failure_code = {}, failure_detail = {}, reported_by = {},
@@ -1132,6 +1140,7 @@ async fn update_rollout_node(
                 placeholder(backend, 15),
                 placeholder(backend, 16),
                 placeholder(backend, 17),
+                placeholder(backend, 18),
             ),
             vec![
                 revision_value(observation_revision)?,
@@ -1140,7 +1149,8 @@ async fn update_rollout_node(
                 revision_value(command.distribution_release_revision)?,
                 revision_value(command.composition_revision)?,
                 command.composition_digest.clone().into(),
-                command.artifact_digest.clone().into(),
+                command.bundle_root_digest.clone().into(),
+                command.role_set_digest.clone().into(),
                 command.policy_revision.clone().into(),
                 health_reference.into(),
                 health_digest.into(),
@@ -1373,7 +1383,8 @@ async fn load_rollout<C: ConnectionTrait>(
             format!(
                 "SELECT rollout_id, predecessor_rollout_id, distribution_release_id,
                         rollout_revision, distribution_release_revision, composition_revision,
-                        composition_digest, artifact_reference, artifact_digest, executor_mode,
+                        composition_digest, bundle_reference, bundle_root_digest, role_set_digest,
+                        executor_mode,
                         topology_reference, topology_digest, policy_revision, target_node_count,
                         status, requested_by, failure_code, failure_detail
                  FROM module_static_distribution_rollouts WHERE rollout_id = {}{lock}",
@@ -1444,8 +1455,9 @@ async fn load_rollout<C: ConnectionTrait>(
         )?,
         composition_revision: revision_from_row(&row, "composition_revision", false)?,
         composition_digest: row.try_get("", "composition_digest").map_err(store_error)?,
-        artifact_reference: row.try_get("", "artifact_reference").map_err(store_error)?,
-        artifact_digest: row.try_get("", "artifact_digest").map_err(store_error)?,
+        bundle_reference: row.try_get("", "bundle_reference").map_err(store_error)?,
+        bundle_root_digest: row.try_get("", "bundle_root_digest").map_err(store_error)?,
+        role_set_digest: row.try_get("", "role_set_digest").map_err(store_error)?,
         executor_mode: ModuleStaticDistributionExecutorMode::StaticNative,
         topology_reference: row.try_get("", "topology_reference").map_err(store_error)?,
         topology_digest: row.try_get("", "topology_digest").map_err(store_error)?,

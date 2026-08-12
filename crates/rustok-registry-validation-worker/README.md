@@ -24,15 +24,16 @@ contract through owner operations. Registry credentials and trust roots are not
 exposed to the server, Alloy, MCP, AI, or module runtime.
 
 It has no HTTP server dependency and does not use a server-local background
-task. Configure its database connection, storage configuration JSON, worker ID,
-and polling delay through the `RUSTOK_REGISTRY_VALIDATION_*` environment
-variables.
+task. Configure `RUSTOK_INSTANCE_ROOT`, its database connection, storage driver
+JSON, worker ID, and polling delay through the
+`RUSTOK_REGISTRY_VALIDATION_*` environment variables. The local driver always
+uses `<instance-root>/storage`; its JSON does not select another physical root.
 
 Production platform-build evidence additionally requires:
 
 - `RUSTOK_REGISTRY_VALIDATION_VERIFICATION_ENDPOINT`;
 - the `RUSTOK_REGISTRY_VALIDATION_VERIFICATION_*` mTLS identity and trust files;
-- `RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER` and its pinned
+- instance-relative `RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER` and its pinned
   `RUSTOK_REGISTRY_VALIDATION_REGISTRY_CREDENTIAL_BROKER_DIGEST`;
 - `RUSTOK_REGISTRY_VALIDATION_REGISTRY_ID`;
 - `RUSTOK_REGISTRY_VALIDATION_TRUST_POLICY_REVISION` and

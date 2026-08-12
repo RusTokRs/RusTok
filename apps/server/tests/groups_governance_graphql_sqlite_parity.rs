@@ -32,10 +32,9 @@ async fn connect(url: &str) -> DatabaseConnection {
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply for governance GraphQL parity evidence");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply for governance GraphQL parity evidence",
+        );
     }
 }
 
@@ -110,11 +109,7 @@ fn auth_context(tenant_id: Uuid, user_id: Uuid) -> AuthContext {
     }
 }
 
-fn native_write_context(
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    idempotency_key: &str,
-) -> PortContext {
+fn native_write_context(tenant_id: Uuid, actor_id: Uuid, idempotency_key: &str) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
         PortActor::user(actor_id.to_string()),
@@ -173,11 +168,7 @@ fn extension_json(error: &async_graphql::ServerError, key: &str) -> Option<serde
         .and_then(|value| value.into_json().ok())
 }
 
-async fn group_snapshot(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    group_id: Uuid,
-) -> (String, i64) {
+async fn group_snapshot(db: &DatabaseConnection, tenant_id: Uuid, group_id: Uuid) -> (String, i64) {
     let row = db
         .query_one(Statement::from_string(
             DatabaseBackend::Sqlite,
@@ -238,9 +229,15 @@ fn assert_graphql_governance_result(
         graphql["targetUserId"].as_str().map(str::to_owned),
         Some(expected_target_id.to_string())
     );
-    assert_eq!(graphql["previousRole"].as_str(), Some(expected_previous_role));
+    assert_eq!(
+        graphql["previousRole"].as_str(),
+        Some(expected_previous_role)
+    );
     assert_eq!(graphql["currentRole"].as_str(), Some(expected_current_role));
-    assert_eq!(graphql["groupVersion"].as_u64(), Some(expected_group_version));
+    assert_eq!(
+        graphql["groupVersion"].as_u64(),
+        Some(expected_group_version)
+    );
     assert_eq!(graphql["replayed"].as_bool(), Some(expected_replayed));
 }
 
@@ -415,8 +412,14 @@ mutation {{
         group_snapshot(&db, tenant_id, graphql_group_id).await;
     assert_eq!(native_owner_before_transfer, owner_id.to_string());
     assert_eq!(graphql_owner_before_transfer, owner_id.to_string());
-    assert_eq!(native_version_before_transfer as u64, native_role.group_version);
-    assert_eq!(graphql_version_before_transfer as u64, native_role.group_version);
+    assert_eq!(
+        native_version_before_transfer as u64,
+        native_role.group_version
+    );
+    assert_eq!(
+        graphql_version_before_transfer as u64,
+        native_role.group_version
+    );
 
     let native_transfer = GroupGovernanceCommandPort::transfer_group_ownership(
         &native,
@@ -476,7 +479,10 @@ mutation {{
     .await
     .expect("native ownership transfer replay should succeed");
     assert!(native_transfer_replay.replayed);
-    assert_eq!(native_transfer_replay.group_version, native_transfer.group_version);
+    assert_eq!(
+        native_transfer_replay.group_version,
+        native_transfer.group_version
+    );
 
     let graphql_transfer_replay = response_json(
         execute_graphql(
@@ -520,7 +526,10 @@ mutation {{
     assert_eq!(graphql_version_after as u64, native_transfer.group_version);
 
     for group_id in [native_group_id, graphql_group_id] {
-        assert_eq!(membership_role(&db, tenant_id, group_id, owner_id).await, "admin");
+        assert_eq!(
+            membership_role(&db, tenant_id, group_id, owner_id).await,
+            "admin"
+        );
         assert_eq!(
             membership_role(&db, tenant_id, group_id, replacement_id).await,
             "owner"
@@ -529,7 +538,10 @@ mutation {{
             membership_role(&db, tenant_id, group_id, target_id).await,
             "moderator"
         );
-        assert_eq!(membership_role(&db, tenant_id, group_id, admin_id).await, "admin");
+        assert_eq!(
+            membership_role(&db, tenant_id, group_id, admin_id).await,
+            "admin"
+        );
     }
 
     drop(schema);

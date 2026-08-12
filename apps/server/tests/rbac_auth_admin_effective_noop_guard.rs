@@ -35,7 +35,10 @@ fn owner_policy_retains_exact_noop_and_malformed_repair() {
         "facts.assignment_is_exact && facts.target_role == facts.requested_role",
         "exact_same_role_is_noop_but_malformed_same_role_is_repair",
     ] {
-        assert!(policy.contains(required), "owner policy must retain {required}");
+        assert!(
+            policy.contains(required),
+            "owner policy must retain {required}"
+        );
     }
 }
 
@@ -53,7 +56,10 @@ fn auth_admin_status_and_row_writes_follow_effective_change() {
         "let invalidates_authorization = role_mutation_plan.is_some() || status_changed;",
         "status_effective_change_ignores_exact_replay",
     ] {
-        assert!(update.contains(required) || admin.contains(required), "effective-change path must retain {required}");
+        assert!(
+            update.contains(required) || admin.contains(required),
+            "effective-change path must retain {required}"
+        );
     }
 
     for forbidden in [
@@ -61,7 +67,10 @@ fn auth_admin_status_and_row_writes_follow_effective_change() {
         "let status_disables_user = requested_status",
         "let user = active\n            .update(&tx)",
     ] {
-        assert!(!update.contains(forbidden), "presence-based or unconditional mutation returned: {forbidden}");
+        assert!(
+            !update.contains(forbidden),
+            "presence-based or unconditional mutation returned: {forbidden}"
+        );
     }
 
     let lock = update

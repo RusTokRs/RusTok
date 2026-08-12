@@ -84,8 +84,8 @@ product contract:
 7. There is no single coordinator that atomically fences the complete
    cross-scope conflict set for update, rollback, security, migration, restore,
    and retention operations and resumes them after process loss.
-8. The current filesystem publisher copies a server artifact under
-   `artifacts/releases/<release-id>` but does not define a production
+8. The current filesystem publisher is now physically contained under
+   `<instance-root>/releases/platform/<release-id>` but does not define a production
    supervisor, role-aware node placement, side-by-side startup, traffic switch,
    predecessor pre-staging, or observed convergence. It must not remain a
    second production release authority.
@@ -344,8 +344,9 @@ agent pre-pulls exact role-image digests. In a bare-metal deployment the same
 agent materializes those digests under
 `<instance-root>/releases/platform/sha256/<bundle-hex>/<role>`; that
 directory is a cache of the OCI identity, not a second publisher or release
-ledger. The existing `artifacts/releases` path is removed from production at
-the atomic cutover.
+ledger. No repository-relative release directory remains; the
+filesystem publisher itself is still replaced at the production authority
+cutover.
 
 Before static rollout, every assigned node on which predecessor capacity may
 be reduced must have candidate and direct-predecessor role bytes pre-staged,
@@ -626,7 +627,8 @@ code rollback promise. The installer must:
 
 1. resolve the operator-selected `<instance-root>`, create its canonical
    relative layout only when the root is absent/empty or carries the exact
-   resumable `state/instance.json` marker, and prepare `config/` plus secret
+   resumable `state/instance.json` marker (or its exact create-new pending
+   marker after process loss), and prepare `config/` plus secret
    references without requiring a global operating-system path or placing
    secret bytes in a release tree; cleanup removes only create-only identities
    owned by that exact failed attempt and never recursively deletes the
@@ -1731,9 +1733,12 @@ backend preflight.
   publisher. Remove the filesystem, HTTP, container-build, arbitrary
   `rollout_command`, `ReleasePublisherPort`, per-role installer release-head,
   and active-release paths atomically when the replacement is operational.
-- [ ] Change installer deployment to one admitted distribution request and one
-  topology rollout; per-role receipts are observations of that rollout, not
-  independent releases.
+- [x] Change the typed installer boundary to one exact admitted-distribution
+  request and one bound receipt; role results are observations of that rollout,
+  not independent releases. Remove the executable per-role `rustok-build`
+  activation adapter and fail closed until the owner adapter is composed.
+- [ ] Connect that installer boundary to the canonical owner admission resolver
+  and one desired/observed topology rollout with per-node, per-role convergence.
 - [ ] Implement the outside-candidate controller and role-aware node agent with
   exact `(node, failure domain, role, bundle, candidate/predecessor digest)`
   assignments for automatic updates, candidate-only first-install assignments,
@@ -1786,7 +1791,15 @@ backend preflight.
   verifies the pre-install recovery boundary, then applies schema/seed/admin and
   deploys. Prove fresh-install cleanup, restart resume, and common
   recovery-required-with-restore behavior after durable state exists; install
-  apply must not depend on a build/publisher.
+  apply must not depend on a build/publisher. The current code has completed
+  the identity foundation: build/release/rollout storage and events bind the
+  bundle root plus role set, and the HTTP host resolves an exact current
+  admitted release through `rustok-modules` instead of trusting wizard input.
+  HTTP and CLI hosts also verify a bounded strict-Ed25519 fresh-bootstrap
+  receipt, signer-key digest, validity interval, exact bundle identity, and
+  executable composition before mutation. Owner-ledger import of its complete
+  publication/admission evidence, retained-byte materialization, and rollout
+  convergence remain required before this item is complete.
 
 ### 2. Build the Readiness Inventory and Migration Contract
 
@@ -2077,7 +2090,7 @@ backend preflight.
 - [ ] Keep Next.js build, deployment, health, and rollback external/manual; do
   not add a Next executor or observe Next deployments. Retain generic
   public/headless N/N+1 compatibility as backend preflight evidence.
-- [ ] Remove `headless_next` from the canonical installer profile and every
+- [x] Remove the Next-specific installer profile from the canonical contract and every
   repository-owned caller/fixture/document atomically; optional Next hosts are
   neither installer topology nor lifecycle completion state.
 

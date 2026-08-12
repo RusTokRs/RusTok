@@ -108,9 +108,7 @@ mod tests {
     use rustok_core::events::MemoryTransport;
     use rustok_events::DomainEvent;
     #[cfg(feature = "mod-pages")]
-    use rustok_pages::{
-        PAGES_CACHE_ENTITY_KIND, PageCacheGenerationSnapshot, PagesCacheReadPort,
-    };
+    use rustok_pages::{PAGES_CACHE_ENTITY_KIND, PageCacheGenerationSnapshot, PagesCacheReadPort};
     use uuid::Uuid;
 
     async fn context() -> ServerRuntimeContext {

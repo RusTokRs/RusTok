@@ -42,11 +42,12 @@ The boundary ADR is accepted. The first server foundation is implemented:
   manifest and article HTML/plain-text projections.
 
 The foundation is active. Comments, Blog articles, and Forum topics/replies
-have completed their target source cutovers. Later opt-in fields remain
-separate owner decisions. The removed implementation is not a compatibility
-contract and must not receive new call sites.
+use the typed owner-selected contract in their current services and transports.
+Later opt-in fields remain separate owner decisions. The obsolete
+`rustok-core` richtext/format helpers, generic `NodeService`, unused content
+entity DataLoaders, and caller-selected Pages body format are removed.
 
-The Phase 2 browser runtime slice is now implemented in `packages/richtext`:
+The Phase 2 browser runtime source is implemented in `packages/richtext`:
 the package owns the explicit Tiptap extension registry, generated profile
 contracts, bounded private-channel controller, React adapter, browser lifecycle,
 and hashed frame assets. The shared `leptos-ui` frame owns the Leptos WASM
@@ -55,27 +56,45 @@ editor selects `article` and Forum selects `discussion`. A Chromium spike verifi
 sandbox boundary, blocked cookie/parent-DOM access, CSP headers, private
 `MessageChannel`, and canonical document updates. The Leptos Trunk/SSR static
 fallback copies the same hashed frame plus browser adapter, applies dedicated
-no-store bootstrap headers and immutable hashed-asset headers, and mounts the
-Blog editor only during hydration. Firefox/WebKit and full mounted-host
-accessibility evidence remain required before Phase 2 is marked complete.
+no-store bootstrap headers and immutable hashed-asset headers, and mounts editor
+frames only during hydration; SSR emits inert iframe markup and executes no
+WASM editor runtime. The internal frame protocol is unversioned,
+the host revalidates frame documents, and the browser validator now enforces the
+same tree, mark, attribute, URL, and size rules as the Rust policy. Host-selected
+content locale, derived direction, spellcheck and dynamic read-only state now
+update through the private channel without remounting. Firefox, WebKit and full
+mounted-host accessibility/IME/save-reload evidence remain required before
+Phase 2 is complete.
 
-The Blog article source cutover is implemented: the owner validates submitted
+Read-only projection is centralized as well. React consumers use
+`@rustok/richtext/view`, and Leptos consumers use
+`leptos_ui::RichTextHtml`. Both accept the typed server-derived
+`RichTextView`, owner content locale, and presentation class; neither imports
+Tiptap, derives HTML, or accepts a raw HTML string as its public input. Blog
+Next/Leptos, Forum Leptos, and Comments moderation now use this boundary.
+
+The Blog article runtime source cutover is implemented: the owner validates submitted
 documents with the fixed `article` profile, writes canonical root JSON, and
 exposes server-derived HTML/plain text to Next and Leptos admin/storefront
 surfaces. Native `#[server]` is selected for Leptos SSR/hydrate, GraphQL remains
 parallel for CSR/headless use, and mutation failures do not cross protocols.
-The fail-closed migration exists; the owner-specific dry-run/apply backfill
-prepares retained legacy rows. Migration, PostgreSQL, and browser execution
-evidence remain maintainer-owned.
+The pre-release initial migration now creates the canonical article body column
+directly. The corrective migration, owner-specific backfill executable, shared
+server conversion binary, launcher, positive evidence, and obsolete instructions
+are deleted; the Blog source gate rejects their reintroduction.
 
-The Forum source cutover is implemented: topic/reply storage and revision
+The Forum runtime source cutover is implemented: topic/reply storage and revision
 history contain only canonical documents; REST and GraphQL use
 `RichTextDocument`/`RichTextView`; mentions walk structural nodes; deletion is
 lifecycle state rather than content mutation; Next and Leptos use shared frame
-adapters; storefront reads consume server-sanitized HTML and plain text. Native
-and WASM checks, 113 Forum unit tests, package tests, Next typecheck, the
-Forum/Blog ownership verifier, and canonical SQLite/PostgreSQL
-soft-delete/revision execution pass.
+adapters; storefront reads consume server-sanitized HTML and plain text through
+the shared display boundary. Native checks, 113 Forum unit tests, package tests,
+the Forum/Blog ownership verifier, the whole-host Next typecheck, and canonical
+SQLite/PostgreSQL soft-delete/revision execution pass. Next and Leptos now both
+own topic create/edit and reply composition through the Forum package. Leptos
+reply writes select native SSR/hydrate or GraphQL CSR/headless transport without
+fallback. Comments owns reusable React and Leptos public composer bindings;
+Blog supplies the exact target-bound commands for the first composition.
 
 ## Decisions fixed by this plan
 
@@ -108,50 +127,52 @@ soft-delete/revision execution pass.
 
 ## Verified current state and inconsistencies
 
-The original inventory was verified on 2026-07-22 and reconciled through
-2026-07-30. Items explicitly marked resolved record completed slices; all
-others are implementation gaps, not target behavior:
+The repository was re-audited against the current tree on 2026-08-11. The
+following is the live closeout inventory, not historical phase evidence:
 
-- resolved for Blog articles 2026-07-30: Next and Leptos forms send one shared
-  `RichTextDocument`, use the shared framed runtime, and render only
-  server-projected HTML; owner, transport, storage, Search, and AI source paths
-  are target-only;
-- resolved 2026-08-01: the Forum Next admin package owns its navigation,
-  GraphQL helpers, and canonical reply editor; the format adapter is deleted;
-  Blog and Forum share only the neutral React richtext lifecycle adapter;
-- the prototype maintains a lossy manual mapping between snake-case RT nodes
-  and Tiptap node names, exposes Markdown and raw JSON modes, contains
-  hard-coded English, and embeds locale in the payload;
-- `StarterKit` already supplies extensions that the prototype registers or
-  permits inconsistently; editor and backend allowlists can therefore diverge;
-- `rustok-core::rt_json` owns the executable validator even though the accepted
-  content ADR assigns shared richtext behavior to `rustok-content`;
-- the validator checks an allowlist but does not enforce the complete tree
-  grammar, silently drops unknown content, preserves unrecognised fields, and
-  does not use the platform locale contract;
-- resolved 2026-07-23: direct `rustok-comments` writes accept only
-  `RichTextDocument` and always execute the owner-selected `comment` profile;
-- resolved for Blog posts, Comments, and Forum: typed documents are the only
-  write source;
-- actual owner storage is `blog_post_translations`,
-  `forum_topic_translations`, `forum_reply_bodies`, and `comment_bodies`; their
-  rich JSON is serialized into `TEXT`, while locale is a separate column;
-- resolved 2026-08-01: Forum deletion/revision/event logic preserves canonical
-  documents and uses typed lifecycle state;
-- resolved for Comments, Blog, and Forum: orchestration fails closed across
-  incompatible richtext profiles;
-- resolved for Blog Search: canonical documents are parsed through the shared
-  Article plain-text policy and invalid rows roll back projection writes;
-- the legacy shared-content migration binary remains obsolete and deprecated;
-  Blog now has an owner-specific dry-run-first backfill with no checkpoint
-  mutation, explicit apply, and fail-closed conversion policy;
-- resolved for Blog and Forum Leptos owner forms: both mount the shared frame
-  with owner-selected profiles and host-effective locale;
-- resolved for Blog and Forum storefront reads: native and GraphQL paths
-  consume the server-owned projection;
-- the parent Leptos/server CSP forbids style attributes, while ProseMirror core
-  and extensions such as Dropcursor create inline styles. Loading Tiptap
-  directly into the parent document would violate the current CSP contract.
+- Blog, Forum, and Comments owner services accept typed documents, select their
+  profile server-side, store locale outside the document, and expose server
+  HTML/plain-text projections. Forum lifecycle, revisions, mentions, and
+  orchestration no longer branch on a body format.
+- `@rustok/richtext` is the only Tiptap runtime. Its explicit extension set is
+  generated from the shared profile manifest; the internal frame envelope has
+  no version/revision tag; host and frame validate bounded messages and the
+  full current document grammar.
+- Blog has shared Next and Leptos article authoring. Forum has matching topic
+  create/edit and reply composition on both admin hosts. Comments owns reusable
+  Leptos and React storefront composers, and Blog supplies target-bound native
+  and GraphQL comment commands for both storefront compositions.
+- The Blog-owned Next detail surface preserves the same typed Comments
+  unavailable/timeout and cached-snapshot states as Leptos; neither host turns
+  provider degradation into a false empty state.
+- The Leptos wrappers consume only the host-provided UI locale for messages and
+  no longer substitute package-local `en`. Next and Leptos pass the
+  owner-selected content locale separately; the shared runtime canonicalizes it
+  to neutral `und` while invalid, derives direction, applies spellcheck, and
+  updates dynamic disabled/read-only state without remounting.
+- Current Next Blog and Forum forms still contain owner-visible hard-coded
+  English copy. That is an i18n defect outside the shared editor messages and
+  must be fixed with the owner package catalogs.
+- `rustok-core` no longer owns richtext or Page Builder format helpers. The
+  Page Builder document validator and canonical internal format constant live
+  with `rustok-page-builder`.
+- Blog and Comments initial migrations now create the canonical richtext body
+  columns directly. Their corrective cutover migrations, conversion binaries,
+  positive evidence, and current operational instructions are deleted.
+- Pages now selects its sole Page Builder format server-side; clients cannot
+  choose Markdown, richtext, aliases, or another body format. The persisted
+  format remains an internal artifact/source invariant and Page bodies are not
+  converted to richtext.
+- Pages write DTOs now expose one typed `document` field. The former parallel
+  `content`/`content_json` inputs and their parse-or-precedence path are removed
+  from Rust, GraphQL, Leptos/admin transports, tests, and current documentation;
+  read projections retain stored content and the internal artifact format.
+- The generic shared `NodeService`, its DTO/tests, and the unused content entity
+  DataLoaders are removed. Current owner modules keep their own services and
+  persistence.
+- The parent Leptos/server CSP forbids style attributes, while ProseMirror core
+  writes them during editing. The isolated frame remains required; loading
+  Tiptap directly into the parent document is not an alternative.
 
 ## Target architecture
 
@@ -222,8 +243,8 @@ flowchart TB
 | Leptos/React adapter | mount/unmount, controlled value, dirty/focus state, localized messages, typed intents | editor commands/schema copies, owner business logic, transport fallback |
 
 The accepted dependency direction remains `rustok-core -> rustok-api`.
-`rustok-content` consumes `rustok-api`; the current `rustok-core::rt_json` and
-generic `content_format` helpers are removed after all callers move. A separate
+`rustok-content` consumes `rustok-api`; `rustok-core` contains no richtext or
+generic content-format implementation. A separate
 `rustok-richtext` backend crate would split the already assigned owner and is
 not planned.
 
@@ -500,13 +521,16 @@ Reusing the editor does not make every text field richtext.
 
 ## Atomic cutover and data migration
 
-The work packages below may be prepared separately, but the target wire/storage
-cutover is one atomic repository change. No merged internal dual-read,
-dual-write, alias, or fallback-to-legacy execution path is planned.
+The repository is pre-release and no external compatibility bridge is
+authorized. Current owner schemas are therefore consolidated in place: fresh
+databases create only the canonical columns, repository fixtures/seeds use only
+canonical documents, and corrective richtext cutover migrations/backfill
+executables are deleted. No merged internal dual-read, dual-write, alias,
+offline compatibility tool, or fallback-to-legacy execution path is retained.
 
 ### Migration inventory
 
-The migration must include:
+The cutover inventory must include:
 
 - Blog post translations and relevant revisions/audit payloads;
 - Forum topic translations, reply bodies, topic revisions, reply revisions,
@@ -516,42 +540,35 @@ The migration must include:
 - Search and Index projections;
 - tests, seed data, fixtures, GraphQL/REST/server-function DTOs, MCP/AI/SEO
   callers, and documentation that construct `content_json` or legacy formats;
-- legacy shared content rows only if an inventory proves they are still live;
-- removal of `apps/server/src/bin/migrate_legacy_richtext.rs` after its useful
-  behavior is replaced.
+- the generic shared Content node/body surface and whether any target owner
+  remains; current repository call-site evidence shows tests/docs only;
+- continued absence of the deleted shared conversion binary/launcher, Blog
+  backfill, corrective migrations, positive guardrails, and obsolete operational
+  instructions.
 
 ### Migration behavior
 
-1. Inventory rows by tenant, owner, table, source format, locale, and revision.
-2. Dry-run without writes or checkpoint mutation. Report every invalid,
-   unsupported, locale-mismatched, or lossy candidate.
-3. Convert an old RT envelope by stripping `version`/`locale`, mapping legacy
-   node names to the canonical ProseMirror shape, and validating the owner-row
-   locale separately.
-4. If inventory proves that material historical Markdown rows exist, convert
-   them once with upstream tooling in the offline migration. Do not add a
-   RusToK runtime parser or migration path for an empty development-only case.
-5. Persist through owner-aware migration adapters or owner services so audit,
-   revisions, events, and reindex behavior are explicit. Bulk mode may suppress
-   normal fan-out only through a documented migration transaction followed by
-   deterministic rebuilds.
-6. Scope idempotent checkpoints by tenant, owner, table/target, and contract
-   digest. Never advance past a failed row; dead-letter/report failures.
-7. Verify counts, hashes, locale coverage, revision integrity, renderer output,
-   plain-text output, and search rebuild before cutover.
-8. Deploy code and schema expecting only the target contract, then remove old
-   constants, validators, DTO fields, editor files, triggers, tests, aliases,
-   and legacy documentation in the same cutover.
+1. Amend each owner's initial migration so a fresh PostgreSQL or SQLite schema
+   never creates obsolete format columns or legacy document shapes.
+2. Update every repository-owned seed, fixture, test, script, transport, and
+   current document to the canonical schema in the same change.
+3. Delete corrective cutover migrations and conversion binaries instead of
+   preserving an internal migration history for unreleased data.
+4. Run migrations from zero on PostgreSQL and SQLite, then verify owner row,
+   locale, revision, renderer, plain-text, Search/Index, and event invariants.
+5. Search the repository for removed identifiers; remaining occurrences may be
+   only immutable decision/history evidence or negative regression assertions.
 
-Any staged bridge for a real external client requires a separate approved ADR,
-a named removal owner, and a calendar deadline. None is authorized by this plan.
+If real externally retained data is later declared in scope, stop and obtain an
+explicit external-bridge decision, owner, deadline, and data-preservation plan.
+None is authorized by this plan.
 
 ## Execution plan
 
 ### Phase 0 — freeze the boundary and prove the browser frame
 
-Status: boundary and ownership decision accepted; browser compatibility spike
-remains pending.
+Status: boundary and ownership decision accepted; Chromium source/spike evidence
+exists; Firefox/WebKit and mounted-host evidence remain pending.
 
 Deliverables:
 
@@ -570,9 +587,10 @@ an atomic cutover task.
 
 ### Phase 1 — implement shared types, policy, and production projections
 
-Status: server contract and policy foundation implemented; the first owner
-vertical (Comments storage/service/read projections plus Blog consumer) is
-implemented, while Blog posts and Forum remain pending.
+Status: server contract/policy and Blog, Forum, and Comments owner runtime
+verticals are implemented. Browser validation now mirrors the current Rust tree
+grammar. Property/fuzz coverage and a generated accepted/rejected cross-language
+fixture runner remain pending.
 
 Deliverables:
 
@@ -583,21 +601,29 @@ Deliverables:
 - add property/fuzz/size-limit/security tests and cross-language fixtures
   (size-limit, security, projection, and shared manifest fixtures are
   complete; property/fuzz and browser conformance remain pending);
-- implement typed read-only HTML projection and shared display contract;
+- implement typed read-only HTML projection and shared display contract
+  (complete for React and Leptos adapters plus current Blog, Forum, and Comments
+  read surfaces);
 - prepare owner adapters for validation, storage serialization, and search
-  extraction;
-- make direct Comments writes impossible without the shared validator.
+  extraction (complete for Blog, Forum, and Comments);
+- make direct Comments writes impossible without the shared validator
+  (complete);
 - cut Comments over to canonical root JSON storage, remove its format selector,
-  and expose the shared HTML/plain-text projections (implemented);
-- keep Blog/Forum conversion boundaries fail-closed when the other owner still
-  stores legacy selectable formats (implemented for the current Comments
-  vertical; removed when Forum completes its cutover).
+  delete the obsolete corrective migration, and expose the shared HTML/plain-text
+  projections (complete);
+- keep cross-profile orchestration fail-closed (complete for current owner
+  conversions).
 
 Done when malicious/invalid documents fail closed, accepted fixtures produce
 one canonical serialization/HTML/plain-text result, and no frontend renderer is
 needed for production reads.
 
 ### Phase 2 — build the single browser editor runtime
+
+Status: source implemented; unversioned bounded protocol, browser grammar,
+locale/direction/spellcheck and dynamic read-only behavior are verified by
+package typecheck, ten unit tests, native/WASM checks and the Chromium frame
+harness. Firefox, WebKit and full mounted-host evidence remain pending.
 
 Deliverables:
 
@@ -616,12 +642,25 @@ returns byte-equivalent canonical documents without CSP violations.
 
 ### Phase 3 — prepare owner verticals and transport parity
 
+Status: backend/storage/read parity is implemented for the three Wave 1 owners.
+Blog authoring is present in Next and Leptos. Forum has matching topic and reply
+authoring on both hosts, including native/GraphQL Leptos reply-write selection.
+Comments has shared editor UI for both storefront frameworks. Mounted
+save/reload/rejection evidence is still open, so Phase 3 remains in progress.
+
 Deliverables:
 
 - move Forum Next UI/API/navigation out of the Blog package into the owner
   package `@rustok/forum-admin` and declare its manifest wiring;
 - connect Blog, Forum, and Comments forms to the shared adapters without local
   toolbars/schema/mappers;
+- keep Comments moderation read-only; place the reusable public comment composer
+  in the Comments storefront capability and require each consumer to inject an
+  exact owner-validated target command rather than a generic browser-selected
+  target type/id;
+- use Blog as the first Comments composer consumer by adding Blog-owned native
+  and GraphQL comment-create commands, then compose the same Comments UI in
+  Leptos and Next storefront detail pages;
 - implement native `#[server]` paths for Leptos owner surfaces and keep GraphQL
   in parallel;
 - remove blind GraphQL-to-REST mutation retry; selected transport failures are
@@ -636,19 +675,26 @@ Leptos for all three Wave 1 owners on target-only fixtures.
 
 ### Phase 4 — migrate data and cut over atomically
 
+Status: in progress. Owner runtime DTOs and initial Blog/Comments schemas are
+canonical, their cutover/backfill artifacts are deleted, old core helpers and
+generic Content loaders/services are removed, and Pages no longer accepts a
+caller-selected body format. Remaining work includes collapsing the dual Pages
+project payload, UI parity/hardening, and the final repository-wide
+identifier/documentation sweep.
+
 Deliverables:
 
-- execute owner-local dry runs and resolve every failure;
-- migrate current rows and revisions with verified checkpoints;
+- consolidate owner initial migrations and remove corrective cutover/backfill
+  paths;
 - rebuild Search/Index and compare plain-text projections;
 - switch all backend and frontend call sites to `RichTextDocument`/
   `RichTextView`;
-- delete legacy core helpers, aliases, `content_json`, format selectors,
-  raw-JSON UI, old migration binary, and obsolete tests/docs;
+- keep deleted core helpers, aliases, format selectors, migration binaries and
+  obsolete tests/docs absent; complete remaining owner UI cleanup;
 - drop obsolete format columns where the owner field is homogeneous.
 
 Done when repository search finds legacy identifiers only in immutable history
-or the explicitly deprecated implementation snapshot pending deletion, all
+or negative regression assertions, all
 target verification passes, and runtime accepts only the current contract.
 
 ### Phase 5 — harden Wave 1 and expand only with evidence
@@ -683,7 +729,7 @@ Minimum gates for the cutover:
 | Locale | host UI locale, owner content-locale switch, dirty-state guard, fallback resolved before document load |
 | Rendering | one Rust renderer, semantic HTML snapshots, Next/Leptos SSR parity, invalid-data fail-closed state |
 | Projection | plain-text Search/Index/excerpt/notification fixtures; JSON syntax absent from indexed text |
-| Migration | no-write dry run, owner/tenant checkpoints, failure retry, row/revision/hash/count reconciliation, deterministic rebuild |
+| Migration | PostgreSQL/SQLite apply-from-zero, canonical owner columns only, row/locale/revision integrity, deterministic Search/Index rebuild |
 | UX | keyboard, focus, screen reader, Unicode/IME, RTL, mobile viewport, paste, undo/redo |
 | Performance | lazy authoring bundle, storefront exclusion, initial-load and large-document budgets |
 | Privacy | no document content in logs, metrics, analytics, local storage, or frame URLs |

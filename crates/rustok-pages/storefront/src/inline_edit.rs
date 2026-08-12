@@ -138,8 +138,8 @@ async fn pages_inline_edit_commit(
                 ),
             ));
         }
-        let canonical = decode_canonical_document(&document.project_data)
-            .map_err(pages_server_error)?;
+        let canonical =
+            decode_canonical_document(&document.project_data).map_err(pages_server_error)?;
         if canonical.fly_page_id != claims.fly_page_id
             || canonical.project_hash.0 != claims.project_hash
         {
@@ -208,9 +208,7 @@ async fn pages_inline_edit_commit(
                     expected_revision: claims.revision_id.clone(),
                     body: PageBodyInput {
                         locale: claims.locale.clone(),
-                        content: String::new(),
-                        format: Some("grapesjs".to_string()),
-                        content_json: Some(result.project_data.clone()),
+                        document: result.project_data.clone(),
                     },
                 },
             )
@@ -287,10 +285,7 @@ pub fn PagesAuthenticatedInlineEditSurface(
 }
 
 #[component]
-fn LoadedPagesInlineEditSurface(
-    initial: PagesInlineEditBootstrap,
-    class: String,
-) -> impl IntoView {
+fn LoadedPagesInlineEditSurface(initial: PagesInlineEditBootstrap, class: String) -> impl IntoView {
     let current = RwSignal::new(initial);
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);

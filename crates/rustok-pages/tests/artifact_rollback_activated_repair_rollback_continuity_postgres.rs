@@ -2,7 +2,7 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -300,9 +300,7 @@ async fn create_fixture(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json("Rollback continuity P0")?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json("Rollback continuity P0")?,
                 }),
                 channel_slugs: None,
                 publish: false,
@@ -433,9 +431,7 @@ async fn replace_document(
                 expected_revision: current.updated_at.to_string(),
                 body: PageBodyInput {
                     locale: "en".to_string(),
-                    content: project_json(title)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project_json(title)?,
                 },
             },
         )
@@ -525,8 +521,8 @@ fn reviewed_input(reviewed: &PageBuilderReviewedPublishRuntime) -> ReviewedPageP
     }
 }
 
-fn project_json(title: &str) -> TestResult<String> {
-    Ok(serde_json::to_string(&json!({
+fn project_json(title: &str) -> TestResult<serde_json::Value> {
+    Ok(json!({
         "pages": [{
             "id": "home",
             "flyPageMeta": {
@@ -545,7 +541,7 @@ fn project_json(title: &str) -> TestResult<String> {
                 }]
             }
         }]
-    }))?)
+    }))
 }
 
 fn different_sha256(value: &str) -> String {

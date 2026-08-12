@@ -9,8 +9,7 @@ use crate::{EventSchema, FieldSchema};
 pub const BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_TYPE: &str =
     "blog.comments_delegation_schedule.replacement_succeeded";
 pub const BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION: u16 = 1;
-pub const BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY: &str =
-    "comments_tcp_delegation_schedule";
+pub const BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY: &str = "comments_tcp_delegation_schedule";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(tag = "type", content = "data")]
@@ -144,12 +143,7 @@ impl ValidateEvent for BlogCommentsDelegationScheduleAuditEvent {
                 format!("must equal {BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY}"),
             ));
         }
-        validators::validate_range(
-            "occurred_at_unix_ms",
-            *occurred_at_unix_ms,
-            1,
-            i64::MAX,
-        )?;
+        validators::validate_range("occurred_at_unix_ms", *occurred_at_unix_ms, 1, i64::MAX)?;
         if !matches!(principal_kind.as_str(), "direct_user" | "service") {
             return Err(EventValidationError::InvalidValue(
                 "principal_kind",
@@ -168,18 +162,8 @@ impl ValidateEvent for BlogCommentsDelegationScheduleAuditEvent {
                 "must be host_provided or file".to_string(),
             ));
         }
-        validators::validate_range(
-            "previous_generation",
-            *previous_generation,
-            1,
-            i64::MAX,
-        )?;
-        validators::validate_range(
-            "candidate_generation",
-            *candidate_generation,
-            1,
-            i64::MAX,
-        )?;
+        validators::validate_range("previous_generation", *previous_generation, 1, i64::MAX)?;
+        validators::validate_range("candidate_generation", *candidate_generation, 1, i64::MAX)?;
         if candidate_generation <= previous_generation {
             return Err(EventValidationError::InvalidValue(
                 "candidate_generation",
@@ -190,9 +174,7 @@ impl ValidateEvent for BlogCommentsDelegationScheduleAuditEvent {
     }
 }
 
-pub fn blog_comments_schedule_audit_event_schema(
-    event_type: &str,
-) -> Option<&'static EventSchema> {
+pub fn blog_comments_schedule_audit_event_schema(event_type: &str) -> Option<&'static EventSchema> {
     BLOG_COMMENTS_SCHEDULE_AUDIT_EVENT_SCHEMAS
         .iter()
         .find(|schema| schema.event_type == event_type)
@@ -224,10 +206,8 @@ mod tests {
     #[test]
     fn rejects_nil_identity_and_invalid_generation_order() {
         let mut nil_request = valid_event();
-        let BlogCommentsDelegationScheduleAuditEvent::ReplacementSucceeded {
-            request_id,
-            ..
-        } = &mut nil_request;
+        let BlogCommentsDelegationScheduleAuditEvent::ReplacementSucceeded { request_id, .. } =
+            &mut nil_request;
         *request_id = Uuid::nil();
         assert!(nil_request.validate().is_err());
 

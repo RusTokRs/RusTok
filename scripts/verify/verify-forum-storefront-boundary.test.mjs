@@ -28,8 +28,10 @@ pub fn forum_storefront_status_badge_class() {}
 `;
 }
 
-function uiSource({ rawAccent = false, rawHref = false, missingCoreUse = false } = {}) {
+function uiSource({ rawAccent = false, rawHref = false, missingCoreUse = false, directRichtextHtml = false } = {}) {
   return `${missingCoreUse ? "" : "use crate::core::{forum_storefront_category_card_view_model, forum_storefront_topic_card_view_model, forum_storefront_status_badge_class, forum_storefront_count_label};\n"}
+use leptos_ui::RichTextHtml;
+${directRichtextHtml ? "inner_html=body.html;" : "<RichTextHtml view=body content_locale=body_locale />;\n<RichTextHtml view=content content_locale=content_locale />;"}
 ${rawAccent ? 'const STYLE: &str = "background:linear-gradient(180deg,#0ea5e9 0%,#f59e0b 100%);";\n' : ""}
 ${rawHref ? 'const HREF: &str = "?category={category_id}";\n' : ""}
 `;
@@ -53,12 +55,13 @@ function fixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/lib.rs", `${options.restoredApi ? "mod api;" : ""}\npub use ui::leptos::ForumView;\n`);
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/rustok-forum/storefront/src/transport/mod.rs", "mod graphql_adapter;\npub async fn fetch_storefront_forum() { graphql_adapter::fetch_storefront_forum().await; }\n");
+  writeFixtureFile(root, "crates/rustok-forum/storefront/src/transport/mod.rs", "mod graphql_adapter { include!(\"graphql_adapter.rs\"); }\npub async fn fetch_storefront_forum() { graphql_adapter::fetch_storefront_forum().await; }\n");
   writeFixtureFile(root, "crates/rustok-forum/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub async fn fetch_storefront_forum() {}\n");
+  writeFixtureFile(root, "crates/rustok-forum/storefront/Cargo.toml", "[dependencies]\nleptos-ui.workspace = true\n");
   if (options.restoredApi) writeFixtureFile(root, "crates/rustok-forum/storefront/src/api.rs", "mod graphql {}\n");
-  writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-storefront-boundary.mjs\n");
+  writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-storefront-boundary.mjs shared `RichTextHtml`\n");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-storefront-boundary.mjs\n");
-  writeFixtureFile(root, "scripts/verify/verify-forum-storefront-boundary.test.mjs", "passes canonical fixture\nrejects Leptos-specific core\n");
+  writeFixtureFile(root, "scripts/verify/verify-forum-storefront-boundary.test.mjs", "passes canonical fixture\nrejects Leptos-specific core\nrejects direct richtext HTML rendering\n");
   writeFixtureFile(root, "package.json", packageSource(options));
   return root;
 }
@@ -77,6 +80,12 @@ test("forum storefront boundary verifier rejects Leptos-specific core", () => {
   const result = run(fixture({ leptosCore: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /core must remain framework-agnostic/);
+});
+
+test("forum storefront boundary verifier rejects direct richtext HTML rendering", () => {
+  const result = run(fixture({ directRichtextHtml: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /topic projection must use RichTextHtml|must not bypass the shared RichTextHtml sink/);
 });
 
 test("forum storefront boundary verifier rejects raw UI accent fallback", () => {

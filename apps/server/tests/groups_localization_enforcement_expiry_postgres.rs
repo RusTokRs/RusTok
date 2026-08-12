@@ -9,7 +9,9 @@ use rustok_groups::{
     GroupMembershipEnforcementCommandPort, GroupMembershipEnforcementCommandService,
     ListGroupTranslationsRequest, SuspendGroupMembershipRequest, UpsertGroupTranslationRequest,
 };
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
@@ -34,10 +36,9 @@ async fn connect(url: &str) -> DatabaseConnection {
 async fn install_groups_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
     for migration in rustok_groups::migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("production Groups migration should apply for PostgreSQL localization expiry evidence");
+        migration.up(&manager).await.expect(
+            "production Groups migration should apply for PostgreSQL localization expiry evidence",
+        );
     }
 }
 
@@ -71,7 +72,10 @@ fn read_context(tenant_id: Uuid, actor_id: Uuid) -> PortContext {
         tenant_id.to_string(),
         PortActor::user(actor_id.to_string()),
         "en",
-        format!("groups-localization-postgres-expiry-read-{}", Uuid::new_v4()),
+        format!(
+            "groups-localization-postgres-expiry-read-{}",
+            Uuid::new_v4()
+        ),
     )
     .with_deadline(Duration::from_secs(10))
 }
@@ -81,7 +85,10 @@ fn write_context(tenant_id: Uuid, actor_id: Uuid, operation: &str) -> PortContex
         tenant_id.to_string(),
         PortActor::user(actor_id.to_string()),
         "en",
-        format!("groups-localization-postgres-expiry-write-{}", Uuid::new_v4()),
+        format!(
+            "groups-localization-postgres-expiry-write-{}",
+            Uuid::new_v4()
+        ),
     )
     .with_deadline(Duration::from_secs(10))
     .with_idempotency_key(format!("{operation}-{}", Uuid::new_v4()))
@@ -194,7 +201,10 @@ async fn localization_management_follows_effective_suspension_and_owner_clock_ex
     let (stored_status_during_suspension, stored_revision_during_suspension) =
         membership_snapshot(&db, tenant_id, admin_id).await;
     assert_eq!(stored_status_during_suspension, "active");
-    assert_eq!(stored_revision_during_suspension, suspended.membership_revision);
+    assert_eq!(
+        stored_revision_during_suspension,
+        suspended.membership_revision
+    );
     assert_eq!(group_member_count(&db, tenant_id, group_id).await, 2);
 
     let read_error = GroupLocalizationReadPort::list_group_translations(
@@ -230,7 +240,11 @@ async fn localization_management_follows_effective_suspension_and_owner_clock_ex
     )
     .await
     .expect("owner should retain management access while administrator is suspended");
-    assert_eq!(owner_during.len(), 1, "failed suspended write must not create French translation");
+    assert_eq!(
+        owner_during.len(),
+        1,
+        "failed suspended write must not create French translation"
+    );
 
     tokio::time::sleep(Duration::from_millis(2300)).await;
 
@@ -267,7 +281,11 @@ async fn localization_management_follows_effective_suspension_and_owner_clock_ex
     .await
     .expect("restored administrator should read both translations");
     assert_eq!(final_translations.len(), 2);
-    assert!(final_translations.iter().any(|translation| translation.locale == "fr"));
+    assert!(
+        final_translations
+            .iter()
+            .any(|translation| translation.locale == "fr")
+    );
 
     let (stored_status_after_expiry, stored_revision_after_expiry) =
         membership_snapshot(&db, tenant_id, admin_id).await;

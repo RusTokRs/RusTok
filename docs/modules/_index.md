@@ -150,6 +150,7 @@ Module local documentation lives inside the crates themselves at
 
 - `rustok-groups`: [README](../../crates/rustok-groups/storefront/README.md)
 - `rustok-blog`: [README](../../crates/rustok-blog/storefront/README.md)
+- Comments storefront authoring support: [README](../../crates/rustok-comments-storefront-support/README.md)
 - `rustok-forum`: [README](../../crates/rustok-forum/storefront/README.md)
 - `rustok-notifications`: [README](../../crates/rustok-notifications/storefront/README.md)
 - `rustok-pages`: [README](../../crates/rustok-pages/storefront/README.md)

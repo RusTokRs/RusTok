@@ -17,7 +17,7 @@ pub fn member_card_context(cards: Vec<ForumMemberCard>) -> ForumMemberCardContex
 }
 
 #[component]
-pub fn ForumAuthorBadge(author_id: Option<String>) -> impl IntoView {
+pub fn ForumAuthorBadge(author_id: Option<String>) -> AnyView {
     let card = use_context::<ForumMemberCardContext>().and_then(|cards| {
         author_id
             .as_deref()
@@ -25,11 +25,14 @@ pub fn ForumAuthorBadge(author_id: Option<String>) -> impl IntoView {
             .cloned()
     });
 
-    card.map(|card| view! { <ForumMemberCardBadge card /> })
+    match card {
+        Some(card) => view! { <ForumMemberCardBadge card /> }.into_any(),
+        None => ().into_any(),
+    }
 }
 
 #[component]
-fn ForumMemberCardBadge(card: ForumMemberCard) -> impl IntoView {
+fn ForumMemberCardBadge(card: ForumMemberCard) -> AnyView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let topics_label = t(locale.as_deref(), "forum.member.topics", "topics");
     let replies_label = t(locale.as_deref(), "forum.member.replies", "replies");
@@ -61,6 +64,7 @@ fn ForumMemberCardBadge(card: ForumMemberCard) -> impl IntoView {
             </div>
         </div>
     }
+    .into_any()
 }
 
 fn profile_initials(card: &ForumMemberCard) -> String {

@@ -110,6 +110,9 @@ The production server binary does not parse `install` commands. The typed
 platform CLI provides `install plan`, `install preflight`, `install apply`,
 `install status`, and `seed apply`. `install apply` uses the shared executor-port
 extraction; use the HTTP adapter when an interactive wizard is required.
+The three install commands require an explicit portable `--root <path>`; the
+server-side wizard binds the requested root to its host policy and production
+requires `RUSTOK_INSTANCE_ROOT`.
 
 The Leptos wizard should use a thin HTTP adapter rather than duplicating
 bootstrap logic in the UI:

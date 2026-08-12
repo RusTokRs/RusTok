@@ -19,7 +19,7 @@ use rustok_api::{
 use rustok_channel::{
     BindChannelModuleInput, ChannelModule, ChannelResponse, ChannelService, CreateChannelInput,
 };
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, MigrationSource, SecurityContext};
+use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use rustok_pages::dto::{
@@ -124,12 +124,7 @@ impl PagesCacheReadPort for RecordingCachePort {
         Ok(state.values.get(key).cloned())
     }
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> Result<(), PageCacheError> {
+    async fn put(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<(), PageCacheError> {
         let mut state = self
             .state
             .lock()
@@ -142,8 +137,8 @@ impl PagesCacheReadPort for RecordingCachePort {
 }
 
 #[tokio::test]
-async fn native_storefront_returns_reviewed_artifact_for_visible_channel_and_refuses_unverified_fill(
-) -> TestResult<()> {
+async fn native_storefront_returns_reviewed_artifact_for_visible_channel_and_refuses_unverified_fill()
+-> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_db(tenant_id).await?;
     let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
@@ -153,9 +148,9 @@ async fn native_storefront_returns_reviewed_artifact_for_visible_channel_and_ref
     let web = create_enabled_channel(&channel_service, tenant_id, "web", "Web").await?;
     let mobile = create_enabled_channel(&channel_service, tenant_id, "mobile", "Mobile").await?;
 
-    let cache = Arc::new(RecordingCachePort::new(
-        PageCacheGenerationSnapshot::new(11, 13, 17),
-    ));
+    let cache = Arc::new(RecordingCachePort::new(PageCacheGenerationSnapshot::new(
+        11, 13, 17,
+    )));
     let cache_port: Arc<dyn PagesCacheReadPort> = cache.clone();
     let host = HostRuntimeContext::new(db.clone())
         .with_shared_value(event_bus)
@@ -205,10 +200,7 @@ async fn native_storefront_returns_reviewed_artifact_for_visible_channel_and_ref
         after_corrupt_read.get_keys.len(),
         before_corrupt_read.get_keys.len() + 1
     );
-    assert_eq!(
-        after_corrupt_read.put_keys,
-        before_corrupt_read.put_keys
-    );
+    assert_eq!(after_corrupt_read.put_keys, before_corrupt_read.put_keys);
     assert_eq!(after_corrupt_read.key_count, before_corrupt_read.key_count);
     assert_ne!(
         after_corrupt_read.get_keys.last(),
@@ -360,9 +352,7 @@ async fn create_reviewed_published_page(
                 template: Some("default".to_string()),
                 body: Some(PageBodyInput {
                     locale: "en".to_string(),
-                    content: serde_json::to_string(&project)?,
-                    format: Some(CONTENT_FORMAT_GRAPESJS.to_string()),
-                    content_json: None,
+                    document: project.clone(),
                 }),
                 channel_slugs: Some(vec!["web".to_string()]),
                 publish: false,
@@ -422,10 +412,7 @@ async fn create_reviewed_published_page(
     Ok(ReviewedArtifactFixture {
         page_id: draft.id,
         artifact_id: artifact.id,
-        expected_artifact_url: format!(
-            "/api/pages/{}/artifact?locale=en&channel=web",
-            draft.id
-        ),
+        expected_artifact_url: format!("/api/pages/{}/artifact?locale=en&channel=web", draft.id),
     })
 }
 
@@ -456,10 +443,7 @@ async fn create_enabled_channel(
     Ok(channel)
 }
 
-async fn corrupt_artifact_document(
-    db: &DatabaseConnection,
-    artifact_id: Uuid,
-) -> TestResult<()> {
+async fn corrupt_artifact_document(db: &DatabaseConnection, artifact_id: Uuid) -> TestResult<()> {
     let artifact = page_static_landing_artifact::Entity::find_by_id(artifact_id)
         .one(db)
         .await?

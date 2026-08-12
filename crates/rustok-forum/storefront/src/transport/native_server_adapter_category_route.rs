@@ -1,6 +1,7 @@
+use crate::model::StorefrontForumCategoryRouteResolution;
+#[cfg(feature = "ssr")]
 use crate::model::{
     StorefrontForumCategoryRouteDescriptor, StorefrontForumCategoryRouteDisposition,
-    StorefrontForumCategoryRouteResolution,
 };
 
 pub async fn resolve_storefront_category_route_server(

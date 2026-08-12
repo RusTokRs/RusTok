@@ -34,7 +34,7 @@
   "pages.form.channelSlugsPlaceholder": "web, mobile-app",
   "pages.form.channelSlugsHelp": "Comma-separated allowlist. Leave empty to publish on all channels.",
   "pages.form.projectData": "Project data (grapesjs)",
-  "pages.form.projectDataHelp": "Vendor-neutral project JSON passed into body.contentJson with format grapesjs.",
+  "pages.form.projectDataHelp": "Page Builder project JSON passed into body.contentJson.",
   "pages.form.publishNow": "Publish immediately",
   "pages.form.saving": "Saving...",
   "pages.form.update": "Update page",
