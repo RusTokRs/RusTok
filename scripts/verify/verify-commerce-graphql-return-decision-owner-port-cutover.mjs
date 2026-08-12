@@ -64,7 +64,6 @@ for (const [value, label] of [
   ['order_post_order_command_context(', 'typed owner context'],
   ['.create_return_decision(', 'owner-backed decision call'],
   ['context.clone(),', 'bounded context passed to owner orchestration'],
-  ['ReturnDecisionOwnerOrchestrationError', 'typed owner orchestration error'],
   ['return_decision_graphql_error(', 'bounded GraphQL owner error mapping'],
 ]) requireText(mutation, value, label);
 for (const value of [
@@ -85,8 +84,6 @@ for (const [value, label] of [
 
 for (const [value, label] of [
   ['owner = "rustok_payment.admin_read"', 'Payment owner diagnostic identity'],
-  ['owner_operation = "list_payment_collection_projections"', 'Payment owner operation'],
-  ['consumer_operation = "create_order_return_decision"', 'GraphQL consumer operation'],
   ['correlation_id = %context.correlation_id', 'correlation context'],
   ['owner_code_length = error.code.chars().count()', 'bounded owner code diagnostic'],
   ['public_code = code', 'public code diagnostic'],
@@ -101,6 +98,8 @@ for (const [value, label] of [
   ['post_order_owner_graphql_error(', 'Order owner bounded mapping'],
   ['ReturnDecisionOwnerOrchestrationError::PaymentRead(source)', 'Payment owner read error branch'],
   ['payment_owner_graphql_error(', 'Payment owner bounded mapping'],
+  ['"list_payment_collection_projections"', 'Payment owner operation'],
+  ['"create_order_return_decision"', 'GraphQL consumer operation'],
   ['ReturnDecisionOwnerOrchestrationError::PostOrder(source)', 'preserved Payment execution/validation branch'],
   ['post_order_graphql_error(', 'preserved legacy bounded public mapping'],
 ]) requireText(returnDecisionMapper, value, label);
