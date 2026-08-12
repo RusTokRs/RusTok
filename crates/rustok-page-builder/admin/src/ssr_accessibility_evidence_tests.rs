@@ -34,13 +34,13 @@ fn controller() -> AdminCanvasController {
 }
 
 fn render_admin(capabilities: CapabilityState) -> String {
-    leptos::ssr::render_to_string(move || {
+    let owner = Owner::new();
+    owner.with(|| {
         provide_context(
             PageBuilderAdminHostContext::new(controller()).with_editor_capabilities(capabilities),
         );
-        view! { <PageBuilderAdmin /> }
+        view! { <PageBuilderAdmin /> }.to_html()
     })
-    .to_string()
 }
 
 fn element_slice<'a>(html: &'a str, marker: &str, closing_tag: &str) -> &'a str {
