@@ -1,0 +1,140 @@
+{
+  "format": "forum_page_builder_ffa_fba_promotion_execution_source_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "module": "forum",
+  "wave": "1",
+  "purpose": "Execute the separately approved Page Builder rollout control-plane change through the promotion-safe module-settings CAS transport without treating that write as FFA/FBA readiness-board promotion.",
+  "predecessor": {
+    "format": "forum_page_builder_ffa_fba_promotion_review_v1",
+    "required_status": "owner_approved_ffa_fba_promotion_review_execution_pending",
+    "source_commit_must_equal_checkout_head": true,
+    "deployment_image_digest_must_be_canonical_repo_digest": true,
+    "promotion_decision_must_equal": "approve_ffa_fba_promotion_review",
+    "targets_must_equal": [
+      "ffa",
+      "fba"
+    ],
+    "separate_control_plane_execution_required_must_be_true": true,
+    "prior_review_must_not_have_mutated_rollout": true,
+    "prior_review_must_not_have_promoted_ffa_or_fba": true,
+    "wave_next_due_at_must_still_be_future_at_execution": true,
+    "maximum_bytes": 1048576,
+    "must_be_regular_non_symlink_file": true
+  },
+  "target": {
+    "settings_module_slug": "pages",
+    "promotion_profile": "all_on",
+    "graphql_path": "/api/graphql",
+    "api_origin_environment": "RUSTOK_FORUM_FFA_FBA_PROMOTION_API_ORIGIN",
+    "tenant_slug_environment": "RUSTOK_FORUM_FFA_FBA_PROMOTION_TENANT_SLUG",
+    "auth_token_environment": "RUSTOK_FORUM_FFA_FBA_PROMOTION_AUTH_TOKEN",
+    "deployment_image_digest_environment": "RUSTOK_FORUM_FFA_FBA_PROMOTION_DEPLOYMENT_IMAGE_DIGEST",
+    "required_permissions": [
+      "modules:manage",
+      "pages:read"
+    ],
+    "read_operation": "tenantModules",
+    "write_operation": "compareAndSwapModuleSettings",
+    "postcondition_operation": "pageBuilderRolloutSnapshot",
+    "direct_sql_allowed": false,
+    "raw_database_access_allowed": false,
+    "preserve_non_builder_settings": true,
+    "credential_values_must_not_be_persisted": true,
+    "tenant_identity_must_be_hash_only_in_output": true,
+    "api_origin_must_be_hash_only_in_output": true,
+    "deployment_digest_equality_is_not_cryptographic_origin_binding": true
+  },
+  "mutation": {
+    "expected_enabled": true,
+    "expected_settings": "exact full current Pages tenant-module settings snapshot",
+    "desired_flags": {
+      "builder_enabled": true,
+      "preview_enabled": true,
+      "properties_enabled": true,
+      "publish_enabled": true
+    },
+    "cas_conflict_code": "MODULE_SETTINGS_SNAPSHOT_CONFLICT",
+    "cas_conflict_requires_rereview": true,
+    "already_at_target_is_not_new_execution_evidence": true,
+    "ordinary_update_module_settings_forbidden": true
+  },
+  "postcondition": {
+    "tenant_modules_must_equal_returned_applied_settings": true,
+    "rollout_snapshot_flags_must_all_be_true": true,
+    "pages_module_must_remain_enabled": true,
+    "current_provider_health_is_not_asserted": true
+  },
+  "rollback": {
+    "attempt_on_confirmed_mutation_postcondition_failure": true,
+    "write_operation": "compareAndSwapModuleSettings",
+    "expected_settings_must_equal_confirmed_applied_settings": true,
+    "restore_settings_must_equal_original_snapshot": true,
+    "rollback_cas_conflict_requires_manual_reconciliation": true,
+    "ambiguous_transport_outcome_must_not_auto_rollback": true,
+    "rollback_success_still_fails_execution": true,
+    "no_unconditional_overwrite_allowed": true
+  },
+  "output": {
+    "format": "forum_page_builder_ffa_fba_promotion_execution_v1",
+    "success_status": "control_plane_change_executed_readiness_promotion_pending",
+    "rolled_back_status": "control_plane_change_postcondition_failed_rolled_back",
+    "manual_reconciliation_status": "control_plane_change_requires_manual_reconciliation",
+    "snapshot_conflict_status": "control_plane_change_snapshot_conflict_rereview_required",
+    "default_path": "target/forum-page-builder-ffa-fba-promotion-execution.json",
+    "atomic_replace": true,
+    "promotion_review_sha256_retained": true,
+    "source_commit_retained": true,
+    "source_sha256_retained": true,
+    "deployment_image_digest_retained": true,
+    "api_origin_sha256_retained": true,
+    "tenant_slug_sha256_retained": true,
+    "before_and_requested_settings_sha256_retained": true,
+    "confirmed_applied_settings_sha256_retained_when_available": true,
+    "raw_settings_retained": false,
+    "raw_graphql_request_or_response_retained": false,
+    "authorization_or_cookie_values_retained": false
+  },
+  "readiness_boundary": {
+    "successful_control_plane_change_is_not_ffa_readiness_promotion": true,
+    "successful_control_plane_change_is_not_fba_readiness_promotion": true,
+    "registry_or_local_plan_status_mutation_by_runner": false,
+    "canonical_source_mutation_by_runner": false,
+    "ffa_parity_verified_requires_separate_evidence_backed_governance_change": true,
+    "fba_transport_verified_requires_separate_evidence_backed_governance_change": true
+  },
+  "required_source_files": [
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-review-source.json",
+    "crates/rustok-forum/contracts/evidence/forum-page-builder-ffa-fba-promotion-execution-source.json",
+    "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.mjs",
+    "scripts/evidence/execute-forum-page-builder-ffa-fba-promotion.mjs",
+    "scripts/evidence/execute-forum-page-builder-ffa-fba-promotion.test.mjs",
+    "scripts/verify/verify-forum-page-builder-ffa-fba-promotion-execution.mjs",
+    "apps/server/src/graphql/module_settings_cas.rs",
+    "apps/server/src/services/module_rollout_promotion_settings.rs",
+    "crates/rustok-modules/src/lifecycle_writer.rs",
+    "crates/rustok-modules/src/operation_store.rs",
+    "crates/rustok-pages/src/graphql/builder_rollout.rs",
+    "crates/rustok-pages/rustok-module.toml",
+    "docs/modules/pages-page-builder-tenant-rollout-settings-runtime-actualization-2026-08-08.md",
+    "docs/modules/forum-page-builder-ffa-fba-promotion-review-actualization-2026-08-12.md",
+    "docs/modules/pages-page-builder-parity-continuation-plan.md"
+  ],
+  "non_claims": {
+    "live_execution_run_by_this_source_slice": false,
+    "promotion_review_executed_by_this_source_slice": false,
+    "current_provider_health_asserted": false,
+    "cryptographic_origin_to_repo_digest_binding_claimed": false,
+    "readiness_board_mutated": false,
+    "ffa_promoted": false,
+    "fba_promoted": false,
+    "tests_run": false,
+    "node_verifier_run": false,
+    "graphql_or_http_run": false,
+    "workflow_or_ci_run": false
+  },
+  "next_cursor": {
+    "control_plane_promotion_execution": "source_ready_blocked_on_approved_promotion_review",
+    "live_control_plane_execution": "maintainer_execution_pending",
+    "readiness_promotion": "blocked_on_successful_execution_receipt_and_separate_owner_governance_review"
+  }
+}

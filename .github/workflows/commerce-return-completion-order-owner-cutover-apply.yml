@@ -1,4 +1,4 @@
-name: Apply Return Completion Order Owner Cutover macOS
+name: Apply Return Completion Order Owner Cutover
 
 on:
   push:
@@ -16,7 +16,7 @@ env:
 
 jobs:
   apply-and-verify:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -28,6 +28,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - uses: Swatinem/rust-cache@v2
       - name: Fix ambiguous patch marker
         run: python3 scripts/tmp/fix-return-completion-owner-patcher.py
       - name: Apply source patch

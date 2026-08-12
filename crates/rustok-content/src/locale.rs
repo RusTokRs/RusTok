@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match, normalize_locale_tag};
 
 pub struct ResolvedLocale<'a, T> {
@@ -31,8 +33,7 @@ where
     {
         return ResolvedLocale {
             item: Some(item),
-            effective_locale: normalize_locale_tag(requested)
-                .unwrap_or_else(|| requested.to_string()),
+            effective_locale: normalized_locale_or_raw(requested),
         };
     }
 
@@ -44,8 +45,7 @@ where
     {
         return ResolvedLocale {
             item: Some(item),
-            effective_locale: normalize_locale_tag(fallback_locale)
-                .unwrap_or_else(|| fallback_locale.to_string()),
+            effective_locale: normalized_locale_or_raw(fallback_locale),
         };
     }
 
@@ -59,17 +59,23 @@ where
         };
     }
 
-    if let Some(item) = items.first() {
+    // Database queries are not ordered unless an ORDER BY is explicit. The
+    // final fallback therefore cannot depend on slice insertion/query order.
+    // Locale identity is the only owner-neutral ordering key available here,
+    // so choose the lexicographically smallest normalized locale.
+    if let Some(item) = items
+        .iter()
+        .min_by_key(|item| normalized_locale_or_raw(locale_of(item)))
+    {
         return ResolvedLocale {
             item: Some(item),
-            effective_locale: normalize_locale_tag(locale_of(item))
-                .unwrap_or_else(|| locale_of(item).to_string()),
+            effective_locale: normalized_locale_or_raw(locale_of(item)),
         };
     }
 
     ResolvedLocale {
         item: None,
-        effective_locale: normalize_locale_tag(requested).unwrap_or_else(|| requested.to_string()),
+        effective_locale: normalized_locale_or_raw(requested),
     }
 }
 
@@ -77,19 +83,20 @@ pub fn available_locales_from<T, F>(items: &[T], locale_of: F) -> Vec<String>
 where
     F: Fn(&T) -> &str,
 {
-    let mut locales = Vec::new();
-    for item in items {
-        let locale =
-            normalize_locale_tag(locale_of(item)).unwrap_or_else(|| locale_of(item).to_string());
-        if !locales.iter().any(|value| value == &locale) {
-            locales.push(locale);
-        }
-    }
-    locales
+    items
+        .iter()
+        .map(|item| normalized_locale_or_raw(locale_of(item)))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 pub fn normalize_locale_code(locale: &str) -> Option<String> {
     normalize_locale_tag(locale)
+}
+
+fn normalized_locale_or_raw(locale: &str) -> String {
+    normalize_locale_tag(locale).unwrap_or_else(|| locale.to_string())
 }
 
 #[cfg(test)]
@@ -142,16 +149,38 @@ mod tests {
     }
 
     #[test]
-    fn resolves_first_available_when_platform_fallback_missing() {
+    fn final_fallback_is_deterministic_by_normalized_locale() {
         let items = [
+            LocalizedItem { locale: "fr" },
+            LocalizedItem { locale: "de" },
+        ];
+        let reversed = [
             LocalizedItem { locale: "de" },
             LocalizedItem { locale: "fr" },
         ];
 
         let resolved = resolve_by_locale(&items, "ru", |item| item.locale);
+        let reversed_resolved = resolve_by_locale(&reversed, "ru", |item| item.locale);
 
         assert_eq!(resolved.item.map(|item| item.locale), Some("de"));
         assert_eq!(resolved.effective_locale, "de");
+        assert_eq!(reversed_resolved.item.map(|item| item.locale), Some("de"));
+        assert_eq!(reversed_resolved.effective_locale, "de");
+    }
+
+    #[test]
+    fn available_locales_are_normalized_unique_and_sorted() {
+        let items = [
+            LocalizedItem { locale: "fr" },
+            LocalizedItem { locale: " EN_us " },
+            LocalizedItem { locale: "de" },
+            LocalizedItem { locale: "fr" },
+        ];
+
+        assert_eq!(
+            available_locales_from(&items, |item| item.locale),
+            vec!["de".to_string(), "en-US".to_string(), "fr".to_string()]
+        );
     }
 
     #[test]
