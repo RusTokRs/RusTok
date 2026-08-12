@@ -326,7 +326,7 @@ fn ustar_header(path: &str, bytes: u64) -> Result<[u8; USTAR_BLOCK_BYTES], Sourc
 }
 
 fn split_ustar_path(path: &str) -> Result<(&str, &str), SourceArchiveError> {
-    if path.as_bytes().len() <= 100 {
+    if path.len() <= 100 {
         return Ok(("", path));
     }
     let mut selected = None;
