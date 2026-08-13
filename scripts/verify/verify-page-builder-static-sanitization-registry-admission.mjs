@@ -231,7 +231,7 @@ for (const marker of [
   "receipt source_sha256 does not cover the exact execution required-source set",
   "execution source drift requires new execution",
   "current FBA registry does not match the registry hashed by the execution receipt",
-  "static_sanitization_execution_admitted_registry_update_pending",
+  "status: contract.output.success_status",
   "registry_mutated: false",
   "executed_evidence_cleared: false",
   "terminal_inventory_recomputed: false",
