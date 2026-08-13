@@ -29,7 +29,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Tr
 use uuid::Uuid;
 
 use crate::{
-    ApplyExactTaxonomyTranslationInput, TaxonomyError, TaxonomyService, TaxonomyTermStatus,
+    ApplyExactTaxonomyTranslationInput, TaxonomyError, TaxonomyService,
     entities::{
         taxonomy_term::{Column as TermColumn, Entity as TermEntity, Model as TermModel},
         taxonomy_term_translation::{
@@ -148,7 +148,6 @@ impl TaxonomyTranslationTargetProvider {
         let terms = TermEntity::find()
             .inner_join(TranslationEntity)
             .filter(TermColumn::TenantId.eq(tenant_id))
-            .filter(TermColumn::Status.eq(TaxonomyTermStatus::Active))
             .filter(TranslationColumn::TenantId.eq(tenant_id))
             .filter(TranslationColumn::Locale.eq(request.source_locale.as_str()))
             .order_by_asc(TermColumn::Id)
@@ -465,7 +464,6 @@ impl TranslationTargetProvider for TaxonomyTranslationTargetProvider {
                     resource_revision: applied.resource_revision,
                     target_revision: applied.target_revision,
                     operation: "upsert",
-                    lifecycle: "active",
                 },
             )
             .await
@@ -631,7 +629,7 @@ fn summary_from_models(
     Ok(TranslationResourceSummary {
         identity: taxonomy_identity(term.id),
         display_label: source.name.clone(),
-        lifecycle: lifecycle_from_status(term.status),
+        lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_positive_revision(term.revision, "resource_revision")?,
         exact_locales,
     })
@@ -684,13 +682,6 @@ fn taxonomy_identity(term_id: Uuid) -> TranslationResourceIdentity {
         resource_id: ResourceId::new(term_id.to_string())
             .expect("taxonomy UUID must satisfy the resource id contract"),
         subresource_id: None,
-    }
-}
-
-fn lifecycle_from_status(status: TaxonomyTermStatus) -> TranslationResourceLifecycle {
-    match status {
-        TaxonomyTermStatus::Active => TranslationResourceLifecycle::Active,
-        TaxonomyTermStatus::Deprecated => TranslationResourceLifecycle::Archived,
     }
 }
 

@@ -5,8 +5,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
-    dto::{TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermStatus},
-    entities::{taxonomy_term, taxonomy_term_route_key},
+    dto::{TaxonomyScopeType, TaxonomyTermKind},
+    entities::taxonomy_term_route_key,
     error::{TaxonomyError, TaxonomyResult},
     services::TaxonomyService,
 };
@@ -16,13 +16,13 @@ impl TaxonomyService {
     /// Taxonomy RBAC a second time. Consumer modules are responsible for
     /// authorizing their own read operation before calling this method.
     ///
-    /// Resolution follows the public Taxonomy route contract:
-    /// module scope before global scope, then requested locale, explicit
-    /// fallback locale and the platform fallback locale. Deprecated terms are
-    /// skipped. Route ownership is read from the storage-atomic route-key
-    /// registry rather than reconstructed from translation and alias tables.
+    /// Resolution follows the public Taxonomy route contract: module scope
+    /// before global scope, then requested locale, explicit fallback locale and
+    /// the platform fallback locale. Route ownership is read from the
+    /// storage-atomic route-key registry rather than reconstructed from
+    /// translation and alias tables.
     #[instrument(skip(self))]
-    pub async fn resolve_active_term_id_for_module(
+    pub async fn resolve_term_id_for_module(
         &self,
         tenant_id: Uuid,
         kind: TaxonomyTermKind,
@@ -45,7 +45,7 @@ impl TaxonomyService {
             (TaxonomyScopeType::Global, ""),
         ] {
             for candidate_locale in &locales {
-                let Some(route) = taxonomy_term_route_key::Entity::find()
+                if let Some(route) = taxonomy_term_route_key::Entity::find()
                     .filter(taxonomy_term_route_key::Column::TenantId.eq(tenant_id))
                     .filter(taxonomy_term_route_key::Column::Kind.eq(kind))
                     .filter(taxonomy_term_route_key::Column::ScopeType.eq(scope_type))
@@ -54,20 +54,7 @@ impl TaxonomyService {
                     .filter(taxonomy_term_route_key::Column::RouteKey.eq(&route_key))
                     .one(self.database())
                     .await?
-                else {
-                    continue;
-                };
-
-                let owner_is_active = taxonomy_term::Entity::find_by_id(route.term_id)
-                    .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-                    .filter(taxonomy_term::Column::Kind.eq(kind))
-                    .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
-                    .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
-                    .filter(taxonomy_term::Column::Status.eq(TaxonomyTermStatus::Active))
-                    .one(self.database())
-                    .await?
-                    .is_some();
-                if owner_is_active {
+                {
                     return Ok(Some(route.term_id));
                 }
             }
@@ -117,7 +104,7 @@ mod tests {
     use sea_orm_migration::prelude::SchemaManager;
 
     use super::*;
-    use crate::{CreateTaxonomyTermInput, TaxonomyModule, UpdateTaxonomyTermInput};
+    use crate::{CreateTaxonomyTermInput, TaxonomyModule};
 
     async fn setup() -> (DatabaseConnection, TaxonomyService) {
         let db = setup_test_db().await;
@@ -191,7 +178,7 @@ mod tests {
         .await;
 
         let resolved = service
-            .resolve_active_term_id_for_module(
+            .resolve_term_id_for_module(
                 tenant_id,
                 TaxonomyTermKind::Tag,
                 "blog",
@@ -232,7 +219,7 @@ mod tests {
         .await;
 
         let fr = service
-            .resolve_active_term_id_for_module(
+            .resolve_term_id_for_module(
                 tenant_id,
                 TaxonomyTermKind::Tag,
                 "blog",
@@ -243,7 +230,7 @@ mod tests {
             .await
             .expect("French route lookup should succeed");
         let de_with_en_fallback = service
-            .resolve_active_term_id_for_module(
+            .resolve_term_id_for_module(
                 tenant_id,
                 TaxonomyTermKind::Tag,
                 "blog",
@@ -256,58 +243,5 @@ mod tests {
 
         assert_eq!(fr, Some(fr_id));
         assert_eq!(de_with_en_fallback, Some(en_id));
-    }
-
-    #[tokio::test]
-    async fn consumer_lookup_skips_deprecated_module_owner_and_uses_global() {
-        let (_db, service) = setup().await;
-        let tenant_id = Uuid::new_v4();
-        let global_id = create_tag(
-            &service,
-            tenant_id,
-            TaxonomyScopeType::Global,
-            None,
-            "en",
-            "Global Rust",
-            "rust",
-        )
-        .await;
-        let module_id = create_tag(
-            &service,
-            tenant_id,
-            TaxonomyScopeType::Module,
-            Some("blog"),
-            "en",
-            "Blog Rust",
-            "rust",
-        )
-        .await;
-        service
-            .update_term(
-                tenant_id,
-                module_id,
-                admin(),
-                UpdateTaxonomyTermInput {
-                    locale: "en".to_string(),
-                    status: Some(TaxonomyTermStatus::Deprecated),
-                    ..Default::default()
-                },
-            )
-            .await
-            .expect("module tag should be deprecated");
-
-        let resolved = service
-            .resolve_active_term_id_for_module(
-                tenant_id,
-                TaxonomyTermKind::Tag,
-                "blog",
-                "en",
-                None,
-                "rust",
-            )
-            .await
-            .expect("route lookup should succeed");
-
-        assert_eq!(resolved, Some(global_id));
     }
 }

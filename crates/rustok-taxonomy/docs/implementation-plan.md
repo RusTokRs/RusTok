@@ -11,35 +11,38 @@ Term identity is locale-independent. Locale normalization and fallback use the
 shared content contract. New consumers must attach terms through an explicit
 owner-module relation table.
 
-Localized public route keys have one lookup namespace per
+Taxonomy terms have no soft-deprecated/archive state. A persisted term is the
+current canonical term identity. Removal is an actual delete; owner relation
+foreign keys and route-key reservations must make deletion effects explicit
+rather than hiding an unusable term behind a lifecycle flag. Historical
+`archived` Taxonomy translation-change evidence is normalized to `active` by
+the retained status-removal migration; real deletions remain `deleted`.
+
+Localized route keys have one lookup namespace per
 `tenant + kind + scope + locale`: a translation slug on one term cannot be
-shadowed by an alias on another term, and vice versa. Public module lookup
-prefers the module scope over the global scope, follows requested locale ->
-explicit fallback -> platform fallback, and does not resolve deprecated terms.
-The transaction-aware owner helper may still reuse an existing deprecated term
-identity; reactivation/replacement is an owner lifecycle decision rather than a
-public-route lookup side effect.
+shadowed by an alias on another term, and vice versa. Module lookup prefers the
+module scope over the global scope and follows requested locale -> explicit
+fallback -> platform fallback. Owner transaction lookup uses the same existing
+term identity and creates a new module term only when neither a route key nor a
+canonical key resolves.
 
-Route resolution is fail-closed for legacy or externally-corrupted ambiguity.
-For each locale candidate, translation and alias matches are deduplicated by
-term identity: zero distinct terms proceeds to the next locale, one resolves,
-and more than one returns a conflict instead of silently preferring one storage
-table. A translation slug and alias that both belong to the same term are not
-ambiguous. The owner transaction lookup applies the same distinct-term rule
-while retaining its broader lifecycle semantics.
-
-New writes additionally use `taxonomy_term_route_keys` as the storage-level
-reservation authority. Its composite primary key is the complete localized
-route identity (`tenant + kind + scope_type + scope_value + locale + route_key`)
-and `term_id` is the owner. The migration preflights existing translation and
-alias rows before creating the registry: same-term duplicate representations
-are deduplicated, while a cross-term collision blocks migration with a
-deterministic diagnostic instead of choosing a winner. Runtime localized
-mutation finalization reconciles translation+alias rows with registry
-reservations in the same transaction. Missing reservations are inserted before
-stale reservations are released, so a concurrent claimant must win the single
+`taxonomy_term_route_keys` is the storage-level route ownership authority. Its
+composite primary key is the complete localized route identity
+(`tenant + kind + scope_type + scope_value + locale + route_key`) and `term_id`
+is the owner. The migration preflights existing translation and alias rows
+before creating the registry: same-term duplicate representations are
+deduplicated, while a cross-term collision blocks migration with a deterministic
+diagnostic instead of choosing a winner. Runtime localized mutation
+finalization reconciles translation+alias rows with registry reservations in
+the same transaction. Missing reservations are inserted before stale
+reservations are released, so a concurrent claimant must win the single
 database key or roll its mutation back. Term deletion removes reservations via
 the composite tenant/term foreign-key cascade.
+
+Service and consumer route resolution read `taxonomy_term_route_keys` directly.
+The old translation-first/alias-second lookup path is not a second authority:
+translation and alias tables hold localized content, while the registry owns
+route identity and collision serialization.
 
 Category hierarchy is deliberately outside the shared dictionary contract.
 Parent/child category edges, ordering, cycle rules, and domain-specific category
@@ -53,11 +56,13 @@ kind/ownership decision and explicit migration contract.
 `taxonomy/term`. It exposes exact source/target snapshots for `name`, `slug`,
 and optional `description`; applies one target locale through resource/source/
 target revision CAS; reports exact source/target progress; and reads the
-append-only owner change cursor. `slug` remains review-only for machine
-translation. Provider apply uses the shared Outbox receipt ledger under owner
-slug `taxonomy`, while Taxonomy retains authorization, validation, and the
-owner transaction. The provider records durable owner change evidence but does
-not claim a global `translation.target.changed` event contract.
+append-only owner change cursor. Existing terms always expose
+`TranslationResourceLifecycle::Active`; actual term deletion produces a
+`deleted` change record. `slug` remains review-only for machine translation.
+Provider apply uses the shared Outbox receipt ledger under owner slug
+`taxonomy`, while Taxonomy retains authorization, validation, and the owner
+transaction. The provider records durable owner change evidence but does not
+claim a global `translation.target.changed` event contract.
 
 ## FFA/FBA boundary
 
@@ -78,15 +83,14 @@ not claim a global `translation.target.changed` event contract.
 
 2. **Expand kinds and lookup semantics only for demonstrated domain pressure.**
    Do not add speculative vocabulary kinds or polymorphic attachment storage.
-   The current tag lookup baseline requires locale-aware slug/alias uniqueness,
-   module-before-global precedence, shared locale fallback, active-only public
-   resolution, fail-closed ambiguity handling, and storage-level route-key
+   The current tag lookup baseline requires locale-aware route ownership,
+   module-before-global precedence, shared locale fallback, registry-authority
+   lookup, hard-delete-only term removal, and storage-level route-key
    reservation. Category parent/child hierarchy remains owner-domain state
    rather than an implicit taxonomy kind.
    **Depends on:** a concrete domain requirement and scope decision.
    **Done when:** canonical-key, alias/slug, tenant, module-scope, locale,
-   lifecycle, ambiguity, and any newly demonstrated kind semantics are defined
-   and tested.
+   deletion, and any newly demonstrated kind semantics are defined and tested.
 
 3. **Maintain dictionary operational guidance.** Add documentation and runbooks
    when a changed vocabulary contract introduces drift or integration recovery
@@ -110,10 +114,9 @@ not claim a global `translation.target.changed` event contract.
 
 - `cargo xtask module validate taxonomy`
 - `cargo xtask module test taxonomy`
-- Targeted term CRUD, cross slug/alias collision, scope restriction, active-only
-  route resolution, fail-closed ambiguity, locale fallback, route-registry
-  reservation/release/cascade, migration preflight, and consumer-integration
-  tests.
+- Targeted term CRUD, cross slug/alias collision, scope restriction, locale
+  fallback, registry-authority lookup, route-registry reservation/release/
+  cascade, status-removal migration, and consumer-integration tests.
 - `cargo test -p rustok-taxonomy --lib`
 - Production-like PostgreSQL two-writer route-key contention before declaring
   storage concurrency evidence complete.
@@ -127,6 +130,8 @@ not claim a global `translation.target.changed` event contract.
 3. Keep localized route mutations and `taxonomy_term_route_keys` reservations
    in one database transaction; never repair collisions by table-order
    precedence or backend-specific trigger behavior.
-4. Update local docs, `rustok-module.toml`, and consumer docs with a taxonomy
+4. Do not add a soft-deprecated term state. A term either exists as the current
+   identity or is deleted through the explicit owner/storage contract.
+5. Update local docs, `rustok-module.toml`, and consumer docs with a taxonomy
    contract change.
-5. Update `docs/modules/registry.md` with any ownership or module-status change.
+6. Update `docs/modules/registry.md` with any ownership or module-status change.

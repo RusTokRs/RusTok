@@ -8,7 +8,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::dto::{TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermStatus};
+use crate::dto::{TaxonomyScopeType, TaxonomyTermKind};
 use crate::entities::{taxonomy_term, taxonomy_term_translation};
 use crate::error::{TaxonomyError, TaxonomyResult};
 use crate::route_key_registry::ensure_route_key_available_in_tx;
@@ -181,7 +181,6 @@ pub async fn update_module_term_in_tx(
             resource_revision,
             target_revision,
             operation: "upsert",
-            lifecycle: lifecycle_for_status(term.status),
         },
     )
     .await?;
@@ -236,7 +235,6 @@ pub async fn delete_module_term_in_tx(
             resource_revision,
             target_revision,
             operation: "delete",
-            lifecycle: "deleted",
         },
     )
     .await?;
@@ -348,11 +346,4 @@ fn next_translation_revision(term_id: Uuid, locale: &str, revision: i64) -> Taxo
             term_id,
             locale: locale.to_string(),
         })
-}
-
-fn lifecycle_for_status(status: TaxonomyTermStatus) -> &'static str {
-    match status {
-        TaxonomyTermStatus::Active => "active",
-        TaxonomyTermStatus::Deprecated => "archived",
-    }
 }

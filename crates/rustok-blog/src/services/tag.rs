@@ -425,7 +425,7 @@ pub(crate) async fn find_post_ids_by_tag(
     fallback_locale: Option<&str>,
 ) -> BlogResult<Vec<Uuid>> {
     let Some(tag_id) = TaxonomyService::new(db.clone())
-        .resolve_active_term_id_for_module(
+        .resolve_term_id_for_module(
             tenant_id,
             TaxonomyTermKind::Tag,
             BLOG_SCOPE_VALUE,

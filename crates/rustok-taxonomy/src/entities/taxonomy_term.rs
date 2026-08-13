@@ -2,7 +2,7 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::dto::{TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermStatus};
+use crate::dto::{TaxonomyScopeType, TaxonomyTermKind};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "taxonomy_terms")]
@@ -14,7 +14,6 @@ pub struct Model {
     pub scope_type: TaxonomyScopeType,
     pub scope_value: String,
     pub canonical_key: String,
-    pub status: TaxonomyTermStatus,
     pub revision: i64,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
