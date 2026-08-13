@@ -86,7 +86,9 @@ export function buildForumTopicForkCommand(input: {
     throw new Error('Choose the source topic to fork.');
   }
   if (sourceTopicId === targetTopicId) {
-    throw new Error('The new topic identity must differ from the source topic.');
+    throw new Error(
+      'The new topic identity must differ from the source topic.'
+    );
   }
   if (!isForumUuid(rootReplyId)) {
     throw new Error('Choose the root reply to fork.');

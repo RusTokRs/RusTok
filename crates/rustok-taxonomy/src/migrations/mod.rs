@@ -20,8 +20,18 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
-    vec![MigrationDependencyDescriptor::new(
-        "m20260803_000007_add_translation_target_support",
-        vec!["m20260803_000001_create_owner_operation_receipts"],
-    )]
+    vec![
+        MigrationDependencyDescriptor::new(
+            "m20260803_000007_add_translation_target_support",
+            vec!["m20260803_000001_create_owner_operation_receipts"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260812_000008_add_route_key_registry",
+            vec!["m20260803_000007_add_translation_target_support"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260813_000009_remove_term_status",
+            vec!["m20260812_000008_add_route_key_registry"],
+        ),
+    ]
 }

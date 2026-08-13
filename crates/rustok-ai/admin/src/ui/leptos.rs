@@ -103,9 +103,7 @@ pub fn AiAdmin() -> impl IntoView {
         "list_modules,query_modules,module_details,mcp_health,mcp_whoami".to_string(),
     );
     let tool_denied = RwSignal::new(String::new());
-    let tool_sensitive = RwSignal::new(
-        "alloy_apply_module_scaffold".to_string(),
-    );
+    let tool_sensitive = RwSignal::new("alloy_apply_module_scaffold".to_string());
     let tool_active = RwSignal::new(true);
 
     let task_slug = RwSignal::new(String::new());
@@ -2580,9 +2578,7 @@ fn clear_tool_profile(
     tool_description.set(String::new());
     tool_allowed.set("list_modules,query_modules,module_details,mcp_health,mcp_whoami".to_string());
     tool_denied.set(String::new());
-    tool_sensitive.set(
-        "alloy_apply_module_scaffold".to_string(),
-    );
+    tool_sensitive.set("alloy_apply_module_scaffold".to_string());
     tool_active.set(true);
 }
 

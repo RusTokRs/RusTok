@@ -82,7 +82,8 @@ impl TaxonomyService {
 
         validate_term_name(&input.name)?;
         validate_optional_description(input.description.as_deref())?;
-        let translation_slug = normalize_non_empty_slug(input.slug.as_deref().unwrap_or(&input.name))?;
+        let translation_slug =
+            normalize_non_empty_slug(input.slug.as_deref().unwrap_or(&input.name))?;
         let aliases = normalize_aliases(&input.aliases);
 
         let txn = self.db.begin().await?;
@@ -304,9 +305,7 @@ impl TaxonomyService {
                 .await?;
         }
 
-        let resource_revision = self
-            .update_term_revision_in_tx(&txn, &term, now)
-            .await?;
+        let resource_revision = self.update_term_revision_in_tx(&txn, &term, now).await?;
         record_translation_change_in_tx(
             &txn,
             TranslationChangeEvidence {
@@ -391,12 +390,8 @@ impl TaxonomyService {
     ) -> TaxonomyResult<(Vec<TaxonomyTermListItem>, u64)> {
         enforce_scope(&security, Resource::Taxonomy, Action::List)?;
 
-        let locale = normalize_locale(
-            filter
-                .locale
-                .as_deref()
-                .unwrap_or(PLATFORM_FALLBACK_LOCALE),
-        )?;
+        let locale =
+            normalize_locale(filter.locale.as_deref().unwrap_or(PLATFORM_FALLBACK_LOCALE))?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let mut select =
             taxonomy_term::Entity::find().filter(taxonomy_term::Column::TenantId.eq(tenant_id));

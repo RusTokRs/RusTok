@@ -109,7 +109,7 @@ fn marketplace_seller_transport_is_manifest_and_feature_wired_without_default_en
     let admin_manifest = include_str!("../../../apps/admin/Cargo.toml");
 
     assert!(module_manifest.contains("[provides.graphql]"));
-    assert!(module_manifest.contains("graphql::MarketplaceSellerQuery"));
+    assert!(module_manifest.contains("graphql_root::MarketplaceSellerCombinedQuery"));
     assert!(module_manifest.contains("graphql::MarketplaceSellerMutation"));
     assert!(module_manifest.contains("rustok-marketplace-seller-admin"));
 

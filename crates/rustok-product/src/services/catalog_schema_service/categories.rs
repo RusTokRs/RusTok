@@ -2,11 +2,12 @@ use std::collections::HashSet;
 
 use super::{
     BindCategoryAttributeInput, CatalogCategoryKind, CatalogCategoryListRecord,
-    CatalogCategoryListRow, CatalogCategoryRecord, CategoryTranslationInput, CreateCatalogCategoryInput,
-    CreateCategoryAttributeGroupInput, ProductAttributeGroupRecord, ProductCatalogSchemaService,
-    SetCategorySchemaModeInput, ensure_attribute, ensure_schema, ensure_structural_category,
-    insert_category_group_translation, load_category_group_id, load_category_parent,
-    parse_virtual_category_rule_v1, validate_virtual_category_rule_references,
+    CatalogCategoryListRow, CatalogCategoryRecord, CategoryTranslationInput,
+    CreateCatalogCategoryInput, CreateCategoryAttributeGroupInput, ProductAttributeGroupRecord,
+    ProductCatalogSchemaService, SetCategorySchemaModeInput, ensure_attribute, ensure_schema,
+    ensure_structural_category, insert_category_group_translation, load_category_group_id,
+    load_category_parent, parse_virtual_category_rule_v1,
+    validate_virtual_category_rule_references,
 };
 use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
 use serde_json::Value;

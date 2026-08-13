@@ -13,6 +13,10 @@ const authoringOwner = fs.readFileSync(
   path.join(root, 'crates/rustok-modules/src/authoring.rs'),
   'utf8',
 );
+const governanceOwner = fs.readFileSync(
+  path.join(root, 'crates/rustok-modules/src/governance.rs'),
+  'utf8',
+);
 const publishValidation = fs.readFileSync(
   path.join(root, 'crates/rustok-modules/src/publish_validation.rs'),
   'utf8',
@@ -95,7 +99,6 @@ for (const marker of [
 
 for (const marker of [
   'load_completed(tenant_id, command.build_request_id)',
-  'DigestObjectKey::sha256(',
   'ModulePublicationArtifactOrigin::PlatformBuilt',
   '.attach_publish_artifact(',
   '.stage_platform_build(',
@@ -103,6 +106,10 @@ for (const marker of [
 ]) {
   assert.ok(authoringOwner.includes(marker), `module publication owner is missing ${marker}`);
 }
+assert.ok(
+  governanceOwner.includes('DigestObjectKey::sha256('),
+  'module governance owner must derive immutable digest-addressed artifact keys',
+);
 
 assert.ok(
   publishValidation.includes('MODULE_ARTIFACT_SOURCE_MANIFEST_FILE') &&

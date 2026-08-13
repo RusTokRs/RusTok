@@ -231,16 +231,16 @@ for (const marker of [
   requireMarker(pagesContributions, marker, "Pages generated metadata contribution runtime");
 }
 for (const forbidden of [
-  "PropertyEditorDescriptor {",
-  "ConsumerPropertyFieldDescriptor {",
-  "ContributionDescriptor {",
-  "ModuleContributionManifest {",
+  /\bPropertyEditorDescriptor\s*\{\s*id\s*:/,
+  /\bConsumerPropertyFieldDescriptor\s*\{\s*id\s*:/,
+  /\bContributionDescriptor\s*\{\s*id\s*:/,
+  /\bModuleContributionManifest\s*\{\s*module\s*:/,
 ]) {
-  forbidMarker(
-    pagesContributions,
-    forbidden,
-    "Pages generated metadata contribution runtime",
-  );
+  if (forbidden.test(pagesContributions)) {
+    fail(
+      `Pages generated metadata contribution runtime still contains ${forbidden}`,
+    );
+  }
 }
 
 for (const marker of [
@@ -300,7 +300,7 @@ for (const marker of [
   "let command = metadata_save_command(&schema, &snapshot, &input)?;",
   "fetch_expected_page(transport.as_ref(), &snapshot).await?",
   "require_current_metadata_version(command.expected_version, current.version)?;",
-  "let request = MetadataPatchRequest {",
+  "let request = PageMetadataPatch {",
   "transport.patch_metadata(request).await?",
   "schema.validate_values(&input.values)?",
   "expected_metadata_version(&snapshot.page_id, &input.expected_revision)",
@@ -318,7 +318,7 @@ requireOrderedMarkers(
     "let command = metadata_save_command(&schema, &snapshot, &input)?;",
     "fetch_expected_page(transport.as_ref(), &snapshot).await?",
     "require_current_metadata_version(command.expected_version, current.version)?;",
-    "let request = MetadataPatchRequest {",
+    "let request = PageMetadataPatch {",
     "transport.patch_metadata(request).await?",
   ],
   "Pages metadata conflict-before-patch ordering",

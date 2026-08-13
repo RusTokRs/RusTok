@@ -29,6 +29,13 @@ The active accessibility overlay exposes the current boundary:
 
 The stale pre-#3444 instruction to complete generic asset/accessibility controls as if the source were missing remains superseded. The implementation cursor is executable evidence, packet validation and owner review, not another generic-control architecture slice.
 
+## Registered metadata surfaces: source-complete
+
+Focused stale-revision and dirty-Fly isolation regressions are source-ready.
+Published pages mount the same registered panel without an editable Fly canvas.
+The bespoke `PageMetadataEditor` and its direct workspace metadata transport write are removed.
+Their execution and the published browser packet remain open.
+
 ## Focused CI continuation
 
 `.github/workflows/pages-page-builder-parity.yml` is the read-only focused source gate for this boundary. It runs:

@@ -124,6 +124,7 @@ const expectedUniqueKey = [
   "locale",
   "build_hash",
   "materialization_hash",
+  "instance_key",
 ];
 if (JSON.stringify(persistence.unique_key) !== JSON.stringify(expectedUniqueKey)) {
   fail("Pages materialization unique key is invalid");
@@ -221,7 +222,8 @@ for (const marker of [
   "pub(crate) fn prepare_document",
   "pub(crate) fn compile_prepared_document",
   "pub(crate) fn render_policy",
-  "Re-run the public artifact security policy on the exact document being built",
+  "Re-run every public-artifact policy on the exact",
+  "require_static_publish_policy(document)",
 ]) {
   requireMarker(staticLanding, marker, "prepared static landing seam");
 }
@@ -260,8 +262,8 @@ for (const marker of [
   requireMarker(pagesMaterializationMigration, marker, "Pages materialization migration");
 }
 for (const marker of [
-  "compile_materialized_static_landing(",
-  "PageBuilderPreviewRuntime::default()",
+  "compiled_materialization(",
+  "PageBuilderMaterializedStaticLandingArtifact",
   "materialization_hash: Set(Some(",
   "materialization_identity: Set(Some(",
   "runtime_snapshots: Set(Some(",

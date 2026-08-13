@@ -259,21 +259,16 @@ mod tests {
 
     #[test]
     fn rejects_cross_tenant_parent() {
-        let error = validate_and_compute_depths(&[
-            node(1, 10, None, 0),
-            node(2, 11, Some(1), 0),
-        ])
-        .expect_err("foreign parent must block migration");
+        let error = validate_and_compute_depths(&[node(1, 10, None, 0), node(2, 11, Some(1), 0)])
+            .expect_err("foreign parent must block migration");
         assert!(error.to_string().contains("references parent"));
     }
 
     #[test]
     fn rejects_cycle() {
-        let error = validate_and_compute_depths(&[
-            node(1, 10, Some(2), 0),
-            node(2, 10, Some(1), 0),
-        ])
-        .expect_err("cycle must block migration");
+        let error =
+            validate_and_compute_depths(&[node(1, 10, Some(2), 0), node(2, 10, Some(1), 0)])
+                .expect_err("cycle must block migration");
         assert!(error.to_string().contains("cycle"));
     }
 }

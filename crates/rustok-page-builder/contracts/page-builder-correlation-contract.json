@@ -39,17 +39,17 @@
   ],
   "source_markers": [
     {
-      "path": "crates/rustok-pages/src/services/page.rs",
+      "path": "crates/rustok-pages/src/services/page/reviewed_publish.rs",
       "markers": [
-        "ensure_builder_publish_capabilities_for_page",
-        "page_uses_builder_capability_for_id"
+        "ensure_builder_publish_enabled_in_tx",
+        "compile_builder_sources_with_reviewed_runtime"
       ]
     },
     {
-      "path": "crates/rustok-pages/storefront/src/core.rs",
+      "path": "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
       "markers": [
-        "storefront_builder_fallback_read_contract",
-        "render_requires_builder_capability: false"
+        "load_public_bound_artifact_with_fallback",
+        "published_artifact_page_body"
       ]
     }
   ],

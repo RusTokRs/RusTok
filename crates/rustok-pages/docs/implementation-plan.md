@@ -55,6 +55,11 @@ The shared Page Builder plan tracks generalization of this Pages-specific build 
 
 ### Immutable artifact integrity, rebuild, activation and rollback continuity
 
+The Pages correlation gate follows `builder write -> Pages publish -> storefront
+read`: a builder write remains an authenticated authoring action, reviewed
+publication creates and binds immutable artifacts, and storefront read resolves
+only the published bound artifact without requiring an authoring capability.
+
 The reviewed publish transaction persists three independent authority layers:
 
 ```text

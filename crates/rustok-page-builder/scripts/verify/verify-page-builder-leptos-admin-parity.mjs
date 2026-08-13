@@ -22,48 +22,47 @@ function read(relativePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-const adminCore = read("crates/rustok-pages/admin/src/core.rs");
-const adminUi = read("crates/rustok-pages/admin/src/ui/leptos.rs");
-const enLocale = read("crates/rustok-pages/admin/locales/en.json");
-const ruLocale = read("crates/rustok-pages/admin/locales/ru.json");
+const adminComposition = read("crates/rustok-pages/admin/src/composition.rs");
+const adminBuilder = read("crates/rustok-pages/admin/src/builder.rs");
+const rolloutSettings = read("crates/rustok-pages/admin/src/builder_rollout_settings.rs");
+const sharedAdminUi = read("crates/rustok-page-builder/admin/src/ui/leptos.rs");
 const consumerManifest = read("crates/rustok-pages/rustok-module.toml");
 
 for (const token of [
-  "issue_guidance",
-  "is_builder_feature_disabled_issue",
-  "feature-disabled",
-  "builder.publish.enabled",
+  "PagesBuilderFacade",
+  "PageBuilderAdminHostContext::new",
+  "PageBuilderAdmin",
+  "with_provider_status(provider_status)",
 ]) {
-  if (!adminCore.includes(token)) {
-    fail(`Leptos admin core missing '${token}'`);
+  if (!adminComposition.includes(token)) {
+    fail(`Leptos Pages composition missing '${token}'`);
   }
 }
 
 for (const token of [
-  "pages.error.validationGuidance",
-  "pages.error.sanitizeGuidance",
-  "pages.error.runtimeGuidance",
-  "pages.error.featureDisabledGuidance",
-  "core::issue_guidance",
+  "PageBuilderCapabilityRequest::Preview",
+  "PageBuilderCapabilityRequest::Publish",
+  "PageBuilderAdminFacadeError::with_stable_code",
+  "PagesPageBuilderProjectStore",
 ]) {
-  if (!adminUi.includes(token)) {
-    fail(`Leptos admin UI missing '${token}'`);
+  if (!adminBuilder.includes(token)) {
+    fail(`Leptos Pages facade missing '${token}'`);
   }
 }
 
-for (const [label, content] of [
-  ["en", enLocale],
-  ["ru", ruLocale],
+for (const token of [
+  "PageBuilderAdminProviderStatus::observed",
+  "PageBuilderAdminProviderStatus::unobserved",
+  "limit_capabilities",
 ]) {
-  for (const token of [
-    "pages.error.validationGuidance",
-    "pages.error.sanitizeGuidance",
-    "pages.error.runtimeGuidance",
-    "pages.error.featureDisabledGuidance",
-  ]) {
-    if (!content.includes(token)) {
-      fail(`Leptos admin ${label} locale missing '${token}'`);
-    }
+  if (!rolloutSettings.includes(token)) {
+    fail(`Leptos Pages rollout settings missing '${token}'`);
+  }
+}
+
+for (const token of ["PageBuilderAdminHostContext", "editor_capability_evaluation"]) {
+  if (!sharedAdminUi.includes(token)) {
+    fail(`shared Leptos Page Builder UI missing '${token}'`);
   }
 }
 

@@ -21,7 +21,7 @@ export default async function ForumTopicReplyRangePage() {
         pageTitle='Move Forum Reply Range'
         pageDescription='Move an inclusive reply-position range into an existing topic.'
       >
-        <div className='rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive'>
+        <div className='border-destructive/30 bg-destructive/10 text-destructive rounded-lg border p-4 text-sm'>
           Tenant context is required.
         </div>
       </PageContainer>

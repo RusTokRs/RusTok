@@ -66,10 +66,7 @@ export function buildForumReplyRangeMoveCommand(input: {
   if (sourceTopicId === targetTopicId) {
     throw new Error('Source and target topics must differ.');
   }
-  if (
-    !Number.isSafeInteger(input.startPosition) ||
-    input.startPosition < 1
-  ) {
+  if (!Number.isSafeInteger(input.startPosition) || input.startPosition < 1) {
     throw new Error('Start position must be a positive integer.');
   }
   if (!Number.isSafeInteger(input.endPosition) || input.endPosition < 1) {

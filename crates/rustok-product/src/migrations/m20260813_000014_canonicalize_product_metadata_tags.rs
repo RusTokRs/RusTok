@@ -3,10 +3,11 @@ use std::collections::HashSet;
 use chrono::{Duration, Utc};
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_taxonomy::{
-    TaxonomyScopeType, TaxonomyTermKind, normalize_term_locale, normalize_term_route_key,
+    TaxonomyScopeType, TaxonomyTermKind,
     entities::{
         taxonomy_term, taxonomy_term_route_key, taxonomy_term_translation, translation_change,
     },
+    normalize_term_locale, normalize_term_route_key,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
@@ -98,7 +99,7 @@ async fn backfill_legacy_metadata_tags(txn: &sea_orm::DatabaseTransaction) -> Re
                         term_id: Set(term_id),
                         tenant_id: Set(product.tenant_id),
                         created_at: Set(
-                            (created_at + Duration::microseconds(position as i64)).into(),
+                            (created_at + Duration::microseconds(position as i64)).into()
                         ),
                     }
                     .insert(txn)
@@ -140,7 +141,11 @@ fn legacy_metadata_tags(metadata: &Value) -> Result<Option<Vec<String>>, DbErr> 
     let mut labels = Vec::new();
     if let Some(items) = raw_tags.as_array() {
         for item in items {
-            let Some(label) = item.as_str().map(str::trim).filter(|label| !label.is_empty()) else {
+            let Some(label) = item
+                .as_str()
+                .map(str::trim)
+                .filter(|label| !label.is_empty())
+            else {
                 continue;
             };
             if label.chars().count() > 120 {
@@ -364,8 +369,7 @@ mod tests {
             None
         );
         assert_eq!(
-            legacy_metadata_tags(&json!({"tags": "not-an-array"}))
-                .expect("metadata should parse"),
+            legacy_metadata_tags(&json!({"tags": "not-an-array"})).expect("metadata should parse"),
             Some(Vec::new())
         );
     }

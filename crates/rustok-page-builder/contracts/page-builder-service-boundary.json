@@ -77,7 +77,7 @@
     "configured_entrypoint": "compose_configured_fly_page_builder_handlers",
     "preview_port": "PageBuilderPreviewRenderingPort",
     "invocation_order": [
-      "FlyAdapterBackedPageBuilderService::new",
+        "FlyAdapterBackedPageBuilderService::with_telemetry",
       "CapabilityGuardedService::with_policies",
       "AuthorizedPageBuilderHandlers::with_authorizer"
     ]
@@ -186,7 +186,7 @@
           "data-page-builder-server-preview-frame",
           "srcdoc=html"
         ],
-        "host_marker": "<ServerPreviewPanel runtime=server_preview_runtime />"
+        "host_marker": "<ServerPreviewPanel\n                runtime=server_preview_runtime\n                provider_status=server_preview_provider_status\n            />"
       }
     }
   },

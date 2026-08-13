@@ -1,5 +1,5 @@
-use sea_orm::entity::prelude::*;
 use sea_orm::Set;
+use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -41,11 +41,10 @@ impl ActiveModelBehavior for ActiveModel {
             return Ok(self);
         }
 
-        let tenant_id = self
-            .tenant_id
-            .try_as_ref()
-            .copied()
-            .ok_or_else(|| DbErr::Custom("blog category insert requires tenant_id".to_string()))?;
+        let tenant_id =
+            self.tenant_id.try_as_ref().copied().ok_or_else(|| {
+                DbErr::Custom("blog category insert requires tenant_id".to_string())
+            })?;
         let parent_id = self.parent_id.try_as_ref().copied().flatten();
 
         let depth = match parent_id {

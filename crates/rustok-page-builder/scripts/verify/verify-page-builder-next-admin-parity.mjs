@@ -22,36 +22,32 @@ function read(relativePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
-const errorHelper = read(
-  "apps/next-admin/packages/blog/src/api/page-builder-errors.ts",
-);
-const pageBuilder = read(
-  "apps/next-admin/packages/blog/src/components/page-builder.tsx",
-);
 const consumerManifest = read("crates/rustok-pages/rustok-module.toml");
+const pagesPlan = read("crates/rustok-pages/docs/implementation-plan.md");
+const leptosComposition = read("crates/rustok-pages/admin/src/composition.rs");
 
-for (const token of [
-  "validation",
-  "sanitize",
-  "runtime",
-  "feature-disabled",
-  "FEATURE_DISABLED",
-  "resolvePageBuilderError",
-  "operatorGuidance",
-]) {
-  if (!errorHelper.includes(token)) {
-    fail(`Next admin page-builder error helper missing '${token}'`);
+const removedNextAdminPaths = [
+  "apps/next-admin/packages/blog/src/api/page-builder-errors.ts",
+  "apps/next-admin/packages/blog/src/components/page-builder.tsx",
+];
+for (const relativePath of removedNextAdminPaths) {
+  if (fs.existsSync(path.join(repoRoot, relativePath))) {
+    fail(`deleted Next-admin Page Builder surface reappeared: ${relativePath}`);
   }
 }
 
 for (const token of [
-  "resolvePageBuilderError(error)",
-  "setSaveError(viewModel)",
-  "viewModel.operatorGuidance",
-  "saveError.kind",
+  "deleted Next/GrapesJS page-builder route",
+  "Pages admin owns",
 ]) {
-  if (!pageBuilder.includes(token)) {
-    fail(`Next admin PageBuilder component missing '${token}'`);
+  if (!pagesPlan.includes(token)) {
+    fail(`Pages implementation plan missing Leptos-only boundary '${token}'`);
+  }
+}
+
+for (const token of ["PageBuilderAdmin", "PagesBuilderFacade", "PageBuilderAdminHostContext"]) {
+  if (!leptosComposition.includes(token)) {
+    fail(`Leptos Pages admin composition missing '${token}'`);
   }
 }
 
@@ -65,4 +61,4 @@ for (const token of [
   }
 }
 
-console.log("[verify-page-builder-next-admin-parity] PASS");
+console.log("[verify-page-builder-next-admin-parity] PASS (Pages Leptos boundary)");

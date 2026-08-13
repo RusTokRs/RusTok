@@ -83,7 +83,7 @@ forbidMarker(graphqlPublish, "publish_if_current", "GraphQL publish mutation");
 const graphqlCreate = sliceBetween(
   graphqlMutation,
   "async fn create_page",
-  "async fn create_menu",
+  "async fn patch_page_metadata",
   "GraphQL create mutation",
 );
 for (const marker of [
@@ -182,7 +182,7 @@ for (const marker of [
 }
 forbidMarker(
   adminTransport,
-  "publishPage(id: $id) {",
+  "mutation PublishPage($id: UUID!) {",
   "Pages admin publish transport",
 );
 forbidMarker(

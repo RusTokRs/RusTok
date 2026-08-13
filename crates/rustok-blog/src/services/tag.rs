@@ -529,11 +529,7 @@ fn normalize_locale(locale: &str) -> BlogResult<String> {
     normalize_locale_code(locale).ok_or_else(|| BlogError::validation("Locale cannot be empty"))
 }
 
-fn to_tag_owner_response(
-    tenant_id: Uuid,
-    term: TaxonomyOwnerTerm,
-    use_count: i32,
-) -> TagResponse {
+fn to_tag_owner_response(tenant_id: Uuid, term: TaxonomyOwnerTerm, use_count: i32) -> TagResponse {
     TagResponse {
         id: term.id,
         tenant_id,

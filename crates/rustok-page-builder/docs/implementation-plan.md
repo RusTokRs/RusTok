@@ -11,6 +11,16 @@ screen-reader evidence remains pending and no WCAG conformance is inferred from 
 
 Markers: `generic-editor-accessibility-source-ready` / `browser-accessibility-evidence-pending`.
 
+Tenant control-plane packet schemas and verification scripts are source-ready;
+their dry-run contracts remain distinct from maintainer-executed rollout evidence.
+The transport bridge keeps GraphQL and Leptos server-function envelopes on the
+same authorized handler path, with mobile reserved as a future transport adapter.
+The endpoint adapter seam exposes the same service through typed GraphQL and
+Leptos boundary entrypoints rather than consumer-local provider calls.
+The server preview surface uses the shared `PageBuilderAdmin` host context and
+the Pages-owned renderer port; it remains subject to the evaluated provider
+capability profile.
+
 ## Current state
 
 `rustok-page-builder` exposes one Fly-backed capability service for preview, tree, properties and
@@ -166,6 +176,11 @@ Pages public publication crosses the reviewed boundary:
 - a one-scenario baseline is selected automatically; multiple scenarios require an explicit exact
   selection, and a missing, stale or foreign selection fails closed in the Pages transport;
 - `PageService::create` cannot publish or compile through a default runtime.
+
+The correlation path is `builder write -> Pages publish -> storefront read`.
+Pages applies the reviewed runtime only after the builder write is persisted,
+and storefront read loads the bound immutable artifact through the native
+server adapter; it never requires a builder capability at render time.
 
 Pages also owns an immutable rollback boundary. `PageService::rollback_to_previous` locks the
 published page, verifies the active artifact set, resolves the latest activation receipt by page result
@@ -414,6 +429,8 @@ and decision packets, not another production-consumer or provider-health archite
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-transport-bridge.mjs`;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-endpoint-adapters.mjs`;
 - `node crates/rustok-pages/scripts/verify/verify-pages-reference-consumer-gate.mjs`;
 - `node scripts/verify/verify-forum-page-builder-contribution-metadata.mjs`;
 - `node scripts/verify/verify-forum-page-builder-browser-evidence-harness.mjs`;

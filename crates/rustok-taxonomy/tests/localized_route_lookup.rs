@@ -2,8 +2,7 @@ use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, ResolveTaxonomyTermInput, TaxonomyError, TaxonomyModule,
-    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    entities::taxonomy_term_alias,
+    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, entities::taxonomy_term_alias,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, TransactionTrait};
@@ -53,12 +52,7 @@ async fn create_module_term(
         .expect("module term should be created")
 }
 
-async fn inject_legacy_alias(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    term_id: Uuid,
-    slug: &str,
-) {
+async fn inject_legacy_alias(db: &DatabaseConnection, tenant_id: Uuid, term_id: Uuid, slug: &str) {
     taxonomy_term_alias::ActiveModel {
         id: Set(Uuid::new_v4()),
         term_id: Set(term_id),

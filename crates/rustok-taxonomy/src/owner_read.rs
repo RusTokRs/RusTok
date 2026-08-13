@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use rustok_content::resolve_by_locale_with_fallback;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter,
-    QueryOrder,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, QueryOrder,
 };
 use uuid::Uuid;
 
@@ -113,14 +113,7 @@ impl TaxonomyOwnerReader {
             .all(txn)
             .await?;
 
-        materialize_terms(
-            txn,
-            tenant_id,
-            terms,
-            &locale,
-            fallback_locale.as_deref(),
-        )
-        .await
+        materialize_terms(txn, tenant_id, terms, &locale, fallback_locale.as_deref()).await
     }
 }
 
@@ -189,8 +182,7 @@ where
 }
 
 fn normalize_requested_locale(locale: &str) -> TaxonomyResult<String> {
-    normalize_term_locale(locale)
-        .ok_or_else(|| TaxonomyError::validation("Locale cannot be empty"))
+    normalize_term_locale(locale).ok_or_else(|| TaxonomyError::validation("Locale cannot be empty"))
 }
 
 fn normalize_fallback_locale(fallback_locale: Option<&str>) -> TaxonomyResult<Option<String>> {

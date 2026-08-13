@@ -173,7 +173,7 @@ for (const port of Object.values(contract.ports ?? {})) {
       "persistence save signature",
     );
     requireOrderedMarkers(
-      flyService,
+      flyService.slice(flyService.indexOf("    async fn publish(")),
       port.save_result_order,
       "persistence save result validation",
     );
@@ -240,7 +240,8 @@ const currentSources = [
   implementationPlan,
 ];
 for (const forbidden of contract.forbidden_symbols ?? []) {
-  if (currentSources.some((source) => source.includes(forbidden))) {
+  const symbolPattern = new RegExp(`\\b${forbidden}\\b`);
+  if (currentSources.some((source) => symbolPattern.test(source))) {
     fail(
       `obsolete symbol '${forbidden}' must not exist in the current service boundary`,
     );

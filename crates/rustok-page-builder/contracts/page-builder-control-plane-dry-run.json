@@ -2,6 +2,8 @@
   "artifact": "page_builder_control_plane_dry_run_contract",
   "module_slug": "page_builder",
   "consumer_module_slug": "pages",
+  "builder_contract_version": "1.1",
+  "consumer_min_version": "1.0",
   "change_set_contract": {
     "atomic_flag_keys": [
       "builder.enabled",
@@ -76,7 +78,7 @@
   ],
   "source_markers": {
     "runtime_rollout": "pub struct BuilderControlPlaneChangeSet",
-    "runtime_plan": "Control-plane dry run evidence",
+    "runtime_plan": "Tenant control-plane packet schemas and verification scripts",
     "wave1_packet": "draft:pages-wave1-readiness"
   }
 }

@@ -81,7 +81,9 @@ export function buildForumTopicSplitCommand(input: {
     throw new Error('Choose the source topic to split.');
   }
   if (sourceTopicId === targetTopicId) {
-    throw new Error('The new topic identity must differ from the source topic.');
+    throw new Error(
+      'The new topic identity must differ from the source topic.'
+    );
   }
 
   const locale = validateText(input.locale, 'Target locale', 64);
@@ -148,7 +150,9 @@ function validateParentClosedSelection(
       byId.has(reply.parentReplyId) &&
       !selected.has(reply.parentReplyId)
     ) {
-      throw new Error('A selected child reply requires its parent to be selected.');
+      throw new Error(
+        'A selected child reply requires its parent to be selected.'
+      );
     }
   }
 
@@ -158,7 +162,9 @@ function validateParentClosedSelection(
       selected.has(reply.parentReplyId) &&
       !selected.has(reply.id)
     ) {
-      throw new Error('Selecting a parent requires every loaded child to be selected.');
+      throw new Error(
+        'Selecting a parent requires every loaded child to be selected.'
+      );
     }
   }
 }

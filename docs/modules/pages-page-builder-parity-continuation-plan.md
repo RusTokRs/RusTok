@@ -106,6 +106,13 @@ No new provider-health, Pages gate, Forum-admission, retained-Wave-lineage or ob
 
 The generic editor source accessibility gap is also closed. Native SSR evidence, browser-harness source and retained-packet verification source exist; the real browser packet, owner review and optional separate screen-reader evidence remain execution work. Static/source/synthetic evidence does not establish WCAG conformance.
 
+## Registered metadata surfaces: source-complete
+
+Focused stale-revision and dirty-Fly isolation regressions are source-ready.
+Published pages mount the same registered panel without an editable Fly canvas.
+The bespoke `PageMetadataEditor` and its direct workspace metadata transport write are removed.
+Their execution and the published browser packet remain open.
+
 Detailed evidence for the current contribution, provider-health, gate, Forum admission and editor-accessibility slices is retained in:
 
 - `docs/modules/pages-page-builder-contribution-parity-actualization-2026-08-08.md`;

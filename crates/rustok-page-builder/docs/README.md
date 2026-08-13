@@ -60,7 +60,16 @@ service with `CapabilityGuardedService` for rollout and port-call policy, follow
 `AuthorizedPageBuilderHandlers` for permission checks. Consumer modules supply concrete ports but do
 not choose a different service/guard order.
 
-GraphQL and Leptos server-function endpoints use the composed handlers and canonical envelopes.
+The transport bridge dispatches GraphQL through `dispatch_graphql_envelope` and
+Leptos server functions through `dispatch_leptos_server_function_envelope`. Both
+paths call the same authorized handlers and preserve the typed error kind and
+stable code; future mobile adapters remain an explicit transport kind, not a
+second service path.
+
+`src/adapters.rs` is the endpoint adapter seam: host GraphQL resolvers call
+`handle_page_builder_graphql_endpoint`, and Leptos server functions call
+`handle_page_builder_leptos_server_function_endpoint`. These entrypoints adapt
+only their boundary input/output and delegate to the canonical transport bridge.
 
 The machine-readable boundary is
 `contracts/page-builder-service-boundary.json`. The corresponding verifier rejects obsolete
@@ -106,14 +115,17 @@ source. A future Dioxus renderer can use the same source without copying browser
 
 `pages:manage` is the effective override.
 
-## Fallback profiles
+## Fallback matrix
 
-| Profile | Preview | Tree/properties | Publish | Read/storefront paths |
-|---|---|---|---|---|
-| `all_on` | available | available | available | stable |
-| `publish_off` | available | available | disabled | stable |
-| `preview_off` | disabled | available | disabled | stable |
-| `builder_off` | disabled | disabled | disabled | stable |
+| Profile | Preview | Tree/properties | Publish | Admin path | Read/storefront paths |
+|---|---|---|---|---|---|
+| `all_on` | available | available | available | editable builder | stable |
+| `publish_off` | available | available | `typed_feature_disabled_error` | editable builder, publish disabled | stable |
+| `preview_off` | `typed_feature_disabled_error` | available | `typed_feature_disabled_error` | properties-only editor | stable |
+| `builder_off` | `typed_feature_disabled_error` | `typed_feature_disabled_error` | `typed_feature_disabled_error` | `readonly_fallback` | stable |
+
+Disabled capabilities return the stable `FEATURE_DISABLED` code. Provider
+unavailability narrows capabilities and never mounts a fallback editor.
 
 ## Verification
 

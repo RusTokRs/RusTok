@@ -38,14 +38,16 @@ export function ForumTopicReplyRange({
     newForumReplyRangeMoveIdentity
   );
   const [pending, setPending] = useState(false);
-  const [receipt, setReceipt] =
-    useState<ForumReplyRangeMoveReceipt | null>(null);
+  const [receipt, setReceipt] = useState<ForumReplyRangeMoveReceipt | null>(
+    null
+  );
 
   const orderedTopics = useMemo(
     () =>
       [...topics].sort(
         (left, right) =>
-          left.title.localeCompare(right.title) || left.id.localeCompare(right.id)
+          left.title.localeCompare(right.title) ||
+          left.id.localeCompare(right.id)
       ),
     [topics]
   );
@@ -89,7 +91,7 @@ export function ForumTopicReplyRange({
       <Card>
         <CardHeader>
           <CardTitle>{copy.title}</CardTitle>
-          <p className='text-sm text-muted-foreground'>{copy.subtitle}</p>
+          <p className='text-muted-foreground text-sm'>{copy.subtitle}</p>
         </CardHeader>
         <CardContent>
           <form
@@ -101,7 +103,7 @@ export function ForumTopicReplyRange({
                 <label className='space-y-2 text-sm font-medium'>
                   <span className='block'>{copy.source}</span>
                   <select
-                    className='w-full rounded-md border bg-background px-3 py-2'
+                    className='bg-background w-full rounded-md border px-3 py-2'
                     value={sourceTopicId}
                     onChange={(event) => {
                       const value = event.target.value;
@@ -124,7 +126,7 @@ export function ForumTopicReplyRange({
                 <label className='space-y-2 text-sm font-medium'>
                   <span className='block'>{copy.target}</span>
                   <select
-                    className='w-full rounded-md border bg-background px-3 py-2'
+                    className='bg-background w-full rounded-md border px-3 py-2'
                     value={targetTopicId}
                     onChange={(event) => {
                       setTargetTopicId(event.target.value);
@@ -147,7 +149,7 @@ export function ForumTopicReplyRange({
                 <label className='space-y-2 text-sm font-medium'>
                   <span className='block'>{copy.startPosition}</span>
                   <input
-                    className='w-full rounded-md border bg-background px-3 py-2'
+                    className='bg-background w-full rounded-md border px-3 py-2'
                     type='number'
                     min={1}
                     step={1}
@@ -161,7 +163,7 @@ export function ForumTopicReplyRange({
                 <label className='space-y-2 text-sm font-medium'>
                   <span className='block'>{copy.endPosition}</span>
                   <input
-                    className='w-full rounded-md border bg-background px-3 py-2'
+                    className='bg-background w-full rounded-md border px-3 py-2'
                     type='number'
                     min={1}
                     step={1}
@@ -177,7 +179,7 @@ export function ForumTopicReplyRange({
               <label className='block space-y-2 text-sm font-medium'>
                 <span className='block'>{copy.reason}</span>
                 <textarea
-                  className='min-h-28 w-full rounded-md border bg-background px-3 py-2'
+                  className='bg-background min-h-28 w-full rounded-md border px-3 py-2'
                   maxLength={500}
                   value={reason}
                   onChange={(event) => {
@@ -187,19 +189,19 @@ export function ForumTopicReplyRange({
                 />
               </label>
 
-              <p className='rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground'>
+              <p className='text-muted-foreground rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm'>
                 {copy.warning}
               </p>
             </div>
 
-            <aside className='rounded-xl border bg-muted/20 p-5 xl:sticky xl:top-6 xl:self-start'>
-              <p className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+            <aside className='bg-muted/20 rounded-xl border p-5 xl:sticky xl:top-6 xl:self-start'>
+              <p className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
                 {copy.retryIdentity}
               </p>
-              <p className='mt-3 break-all font-mono text-xs'>
+              <p className='mt-3 font-mono text-xs break-all'>
                 {identity.operationId}
               </p>
-              <p className='mt-4 text-xs leading-5 text-muted-foreground'>
+              <p className='text-muted-foreground mt-4 text-xs leading-5'>
                 {copy.retryHint}
               </p>
               <Button className='mt-6 w-full' type='submit' disabled={pending}>
@@ -217,7 +219,11 @@ export function ForumTopicReplyRange({
           </CardHeader>
           <CardContent>
             <dl className='grid gap-4 text-sm md:grid-cols-2 xl:grid-cols-3'>
-              <ReceiptValue label={copy.operation} value={receipt.operationId} mono />
+              <ReceiptValue
+                label={copy.operation}
+                value={receipt.operationId}
+                mono
+              />
               <ReceiptValue
                 label={copy.sourceRange}
                 value={`${receipt.sourceStartPosition}–${receipt.sourceEndPosition}`}
@@ -256,7 +262,7 @@ function ReceiptValue({
     <div>
       <dt className='font-medium'>{label}</dt>
       <dd
-        className={`mt-1 break-all text-muted-foreground ${
+        className={`text-muted-foreground mt-1 break-all ${
           mono ? 'font-mono text-xs' : ''
         }`}
       >

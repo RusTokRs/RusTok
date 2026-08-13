@@ -1,8 +1,7 @@
 [advisories]
-# TEMPORARY exceptions only. Every entry is registered in
-# docs/security/advisory-exceptions.md and expires on 2026-07-24.
-# Do not extend an ignore without fresh dependency-path and reachability evidence.
+# Lockfile-only optional dependency paths. Each entry is documented and expires
+# on 2026-09-13; do not extend an ignore without fresh reachability evidence.
 ignore = [
-  "RUSTSEC-2023-0071", # rsa timing side-channel; no patched release currently available; expires 2026-07-24
-  "RUSTSEC-2023-0089", # atomic-polyfill unmaintained; replace parent path with portable-atomic; expires 2026-07-24
+  "RUSTSEC-2023-0071", # optional SQLx MySQL path; absent from locked all-feature/all-target graph
+  "RUSTSEC-2026-0235", # optional rust_decimal rkyv path; absent from locked all-feature/all-target graph
 ]

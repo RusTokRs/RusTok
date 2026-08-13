@@ -53,7 +53,7 @@ const modulesManifest = read(files.modulesManifest);
 
 for (const marker of [
   "[provides.graphql]",
-  "graphql::MarketplaceSellerQuery",
+  "graphql_root::MarketplaceSellerCombinedQuery",
   "graphql::MarketplaceSellerMutation",
   "rustok-marketplace-seller-admin",
 ]) contains(manifest, marker, files.manifest);
@@ -84,7 +84,7 @@ for (const marker of [
   "resolved_locale: value.resolved_locale",
   "Permission::MARKETPLACE_SELLERS_MANAGE",
   "with_idempotency_key",
-  "marketplace seller service is temporarily unavailable",
+  "Marketplace seller service is temporarily unavailable",
 ]) contains(graphql, marker, files.graphql);
 forbids(graphql, "entities::", files.graphql);
 forbids(graphql, "MarketplaceSellerService::list_members", files.graphql);

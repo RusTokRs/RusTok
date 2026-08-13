@@ -182,12 +182,7 @@ export async function createForumTopic(
   const data = await graphqlRequest<
     { tenantId?: string | null; input: CreateForumTopicInput },
     { createForumTopic: ForumTopicDetail }
-  >(
-    mutation,
-    { tenantId: opts.tenantId, input },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(mutation, { tenantId: opts.tenantId, input }, opts.token, opts.tenantSlug);
 
   return data.createForumTopic;
 }

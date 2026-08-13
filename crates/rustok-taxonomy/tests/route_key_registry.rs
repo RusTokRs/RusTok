@@ -56,11 +56,7 @@ async fn create_module_term(
         .expect("module term should be created")
 }
 
-async fn route_keys(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    term_id: Uuid,
-) -> Vec<String> {
+async fn route_keys(db: &DatabaseConnection, tenant_id: Uuid, term_id: Uuid) -> Vec<String> {
     let mut keys = taxonomy_term_route_key::Entity::find()
         .filter(taxonomy_term_route_key::Column::TenantId.eq(tenant_id))
         .filter(taxonomy_term_route_key::Column::TermId.eq(term_id))

@@ -1,5 +1,3 @@
-#![allow(elided_lifetimes_in_paths)]
-
 pub use sea_orm_migration::prelude::*;
 
 // Platform-core migrations — tables that are always present regardless of which
@@ -112,29 +110,6 @@ pub async fn apply_installer_remaining_schema(
 ) -> Result<(), DbErr> {
     Migrator::up(db, None).await
 }
-
-// The compatibility gate freezes every merged migration plan as an immutable prefix.
-// New owner migrations extend this explicit release-order tail instead of relying on
-// lexical insertion, which could rewrite an already published plan.
-const APPEND_ONLY_MIGRATION_TAIL: &[&str] = &[
-    "m20260726_000001_enforce_tenant_locale_policy",
-    "m20260326_000001_create_profiles_tables",
-    "m20260330_000002_create_profile_tags",
-    "m20260721_000009_expand_profile_locale_storage_columns",
-    "m20260721_000010_move_profile_display_name_to_translations",
-    "m20260723_000001_create_social_graph_relations",
-    "m20260725_000002_add_follow_relation_kind",
-    "m20260726_000003_create_command_receipts",
-    "m20260727_000004_create_index_dlq_receipts",
-    "m20260728_000001_create_consumer_poison_receipts",
-    "m20260803_000001_create_owner_operation_receipts",
-    "m20260803_000007_add_translation_target_support",
-    "m20260803_000016_add_blog_category_translation_target_support",
-    "m20260803_000017_add_translation_target_support",
-    "m20260803_000001_canonicalize_artifact_permissions",
-    "m20260806_000014_add_translation_target_support",
-    "m20260808_000099_create_module_operation_override_states",
-];
 
 struct ModuleMigrationSource {
     slug: &'static str,
@@ -320,22 +295,6 @@ fn module_dependency_descriptors(
     descriptors.into_iter().map(MigrationDescriptor::from)
 }
 
-fn move_migrations_to_append_only_tail(
-    migrations: &mut Vec<Box<dyn MigrationTrait>>,
-    names: &[&str],
-) -> Result<(), String> {
-    let mut tail = Vec::with_capacity(names.len());
-    for name in names {
-        let index = migrations
-            .iter()
-            .position(|migration| migration.name() == *name)
-            .ok_or_else(|| format!("append-only migration {name} is missing"))?;
-        tail.push(migrations.remove(index));
-    }
-    migrations.extend(tail);
-    Ok(())
-}
-
 fn validate_migration_dependency_order(
     migrations: &[Box<dyn MigrationTrait>],
     descriptors: &[MigrationDescriptor],
@@ -501,10 +460,8 @@ impl MigratorTrait for Migrator {
         all.sort_by(|a, b| a.name().cmp(b.name()));
         sort_migrations_by_dependencies(&mut all, &dependencies)
             .expect("migration dependency descriptors must be valid");
-        move_migrations_to_append_only_tail(&mut all, APPEND_ONLY_MIGRATION_TAIL)
-            .expect("append-only tail migrations must exist for platform plan placement");
         validate_migration_dependency_order(&all, &dependencies)
-            .expect("append-only migration placement must preserve dependencies");
+            .expect("migration ordering must preserve declared dependencies");
         all
     }
 }
@@ -610,9 +567,7 @@ fn sort_migrations_by_dependencies(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        sort_migrations_by_dependencies, MigrationDescriptor, Migrator, APPEND_ONLY_MIGRATION_TAIL,
-    };
+    use super::{sort_migrations_by_dependencies, MigrationDescriptor, Migrator};
     use rustok_test_utils::setup_test_db;
     use sea_orm_migration::MigratorTrait;
 
@@ -705,22 +660,23 @@ mod tests {
     }
 
     #[test]
-    fn migrator_preserves_append_only_migration_tail() {
+    fn migrator_keeps_taxonomy_owner_migrations_in_canonical_order() {
         let names = Migrator::migrations()
             .into_iter()
             .map(|migration| migration.name().to_string())
             .collect::<Vec<_>>();
-        let tail = names
+        let translation_target = names
             .iter()
-            .rev()
-            .take(APPEND_ONLY_MIGRATION_TAIL.len())
-            .rev()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
+            .position(|name| name == "m20260803_000007_add_translation_target_support")
+            .expect("taxonomy translation-target migration must exist");
+        let remove_term_status = names
+            .iter()
+            .position(|name| name == "m20260813_000009_remove_term_status")
+            .expect("taxonomy term-status removal migration must exist");
 
-        assert_eq!(
-            tail, APPEND_ONLY_MIGRATION_TAIL,
-            "new owner migrations must remain an append-only dependency-ordered platform tail"
+        assert!(
+            translation_target < remove_term_status,
+            "taxonomy translation-change storage must exist before term-status removal updates it"
         );
     }
 

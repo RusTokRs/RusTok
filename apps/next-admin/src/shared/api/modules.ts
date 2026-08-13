@@ -470,20 +470,19 @@ export async function getBuildHistory(
 export async function getBuildOrchestrationSnapshot(
   opts: GqlOpts = {}
 ): Promise<BuildOrchestrationSnapshot> {
-  const [activeBuild, buildHistory, marketplaceModules] =
-    await Promise.all([
-      getActiveBuild(opts),
-      getBuildHistory(10, 0, opts),
-      listMarketplaceModules(
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        opts
-      )
-    ]);
+  const [activeBuild, buildHistory, marketplaceModules] = await Promise.all([
+    getActiveBuild(opts),
+    getBuildHistory(10, 0, opts),
+    listMarketplaceModules(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      opts
+    )
+  ]);
 
   return {
     activeBuild,

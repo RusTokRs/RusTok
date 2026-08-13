@@ -21,7 +21,7 @@ export default async function ForumTopicMergePage() {
         pageTitle='Merge Forum Topics'
         pageDescription='Archive one Forum topic into a retained target.'
       >
-        <div className='rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive'>
+        <div className='border-destructive/30 bg-destructive/10 text-destructive rounded-lg border p-4 text-sm'>
           Tenant context is required.
         </div>
       </PageContainer>

@@ -34,36 +34,36 @@ waiver must also fail the gate.
 | Field | Value |
 |---|---|
 | Severity | MEDIUM, CVSS 5.9 |
-| Risk | Network-observable RSA private-key operations may leak timing information and enable key recovery if an affected private-key implementation becomes runtime reachable |
-| Patched version | No patched `rsa 0.9.x` release is currently available |
+| Risk | Network-observable RSA private-key operations could leak timing information if the affected private-key implementation became runtime reachable |
+| Patched version | No patched `rsa 0.9.x` release is available |
 | Repository policy location | `.cargo/audit.toml` |
 | Accountable owner | Platform security / dependency maintainers |
-| Dependency path | `Cargo.lock` retains the optional SQLx MySQL package path `sqlx-mysql 0.8.6` → `rsa 0.9.10`; the root `sea-orm` and `sea-orm-migration` specifications disable defaults and select only PostgreSQL, SQLite and Tokio/Rustls while explicitly preserving the prior data-type integrations |
-| Reachability | `cargo tree --locked --workspace --all-features --target all -i rsa` has empty stdout, so no workspace package or supported target selects the RSA path; `cargo audit` still reports the package because it is present in the lockfile |
-| Compensating controls | The permanent feature-hygiene verifier forbids SeaORM/SQLx MySQL, `sqlx-all`, migration CLI and native-TLS drift; supported database backends remain PostgreSQL and SQLite; application JWT verification uses `jsonwebtoken/aws_lc_rs` |
-| Remediation | Remove the waiver only when an upstream SeaORM/SQLx update, a bounded fork or lockfile/tooling behavior removes the lock-only optional MySQL/RSA package, or when a patched RSA release resolves the advisory; never delete lockfile package blocks manually |
-| Approved | 2026-07-17, temporary dependency stabilization exception |
-| Expires | 2026-07-24 |
-| Evidence required | Explicit-parity SeaORM feature policy, empty locked all-feature/all-target inverse tree, permanent dependency reachability workflow, and `cargo audit` output |
+| Dependency path | Lockfile-only optional SQLx MySQL path: `sqlx-mysql 0.8.6` → `rsa 0.9.10`; workspace SeaORM/SQLx policy selects PostgreSQL and SQLite only |
+| Reachability | `cargo tree --locked --workspace --all-features --target all -i rsa` has empty stdout; no workspace package or supported target selects this path |
+| Compensating controls | Feature-hygiene verification forbids SeaORM/SQLx MySQL, `sqlx-all`, migration CLI and native-TLS drift; supported database backends remain PostgreSQL and SQLite |
+| Remediation | Remove the waiver when upstream Cargo/SQLx metadata no longer retains the optional path, or a patched upstream release becomes available; never delete lockfile blocks manually |
+| Approved | 2026-08-13, lockfile-only reachability exception |
+| Expires | 2026-09-13 |
+| Evidence required | Empty locked all-feature/all-target inverse tree, feature-hygiene verification, and `cargo audit` output |
 | Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2023-0071.html> |
 
-### RUSTSEC-2023-0089 — `atomic-polyfill` is unmaintained
+### RUSTSEC-2026-0235 — `rkyv` insufficient archive validation
 
 | Field | Value |
 |---|---|
-| Severity | INFO, unmaintained dependency |
-| Risk | Archived dependency receives no maintenance or security fixes and creates avoidable supply-chain exposure on embedded target graphs |
-| Patched version | No patched release; recommended replacement is `portable-atomic` |
+| Severity | Unspecified by advisory |
+| Risk | Malformed archives with `Rc` or `Arc` could cause out-of-bounds reads if the affected archival runtime became reachable |
+| Patched version | `rkyv >= 0.8.17`; the retained optional dependency is constrained to `rkyv 0.7` by `rust_decimal 1.42.1` |
 | Repository policy location | `.cargo/audit.toml` |
-| Accountable owner | Platform security / Athanor integration maintainers |
-| Dependency path | `rustok-ai-athanor` feature `athanor-surreal` → `athanor-runtime-defaults/store-surreal` → `athanor-store-surrealdb` → `surrealdb 2.6.5` embedded engines → `geo 0.28.0` → `geo-types 0.7.19` → `rstar 0.9.3` → `heapless 0.7.17` → `atomic-polyfill 1.0.3` |
-| Reachability | Locked metadata retains a target-conditioned optional path for AVR, RISC-V, Thumb v6-M and Xtensa, but locked inverse trees are empty for `--target all` and each representative target triple; no workspace build currently selects `atomic-polyfill`, while `cargo audit` still reports its lockfile presence |
-| Compensating controls | The permanent reachability workflow requires empty inverse trees for the all-target graph and representative embedded targets; production profiles target supported server operating systems; keep `athanor-surreal` optional and disabled by default |
-| Remediation | Remove the waiver only when an Athanor/SurrealDB dependency update, bounded fork or lockfile/tooling change removes the lock-only package, or when the parent chain adopts `portable-atomic`; never delete lockfile package blocks manually |
-| Approved | 2026-07-17, temporary dependency stabilization exception |
-| Expires | 2026-07-24 |
-| Evidence required | Empty locked inverse trees for `--target all` and representative embedded triples, locked metadata for the target-conditioned optional path, Athanor upstream remediation, and capability-specific integration tests |
-| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2023-0089.html> |
+| Accountable owner | Platform security / dependency maintainers |
+| Dependency path | Lockfile-only optional path: `rust_decimal 1.42.1` → `rkyv 0.7.46`; the workspace uses `rust_decimal` without its `rkyv` feature |
+| Reachability | `cargo tree --locked --workspace --all-features --target all -i rkyv` has empty stdout; no workspace package or supported target selects this path |
+| Compensating controls | All feature combinations are checked through the workspace graph; the finance/domain code serializes through canonical Serde boundaries rather than Rkyv archives |
+| Remediation | Remove the waiver when `rust_decimal` updates its optional archival dependency to a patched major line or Cargo stops retaining unused optional paths; never delete lockfile blocks manually |
+| Approved | 2026-08-13, lockfile-only reachability exception |
+| Expires | 2026-09-13 |
+| Evidence required | Empty locked all-feature/all-target inverse tree, workspace feature verification, and `cargo audit` output |
+| Upstream advisory | <https://rustsec.org/advisories/RUSTSEC-2026-0235.html> |
 
 ## Closed Exceptions
 

@@ -120,7 +120,9 @@ export function ForumTopicEditor({
   return (
     <Card className='mx-auto w-full'>
       <CardHeader>
-        <CardTitle>{isEditing ? 'Edit forum topic' : 'Create forum topic'}</CardTitle>
+        <CardTitle>
+          {isEditing ? 'Edit forum topic' : 'Create forum topic'}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <Form
@@ -194,7 +196,8 @@ export function ForumTopicEditor({
           <Button
             type='submit'
             disabled={
-              form.formState.isSubmitting || (!isEditing && categories.length === 0)
+              form.formState.isSubmitting ||
+              (!isEditing && categories.length === 0)
             }
           >
             {isEditing ? 'Update topic' : 'Create topic'}

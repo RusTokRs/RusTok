@@ -1,6 +1,6 @@
 //! Pure Axum executable host composition.
 
-use std::{path::PathBuf, time::Duration};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 use axum::Router;
 use sea_orm::{ConnectOptions, Database};
@@ -105,10 +105,13 @@ pub async fn run() -> Result<()> {
     let address = listener.local_addr()?;
     tracing::info!(%address, "RusTok Axum host listening");
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal(runtime_ctx))
-        .await
-        .map_err(Error::Io)
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal(runtime_ctx))
+    .await
+    .map_err(Error::Io)
 }
 
 async fn migrate_database_if_enabled(

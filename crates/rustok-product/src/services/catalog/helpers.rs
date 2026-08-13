@@ -824,8 +824,8 @@ where
 #[cfg(test)]
 mod product_metadata_tests {
     use super::{
-        merge_product_metadata_patch, merge_reserved_product_metadata, reject_reserved_tag_metadata,
-        split_product_metadata_payload,
+        merge_product_metadata_patch, merge_reserved_product_metadata,
+        reject_reserved_tag_metadata, split_product_metadata_payload,
     };
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
     use serde_json::json;

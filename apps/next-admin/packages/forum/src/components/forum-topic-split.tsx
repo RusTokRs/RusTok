@@ -154,15 +154,18 @@ export function ForumTopicSplit({
       <Card>
         <CardHeader>
           <CardTitle>{copy.title}</CardTitle>
-          <p className='text-sm text-muted-foreground'>{copy.subtitle}</p>
+          <p className='text-muted-foreground text-sm'>{copy.subtitle}</p>
         </CardHeader>
         <CardContent>
-          <form className='grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]' onSubmit={submit}>
+          <form
+            className='grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]'
+            onSubmit={submit}
+          >
             <div className='space-y-6'>
               <label className='block space-y-2 text-sm font-medium'>
                 <span className='block'>{copy.source}</span>
                 <select
-                  className='w-full rounded-md border bg-background px-3 py-2'
+                  className='bg-background w-full rounded-md border px-3 py-2'
                   value={sourceTopicId}
                   onChange={(event) => {
                     const value = event.target.value;
@@ -189,25 +192,29 @@ export function ForumTopicSplit({
               <section className='space-y-3'>
                 <h2 className='text-sm font-semibold'>{copy.replies}</h2>
                 {loadingReplies ? (
-                  <div className='rounded-lg border p-5 text-sm text-muted-foreground'>
+                  <div className='text-muted-foreground rounded-lg border p-5 text-sm'>
                     {copy.loadingReplies}
                   </div>
                 ) : replies?.items.length ? (
                   <div className='max-h-96 space-y-2 overflow-y-auto rounded-lg border p-3'>
                     {replies.items.map((reply) => (
                       <label
-                        className='flex items-start gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted/50'
+                        className='hover:bg-muted/50 flex items-start gap-3 rounded-md px-3 py-2 text-sm'
                         key={reply.id}
                       >
                         <input
                           className='mt-1'
                           type='checkbox'
                           checked={selectedReplyIds.includes(reply.id)}
-                          onChange={(event) => toggleReply(reply.id, event.target.checked)}
+                          onChange={(event) =>
+                            toggleReply(reply.id, event.target.checked)
+                          }
                         />
                         <span>
-                          <span className='block'>{forumTopicSplitReplyLabel(reply)}</span>
-                          <span className='mt-1 block break-all font-mono text-[11px] text-muted-foreground'>
+                          <span className='block'>
+                            {forumTopicSplitReplyLabel(reply)}
+                          </span>
+                          <span className='text-muted-foreground mt-1 block font-mono text-[11px] break-all'>
                             {reply.id}
                           </span>
                         </span>
@@ -215,7 +222,7 @@ export function ForumTopicSplit({
                     ))}
                   </div>
                 ) : (
-                  <div className='rounded-lg border border-dashed p-5 text-sm text-muted-foreground'>
+                  <div className='text-muted-foreground rounded-lg border border-dashed p-5 text-sm'>
                     {copy.noReplies}
                   </div>
                 )}
@@ -225,7 +232,7 @@ export function ForumTopicSplit({
                 <label className='space-y-2 text-sm font-medium'>
                   <span className='block'>{copy.targetLocale}</span>
                   <input
-                    className='w-full rounded-md border bg-background px-3 py-2'
+                    className='bg-background w-full rounded-md border px-3 py-2'
                     maxLength={64}
                     value={targetLocale}
                     onChange={(event) => {
@@ -237,7 +244,7 @@ export function ForumTopicSplit({
                 <label className='space-y-2 text-sm font-medium'>
                   <span className='block'>{copy.targetSlug}</span>
                   <input
-                    className='w-full rounded-md border bg-background px-3 py-2'
+                    className='bg-background w-full rounded-md border px-3 py-2'
                     maxLength={255}
                     value={targetSlug}
                     onChange={(event) => {
@@ -251,7 +258,7 @@ export function ForumTopicSplit({
               <label className='block space-y-2 text-sm font-medium'>
                 <span className='block'>{copy.targetTitle}</span>
                 <input
-                  className='w-full rounded-md border bg-background px-3 py-2'
+                  className='bg-background w-full rounded-md border px-3 py-2'
                   maxLength={500}
                   value={targetTitle}
                   onChange={(event) => {
@@ -264,7 +271,7 @@ export function ForumTopicSplit({
               <label className='block space-y-2 text-sm font-medium'>
                 <span className='block'>{copy.reason}</span>
                 <textarea
-                  className='min-h-28 w-full rounded-md border bg-background px-3 py-2'
+                  className='bg-background min-h-28 w-full rounded-md border px-3 py-2'
                   maxLength={500}
                   value={reason}
                   onChange={(event) => {
@@ -274,21 +281,25 @@ export function ForumTopicSplit({
                 />
               </label>
 
-              <p className='rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-muted-foreground'>
+              <p className='border-destructive/20 bg-destructive/5 text-muted-foreground rounded-lg border px-4 py-3 text-sm'>
                 {copy.warning}
               </p>
             </div>
 
-            <aside className='rounded-xl border bg-muted/20 p-5 xl:sticky xl:top-6 xl:self-start'>
-              <p className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+            <aside className='bg-muted/20 rounded-xl border p-5 xl:sticky xl:top-6 xl:self-start'>
+              <p className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
                 {copy.retryIdentity}
               </p>
-              <p className='mt-3 break-all font-mono text-xs'>{identity.operationId}</p>
-              <p className='mt-5 text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+              <p className='mt-3 font-mono text-xs break-all'>
+                {identity.operationId}
+              </p>
+              <p className='text-muted-foreground mt-5 text-xs font-semibold tracking-wider uppercase'>
                 {copy.targetIdentity}
               </p>
-              <p className='mt-3 break-all font-mono text-xs'>{identity.targetTopicId}</p>
-              <p className='mt-4 text-xs leading-5 text-muted-foreground'>
+              <p className='mt-3 font-mono text-xs break-all'>
+                {identity.targetTopicId}
+              </p>
+              <p className='text-muted-foreground mt-4 text-xs leading-5'>
                 {copy.retryHint}
               </p>
               <Button className='mt-6 w-full' type='submit' disabled={pending}>
@@ -307,13 +318,13 @@ export function ForumTopicSplit({
           <CardContent className='grid gap-3 text-sm sm:grid-cols-2'>
             <div>
               <p className='font-medium'>Operation</p>
-              <p className='break-all font-mono text-xs text-muted-foreground'>
+              <p className='text-muted-foreground font-mono text-xs break-all'>
                 {receipt.operationId}
               </p>
             </div>
             <div>
               <p className='font-medium'>Target</p>
-              <p className='break-all font-mono text-xs text-muted-foreground'>
+              <p className='text-muted-foreground font-mono text-xs break-all'>
                 {receipt.targetTopicId}
               </p>
             </div>

@@ -170,7 +170,10 @@ async fn transaction_owner_reader_preserves_mixed_scope_and_rejects_foreign_tena
     )
     .await;
 
-    let txn = db.begin().await.expect("owner read transaction should start");
+    let txn = db
+        .begin()
+        .await
+        .expect("owner read transaction should start");
     let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
         &txn,
         tenant_id,

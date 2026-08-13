@@ -218,9 +218,9 @@ mod tests {
         let project = json!({ "pages": pages });
 
         let error = sanitize_static_landing_project(&project).expect_err("resource rejection");
-        let PageBuilderStaticLandingSanitizationError::Landing(
-            LandingProjectError::Validation { diagnostics },
-        ) = error
+        let PageBuilderStaticLandingSanitizationError::Landing(LandingProjectError::Validation {
+            diagnostics,
+        }) = error
         else {
             panic!("expected compiler resource-limit validation error");
         };

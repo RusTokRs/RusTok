@@ -1,6 +1,6 @@
-import { test, type BrowserContext } from "@playwright/test";
-import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { test, type BrowserContext } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
@@ -9,27 +9,27 @@ import {
   renameSync,
   rmSync,
   statSync,
-  writeFileSync,
-} from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+  writeFileSync
+} from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 const contractPath =
-  "crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json";
+  'crates/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-execution-contract.json';
 const contract = JSON.parse(
-  readFileSync(path.join(repoRoot, contractPath), "utf8"),
+  readFileSync(path.join(repoRoot, contractPath), 'utf8')
 ) as PreflightContract;
 
-const graphqlPath = "/api/graphql";
+const graphqlPath = '/api/graphql';
 const tenantModulesQuery =
-  "query RolloutPreflightTenantModules { tenantModules { moduleSlug enabled settings } }";
+  'query RolloutPreflightTenantModules { tenantModules { moduleSlug enabled settings } }';
 const updateSettingsMutation =
-  "mutation RolloutPreflightUpdateSettings($moduleSlug: String!, $settings: String!) { updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings) { moduleSlug enabled settings } }";
+  'mutation RolloutPreflightUpdateSettings($moduleSlug: String!, $settings: String!) { updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings) { moduleSlug enabled settings } }';
 const capabilityPreflightQuery =
-  "query RolloutCapabilityPreflight { preview: pageBuilderCapabilityPreflight(capability: PREVIEW) { capability allowed errorKind errorCode } properties: pageBuilderCapabilityPreflight(capability: PROPERTIES) { capability allowed errorKind errorCode } publish: pageBuilderCapabilityPreflight(capability: PUBLISH) { capability allowed errorKind errorCode } }";
+  'query RolloutCapabilityPreflight { preview: pageBuilderCapabilityPreflight(capability: PREVIEW) { capability allowed errorKind errorCode } properties: pageBuilderCapabilityPreflight(capability: PROPERTIES) { capability allowed errorKind errorCode } publish: pageBuilderCapabilityPreflight(capability: PUBLISH) { capability allowed errorKind errorCode } }';
 const rolloutSnapshotQuery =
-  "query RolloutFeaturePreflightSnapshot { pageBuilderRolloutSnapshot { providerHealthObserved providerHealth { state } } }";
+  'query RolloutFeaturePreflightSnapshot { pageBuilderRolloutSnapshot { providerHealthObserved providerHealth { state } } }';
 
 type FileRecord = {
   path: string;
@@ -44,10 +44,10 @@ type GraphqlResult = {
   data: Record<string, unknown>;
 };
 
-type ProfileExpectation = "allowed" | "feature_disabled";
+type ProfileExpectation = 'allowed' | 'feature_disabled';
 
 type PreflightProfile = {
-  id: "all_on" | "publish_off" | "preview_off" | "builder_off";
+  id: 'all_on' | 'publish_off' | 'preview_off' | 'builder_off';
   flags: [boolean, boolean, boolean, boolean];
   preview: ProfileExpectation;
   properties: ProfileExpectation;
@@ -84,13 +84,13 @@ function fail(message: string): never {
 }
 
 function sha256(value: Buffer | string): string {
-  return createHash("sha256").update(value).digest("hex");
+  return createHash('sha256').update(value).digest('hex');
 }
 
 function requiredEnvironment(name: string, maximumLength = 16_384): string {
   const value = process.env[name];
   if (
-    typeof value !== "string" ||
+    typeof value !== 'string' ||
     value.length === 0 ||
     value.length > maximumLength ||
     /[\u0000\r\n]/u.test(value)
@@ -100,9 +100,12 @@ function requiredEnvironment(name: string, maximumLength = 16_384): string {
   return value;
 }
 
-function optionalEnvironment(name: string, maximumLength = 16_384): string | null {
+function optionalEnvironment(
+  name: string,
+  maximumLength = 16_384
+): string | null {
   const value = process.env[name];
-  if (value === undefined || value === "") return null;
+  if (value === undefined || value === '') return null;
   if (value.length > maximumLength || /[\u0000]/u.test(value)) {
     fail(`${name} is outside the bounded environment input`);
   }
@@ -114,17 +117,19 @@ function requireOrigin(value: string): string {
   try {
     parsed = new URL(value);
   } catch {
-    fail("feature preflight API origin must be absolute HTTP(S)");
+    fail('feature preflight API origin must be absolute HTTP(S)');
   }
   if (
-    !["http:", "https:"].includes(parsed.protocol) ||
+    !['http:', 'https:'].includes(parsed.protocol) ||
     parsed.username ||
     parsed.password ||
     parsed.search ||
     parsed.hash ||
-    !["", "/"].includes(parsed.pathname)
+    !['', '/'].includes(parsed.pathname)
   ) {
-    fail("feature preflight API origin must be credential-free with no path/query/fragment");
+    fail(
+      'feature preflight API origin must be credential-free with no path/query/fragment'
+    );
   }
   return parsed.origin;
 }
@@ -133,16 +138,18 @@ function requireTenantSlug(value: string): string {
   if (
     value.trim() !== value ||
     value.length === 0 ||
-    Buffer.byteLength(value, "utf8") > 128 ||
+    Buffer.byteLength(value, 'utf8') > 128 ||
     /[\u0000-\u001f\u007f/\\?#]/u.test(value)
   ) {
-    fail("feature preflight tenant slug must be a bounded header-safe value");
+    fail('feature preflight tenant slug must be a bounded header-safe value');
   }
   return value;
 }
 
 function resolveInput(value: string): string {
-  return path.isAbsolute(value) ? path.resolve(value) : path.resolve(repoRoot, value);
+  return path.isAbsolute(value)
+    ? path.resolve(value)
+    : path.resolve(repoRoot, value);
 }
 
 function regularFileRecord(value: string, label: string): FileRecord {
@@ -160,14 +167,17 @@ function regularFileRecord(value: string, label: string): FileRecord {
   return { path: absolute, bytes: stats.size, sha256: sha256(bytes) };
 }
 
-function readJsonInput(value: string, label: string): {
+function readJsonInput(
+  value: string,
+  label: string
+): {
   record: FileRecord;
   document: Record<string, unknown>;
 } {
   const record = regularFileRecord(value, label);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(record.path, "utf8"));
+    parsed = JSON.parse(readFileSync(record.path, 'utf8'));
   } catch (error) {
     fail(`${label} is not valid JSON: ${(error as Error).message}`);
   }
@@ -175,59 +185,70 @@ function readJsonInput(value: string, label: string): {
 }
 
 function currentCommit(): string {
-  const value = execFileSync("git", ["rev-parse", "HEAD"], {
+  const value = execFileSync('git', ['rev-parse', 'HEAD'], {
     cwd: repoRoot,
-    encoding: "utf8",
+    encoding: 'utf8'
   }).trim();
-  if (!/^[0-9a-f]{40}$/u.test(value)) fail("git HEAD is not a full commit SHA");
+  if (!/^[0-9a-f]{40}$/u.test(value)) fail('git HEAD is not a full commit SHA');
   return value;
 }
 
 function sourceHashes(): Record<string, string> {
-  if (!Array.isArray(contract.required_source_files) || contract.required_source_files.length === 0) {
-    fail("feature preflight contract has no required source files");
+  if (
+    !Array.isArray(contract.required_source_files) ||
+    contract.required_source_files.length === 0
+  ) {
+    fail('feature preflight contract has no required source files');
   }
   return Object.fromEntries(
     contract.required_source_files.map((relativePath) => {
-      const record = regularFileRecord(relativePath, `source file ${relativePath}`);
+      const record = regularFileRecord(
+        relativePath,
+        `source file ${relativePath}`
+      );
       return [relativePath, record.sha256];
-    }),
+    })
   );
 }
 
 function outputPath(): string {
   const raw = optionalEnvironment(contract.output.environment);
   const absolute = resolveInput(raw ?? contract.output.default_path);
-  const targetRoot = path.resolve(repoRoot, "target");
+  const targetRoot = path.resolve(repoRoot, 'target');
   const relative = path.relative(targetRoot, absolute);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    fail("feature preflight output must remain inside repository target/");
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    fail('feature preflight output must remain inside repository target/');
   }
   return absolute;
 }
 
-function writeAtomic(location: string, document: Record<string, unknown>): void {
+function writeAtomic(
+  location: string,
+  document: Record<string, unknown>
+): void {
   mkdirSync(path.dirname(location), { recursive: true });
   const temporary = `${location}.tmp-${process.pid}`;
   rmSync(temporary, { force: true });
-  writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+  writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`, 'utf8');
   renameSync(temporary, location);
 }
 
 function playwrightVersion(): string {
   const packagePath = path.join(
     repoRoot,
-    "apps/next-admin/node_modules/@playwright/test/package.json",
+    'apps/next-admin/node_modules/@playwright/test/package.json'
   );
-  const document = JSON.parse(readFileSync(packagePath, "utf8")) as { version?: unknown };
-  if (typeof document.version !== "string" || document.version.length === 0) {
-    fail("installed Playwright version is unavailable");
+  const document = JSON.parse(readFileSync(packagePath, 'utf8')) as {
+    version?: unknown;
+  };
+  if (typeof document.version !== 'string' || document.version.length === 0) {
+    fail('installed Playwright version is unavailable');
   }
   return document.version;
 }
 
 function objectValue(value: unknown, label: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     fail(`${label} must be a JSON object`);
   }
   return value as Record<string, unknown>;
@@ -235,11 +256,11 @@ function objectValue(value: unknown, label: string): Record<string, unknown> {
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
-  if (value !== null && typeof value === "object") {
+  if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, nested]) => [key, canonicalize(nested)]),
+        .map(([key, nested]) => [key, canonicalize(nested)])
     );
   }
   return value;
@@ -250,7 +271,7 @@ function canonicalJson(value: unknown): string {
 }
 
 function parseSettings(raw: unknown, label: string): Record<string, unknown> {
-  if (typeof raw !== "string" || Buffer.byteLength(raw, "utf8") > 512 * 1024) {
+  if (typeof raw !== 'string' || Buffer.byteLength(raw, 'utf8') > 512 * 1024) {
     fail(`${label} must be a bounded settings JSON string`);
   }
   let parsed: unknown;
@@ -276,7 +297,11 @@ function commonHeaders(tenantSlug: string): {
     } catch (error) {
       fail(`${name} must contain a JSON object: ${(error as Error).message}`);
     }
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (
+      parsed === null ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed)
+    ) {
       fail(`${name} must contain a JSON object`);
     }
     for (const [headerName, headerValue] of Object.entries(parsed)) {
@@ -284,11 +309,11 @@ function commonHeaders(tenantSlug: string): {
       if (!/^[a-z0-9!#$%&'*+.^_`|~-]+$/u.test(normalized)) {
         fail(`${name} contains an invalid header name`);
       }
-      if (["authorization", "cookie", "set-cookie"].includes(normalized)) {
+      if (['authorization', 'cookie', 'set-cookie'].includes(normalized)) {
         fail(`${name} must not contain credential headers`);
       }
       if (
-        typeof headerValue !== "string" ||
+        typeof headerValue !== 'string' ||
         headerValue.length > 4096 ||
         /[\u0000\r\n]/u.test(headerValue)
       ) {
@@ -297,7 +322,7 @@ function commonHeaders(tenantSlug: string): {
       headers[normalized] = headerValue;
     }
   }
-  headers["x-tenant-slug"] = tenantSlug;
+  headers['x-tenant-slug'] = tenantSlug;
   return { headers, environmentNames: raw === null ? [] : [name] };
 }
 
@@ -305,25 +330,25 @@ function validatePredecessors(
   browser: { record: FileRecord; document: Record<string, unknown> },
   matrix: { record: FileRecord; document: Record<string, unknown> },
   head: string,
-  apiOrigin: string,
+  apiOrigin: string
 ): string {
   if (
     browser.document.format !== contract.predecessors.browser.format ||
     browser.document.status !== contract.predecessors.browser.status ||
     browser.document.source_commit !== head
   ) {
-    fail("browser predecessor identity/status/source commit drifted");
+    fail('browser predecessor identity/status/source commit drifted');
   }
-  const browserTarget = objectValue(browser.document.target, "browser target");
+  const browserTarget = objectValue(browser.document.target, 'browser target');
   if (browserTarget.origin_sha256 !== sha256(apiOrigin)) {
-    fail("feature preflight API origin does not match browser predecessor");
+    fail('feature preflight API origin does not match browser predecessor');
   }
   const deploymentDigest = browserTarget.deployment_image_digest;
   if (
-    typeof deploymentDigest !== "string" ||
+    typeof deploymentDigest !== 'string' ||
     !/^[^@\s]+@sha256:[0-9a-f]{64}$/u.test(deploymentDigest)
   ) {
-    fail("browser predecessor has no immutable API deployment RepoDigest");
+    fail('browser predecessor has no immutable API deployment RepoDigest');
   }
 
   if (
@@ -331,32 +356,47 @@ function validatePredecessors(
     matrix.document.status !== contract.predecessors.rollout_matrix.status ||
     matrix.document.source_commit !== head
   ) {
-    fail("rollout matrix predecessor identity/status/source commit drifted");
+    fail('rollout matrix predecessor identity/status/source commit drifted');
   }
-  const matrixInputs = objectValue(matrix.document.inputs, "matrix inputs");
-  const matrixBrowser = objectValue(matrixInputs.browser_predecessor, "matrix browser predecessor");
-  if (matrixBrowser.bytes !== browser.record.bytes || matrixBrowser.sha256 !== browser.record.sha256) {
-    fail("rollout matrix is not bound to the exact supplied browser packet");
+  const matrixInputs = objectValue(matrix.document.inputs, 'matrix inputs');
+  const matrixBrowser = objectValue(
+    matrixInputs.browser_predecessor,
+    'matrix browser predecessor'
+  );
+  if (
+    matrixBrowser.bytes !== browser.record.bytes ||
+    matrixBrowser.sha256 !== browser.record.sha256
+  ) {
+    fail('rollout matrix is not bound to the exact supplied browser packet');
   }
-  const matrixTarget = objectValue(matrix.document.target, "matrix target");
+  const matrixTarget = objectValue(matrix.document.target, 'matrix target');
   if (
     matrixTarget.api_origin_sha256 !== browserTarget.origin_sha256 ||
     matrixTarget.deployment_image_digest !== deploymentDigest
   ) {
-    fail("rollout matrix API origin/digest differs from browser predecessor");
+    fail('rollout matrix API origin/digest differs from browser predecessor');
   }
-  const originalSettings = objectValue(matrix.document.original_settings, "matrix original settings");
-  if (originalSettings.restored !== true || originalSettings.restore_verified !== true) {
-    fail("rollout matrix predecessor did not verify settings restoration");
+  const originalSettings = objectValue(
+    matrix.document.original_settings,
+    'matrix original settings'
+  );
+  if (
+    originalSettings.restored !== true ||
+    originalSettings.restore_verified !== true
+  ) {
+    fail('rollout matrix predecessor did not verify settings restoration');
   }
-  const boundaries = objectValue(matrix.document.boundaries, "matrix boundaries");
+  const boundaries = objectValue(
+    matrix.document.boundaries,
+    'matrix boundaries'
+  );
   if (
     boundaries.runtime_matrix_executed !== true ||
     boundaries.gate_accepted !== false ||
     boundaries.provider_health_observed !== false ||
     boundaries.canonical_source_mutated !== false
   ) {
-    fail("rollout matrix predecessor boundaries drifted");
+    fail('rollout matrix predecessor boundaries drifted');
   }
   return deploymentDigest;
 }
@@ -365,17 +405,17 @@ async function graphql(
   context: BrowserContext,
   query: string,
   variables: Record<string, unknown>,
-  label: string,
+  label: string
 ): Promise<GraphqlResult> {
   const response = await context.request.post(graphqlPath, {
     data: { query, variables },
-    failOnStatusCode: false,
+    failOnStatusCode: false
   });
   const body = await response.body();
   if (response.status() !== 200) fail(`${label} did not return HTTP 200`);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(body.toString("utf8"));
+    parsed = JSON.parse(body.toString('utf8'));
   } catch {
     fail(`${label} did not return JSON`);
   }
@@ -387,24 +427,26 @@ async function graphql(
     status: response.status(),
     responseBytes: body.length,
     responseSha256: sha256(body),
-    data: objectValue(envelope.data, `${label} data`),
+    data: objectValue(envelope.data, `${label} data`)
   };
 }
 
 async function assertProviderHealthUnobserved(
   context: BrowserContext,
-  label: string,
+  label: string
 ): Promise<Record<string, unknown>> {
   const result = await graphql(context, rolloutSnapshotQuery, {}, label);
   const snapshot = objectValue(
     result.data.pageBuilderRolloutSnapshot,
-    `${label} rollout snapshot`,
+    `${label} rollout snapshot`
   );
   if (
     snapshot.providerHealthObserved !== false ||
     snapshot.providerHealth !== null
   ) {
-    fail(`${label} requires provider health to remain unobserved for rollout-only evidence`);
+    fail(
+      `${label} requires provider health to remain unobserved for rollout-only evidence`
+    );
   }
   return {
     status: result.status,
@@ -412,63 +454,81 @@ async function assertProviderHealthUnobserved(
     response_body_sha256: result.responseSha256,
     provider_health_observed: false,
     provider_health_payload_present: false,
-    raw_request_or_response_persisted: false,
+    raw_request_or_response_persisted: false
   };
 }
 
 async function loadPagesModule(
-  context: BrowserContext,
+  context: BrowserContext
 ): Promise<{ settings: Record<string, unknown>; read: GraphqlResult }> {
-  const read = await graphql(context, tenantModulesQuery, {}, "tenantModules preflight snapshot");
+  const read = await graphql(
+    context,
+    tenantModulesQuery,
+    {},
+    'tenantModules preflight snapshot'
+  );
   const modules = read.data.tenantModules;
-  if (!Array.isArray(modules)) fail("tenantModules did not return an array");
+  if (!Array.isArray(modules)) fail('tenantModules did not return an array');
   const pages = modules.find(
     (entry) =>
       entry !== null &&
-      typeof entry === "object" &&
-      (entry as Record<string, unknown>).moduleSlug === "pages",
+      typeof entry === 'object' &&
+      (entry as Record<string, unknown>).moduleSlug === 'pages'
   ) as Record<string, unknown> | undefined;
   if (pages === undefined || pages.enabled !== true) {
-    fail("Pages module must be enabled for feature preflight execution");
+    fail('Pages module must be enabled for feature preflight execution');
   }
   return {
-    settings: parseSettings(pages.settings, "Pages module settings"),
-    read,
+    settings: parseSettings(pages.settings, 'Pages module settings'),
+    read
   };
 }
 
 async function writePagesSettings(
   context: BrowserContext,
-  settings: Record<string, unknown>,
+  settings: Record<string, unknown>
 ): Promise<GraphqlResult> {
   const result = await graphql(
     context,
     updateSettingsMutation,
-    { moduleSlug: "pages", settings: JSON.stringify(settings) },
-    "updateModuleSettings pages preflight",
+    { moduleSlug: 'pages', settings: JSON.stringify(settings) },
+    'updateModuleSettings pages preflight'
   );
-  const module = objectValue(result.data.updateModuleSettings, "updated Pages module");
-  if (module.moduleSlug !== "pages" || module.enabled !== true) {
-    fail("updateModuleSettings did not return enabled Pages");
+  const module = objectValue(
+    result.data.updateModuleSettings,
+    'updated Pages module'
+  );
+  if (module.moduleSlug !== 'pages' || module.enabled !== true) {
+    fail('updateModuleSettings did not return enabled Pages');
   }
-  const returned = parseSettings(module.settings, "updated Pages preflight settings");
+  const returned = parseSettings(
+    module.settings,
+    'updated Pages preflight settings'
+  );
   if (canonicalJson(returned) !== canonicalJson(settings)) {
-    fail("updateModuleSettings returned settings different from requested semantic object");
+    fail(
+      'updateModuleSettings returned settings different from requested semantic object'
+    );
   }
   return result;
 }
 
 function withProfile(
   original: Record<string, unknown>,
-  flags: [boolean, boolean, boolean, boolean],
+  flags: [boolean, boolean, boolean, boolean]
 ): Record<string, unknown> {
-  const cloned = JSON.parse(JSON.stringify(original)) as Record<string, unknown>;
+  const cloned = JSON.parse(JSON.stringify(original)) as Record<
+    string,
+    unknown
+  >;
   const builder =
-    cloned.builder !== null && typeof cloned.builder === "object" && !Array.isArray(cloned.builder)
+    cloned.builder !== null &&
+    typeof cloned.builder === 'object' &&
+    !Array.isArray(cloned.builder)
       ? { ...(cloned.builder as Record<string, unknown>) }
       : {};
   const nested = (value: unknown): Record<string, unknown> =>
-    value !== null && typeof value === "object" && !Array.isArray(value)
+    value !== null && typeof value === 'object' && !Array.isArray(value)
       ? { ...(value as Record<string, unknown>) }
       : {};
   builder.enabled = flags[0];
@@ -481,45 +541,66 @@ function withProfile(
 
 function validateCapability(
   value: unknown,
-  capability: "PREVIEW" | "PROPERTIES" | "PUBLISH",
-  expected: ProfileExpectation,
+  capability: 'PREVIEW' | 'PROPERTIES' | 'PUBLISH',
+  expected: ProfileExpectation
 ): Record<string, unknown> {
   const result = objectValue(value, `${capability} feature preflight`);
   if (result.capability !== capability) {
     fail(`${capability} preflight returned a different capability`);
   }
-  if (expected === "allowed") {
-    if (result.allowed !== true || result.errorKind !== null || result.errorCode !== null) {
-      fail(`${capability} preflight should be allowed without an error contract`);
+  if (expected === 'allowed') {
+    if (
+      result.allowed !== true ||
+      result.errorKind !== null ||
+      result.errorCode !== null
+    ) {
+      fail(
+        `${capability} preflight should be allowed without an error contract`
+      );
     }
   } else if (
     result.allowed !== false ||
-    result.errorKind !== "feature-disabled" ||
-    result.errorCode !== "FEATURE_DISABLED"
+    result.errorKind !== 'feature-disabled' ||
+    result.errorCode !== 'FEATURE_DISABLED'
   ) {
-    fail(`${capability} preflight did not return feature-disabled / FEATURE_DISABLED`);
+    fail(
+      `${capability} preflight did not return feature-disabled / FEATURE_DISABLED`
+    );
   }
   return {
     capability,
     allowed: result.allowed,
     error_kind: result.errorKind,
-    error_code: result.errorCode,
+    error_code: result.errorCode
   };
 }
 
 async function runCapabilityPreflight(
   context: BrowserContext,
-  profile: PreflightProfile,
+  profile: PreflightProfile
 ): Promise<Record<string, unknown>> {
-  const result = await graphql(context, capabilityPreflightQuery, {}, "Page Builder feature preflight");
+  const result = await graphql(
+    context,
+    capabilityPreflightQuery,
+    {},
+    'Page Builder feature preflight'
+  );
   return {
     status: result.status,
     response_body_bytes: result.responseBytes,
     response_body_sha256: result.responseSha256,
     raw_request_or_response_persisted: false,
-    preview: validateCapability(result.data.preview, "PREVIEW", profile.preview),
-    properties: validateCapability(result.data.properties, "PROPERTIES", profile.properties),
-    publish: validateCapability(result.data.publish, "PUBLISH", profile.publish),
+    preview: validateCapability(
+      result.data.preview,
+      'PREVIEW',
+      profile.preview
+    ),
+    properties: validateCapability(
+      result.data.properties,
+      'PROPERTIES',
+      profile.properties
+    ),
+    publish: validateCapability(result.data.publish, 'PUBLISH', profile.publish)
   };
 }
 
@@ -528,63 +609,85 @@ function responseRecord(response: GraphqlResult): Record<string, unknown> {
     status: response.status,
     response_body_bytes: response.responseBytes,
     response_body_sha256: response.responseSha256,
-    raw_request_or_response_persisted: false,
+    raw_request_or_response_persisted: false
   };
 }
 
 function validateProfiles(): PreflightProfile[] {
   const expected = [
-    ["all_on", [true, true, true, true], "allowed", "allowed", "allowed"],
-    ["publish_off", [true, true, true, false], "allowed", "allowed", "feature_disabled"],
-    ["preview_off", [true, false, true, false], "feature_disabled", "allowed", "feature_disabled"],
-    ["builder_off", [false, false, false, false], "feature_disabled", "feature_disabled", "feature_disabled"],
+    ['all_on', [true, true, true, true], 'allowed', 'allowed', 'allowed'],
+    [
+      'publish_off',
+      [true, true, true, false],
+      'allowed',
+      'allowed',
+      'feature_disabled'
+    ],
+    [
+      'preview_off',
+      [true, false, true, false],
+      'feature_disabled',
+      'allowed',
+      'feature_disabled'
+    ],
+    [
+      'builder_off',
+      [false, false, false, false],
+      'feature_disabled',
+      'feature_disabled',
+      'feature_disabled'
+    ]
   ];
   const actual = contract.profiles.map((profile) => [
     profile.id,
     profile.flags,
     profile.preview,
     profile.properties,
-    profile.publish,
+    profile.publish
   ]);
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    fail("feature preflight profile contract drifted");
+    fail('feature preflight profile contract drifted');
   }
   return contract.profiles;
 }
 
-test("Pages canonical Page Builder feature preflight matches all rollout profiles", async ({ browser }) => {
+test('Pages canonical Page Builder feature preflight matches all rollout profiles', async ({
+  browser
+}) => {
   if (
     contract.schema_version !== 1 ||
-    contract.module !== "pages" ||
-    contract.packet !== "pages-builder-rollout-feature-preflight" ||
-    contract.status !== "source_ready_maintainer_execution_pending"
+    contract.module !== 'pages' ||
+    contract.packet !== 'pages-builder-rollout-feature-preflight' ||
+    contract.status !== 'source_ready_maintainer_execution_pending'
   ) {
-    fail("feature preflight contract identity drifted");
+    fail('feature preflight contract identity drifted');
   }
 
   const head = currentCommit();
   const profiles = validateProfiles();
-  const apiOrigin = requireOrigin(requiredEnvironment(contract.fixtures.api_origin_environment));
+  const apiOrigin = requireOrigin(
+    requiredEnvironment(contract.fixtures.api_origin_environment)
+  );
   const tenantSlug = requireTenantSlug(
-    requiredEnvironment(contract.fixtures.tenant_slug_environment),
+    requiredEnvironment(contract.fixtures.tenant_slug_environment)
   );
   const storage = regularFileRecord(
     requiredEnvironment(contract.fixtures.api_storage_state_environment),
-    "feature preflight API storage state",
+    'feature preflight API storage state'
   );
   const browserPredecessor = readJsonInput(
     requiredEnvironment(contract.predecessors.browser.environment),
-    "feature preflight browser predecessor",
+    'feature preflight browser predecessor'
   );
   const matrixPredecessor = readJsonInput(
     requiredEnvironment(contract.predecessors.rollout_matrix.environment),
-    "feature preflight rollout matrix predecessor",
+    'feature preflight rollout matrix predecessor'
   );
   const deploymentDigest = validatePredecessors(
     browserPredecessor,
     matrixPredecessor,
     head,
-    apiOrigin,
+    apiOrigin
   );
   const shared = commonHeaders(tenantSlug);
   const output = outputPath();
@@ -593,12 +696,12 @@ test("Pages canonical Page Builder feature preflight matches all rollout profile
   const context = await browser.newContext({
     baseURL: apiOrigin,
     storageState: storage.path,
-    extraHTTPHeaders: shared.headers,
+    extraHTTPHeaders: shared.headers
   });
 
   const profileObservations: Record<string, unknown> = {};
   let originalSettings: Record<string, unknown> | null = null;
-  let originalSettingsHash = "";
+  let originalSettingsHash = '';
   let restoreVerified = false;
 
   try {
@@ -611,24 +714,27 @@ test("Pages canonical Page Builder feature preflight matches all rollout profile
       const settingsWrite = await writePagesSettings(context, settings);
       const providerHealthBefore = await assertProviderHealthUnobserved(
         context,
-        `${profile.id} provider health before feature preflight`,
+        `${profile.id} provider health before feature preflight`
       );
-      const capabilityPreflight = await runCapabilityPreflight(context, profile);
+      const capabilityPreflight = await runCapabilityPreflight(
+        context,
+        profile
+      );
       const providerHealthAfter = await assertProviderHealthUnobserved(
         context,
-        `${profile.id} provider health after feature preflight`,
+        `${profile.id} provider health after feature preflight`
       );
       profileObservations[profile.id] = {
         flags: {
           builder_enabled: profile.flags[0],
           preview_enabled: profile.flags[1],
           properties_enabled: profile.flags[2],
-          publish_enabled: profile.flags[3],
+          publish_enabled: profile.flags[3]
         },
         settings_write: responseRecord(settingsWrite),
         provider_health_before: providerHealthBefore,
         capability_preflight: capabilityPreflight,
-        provider_health_after: providerHealthAfter,
+        provider_health_after: providerHealthAfter
       };
     }
   } finally {
@@ -636,11 +742,17 @@ test("Pages canonical Page Builder feature preflight matches all rollout profile
       if (originalSettings !== null) {
         await writePagesSettings(context, originalSettings);
         const restored = await loadPagesModule(context);
-        if (canonicalJson(restored.settings) !== canonicalJson(originalSettings)) {
-          fail("Pages settings were not semantically restored after feature preflight");
+        if (
+          canonicalJson(restored.settings) !== canonicalJson(originalSettings)
+        ) {
+          fail(
+            'Pages settings were not semantically restored after feature preflight'
+          );
         }
         if (sha256(canonicalJson(restored.settings)) !== originalSettingsHash) {
-          fail("restored Pages settings hash differs from feature-preflight snapshot");
+          fail(
+            'restored Pages settings hash differs from feature-preflight snapshot'
+          );
         }
         restoreVerified = true;
       }
@@ -650,7 +762,9 @@ test("Pages canonical Page Builder feature preflight matches all rollout profile
   }
 
   if (!restoreVerified || originalSettings === null) {
-    fail("feature preflight completed without verified Pages settings restoration");
+    fail(
+      'feature preflight completed without verified Pages settings restoration'
+    );
   }
 
   writeAtomic(output, {
@@ -661,36 +775,36 @@ test("Pages canonical Page Builder feature preflight matches all rollout profile
     toolchain: {
       node: process.version,
       playwright: playwrightVersion(),
-      browser_project: "pages-builder-rollout-feature-preflight-chromium",
+      browser_project: 'pages-builder-rollout-feature-preflight-chromium'
     },
     source_sha256: sourceHashes(),
     inputs: {
       browser_predecessor: {
         bytes: browserPredecessor.record.bytes,
-        sha256: browserPredecessor.record.sha256,
+        sha256: browserPredecessor.record.sha256
       },
       rollout_matrix_predecessor: {
         bytes: matrixPredecessor.record.bytes,
-        sha256: matrixPredecessor.record.sha256,
+        sha256: matrixPredecessor.record.sha256
       },
       api_storage_state: {
         bytes: storage.bytes,
-        sha256: storage.sha256,
+        sha256: storage.sha256
       },
-      common_header_environment_names: shared.environmentNames,
+      common_header_environment_names: shared.environmentNames
     },
     target: {
       api_origin_sha256: sha256(apiOrigin),
-      deployment_image_digest: deploymentDigest,
+      deployment_image_digest: deploymentDigest
     },
     identity_sha256: {
-      tenant_slug: sha256(tenantSlug),
+      tenant_slug: sha256(tenantSlug)
     },
     original_settings: {
       semantic_sha256: originalSettingsHash,
       raw_settings_persisted: false,
       restored: true,
-      restore_verified: true,
+      restore_verified: true
     },
     profiles: profileObservations,
     boundaries: {
@@ -702,7 +816,7 @@ test("Pages canonical Page Builder feature preflight matches all rollout profile
       provider_health_observed: false,
       ffa_promoted: false,
       fba_promoted: false,
-      canonical_source_mutated: false,
+      canonical_source_mutated: false
     },
     privacy: {
       tenant_slug_or_id_persisted: false,
@@ -715,7 +829,7 @@ test("Pages canonical Page Builder feature preflight matches all rollout profile
       database_urls_persisted: false,
       traces_persisted: false,
       screenshots_persisted: false,
-      videos_persisted: false,
-    },
+      videos_persisted: false
+    }
   });
 });

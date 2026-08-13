@@ -206,6 +206,19 @@ persistence. Rich text remains an external dedicated capability.
 - [ ] Provider-health live exact-target execution/owner decisions and tenant Wave
   evidence remain incomplete.
 
+### Fallback matrix
+
+| Profile | Preview | Tree/properties | Publish | Admin path | Read/storefront paths |
+|---|---|---|---|---|---|
+| `all_on` | available | available | available | editable builder | stable |
+| `publish_off` | available | available | `typed_feature_disabled_error` | editable builder, publish disabled | stable |
+| `preview_off` | `typed_feature_disabled_error` | available | `typed_feature_disabled_error` | properties-only editor | stable |
+| `builder_off` | `typed_feature_disabled_error` | `typed_feature_disabled_error` | `typed_feature_disabled_error` | `readonly_fallback` | stable |
+
+The provider returns `FEATURE_DISABLED` for disabled capabilities. Read and
+storefront paths remain stable under every profile; a missing or unavailable
+provider narrows capabilities and never mounts a shadow editor.
+
 ### Pages reference consumer
 
 - [x] Pages admin mounts Page Builder through a module-owned facade.
@@ -619,6 +632,15 @@ of the verification programme.
   execution evidence.
 
 ### Phase 9 — generated contribution registries
+
+The correlation gate is `builder write -> Pages publish -> storefront read`:
+the authoring write is reviewed and materialized by Pages before publication,
+while storefront read verifies and renders the immutable bound artifact.
+
+Flutter device/runtime evidence is required only at Wave hand-off. It records
+the published contract's profiles, error mapping, read-path behavior, trace
+correlation and owner approvals without duplicating FBA registry thresholds or
+control-plane toggle policy in the mobile registry.
 
 - [x] Separate admin/storefront factories.
 - [x] Generate the Pages reference-consumer contribution manifest from canonical

@@ -101,11 +101,9 @@ fn map_settings_error(error: UpdateModuleSettingsError) -> FieldError {
                 "Module is not enabled for this tenant: {module_slug}"
             ))
         }
-        UpdateModuleSettingsError::InvalidSettings => {
-            <FieldError as GraphQLError>::bad_user_input(
-                "Module settings and expected settings must be JSON objects",
-            )
-        }
+        UpdateModuleSettingsError::InvalidSettings => <FieldError as GraphQLError>::bad_user_input(
+            "Module settings and expected settings must be JSON objects",
+        ),
         UpdateModuleSettingsError::Validation(message) => {
             <FieldError as GraphQLError>::bad_user_input(&message)
         }

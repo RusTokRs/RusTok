@@ -7,9 +7,7 @@ use rustok_modules::{
 };
 
 use crate::modules::{ManifestManager, map_module_settings_validation_error};
-use crate::services::module_lifecycle::{
-    ModuleLifecycleStateSnapshot, UpdateModuleSettingsError,
-};
+use crate::services::module_lifecycle::{ModuleLifecycleStateSnapshot, UpdateModuleSettingsError};
 use crate::services::platform_composition::PlatformCompositionService;
 
 /// Server-owned boundary for applying one previously reviewed module-rollout
@@ -79,14 +77,14 @@ impl ModuleRolloutPromotionSettingsService {
             .map_err(map_lifecycle_writer_settings_error)?;
 
         Ok(match state {
-            Some(state) => ModuleRolloutPromotionSettingsOutcome::Updated(
-                ModuleLifecycleStateSnapshot {
+            Some(state) => {
+                ModuleRolloutPromotionSettingsOutcome::Updated(ModuleLifecycleStateSnapshot {
                     module_slug: state.module_slug,
                     enabled: state.enabled,
                     settings: state.settings,
                     operation_id: None,
-                },
-            ),
+                })
+            }
             None => ModuleRolloutPromotionSettingsOutcome::Conflict,
         })
     }

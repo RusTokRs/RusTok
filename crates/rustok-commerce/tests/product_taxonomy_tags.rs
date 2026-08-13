@@ -336,11 +336,7 @@ async fn metadata_tags_are_rejected_on_update_without_mutating_canonical_tags() 
     let actor_id = Uuid::new_v4();
 
     let product = service
-        .create_product(
-            tenant_id,
-            actor_id,
-            create_test_product_input(&["sale"]),
-        )
+        .create_product(tenant_id, actor_id, create_test_product_input(&["sale"]))
         .await
         .expect("product should be created");
 

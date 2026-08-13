@@ -76,13 +76,18 @@ export function buildForumTopicMergeCommand(input: {
       `Merge reason must not exceed ${MAX_FORUM_TOPIC_MERGE_REASON_LENGTH} characters.`
     );
   }
-  if(/[\u0000-\u001f\u007f]/u.test(reason)) {
+  if (/[\u0000-\u001f\u007f]/u.test(reason)) {
     throw new Error('Merge reason must not contain control characters.');
   }
 
-  const needsChoice = forumTopicMergeNeedsSolutionChoice(input.source, input.target);
+  const needsChoice = forumTopicMergeNeedsSolutionChoice(
+    input.source,
+    input.target
+  );
   if (needsChoice && !input.winner) {
-    throw new Error('Choose which accepted solution must remain after the merge.');
+    throw new Error(
+      'Choose which accepted solution must remain after the merge.'
+    );
   }
   if (!needsChoice && input.winner) {
     throw new Error(
@@ -92,9 +97,9 @@ export function buildForumTopicMergeCommand(input: {
 
   const selectedSolutionReplyId =
     input.winner === 'source'
-      ? input.source.solutionReplyId ?? undefined
+      ? (input.source.solutionReplyId ?? undefined)
       : input.winner === 'target'
-        ? input.target.solutionReplyId ?? undefined
+        ? (input.target.solutionReplyId ?? undefined)
         : undefined;
 
   return {

@@ -34,7 +34,9 @@ export function ForumTopicSlugRename({
   const [topicId, setTopicId] = useState('');
   const [slug, setSlug] = useState('');
   const [pending, setPending] = useState(false);
-  const [receipt, setReceipt] = useState<ForumTopicSlugRenameReceipt | null>(null);
+  const [receipt, setReceipt] = useState<ForumTopicSlugRenameReceipt | null>(
+    null
+  );
 
   const candidate = useMemo(
     () => topics.find((topic) => topic.id === topicId),
@@ -68,7 +70,7 @@ export function ForumTopicSlugRename({
       <Card>
         <CardHeader>
           <CardTitle>{copy.renameTitle}</CardTitle>
-          <p className='text-sm text-muted-foreground'>{copy.renameSubtitle}</p>
+          <p className='text-muted-foreground text-sm'>{copy.renameSubtitle}</p>
         </CardHeader>
         <CardContent>
           <form
@@ -79,7 +81,7 @@ export function ForumTopicSlugRename({
               <label className='space-y-2 text-sm font-medium'>
                 <span className='block'>{copy.renameTopic}</span>
                 <select
-                  className='w-full rounded-md border bg-background px-3 py-2'
+                  className='bg-background w-full rounded-md border px-3 py-2'
                   value={topicId}
                   onChange={(event) => {
                     const selected = topics.find(
@@ -102,7 +104,7 @@ export function ForumTopicSlugRename({
               <label className='block space-y-2 text-sm font-medium'>
                 <span className='block'>{copy.renameSlug}</span>
                 <input
-                  className='w-full rounded-md border bg-background px-3 py-2'
+                  className='bg-background w-full rounded-md border px-3 py-2'
                   maxLength={255}
                   value={slug}
                   onChange={(event) => {
@@ -110,14 +112,14 @@ export function ForumTopicSlugRename({
                     setReceipt(null);
                   }}
                 />
-                <span className='block text-xs font-normal leading-5 text-muted-foreground'>
+                <span className='text-muted-foreground block text-xs leading-5 font-normal'>
                   {copy.renameSlugHint}
                 </span>
               </label>
             </div>
 
-            <aside className='rounded-xl border bg-muted/20 p-5 xl:sticky xl:top-6 xl:self-start'>
-              <p className='text-xs leading-5 text-muted-foreground'>
+            <aside className='bg-muted/20 rounded-xl border p-5 xl:sticky xl:top-6 xl:self-start'>
+              <p className='text-muted-foreground text-xs leading-5'>
                 {copy.renameWarning}
               </p>
               <Button className='mt-6 w-full' type='submit' disabled={pending}>
@@ -138,13 +140,13 @@ export function ForumTopicSlugRename({
           <CardContent className='grid gap-3 text-sm sm:grid-cols-2'>
             <div>
               <p className='font-medium'>{copy.renamePreviousPath}</p>
-              <p className='break-all font-mono text-xs text-muted-foreground'>
+              <p className='text-muted-foreground font-mono text-xs break-all'>
                 {receipt.previousPath}
               </p>
             </div>
             <div>
               <p className='font-medium'>{copy.renameCanonicalPath}</p>
-              <p className='break-all font-mono text-xs text-muted-foreground'>
+              <p className='text-muted-foreground font-mono text-xs break-all'>
                 {receipt.canonical.path}
               </p>
             </div>
@@ -154,7 +156,7 @@ export function ForumTopicSlugRename({
             </div>
             <div>
               <p className='font-medium'>{copy.renameAlias}</p>
-              <p className='break-all font-mono text-xs text-muted-foreground'>
+              <p className='text-muted-foreground font-mono text-xs break-all'>
                 {receipt.aliasId ?? '—'}
               </p>
             </div>

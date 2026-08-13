@@ -48,7 +48,10 @@ impl MigrationTrait for Migration {
         }
 
         let rows = connection
-            .query_all(Statement::from_string(backend, route_source_query().to_string()))
+            .query_all(Statement::from_string(
+                backend,
+                route_source_query().to_string(),
+            ))
             .await?;
         let ownerships = rows
             .iter()
@@ -329,11 +332,8 @@ mod tests {
     #[test]
     fn backfill_allows_translation_and_alias_for_same_term() {
         let term_id = Uuid::from_u128(10);
-        validate_route_ownerships(&[
-            ownership(term_id, "systems"),
-            ownership(term_id, "systems"),
-        ])
-        .expect("same-term route representations must deduplicate during backfill");
+        validate_route_ownerships(&[ownership(term_id, "systems"), ownership(term_id, "systems")])
+            .expect("same-term route representations must deduplicate during backfill");
     }
 
     #[test]

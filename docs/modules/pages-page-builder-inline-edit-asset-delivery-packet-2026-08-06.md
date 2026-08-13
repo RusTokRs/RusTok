@@ -13,7 +13,8 @@ The slice adds:
 - compile-time embedding of the generated bootstrap, JavaScript module and WebAssembly module;
 - exact MIME, cache-validator and same-origin resource policy responses;
 - an exact-lock client artifact builder;
-- a build orchestrator that prepares the client artifacts before compiling the server binary.
+- a build orchestrator that prepares the client artifacts before compiling the server binary;
+- release workflow and production Docker build integration that use the same orchestrator.
 
 ## Ownership
 
@@ -47,7 +48,7 @@ Neither feature is enabled by the default server or anonymous storefront profile
 /assets/pages-inline-edit/rustok_storefront_bg.wasm
 ```
 
-The generated files are embedded into the server binary with `include_bytes!`. Building the asset profile without preparing all three files fails at compilation instead of silently deploying an incomplete authoring surface.
+The generated files are binary-embedded into the server with `include_bytes!`. Building the asset profile without preparing all three files fails at compilation instead of silently deploying an incomplete authoring surface. Release workflow integration uses the same orchestrator, while execution evidence remains pending.
 
 The release archive and runtime image can therefore remain binary-only; there is no runtime dependency on `target/site` or another writable/static filesystem directory.
 
@@ -115,8 +116,7 @@ This slice does not:
 - add an admin launch link;
 - modify database, GraphQL, REST mutation, publish, rollback or event schemas;
 - change Pages document persistence;
-- integrate the new orchestrator into `.github/workflows/release.yml`;
-- modify the production Docker builder;
+- claim that the release workflow integration or production Docker build has executed;
 - claim a generated client artifact, embedded binary, HTTP response or browser result;
 - promote FFA or FBA.
 
@@ -133,11 +133,10 @@ This slice does not:
 
 ## Next cursor
 
-1. integrate the exact orchestrator into both deterministic release build/reproducibility jobs and the production Docker builder;
-2. add the admin-owned launch link under a matching opt-in admin feature;
-3. run and retain static, Cargo, WASM, binary-embedding and anonymous dependency-graph evidence;
-4. observe same-origin `200`/`304`, MIME, ETag, CORP and CSP behavior;
-5. execute authenticated browser edit/save/reload and stale/replay/expiry failure cases.
+1. add the admin-owned launch link under a matching opt-in admin feature;
+2. run and retain static, Cargo, WASM, binary-embedding and anonymous dependency-graph evidence;
+3. observe same-origin `200`/`304`, MIME, ETag, CORP and CSP behavior;
+4. execute authenticated browser edit/save/reload and stale/replay/expiry failure cases.
 
 ## Validation status
 

@@ -6,7 +6,11 @@ import { useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { mergeForumTopics, type GqlOpts, type ForumTopicSummary } from '../api/forum';
+import {
+  mergeForumTopics,
+  type GqlOpts,
+  type ForumTopicSummary
+} from '../api/forum';
 import {
   buildForumTopicMergeCommand,
   forumTopicMergeCandidateLabel,
@@ -92,7 +96,7 @@ export function ForumTopicMerge({
         <CardHeader>
           <CardTitle>{copy.title}</CardTitle>
         </CardHeader>
-        <CardContent className='text-sm text-muted-foreground'>
+        <CardContent className='text-muted-foreground text-sm'>
           {copy.notEnough}
         </CardContent>
       </Card>
@@ -104,16 +108,19 @@ export function ForumTopicMerge({
       <Card>
         <CardHeader>
           <CardTitle>{copy.title}</CardTitle>
-          <p className='text-sm text-muted-foreground'>{copy.subtitle}</p>
+          <p className='text-muted-foreground text-sm'>{copy.subtitle}</p>
         </CardHeader>
         <CardContent>
-          <form className='grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]' onSubmit={submit}>
+          <form
+            className='grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]'
+            onSubmit={submit}
+          >
             <div className='space-y-5'>
               <div className='grid gap-5 md:grid-cols-2'>
                 <label className='space-y-2 text-sm font-medium'>
                   <span className='block'>{copy.source}</span>
                   <select
-                    className='w-full rounded-md border bg-background px-3 py-2'
+                    className='bg-background w-full rounded-md border px-3 py-2'
                     value={sourceTopicId}
                     onChange={(event) => {
                       setSourceTopicId(event.target.value);
@@ -134,7 +141,7 @@ export function ForumTopicMerge({
                 <label className='space-y-2 text-sm font-medium'>
                   <span className='block'>{copy.target}</span>
                   <select
-                    className='w-full rounded-md border bg-background px-3 py-2'
+                    className='bg-background w-full rounded-md border px-3 py-2'
                     value={targetTopicId}
                     onChange={(event) => {
                       setTargetTopicId(event.target.value);
@@ -157,7 +164,7 @@ export function ForumTopicMerge({
               <label className='block space-y-2 text-sm font-medium'>
                 <span className='block'>{copy.reason}</span>
                 <textarea
-                  className='min-h-28 w-full rounded-md border bg-background px-3 py-2'
+                  className='bg-background min-h-28 w-full rounded-md border px-3 py-2'
                   maxLength={500}
                   placeholder={copy.reasonPlaceholder}
                   value={reason}
@@ -170,7 +177,9 @@ export function ForumTopicMerge({
 
               {needsWinner ? (
                 <fieldset className='space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4'>
-                  <legend className='px-1 text-sm font-semibold'>{copy.winner}</legend>
+                  <legend className='px-1 text-sm font-semibold'>
+                    {copy.winner}
+                  </legend>
                   <label className='flex items-center gap-3 text-sm'>
                     <input
                       type='radio'
@@ -198,17 +207,17 @@ export function ForumTopicMerge({
                 </fieldset>
               ) : null}
 
-              <p className='rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-muted-foreground'>
+              <p className='border-destructive/20 bg-destructive/5 text-muted-foreground rounded-lg border px-4 py-3 text-sm'>
                 {copy.warning}
               </p>
             </div>
 
-            <aside className='rounded-xl border bg-muted/20 p-5 xl:sticky xl:top-6 xl:self-start'>
-              <p className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>
+            <aside className='bg-muted/20 rounded-xl border p-5 xl:sticky xl:top-6 xl:self-start'>
+              <p className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
                 {copy.retryIdentity}
               </p>
-              <p className='mt-3 break-all font-mono text-xs'>{operationId}</p>
-              <p className='mt-4 text-xs leading-5 text-muted-foreground'>
+              <p className='mt-3 font-mono text-xs break-all'>{operationId}</p>
+              <p className='text-muted-foreground mt-4 text-xs leading-5'>
                 {copy.retryHint}
               </p>
               <Button className='mt-6 w-full' type='submit' disabled={pending}>
@@ -227,13 +236,13 @@ export function ForumTopicMerge({
           <CardContent className='grid gap-3 text-sm sm:grid-cols-2'>
             <div>
               <p className='font-medium'>Operation</p>
-              <p className='break-all font-mono text-xs text-muted-foreground'>
+              <p className='text-muted-foreground font-mono text-xs break-all'>
                 {receipt.operationId}
               </p>
             </div>
             <div>
               <p className='font-medium'>Event</p>
-              <p className='break-all font-mono text-xs text-muted-foreground'>
+              <p className='text-muted-foreground font-mono text-xs break-all'>
                 {receipt.eventId}
               </p>
             </div>

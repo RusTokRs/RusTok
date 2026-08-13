@@ -15,43 +15,45 @@ function fail(message) {
 }
 
 const serviceFallbackCheck = {
-  label: "rustok-pages service fallback profile tests",
-  file: "crates/rustok-pages/tests/page_service_kind_guard.rs",
+  label: "rustok-pages capability gates and independent read paths",
+  file: "crates/rustok-pages/src/services/page/lifecycle.rs",
   tokens: [
-    "pages_builder_fallback_all_on_allows_publish_and_keeps_read_list_paths",
-    "pages_builder_fallback_publish_off_blocks_grapesjs_publish_but_keeps_read_list_paths",
-    "pages_builder_fallback_preview_off_blocks_preview_publish_but_keeps_read_list_paths",
-    "pages_builder_fallback_builder_off_keeps_read_and_list_paths",
-    "FeatureDisabled",
-    ".list(tenant_id",
-    ".get(tenant_id",
+    "ensure_builder_preview_enabled_for_tenant",
+    "ensure_builder_properties_enabled_for_tenant",
+    "ensure_builder_enabled",
+    "PagesError::feature_disabled",
   ],
 };
 
 const hostChecks = [
   serviceFallbackCheck,
   {
-    label: "rustok-pages-admin host fallback helpers",
-    file: "crates/rustok-pages/admin/src/core.rs",
+    label: "rustok-pages reviewed publish capability gate",
+    file: "crates/rustok-pages/src/services/page/reviewed_publish.rs",
     tokens: [
-      "builder_host_fallback_surface",
-      "editable_builder",
-      "editable_builder_publish_disabled",
-      "preview_hidden_properties_available",
-      "readonly_fallback",
-      "feature-disabled",
-      "builder_host_fallback_profiles_keep_read_list_stable",
+      "ensure_builder_publish_enabled_in_tx",
+      "is_builder_enabled",
+      "is_builder_publish_enabled",
+      "PagesError::feature_disabled(\"builder.publish.enabled\")",
     ],
   },
   {
-    label: "rustok-pages-storefront host fallback helpers",
-    file: "crates/rustok-pages/storefront/src/core.rs",
+    label: "rustok-pages public storefront read paths",
+    file: "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
     tokens: [
-      "storefront_builder_fallback_read_contract",
-      "read_paths_stable: true",
-      "list_paths_stable: true",
-      "render_requires_builder_capability: false",
-      "storefront_builder_fallback_profiles_keep_read_and_list_stable",
+      "SecurityContext::public_read()",
+      "load_public_bound_artifact_with_fallback",
+      "list_public_visible_with_locale_fallback",
+      "published_artifact_page_body",
+    ],
+  },
+  {
+    label: "rustok-pages public service read paths",
+    file: "crates/rustok-pages/src/services/page/read.rs",
+    tokens: [
+      "pub async fn get_with_locale_fallback",
+      "pub async fn list_public_visible_with_locale_fallback",
+      "enforce_scope(&security, Resource::Pages, Action::Read)",
     ],
   },
 ];

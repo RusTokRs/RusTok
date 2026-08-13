@@ -44,7 +44,11 @@ export function buildForumTopicSlugRenameCommand(input: {
   slug: string;
 }): ForumTopicSlugRenameCommand {
   const topicId = input.candidate.id.trim();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(topicId)) {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      topicId
+    )
+  ) {
     throw new Error('Topic identity is invalid.');
   }
 

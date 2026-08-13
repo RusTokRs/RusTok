@@ -97,7 +97,7 @@ assert.ok(
     readmeTemplate.includes('not an automatic Index bridge') &&
     guestTemplate.includes('does not register an') &&
     indexIntegrationGuide.includes('does not publish a `platform.index` capability') &&
-    indexIntegrationGuide.includes('Index integration not yet available') &&
+    /Index integration not yet\s+available/.test(indexIntegrationGuide) &&
     indexIntegrationGuide.includes('crates/rustok-index/docs/module-source-integration.md'),
   'standalone template must explain the fail-closed Index compatibility boundary',
 );

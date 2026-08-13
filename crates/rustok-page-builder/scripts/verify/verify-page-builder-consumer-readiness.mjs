@@ -142,11 +142,11 @@ if (!hasConsumerManifestMarkers) {
   fail(`${arg}: no page-builder dependency/builder_consumer markers in manifest`);
 }
 requireMarkers(moduleToml, ["contract_version", "builder_contract_version"], `${arg}: manifest`);
-requireMarkers(
-  implPlan,
-  ["## Current state", "## FFA/FBA status", "## Open results"],
-  `${arg}: implementation-plan`,
-);
+const implementationPlanMarkers =
+  arg === "pages"
+    ? ["## Current source state", "## Remaining Pages work: execution evidence only", "## Execution status"]
+    : ["## Current state", "## FFA/FBA status", "## Immediate next action"];
+requireMarkers(implPlan, implementationPlanMarkers, `${arg}: implementation-plan`);
 if (!implPlan.match(/FBA|page.builder|builder/mi)) {
   fail(`${arg}: implementation-plan has no Page Builder readiness notes`);
 }
@@ -167,7 +167,7 @@ if (arg === "pages") {
       "publish_latency_p95_above_slo_for_10m",
       "sanitize_failures_above_alert_threshold",
       "storefront_published_read_regression",
-      "pages_owned_list_read_menu_paths_stay_available_when_builder_capabilities_are_disabled",
+      "pages_owned_list_and_document_read_paths_stay_available_when_builder_capabilities_are_disabled",
     ],
     `${arg}: manifest rollout policy`,
   );

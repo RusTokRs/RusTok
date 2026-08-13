@@ -69,7 +69,6 @@ for (const relativePath of [
   "apps/server/src/services/email.rs",
   "apps/server/src/services/event_bus.rs",
   "apps/server/src/services/graphql_schema.rs",
-  "apps/server/src/services/release_backend.rs",
   "apps/server/src/services/runtime_guardrails.rs",
 ]) {
   requireContains(relativePath, "ServerRuntimeContext", `${relativePath} consumes typed server runtime state`);
