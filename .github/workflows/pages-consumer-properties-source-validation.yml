@@ -1,0 +1,72 @@
+name: Pages Consumer Properties Source Validation
+
+on:
+  push:
+    branches:
+      - agent/pages-consumer-properties-source-execution-main-20260813
+    paths:
+      - ".github/workflows/pages-consumer-properties-source-validation.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-consumer-properties-source-validation
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate consumer properties Rust source packet
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-consumer-properties-source-evidence
+      - name: Verify source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
+          node scripts/verify/verify-pages-consumer-properties-source-execution.mjs
+      - name: Inventory required test identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked -p rustok-pages-admin --lib -- --list > /tmp/pages-consumer-properties-tests.txt
+          for marker in \
+            "standalone_metadata::tests::published_page_admits_registered_metadata_surface" \
+            "standalone_metadata::tests::non_published_or_missing_page_hides_registered_metadata_surface" \
+            "metadata_properties::tests::stale_metadata_revision_short_circuits_before_patch_transport" \
+            "metadata_properties::tests::metadata_save_is_document_free_and_preserves_dirty_fly_state"
+          do
+            grep -F -- "$marker" /tmp/pages-consumer-properties-tests.txt >/dev/null
+          done
+      - name: Execute published surface admission regression
+        run: cargo test --locked -p rustok-pages-admin published_page_admits_registered_metadata_surface -- --nocapture
+      - name: Execute hidden surface admission regression
+        run: cargo test --locked -p rustok-pages-admin non_published_or_missing_page_hides_registered_metadata_surface -- --nocapture
+      - name: Execute stale metadata revision regression
+        run: cargo test --locked -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport -- --nocapture
+      - name: Execute dirty Fly isolation regression
+        run: cargo test --locked -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state -- --nocapture
+      - name: Check Pages admin all targets
+        run: cargo check --locked -p rustok-pages-admin --all-targets
+      - name: Remove validation workflow after success
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/pages-consumer-properties-source-validation.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -- "$workflow"
+          git commit -m "ci(pages): remove consumer properties source validator"
+          git push origin HEAD:agent/pages-consumer-properties-source-execution-main-20260813
