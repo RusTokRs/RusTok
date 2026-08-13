@@ -9,6 +9,7 @@ pub struct Model {
     pub post_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
     pub tag_id: Uuid,
+    pub tenant_id: Uuid,
     pub created_at: DateTimeWithTimeZone,
 }
 

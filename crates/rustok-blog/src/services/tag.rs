@@ -257,6 +257,7 @@ impl TagService {
         let module_term_ids = terms.iter().map(|term| term.id).collect::<HashSet<_>>();
         let used_term_ids = blog_post_tag::Entity::find()
             .join(JoinType::InnerJoin, blog_post_tag::Relation::Post.def())
+            .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .all(&self.db)
             .await?
@@ -292,6 +293,7 @@ impl TagService {
 
         let relations = blog_post_tag::Entity::find()
             .join(JoinType::InnerJoin, blog_post_tag::Relation::Post.def())
+            .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
             .filter(blog_post::Column::TenantId.eq(tenant_id))
             .filter(blog_post_tag::Column::TagId.is_in(tag_ids.to_vec()))
             .all(&self.db)
@@ -335,6 +337,7 @@ pub(crate) async fn sync_post_tags_in_tx(
     let normalized_names = normalize_tag_names(tag_names);
 
     blog_post_tag::Entity::delete_many()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::PostId.eq(post_id))
         .exec(txn)
         .await?;
@@ -359,6 +362,7 @@ pub(crate) async fn sync_post_tags_in_tx(
         blog_post_tag::ActiveModel {
             post_id: Set(post_id),
             tag_id: Set(term_id),
+            tenant_id: Set(tenant_id),
             created_at: Set(now.into()),
         }
         .insert(txn)
@@ -386,6 +390,7 @@ pub(crate) async fn load_post_tags_map(
         .collect::<HashMap<_, _>>();
 
     let relations = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::PostId.is_in(post_ids.to_vec()))
         .order_by_asc(blog_post_tag::Column::CreatedAt)
         .all(db)
@@ -435,6 +440,7 @@ pub(crate) async fn find_post_ids_by_tag(
 
     let relations = blog_post_tag::Entity::find()
         .join(JoinType::InnerJoin, blog_post_tag::Relation::Post.def())
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::TagId.eq(tag_id))
         .all(db)
