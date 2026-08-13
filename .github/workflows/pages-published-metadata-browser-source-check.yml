@@ -24,6 +24,28 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Make generated-contribution guard struct-literal aware
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs")
+          text = path.read_text(encoding="utf-8")
+          replacements = {
+              '  "ContributionDescriptor {",\n':
+                  '  "ContributionDescriptor {\\n        id:",\n  "ContributionDescriptor { id:",\n',
+              '  "ModuleContributionManifest {",\n':
+                  '  "ModuleContributionManifest {\\n        admin:",\n  "ModuleContributionManifest { admin:",\n',
+          }
+          for before, after in replacements.items():
+              if text.count(before) != 1:
+                  raise SystemExit(f"source guard pre-state drifted: {before.strip()}")
+              text = text.replace(before, after, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+          git diff --check
       - name: Verify consumer properties source
         run: node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
       - name: Verify metadata revision isolation source
@@ -32,13 +54,17 @@ jobs:
         run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
       - name: Verify published metadata browser harness source
         run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
-      - name: Remove source-check workflow
+      - name: Commit guard fix and remove source-check workflow
         shell: bash
         run: |
           set -euo pipefail
+          verifier="crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs"
           workflow=".github/workflows/pages-published-metadata-browser-source-check.yml"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$verifier"
           git rm -- "$workflow"
-          git commit -m "test(pages): remove published metadata source-check workflow"
+          git commit \
+            -m "test(pages): make generated contribution guard literal-aware" \
+            -m "Avoid treating function return-type braces as hand-authored ContributionDescriptor or ModuleContributionManifest literals."
           git push origin HEAD:agent/pages-published-metadata-browser-evidence-20260813
