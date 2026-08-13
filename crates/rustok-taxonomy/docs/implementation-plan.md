@@ -100,31 +100,31 @@ claim a global `translation.target.changed` event contract.
    **Done when:** operators can reconcile terms, aliases, registry reservations,
    and owner attachments without inventing shared relation ownership.
 
-4. **Collect production target and route-registry evidence.** Run the canonical
-   server migration graph, including the owner-operation receipt dependency and
-   retained Taxonomy migrations, plus PostgreSQL concurrent localized-write,
-   translation apply, and change-cursor scenarios before treating the route
-   registry and `taxonomy/term` target as production-proven under replicas.
+4. **Collect production target and route-registry evidence. — COMPLETE.** Run
+   the canonical server migration graph, including the owner-operation receipt
+   dependency and retained Taxonomy migrations, plus PostgreSQL concurrent
+   localized-write, translation apply, and change-cursor scenarios before
+   treating the route registry and `taxonomy/term` target as production-proven
+   under replicas.
    **Depends on:** a production-like PostgreSQL runtime.
    **Done when:** retained migration/backfill, two-writer route-key contention,
    concurrent CAS, and cursor-recovery evidence prove that exactly one route
    owner can commit and the registered provider remains correct under
    multi-replica conditions.
 
-   Source evidence for the two-writer route-key contention portion is now
-   executable in `tests/route_registry_contention_postgres.rs`. With
+   Source evidence for the two-writer route-key contention portion is executable
+   in `tests/route_registry_contention_postgres.rs`. With
    `RUSTOK_TAXONOMY_TEST_DATABASE_URL` it creates an isolated PostgreSQL schema,
    runs the retained Taxonomy migrations, uses two independent writer
    connections, forces both localized writers past route preflight before
    releasing their translation-row locks, and verifies that the registry key
-   admits exactly one commit while the losing translation rolls back. This
-   source harness is not recorded runtime evidence by itself.
+   admits exactly one commit while the losing translation rolls back.
 
-   Source evidence for translation-target CAS and cursor recovery is now
-   executable in `tests/translation_target_postgres.rs`. It requires the
-   canonical PostgreSQL schema produced by the canonical server Migrator and
-   refuses to run if the owner-operation receipt ledger or required Taxonomy
-   tables are absent. The scenarios use unique tenant identities and independent
+   Source evidence for translation-target CAS and cursor recovery is executable
+   in `tests/translation_target_postgres.rs`. It requires the canonical
+   PostgreSQL schema produced by the canonical server Migrator and refuses to
+   run if the owner-operation receipt ledger or required Taxonomy tables are
+   absent. The scenarios use unique tenant identities and independent
    single-session connections, then race two applies from the same exact
    source/target snapshot and expected revisions. Exactly one stale-revision
    candidate may commit; the loser must close as a conflict, leaving one
@@ -139,10 +139,23 @@ claim a global `translation.target.changed` event contract.
 
    `.github/workflows/taxonomy-postgres-evidence.yml` is the retained runtime
    path. It provisions PostgreSQL 16, runs `rustok-migrate up` against the
-   ephemeral database, executes both Taxonomy PostgreSQL harnesses, and archives
-   migration/test provenance and logs. The source contracts deliberately keep
-   `runtime_status` as `not_recorded` until such an exact-head workflow run
-   succeeds; source presence alone is not runtime proof.
+   ephemeral database, executes both Taxonomy PostgreSQL harnesses, archives
+   migration/test provenance and logs, and requires the source/runtime gate.
+
+   Result 4 is complete with two retained successful executions. Exact-head
+   pull-request run `31738994542` exercised head
+   `2cde81ad6bbf7b544e09fd68c2374488f587593e`; its runtime job
+   `94577622139` and gate `94579422423` succeeded, and artifact `9196489480`
+   records digest
+   `sha256:cb550e168911af07564d147b27cfcbad3557dd0ff86531b6317c0d3186c244e6`.
+   Post-merge main run `31745429243` re-exercised commit
+   `32b2255337bb090acef5a41ea4649a3a60e81110`; runtime job `94598773113`
+   and gate `94601290823` succeeded, and artifact `9199060002` records digest
+   `sha256:2132b65d576c958504b11e6bcda36296f1f99f8fb314a8e3399ad974c0155d23`.
+   The two evidence contracts therefore record `runtime_status: passed` and
+   carry no remaining Result 4 evidence items. This is production-like
+   PostgreSQL 16 CI evidence; it does not claim observation of live production
+   traffic or arbitrary concurrent transaction commit ordering.
 
 ## Verification
 
@@ -155,9 +168,9 @@ claim a global `translation.target.changed` event contract.
 - `DATABASE_URL=postgresql://... cargo run --locked -p rustok-migrations --bin rustok-migrate -- up`
 - `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture`
 - `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test translation_target_postgres -- --nocapture`
-- Production-like PostgreSQL canonical migration, two-writer route-key
-  contention, translation apply CAS, and change-cursor recovery before declaring
-  storage concurrency evidence complete.
+- Recorded PostgreSQL runtime provenance remains guarded by both Taxonomy
+  evidence verifiers; future semantic changes must produce fresh evidence rather
+  than silently reusing these recorded runs.
 
 ## Change rules
 
