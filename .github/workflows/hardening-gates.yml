@@ -34,6 +34,10 @@ jobs:
         run: node scripts/verify/verify-advisory-exceptions.mjs
       - name: Verify dependency feature hygiene
         run: node scripts/verify/verify-dependency-feature-hygiene.mjs
+      - name: Self-test Taxonomy persistence boundary verifier
+        run: node scripts/verify/verify-taxonomy-persistence-boundary.test.mjs
+      - name: Verify Taxonomy persistence boundaries
+        run: node scripts/verify/verify-taxonomy-persistence-boundary.mjs
       - name: Verify dependency advisory reachability structure
         run: node scripts/verify/verify-dependency-advisory-reachability-contract.mjs
       - name: Verify Alloy SeaORM compatibility contract
