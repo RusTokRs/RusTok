@@ -108,8 +108,8 @@ claim a global `translation.target.changed` event contract.
    under replicas.
    **Depends on:** a production-like PostgreSQL runtime.
    **Done when:** retained migration/backfill, two-writer route-key contention,
-   concurrent CAS, and cursor-recovery evidence prove that exactly one route
-   owner can commit and the registered provider remains correct under
+   translation apply CAS, and cursor-recovery evidence prove that exactly one
+   route owner can commit and the registered provider remains correct under
    multi-replica conditions.
 
    Source evidence for the two-writer route-key contention portion is executable
