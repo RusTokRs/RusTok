@@ -9,6 +9,7 @@ pub mod error;
 pub mod migrations;
 mod module_term_lookup;
 pub mod module_term_mutation;
+mod normalization;
 mod route_key_registry;
 pub mod services;
 mod translation_evidence;
@@ -24,6 +25,7 @@ pub use module_term_mutation::{
     ModuleTermMutationResult, ModuleTermUpdateInput, delete_module_term_in_tx,
     update_module_term_in_tx,
 };
+pub use normalization::{normalize_term_locale, normalize_term_route_key};
 pub use services::TaxonomyService;
 pub use translation_target::TaxonomyTranslationTargetProvider;
 
