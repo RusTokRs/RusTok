@@ -24,12 +24,31 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: Actualize metadata source guards to owner DTO boundary
+      - name: Actualize metadata source guards to current owner boundaries
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import json
+
+          stable_plan_markers = [
+              "`source-ready` means code, contracts, build source or retained harness source exists.",
+              "Pages and Page Builder remain one vertical pipeline with explicit owners:",
+              "Pages owns persistence, lifecycle, immutable bindings",
+              "Pages admin owns the optional same-origin authoring launch control",
+              "Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization",
+              "No build, workflow, Docker, HTTP or browser execution is claimed by source inspection.",
+          ]
+
+          def replace_plan_block(text, first_old_marker, require_call):
+              start_token = "for (const marker of [\n  " + json.dumps(first_old_marker) + ","
+              start = text.index(start_token)
+              end_token = "]) {\n  " + require_call + "\n}"
+              end = text.index(end_token, start) + len(end_token)
+              marker_lines = "\n".join(f"  {json.dumps(marker)}," for marker in stable_plan_markers)
+              replacement = "for (const marker of [\n" + marker_lines + "\n]) {\n  " + require_call + "\n}"
+              return text[:start] + replacement + text[end:]
 
           properties = Path("crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs")
           text = properties.read_text(encoding="utf-8")
@@ -48,6 +67,11 @@ jobs:
           if text.count(old_request) != 2 or new_request in text:
               raise SystemExit("metadata-properties request marker pre-state drifted")
           text = text.replace(old_request, new_request)
+          text = replace_plan_block(
+              text,
+              "Registered metadata surfaces: source-complete",
+              'requireMarker(parityPlan, marker, "Pages/Page Builder parity continuation plan");',
+          )
           properties.write_text(text, encoding="utf-8")
 
           revision = Path("crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs")
@@ -101,7 +125,30 @@ jobs:
           if text.count(old_save) != 1 or new_save in text:
               raise SystemExit("revision guard save marker pre-state drifted")
           text = text.replace(old_save, new_save, 1)
+          text = replace_plan_block(
+              text,
+              "Metadata revision/isolation source packet: ready, unvalidated",
+              'requireText(plan, marker, "Pages/Page Builder parity plan");',
+          )
           revision.write_text(text, encoding="utf-8")
+
+          published = Path("crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs")
+          text = published.read_text(encoding="utf-8")
+          text = replace_plan_block(
+              text,
+              "Registered metadata surfaces: source-complete",
+              'requireText(parityPlan, marker, "parity continuation plan");',
+          )
+          published.write_text(text, encoding="utf-8")
+
+          browser = Path("crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs")
+          text = browser.read_text(encoding="utf-8")
+          text = replace_plan_block(
+              text,
+              "Their execution and the published browser packet remain open",
+              'requireText(plan, marker, "parity continuation plan");',
+          )
+          browser.write_text(text, encoding="utf-8")
           PY
           git diff --check
       - name: Verify consumer properties source
@@ -121,9 +168,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- \
             crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs \
-            crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
+            crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs \
+            crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs \
+            crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
           git rm -- "$workflow"
           git commit \
             -m "test(pages): actualize metadata evidence source guards" \
-            -m "Follow the generated contribution runtime and owner-owned PageMetadataPatch DTO without weakening conflict-before-patch or Fly document isolation checks."
+            -m "Follow generated contribution runtime, owner-owned PageMetadataPatch DTO, and the current canonical source-ready/owner policy without weakening conflict-before-patch or Fly document isolation checks."
           git push origin HEAD:agent/pages-published-metadata-browser-evidence-20260813
