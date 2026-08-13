@@ -110,6 +110,17 @@ claim a global `translation.target.changed` event contract.
    owner can commit and the registered provider remains correct under
    multi-replica conditions.
 
+   Source evidence for the two-writer route-key contention portion is now
+   executable in `tests/route_registry_contention_postgres.rs`. With
+   `RUSTOK_TAXONOMY_TEST_DATABASE_URL` it creates an isolated PostgreSQL schema,
+   runs the retained Taxonomy migrations, uses two independent writer
+   connections, forces both localized writers past route preflight before
+   releasing their translation-row locks, and verifies that the registry key
+   admits exactly one commit while the losing translation rolls back. This
+   source harness is not recorded runtime evidence by itself: PostgreSQL
+   translation apply CAS, change-cursor recovery/monotonicity, and a recorded
+   maintainer execution of the retained migrations plus harness remain open.
+
 ## Verification
 
 - `cargo xtask module validate taxonomy`
@@ -118,8 +129,10 @@ claim a global `translation.target.changed` event contract.
   fallback, registry-authority lookup, route-registry reservation/release/
   cascade, status-removal migration, and consumer-integration tests.
 - `cargo test -p rustok-taxonomy --lib`
-- Production-like PostgreSQL two-writer route-key contention before declaring
-  storage concurrency evidence complete.
+- `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture`
+- Production-like PostgreSQL two-writer route-key contention, translation apply
+  CAS, and change-cursor recovery before declaring storage concurrency evidence
+  complete.
 
 ## Change rules
 

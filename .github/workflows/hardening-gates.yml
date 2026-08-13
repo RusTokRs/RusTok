@@ -38,6 +38,8 @@ jobs:
         run: node scripts/verify/verify-taxonomy-persistence-boundary.test.mjs
       - name: Verify Taxonomy persistence boundaries
         run: node scripts/verify/verify-taxonomy-persistence-boundary.mjs
+      - name: Verify Taxonomy PostgreSQL route contention source
+        run: node scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs
       - name: Verify dependency advisory reachability structure
         run: node scripts/verify/verify-dependency-advisory-reachability-contract.mjs
       - name: Verify Alloy SeaORM compatibility contract
