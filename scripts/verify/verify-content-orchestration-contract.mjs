@@ -5,6 +5,8 @@ const checks = [];
 const read = (path) => readFileSync(path, 'utf8');
 const service = read('crates/rustok-content/src/services/content_orchestration_service.rs');
 const resolver = read('crates/rustok-content/src/services/canonical_url_service.rs');
+const serverBridge = read('crates/rustok-content-orchestration/src/lib.rs');
+const productionBridge = serverBridge.split('#[cfg(all(\n    test,')[0];
 const plan = read('crates/rustok-content/docs/implementation-plan.md');
 const docs = read('crates/rustok-content/docs/README.md');
 const runbook = read('crates/rustok-content/docs/runbook.md');
@@ -103,6 +105,18 @@ check(
   'canonical mutation helper publishes URL outbox events',
   includesAll(service, ['DomainEvent::CanonicalUrlChanged', 'DomainEvent::UrlAliasPurged']),
   'canonical URL changes must emit both URL events when aliases are present',
+);
+check(
+  'server conversion bridge reads taxonomy through the transaction owner boundary',
+  includesAll(productionBridge, [
+    'TaxonomyOwnerReader',
+    'load_terms_by_ids_in_tx(',
+    '.filter(blog_post_tag::Column::TenantId.eq(tenant_id))',
+    '.filter(forum_topic_tag::Column::TenantId.eq(tenant_id))',
+  ]) &&
+    !productionBridge.includes('taxonomy_term::Entity') &&
+    !productionBridge.includes('taxonomy_term_translation::Entity'),
+  'production conversion code must preserve the caller transaction and must not import/read Taxonomy persistence entities directly',
 );
 check(
   'canonical collision integration evidence covers rollback/no outbox side effects',
