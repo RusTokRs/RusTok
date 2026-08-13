@@ -1,0 +1,26 @@
+name: Agent Rustfmt Evidence
+on:
+  push:
+    branches: [agent/fmt-scope-20260814]
+permissions:
+  contents: read
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all
+      - run: cargo fmt --all -- --check
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rustfmt-canonical
+          path: |
+            apps/storefront/src/lib.rs
+            crates/rustok-build/src/module_manifest_contribution.rs
+            crates/rustok-content-orchestration/src/lib.rs
+            crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs
