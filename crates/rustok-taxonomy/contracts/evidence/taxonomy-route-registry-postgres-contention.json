@@ -2,9 +2,9 @@
   "schema_version": 1,
   "module": "taxonomy",
   "surface": "route_registry_postgres_contention",
-  "status": "executable_no_runtime_record",
+  "status": "runtime_recorded",
   "compile_policy": "ci_runtime_workflow",
-  "runtime_status": "not_recorded",
+  "runtime_status": "passed",
   "environment": {
     "primary": "RUSTOK_TAXONOMY_TEST_DATABASE_URL",
     "fallback": "DATABASE_URL",
@@ -14,6 +14,53 @@
   "test_target": "crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs",
   "source_guardrail": "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs",
   "runtime_workflow": ".github/workflows/taxonomy-postgres-evidence.yml",
+  "runtime_evidence": {
+    "workflow": "Taxonomy PostgreSQL Evidence",
+    "required_backend": "PostgreSQL 16",
+    "exact_head_pull_request": {
+      "run_id": 31738994542,
+      "head_sha": "2cde81ad6bbf7b544e09fd68c2374488f587593e",
+      "runtime_job_id": 94577622139,
+      "gate_job_id": 94579422423,
+      "conclusion": "success",
+      "artifact_id": 9196489480,
+      "artifact_name": "taxonomy-postgres-evidence-31738994542-87dc7b37a37d8ea9bdc268970bfc1b0ef6919ce2",
+      "artifact_digest": "sha256:cb550e168911af07564d147b27cfcbad3557dd0ff86531b6317c0d3186c244e6",
+      "artifact_expires_at": "2026-11-11T20:04:04Z"
+    },
+    "post_merge_main": {
+      "run_id": 31745429243,
+      "head_sha": "32b2255337bb090acef5a41ea4649a3a60e81110",
+      "runtime_job_id": 94598773113,
+      "gate_job_id": 94601290823,
+      "conclusion": "success",
+      "artifact_id": 9199060002,
+      "artifact_name": "taxonomy-postgres-evidence-31745429243-32b2255337bb090acef5a41ea4649a3a60e81110",
+      "artifact_digest": "sha256:2132b65d576c958504b11e6bcda36296f1f99f8fb314a8e3399ad974c0155d23",
+      "artifact_expires_at": "2026-11-11T21:23:35Z"
+    }
+  },
+  "runtime_input_snapshot": {
+    "runtime_commit": "32b2255337bb090acef5a41ea4649a3a60e81110",
+    "validated_through_commit": "62d959b897edd914a8bbc7cb3d94f3a0eb563f6b",
+    "git_objects": {
+      "Cargo.toml": "341f6a84984d116c5782ff21281708ec72beaaa9",
+      "Cargo.lock": "e0b5a5c4fe7a2e04f5b4c4b846d28438f9747409",
+      "crates/rustok-core/Cargo.toml": "69acba7cf0a6f8b118e23bad3f3c822cc0a13231",
+      "crates/rustok-core/src": "6860a4a096eb6f1131f866449b974469cf379c2a",
+      "crates/rustok-migrations/Cargo.toml": "f47b624c2d47220745d3afce35e2e8bf4b57f012",
+      "crates/rustok-migrations/src": "eed146ec7e9bffa4cadfa2dc46ac39cb416407ca",
+      "crates/rustok-outbox/Cargo.toml": "adcdca31ec764c3955212943163ba586855dd917",
+      "crates/rustok-outbox/src": "525ecf9cb0d77e3fcce2f7e6e40390f6622608ff",
+      "crates/rustok-taxonomy/Cargo.toml": "0441c8785f1f6c62596441f9a98c1aed57fa0775",
+      "crates/rustok-taxonomy/src": "3d4aae0209a45371e7d329b6e311a2477f8a233d",
+      "crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs": "b62692c109d715a4b7d67d2b3467cc502e3d50aa",
+      "crates/rustok-taxonomy/tests/translation_target_postgres.rs": "6f62da2b1b400723fbcbc8135210771606e37bac",
+      "crates/rustok-translation-targets/Cargo.toml": "7cdc77394d05244ca3f4fa41971c58bf0f39e3d3",
+      "crates/rustok-translation-targets/src": "a52cc4fb614cc6cc9ab5ee18fdcfab0746a968e8",
+      ".github/workflows/taxonomy-postgres-evidence.yml": "ef8623482f7193f2cb7021e8e0c8cafd0a52f32e"
+    }
+  },
   "production_contract": {
     "mutation_path": "update_module_term_in_tx",
     "route_registry_table": "taxonomy_term_route_keys",
@@ -34,9 +81,5 @@
     "scope_value": "blog",
     "locale": "en"
   },
-  "remaining_open_result_4_evidence": [
-    "recorded PostgreSQL execution of concurrent translation apply CAS",
-    "recorded PostgreSQL execution of translation change-cursor recovery and monotonic consumption",
-    "recorded exact-head execution of the canonical server migration graph plus both Taxonomy PostgreSQL harnesses"
-  ]
+  "remaining_open_result_4_evidence": []
 }

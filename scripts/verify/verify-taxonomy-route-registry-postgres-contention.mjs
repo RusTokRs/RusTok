@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -12,6 +13,23 @@ const files = {
   workflow: '.github/workflows/taxonomy-postgres-evidence.yml',
   plan: 'crates/rustok-taxonomy/docs/implementation-plan.md',
 };
+const runtimeInputPaths = [
+  'Cargo.toml',
+  'Cargo.lock',
+  'crates/rustok-core/Cargo.toml',
+  'crates/rustok-core/src',
+  'crates/rustok-migrations/Cargo.toml',
+  'crates/rustok-migrations/src',
+  'crates/rustok-outbox/Cargo.toml',
+  'crates/rustok-outbox/src',
+  'crates/rustok-taxonomy/Cargo.toml',
+  'crates/rustok-taxonomy/src',
+  'crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs',
+  'crates/rustok-taxonomy/tests/translation_target_postgres.rs',
+  'crates/rustok-translation-targets/Cargo.toml',
+  'crates/rustok-translation-targets/src',
+  '.github/workflows/taxonomy-postgres-evidence.yml',
+];
 
 function read(relativePath) {
   const target = path.join(repoRoot, relativePath);
@@ -41,6 +59,92 @@ function forbidMarkers(source, markers, label) {
   for (const marker of markers) {
     if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
   }
+}
+
+function gitObjectId(relativePath) {
+  try {
+    return execFileSync('git', ['rev-parse', `HEAD:${relativePath}`], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch (error) {
+    failures.push(`${relativePath}: unable to resolve current Git object: ${error.message}`);
+    return '';
+  }
+}
+
+function verifyRuntimeInputSnapshot(evidence, label) {
+  const snapshot = evidence.runtime_input_snapshot ?? {};
+  const fingerprints = snapshot.git_objects ?? {};
+
+  if (
+    snapshot.runtime_commit !== '32b2255337bb090acef5a41ea4649a3a60e81110' ||
+    snapshot.validated_through_commit !== '62d959b897edd914a8bbc7cb3d94f3a0eb563f6b'
+  ) {
+    failures.push(`${label}: runtime input snapshot provenance drift`);
+  }
+
+  const recordedPaths = Object.keys(fingerprints).sort();
+  const expectedPaths = [...runtimeInputPaths].sort();
+  if (JSON.stringify(recordedPaths) !== JSON.stringify(expectedPaths)) {
+    failures.push(`${label}: runtime input snapshot path set drift`);
+  }
+
+  for (const relativePath of runtimeInputPaths) {
+    const recorded = fingerprints[relativePath];
+    if (typeof recorded !== 'string' || !/^[0-9a-f]{40}$/.test(recorded)) {
+      failures.push(`${label}: missing Git object fingerprint for ${relativePath}`);
+      continue;
+    }
+    const current = gitObjectId(relativePath);
+    if (current && current !== recorded) {
+      failures.push(
+        `${label}: runtime input ${relativePath} changed since recorded evidence; collect fresh PostgreSQL evidence`,
+      );
+    }
+  }
+}
+
+function verifyRecordedRuntimeEvidence(evidence, label) {
+  const runtime = evidence.runtime_evidence ?? {};
+  const exact = runtime.exact_head_pull_request ?? {};
+  const postMerge = runtime.post_merge_main ?? {};
+
+  if (
+    runtime.workflow !== 'Taxonomy PostgreSQL Evidence' ||
+    runtime.required_backend !== 'PostgreSQL 16'
+  ) {
+    failures.push(`${label}: runtime evidence environment drift`);
+  }
+
+  if (
+    exact.run_id !== 31738994542 ||
+    exact.head_sha !== '2cde81ad6bbf7b544e09fd68c2374488f587593e' ||
+    exact.runtime_job_id !== 94577622139 ||
+    exact.gate_job_id !== 94579422423 ||
+    exact.conclusion !== 'success' ||
+    exact.artifact_id !== 9196489480 ||
+    exact.artifact_digest !==
+      'sha256:cb550e168911af07564d147b27cfcbad3557dd0ff86531b6317c0d3186c244e6'
+  ) {
+    failures.push(`${label}: exact-head runtime provenance drift`);
+  }
+
+  if (
+    postMerge.run_id !== 31745429243 ||
+    postMerge.head_sha !== '32b2255337bb090acef5a41ea4649a3a60e81110' ||
+    postMerge.runtime_job_id !== 94598773113 ||
+    postMerge.gate_job_id !== 94601290823 ||
+    postMerge.conclusion !== 'success' ||
+    postMerge.artifact_id !== 9199060002 ||
+    postMerge.artifact_digest !==
+      'sha256:2132b65d576c958504b11e6bcda36296f1f99f8fb314a8e3399ad974c0155d23'
+  ) {
+    failures.push(`${label}: post-merge runtime provenance drift`);
+  }
+
+  verifyRuntimeInputSnapshot(evidence, label);
 }
 
 const test = read(files.test);
@@ -90,9 +194,9 @@ if (evidence) {
     evidence.schema_version !== 1 ||
     evidence.module !== 'taxonomy' ||
     evidence.surface !== 'route_registry_postgres_contention' ||
-    evidence.status !== 'executable_no_runtime_record' ||
+    evidence.status !== 'runtime_recorded' ||
     evidence.compile_policy !== 'ci_runtime_workflow' ||
-    evidence.runtime_status !== 'not_recorded'
+    evidence.runtime_status !== 'passed'
   ) {
     failures.push(`${files.evidence}: identity/status drift`);
   }
@@ -125,10 +229,11 @@ if (evidence) {
   }
   if (
     !Array.isArray(evidence.remaining_open_result_4_evidence) ||
-    evidence.remaining_open_result_4_evidence.length !== 3
+    evidence.remaining_open_result_4_evidence.length !== 0
   ) {
     failures.push(`${files.evidence}: remaining Open result 4 evidence drift`);
   }
+  verifyRecordedRuntimeEvidence(evidence, files.evidence);
 }
 
 requireMarkers(
@@ -156,6 +261,8 @@ requireMarkers(
     'two-writer route-key contention',
     'translation apply CAS',
     'change-cursor',
+    'Result 4 is complete',
+    'runtime input fingerprints',
   ],
   files.plan,
 );
@@ -167,5 +274,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '[verify-taxonomy-route-registry-postgres-contention] PASS source=canonical-migrator+harness+evidence+workflow runtime=not-recorded',
+  '[verify-taxonomy-route-registry-postgres-contention] PASS source=canonical-migrator+harness+evidence+workflow runtime=recorded+fingerprinted',
 );
