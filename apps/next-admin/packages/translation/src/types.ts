@@ -396,7 +396,9 @@ export type MachineOperationStatus = {
 
 export type MachineProposalOutcome =
   | ({ __typename: 'MachineTranslationProposal' } & MachineProposal)
-  | ({ __typename: 'MachineTranslationOperationStatus' } & MachineOperationStatus);
+  | ({
+      __typename: 'MachineTranslationOperationStatus';
+    } & MachineOperationStatus);
 
 export type ApplyResult = {
   operationId: string;
