@@ -218,12 +218,14 @@ mod tests {
         let project = json!({ "pages": pages });
 
         let error = sanitize_static_landing_project(&project).expect_err("resource rejection");
-        let PageBuilderStaticLandingSanitizationError::Resource(error) = error else {
-            panic!("expected resource-limit rejection");
+        let PageBuilderStaticLandingSanitizationError::Landing(
+            LandingProjectError::Validation { diagnostics },
+        ) = error
+        else {
+            panic!("expected compiler resource-limit validation error");
         };
         assert!(
-            error
-                .diagnostics()
+            diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.code == "landing_page_count_exceeded")
         );
