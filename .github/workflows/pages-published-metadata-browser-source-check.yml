@@ -1,0 +1,44 @@
+name: Pages Published Metadata Browser Source Check
+
+on:
+  push:
+    branches:
+      - agent/pages-published-metadata-browser-evidence-20260813
+    paths:
+      - ".github/workflows/pages-published-metadata-browser-source-check.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-published-metadata-browser-source-check
+  cancel-in-progress: true
+
+jobs:
+  source-check:
+    name: Verify published metadata browser evidence source
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify consumer properties source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
+      - name: Verify metadata revision isolation source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
+      - name: Verify published metadata surface source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
+      - name: Verify published metadata browser harness source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
+      - name: Remove source-check workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=".github/workflows/pages-published-metadata-browser-source-check.yml"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -- "$workflow"
+          git commit -m "test(pages): remove published metadata source-check workflow"
+          git push origin HEAD:agent/pages-published-metadata-browser-evidence-20260813
