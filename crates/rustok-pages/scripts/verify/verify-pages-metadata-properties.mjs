@@ -403,12 +403,12 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  "Registered metadata surfaces: source-complete",
-  "Focused stale-revision and dirty-Fly isolation regressions are source-ready",
-  "Published pages mount the same registered panel",
-  "without an editable Fly canvas",
-  "The bespoke `PageMetadataEditor` and its direct workspace metadata transport write are removed",
-  "Their execution and the published browser packet remain open",
+  "`source-ready` means code, contracts, build source or retained harness source exists.",
+  "Pages and Page Builder remain one vertical pipeline with explicit owners:",
+  "Pages owns persistence, lifecycle, immutable bindings",
+  "Pages admin owns the optional same-origin authoring launch control",
+  "Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization",
+  "No build, workflow, Docker, HTTP or browser execution is claimed by source inspection.",
 ]) {
   requireMarker(parityPlan, marker, "Pages/Page Builder parity continuation plan");
 }

@@ -80,8 +80,7 @@ use rustok_outbox::TransactionalEventBus;
     feature = "mod-comments"
 ))]
 use rustok_taxonomy::{
-    TaxonomyError, TaxonomyService, TaxonomyTermKind,
-    entities::{taxonomy_term, taxonomy_term_translation},
+    TaxonomyError, TaxonomyOwnerReader, TaxonomyService, TaxonomyTermKind,
 };
 #[cfg(all(
     feature = "mod-content",
@@ -577,8 +576,14 @@ async fn demote_post_to_topic(
     let post = find_post_in_tx(txn, tenant_id, input.post_id).await?;
     let translations = load_post_translations_in_tx(txn, post.id).await?;
     let resolved = resolve_post_translation(&translations, &requested_locale)?;
-    let tag_names =
-        load_blog_tag_names_for_post_in_tx(txn, post.id, &resolved.effective_locale, None).await?;
+    let tag_names = load_blog_tag_names_for_post_in_tx(
+        txn,
+        tenant_id,
+        post.id,
+        &resolved.effective_locale,
+        None,
+    )
+    .await?;
     for translation in &translations {
         rustok_content::richtext::parse_json(
             &translation.body,
@@ -1197,6 +1202,7 @@ async fn sync_blog_tags_for_post_in_tx(
     names.dedup();
 
     blog_post_tag::Entity::delete_many()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::PostId.eq(post_id))
         .exec(txn)
         .await?;
@@ -1217,6 +1223,7 @@ async fn sync_blog_tags_for_post_in_tx(
         blog_post_tag::ActiveModel {
             post_id: Set(post_id),
             tag_id: Set(tag_id),
+            tenant_id: Set(tenant_id),
             created_at: Set(Utc::now().into()),
         }
         .insert(txn)
@@ -1408,58 +1415,41 @@ async fn next_forum_reply_position_in_tx(
 ))]
 async fn load_blog_tag_names_for_post_in_tx(
     txn: &DatabaseTransaction,
+    tenant_id: Uuid,
     post_id: Uuid,
     locale: &str,
     fallback_locale: Option<&str>,
 ) -> ContentResult<Vec<String>> {
     let relations = blog_post_tag::Entity::find()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .order_by_asc(blog_post_tag::Column::CreatedAt)
         .all(txn)
         .await?;
     if relations.is_empty() {
         return Ok(Vec::new());
     }
 
-    let tag_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
-    let terms = taxonomy_term::Entity::find()
-        .filter(taxonomy_term::Column::Id.is_in(tag_ids.clone()))
-        .all(txn)
-        .await?;
-    let term_by_id = terms
+    let term_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
+    let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
+        txn,
+        tenant_id,
+        TaxonomyTermKind::Tag,
+        &term_ids,
+        locale,
+        fallback_locale,
+    )
+    .await
+    .map_err(taxonomy_error_to_content_error)?;
+    let terms_by_id = terms
         .into_iter()
         .map(|term| (term.id, term))
         .collect::<HashMap<_, _>>();
-    let translations = taxonomy_term_translation::Entity::find()
-        .filter(taxonomy_term_translation::Column::TermId.is_in(tag_ids))
-        .all(txn)
-        .await?;
-    let mut translations_by_tag: HashMap<Uuid, Vec<taxonomy_term_translation::Model>> =
-        HashMap::new();
-    for translation in translations {
-        translations_by_tag
-            .entry(translation.term_id)
-            .or_default()
-            .push(translation);
-    }
 
-    let mut names = Vec::new();
-    for relation in relations {
-        let localized = translations_by_tag
-            .get(&relation.tag_id)
-            .cloned()
-            .unwrap_or_default();
-        let resolved =
-            resolve_by_locale_with_fallback(&localized, locale, fallback_locale, |translation| {
-                translation.locale.as_str()
-            });
-        if let Some(translation) = resolved.item {
-            names.push(translation.name.clone());
-        } else if let Some(term) = term_by_id.get(&relation.tag_id) {
-            names.push(term.canonical_key.clone());
-        }
-    }
-
-    Ok(names)
+    Ok(relations
+        .into_iter()
+        .filter_map(|relation| terms_by_id.get(&relation.tag_id).map(|term| term.name.clone()))
+        .collect())
 }
 
 #[cfg(all(
@@ -1476,6 +1466,7 @@ async fn load_forum_tag_names_for_topic_in_tx(
     fallback_locale: Option<&str>,
 ) -> ContentResult<Vec<String>> {
     let relations = forum_topic_tag::Entity::find()
+        .filter(forum_topic_tag::Column::TenantId.eq(tenant_id))
         .filter(forum_topic_tag::Column::TopicId.eq(topic_id))
         .order_by_asc(forum_topic_tag::Column::CreatedAt)
         .all(txn)
@@ -1488,46 +1479,25 @@ async fn load_forum_tag_names_for_topic_in_tx(
         .iter()
         .map(|item| item.term_id)
         .collect::<Vec<_>>();
-    let terms = taxonomy_term::Entity::find()
-        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_term::Column::Id.is_in(term_ids.clone()))
-        .all(txn)
-        .await?;
-    let term_by_id = terms
+    let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
+        txn,
+        tenant_id,
+        TaxonomyTermKind::Tag,
+        &term_ids,
+        locale,
+        fallback_locale,
+    )
+    .await
+    .map_err(taxonomy_error_to_content_error)?;
+    let terms_by_id = terms
         .into_iter()
         .map(|term| (term.id, term))
         .collect::<HashMap<_, _>>();
-    let translations = taxonomy_term_translation::Entity::find()
-        .filter(taxonomy_term_translation::Column::TermId.is_in(term_ids))
-        .all(txn)
-        .await?;
-    let mut translations_by_tag: HashMap<Uuid, Vec<taxonomy_term_translation::Model>> =
-        HashMap::new();
-    for translation in translations {
-        translations_by_tag
-            .entry(translation.term_id)
-            .or_default()
-            .push(translation);
-    }
 
-    let mut names = Vec::new();
-    for relation in relations {
-        let localized = translations_by_tag
-            .get(&relation.term_id)
-            .cloned()
-            .unwrap_or_default();
-        let resolved =
-            resolve_by_locale_with_fallback(&localized, locale, fallback_locale, |translation| {
-                translation.locale.as_str()
-            });
-        if let Some(translation) = resolved.item {
-            names.push(translation.name.clone());
-        } else if let Some(term) = term_by_id.get(&relation.term_id) {
-            names.push(term.canonical_key.clone());
-        }
-    }
-
-    Ok(names)
+    Ok(relations
+        .into_iter()
+        .filter_map(|relation| terms_by_id.get(&relation.term_id).map(|term| term.name.clone()))
+        .collect())
 }
 
 #[cfg(all(
@@ -1554,6 +1524,7 @@ async fn sync_forum_tags_for_topic_in_tx(
     names.dedup();
 
     forum_topic_tag::Entity::delete_many()
+        .filter(forum_topic_tag::Column::TenantId.eq(tenant_id))
         .filter(forum_topic_tag::Column::TopicId.eq(topic_id))
         .exec(txn)
         .await?;

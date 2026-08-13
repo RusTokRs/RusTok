@@ -1,19 +1,24 @@
 mod rustok_fulfillment_shim {
-    use ::rustok_fulfillment::{FulfillmentError, FulfillmentResult, ShippingOptionResponse};
+    use std::sync::Arc;
+
+    use ::rustok_fulfillment::{
+        ReadShippingOptionProjectionRequest, ShippingOptionReadPort, ShippingOptionResponse,
+    };
     use sea_orm::DatabaseConnection;
     use uuid::Uuid;
 
-    const STOREFRONT_CART_LEGACY_HELPER_BOUNDARY: &str =
-        "commerce_graphql_storefront_cart_legacy_helper";
-
     pub struct FulfillmentService {
-        inner: ::rustok_fulfillment::FulfillmentService,
+        shipping_option_reads: Arc<dyn ShippingOptionReadPort>,
     }
 
     impl FulfillmentService {
         pub fn new(db: DatabaseConnection) -> Self {
             Self {
-                inner: ::rustok_fulfillment::FulfillmentService::new(db),
+                shipping_option_reads:
+                    crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(
+                        db,
+                    )
+                    .shipping_option_read_port(),
             }
         }
 
@@ -23,80 +28,35 @@ mod rustok_fulfillment_shim {
             shipping_option_id: Uuid,
             requested_locale: Option<&str>,
             tenant_default_locale: Option<&str>,
-        ) -> FulfillmentResult<ShippingOptionResponse> {
-            self.inner
-                .get_shipping_option(
-                    tenant_id,
-                    shipping_option_id,
-                    requested_locale,
-                    tenant_default_locale,
+        ) -> async_graphql::Result<ShippingOptionResponse> {
+            let locale = requested_locale
+                .or(tenant_default_locale)
+                .unwrap_or_default();
+            let context = rustok_api::PortContext::new(
+                tenant_id.to_string(),
+                rustok_api::PortActor::service("rustok-commerce.graphql-cart-shipping-option"),
+                locale,
+                format!("commerce-graphql-cart-shipping-option:{shipping_option_id}"),
+            )
+            .with_deadline(std::time::Duration::from_secs(2));
+            let call_context =
+                crate::graphql_runtime::fulfillment_read_call_context_for_current_graphql_scope();
+            let context = call_context
+                .channel()
+                .map(|channel| context.clone().with_channel(channel))
+                .unwrap_or(context);
+
+            self.shipping_option_reads
+                .read_shipping_option_projection(
+                    context,
+                    ReadShippingOptionProjectionRequest {
+                        shipping_option_id,
+                        requested_locale: requested_locale.map(str::to_owned),
+                        tenant_default_locale: tenant_default_locale.map(str::to_owned),
+                    },
                 )
                 .await
-                .map_err(|error| {
-                    log_shipping_option_error(
-                        &error,
-                        tenant_id,
-                        shipping_option_id,
-                        requested_locale,
-                        tenant_default_locale,
-                    );
-                    error
-                })
-        }
-    }
-
-    fn log_shipping_option_error(
-        error: &FulfillmentError,
-        tenant_id: Uuid,
-        shipping_option_id: Uuid,
-        requested_locale: Option<&str>,
-        tenant_default_locale: Option<&str>,
-    ) {
-        let (owner_code, owner_kind, owner_retryable) = match error {
-            FulfillmentError::Validation(_) => ("fulfillment.validation", "validation", false),
-            FulfillmentError::ShippingOptionNotFound(_) => {
-                ("fulfillment.shipping_option_not_found", "not_found", false)
-            }
-            FulfillmentError::FulfillmentNotFound(_) => {
-                ("fulfillment.fulfillment_not_found", "not_found", false)
-            }
-            FulfillmentError::InvalidTransition { .. } => {
-                ("fulfillment.invalid_transition", "conflict", false)
-            }
-            FulfillmentError::Database(_) => {
-                ("fulfillment.database_unavailable", "unavailable", true)
-            }
-        };
-
-        match error {
-            FulfillmentError::Database(_) => tracing::error!(
-                error = ?error,
-                owner = "rustok_fulfillment",
-                tenant_id = %tenant_id,
-                shipping_option_id = %shipping_option_id,
-                requested_locale = ?requested_locale,
-                tenant_default_locale = ?tenant_default_locale,
-                operation = "get_shipping_option",
-                owner_code,
-                owner_kind,
-                owner_retryable,
-                boundary = STOREFRONT_CART_LEGACY_HELPER_BOUNDARY,
-                "fulfillment owner shipping option lookup failed"
-            ),
-            _ => tracing::warn!(
-                error = ?error,
-                owner = "rustok_fulfillment",
-                tenant_id = %tenant_id,
-                shipping_option_id = %shipping_option_id,
-                requested_locale = ?requested_locale,
-                tenant_default_locale = ?tenant_default_locale,
-                operation = "get_shipping_option",
-                owner_code,
-                owner_kind,
-                owner_retryable,
-                boundary = STOREFRONT_CART_LEGACY_HELPER_BOUNDARY,
-                "fulfillment owner shipping option lookup was rejected"
-            ),
+                .map_err(|error| async_graphql::Error::new(error.message))
         }
     }
 }

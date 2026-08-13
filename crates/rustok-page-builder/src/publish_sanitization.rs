@@ -213,7 +213,16 @@ mod tests {
     #[test]
     fn sanitization_rejects_excess_global_resources() {
         let pages = (0..=PageBuilderStaticPublishResourceLimits::default().max_pages)
-            .map(|index| json!({ "id": format!("page-{index}") }))
+            .map(|index| {
+                json!({
+                    "id": format!("page-{index}"),
+                    "component": {
+                        "id": format!("root-{index}"),
+                        "type": "wrapper",
+                        "components": []
+                    }
+                })
+            })
             .collect::<Vec<_>>();
         let project = json!({ "pages": pages });
 

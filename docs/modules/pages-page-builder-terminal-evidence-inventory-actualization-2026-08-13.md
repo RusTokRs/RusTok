@@ -20,22 +20,21 @@ A terminal inventory therefore has to combine the exact prerequisite packet with
 
 ## Current source-derived blocker snapshot
 
-The fresh recheck finds **12** recursive Page Builder FBA blocker nodes. The production inventory runner does not hard-code these paths; it derives them recursively from the canonical FBA registry on every execution. The current review snapshot is:
+The fresh recheck finds **11** recursive Page Builder FBA blocker nodes. The production inventory runner does not hard-code these paths; it derives them recursively from the canonical FBA registry on every execution. The current review snapshot is:
 
 1. `/provider/consumer_properties_contract/executed_evidence`
-2. `/provider/static_sanitization_contract/executed_evidence`
-3. `/consumers/0/metadata_properties/executed_evidence`
-4. `/consumers/0/artifact_rollback/executed_evidence`
-5. `/consumers/0/artifact_repair/physical_loss_recovery/rollback_activated_current_set_recovery/executed_evidence`
-6. `/consumers/0/artifact_repair/physical_loss_recovery/repeated_loss_recovery/executed_evidence`
-7. `/consumers/0/artifact_repair/physical_loss_recovery/executed_evidence`
-8. `/consumers/0/artifact_repair/rollback_continuity/physical_loss_activation_prefix/executed_evidence`
-9. `/consumers/0/artifact_repair/rollback_continuity/rollback_activated_repair_to_rollback/executed_evidence`
-10. `/consumers/0/artifact_repair/rollback_continuity/executed_evidence`
-11. `/consumers/0/artifact_repair/executed_evidence`
-12. `/consumers/0/cache_consumer/executed_evidence`
+2. `/consumers/0/metadata_properties/executed_evidence`
+3. `/consumers/0/artifact_rollback/executed_evidence`
+4. `/consumers/0/artifact_repair/physical_loss_recovery/rollback_activated_current_set_recovery/executed_evidence`
+5. `/consumers/0/artifact_repair/physical_loss_recovery/repeated_loss_recovery/executed_evidence`
+6. `/consumers/0/artifact_repair/physical_loss_recovery/executed_evidence`
+7. `/consumers/0/artifact_repair/rollback_continuity/physical_loss_activation_prefix/executed_evidence`
+8. `/consumers/0/artifact_repair/rollback_continuity/rollback_activated_repair_to_rollback/executed_evidence`
+9. `/consumers/0/artifact_repair/rollback_continuity/executed_evidence`
+10. `/consumers/0/artifact_repair/executed_evidence`
+11. `/consumers/0/cache_consumer/executed_evidence`
 
-These are blocker **nodes**, not a claim that twelve unrelated test suites must be invented. Several are umbrella/nested evidence states for the same repair lineage. The canonical registry remains the authority for when each node may truthfully stop saying `pending`.
+These are blocker **nodes**, not a claim that eleven unrelated test suites must be invented. Several are umbrella/nested evidence states for the same repair lineage. The canonical registry remains the authority for when each node may truthfully stop saying `pending`.
 
 Pages FFA is independently blocked while `execution-rollout-pending` remains in the Pages implementation-plan status. The terminal inventory does not guess that this marker can be removed merely because one rollout packet exists; any source change clearing it must be backed by the evidence the Pages owner considers sufficient for that source-of-truth transition.
 
@@ -79,7 +78,7 @@ The inventory can emit only one of two statuses:
 
 Even the complete status means **review-ready only**. It is not owner approval, not platform approval, does not edit either local plan, does not edit `docs/modules/registry.md`, and does not set `parity_verified` or `transport_verified`.
 
-With the current 12 FBA blocker nodes and the current Pages marker, an inventory run must remain `terminal_evidence_inventory_incomplete` and `owner_platform_review_ready=false`.
+With the current 11 FBA blocker nodes and the current Pages marker, an inventory run must remain `terminal_evidence_inventory_incomplete` and `owner_platform_review_ready=false`.
 
 ## Stable blocker identity
 

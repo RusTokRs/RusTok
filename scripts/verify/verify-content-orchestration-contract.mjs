@@ -5,6 +5,8 @@ const checks = [];
 const read = (path) => readFileSync(path, 'utf8');
 const service = read('crates/rustok-content/src/services/content_orchestration_service.rs');
 const resolver = read('crates/rustok-content/src/services/canonical_url_service.rs');
+const serverBridge = read('crates/rustok-content-orchestration/src/lib.rs');
+const productionBridge = serverBridge.split('#[cfg(all(\n    test,')[0];
 const plan = read('crates/rustok-content/docs/implementation-plan.md');
 const docs = read('crates/rustok-content/docs/README.md');
 const runbook = read('crates/rustok-content/docs/runbook.md');
@@ -18,6 +20,13 @@ function check(name, ok, hint) {
 
 function includesAll(text, markers) {
   return markers.every((marker) => text.includes(marker));
+}
+
+function between(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  if (start < 0) return '';
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  return source.slice(start, end < 0 ? source.length : end);
 }
 
 const operations = [
@@ -103,6 +112,49 @@ check(
   'canonical mutation helper publishes URL outbox events',
   includesAll(service, ['DomainEvent::CanonicalUrlChanged', 'DomainEvent::UrlAliasPurged']),
   'canonical URL changes must emit both URL events when aliases are present',
+);
+check(
+  'server conversion bridge reads taxonomy through the transaction owner boundary',
+  includesAll(productionBridge, [
+    'TaxonomyOwnerReader',
+    'load_terms_by_ids_in_tx(',
+    '.filter(blog_post_tag::Column::TenantId.eq(tenant_id))',
+    '.filter(forum_topic_tag::Column::TenantId.eq(tenant_id))',
+  ]) &&
+    !productionBridge.includes('taxonomy_term::Entity') &&
+    !productionBridge.includes('taxonomy_term_translation::Entity'),
+  'production conversion code must preserve the caller transaction and must not import/read Taxonomy persistence entities directly',
+);
+
+const blogTagSync = between(
+  productionBridge,
+  'async fn sync_blog_tags_for_post_in_tx(',
+  'async fn load_comment_records_for_post_in_tx(',
+);
+const forumTagSync = between(
+  productionBridge,
+  'async fn sync_forum_tags_for_topic_in_tx(',
+  'fn unique_source_ids(',
+);
+check(
+  'blog conversion tag sync is tenant-safe on delete and insert',
+  includesAll(blogTagSync, [
+    'blog_post_tag::Entity::delete_many()',
+    '.filter(blog_post_tag::Column::TenantId.eq(tenant_id))',
+    '.filter(blog_post_tag::Column::PostId.eq(post_id))',
+    'tenant_id: Set(tenant_id)',
+  ]),
+  'Blog conversion tag sync must constrain relation deletion to the tenant and persist tenant_id on new relations',
+);
+check(
+  'forum conversion tag sync is tenant-safe on delete and insert',
+  includesAll(forumTagSync, [
+    'forum_topic_tag::Entity::delete_many()',
+    '.filter(forum_topic_tag::Column::TenantId.eq(tenant_id))',
+    '.filter(forum_topic_tag::Column::TopicId.eq(topic_id))',
+    'tenant_id: Set(tenant_id)',
+  ]),
+  'Forum conversion tag sync must constrain relation deletion to the tenant and persist tenant_id on new relations',
 );
 check(
   'canonical collision integration evidence covers rollback/no outbox side effects',

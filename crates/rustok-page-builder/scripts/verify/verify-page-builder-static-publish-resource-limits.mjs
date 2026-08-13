@@ -238,6 +238,11 @@ const sanitizationResourceLimitTest = sliceBetween(
 requireOrdered(
   sanitizationResourceLimitTest,
   [
+    "PageBuilderStaticPublishResourceLimits::default().max_pages",
+    '"id": format!("page-{index}")',
+    '"component": {',
+    '"id": format!("root-{index}")',
+    '"type": "wrapper"',
     'let error = sanitize_static_landing_project(&project).expect_err("resource rejection");',
     "PageBuilderStaticLandingSanitizationError::Landing(",
     "LandingProjectError::Validation { diagnostics }",

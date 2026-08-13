@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "module": "pages",
+  "packet": "published_metadata_surface_browser_evidence",
+  "status": "source_ready_maintainer_execution_pending",
+  "runner": "apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts",
+  "config": "apps/next-admin/playwright.pages-published-metadata.config.ts",
+  "global_setup": "apps/next-admin/tests/pages-published-metadata/global-setup.ts",
+  "output": {
+    "environment": "RUSTOK_PAGES_PUBLISHED_METADATA_BROWSER_EVIDENCE_OUTPUT",
+    "default_path": "target/pages-published-metadata-browser-evidence.json",
+    "format": "pages_published_metadata_browser_execution_v1",
+    "status": "browser_execution_passed_consumer_properties_admission_pending"
+  },
+  "environment": {
+    "source_commit": "RUSTOK_PAGES_PUBLISHED_METADATA_BROWSER_SOURCE_COMMIT",
+    "deployment_digest": "RUSTOK_PAGES_PUBLISHED_METADATA_DEPLOYMENT_DIGEST",
+    "editor_storage_state": "RUSTOK_PAGES_PUBLISHED_METADATA_EDITOR_STORAGE_STATE",
+    "published_url": "RUSTOK_PAGES_PUBLISHED_METADATA_PUBLISHED_URL",
+    "draft_url": "RUSTOK_PAGES_PUBLISHED_METADATA_DRAFT_URL",
+    "archived_url": "RUSTOK_PAGES_PUBLISHED_METADATA_ARCHIVED_URL",
+    "missing_url": "RUSTOK_PAGES_PUBLISHED_METADATA_MISSING_URL"
+  },
+  "deployment_identity": {
+    "source_commit_verified_against_checkout_head": true,
+    "deployment_digest_is_maintainer_supplied_reviewed_identity": true,
+    "browser_independent_digest_to_deployment_attestation": false,
+    "deployment_provenance_must_be_verified_outside_this_browser_packet": true
+  },
+  "profiles": [
+    "published",
+    "draft",
+    "archived",
+    "missing"
+  ],
+  "published_profile_proofs": [
+    "registered published metadata surface is visible",
+    "published-only admission marker is present",
+    "Fly canvas is explicitly unmounted",
+    "document authoring is explicitly unmounted",
+    "registered Pages metadata runtime is present",
+    "metadata persistence remains delegated to the owner port",
+    "registered consumer property panel loads the Pages metadata editor"
+  ],
+  "hidden_profile_proofs": [
+    "draft selection does not admit the registered published metadata surface",
+    "archived selection does not admit the registered published metadata surface",
+    "missing selection does not admit the registered published metadata surface"
+  ],
+  "required_source_files": [
+    "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+    "apps/next-admin/playwright.pages-published-metadata.config.ts",
+    "apps/next-admin/tests/pages-published-metadata/global-setup.ts",
+    "apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts",
+    "crates/rustok-pages/admin/src/standalone_metadata.rs",
+    "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs",
+    "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
+    "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json",
+    "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
+  ],
+  "retained_data": [
+    "exact source commit",
+    "maintainer-supplied reviewed immutable deployment RepoDigest",
+    "source-file SHA-256 hashes",
+    "storage-state file SHA-256 hash and byte size",
+    "profile URL SHA-256 hashes",
+    "bounded boolean/count observations",
+    "Node and Playwright versions"
+  ],
+  "forbidden_retained_data": [
+    "raw profile URLs",
+    "cookies",
+    "authorization headers",
+    "storage-state contents",
+    "raw DOM or HTML",
+    "metadata field values",
+    "tenant or actor identifiers"
+  ],
+  "not_claimed": [
+    "browser execution",
+    "browser-independent digest-to-deployment attestation",
+    "metadata persistence mutation",
+    "consumer_properties_contract executed evidence",
+    "Pages FFA promotion",
+    "Page Builder FBA promotion"
+  ]
+}
