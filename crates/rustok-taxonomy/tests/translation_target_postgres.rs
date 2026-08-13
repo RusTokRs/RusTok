@@ -130,7 +130,10 @@ async fn concurrent_same_revision_translation_applies_commit_once() -> TestResul
         let expected_name = name.to_string();
         tasks.push(tokio::spawn(async move {
             barrier.wait().await;
-            (expected_name, candidate_provider.apply_patch(context, patch).await)
+            (
+                expected_name,
+                candidate_provider.apply_patch(context, patch).await,
+            )
         }));
     }
 
@@ -194,8 +197,14 @@ async fn concurrent_same_revision_translation_applies_commit_once() -> TestResul
         .iter()
         .find(|change| change.resource_revision.as_str() == "3")
         .expect("the winning concurrent apply must append resource revision 3");
-    assert_eq!(winning_change.lifecycle, TranslationResourceLifecycle::Active);
-    assert_eq!(winning_change.identity.resource_id.as_str(), term_id.to_string());
+    assert_eq!(
+        winning_change.lifecycle,
+        TranslationResourceLifecycle::Active
+    );
+    assert_eq!(
+        winning_change.identity.resource_id.as_str(),
+        term_id.to_string()
+    );
 
     Ok(())
 }
@@ -245,7 +254,12 @@ async fn change_cursor_resumes_after_provider_reconstruction_and_delete() -> Tes
                 "taxonomy-translation-cursor-apply",
                 "taxonomy-translation-cursor-apply-1",
             ),
-            translation_patch(&snapshot, "Recovery target", "recovery-target", "cursor-recovery"),
+            translation_patch(
+                &snapshot,
+                "Recovery target",
+                "recovery-target",
+                "cursor-recovery",
+            ),
         )
         .await?;
     assert_eq!(receipt.resource_revision.as_str(), "2");
@@ -424,10 +438,7 @@ fn field_patch(
     }
 }
 
-fn exact_target_value<'a>(
-    snapshot: &'a TranslationResourceSnapshot,
-    key: &str,
-) -> Option<&'a str> {
+fn exact_target_value<'a>(snapshot: &'a TranslationResourceSnapshot, key: &str) -> Option<&'a str> {
     snapshot
         .fields
         .iter()
