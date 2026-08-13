@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/pages-consumer-properties-source-evidence.yml"
+      - ".github/workflows/pages-published-metadata-browser-evidence.yml"
       - "scripts/evidence/record-pages-consumer-properties-source-execution.mjs"
       - "scripts/verify/verify-pages-consumer-properties-source-execution.mjs"
       - "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md"
@@ -23,6 +24,7 @@ on:
       - "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
       - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
       - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs"
       - "apps/next-admin/playwright.pages-published-metadata.config.ts"
       - "apps/next-admin/tests/pages-published-metadata/**"
 
@@ -53,6 +55,8 @@ jobs:
         run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
       - name: Verify published metadata browser harness source
         run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
+      - name: Verify published metadata browser workflow source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs
       - name: Verify exact-main source execution contract
         run: node scripts/verify/verify-pages-consumer-properties-source-execution.mjs
 
