@@ -81,6 +81,15 @@ claim a global `translation.target.changed` event contract.
    **Done when:** an owning module, rather than taxonomy, owns each attachment
    table and public relation contract.
 
+   `scripts/verify/verify-taxonomy-ownership-boundary.mjs` is the continuous
+   source guard for this boundary. It keeps Taxonomy production source free of
+   generic category hierarchy and polymorphic consumer attachment storage, and
+   requires the known Blog, Forum, Product, and Profiles relation tables to
+   remain owner-module artifacts. Product category tree/closure storage and
+   Blog category hierarchy are also pinned to their owner modules. The
+   lightweight `Taxonomy Ownership Boundary` workflow runs this guard whenever
+   Taxonomy or one of those ownership-defining artifacts changes.
+
 2. **Expand kinds and lookup semantics only for demonstrated domain pressure.**
    Do not add speculative vocabulary kinds or polymorphic attachment storage.
    The current tag lookup baseline requires locale-aware route ownership,
@@ -164,6 +173,7 @@ claim a global `translation.target.changed` event contract.
 
 - `cargo xtask module validate taxonomy`
 - `cargo xtask module test taxonomy`
+- `node scripts/verify/verify-taxonomy-ownership-boundary.mjs`
 - Targeted term CRUD, cross slug/alias collision, scope restriction, locale
   fallback, registry-authority lookup, route-registry reservation/release/
   cascade, status-removal migration, and consumer-integration tests.
