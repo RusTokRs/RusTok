@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS forum_domain_events (
         'forum.topic.merge.read_state_reconciled',
         'forum.topic.merge.audience_reconciled',
         'forum.projection.invalidation'
-        )),
+        ))
 );
 
 CREATE INDEX IF NOT EXISTS idx_forum_domain_events_tenant_sequence
