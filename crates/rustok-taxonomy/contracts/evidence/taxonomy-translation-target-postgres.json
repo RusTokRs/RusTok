@@ -39,6 +39,27 @@
       "artifact_expires_at": "2026-11-11T21:23:35Z"
     }
   },
+  "runtime_input_snapshot": {
+    "runtime_commit": "32b2255337bb090acef5a41ea4649a3a60e81110",
+    "validated_through_commit": "62d959b897edd914a8bbc7cb3d94f3a0eb563f6b",
+    "git_objects": {
+      "Cargo.toml": "341f6a84984d116c5782ff21281708ec72beaaa9",
+      "Cargo.lock": "e0b5a5c4fe7a2e04f5b4c4b846d28438f9747409",
+      "crates/rustok-core/Cargo.toml": "69acba7cf0a6f8b118e23bad3f3c822cc0a13231",
+      "crates/rustok-core/src": "6860a4a096eb6f1131f866449b974469cf379c2a",
+      "crates/rustok-migrations/Cargo.toml": "f47b624c2d47220745d3afce35e2e8bf4b57f012",
+      "crates/rustok-migrations/src": "eed146ec7e9bffa4cadfa2dc46ac39cb416407ca",
+      "crates/rustok-outbox/Cargo.toml": "adcdca31ec764c3955212943163ba586855dd917",
+      "crates/rustok-outbox/src": "525ecf9cb0d77e3fcce2f7e6e40390f6622608ff",
+      "crates/rustok-taxonomy/Cargo.toml": "0441c8785f1f6c62596441f9a98c1aed57fa0775",
+      "crates/rustok-taxonomy/src": "3d4aae0209a45371e7d329b6e311a2477f8a233d",
+      "crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs": "b62692c109d715a4b7d67d2b3467cc502e3d50aa",
+      "crates/rustok-taxonomy/tests/translation_target_postgres.rs": "6f62da2b4bf448e9c58c85ae5345ee9610a7e6bb",
+      "crates/rustok-translation-targets/Cargo.toml": "7cdc77394d05244ca3f4fa41971c58bf0f39e3d3",
+      "crates/rustok-translation-targets/src": "a52cc4fb614cc6cc9ab5ee18fdcfab0746a968e8",
+      ".github/workflows/taxonomy-postgres-evidence.yml": "ef8623482f7193f2cb7021e8e0c8cafd0a52f32e"
+    }
+  },
   "production_contract": {
     "provider": "taxonomy/term",
     "mutation_path": "TranslationTargetProvider::apply_patch",
