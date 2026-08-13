@@ -9,6 +9,7 @@ const files = {
   test: 'crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs',
   evidence:
     'crates/rustok-taxonomy/contracts/evidence/taxonomy-route-registry-postgres-contention.json',
+  workflow: '.github/workflows/taxonomy-postgres-evidence.yml',
   plan: 'crates/rustok-taxonomy/docs/implementation-plan.md',
 };
 
@@ -44,6 +45,7 @@ function forbidMarkers(source, markers, label) {
 
 const test = read(files.test);
 const evidence = readJson(files.evidence);
+const workflow = read(files.workflow);
 const plan = read(files.plan);
 
 requireMarkers(
@@ -65,8 +67,10 @@ requireMarkers(
     'CONTESTED_ROUTE_KEY',
     'success_count, 1',
     'claimed concurrently',
+    'the contested route key must have one durable owner',
+    'winner translation and route reservation must commit together',
     'loser translation update must roll back',
-    'exactly one durable route owner',
+    'one localized route identity must have exactly one owner',
     'DROP SCHEMA IF EXISTS',
   ],
   files.test,
@@ -86,9 +90,9 @@ if (evidence) {
     evidence.schema_version !== 1 ||
     evidence.module !== 'taxonomy' ||
     evidence.surface !== 'route_registry_postgres_contention' ||
-    evidence.status !== 'executable_no_run' ||
-    evidence.compile_policy !== 'not_run_by_request' ||
-    evidence.runtime_status !== 'not_run'
+    evidence.status !== 'executable_no_runtime_record' ||
+    evidence.compile_policy !== 'ci_runtime_workflow' ||
+    evidence.runtime_status !== 'not_recorded'
   ) {
     failures.push(`${files.evidence}: identity/status drift`);
   }
@@ -97,9 +101,10 @@ if (evidence) {
     evidence.environment?.required_backend !== 'postgresql' ||
     evidence.test_target !== files.test ||
     evidence.source_guardrail !==
-      'scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs'
+      'scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs' ||
+    evidence.runtime_workflow !== files.workflow
   ) {
-    failures.push(`${files.evidence}: environment/source contract drift`);
+    failures.push(`${files.evidence}: environment/source/runtime contract drift`);
   }
   const contract = evidence.production_contract ?? {};
   for (const key of [
@@ -127,10 +132,27 @@ if (evidence) {
 }
 
 requireMarkers(
+  workflow,
+  [
+    'name: Taxonomy PostgreSQL Evidence',
+    'DATABASE_URL:',
+    'RUSTOK_TAXONOMY_TEST_DATABASE_URL:',
+    'image: postgres:16',
+    'Apply canonical server migrations',
+    'cargo run --locked -p rustok-migrations --bin rustok-migrate -- up',
+    'cargo test --locked -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture',
+    'cargo test --locked -p rustok-taxonomy --test translation_target_postgres -- --nocapture',
+    'Taxonomy PostgreSQL Evidence Gate',
+  ],
+  files.workflow,
+);
+
+requireMarkers(
   plan,
   [
     'route_registry_contention_postgres.rs',
     'RUSTOK_TAXONOMY_TEST_DATABASE_URL',
+    'canonical server Migrator',
     'two-writer route-key contention',
     'translation apply CAS',
     'change-cursor',
@@ -145,5 +167,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '[verify-taxonomy-route-registry-postgres-contention] PASS source=harness+evidence runtime=not-run',
+  '[verify-taxonomy-route-registry-postgres-contention] PASS source=canonical-migrator+harness+evidence+workflow runtime=not-recorded',
 );
