@@ -119,7 +119,6 @@ requireValue(
 const currentPendingPaths = collectPendingEvidence(fbaRegistry).sort();
 const expectedCurrentPaths = [
   "/provider/consumer_properties_contract/executed_evidence",
-  "/provider/static_sanitization_contract/executed_evidence",
   "/consumers/0/metadata_properties/executed_evidence",
   "/consumers/0/artifact_rollback/executed_evidence",
   "/consumers/0/artifact_repair/physical_loss_recovery/rollback_activated_current_set_recovery/executed_evidence",
@@ -145,7 +144,7 @@ requireValue(
     source.page_builder_fba_inventory?.all_recursive_blocker_paths_must_be_zero_for_completion ===
       true &&
     source.page_builder_fba_inventory?.current_source_expected_to_have_blockers === true &&
-    source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 12 &&
+    source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 11 &&
     source.page_builder_fba_inventory?.pending_blockers_prevent_transport_verified === true,
   `${sourcePath}: Page Builder FBA inventory contract drifted`,
 );
@@ -216,7 +215,7 @@ requireValue(
 );
 for (const marker of [
   "complete_terminal_evidence_inventory_source_defined === true",
-  "terminal evidence inventory source identity does not match the admission guard",
+  'inventorySource.format === "pages_page_builder_terminal_evidence_inventory_source_v1"',
   "future_inventory_source_defined: true",
   "future_inventory_source_path",
 ]) {
@@ -235,8 +234,8 @@ for (const marker of [
   "prerequisite Page Builder FBA blocker count does not match same-source canonical registry",
   "prerequisite Pages rollout blocker fact does not match same-source canonical plan",
   "pending_executed_evidence_paths",
-  "terminal_evidence_inventory_complete_owner_platform_review_ready",
-  "terminal_evidence_inventory_incomplete",
+  "contract.completion.complete_status",
+  "contract.completion.incomplete_status",
   "owner_platform_review_ready",
   "pages_ffa_promoted: false",
   "page_builder_fba_promoted: false",
@@ -270,7 +269,7 @@ for (const marker of [
 
 for (const marker of [
   "terminal-evidence-inventory-source-ready",
-  "12",
+  "11",
   "/provider/consumer_properties_contract/executed_evidence",
   "/consumers/0/cache_consumer/executed_evidence",
   "execution-rollout-pending",
