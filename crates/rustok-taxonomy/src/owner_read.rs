@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use rustok_content::resolve_by_locale_with_fallback;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter,
+    QueryOrder,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -30,8 +33,8 @@ pub struct TaxonomyOwnerTerm {
 /// Storage-encapsulating read adapter for modules that own relations to Taxonomy terms.
 ///
 /// Domain modules keep ownership of attachment tables and usage semantics. This reader
-/// owns only Taxonomy scope filtering and localized vocabulary projection, so consumers
-/// do not need to import Taxonomy persistence entities directly.
+/// owns only Taxonomy identity, scope filtering and localized vocabulary projection, so
+/// consumers do not need to import Taxonomy persistence entities directly.
 #[derive(Debug, Clone)]
 pub struct TaxonomyOwnerReader {
     db: DatabaseConnection,
@@ -56,14 +59,8 @@ impl TaxonomyOwnerReader {
             return Ok(Vec::new());
         }
 
-        let locale = normalize_term_locale(locale)
-            .ok_or_else(|| TaxonomyError::validation("Locale cannot be empty"))?;
-        let fallback_locale = fallback_locale
-            .map(|fallback| {
-                normalize_term_locale(fallback)
-                    .ok_or_else(|| TaxonomyError::validation("Fallback locale cannot be empty"))
-            })
-            .transpose()?;
+        let locale = normalize_requested_locale(locale)?;
+        let fallback_locale = normalize_fallback_locale(fallback_locale)?;
         let scope_value = normalize_scope_value(scope_type, scope_value)?;
 
         let mut query = taxonomy_term::Entity::find()
@@ -79,61 +76,130 @@ impl TaxonomyOwnerReader {
             .order_by_asc(taxonomy_term::Column::CanonicalKey)
             .all(&self.db)
             .await?;
-        if terms.is_empty() {
+        materialize_terms(
+            &self.db,
+            tenant_id,
+            terms,
+            &locale,
+            fallback_locale.as_deref(),
+        )
+        .await
+    }
+
+    /// Loads attached Taxonomy terms without leaving the caller's transaction.
+    ///
+    /// This is intentionally ID-oriented rather than scope-oriented: owner relation
+    /// tables may legitimately reference both module-local and global terms. Tenant
+    /// and kind remain mandatory identity boundaries and are enforced by Taxonomy.
+    pub async fn load_terms_by_ids_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        term_ids: &[Uuid],
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> TaxonomyResult<Vec<TaxonomyOwnerTerm>> {
+        if term_ids.is_empty() {
             return Ok(Vec::new());
         }
 
-        let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
-        let translations = taxonomy_term_translation::Entity::find()
-            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term_translation::Column::TermId.is_in(term_ids))
-            .all(&self.db)
+        let locale = normalize_requested_locale(locale)?;
+        let fallback_locale = normalize_fallback_locale(fallback_locale)?;
+        let terms = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(kind))
+            .filter(taxonomy_term::Column::Id.is_in(term_ids.to_vec()))
+            .order_by_asc(taxonomy_term::Column::CanonicalKey)
+            .all(txn)
             .await?;
-        let mut translations_by_term = HashMap::new();
-        for translation in translations {
-            translations_by_term
-                .entry(translation.term_id)
-                .or_insert_with(Vec::new)
-                .push(translation);
-        }
 
-        Ok(terms
-            .into_iter()
-            .map(|term| {
-                let translations = translations_by_term
-                    .remove(&term.id)
-                    .unwrap_or_default();
-                let resolved = resolve_by_locale_with_fallback(
-                    &translations,
-                    &locale,
-                    fallback_locale.as_deref(),
-                    |translation| translation.locale.as_str(),
-                );
-                let effective_locale = resolved.effective_locale;
-                let name = resolved
-                    .item
-                    .map(|translation| translation.name.clone())
-                    .unwrap_or_else(|| term.canonical_key.clone());
-                let slug = resolved
-                    .item
-                    .map(|translation| translation.slug.clone())
-                    .unwrap_or_else(|| term.canonical_key.clone());
-
-                TaxonomyOwnerTerm {
-                    id: term.id,
-                    kind: term.kind,
-                    scope_type: term.scope_type,
-                    scope_value: decode_scope_value(term.scope_type, &term.scope_value),
-                    canonical_key: term.canonical_key,
-                    requested_locale: locale.clone(),
-                    effective_locale,
-                    name,
-                    slug,
-                    created_at: term.created_at.into(),
-                }
-            })
-            .collect())
+        materialize_terms(
+            txn,
+            tenant_id,
+            terms,
+            &locale,
+            fallback_locale.as_deref(),
+        )
+        .await
     }
+}
+
+async fn materialize_terms<C>(
+    connection: &C,
+    tenant_id: Uuid,
+    terms: Vec<taxonomy_term::Model>,
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> TaxonomyResult<Vec<TaxonomyOwnerTerm>>
+where
+    C: ConnectionTrait,
+{
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
+    let translations = taxonomy_term_translation::Entity::find()
+        .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term_translation::Column::TermId.is_in(term_ids))
+        .all(connection)
+        .await?;
+    let mut translations_by_term = HashMap::new();
+    for translation in translations {
+        translations_by_term
+            .entry(translation.term_id)
+            .or_insert_with(Vec::new)
+            .push(translation);
+    }
+
+    Ok(terms
+        .into_iter()
+        .map(|term| {
+            let translations = translations_by_term.remove(&term.id).unwrap_or_default();
+            let resolved = resolve_by_locale_with_fallback(
+                &translations,
+                locale,
+                fallback_locale,
+                |translation| translation.locale.as_str(),
+            );
+            let effective_locale = resolved.effective_locale;
+            let name = resolved
+                .item
+                .map(|translation| translation.name.clone())
+                .unwrap_or_else(|| term.canonical_key.clone());
+            let slug = resolved
+                .item
+                .map(|translation| translation.slug.clone())
+                .unwrap_or_else(|| term.canonical_key.clone());
+
+            TaxonomyOwnerTerm {
+                id: term.id,
+                kind: term.kind,
+                scope_type: term.scope_type,
+                scope_value: decode_scope_value(term.scope_type, &term.scope_value),
+                canonical_key: term.canonical_key,
+                requested_locale: locale.to_owned(),
+                effective_locale,
+                name,
+                slug,
+                created_at: term.created_at.into(),
+            }
+        })
+        .collect())
+}
+
+fn normalize_requested_locale(locale: &str) -> TaxonomyResult<String> {
+    normalize_term_locale(locale)
+        .ok_or_else(|| TaxonomyError::validation("Locale cannot be empty"))
+}
+
+fn normalize_fallback_locale(fallback_locale: Option<&str>) -> TaxonomyResult<Option<String>> {
+    fallback_locale
+        .map(|fallback| {
+            normalize_term_locale(fallback)
+                .ok_or_else(|| TaxonomyError::validation("Fallback locale cannot be empty"))
+        })
+        .transpose()
 }
 
 fn normalize_scope_value(
