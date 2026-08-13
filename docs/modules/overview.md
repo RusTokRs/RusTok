@@ -91,14 +91,14 @@ It is important to distinguish:
 | `marketplace_payout` | `rustok-marketplace-payout` | `marketplace_ledger` |
 | `marketplace` | `rustok-marketplace` | `marketplace_seller`, `marketplace_listing`, `marketplace_allocation`, `marketplace_commission`, `marketplace_ledger`, `marketplace_payout` |
 | `moderation` | `rustok-moderation` | — |
-| `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` |
+| `blog` | `rustok-blog` | `content`, `comments`, `outbox`, `taxonomy` |
 | `forum` | `rustok-forum` | `content`, `taxonomy`, `page_builder` |
 | `notifications` | `rustok-notifications` | `outbox` |
 | `comments` | `rustok-comments` | — |
-| `pages` | `rustok-pages` | `content`, `page_builder` |
-| `navigation` | `rustok-navigation` | `channel` |
+| `pages` | `rustok-pages` | `content`, `outbox`, `page_builder` |
+| `navigation` | `rustok-navigation` | `channel`, `outbox` |
 | `page_builder` | `rustok-page-builder` | — |
-| `taxonomy` | `rustok-taxonomy` | `content` |
+| `taxonomy` | `rustok-taxonomy` | `content`, `outbox` |
 | `media` | `rustok-media` | — |
 | `translation` | `rustok-translation` | — |
 | `seo` | `rustok-seo` | `content` |
