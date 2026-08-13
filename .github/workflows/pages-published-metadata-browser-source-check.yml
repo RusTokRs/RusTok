@@ -24,15 +24,15 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: Make generated-contribution guard struct-literal aware
+      - name: Actualize metadata source guards to owner DTO boundary
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs")
-          text = path.read_text(encoding="utf-8")
+          properties = Path("crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs")
+          text = properties.read_text(encoding="utf-8")
           replacements = {
               '  "ContributionDescriptor {",\n':
                   '  "ContributionDescriptor {\\n        id:",\n  "ContributionDescriptor { id:",\n',
@@ -41,9 +41,67 @@ jobs:
           }
           for before, after in replacements.items():
               if text.count(before) != 1:
-                  raise SystemExit(f"source guard pre-state drifted: {before.strip()}")
+                  raise SystemExit(f"metadata-properties guard pre-state drifted: {before.strip()}")
               text = text.replace(before, after, 1)
-          path.write_text(text, encoding="utf-8")
+          old_request = '"let request = MetadataPatchRequest {"'
+          new_request = '"let request = PageMetadataPatch {"'
+          if text.count(old_request) != 2 or new_request in text:
+              raise SystemExit("metadata-properties request marker pre-state drifted")
+          text = text.replace(old_request, new_request)
+          properties.write_text(text, encoding="utf-8")
+
+          revision = Path("crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs")
+          text = revision.read_text(encoding="utf-8")
+          source_decl = 'const sourcePath = "crates/rustok-pages/admin/src/metadata_properties.rs";\n'
+          model_decl = 'const modelPath = "crates/rustok-pages/admin/src/model.rs";\n'
+          if text.count(source_decl) != 1 or model_decl in text:
+              raise SystemExit("revision guard model source pre-state drifted")
+          text = text.replace(source_decl, source_decl + model_decl, 1)
+
+          source_read = 'const source = read(sourcePath);\n'
+          model_read = 'const model = read(modelPath);\n'
+          if text.count(source_read) != 1 or model_read in text:
+              raise SystemExit("revision guard model read pre-state drifted")
+          text = text.replace(source_read, source_read + model_read, 1)
+
+          old_patch_block = '''const patchRequest = between(
+            source,
+            "struct MetadataPatchRequest {",
+            "trait PagesMetadataTransport",
+            "metadata-only patch request",
+          );'''.replace("          ", "")
+          new_patch_block = '''const patchRequestStart = model.indexOf("pub struct PageMetadataPatch {");
+          const patchRequest = patchRequestStart < 0 ? "" : model.slice(patchRequestStart);'''.replace("          ", "")
+          if text.count(old_patch_block) != 1 or new_patch_block in text:
+              raise SystemExit("revision guard patch DTO pre-state drifted")
+          text = text.replace(old_patch_block, new_patch_block, 1)
+
+          old_trait = '"fn patch_metadata(&self, request: MetadataPatchRequest)"'
+          new_trait = '"fn patch_metadata(&self, request: PageMetadataPatch)"'
+          if text.count(old_trait) != 1 or new_trait in text:
+              raise SystemExit("revision guard transport DTO pre-state drifted")
+          text = text.replace(old_trait, new_trait, 1)
+
+          for marker in [
+              '  "request.expected_version",\n',
+              '  "request.locale",\n',
+              '  "request.title",\n',
+              '  "request.slug",\n',
+              '  "request.meta_title",\n',
+              '  "request.meta_description",\n',
+              '  "request.template",\n',
+              '  "request.channel_slugs",\n',
+          ]:
+              if text.count(marker) != 1:
+                  raise SystemExit(f"revision guard server transport marker pre-state drifted: {marker.strip()}")
+              text = text.replace(marker, "", 1)
+
+          old_save = '"let request = MetadataPatchRequest {"'
+          new_save = '"let request = PageMetadataPatch {"'
+          if text.count(old_save) != 1 or new_save in text:
+              raise SystemExit("revision guard save marker pre-state drifted")
+          text = text.replace(old_save, new_save, 1)
+          revision.write_text(text, encoding="utf-8")
           PY
           git diff --check
       - name: Verify consumer properties source
@@ -54,17 +112,18 @@ jobs:
         run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
       - name: Verify published metadata browser harness source
         run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
-      - name: Commit guard fix and remove source-check workflow
+      - name: Commit guard actualization and remove source-check workflow
         shell: bash
         run: |
           set -euo pipefail
-          verifier="crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs"
           workflow=".github/workflows/pages-published-metadata-browser-source-check.yml"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- "$verifier"
+          git add -- \
+            crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs \
+            crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
           git rm -- "$workflow"
           git commit \
-            -m "test(pages): make generated contribution guard literal-aware" \
-            -m "Avoid treating function return-type braces as hand-authored ContributionDescriptor or ModuleContributionManifest literals."
+            -m "test(pages): actualize metadata evidence source guards" \
+            -m "Follow the generated contribution runtime and owner-owned PageMetadataPatch DTO without weakening conflict-before-patch or Fly document isolation checks."
           git push origin HEAD:agent/pages-published-metadata-browser-evidence-20260813
