@@ -51,6 +51,45 @@ function normalizeWhitespace(source) {
   return source.replace(/\s+/g, ' ').trim();
 }
 
+function verifyRecordedRuntimeEvidence(evidence, label) {
+  const runtime = evidence.runtime_evidence ?? {};
+  const exact = runtime.exact_head_pull_request ?? {};
+  const postMerge = runtime.post_merge_main ?? {};
+
+  if (
+    runtime.workflow !== 'Taxonomy PostgreSQL Evidence' ||
+    runtime.required_backend !== 'PostgreSQL 16'
+  ) {
+    failures.push(`${label}: runtime evidence environment drift`);
+  }
+
+  if (
+    exact.run_id !== 31738994542 ||
+    exact.head_sha !== '2cde81ad6bbf7b544e09fd68c2374488f587593e' ||
+    exact.runtime_job_id !== 94577622139 ||
+    exact.gate_job_id !== 94579422423 ||
+    exact.conclusion !== 'success' ||
+    exact.artifact_id !== 9196489480 ||
+    exact.artifact_digest !==
+      'sha256:cb550e168911af07564d147b27cfcbad3557dd0ff86531b6317c0d3186c244e6'
+  ) {
+    failures.push(`${label}: exact-head runtime provenance drift`);
+  }
+
+  if (
+    postMerge.run_id !== 31745429243 ||
+    postMerge.head_sha !== '32b2255337bb090acef5a41ea4649a3a60e81110' ||
+    postMerge.runtime_job_id !== 94598773113 ||
+    postMerge.gate_job_id !== 94601290823 ||
+    postMerge.conclusion !== 'success' ||
+    postMerge.artifact_id !== 9199060002 ||
+    postMerge.artifact_digest !==
+      'sha256:2132b65d576c958504b11e6bcda36296f1f99f8fb314a8e3399ad974c0155d23'
+  ) {
+    failures.push(`${label}: post-merge runtime provenance drift`);
+  }
+}
+
 const test = read(files.test);
 const evidence = readJson(files.evidence);
 const workflow = read(files.workflow);
@@ -118,8 +157,8 @@ if (evidence) {
     evidence.schema_version !== 1 ||
     evidence.module !== 'taxonomy' ||
     evidence.surface !== 'translation_target_postgres' ||
-    evidence.status !== 'executable_no_runtime_record' ||
-    evidence.runtime_status !== 'not_recorded'
+    evidence.status !== 'runtime_recorded' ||
+    evidence.runtime_status !== 'passed'
   ) {
     failures.push(`${files.evidence}: identity/status drift`);
   }
@@ -156,6 +195,13 @@ if (evidence) {
   ]) {
     if (contract[key] !== true) failures.push(`${files.evidence}: ${key} drift`);
   }
+  if (
+    !Array.isArray(evidence.remaining_open_result_4_evidence) ||
+    evidence.remaining_open_result_4_evidence.length !== 0
+  ) {
+    failures.push(`${files.evidence}: remaining Open result 4 evidence drift`);
+  }
+  verifyRecordedRuntimeEvidence(evidence, files.evidence);
 }
 
 requireMarkers(
@@ -226,6 +272,7 @@ requireMarkers(
     'Exactly one stale-revision candidate may commit',
     'hard deletion',
     'runtime evidence',
+    'Result 4 is complete',
   ],
   files.plan,
 );
@@ -237,5 +284,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '[verify-taxonomy-translation-target-postgres] PASS source=canonical-migrator+harness+owner+provider+workflow runtime=not-recorded',
+  '[verify-taxonomy-translation-target-postgres] PASS source=canonical-migrator+harness+owner+provider+workflow runtime=recorded',
 );
