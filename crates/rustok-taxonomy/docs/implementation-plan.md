@@ -100,8 +100,9 @@ claim a global `translation.target.changed` event contract.
    **Done when:** operators can reconcile terms, aliases, registry reservations,
    and owner attachments without inventing shared relation ownership.
 
-4. **Collect production target and route-registry evidence.** Run the retained
-   Outbox and Taxonomy migrations plus PostgreSQL concurrent localized-write,
+4. **Collect production target and route-registry evidence.** Run the canonical
+   server migration graph, including the owner-operation receipt dependency and
+   retained Taxonomy migrations, plus PostgreSQL concurrent localized-write,
    translation apply, and change-cursor scenarios before treating the route
    registry and `taxonomy/term` target as production-proven under replicas.
    **Depends on:** a production-like PostgreSQL runtime.
@@ -117,9 +118,31 @@ claim a global `translation.target.changed` event contract.
    connections, forces both localized writers past route preflight before
    releasing their translation-row locks, and verifies that the registry key
    admits exactly one commit while the losing translation rolls back. This
-   source harness is not recorded runtime evidence by itself: PostgreSQL
-   translation apply CAS, change-cursor recovery/monotonicity, and a recorded
-   maintainer execution of the retained migrations plus harness remain open.
+   source harness is not recorded runtime evidence by itself.
+
+   Source evidence for translation-target CAS and cursor recovery is now
+   executable in `tests/translation_target_postgres.rs`. It requires the
+   canonical PostgreSQL schema produced by the canonical server Migrator and
+   refuses to run if the owner-operation receipt ledger or required Taxonomy
+   tables are absent. The scenarios use unique tenant identities and independent
+   single-session connections, then race two applies from the same exact
+   source/target snapshot and expected revisions. Exactly one stale-revision
+   candidate may commit; the loser must close as a conflict, leaving one
+   resource/target revision advance and one durable winning change fact. A
+   separate recovery scenario resumes from the create cursor after provider
+   reconstruction, applies an exact target, reconstructs again around hard
+   deletion, resumes the `deleted` lifecycle change, drains after the latest
+   cursor, and verifies progress exposes that latest durable owner cursor.
+   Sequential recovery writes are separated across ULID milliseconds for
+   deterministic cursor ordering; this does not claim an arbitrary concurrent
+   transaction commit-order guarantee.
+
+   `.github/workflows/taxonomy-postgres-evidence.yml` is the retained runtime
+   path. It provisions PostgreSQL 16, runs `rustok-migrate up` against the
+   ephemeral database, executes both Taxonomy PostgreSQL harnesses, and archives
+   migration/test provenance and logs. The source contracts deliberately keep
+   `runtime_status` as `not_recorded` until such an exact-head workflow run
+   succeeds; source presence alone is not runtime proof.
 
 ## Verification
 
@@ -129,10 +152,12 @@ claim a global `translation.target.changed` event contract.
   fallback, registry-authority lookup, route-registry reservation/release/
   cascade, status-removal migration, and consumer-integration tests.
 - `cargo test -p rustok-taxonomy --lib`
+- `DATABASE_URL=postgresql://... cargo run --locked -p rustok-migrations --bin rustok-migrate -- up`
 - `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture`
-- Production-like PostgreSQL two-writer route-key contention, translation apply
-  CAS, and change-cursor recovery before declaring storage concurrency evidence
-  complete.
+- `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test translation_target_postgres -- --nocapture`
+- Production-like PostgreSQL canonical migration, two-writer route-key
+  contention, translation apply CAS, and change-cursor recovery before declaring
+  storage concurrency evidence complete.
 
 ## Change rules
 
