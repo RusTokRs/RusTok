@@ -1,0 +1,46 @@
+name: Page Builder Static Sanitization Registry Admission Probe
+
+on:
+  push:
+    branches:
+      - agent/page-builder-static-sanitization-admission-probe-20260813
+    paths:
+      - ".github/workflows/page-builder-static-sanitization-registry-admission-probe.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: page-builder-static-sanitization-registry-admission-probe
+  cancel-in-progress: true
+
+jobs:
+  admission:
+    name: Static sanitization registry admission
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify admission source contract
+        run: node scripts/verify/verify-page-builder-static-sanitization-registry-admission.mjs
+      - name: Test admission runner
+        run: node --test scripts/evidence/admit-page-builder-static-sanitization-registry-update.test.mjs
+      - name: Admit exact execution receipt
+        run: >-
+          node scripts/evidence/admit-page-builder-static-sanitization-registry-update.mjs
+          --receipt evidence/page-builder-static-sanitization/admission-input/receipt.json
+          --workflow-run evidence/page-builder-static-sanitization/admission-input/workflow-run.json
+      - name: Archive admission packet
+        uses: actions/upload-artifact@v7
+        with:
+          name: page-builder-static-sanitization-registry-admission-${{ github.run_id }}-${{ github.sha }}
+          path: target/page-builder-static-sanitization-registry-admission.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9
