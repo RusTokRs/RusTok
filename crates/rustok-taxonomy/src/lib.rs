@@ -10,6 +10,7 @@ pub mod migrations;
 mod module_term_lookup;
 pub mod module_term_mutation;
 mod normalization;
+mod owner_read;
 mod route_key_registry;
 pub mod services;
 mod translation_evidence;
@@ -26,6 +27,7 @@ pub use module_term_mutation::{
     update_module_term_in_tx,
 };
 pub use normalization::{normalize_term_locale, normalize_term_route_key};
+pub use owner_read::{TaxonomyOwnerReader, TaxonomyOwnerTerm};
 pub use services::TaxonomyService;
 pub use translation_target::TaxonomyTranslationTargetProvider;
 

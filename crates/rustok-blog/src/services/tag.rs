@@ -2,23 +2,21 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
-    RelationTrait, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect, RelationTrait, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
-use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
+use rustok_content::normalize_locale_code;
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyScopeType,
-    TaxonomyService, TaxonomyTermKind, delete_module_term_in_tx,
-    entities::{taxonomy_term, taxonomy_term_translation},
-    update_module_term_in_tx,
+    CreateTaxonomyTermInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyOwnerReader,
+    TaxonomyOwnerTerm, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    delete_module_term_in_tx, update_module_term_in_tx,
 };
 
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
@@ -76,25 +74,15 @@ impl TagService {
         locale: &str,
     ) -> BlogResult<TagResponse> {
         enforce_scope(&security, Resource::Tags, Action::Read)?;
-        self.find_visible_term(tenant_id, tag_id).await?;
-
         let locale = normalize_locale(locale)?;
-        let term = TaxonomyService::new(self.db.clone())
-            .get_term(
-                tenant_id,
-                security,
-                tag_id,
-                &locale,
-                Some(PLATFORM_FALLBACK_LOCALE),
-            )
-            .await?;
+        let term = self.find_visible_term(tenant_id, tag_id, &locale).await?;
         let use_count = self
             .count_tag_usage_map(tenant_id, &[tag_id])
             .await?
             .remove(&tag_id)
             .unwrap_or_default();
 
-        Ok(to_tag_response(term, use_count))
+        Ok(to_tag_owner_response(tenant_id, term, use_count))
     }
 
     #[instrument(skip(self, security, input))]
@@ -105,7 +93,9 @@ impl TagService {
         security: SecurityContext,
         input: UpdateTagInput,
     ) -> BlogResult<TagResponse> {
-        let term = self.find_visible_term(tenant_id, tag_id).await?;
+        let term = self
+            .find_visible_term(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
+            .await?;
         enforce_owned_scope(&security, Resource::Tags, Action::Update, term.id)?;
         ensure_module_owned_term(&term)?;
 
@@ -144,7 +134,9 @@ impl TagService {
         tag_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
-        let term = self.find_visible_term(tenant_id, tag_id).await?;
+        let term = self
+            .find_visible_term(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
+            .await?;
         enforce_owned_scope(&security, Resource::Tags, Action::Delete, term.id)?;
         ensure_module_owned_term(&term)?;
 
@@ -176,14 +168,13 @@ impl TagService {
         let page = filter.page.max(1);
         let per_page = bounded_tag_page_size(filter.per_page);
 
-        let terms = self.list_visible_terms(tenant_id).await?;
+        let terms = self.list_visible_terms(tenant_id, &locale).await?;
         if terms.is_empty() {
             return Ok((Vec::new(), 0));
         }
 
         let term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
         let counts = self.count_tag_usage_map(tenant_id, &term_ids).await?;
-        let translations_by_tag = load_translations_map(&self.db, &term_ids).await?;
 
         let mut sortable = terms
             .into_iter()
@@ -204,28 +195,14 @@ impl TagService {
             .into_iter()
             .skip(offset)
             .take(per_page as usize)
-            .map(|(use_count, term)| {
-                let translations = translations_by_tag
-                    .get(&term.id)
-                    .cloned()
-                    .unwrap_or_default();
-                let translation_refs = translations.iter().collect::<Vec<_>>();
-                let (translation, effective_locale) =
-                    resolve_translation_with_fallback(&translation_refs, &locale, None);
-
-                TagListItem {
-                    id: term.id,
-                    locale: locale.clone(),
-                    effective_locale,
-                    name: translation
-                        .map(|translation| translation.name.clone())
-                        .unwrap_or_else(|| term.canonical_key.clone()),
-                    slug: translation
-                        .map(|translation| translation.slug.clone())
-                        .unwrap_or_else(|| term.canonical_key.clone()),
-                    use_count,
-                    created_at: term.created_at.into(),
-                }
+            .map(|(use_count, term)| TagListItem {
+                id: term.id,
+                locale: locale.clone(),
+                effective_locale: term.effective_locale,
+                name: term.name,
+                slug: term.slug,
+                use_count,
+                created_at: term.created_at,
             })
             .collect();
 
@@ -236,22 +213,59 @@ impl TagService {
         &self,
         tenant_id: Uuid,
         tag_id: Uuid,
-    ) -> BlogResult<taxonomy_term::Model> {
-        taxonomy_term::Entity::find_by_id(tag_id)
-            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-            .filter(blog_tag_scope_condition())
-            .one(&self.db)
+        locale: &str,
+    ) -> BlogResult<TaxonomyOwnerTerm> {
+        let reader = TaxonomyOwnerReader::new(self.db.clone());
+        let term_ids = [tag_id];
+        if let Some(term) = reader
+            .load_scoped_terms(
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                TaxonomyScopeType::Module,
+                Some(BLOG_SCOPE_VALUE),
+                Some(&term_ids),
+                locale,
+                Some(PLATFORM_FALLBACK_LOCALE),
+            )
             .await?
+            .into_iter()
+            .next()
+        {
+            return Ok(term);
+        }
+
+        reader
+            .load_scoped_terms(
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                TaxonomyScopeType::Global,
+                None,
+                Some(&term_ids),
+                locale,
+                Some(PLATFORM_FALLBACK_LOCALE),
+            )
+            .await?
+            .into_iter()
+            .next()
             .ok_or_else(|| BlogError::tag_not_found(tag_id))
     }
 
-    async fn list_visible_terms(&self, tenant_id: Uuid) -> BlogResult<Vec<taxonomy_term::Model>> {
-        let mut terms = taxonomy_term::Entity::find()
-            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-            .filter(module_owned_scope_condition())
-            .all(&self.db)
+    async fn list_visible_terms(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+    ) -> BlogResult<Vec<TaxonomyOwnerTerm>> {
+        let reader = TaxonomyOwnerReader::new(self.db.clone());
+        let mut terms = reader
+            .load_scoped_terms(
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                TaxonomyScopeType::Module,
+                Some(BLOG_SCOPE_VALUE),
+                None,
+                locale,
+                None,
+            )
             .await?;
 
         let module_term_ids = terms.iter().map(|term| term.id).collect::<HashSet<_>>();
@@ -267,14 +281,17 @@ impl TagService {
             .collect::<HashSet<_>>();
 
         if !used_term_ids.is_empty() {
-            let mut global_terms = taxonomy_term::Entity::find()
-                .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-                .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
-                .filter(
-                    taxonomy_term::Column::Id.is_in(used_term_ids.into_iter().collect::<Vec<_>>()),
+            let used_term_ids = used_term_ids.into_iter().collect::<Vec<_>>();
+            let mut global_terms = reader
+                .load_scoped_terms(
+                    tenant_id,
+                    TaxonomyTermKind::Tag,
+                    TaxonomyScopeType::Global,
+                    None,
+                    Some(&used_term_ids),
+                    locale,
+                    None,
                 )
-                .filter(global_scope_condition())
-                .all(&self.db)
                 .await?;
             terms.append(&mut global_terms);
         }
@@ -459,53 +476,16 @@ pub(crate) async fn find_post_ids_by_tag(
         .collect())
 }
 
-async fn load_translations_map(
-    db: &DatabaseConnection,
-    term_ids: &[Uuid],
-) -> BlogResult<HashMap<Uuid, Vec<taxonomy_term_translation::Model>>> {
-    if term_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let translations = taxonomy_term_translation::Entity::find()
-        .filter(taxonomy_term_translation::Column::TermId.is_in(term_ids.to_vec()))
-        .all(db)
-        .await?;
-    let mut map = HashMap::new();
-    for translation in translations {
-        map.entry(translation.term_id)
-            .or_insert_with(Vec::new)
-            .push(translation);
-    }
-    Ok(map)
-}
-
-fn ensure_module_owned_term(term: &taxonomy_term::Model) -> BlogResult<()> {
-    if term.scope_type == TaxonomyScopeType::Module && term.scope_value == BLOG_SCOPE_VALUE {
+fn ensure_module_owned_term(term: &TaxonomyOwnerTerm) -> BlogResult<()> {
+    if term.scope_type == TaxonomyScopeType::Module
+        && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE)
+    {
         return Ok(());
     }
 
     Err(BlogError::forbidden(
         "Global taxonomy tags must be managed through rustok-taxonomy",
     ))
-}
-
-fn blog_tag_scope_condition() -> Condition {
-    Condition::any()
-        .add(module_owned_scope_condition())
-        .add(global_scope_condition())
-}
-
-fn module_owned_scope_condition() -> Condition {
-    Condition::all()
-        .add(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
-        .add(taxonomy_term::Column::ScopeValue.eq(BLOG_SCOPE_VALUE))
-}
-
-fn global_scope_condition() -> Condition {
-    Condition::all()
-        .add(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Global))
-        .add(taxonomy_term::Column::ScopeValue.eq(""))
 }
 
 fn bounded_tag_page_size(value: u64) -> u64 {
@@ -549,22 +529,14 @@ fn normalize_locale(locale: &str) -> BlogResult<String> {
     normalize_locale_code(locale).ok_or_else(|| BlogError::validation("Locale cannot be empty"))
 }
 
-fn resolve_translation_with_fallback<'a>(
-    translations: &[&'a taxonomy_term_translation::Model],
-    locale: &str,
-    fallback_locale: Option<&str>,
-) -> (Option<&'a taxonomy_term_translation::Model>, String) {
-    let resolved =
-        resolve_by_locale_with_fallback(translations, locale, fallback_locale, |translation| {
-            translation.locale.as_str()
-        });
-    (resolved.item.copied(), resolved.effective_locale)
-}
-
-fn to_tag_response(term: rustok_taxonomy::TaxonomyTermResponse, use_count: i32) -> TagResponse {
+fn to_tag_owner_response(
+    tenant_id: Uuid,
+    term: TaxonomyOwnerTerm,
+    use_count: i32,
+) -> TagResponse {
     TagResponse {
         id: term.id,
-        tenant_id: term.tenant_id,
+        tenant_id,
         locale: term.requested_locale,
         effective_locale: term.effective_locale,
         name: term.name,
