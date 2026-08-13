@@ -69,6 +69,9 @@ pub mod translation_target;
 mod state_machine_proptest;
 
 #[cfg(test)]
+mod tag_tenant_integrity_tests;
+
+#[cfg(test)]
 mod translation_target_tests;
 
 pub use dto::{
