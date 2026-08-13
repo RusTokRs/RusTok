@@ -44,3 +44,4 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 9
+          # Probe revision 2 validates the status-contract-aware source verifier.
