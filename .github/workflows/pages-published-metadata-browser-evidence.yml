@@ -1,0 +1,188 @@
+name: Pages Published Metadata Browser Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact reviewed main commit deployed by the supplied immutable image
+        required: true
+        type: string
+      deployment_digest:
+        description: Reviewed immutable deployment RepoDigest (name@sha256:...)
+        required: true
+        type: string
+      published_url:
+        description: Reviewed Pages admin URL selecting a published page
+        required: true
+        type: string
+      draft_url:
+        description: Reviewed Pages admin URL selecting a draft page
+        required: true
+        type: string
+      archived_url:
+        description: Reviewed Pages admin URL selecting an archived page
+        required: true
+        type: string
+      missing_url:
+        description: Reviewed Pages admin URL with no selected page
+        required: true
+        type: string
+      reviewed_deployment_identity:
+        description: Confirm source commit, RepoDigest and profile URLs were reviewed together
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  browser-evidence:
+    name: Published metadata reviewed browser packet
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: pages-published-metadata-browser-evidence
+    steps:
+      - name: Require main dispatch and reviewed deployment identity
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          REVIEWED_DEPLOYMENT_IDENTITY: ${{ inputs.reviewed_deployment_identity }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$SOURCE_COMMIT" = "$GITHUB_SHA"
+          test "$REVIEWED_DEPLOYMENT_IDENTITY" = "true"
+
+      - name: Checkout exact reviewed source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/next-admin/package-lock.json
+
+      - name: Verify retained browser harness source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
+
+      - name: Install exact browser dependencies
+        run: |
+          set -euo pipefail
+          npm ci --prefix apps/next-admin --no-audit --no-fund
+          (cd apps/next-admin && npx --no-install playwright install --with-deps chromium)
+
+      - name: Mask reviewed external inputs
+        shell: bash
+        env:
+          DEPLOYMENT_DIGEST: ${{ inputs.deployment_digest }}
+          PUBLISHED_URL: ${{ inputs.published_url }}
+          DRAFT_URL: ${{ inputs.draft_url }}
+          ARCHIVED_URL: ${{ inputs.archived_url }}
+          MISSING_URL: ${{ inputs.missing_url }}
+        run: |
+          set -euo pipefail
+          for value in "$DEPLOYMENT_DIGEST" "$PUBLISHED_URL" "$DRAFT_URL" "$ARCHIVED_URL" "$MISSING_URL"; do
+            test -n "$value"
+            printf '::add-mask::%s\n' "$value"
+          done
+
+      - name: Materialize protected editor storage state
+        shell: bash
+        env:
+          STORAGE_STATE_B64: ${{ secrets.RUSTOK_PAGES_PUBLISHED_METADATA_EDITOR_STORAGE_STATE_B64 }}
+        run: |
+          set -euo pipefail
+          test -n "$STORAGE_STATE_B64"
+          printf '::add-mask::%s\n' "$STORAGE_STATE_B64"
+          storage_state="$RUNNER_TEMP/pages-published-metadata-editor-storage-state.json"
+          umask 077
+          printf '%s' "$STORAGE_STATE_B64" | base64 --decode > "$storage_state"
+          test -s "$storage_state"
+          test "$(stat -c %s "$storage_state")" -le 8388608
+          printf 'RUSTOK_PAGES_PUBLISHED_METADATA_EDITOR_STORAGE_STATE=%s\n' "$storage_state" >> "$GITHUB_ENV"
+
+      - name: Execute retained published metadata browser packet
+        shell: bash
+        env:
+          RUSTOK_PAGES_PUBLISHED_METADATA_BROWSER_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RUSTOK_PAGES_PUBLISHED_METADATA_DEPLOYMENT_DIGEST: ${{ inputs.deployment_digest }}
+          RUSTOK_PAGES_PUBLISHED_METADATA_PUBLISHED_URL: ${{ inputs.published_url }}
+          RUSTOK_PAGES_PUBLISHED_METADATA_DRAFT_URL: ${{ inputs.draft_url }}
+          RUSTOK_PAGES_PUBLISHED_METADATA_ARCHIVED_URL: ${{ inputs.archived_url }}
+          RUSTOK_PAGES_PUBLISHED_METADATA_MISSING_URL: ${{ inputs.missing_url }}
+          RUSTOK_PAGES_PUBLISHED_METADATA_BROWSER_EVIDENCE_OUTPUT: target/pages-published-metadata-browser-evidence.json
+        run: >-
+          bash -c
+          'cd apps/next-admin && npx --no-install playwright test --config playwright.pages-published-metadata.config.ts'
+
+      - name: Verify bounded success packet
+        shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          DEPLOYMENT_DIGEST: ${{ inputs.deployment_digest }}
+          PUBLISHED_URL: ${{ inputs.published_url }}
+          DRAFT_URL: ${{ inputs.draft_url }}
+          ARCHIVED_URL: ${{ inputs.archived_url }}
+          MISSING_URL: ${{ inputs.missing_url }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const path = "target/pages-published-metadata-browser-evidence.json";
+          const packet = JSON.parse(readFileSync(path, "utf8"));
+          const fail = (message) => { throw new Error(`published metadata browser packet invalid: ${message}`); };
+          if (packet.format !== "pages_published_metadata_browser_execution_v1") fail("format");
+          if (packet.status !== "browser_execution_passed_consumer_properties_admission_pending") fail("status");
+          if (packet.source_commit !== process.env.SOURCE_COMMIT) fail("source commit");
+          if (packet.deployment_digest !== process.env.DEPLOYMENT_DIGEST) fail("deployment digest");
+          if (packet.retained_secrets !== false || packet.metadata_values_retained !== false) fail("retention flags");
+          if (packet.browser_execution_only !== true || packet.consumer_properties_admission_pending !== true) fail("governance flags");
+          for (const profile of ["published", "draft", "archived", "missing"]) {
+            if (packet.observations?.[profile]?.passed !== true) fail(`${profile} observation`);
+          }
+          const serialized = JSON.stringify(packet);
+          for (const name of ["PUBLISHED_URL", "DRAFT_URL", "ARCHIVED_URL", "MISSING_URL"]) {
+            const value = process.env[name];
+            if (value && serialized.includes(value)) fail(`${name} retained raw`);
+          }
+          NODE
+
+      - name: Archive bounded browser evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: pages-published-metadata-browser-${{ github.run_id }}-${{ github.sha }}
+          path: target/pages-published-metadata-browser-evidence.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Remove editor storage state
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${RUSTOK_PAGES_PUBLISHED_METADATA_EDITOR_STORAGE_STATE:-}" ]]; then
+            rm -f -- "$RUSTOK_PAGES_PUBLISHED_METADATA_EDITOR_STORAGE_STATE"
+          fi
+
+  gate:
+    name: Published Metadata Browser Evidence Gate
+    if: always()
+    needs: browser-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require browser evidence success
+        env:
+          BROWSER_RESULT: ${{ needs.browser-evidence.result }}
+        run: |
+          set -euo pipefail
+          test "$BROWSER_RESULT" = "success"
