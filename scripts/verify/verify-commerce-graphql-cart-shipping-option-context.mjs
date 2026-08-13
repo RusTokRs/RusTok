@@ -13,6 +13,7 @@ const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8')
 const routing = read('crates/rustok-commerce/src/graphql/mutations/mod.rs');
 const facade = read('crates/rustok-commerce/src/graphql/mutations/safe_legacy_helpers.rs');
 const helperSource = read('crates/rustok-commerce/src/graphql/mutations/helpers.rs');
+const graphqlRuntime = read('crates/rustok-commerce/src/graphql_runtime.rs');
 const publicFacade = read('crates/rustok-commerce/src/graphql/mutations/safe_helpers.rs');
 const failures = [];
 
@@ -33,25 +34,21 @@ for (const value of ['#[path = "helpers.rs"]\nmod legacy_helpers;']) {
 }
 
 for (const [value, label] of [
-  ['mod rustok_fulfillment_shim {', 'fulfillment import shim'],
-  ['pub struct FulfillmentService {', 'contextual fulfillment facade'],
-  ['inner: ::rustok_fulfillment::FulfillmentService', 'canonical fulfillment owner field'],
-  ['inner: ::rustok_fulfillment::FulfillmentService::new(db)', 'canonical fulfillment constructor'],
-  ['pub async fn get_shipping_option(', 'shipping option interception'],
-  ['log_shipping_option_error(', 'typed fulfillment cause logging'],
-  ['FulfillmentError::Validation(_)', 'validation classification'],
-  ['FulfillmentError::ShippingOptionNotFound(_)', 'shipping option not-found classification'],
-  ['FulfillmentError::Database(_)', 'database classification'],
-  ['owner = "rustok_fulfillment"', 'truthful fulfillment owner'],
-  ['tenant_id = %tenant_id', 'tenant context'],
-  ['shipping_option_id = %shipping_option_id', 'shipping option identity'],
-  ['requested_locale = ?requested_locale', 'requested locale context'],
-  ['tenant_default_locale = ?tenant_default_locale', 'default locale context'],
-  ['operation = "get_shipping_option"', 'exact owner operation'],
-  ['owner_code,', 'stable owner code'],
-  ['owner_kind,', 'typed owner kind'],
-  ['owner_retryable,', 'owner retryability'],
-  ['boundary = STOREFRONT_CART_LEGACY_HELPER_BOUNDARY', 'legacy helper boundary'],
+  ['mod rustok_fulfillment_shim {', 'fulfillment compatibility shim'],
+  ['shipping_option_reads: Arc<dyn ShippingOptionReadPort>', 'typed shipping-option owner port'],
+  ['shipping_option_read_runtime_for_current_graphql_scope(', 'host-selected GraphQL runtime lookup'],
+  ['.shipping_option_read_port()', 'host-selected shipping-option capability'],
+  ['pub async fn get_shipping_option(', 'shipping option compatibility method'],
+  ['ReadShippingOptionProjectionRequest {', 'typed owner read request'],
+  ['.read_shipping_option_projection(', 'typed owner read call'],
+  ['PortActor::service(', 'service actor construction'],
+  ['"rustok-commerce.graphql-cart-shipping-option"', 'stable service actor identity'],
+  ['.with_deadline(std::time::Duration::from_secs(2))', 'bounded read deadline'],
+  ['fulfillment_read_call_context_for_current_graphql_scope()', 'trusted scoped channel lookup'],
+  ['.channel()', 'scoped channel accessor'],
+  ['.with_channel(channel)', 'channel propagation'],
+  ['requested_locale.map(str::to_owned)', 'requested locale propagation'],
+  ['tenant_default_locale.map(str::to_owned)', 'tenant fallback locale propagation'],
   ['use self::rustok_fulfillment_shim as rustok_fulfillment;', 'fulfillment shim alias'],
   ['include!("helpers.rs");', 'unchanged legacy helper inclusion'],
 ]) {
@@ -59,24 +56,42 @@ for (const [value, label] of [
 }
 
 for (const [value, label] of [
-  ['use rustok_fulfillment::FulfillmentService;', 'legacy fulfillment service import'],
-  ['let option = FulfillmentService::new(db.clone())', 'legacy fulfillment constructor call'],
-  ['.get_shipping_option(', 'legacy shipping option owner call'],
+  ['inner: ::rustok_fulfillment::FulfillmentService', 'stored concrete fulfillment service'],
+  ['::rustok_fulfillment::FulfillmentService::new(', 'concrete fulfillment owner construction'],
+  ['FulfillmentError::', 'concrete fulfillment error remapping'],
+  ['error = ?error', 'raw owner error logging'],
+]) {
+  forbidText(facade, value, label);
+}
+
+for (const [value, label] of [
+  ['static CURRENT_COMMERCE_SHIPPING_OPTION_READ_RUNTIME:', 'shipping-option task-local runtime'],
+  ['runtime_data.shipping_option_read_runtime()', 'mounted host runtime scope'],
+  ['pub(crate) fn shipping_option_read_runtime_for_current_graphql_scope(', 'scoped runtime accessor'],
+  ['pub(crate) fn fulfillment_read_call_context_for_current_graphql_scope()', 'scoped channel accessor source'],
+]) {
+  requireText(graphqlRuntime, value, label);
+}
+
+for (const [value, label] of [
+  ['use rustok_fulfillment::FulfillmentService;', 'legacy helper facade import'],
+  ['let option = FulfillmentService::new(db.clone())', 'legacy helper routed constructor call'],
+  ['.get_shipping_option(', 'legacy shipping option compatibility call'],
 ]) {
   requireText(helperSource, value, label);
 }
 
-const canonicalConstructors =
+const concreteOwnerConstructors =
   facade.match(/::rustok_fulfillment::FulfillmentService::new\(/g) ?? [];
-if (canonicalConstructors.length !== 1) {
+if (concreteOwnerConstructors.length !== 0) {
   failures.push(
-    `expected one canonical fulfillment constructor in the facade, found ${canonicalConstructors.length}`,
+    `expected no concrete fulfillment owner constructors in the mounted facade, found ${concreteOwnerConstructors.length}`,
   );
 }
 const legacyConstructors = helperSource.match(/FulfillmentService::new\(/g) ?? [];
 if (legacyConstructors.length !== 1) {
   failures.push(
-    `expected one legacy fulfillment constructor routed through the facade, found ${legacyConstructors.length}`,
+    `expected one legacy helper constructor routed through the typed facade, found ${legacyConstructors.length}`,
   );
 }
 
@@ -90,11 +105,11 @@ for (const [value, label] of [
 }
 
 if (failures.length > 0) {
-  console.error('Commerce GraphQL cart shipping option context verification failed:');
+  console.error('Commerce GraphQL cart shipping option owner-port verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ Legacy GraphQL cart shipping option lookup retains typed fulfillment owner diagnostics while the public SHIPPING_OPTION_INVALID envelope remains unchanged',
+  '✔ Mounted GraphQL cart shipping-option validation resolves the host-selected Fulfillment owner port with bounded context and preserves the public SHIPPING_OPTION_INVALID envelope',
 );
