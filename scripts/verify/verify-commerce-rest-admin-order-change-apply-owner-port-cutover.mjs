@@ -52,6 +52,18 @@ const portMapper = between(
   'fn map_admin_order_change_orchestration_error(',
   'REST owner-port mapper',
 );
+const refundContext = between(
+  orchestration,
+  'fn with_exchange_refund_context(',
+  '/// Explicit compatibility seam for the still-open Payment half of exchange application.',
+  'exchange refund metadata helper',
+);
+const compatRefund = between(
+  orchestration,
+  'async fn create_exchange_difference_refund_compat(',
+  '/// Routes order-change application through the correct post-order workflow.',
+  'exchange Payment compatibility helper',
+);
 const ownerMethod = between(
   orchestration,
   'pub async fn apply_order_change_with_owner_ports(',
@@ -111,22 +123,38 @@ for (const [value, label] of [
   ['ApplyOrderChangeRequest {', 'typed apply request'],
   ['OrderChangeOrchestrationError::OrderRead', 'read error preservation'],
   ['OrderChangeOrchestrationError::OrderCommand', 'command error preservation'],
-  ['.apply_exchange_order_change(', 'exchange payment orchestration retained'],
+  ['with_order_change_apply_action(metadata, "exchange")', 'exchange apply-action preservation'],
+  ['create_exchange_difference_refund_compat(', 'explicit Payment compatibility seam'],
   ['with_order_change_apply_action(metadata, "claim")', 'claim apply-action preservation'],
 ]) requireText(orchestration, value, label);
-for (const value of ['OrderService::new(', '.get_order_change(']) {
-  forbidText(ownerMethod, value, 'mounted owner-port orchestration concrete Order dependency');
-}
-forbidText(
-  ownerMethod,
+for (const value of [
+  'OrderService::new(',
+  '.get_order_change(',
+  'PostOrderOrchestrationService::new(',
+  '.apply_exchange_order_change(',
   '.apply_claim_order_change(',
-  'mounted claim apply must not re-enter concrete Order orchestration',
-);
+]) forbidText(ownerMethod, value, 'mounted owner-port orchestration concrete/re-entry dependency');
 const mountedApplyCommands = ownerMethod.match(/\.apply_change\(/g) ?? [];
-if (mountedApplyCommands.length < 2) {
+if (mountedApplyCommands.length < 3) {
   failures.push(
-    `mounted owner-port orchestration: expected claim and default Order apply commands, found ${mountedApplyCommands.length}`,
+    `mounted owner-port orchestration: expected exchange, claim, and default Order apply commands, found ${mountedApplyCommands.length}`,
   );
+}
+
+for (const [value, label] of [
+  ['PaymentService::new(db.clone())', 'remaining Payment collection compatibility'],
+  ['status: Some("captured".to_string())', 'captured collection semantics'],
+  ['order_id: Some(order_id)', 'order collection filter'],
+  ['PaymentOrchestrationService::new(db.clone())', 'remaining Payment provider compatibility'],
+  ['.create_refund(', 'difference refund creation'],
+  ['Some("exchange_difference".to_string())', 'default difference-refund reason'],
+]) requireText(compatRefund, value, label);
+for (const [value, label] of [
+  ['"order_change_id".to_string()', 'durable refund workflow identity'],
+  ['Value::String("exchange".to_string())', 'refund apply-action identity'],
+]) requireText(refundContext, value, label);
+for (const value of ['OrderService::new(', '.apply_order_change(']) {
+  forbidText(compatRefund, value, 'Payment compatibility helper must not own Order transition');
 }
 
 for (const [value, label] of [
@@ -169,7 +197,7 @@ forbidText(
 requireText(
   plan,
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.',
-  'broad ecommerce topology P0 remains open',
+  'broad ecommerce topology P0 remains open for Payment compatibility',
 );
 
 for (const [value, label] of [
@@ -182,11 +210,11 @@ for (const [value, label] of [
 ]) requireText(record, value, label);
 
 if (failures.length > 0) {
-  console.error('Commerce REST admin order-change apply owner-port verification failed:');
+  console.error('Commerce admin order-change Order-owner verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '✔ mounted REST/GraphQL admin order-change apply uses host-selected Order owner ports for default and claim transitions; exchange payment orchestration remains explicit',
+  '✔ mounted REST/GraphQL order-change apply uses host-selected Order owner ports for exchange, claim, and default transitions; Payment difference-refund compatibility remains explicit',
 );
