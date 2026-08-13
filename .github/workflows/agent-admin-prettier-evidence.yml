@@ -24,7 +24,7 @@ jobs:
       - name: Install admin dependencies
         working-directory: apps/next-admin
         run: npm ci
-      - name: Format exact failing files and print diff
+      - name: Format exact failing files
         working-directory: apps/next-admin
         run: |
           npx prettier --write \
@@ -32,9 +32,15 @@ jobs:
             playwright.pages-published-metadata.config.ts \
             tests/pages-published-metadata/browser-evidence.spec.ts \
             tests/pages-published-metadata/global-setup.ts
-          git diff --no-color -- \
-            packages/translation/src/types.ts \
-            playwright.pages-published-metadata.config.ts \
-            tests/pages-published-metadata/browser-evidence.spec.ts \
-            tests/pages-published-metadata/global-setup.ts
           git diff --check
+      - name: Upload formatted files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: admin-prettier-formatted-${{ github.run_attempt }}
+          path: |
+            apps/next-admin/packages/translation/src/types.ts
+            apps/next-admin/playwright.pages-published-metadata.config.ts
+            apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts
+            apps/next-admin/tests/pages-published-metadata/global-setup.ts
+          if-no-files-found: error
+          retention-days: 1
