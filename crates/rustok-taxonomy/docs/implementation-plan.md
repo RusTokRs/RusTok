@@ -153,12 +153,12 @@ claim a global `translation.target.changed` event contract.
    and gate `94601290823` succeeded, and artifact `9199060002` records digest
    `sha256:2132b65d576c958504b11e6bcda36296f1f99f8fb314a8e3399ad974c0155d23`.
    The two evidence contracts therefore record `runtime_status: passed` and
-   carry no remaining Result 4 evidence items. This is production-like
-   PostgreSQL 16 CI evidence; it does not claim observation of live production
-   traffic or arbitrary concurrent transaction commit ordering. Both source
-   verifiers compare recorded runtime input fingerprints with the current Git
-   blob/tree identities, so a semantic runtime-input change invalidates the
-   recorded evidence and requires a fresh PostgreSQL run.
+   carry no remaining Result 4 evidence items. This runtime evidence is
+   production-like PostgreSQL 16 CI evidence; it does not claim observation of
+   live production traffic or arbitrary concurrent transaction commit ordering.
+   Both source verifiers compare recorded runtime input fingerprints with the
+   current Git blob/tree identities, so a semantic runtime-input change
+   invalidates the recorded evidence and requires a fresh PostgreSQL run.
 
 ## Verification
 
