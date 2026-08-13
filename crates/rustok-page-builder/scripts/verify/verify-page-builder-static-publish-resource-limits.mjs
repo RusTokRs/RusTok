@@ -229,6 +229,28 @@ for (const marker of [
   '#[path = "static_publish_resource_limits.rs"]',
 ]) forbid(sources.sanitization, marker, "unchanged sanitization identity and compiler ownership");
 
+const sanitizationResourceLimitTest = sliceBetween(
+  sources.sanitization,
+  "fn sanitization_rejects_excess_global_resources",
+  "fn sanitization_rejects_insecure_public_resources",
+  "sanitization resource-limit rejection test",
+);
+requireOrdered(
+  sanitizationResourceLimitTest,
+  [
+    'let error = sanitize_static_landing_project(&project).expect_err("resource rejection");',
+    "PageBuilderStaticLandingSanitizationError::Landing(",
+    "LandingProjectError::Validation { diagnostics }",
+    'diagnostic.code == "landing_page_count_exceeded"',
+  ],
+  "sanitization resource-limit rejection boundary",
+);
+forbid(
+  sanitizationResourceLimitTest,
+  "PageBuilderStaticLandingSanitizationError::Resource(error)",
+  "sanitization resource-limit rejection boundary",
+);
+
 const sanitizeFunction = sliceBetween(
   sources.sanitization,
   "pub fn sanitize_static_landing_project",
