@@ -20,6 +20,8 @@
     "direct_metadata_patch_in_surface": false,
     "metadata_persistence_delegated_to_owner_port": true,
     "metadata_revision_isolation_evidence_linked": true,
+    "browser_execution_contract_linked": true,
+    "browser_execution_required_for_executed_evidence": true,
     "stable_dom_contract_added": true,
     "unit_regressions_added": true,
     "execution_behavior_changed": false,
@@ -42,11 +44,18 @@
   "linked_source_evidence": [
     "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
   ],
+  "browser_execution": {
+    "state": "source_ready_maintainer_execution_pending",
+    "contract": "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+    "runner": "apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts",
+    "verifier": "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs"
+  },
   "suggested_execution": [
     "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs",
     "cargo test -p rustok-pages-admin published_page_admits_registered_metadata_surface",
     "cargo test -p rustok-pages-admin non_published_or_missing_page_hides_registered_metadata_surface",
-    "cargo check -p rustok-pages-admin --all-targets"
+    "cargo check -p rustok-pages-admin --all-targets",
+    "cd apps/next-admin && npx --no-install playwright test --config playwright.pages-published-metadata.config.ts"
   ],
   "execution": [],
   "validation": {

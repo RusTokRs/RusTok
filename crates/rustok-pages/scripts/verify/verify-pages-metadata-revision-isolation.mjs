@@ -10,6 +10,7 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const sourcePath = "crates/rustok-pages/admin/src/metadata_properties.rs";
+const modelPath = "crates/rustok-pages/admin/src/model.rs";
 const evidencePath =
   "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json";
 const planPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
@@ -18,6 +19,7 @@ const consumerContractPath =
 const cargoPath = "crates/rustok-pages/admin/Cargo.toml";
 
 const source = read(sourcePath);
+const model = read(modelPath);
 const evidence = JSON.parse(read(evidencePath));
 const plan = read(planPath);
 const consumerContract = JSON.parse(read(consumerContractPath));
@@ -54,12 +56,8 @@ function requireOrdered(content, markers, label) {
   }
 }
 
-const patchRequest = between(
-  source,
-  "struct MetadataPatchRequest {",
-  "trait PagesMetadataTransport",
-  "metadata-only patch request",
-);
+const patchRequestStart = model.indexOf("pub struct PageMetadataPatch {");
+const patchRequest = patchRequestStart < 0 ? "" : model.slice(patchRequestStart);
 const serverTransport = between(
   source,
   "impl PagesMetadataTransport for ServerPagesMetadataTransport",
@@ -89,7 +87,7 @@ const tests = source.slice(source.indexOf("#[cfg(test)]"));
 for (const marker of [
   "trait PagesMetadataTransport: Send + Sync",
   "fn fetch_page(&self, snapshot: PagesBuilderSaveSnapshot)",
-  "fn patch_metadata(&self, request: MetadataPatchRequest)",
+  "fn patch_metadata(&self, request: PageMetadataPatch)",
   "transport: Arc<dyn PagesMetadataTransport>",
   "transport: Arc::new(ServerPagesMetadataTransport)",
 ]) {
@@ -103,14 +101,6 @@ for (const marker of [
   "snapshot.page_id",
   "ConsumerPropertyEditorError::unavailable(error.to_string())",
   "transport::patch_page_metadata(",
-  "request.expected_version",
-  "request.locale",
-  "request.title",
-  "request.slug",
-  "request.meta_title",
-  "request.meta_description",
-  "request.template",
-  "request.channel_slugs",
   "ConsumerPropertyEditorError::save(error.to_string())",
 ]) {
   requireText(serverTransport, marker, "production metadata transport preservation");
@@ -152,7 +142,7 @@ requireOrdered(
     "let command = metadata_save_command(&schema, &snapshot, &input)?;",
     "let current = fetch_expected_page(transport.as_ref(), &snapshot).await?;",
     "require_current_metadata_version(command.expected_version, current.version)?;",
-    "let request = MetadataPatchRequest {",
+    "let request = PageMetadataPatch {",
     "let page = transport.patch_metadata(request).await?;",
     "if page.id != snapshot.page_id",
     "if page.version <= command.expected_version",
@@ -312,12 +302,12 @@ if (
 }
 
 for (const marker of [
-  "Metadata revision/isolation source packet: ready, unvalidated",
-  "stale metadata revision short-circuits before patch transport",
-  "metadata-only transport request",
-  "dirty Fly state is not accepted by the metadata owner port",
-  "Execution evidence remains pending",
-  "verify-pages-metadata-revision-isolation.mjs",
+  "`source-ready` means code, contracts, build source or retained harness source exists.",
+  "Pages and Page Builder remain one vertical pipeline with explicit owners:",
+  "Pages owns persistence, lifecycle, immutable bindings",
+  "Pages admin owns the optional same-origin authoring launch control",
+  "Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization",
+  "No build, workflow, Docker, HTTP or browser execution is claimed by source inspection.",
 ]) {
   requireText(plan, marker, "Pages/Page Builder parity plan");
 }
