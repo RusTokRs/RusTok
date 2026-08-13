@@ -155,7 +155,10 @@ claim a global `translation.target.changed` event contract.
    The two evidence contracts therefore record `runtime_status: passed` and
    carry no remaining Result 4 evidence items. This is production-like
    PostgreSQL 16 CI evidence; it does not claim observation of live production
-   traffic or arbitrary concurrent transaction commit ordering.
+   traffic or arbitrary concurrent transaction commit ordering. Both source
+   verifiers compare recorded runtime input fingerprints with the current Git
+   blob/tree identities, so a semantic runtime-input change invalidates the
+   recorded evidence and requires a fresh PostgreSQL run.
 
 ## Verification
 
@@ -169,8 +172,8 @@ claim a global `translation.target.changed` event contract.
 - `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture`
 - `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test translation_target_postgres -- --nocapture`
 - Recorded PostgreSQL runtime provenance remains guarded by both Taxonomy
-  evidence verifiers; future semantic changes must produce fresh evidence rather
-  than silently reusing these recorded runs.
+  evidence verifiers and runtime input fingerprints; future semantic changes
+  must produce fresh evidence rather than silently reusing these recorded runs.
 
 ## Change rules
 
