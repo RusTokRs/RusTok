@@ -22,6 +22,13 @@ function includesAll(text, markers) {
   return markers.every((marker) => text.includes(marker));
 }
 
+function between(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  if (start < 0) return '';
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  return source.slice(start, end < 0 ? source.length : end);
+}
+
 const operations = [
   {
     name: 'promote_topic_to_post',
@@ -117,6 +124,37 @@ check(
     !productionBridge.includes('taxonomy_term::Entity') &&
     !productionBridge.includes('taxonomy_term_translation::Entity'),
   'production conversion code must preserve the caller transaction and must not import/read Taxonomy persistence entities directly',
+);
+
+const blogTagSync = between(
+  productionBridge,
+  'async fn sync_blog_tags_for_post_in_tx(',
+  'async fn load_comment_records_for_post_in_tx(',
+);
+const forumTagSync = between(
+  productionBridge,
+  'async fn sync_forum_tags_for_topic_in_tx(',
+  'fn unique_source_ids(',
+);
+check(
+  'blog conversion tag sync is tenant-safe on delete and insert',
+  includesAll(blogTagSync, [
+    'blog_post_tag::Entity::delete_many()',
+    '.filter(blog_post_tag::Column::TenantId.eq(tenant_id))',
+    '.filter(blog_post_tag::Column::PostId.eq(post_id))',
+    'tenant_id: Set(tenant_id)',
+  ]),
+  'Blog conversion tag sync must constrain relation deletion to the tenant and persist tenant_id on new relations',
+);
+check(
+  'forum conversion tag sync is tenant-safe on delete and insert',
+  includesAll(forumTagSync, [
+    'forum_topic_tag::Entity::delete_many()',
+    '.filter(forum_topic_tag::Column::TenantId.eq(tenant_id))',
+    '.filter(forum_topic_tag::Column::TopicId.eq(topic_id))',
+    'tenant_id: Set(tenant_id)',
+  ]),
+  'Forum conversion tag sync must constrain relation deletion to the tenant and persist tenant_id on new relations',
 );
 check(
   'canonical collision integration evidence covers rollback/no outbox side effects',

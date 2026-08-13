@@ -1202,6 +1202,7 @@ async fn sync_blog_tags_for_post_in_tx(
     names.dedup();
 
     blog_post_tag::Entity::delete_many()
+        .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
         .filter(blog_post_tag::Column::PostId.eq(post_id))
         .exec(txn)
         .await?;
@@ -1222,6 +1223,7 @@ async fn sync_blog_tags_for_post_in_tx(
         blog_post_tag::ActiveModel {
             post_id: Set(post_id),
             tag_id: Set(tag_id),
+            tenant_id: Set(tenant_id),
             created_at: Set(Utc::now().into()),
         }
         .insert(txn)
@@ -1522,6 +1524,7 @@ async fn sync_forum_tags_for_topic_in_tx(
     names.dedup();
 
     forum_topic_tag::Entity::delete_many()
+        .filter(forum_topic_tag::Column::TenantId.eq(tenant_id))
         .filter(forum_topic_tag::Column::TopicId.eq(topic_id))
         .exec(txn)
         .await?;
