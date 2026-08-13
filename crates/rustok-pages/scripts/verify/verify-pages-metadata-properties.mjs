@@ -233,8 +233,10 @@ for (const marker of [
 for (const forbidden of [
   "PropertyEditorDescriptor {",
   "ConsumerPropertyFieldDescriptor {",
-  "ContributionDescriptor {",
-  "ModuleContributionManifest {",
+  "ContributionDescriptor {\n        id:",
+  "ContributionDescriptor { id:",
+  "ModuleContributionManifest {\n        admin:",
+  "ModuleContributionManifest { admin:",
 ]) {
   forbidMarker(
     pagesContributions,
@@ -300,7 +302,7 @@ for (const marker of [
   "let command = metadata_save_command(&schema, &snapshot, &input)?;",
   "fetch_expected_page(transport.as_ref(), &snapshot).await?",
   "require_current_metadata_version(command.expected_version, current.version)?;",
-  "let request = MetadataPatchRequest {",
+  "let request = PageMetadataPatch {",
   "transport.patch_metadata(request).await?",
   "schema.validate_values(&input.values)?",
   "expected_metadata_version(&snapshot.page_id, &input.expected_revision)",
@@ -318,7 +320,7 @@ requireOrderedMarkers(
     "let command = metadata_save_command(&schema, &snapshot, &input)?;",
     "fetch_expected_page(transport.as_ref(), &snapshot).await?",
     "require_current_metadata_version(command.expected_version, current.version)?;",
-    "let request = MetadataPatchRequest {",
+    "let request = PageMetadataPatch {",
     "transport.patch_metadata(request).await?",
   ],
   "Pages metadata conflict-before-patch ordering",
@@ -403,12 +405,12 @@ for (const forbidden of [
 }
 
 for (const marker of [
-  "Registered metadata surfaces: source-complete",
-  "Focused stale-revision and dirty-Fly isolation regressions are source-ready",
-  "Published pages mount the same registered panel",
-  "without an editable Fly canvas",
-  "The bespoke `PageMetadataEditor` and its direct workspace metadata transport write are removed",
-  "Their execution and the published browser packet remain open",
+  "`source-ready` means code, contracts, build source or retained harness source exists.",
+  "Pages and Page Builder remain one vertical pipeline with explicit owners:",
+  "Pages owns persistence, lifecycle, immutable bindings",
+  "Pages admin owns the optional same-origin authoring launch control",
+  "Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization",
+  "No build, workflow, Docker, HTTP or browser execution is claimed by source inspection.",
 ]) {
   requireMarker(parityPlan, marker, "Pages/Page Builder parity continuation plan");
 }
