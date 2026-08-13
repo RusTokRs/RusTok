@@ -1,0 +1,147 @@
+name: Taxonomy PostgreSQL Evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-core/**"
+      - "crates/rustok-migrations/**"
+      - "crates/rustok-outbox/**"
+      - "crates/rustok-taxonomy/**"
+      - "crates/rustok-translation-targets/**"
+      - "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs"
+      - "scripts/verify/verify-taxonomy-translation-target-postgres.mjs"
+      - ".github/workflows/taxonomy-postgres-evidence.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-core/**"
+      - "crates/rustok-migrations/**"
+      - "crates/rustok-outbox/**"
+      - "crates/rustok-taxonomy/**"
+      - "crates/rustok-translation-targets/**"
+      - "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs"
+      - "scripts/verify/verify-taxonomy-translation-target-postgres.mjs"
+      - ".github/workflows/taxonomy-postgres-evidence.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_taxonomy_evidence
+  RUSTOK_TAXONOMY_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_taxonomy_evidence
+
+jobs:
+  source-contract:
+    name: Taxonomy evidence source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify route-registry PostgreSQL contention source
+        run: node scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs
+      - name: Verify translation-target PostgreSQL source
+        run: node scripts/verify/verify-taxonomy-translation-target-postgres.mjs
+
+  postgres-evidence:
+    name: Taxonomy PostgreSQL runtime evidence
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_taxonomy_evidence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_taxonomy_evidence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: taxonomy-postgres-evidence
+      - name: Record evidence provenance
+        shell: bash
+        run: |
+          mkdir -p evidence/taxonomy-postgres
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "sha=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF}"
+            echo "event=${GITHUB_EVENT_NAME}"
+          } > evidence/taxonomy-postgres/metadata.txt
+      - name: Apply canonical server migrations
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo run --locked -p rustok-migrations --bin rustok-migrate -- up \
+            2>&1 | tee evidence/taxonomy-postgres/migrations.log
+      - name: Execute Taxonomy route-registry contention evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture \
+            2>&1 | tee evidence/taxonomy-postgres/route-registry.log
+      - name: Execute Taxonomy translation-target evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-taxonomy --test translation_target_postgres -- --nocapture \
+            2>&1 | tee evidence/taxonomy-postgres/translation-target.log
+      - name: Archive Taxonomy PostgreSQL evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: taxonomy-postgres-evidence-${{ github.run_id }}-${{ github.sha }}
+          path: evidence/taxonomy-postgres
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  gate:
+    name: Taxonomy PostgreSQL Evidence Gate
+    if: always()
+    needs:
+      - source-contract
+      - postgres-evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require source contract and PostgreSQL evidence
+        shell: bash
+        run: |
+          if [[ "${{ needs.source-contract.result }}" != "success" ]] || \
+             [[ "${{ needs.postgres-evidence.result }}" != "success" ]]; then
+            echo "::error::Taxonomy PostgreSQL evidence did not complete successfully."
+            exit 1
+          fi

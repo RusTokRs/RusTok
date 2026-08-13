@@ -2,17 +2,18 @@
   "schema_version": 1,
   "module": "taxonomy",
   "surface": "route_registry_postgres_contention",
-  "status": "executable_no_run",
-  "compile_policy": "not_run_by_request",
-  "runtime_status": "not_run",
+  "status": "executable_no_runtime_record",
+  "compile_policy": "ci_runtime_workflow",
+  "runtime_status": "not_recorded",
   "environment": {
     "primary": "RUSTOK_TAXONOMY_TEST_DATABASE_URL",
     "fallback": "DATABASE_URL",
     "required_backend": "postgresql",
-    "isolation": "unique schema with independent single-connection workers"
+    "isolation": "canonical ephemeral PostgreSQL runtime plus a unique schema with independent single-connection route writers"
   },
   "test_target": "crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs",
   "source_guardrail": "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs",
+  "runtime_workflow": ".github/workflows/taxonomy-postgres-evidence.yml",
   "production_contract": {
     "mutation_path": "update_module_term_in_tx",
     "route_registry_table": "taxonomy_term_route_keys",
@@ -34,8 +35,8 @@
     "locale": "en"
   },
   "remaining_open_result_4_evidence": [
-    "PostgreSQL concurrent translation apply CAS",
-    "PostgreSQL translation change-cursor monotonic consumption",
-    "recorded maintainer/runtime execution of retained Taxonomy migrations and this contention harness"
+    "recorded PostgreSQL execution of concurrent translation apply CAS",
+    "recorded PostgreSQL execution of translation change-cursor recovery and monotonic consumption",
+    "recorded exact-head execution of the canonical server migration graph plus both Taxonomy PostgreSQL harnesses"
   ]
 }
