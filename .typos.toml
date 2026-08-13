@@ -1,0 +1,26 @@
+[files]
+extend-exclude = [
+  "packages/richtext/dist/**",
+  "migration-export-output.txt",
+  "PAGE_BUILDER_CURRENT_CLEANUP_FAILURE.md",
+]
+
+[default]
+extend-ignore-re = [
+  'FORUM-[0-9]+[A-Z]+',
+  'forum-[0-9]+[a-z]+',
+  '\b[0-9a-f]{7,40}\b',
+  '\bAuThOrIzEd\b',
+]
+
+[default.extend-words]
+categorie = "categorie"
+Systemes = "Systemes"
+systemes = "systemes"
+Hel = "Hel"
+Titel = "Titel"
+JOD = "JOD"
+RTO = "RTO"
+intoto = "intoto"
+invokable = "invokable"
+enabeld = "enabeld"
