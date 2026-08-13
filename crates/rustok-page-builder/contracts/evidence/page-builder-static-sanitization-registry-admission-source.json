@@ -1,0 +1,108 @@
+{
+  "format": "page_builder_static_sanitization_registry_admission_source",
+  "status": "source_ready_execution_receipt_pending",
+  "scope": "page_builder_fba_static_sanitization",
+  "purpose": "Fail closed over a retained static-sanitization execution receipt plus saved GitHub workflow-run metadata before any later PR may change the canonical FBA executed-evidence node.",
+  "predecessor": {
+    "source_contract": "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json",
+    "source_format": "page_builder_static_sanitization_execution_source_v1",
+    "source_status": "source_ready_maintainer_execution_pending",
+    "receipt_format": "page_builder_static_sanitization_execution_v1",
+    "receipt_status": "static_sanitization_execution_passed_registry_update_pending",
+    "maximum_receipt_bytes": 1048576,
+    "maximum_run_metadata_bytes": 2097152
+  },
+  "github_run": {
+    "repository": "RusTokRs/RusTok",
+    "workflow_name": "Page Builder Static Sanitization Evidence",
+    "workflow_path": ".github/workflows/page-builder-static-sanitization-evidence.yml",
+    "event": "push",
+    "head_branch": "main",
+    "required_status": "completed",
+    "required_conclusion": "success",
+    "run_id_must_equal_receipt": true,
+    "run_attempt_must_equal_receipt": true,
+    "head_sha_must_equal_receipt_source_commit": true,
+    "saved_run_metadata_is_not_cryptographic_attestation": true,
+    "maintainer_must_review_run_on_github": true
+  },
+  "source_lineage": {
+    "receipt_source_commit_must_exist": true,
+    "receipt_source_commit_must_be_ancestor_of_checkout_head": true,
+    "receipt_source_sha256_must_cover_exact_execution_required_source_files": true,
+    "receipt_source_sha256_must_match_files_at_executed_commit": true,
+    "current_execution_required_source_files_must_match_executed_commit": true,
+    "fba_registry_must_still_match_executed_before_state": true,
+    "source_drift_requires_new_execution": true
+  },
+  "target": {
+    "fba_registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "registry_required_status": "boundary_ready",
+    "executed_evidence_json_pointer": "/provider/static_sanitization_contract/executed_evidence",
+    "required_before_value": "pending",
+    "admitted_after_value": "verified",
+    "registry_mutation_by_admission": false
+  },
+  "admission": {
+    "runner": "scripts/evidence/admit-page-builder-static-sanitization-registry-update.mjs",
+    "runner_test": "scripts/evidence/admit-page-builder-static-sanitization-registry-update.test.mjs",
+    "source_verifier": "scripts/verify/verify-page-builder-static-sanitization-registry-admission.mjs",
+    "network_requests": false,
+    "github_api_requests": false,
+    "browser_execution": false,
+    "cargo_execution": false,
+    "database_access": false,
+    "registry_mutation": false,
+    "git_ref_mutation": false
+  },
+  "output": {
+    "format": "page_builder_static_sanitization_registry_admission",
+    "success_status": "static_sanitization_execution_admitted_registry_update_pending",
+    "default_path": "target/page-builder-static-sanitization-registry-admission.json",
+    "receipt_sha256_retained": true,
+    "run_metadata_sha256_retained": true,
+    "execution_source_commit_retained": true,
+    "execution_source_sha256_retained": true,
+    "run_identity_retained": true,
+    "target_pointer_retained": true,
+    "raw_receipt_path_retained": false,
+    "raw_run_metadata_path_retained": false,
+    "raw_logs_retained": false
+  },
+  "governance_boundary": {
+    "admission_is_not_registry_update": true,
+    "admission_is_not_terminal_inventory_completion": true,
+    "admission_is_not_owner_approval": true,
+    "admission_is_not_platform_approval": true,
+    "admission_does_not_promote_fba": true,
+    "registry_change_requires_separate_evidence_containing_pr": true,
+    "registry_change_must_bind_exact_admission_packet": true,
+    "registry_change_must_change_only_the_admitted_node_for_this_evidence": true,
+    "terminal_inventory_must_be_recomputed_after_registry_change": true,
+    "cryptographic_ci_attestation_claimed": false
+  },
+  "required_source_files": [
+    "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-registry-admission-source.json",
+    "scripts/evidence/admit-page-builder-static-sanitization-registry-update.mjs",
+    "scripts/evidence/admit-page-builder-static-sanitization-registry-update.test.mjs",
+    "scripts/verify/verify-page-builder-static-sanitization-registry-admission.mjs"
+  ],
+  "non_claims": {
+    "execution_receipt_available": false,
+    "github_run_success_verified": false,
+    "admission_packet_generated": false,
+    "fba_registry_mutated": false,
+    "executed_evidence_cleared": false,
+    "terminal_inventory_recomputed": false,
+    "page_builder_fba_promoted": false,
+    "tests_run": false,
+    "node_verifier_run": false,
+    "workflow_or_ci_run_by_this_slice": false
+  },
+  "next_cursor": {
+    "exact_main_execution": "await_completed_successful_push_run_and_retained_artifact",
+    "registry_admission": "execute_runner_against_receipt_and_saved_github_run_metadata",
+    "registry_update": "blocked_on_successful_registry_admission_packet",
+    "terminal_inventory": "recompute_only_after_evidence_containing_registry_update"
+  }
+}
