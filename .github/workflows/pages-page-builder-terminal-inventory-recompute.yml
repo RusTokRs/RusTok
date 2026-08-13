@@ -1,0 +1,123 @@
+name: Pages Page Builder Terminal Inventory Recompute
+
+on:
+  push:
+    branches:
+      - agent/pages-page-builder-terminal-inventory-recompute-20260813
+    paths:
+      - ".github/workflows/pages-page-builder-terminal-inventory-recompute.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-page-builder-terminal-inventory-recompute
+  cancel-in-progress: true
+
+jobs:
+  recompute:
+    name: Recompute terminal inventory source snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Actualize canonical blocker snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          source_path = Path("crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json")
+          verifier_path = Path("scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs")
+          actualization_path = Path("docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-13.md")
+
+          source = source_path.read_text(encoding="utf-8")
+          old = '"current_source_rechecked_blocker_count": 12'
+          new = '"current_source_rechecked_blocker_count": 11'
+          if source.count(old) != 1 or new in source:
+              raise SystemExit("terminal inventory source blocker-count pre-state drifted")
+          source_path.write_text(source.replace(old, new, 1), encoding="utf-8")
+
+          verifier = verifier_path.read_text(encoding="utf-8")
+          sanitization_line = '  "/provider/static_sanitization_contract/executed_evidence",\n'
+          if verifier.count(sanitization_line) != 1:
+              raise SystemExit("terminal inventory verifier sanitization path pre-state drifted")
+          verifier = verifier.replace(sanitization_line, "", 1)
+          count_old = "source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 12"
+          count_new = "source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 11"
+          if verifier.count(count_old) != 1 or count_new in verifier:
+              raise SystemExit("terminal inventory verifier count pre-state drifted")
+          verifier = verifier.replace(count_old, count_new, 1)
+          marker_old = '  "12",\n'
+          marker_new = '  "11",\n'
+          if verifier.count(marker_old) != 1 or marker_new in verifier:
+              raise SystemExit("terminal inventory actualization marker pre-state drifted")
+          verifier_path.write_text(verifier.replace(marker_old, marker_new, 1), encoding="utf-8")
+
+          actualization = actualization_path.read_text(encoding="utf-8")
+          replacements = {
+              "The fresh recheck finds **12** recursive Page Builder FBA blocker nodes.":
+                  "The fresh recheck finds **11** recursive Page Builder FBA blocker nodes.",
+              "These are blocker **nodes**, not a claim that twelve unrelated test suites must be invented.":
+                  "These are blocker **nodes**, not a claim that eleven unrelated test suites must be invented.",
+              "With the current 12 FBA blocker nodes and the current Pages marker, an inventory run must remain":
+                  "With the current 11 FBA blocker nodes and the current Pages marker, an inventory run must remain",
+          }
+          for before, after in replacements.items():
+              if actualization.count(before) != 1 or after in actualization:
+                  raise SystemExit(f"terminal inventory actualization pre-state drifted: {before}")
+              actualization = actualization.replace(before, after, 1)
+
+          heading = "The current review snapshot is:\n\n"
+          start = actualization.index(heading) + len(heading)
+          end = actualization.index("\n\nThese are blocker **nodes**", start)
+          block = actualization[start:end]
+          entries = []
+          for line in block.splitlines():
+              match = re.fullmatch(r"\d+\. (`/.+`)", line)
+              if not match:
+                  raise SystemExit(f"unexpected blocker snapshot line: {line!r}")
+              path = match.group(1)
+              if path == "`/provider/static_sanitization_contract/executed_evidence`":
+                  continue
+              entries.append(path)
+          if len(entries) != 11:
+              raise SystemExit(f"expected 11 blocker snapshot entries after admission, got {len(entries)}")
+          rebuilt = "\n".join(f"{index}. {path}" for index, path in enumerate(entries, 1))
+          actualization_path.write_text(actualization[:start] + rebuilt + actualization[end:], encoding="utf-8")
+          PY
+
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json \
+            docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-13.md \
+            scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs | sort)"
+          test "$changed" = "$expected"
+      - name: Verify terminal inventory source
+        run: node scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs
+      - name: Test terminal inventory evaluator
+        run: node --test scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs
+      - name: Commit source actualization and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=".github/workflows/pages-page-builder-terminal-inventory-recompute.yml"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json \
+            docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-13.md \
+            scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs
+          git rm -- "$workflow"
+          git commit \
+            -m "test(page-builder): recompute terminal evidence blocker snapshot" \
+            -m "Static sanitization evidence is now admitted; canonical Page Builder FBA pending blocker count decreases from 12 to 11. Terminal inventory remains incomplete and owner/platform review remains blocked."
+          git push origin HEAD:agent/pages-page-builder-terminal-inventory-recompute-20260813
