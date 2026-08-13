@@ -1,0 +1,127 @@
+{
+  "format": "pages_cache_consumer_execution_source_v1",
+  "status": "source_ready_main_execution_pending",
+  "scope": "Page Builder FBA Pages cache consumer production relay, retry, registered native route and artifact HTTP cache execution evidence",
+  "target": {
+    "path": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "required_registry_status": "boundary_ready",
+    "executed_evidence_json_pointer": "/consumers/0/cache_consumer/executed_evidence",
+    "required_before_value": "pending"
+  },
+  "source_packets": {
+    "generation_gate": {
+      "path": "crates/rustok-pages/contracts/evidence/pages-production-relay-generation-gate-source.json",
+      "required_status": "pages_production_relay_generation_gate_source_unvalidated"
+    },
+    "native_route": {
+      "path": "crates/rustok-pages/contracts/evidence/pages-production-relay-native-route-source.json",
+      "required_status": "pages_production_relay_native_route_source_unvalidated"
+    },
+    "postgres_restart": {
+      "path": "crates/rustok-pages/contracts/evidence/pages-production-gate-postgres-restart-source.json",
+      "required_status": "pages_production_gate_postgres_restart_source_unvalidated"
+    },
+    "native_storefront_cache": {
+      "path": "crates/rustok-pages/contracts/evidence/pages-native-storefront-cache-source.json",
+      "required_status": "pages_native_storefront_cache_source_unvalidated"
+    },
+    "artifact_http_cache": {
+      "path": "crates/rustok-pages/contracts/evidence/pages-artifact-http-cache-source.json",
+      "required_status": "pages_artifact_http_cache_source_unvalidated"
+    },
+    "publish_rollback_postgres": {
+      "path": "crates/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json",
+      "required_status": "pages_publish_rollback_outbox_cache_postgres_source_unvalidated"
+    },
+    "relay_restart_postgres": {
+      "path": "crates/rustok-pages/contracts/evidence/pages-outbox-relay-restart-postgres-source.json",
+      "required_status": "pages_outbox_relay_restart_postgres_source_unvalidated"
+    }
+  },
+  "execution": {
+    "verifier_commands": [
+      "node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-cache-correlation.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs",
+      "node scripts/verify/verify-pages-cache-consumer-execution.mjs"
+    ],
+    "test_commands": [
+      "cargo test -p rustok-server --features mod-pages services::pages_cache_invalidation -- --nocapture",
+      "cargo test -p rustok-server --features mod-pages services::tenant_generation_delivery_gate -- --nocapture",
+      "cargo test -p rustok-pages --test publish_rollback_cache_correlation -- --nocapture",
+      "cargo test -p rustok-pages --test native_storefront_cache_contract -- --nocapture",
+      "cargo test -p rustok-pages --test artifact_http_cache_sqlite -- --nocapture",
+      "cargo test -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture",
+      "cargo test -p rustok-pages --test publish_rollback_outbox_cache_postgres -- --nocapture",
+      "cargo test -p rustok-pages --test outbox_relay_restart_postgres -- --nocapture",
+      "cargo test -p rustok-server --features mod-pages --test pages_production_gate_postgres_restart -- --nocapture"
+    ],
+    "check_commands": [
+      "cargo check --locked -p rustok-pages --all-targets",
+      "cargo check --locked -p rustok-pages-storefront --features ssr --all-targets",
+      "cargo check --locked -p rustok-server --features mod-pages --all-targets"
+    ],
+    "postgres": {
+      "required": true,
+      "database_env": "RUSTOK_PAGES_TEST_DATABASE_URL",
+      "isolated_schema_owned_by_harnesses": true
+    }
+  },
+  "output": {
+    "format": "pages_cache_consumer_execution_v1",
+    "success_status": "cache_consumer_execution_passed_admission_pending",
+    "default_path": "evidence/pages-cache-consumer/receipt.json"
+  },
+  "required_source_files": [
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "crates/rustok-pages/src/cache_invalidation.rs",
+    "apps/server/src/services/pages_cache_invalidation.rs",
+    "apps/server/src/services/tenant_generation_delivery_gate.rs",
+    "apps/server/src/services/event_transport_factory.rs",
+    "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+    "crates/rustok-pages/src/controllers/mod.rs",
+    "crates/rustok-pages/tests/publish_rollback_cache_correlation.rs",
+    "crates/rustok-pages/tests/native_storefront_cache_contract.rs",
+    "crates/rustok-pages/tests/artifact_http_cache_sqlite.rs",
+    "apps/server/tests/pages_production_relay_native_route_sqlite.rs",
+    "crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs",
+    "crates/rustok-pages/tests/outbox_relay_restart_postgres.rs",
+    "apps/server/tests/pages_production_gate_postgres_restart.rs",
+    "crates/rustok-pages/contracts/evidence/pages-production-relay-generation-gate-source.json",
+    "crates/rustok-pages/contracts/evidence/pages-production-relay-native-route-source.json",
+    "crates/rustok-pages/contracts/evidence/pages-production-gate-postgres-restart-source.json",
+    "crates/rustok-pages/contracts/evidence/pages-native-storefront-cache-source.json",
+    "crates/rustok-pages/contracts/evidence/pages-artifact-http-cache-source.json",
+    "crates/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json",
+    "crates/rustok-pages/contracts/evidence/pages-outbox-relay-restart-postgres-source.json",
+    "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-cache-correlation.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-production-gate-postgres-restart.mjs",
+    ".github/workflows/pages-cache-consumer-execution-evidence.yml",
+    "scripts/evidence/record-pages-cache-consumer-execution.mjs",
+    "scripts/verify/verify-pages-cache-consumer-execution.mjs",
+    "docs/modules/pages-cache-consumer-execution-actualization-2026-08-13.md"
+  ],
+  "governance_boundary": {
+    "execution_receipt_is_not_registry_admission": true,
+    "registry_mutation_forbidden_in_execution_workflow": true,
+    "browser_or_external_deployment_claimed": false,
+    "cross_process_exact_once_claimed": false,
+    "terminal_inventory_complete_claimed": false,
+    "owner_platform_approval_claimed": false,
+    "pages_ffa_promoted": false,
+    "page_builder_fba_promoted": false
+  }
+}
