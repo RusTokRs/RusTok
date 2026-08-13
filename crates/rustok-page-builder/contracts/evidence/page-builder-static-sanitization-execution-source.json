@@ -1,0 +1,90 @@
+{
+  "format": "page_builder_static_sanitization_execution_source_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "scope": "page_builder_fba_static_sanitization",
+  "purpose": "Produce a bounded retained GitHub Actions execution packet for the canonical Page Builder static publish sanitization boundary without mutating the FBA registry or claiming transport_verified.",
+  "target": {
+    "fba_registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "registry_required_status": "boundary_ready",
+    "executed_evidence_json_pointer": "/provider/static_sanitization_contract/executed_evidence",
+    "required_before_value": "pending",
+    "registry_mutation_by_workflow": false
+  },
+  "execution": {
+    "workflow": ".github/workflows/page-builder-static-sanitization-evidence.yml",
+    "source_verifiers": [
+      "node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs",
+      "node scripts/verify/verify-page-builder-static-sanitization-execution.mjs"
+    ],
+    "test_list_command": "cargo test --locked -p rustok-page-builder --lib -- --list",
+    "required_test_name_fragments": [
+      "publish_sanitization::tests::sanitization_assigns_stable_ids_and_hashes_policy_bound_project",
+      "publish_sanitization::tests::sanitization_rejects_excess_global_resources",
+      "publish_sanitization::tests::sanitization_rejects_insecure_public_resources",
+      "publish_sanitization::tests::sanitization_rejects_renderer_dropped_attributes_and_css",
+      "static_publish_policy::tests::",
+      "static_publish_resource_limits::tests::"
+    ],
+    "test_commands": [
+      "cargo test --locked -p rustok-page-builder --lib publish_sanitization::tests:: -- --nocapture",
+      "cargo test --locked -p rustok-page-builder --lib static_publish_policy::tests:: -- --nocapture",
+      "cargo test --locked -p rustok-page-builder --lib static_publish_resource_limits::tests:: -- --nocapture"
+    ],
+    "recorder": "scripts/evidence/record-page-builder-static-sanitization-execution.mjs",
+    "artifact_retention_days": 90,
+    "network_runtime_under_test_required": false,
+    "database_required": false,
+    "browser_required": false
+  },
+  "output": {
+    "format": "page_builder_static_sanitization_execution_v1",
+    "success_status": "static_sanitization_execution_passed_registry_update_pending",
+    "default_path": "evidence/page-builder-static-sanitization/receipt.json",
+    "source_commit_retained": true,
+    "workflow_run_identity_retained": true,
+    "source_sha256_retained": true,
+    "test_commands_retained": true,
+    "target_pointer_retained": true,
+    "raw_test_logs_embedded": false,
+    "tenant_identity_retained": false,
+    "credentials_or_cookies_retained": false
+  },
+  "required_source_files": [
+    "crates/rustok-page-builder/src/publish_sanitization.rs",
+    "crates/rustok-page-builder/src/static_publish_policy.rs",
+    "crates/rustok-page-builder/src/static_publish_resource_limits.rs",
+    "crates/rustok-page-builder/src/static_landing.rs",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "crates/rustok-page-builder/contracts/evidence/page-builder-static-publish-resource-limits-source.json",
+    "crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs",
+    "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json",
+    "scripts/evidence/record-page-builder-static-sanitization-execution.mjs",
+    "scripts/verify/verify-page-builder-static-sanitization-execution.mjs",
+    ".github/workflows/page-builder-static-sanitization-evidence.yml",
+    "docs/modules/page-builder-static-sanitization-execution-actualization-2026-08-13.md"
+  ],
+  "governance_boundary": {
+    "execution_packet_is_not_registry_update": true,
+    "execution_packet_is_not_terminal_inventory_completion": true,
+    "execution_packet_is_not_owner_approval": true,
+    "execution_packet_is_not_platform_approval": true,
+    "execution_packet_does_not_promote_fba": true,
+    "registry_pending_value_must_be_changed_only_by_later_evidence_containing_pr": true,
+    "later_registry_change_must_bind_exact_execution_packet_and_source_commit": true,
+    "cryptographic_ci_attestation_claimed": false
+  },
+  "non_claims": {
+    "tests_run_by_this_source_slice": false,
+    "workflow_run_by_this_source_slice": false,
+    "execution_packet_generated_by_this_source_slice": false,
+    "fba_registry_mutated": false,
+    "executed_evidence_cleared": false,
+    "page_builder_fba_promoted": false,
+    "terminal_inventory_complete": false
+  },
+  "next_cursor": {
+    "static_sanitization_execution": "source_ready_maintainer_execution_pending",
+    "static_sanitization_registry_update": "blocked_on_successful_exact_source_execution_packet",
+    "remaining_terminal_inventory": "blocked_on_other_canonical_pending_evidence_and_pages_rollout_marker"
+  }
+}
