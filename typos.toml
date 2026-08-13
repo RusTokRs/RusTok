@@ -10,6 +10,9 @@ extend-exclude = [
   "crates/rustok-commerce/src/controllers/store.rs",
   "crates/rustok-commerce/tests/checkout_service_test.rs",
   "crates/rustok-commerce/tests/graphql_runtime_parity_test.rs",
+  "packages/richtext/dist/**",
+  "PAGE_BUILDER_CURRENT_CLEANUP_FAILURE.md",
+  "migration-export-output.txt",
   "vendor/**",
   # Vendored upstream patch set; keep spellings and identifiers aligned with upstream.
   "third_party/patches/parcel_css/**",
@@ -24,4 +27,8 @@ extend-ignore-re = [
   "\\bReFuNdEd\\b",
   "\\b[Pp]rodukt\\b",
   "\\bOT\\b",
+  "\\b(?:FORUM-20BA|forum_20ba|ba1de73)\\b",
+  "\\b(?:RTO|JOD|intoto|categorie|Systemes|systemes|Titel|Suche|Hel)\\b",
+  "\\bAuThOrIzEd\\b",
+  "\\bsitemap_enabeld\\b",
 ]
