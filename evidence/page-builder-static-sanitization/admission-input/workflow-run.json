@@ -1,0 +1,14 @@
+{
+  "id": 31678544586,
+  "run_attempt": 1,
+  "name": "Page Builder Static Sanitization Evidence",
+  "path": ".github/workflows/page-builder-static-sanitization-evidence.yml",
+  "event": "push",
+  "head_branch": "main",
+  "head_sha": "4afd59de877c71e1b22d155c99d1fb6c2abc9ff2",
+  "status": "completed",
+  "conclusion": "success",
+  "repository": {
+    "full_name": "RusTokRs/RusTok"
+  }
+}
