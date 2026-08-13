@@ -50,16 +50,55 @@ jobs:
           if verifier.count(sanitization_line) != 1:
               raise SystemExit("terminal inventory verifier sanitization path pre-state drifted")
           verifier = verifier.replace(sanitization_line, "", 1)
+
           count_old = "source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 12"
           count_new = "source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 11"
           if verifier.count(count_old) != 1 or count_new in verifier:
               raise SystemExit("terminal inventory verifier count pre-state drifted")
           verifier = verifier.replace(count_old, count_new, 1)
+
           marker_old = '  "12",\n'
           marker_new = '  "11",\n'
           if verifier.count(marker_old) != 1 or marker_new in verifier:
               raise SystemExit("terminal inventory actualization marker pre-state drifted")
-          verifier_path.write_text(verifier.replace(marker_old, marker_new, 1), encoding="utf-8")
+          verifier = verifier.replace(marker_old, marker_new, 1)
+
+          predecessor_block_start = verifier.index(
+              'for (const marker of [\n  "complete_terminal_evidence_inventory_source_defined === true"'
+          )
+          predecessor_block_end = verifier.index(
+              "]) {\n  requireText(predecessorVerifier", predecessor_block_start
+          )
+          predecessor_block = verifier[predecessor_block_start:predecessor_block_end]
+          predecessor_old = '  "terminal evidence inventory source identity does not match the admission guard",'
+          predecessor_new = '  \'inventorySource.format === "pages_page_builder_terminal_evidence_inventory_source_v1"\','
+          if predecessor_block.count(predecessor_old) != 1 or predecessor_new in predecessor_block:
+              raise SystemExit("terminal inventory predecessor-verifier marker pre-state drifted")
+          predecessor_block = predecessor_block.replace(predecessor_old, predecessor_new, 1)
+          verifier = (
+              verifier[:predecessor_block_start]
+              + predecessor_block
+              + verifier[predecessor_block_end:]
+          )
+
+          runner_block_start = verifier.index('for (const marker of [\n  "collectPendingEvidence"')
+          runner_block_end = verifier.index("]) {\n  requireText(runner", runner_block_start)
+          runner_block = verifier[runner_block_start:runner_block_end]
+          for before, after in [
+              (
+                  '  "terminal_evidence_inventory_complete_owner_platform_review_ready",',
+                  '  "contract.completion.complete_status",',
+              ),
+              (
+                  '  "terminal_evidence_inventory_incomplete",',
+                  '  "contract.completion.incomplete_status",',
+              ),
+          ]:
+              if runner_block.count(before) != 1 or after in runner_block:
+                  raise SystemExit(f"terminal inventory runner marker pre-state drifted: {before}")
+              runner_block = runner_block.replace(before, after, 1)
+          verifier = verifier[:runner_block_start] + runner_block + verifier[runner_block_end:]
+          verifier_path.write_text(verifier, encoding="utf-8")
 
           actualization = actualization_path.read_text(encoding="utf-8")
           replacements = {
@@ -119,5 +158,5 @@ jobs:
           git rm -- "$workflow"
           git commit \
             -m "test(page-builder): recompute terminal evidence blocker snapshot" \
-            -m "Static sanitization evidence is now admitted; canonical Page Builder FBA pending blocker count decreases from 12 to 11. Terminal inventory remains incomplete and owner/platform review remains blocked."
+            -m "Static sanitization evidence is now admitted; canonical Page Builder FBA pending blocker count decreases from 12 to 11. Also make terminal inventory source-lock checks follow the contract-bound runner/predecessor implementation. Terminal inventory remains incomplete and owner/platform review remains blocked."
           git push origin HEAD:agent/pages-page-builder-terminal-inventory-recompute-20260813
