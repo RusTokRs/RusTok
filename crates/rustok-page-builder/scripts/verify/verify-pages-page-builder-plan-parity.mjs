@@ -20,6 +20,7 @@ const gateAcceptancePath = "crates/rustok-pages/contracts/evidence/pages-referen
 const forumManifestPath = "crates/rustok-forum/rustok-module.toml";
 const forumWavePath = "crates/rustok-forum/contracts/evidence/forum-wave1-rollout-evidence.json";
 const forumWaveAdmissionPath = "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json";
+const forumWaveObservedAcceptancePath = "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json";
 const failures = [];
 
 function read(relativePath) {
@@ -79,6 +80,10 @@ const gateAcceptance = parseJson(read(gateAcceptancePath), gateAcceptancePath);
 const forumManifest = read(forumManifestPath);
 const forumWave = parseJson(read(forumWavePath), forumWavePath);
 const forumWaveAdmission = parseJson(read(forumWaveAdmissionPath), forumWaveAdmissionPath);
+const forumWaveObservedAcceptance = parseJson(
+  read(forumWaveObservedAcceptancePath),
+  forumWaveObservedAcceptancePath,
+);
 
 const sharedCurrent = section(
   sharedPlan,
@@ -95,7 +100,13 @@ for (const marker of [
   "forum-evidence-harness-source-ready",
   "pages-reference-consumer-gate-source-ready",
   "pages-reference-consumer-gate-acceptance-source-ready",
+  "pages-gate-owner-runner-synthetic-ready",
   "forum-wave-admission-source-ready",
+  "forum-wave-admission-runner-synthetic-ready",
+  "forum-wave-live-lineage-source-ready",
+  "forum-wave-observed-owner-acceptance-source-ready",
+  "generic-editor-accessibility-source-ready",
+  "generic-accessibility-browser-packet-verifier-source-ready",
   "execution-acceptance-pending",
 ]) requireText(sharedPlan, marker, `${sharedPlanPath}: status`);
 for (const stale of [
@@ -118,10 +129,19 @@ for (const marker of [
   "PRs #3424 and #3426",
   "PR #3429",
   "PR #3435",
+  "PR #3453",
+  "PR #3456",
+  "PR #3458",
+  "PR #3459",
+  "PR #3460",
+  "PR #3461",
+  "PR #3464",
+  "PR #3465",
   "adapter_state = \"fly_contract_ready\"",
   "preview_data_state = \"owner_preview_transport_ready\"",
   "property_data_state = \"owner_property_editor_ready\"",
   "Current deployment health is still not asserted by source inspection",
+  "accepted owner evidence is only eligible input for a separate FFA/FBA promotion review",
 ]) requireText(sharedCurrent, marker, `${sharedPlanPath}: current reconciliation`);
 
 for (const marker of [
@@ -129,8 +149,10 @@ for (const marker of [
   "rollout-only reference candidate",
   "run Forum Wave admission",
   "observed control-plane Wave",
+  "verify freshness and exact retained-admission lineage",
+  "retrospective observed-Wave owner decision",
   "Current provider health is not inferred by this plan",
-  "Promote FFA/FBA only after",
+  "Only after accepted observed-Wave owner evidence",
 ]) requireText(sharedNext, marker, `${sharedPlanPath}: next cursor`);
 
 for (const marker of [
@@ -312,8 +334,13 @@ if (
   forumWave.observed_run?.accepted_gate_evidence?.status !== "owner_accepted_pages_reference_consumer_gate" ||
   forumWave.observed_run?.wave_admission?.format !== "forum_page_builder_wave_admission_v1" ||
   forumWave.observed_run?.wave_admission?.status !== "forum_wave_inputs_admitted_observed_control_plane_pending" ||
-  !(forumWave.observed_run?.required_evidence ?? []).includes("admission")
-) failures.push(`${forumWavePath}: Forum Wave accepted-gate/admission cursor drifted`);
+  !(forumWave.observed_run?.required_evidence ?? []).includes("admission") ||
+  forumWave.observed_run?.owner_acceptance?.required !== true ||
+  forumWave.observed_run?.owner_acceptance?.source_status !== "source_ready_maintainer_execution_pending" ||
+  forumWave.observed_run?.owner_acceptance?.format !== "forum_page_builder_wave_observed_acceptance_v1" ||
+  forumWave.observed_run?.owner_acceptance?.accepted_status !== "owner_accepted_observed_control_plane_wave_promotion_review_pending" ||
+  forumWave.observed_run?.owner_acceptance?.execution_status !== "maintainer_execution_pending"
+) failures.push(`${forumWavePath}: Forum Wave accepted-gate/admission/owner-acceptance cursor drifted`);
 
 if (
   forumWaveAdmission.format !== "forum_page_builder_wave_admission_source_v1" ||
@@ -327,6 +354,26 @@ if (
   forumWaveAdmission.lineage?.deployment_digest_equality_does_not_upgrade_origin_binding_to_cryptographic_proof !== true ||
   forumWaveAdmission.observed_wave_boundary?.forum_wave_not_accepted !== true
 ) failures.push(`${forumWaveAdmissionPath}: Forum Wave admission source drifted`);
+
+if (
+  forumWaveObservedAcceptance.format !== "forum_page_builder_wave_observed_acceptance_source_v1" ||
+  forumWaveObservedAcceptance.status !== "source_ready_maintainer_execution_pending" ||
+  forumWaveObservedAcceptance.wave_evidence_input?.mode !== "live" ||
+  forumWaveObservedAcceptance.wave_evidence_input?.provenance !== "observed_control_plane" ||
+  forumWaveObservedAcceptance.wave_evidence_input?.execution_status !== "maintainer_verified" ||
+  forumWaveObservedAcceptance.wave_evidence_input?.source_commit_must_equal_checkout_head !== true ||
+  forumWaveObservedAcceptance.admission_input?.format !== "forum_page_builder_wave_admission_v1" ||
+  forumWaveObservedAcceptance.admission_input?.status !== "forum_wave_inputs_admitted_observed_control_plane_pending" ||
+  forumWaveObservedAcceptance.owner_decision?.runner !== "scripts/evidence/accept-forum-page-builder-wave.mjs" ||
+  !(forumWaveObservedAcceptance.owner_decision?.decisions ?? []).includes("accept_observed_wave_evidence") ||
+  !(forumWaveObservedAcceptance.owner_decision?.decisions ?? []).includes("reject") ||
+  forumWaveObservedAcceptance.output?.format !== "forum_page_builder_wave_observed_acceptance_v1" ||
+  forumWaveObservedAcceptance.output?.accepted_status !== "owner_accepted_observed_control_plane_wave_promotion_review_pending" ||
+  forumWaveObservedAcceptance.promotion_boundary?.accepted_packet_is_eligible_input_for_explicit_ffa_fba_promotion_review !== true ||
+  forumWaveObservedAcceptance.promotion_boundary?.accepted_packet_does_not_itself_promote_ffa_or_fba !== true ||
+  forumWaveObservedAcceptance.promotion_boundary?.accepted_packet_does_not_mutate_control_plane_or_rollout !== true ||
+  forumWaveObservedAcceptance.next_cursor?.ffa_fba_promotion_review !== "blocked_on_accepted_observed_wave_evidence"
+) failures.push(`${forumWaveObservedAcceptancePath}: observed Wave owner-acceptance/promotion boundary drifted`);
 
 if (failures.length > 0) {
   console.error("Pages / Page Builder plan parity verification failed:");

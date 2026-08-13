@@ -1,19 +1,23 @@
 # `rustok-index` Current Implementation Plan — 2026-08-12
 
-Status: `m5_product_refresh_redelivery_evidence_source_ready`
+Status: `m5_product_refresh_redelivery_runtime_execution_pending`
 
 This document supersedes `implementation-plan-current-2026-08-09.md` as the active execution cursor for `rustok-index`.
 
 ## 1. Rechecked baseline
 
-The baseline for this update is `main@f998be7402527d116a4f45e9fd5f823288cbd681` on 2026-08-12, the squash merge of PR #3455.
+The current execution baseline for this cursor revision is `main@631513a44a5477596854ea1d23968aa5221c68c2` on 2026-08-12. PR #3466 squash-merged the reviewed `workflow_dispatch`-only Product refresh PostgreSQL/Iggy redelivery evidence runner into that exact mainline commit. The source revision had already passed complete PR `Index Contract CI` run `31630496801` before merge.
 
-The previously completed Index foundation remains present and is not reopened:
+The mainline delta that landed between the runner's source baseline and merge was Forum/Page Builder work only and did not overlap the seven Index/CI files carried by #3466.
+
+The exact post-merge main recheck also exposed one pre-existing Index core-boundary violation in `Index Storage Smoke Evidence` run `31633573608`: `rustok-index` still listed `rustok-api` as a production dependency because the reconciliation scheduler imported the generic `ModuleWork*` contract directly from the API crate. That scheduler was introduced by #2940, whose merge description explicitly recorded that tests, verifiers and CI were not run. This cursor revision therefore also repairs that boundary without weakening the verifier: `rustok-runtime` publicly exposes the `ModuleWork*` surface owned by its generic scheduler, the Index scheduler consumes that runtime surface, and the direct `rustok-api` production dependency is removed. No reconciliation SQL, state transition, lease/cursor behavior or work-item contract changes.
+
+The completed Index foundation remains present and is not reopened:
 
 - M1–M4 generic schema/query/storage boundaries remain the current architecture.
-- PostgreSQL source factories still own Product and ProductVariant authoritative replay loading.
+- PostgreSQL source factories own Product and ProductVariant authoritative replay loading.
 - durable inbox/source-version monotonicity remains the write-side idempotency boundary.
-- `IndexSourceRefreshEventWorker` still resolves the exact source, applies the durable mutation and acknowledges in that order.
+- `IndexSourceRefreshEventWorker` resolves the exact source, applies the durable mutation and acknowledges in that order.
 - the canonical Product refresh owner ledger, writer, relay and typed event family remain the only Product refresh wire contract.
 - Product refresh remains exactly `product.index.locale_refresh_requested` and `product.index.variant_refresh_requested`.
 - Product routes as `rustok-product::product@4`; ProductVariant routes as `rustok-product::product_variant@2`.
@@ -40,15 +44,15 @@ The host maps only:
 6. durably apply through the replay mutation sink;
 7. acknowledge only after durable persistence succeeds.
 
-## 3. M5 redelivery evidence source added by this revision
+## 3. M5 redelivery evidence source
 
-This revision adds a bounded cross-adapter executable proof source:
+The bounded cross-adapter executable proof source remains:
 
 ```text
 apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs
 ```
 
-It uses only public production boundaries for the behavior under evidence:
+It uses public production boundaries for the behavior under evidence:
 
 - `IggyTransport` and `PersistentContractConsumerGroup` for broker delivery and offset acknowledgement;
 - canonical `ContractEventEnvelope` / `ProductIndexRefreshEvent` publication;
@@ -56,32 +60,30 @@ It uses only public production boundaries for the behavior under evidence:
 - `ProductIndexRefreshDeliveryWorker` and the generic source-refresh worker;
 - production `PostgresMutationStore` and durable `index_inbox` deduplication.
 
-The harness is opt-in and requires explicit evidence-scoped PostgreSQL and external Iggy settings. It has no `DATABASE_URL`, localhost, credential or broker fallback. Missing required settings produces a developer skip; a skip is explicitly not runtime evidence.
+The harness requires explicit evidence-scoped PostgreSQL and external Iggy settings. It has no generic `DATABASE_URL`, localhost, credential or broker fallback. Missing settings on a direct developer invocation may produce a source-friendly skip; a skip is not runtime evidence.
 
 ### 3.1 Locale post-persistence ACK failure and restart
 
-The first scenario publishes canonical locale and variant refresh envelopes through the selected Iggy transport.
-
-For the first locale delivery, the evidence acknowledger alters only a clone of the broker acknowledgement token. The real Iggy consumer group therefore rejects the ACK after the generic worker has already committed the Product mutation.
+The first scenario publishes canonical locale and variant refresh envelopes through Iggy. For the locale delivery, the evidence acknowledger mutates only a clone of the broker acknowledgement token. The real consumer-group ACK fails after the generic worker has already committed the Product mutation.
 
 The scenario requires:
 
-- Product `index_entities` state and one applied `index_inbox` identity to exist after the injected ACK failure;
-- consumer/transport restart to return the same uncommitted broker offset and exact raw envelope bytes;
-- redelivery to resolve as `IndexReplayMutationOutcome::Duplicate` through the durable inbox;
-- exactly one applied inbox identity to remain;
-- successful acknowledgement to advance the group to the queued ProductVariant event;
-- ProductVariant to materialize as schema version 2 with the non-localized key and one applied inbox identity.
+- Product `index_entities` state and one applied `index_inbox` identity after the injected ACK failure;
+- consumer/transport restart returning the same uncommitted broker offset and exact raw envelope bytes;
+- redelivery resolving as `IndexReplayMutationOutcome::Duplicate` through the durable inbox;
+- exactly one applied inbox identity remaining;
+- successful acknowledgement advancing the group to the queued ProductVariant event;
+- ProductVariant materializing as schema version 2 with the non-localized key and one applied inbox identity.
 
 ### 3.2 Behind-source restart
 
-The second isolated scenario publishes a canonical Product locale refresh whose minimum owner `source_version` is one revision above the currently visible authoritative Product source.
+The second isolated scenario publishes a canonical Product locale refresh whose minimum owner `source_version` is one revision above the visible authoritative Product source.
 
-The generic worker must return `SourceVersionBehind` before mutation persistence or acknowledgement. The harness requires no matching `index_inbox` row, restarts the Iggy transport/group and requires the same uncommitted offset and exact raw payload again.
+The generic worker must return `SourceVersionBehind` before persistence or acknowledgement. The harness requires no matching `index_inbox` row, restarts the Iggy transport/group and requires the same uncommitted offset and exact raw payload again.
 
-This combined proof selects the behind-source branch of the fail-closed contract. Missing-source behavior remains pinned by the existing generic source-refresh tests.
+Missing-source behavior remains pinned by the existing generic source-refresh tests.
 
-## 4. Evidence contract and admission
+## 4. Evidence contract, source admission and merged manual execution runner
 
 The machine-readable source contract is:
 
@@ -95,22 +97,50 @@ The operator guide is:
 crates/rustok-index/docs/m5-product-refresh-postgres-iggy-redelivery-evidence.md
 ```
 
-`Index Contract CI` adds source-only admission:
+The source verifier is:
+
+```text
+scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
+```
+
+`Index Contract CI` keeps source-only admission:
 
 ```text
 node scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
 cargo check --locked -p rustok-server --no-default-features --features mod-product --test product_index_refresh_redelivery_postgres_iggy
 ```
 
-The focused gate intentionally compiles but does not execute the external-service test without explicit Iggy/PostgreSQL settings. This prevents an environment-driven skip from being mislabeled as runtime proof.
+PR #3466 merged the dedicated maintainer-owned manual runner:
 
-The verifier pins the harness to the production host route, exact canonical event mapping, `ConsumedContractEvent` acknowledgement identity, materialized source/event registries, `PostgresMutationStore`, generic durable-apply-before-ack ordering and the absence of Product-specific fallback/DLQ behavior.
+```text
+.github/workflows/index-product-refresh-redelivery-evidence.yml
+```
+
+The runner is intentionally stricter than a direct developer invocation:
+
+1. `workflow_dispatch` is its only trigger;
+2. the operator must explicitly select `execute`;
+3. repository permissions are read-only and checkout credentials are not persisted;
+4. `RUSTOK_INDEX_PRODUCT_REFRESH_TEST_DATABASE_URL` and `RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_ADDRESS` must be configured as GitHub secrets;
+5. optional Iggy username/password must either both be configured or both omitted;
+6. missing confirmation or required secrets fails before the harness starts instead of producing a successful skip;
+7. the workflow never sets or enables `RUSTOK_PRODUCT_INDEX_REFRESH_CONSUMER_ENABLED`;
+8. it runs the exact source verifier and the exact external `cargo test` command from the evidence contract.
+
+`Index Contract CI` watches the manual workflow source, so runner drift is rejected by the normal source/compile gate. The manual workflow itself is never executed automatically by push or pull request.
 
 ## 5. Runtime evidence status and next M5 execution boundary
 
-This revision is **source-ready only**. `evidence_status` remains `runtime_execution_pending` until the harness is executed against operator-approved PostgreSQL and external Iggy services without a skip.
+The evidence status remains **runtime execution pending**. The runner is now merged; source admission and merge are not runtime promotion.
 
-The next M5 execution boundary is therefore retained external execution of this exact source packet, not another production ingestion implementation.
+At this cursor recheck, no retained execution of `Index Product Refresh Redelivery Evidence` exists. The remaining M5 boundary is operational rather than another Product refresh source-code slice:
+
+1. **complete:** merge the reviewed manual runner source (#3466 -> `main@631513a44a5477596854ea1d23968aa5221c68c2`);
+2. configure operator-approved evidence-scoped PostgreSQL/Iggy GitHub secrets;
+3. dispatch `Index Product Refresh Redelivery Evidence` with confirmation `execute` against a reviewed source commit;
+4. require the workflow to complete successfully without a skip;
+5. retain the exact run id, source SHA and result as reviewed runtime evidence;
+6. only then update the machine contract/plan from `runtime_execution_pending` to the appropriate runtime-proven state.
 
 A promotable execution must demonstrate all of the following on one reviewed source commit:
 
@@ -122,7 +152,7 @@ A promotable execution must demonstrate all of the following on one reviewed sou
 6. a behind-source delivery remains out of the inbox and redelivers at the same broker offset after restart;
 7. the default-off deployment flag is not automatically enabled by evidence tooling.
 
-Do not claim runtime completion from source verification, compilation or an environment skip. Do not start partition-wide replay, storefront cutover or a Product-specific DLQ protocol as part of this boundary.
+Do not claim runtime completion from source verification, compilation, creation/merge of the manual runner or an environment skip. Do not start partition-wide replay, storefront cutover or a Product-specific DLQ protocol as part of this boundary.
 
 ## 6. M6/M7 gates remain unchanged
 
@@ -133,9 +163,11 @@ The following work remains gated:
 - Product graph/storefront cutover keeps the existing readiness, relation-admission and parity gates;
 - historical schema identities remain storage history only and must not become runtime fallback implementations.
 
-## 7. Merge admission for this revision
+## 7. Merge admission for this cursor and boundary repair
 
-Before merge, require all source/compile checks on the revision head:
+The runner source revision already passed complete PR `Index Contract CI` run `31630496801`. The exact merged main subsequently exposed the independent FBA dependency-boundary failure in `Index Storage Smoke Evidence` run `31633573608`; this revision must demonstrate that the storage boundary contract is restored while preserving the full focused Index compile/test contract.
+
+The canonical source gate remains:
 
 ```text
 node scripts/verify/verify-index-contract-ci.mjs
@@ -146,6 +178,7 @@ node scripts/verify/verify-index-product-refresh-host-consumer.mjs
 node scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
 cargo run --locked -p rustok-events --example event_contract_digests -- --write
 git diff --exit-code -- crates/rustok-events/contracts/event-contract-digests.json
+cargo check --locked -p rustok-runtime --all-targets
 cargo check --locked -p rustok-events -p rustok-product -p rustok-index --all-targets
 cargo check --locked -p rustok-distribution --features mod-product --lib
 cargo check --locked -p rustok-server --no-default-features --features mod-product --lib
@@ -156,4 +189,4 @@ cargo test --locked -p rustok-distribution --features mod-product product_index:
 cargo test --locked -p rustok-server --no-default-features --features mod-product product_index_refresh_worker::tests --lib
 ```
 
-The external execution command is documented in the evidence guide but is not part of source-only admission unless approved PostgreSQL/Iggy endpoints are supplied. The active cursor after this revision is retained execution of the exact evidence packet described in section 5.
+In addition, `Index Storage Smoke Evidence` must pass its `Index boundary contract` step, including `verify-index-fba`, before merge. The external Product refresh runtime execution is deliberately separate from source-only admission. After this revision merges, the active cursor remains the operator-approved `workflow_dispatch` execution and retained run evidence described in section 5.

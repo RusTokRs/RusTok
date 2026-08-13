@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use super::{
     BindCategoryAttributeInput, CatalogCategoryKind, CatalogCategoryListRecord,
-    CatalogCategoryListRow, CatalogCategoryRecord, CreateCatalogCategoryInput,
+    CatalogCategoryListRow, CatalogCategoryRecord, CategoryTranslationInput, CreateCatalogCategoryInput,
     CreateCategoryAttributeGroupInput, ProductAttributeGroupRecord, ProductCatalogSchemaService,
     SetCategorySchemaModeInput, ensure_attribute, ensure_schema, ensure_structural_category,
     insert_category_group_translation, load_category_group_id, load_category_parent,
@@ -14,6 +16,7 @@ use crate::error::{CommerceError, CommerceResult};
 use crate::services::write_transaction::{
     ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
 };
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 
@@ -25,6 +28,7 @@ impl ProductCatalogSchemaService {
         input: CreateCatalogCategoryInput,
     ) -> CommerceResult<CatalogCategoryRecord> {
         input.validate()?;
+        let translations = normalize_category_translations(&input.translations)?;
         let category_id = current_product_operation_id().unwrap_or_else(generate_id);
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
 
@@ -94,7 +98,7 @@ impl ProductCatalogSchemaService {
             .await?;
         }
 
-        for translation in &input.translations {
+        for translation in &translations {
             txn.execute(Statement::from_sql_and_values(
                 txn.get_database_backend(),
                 r#"
@@ -138,6 +142,9 @@ impl ProductCatalogSchemaService {
         tenant_id: Uuid,
         locale: &str,
     ) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
+        let locale = normalize_locale_tag(locale).ok_or_else(|| {
+            CommerceError::Validation("category locale must be a valid locale tag".into())
+        })?;
         CatalogCategoryListRow::find_by_statement(Statement::from_sql_and_values(
             self.db.get_database_backend(),
             r#"
@@ -150,12 +157,28 @@ impl ProductCatalogSchemaService {
                 c.kind,
                 COALESCE(t.name, c.code) AS name
             FROM catalog_categories c
-            LEFT JOIN catalog_category_translations t
-                ON t.category_id = c.id AND t.locale = $2
+            LEFT JOIN LATERAL (
+                SELECT translation.name
+                FROM catalog_category_translations translation
+                WHERE translation.category_id = c.id
+                ORDER BY
+                    CASE
+                        WHEN translation.locale = $2 THEN 0
+                        WHEN translation.locale = $3 THEN 1
+                        ELSE 2
+                    END,
+                    translation.locale ASC,
+                    translation.id ASC
+                LIMIT 1
+            ) t ON TRUE
             WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
             ORDER BY c.path ASC
             "#,
-            vec![tenant_id.into(), locale.to_string().into()],
+            vec![
+                tenant_id.into(),
+                locale.into(),
+                PLATFORM_FALLBACK_LOCALE.to_string().into(),
+            ],
         ))
         .all(&self.db)
         .await
@@ -337,5 +360,102 @@ impl ProductCatalogSchemaService {
         record_product_operation_result(&())?;
         txn.commit().await?;
         Ok(())
+    }
+}
+
+fn normalize_category_translations(
+    translations: &[CategoryTranslationInput],
+) -> CommerceResult<Vec<CategoryTranslationInput>> {
+    let mut seen_locales = HashSet::new();
+    translations
+        .iter()
+        .map(|translation| {
+            let locale = normalize_locale_tag(&translation.locale).ok_or_else(|| {
+                CommerceError::Validation("category translation locale is invalid".into())
+            })?;
+            if !seen_locales.insert(locale.clone()) {
+                return Err(CommerceError::Validation(format!(
+                    "category translation locale {locale} occurs more than once after normalization"
+                )));
+            }
+
+            let name = translation.name.trim();
+            if name.is_empty() || name.chars().count() > 255 {
+                return Err(CommerceError::Validation(
+                    "category translation name must be 1..255 characters".into(),
+                ));
+            }
+            if translation
+                .meta_title
+                .as_deref()
+                .is_some_and(|value| value.chars().count() > 255)
+            {
+                return Err(CommerceError::Validation(
+                    "category translation meta_title must not exceed 255 characters".into(),
+                ));
+            }
+            if translation
+                .meta_description
+                .as_deref()
+                .is_some_and(|value| value.chars().count() > 500)
+            {
+                return Err(CommerceError::Validation(
+                    "category translation meta_description must not exceed 500 characters".into(),
+                ));
+            }
+
+            Ok(CategoryTranslationInput {
+                locale,
+                name: name.to_string(),
+                description: translation.description.clone(),
+                meta_title: translation.meta_title.clone(),
+                meta_description: translation.meta_description.clone(),
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn translation(locale: &str, name: &str) -> CategoryTranslationInput {
+        CategoryTranslationInput {
+            locale: locale.to_string(),
+            name: name.to_string(),
+            description: None,
+            meta_title: None,
+            meta_description: None,
+        }
+    }
+
+    #[test]
+    fn category_translations_are_canonicalized() {
+        let normalized = normalize_category_translations(&[
+            translation(" EN_us ", " English "),
+            translation("fr_FR", "Français"),
+        ])
+        .expect("valid category translations");
+
+        assert_eq!(normalized[0].locale, "en-US");
+        assert_eq!(normalized[0].name, "English");
+        assert_eq!(normalized[1].locale, "fr-FR");
+    }
+
+    #[test]
+    fn category_translations_reject_normalized_locale_duplicates() {
+        let error = normalize_category_translations(&[
+            translation("en_us", "English"),
+            translation("en-US", "English duplicate"),
+        ])
+        .expect_err("equivalent locale tags must not coexist");
+
+        assert!(error.to_string().contains("occurs more than once"));
+    }
+
+    #[test]
+    fn category_translations_reject_invalid_locale_and_empty_name() {
+        assert!(normalize_category_translations(&[translation(" ", "English")]).is_err());
+        assert!(normalize_category_translations(&[translation("en", "   ")]).is_err());
     }
 }

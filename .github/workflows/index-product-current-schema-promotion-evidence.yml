@@ -1,0 +1,138 @@
+name: Index Product Current Schema Promotion Evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-channel/**"
+      - "crates/rustok-product/**"
+      - "crates/rustok-index/**"
+      - "crates/rustok-distribution/src/product_index/**"
+      - "crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
+      - "scripts/verify/verify-index-product-current-schema-promotion.mjs"
+      - "scripts/verify/verify-index-product-current-schema-promotion-postgres-packet.mjs"
+      - "scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs"
+      - ".github/workflows/index-product-current-schema-promotion-evidence.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-channel/**"
+      - "crates/rustok-product/**"
+      - "crates/rustok-index/**"
+      - "crates/rustok-distribution/src/product_index/**"
+      - "crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
+      - "scripts/verify/verify-index-product-current-schema-promotion.mjs"
+      - "scripts/verify/verify-index-product-current-schema-promotion-postgres-packet.mjs"
+      - "scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs"
+      - ".github/workflows/index-product-current-schema-promotion-evidence.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  RUSTOK_PRODUCT_KEY4_PROMOTION_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_index_product_key4_evidence
+
+jobs:
+  source-contract:
+    name: Promotion evidence source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify Product current-schema promotion contract
+        run: node scripts/verify/verify-index-product-current-schema-promotion.mjs
+      - name: Verify Product current-schema promotion PostgreSQL packet
+        run: node scripts/verify/verify-index-product-current-schema-promotion-postgres-packet.mjs
+      - name: Verify Product current-schema promotion evidence runner
+        run: node scripts/verify/verify-index-product-current-schema-promotion-evidence.mjs
+
+  postgres-evidence:
+    name: Product key4 promotion PostgreSQL evidence
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_index_product_key4_evidence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_index_product_key4_evidence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: index-product-key4-promotion-evidence
+      - name: Record evidence provenance
+        shell: bash
+        run: |
+          mkdir -p evidence/index-product-key4-promotion
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "sha=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF}"
+            echo "event=${GITHUB_EVENT_NAME}"
+          } > evidence/index-product-key4-promotion/metadata.txt
+      - name: Execute Product key4 promotion and restart packet
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-distribution --features mod-product --test product_current_schema_promotion_postgres -- --nocapture \
+            2>&1 | tee evidence/index-product-key4-promotion/test.log
+      - name: Archive Product key4 promotion evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-product-key4-promotion-${{ github.run_id }}-${{ github.sha }}
+          path: evidence/index-product-key4-promotion
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  gate:
+    name: Product Current Schema Promotion Evidence Gate
+    if: always()
+    needs:
+      - source-contract
+      - postgres-evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require source contract and PostgreSQL evidence
+        shell: bash
+        run: |
+          if [[ "${{ needs.source-contract.result }}" != "success" ]] || \
+             [[ "${{ needs.postgres-evidence.result }}" != "success" ]]; then
+            echo "::error::Product current-schema promotion evidence did not complete successfully."
+            exit 1
+          fi

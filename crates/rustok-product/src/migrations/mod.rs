@@ -36,6 +36,8 @@ mod m20260807_000009_add_product_index_graph_v3_projection_snapshots;
 mod m20260807_000010_canonicalize_product_index_graph_projection;
 mod m20260807_000011_add_product_sales_channel_relation_freshness;
 mod m20260807_000012_add_product_sales_channel_relation_convergence;
+mod m20260812_000013_normalize_catalog_category_translation_locales;
+mod m20260813_000014_canonicalize_product_metadata_tags;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -76,6 +78,8 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260807_000010_canonicalize_product_index_graph_projection::Migration),
         Box::new(m20260807_000011_add_product_sales_channel_relation_freshness::Migration),
         Box::new(m20260807_000012_add_product_sales_channel_relation_convergence::Migration),
+        Box::new(m20260812_000013_normalize_catalog_category_translation_locales::Migration),
+        Box::new(m20260813_000014_canonicalize_product_metadata_tags::Migration),
     ]
 }
 
@@ -95,6 +99,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260716_000002_add_product_field_cache_generation_trigger",
             vec!["m20260716_000001_create_flex_field_definition_cache_generation"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260813_000014_canonicalize_product_metadata_tags",
+            vec!["m20260812_000008_add_route_key_registry"],
         ),
     ]
 }

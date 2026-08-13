@@ -19,6 +19,10 @@
 - `rustok-content` no longer exposes product GraphQL/REST CRUD surfaces.
 - The crate remains a shared helper layer for locale, slug, richtext, canonical
   routes and cross-owner orchestration.
+- Generic category CRUD, category DTOs, and category runtime entities are not a
+  public Content contract. Retained historical category migrations remain only
+  for database compatibility; live category aggregates and hierarchy semantics
+  belong to domain owners such as Blog and Forum.
 - `ContentOrchestrationService` is a port-based orchestration core. It owns RBAC checks, idempotency, audit logging, and event publication, while domain conversion work is delegated through `ContentOrchestrationBridge`.
 
 ## Orchestration Contract

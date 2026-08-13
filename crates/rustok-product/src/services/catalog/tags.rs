@@ -1,12 +1,8 @@
-use super::{
-    CatalogService, PRODUCT_SCOPE_VALUE, ProductTagState,
-    helpers::{extract_metadata_tags, metadata_has_tags_field, normalize_tag_names},
-};
+use super::{CatalogService, PRODUCT_SCOPE_VALUE, ProductTagState, helpers::normalize_tag_names};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Set,
 };
-use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -35,6 +31,7 @@ impl CatalogService {
         }
 
         let relations = product_tag::Entity::find()
+            .filter(product_tag::Column::TenantId.eq(tenant_id))
             .filter(product_tag::Column::ProductId.is_in(product_ids.clone()))
             .order_by_asc(product_tag::Column::ProductId)
             .order_by_asc(product_tag::Column::CreatedAt)
@@ -71,14 +68,6 @@ impl CatalogService {
                     .filter_map(|relation| names.get(&relation.term_id).cloned())
                     .collect::<Vec<_>>();
                 tags_by_product.insert(product.id, tags);
-                continue;
-            }
-
-            if metadata_has_tags_field(&product.metadata) {
-                tags_by_product.insert(
-                    product.id,
-                    normalize_tag_names(&extract_metadata_tags(&product.metadata)),
-                );
             }
         }
 
@@ -91,21 +80,15 @@ impl CatalogService {
         product_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
-        metadata: &Value,
     ) -> CommerceResult<ProductTagState> {
         let relations = product_tag::Entity::find()
+            .filter(product_tag::Column::TenantId.eq(tenant_id))
             .filter(product_tag::Column::ProductId.eq(product_id))
             .order_by_asc(product_tag::Column::CreatedAt)
             .all(&self.db)
             .await?;
 
         if relations.is_empty() {
-            if metadata_has_tags_field(metadata) {
-                return Ok(ProductTagState {
-                    tags: normalize_tag_names(&extract_metadata_tags(metadata)),
-                });
-            }
-
             return Ok(ProductTagState { tags: Vec::new() });
         }
 
@@ -139,6 +122,7 @@ impl CatalogService {
         let normalized_tags = normalize_tag_names(tag_names);
 
         product_tag::Entity::delete_many()
+            .filter(product_tag::Column::TenantId.eq(tenant_id))
             .filter(product_tag::Column::ProductId.eq(product_id))
             .exec(txn)
             .await?;
@@ -160,12 +144,12 @@ impl CatalogService {
             .map_err(|error| CommerceError::Validation(error.to_string()))?;
 
         let now = Utc::now();
-        for term_id in term_ids {
+        for (position, term_id) in term_ids.into_iter().enumerate() {
             product_tag::ActiveModel {
                 product_id: Set(product_id),
                 term_id: Set(term_id),
                 tenant_id: Set(tenant_id),
-                created_at: Set(now.into()),
+                created_at: Set((now + chrono::Duration::microseconds(position as i64)).into()),
             }
             .insert(txn)
             .await?;

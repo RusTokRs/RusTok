@@ -50,10 +50,13 @@ the [central implementation plan](../../docs/modules/rich-text-implementation-pl
 
 Richtext policy is the production runtime gate for Blog, Forum, and Comments.
 Their owner services select fixed profiles and keep locale in owner rows. The
-obsolete core richtext/format helpers, generic `NodeService`, and unused generic
-content entity DataLoaders are removed. Pages accepts only its owner-selected
-Page Builder document format. Blog/Comments initial schemas are canonical and
-their corrective migration/conversion artifacts are absent.
+obsolete core richtext/format helpers, generic `NodeService`, generic category
+CRUD/runtime entities, and unused generic content entity DataLoaders are removed
+from the public runtime surface. Retained historical category migrations remain
+only for database compatibility; Blog/Forum and other domain modules own their
+live category aggregates and hierarchy rules. Pages accepts only its
+owner-selected Page Builder document format. Blog/Comments initial schemas are
+canonical and their corrective migration/conversion artifacts are absent.
 
 ## Entry points
 
@@ -63,8 +66,7 @@ their corrective migration/conversion artifacts are absent.
 - `load_post_stats_snapshot`
 - `ContentCountSnapshot`
 - `graphql::ContentQuery` (feature `graphql`)
-- `CategoryService`
-- content DTO and entity re-exports
+- owner-neutral content DTO/entity helpers documented by `CRATE_API.md`
 - `richtext::{RichTextProfile, validate_and_normalize, render_html, plain_text}`
 
 ## Docs

@@ -3,14 +3,15 @@ use rustok_api::{Action, Resource};
 use rustok_content::normalize_locale_code;
 use rustok_core::{PermissionScope, SecurityContext};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, JoinType,
-    QueryFilter, QuerySelect, RelationTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+    sea_query::Expr,
 };
 use uuid::Uuid;
 
-use crate::dto::{TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermStatus};
+use crate::dto::{TaxonomyScopeType, TaxonomyTermKind};
 use crate::entities::{taxonomy_term, taxonomy_term_translation};
 use crate::error::{TaxonomyError, TaxonomyResult};
+use crate::route_key_registry::ensure_route_key_available_in_tx;
 use crate::translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,10 +67,11 @@ pub async fn update_module_term_in_tx(
                 None if input.name.is_some() => normalize_non_empty_slug(&name)?,
                 None => existing.slug.clone(),
             };
-            ensure_translation_slug_available_in_tx(
+            ensure_route_key_available_in_tx(
                 txn,
                 tenant_id,
                 kind,
+                TaxonomyScopeType::Module,
                 &module_scope,
                 &locale,
                 &slug,
@@ -115,10 +117,11 @@ pub async fn update_module_term_in_tx(
             })?;
             validate_term_name(&name)?;
             let slug = normalize_non_empty_slug(input.slug.as_deref().unwrap_or(&name))?;
-            ensure_translation_slug_available_in_tx(
+            ensure_route_key_available_in_tx(
                 txn,
                 tenant_id,
                 kind,
+                TaxonomyScopeType::Module,
                 &module_scope,
                 &locale,
                 &slug,
@@ -178,7 +181,6 @@ pub async fn update_module_term_in_tx(
             resource_revision,
             target_revision,
             operation: "upsert",
-            lifecycle: lifecycle_for_status(term.status),
         },
     )
     .await?;
@@ -233,7 +235,6 @@ pub async fn delete_module_term_in_tx(
             resource_revision,
             target_revision,
             operation: "delete",
-            lifecycle: "deleted",
         },
     )
     .await?;
@@ -271,36 +272,6 @@ async fn find_module_term_in_tx(
         .one(txn)
         .await?
         .ok_or(TaxonomyError::TermNotFound(term_id))
-}
-
-async fn ensure_translation_slug_available_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    kind: TaxonomyTermKind,
-    module_scope: &str,
-    locale: &str,
-    slug: &str,
-    exclude_term_id: Option<Uuid>,
-) -> TaxonomyResult<()> {
-    let mut select = taxonomy_term_translation::Entity::find()
-        .join(
-            JoinType::InnerJoin,
-            taxonomy_term_translation::Relation::Term.def(),
-        )
-        .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_term_translation::Column::Locale.eq(locale))
-        .filter(taxonomy_term_translation::Column::Slug.eq(slug))
-        .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_term::Column::Kind.eq(kind))
-        .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
-        .filter(taxonomy_term::Column::ScopeValue.eq(module_scope));
-    if let Some(exclude_term_id) = exclude_term_id {
-        select = select.filter(taxonomy_term_translation::Column::TermId.ne(exclude_term_id));
-    }
-    if select.one(txn).await?.is_some() {
-        return Err(TaxonomyError::DuplicateSlug(slug.to_string()));
-    }
-    Ok(())
 }
 
 fn enforce_scope(
@@ -375,11 +346,4 @@ fn next_translation_revision(term_id: Uuid, locale: &str, revision: i64) -> Taxo
             term_id,
             locale: locale.to_string(),
         })
-}
-
-fn lifecycle_for_status(status: TaxonomyTermStatus) -> &'static str {
-    match status {
-        TaxonomyTermStatus::Active => "active",
-        TaxonomyTermStatus::Deprecated => "archived",
-    }
 }

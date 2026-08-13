@@ -159,7 +159,6 @@ for (const marker of [
   "max_style_rules: 20_000",
   "serde_json::to_writer(&mut counter, &document.project)",
   "BoundedByteCounter::new(maximum)",
-  "io::Error::other(\"static publish project byte limit exceeded\")",
   "document.project.pages.len()",
   "document.project.assets.len()",
   "document.project.styles.len()",
@@ -175,10 +174,44 @@ for (const marker of [
   '"landing_asset_count_exceeded"',
   '"landing_style_rule_count_exceeded"',
   "limits_hash: limits.limits_hash()?",
-  "first.verify_integrity()",
   "resource_limits_reject_excess_pages",
   "resource_limits_reject_excess_component_depth",
 ]) need(sources.limits, marker, "resource-limit source");
+
+const boundedWriter = sliceBetween(
+  sources.limits,
+  "impl Write for BoundedByteCounter",
+  "fn component_observation",
+  "bounded byte counter write boundary",
+);
+requireOrdered(
+  boundedWriter,
+  [
+    "let next = self.bytes.saturating_add(buffer.len());",
+    "if next > self.maximum",
+    "self.exceeded = true;",
+    "return Err(io::Error::other(",
+    '"static publish project byte limit exceeded"',
+  ],
+  "bounded byte counter rejection",
+);
+
+const stableEvidenceTest = sliceBetween(
+  sources.limits,
+  "fn resource_evidence_is_stable_and_policy_bound",
+  "fn resource_limits_reject_excess_pages",
+  "resource evidence integrity test",
+);
+requireOrdered(
+  stableEvidenceTest,
+  [
+    "let first = validate_static_publish_resource_limits(&document)",
+    "let second = validate_static_publish_resource_limits(&document)",
+    "assert_eq!(first, second);",
+    ".verify_integrity()",
+  ],
+  "resource evidence integrity verification",
+);
 
 for (const marker of [
   '"page_builder_static_publish_sanitization_v2"',
@@ -195,6 +228,28 @@ for (const marker of [
   "resource_limits: Some(",
   '#[path = "static_publish_resource_limits.rs"]',
 ]) forbid(sources.sanitization, marker, "unchanged sanitization identity and compiler ownership");
+
+const sanitizationResourceLimitTest = sliceBetween(
+  sources.sanitization,
+  "fn sanitization_rejects_excess_global_resources",
+  "fn sanitization_rejects_insecure_public_resources",
+  "sanitization resource-limit rejection test",
+);
+requireOrdered(
+  sanitizationResourceLimitTest,
+  [
+    'let error = sanitize_static_landing_project(&project).expect_err("resource rejection");',
+    "PageBuilderStaticLandingSanitizationError::Landing(",
+    "LandingProjectError::Validation { diagnostics }",
+    'diagnostic.code == "landing_page_count_exceeded"',
+  ],
+  "sanitization resource-limit rejection boundary",
+);
+forbid(
+  sanitizationResourceLimitTest,
+  "PageBuilderStaticLandingSanitizationError::Resource(error)",
+  "sanitization resource-limit rejection boundary",
+);
 
 const sanitizeFunction = sliceBetween(
   sources.sanitization,

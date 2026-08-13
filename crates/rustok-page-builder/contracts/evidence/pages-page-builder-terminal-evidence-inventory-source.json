@@ -1,0 +1,141 @@
+{
+  "format": "pages_page_builder_terminal_evidence_inventory_source_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "scope": "pages_page_builder",
+  "purpose": "Build a fail-closed terminal-readiness evidence inventory from the admitted rollout/accessibility prerequisite packet plus the canonical Page Builder FBA registry and Pages readiness plan. The inventory may become owner/platform-review-ready only when every canonical FBA executed-evidence blocker is cleared and the Pages execution-rollout blocker is removed; it never mutates readiness source itself.",
+  "predecessor": {
+    "format": "pages_page_builder_terminal_readiness_admission_v1",
+    "required_status": "rollout_accessibility_prerequisites_admitted_terminal_inventory_pending",
+    "source_commit_must_equal_checkout_head": true,
+    "retained_admission_source_sha256_must_match_checkout": true,
+    "retained_inventory_source_sha256_must_match_checkout": true,
+    "future_inventory_source_binding_must_match": true,
+    "terminal_evidence_inventory_complete_must_be_false": true,
+    "owner_platform_review_ready_must_be_false": true,
+    "source_mutation_performed_must_be_false": true,
+    "pages_ffa_promoted_must_be_false": true,
+    "page_builder_fba_promoted_must_be_false": true,
+    "maximum_bytes": 1048576,
+    "must_be_regular_non_symlink_file": true
+  },
+  "authorities": {
+    "central_registry": "docs/modules/registry.md",
+    "pages_local_plan": "crates/rustok-pages/docs/implementation-plan.md",
+    "page_builder_local_plan": "crates/rustok-page-builder/docs/implementation-plan.md",
+    "page_builder_fba_registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "prerequisite_admission_source": "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json"
+  },
+  "readiness_precondition": {
+    "pages_row_required": "| `pages` | admin + storefront | `in_progress` | `boundary_ready` | `core_transport_ui` |",
+    "page_builder_row_required": "| `page_builder` | no module-owned UI | `not_started` | `boundary_ready` | `no_ui_boundary` |",
+    "source_of_truth_rule_required": "The source of truth for status is the local `docs/implementation-plan.md` of the module.",
+    "terminal_status_requires_verification_evidence": true,
+    "readiness_rows_must_not_change_before_owner_platform_approval": true
+  },
+  "page_builder_fba_inventory": {
+    "required_registry_status_before_governance": "boundary_ready",
+    "recursive_blocker_key": "executed_evidence",
+    "recursive_blocker_value": "pending",
+    "path_format": "json_pointer",
+    "maximum_blocker_paths": 256,
+    "all_recursive_blocker_paths_must_be_zero_for_completion": true,
+    "current_source_expected_to_have_blockers": true,
+    "current_source_rechecked_blocker_count": 12,
+    "pending_blockers_prevent_transport_verified": true
+  },
+  "pages_ffa_inventory": {
+    "blocking_status_marker": "execution-rollout-pending",
+    "blocking_status_marker_must_be_absent_for_completion": true,
+    "current_source_expected_to_have_marker": true,
+    "pending_marker_prevents_parity_verified": true,
+    "rollout_and_accessibility_prerequisites_are_not_complete_terminal_inventory": true
+  },
+  "completion": {
+    "requires_valid_predecessor": true,
+    "requires_same_exact_source_commit": true,
+    "requires_zero_page_builder_fba_recursive_blockers": true,
+    "requires_pages_execution_rollout_marker_absent": true,
+    "complete_status": "terminal_evidence_inventory_complete_owner_platform_review_ready",
+    "incomplete_status": "terminal_evidence_inventory_incomplete",
+    "complete_means_owner_platform_review_ready_only": true,
+    "complete_does_not_mean_owner_approved": true,
+    "complete_does_not_mean_platform_approved": true,
+    "complete_does_not_promote_ffa": true,
+    "complete_does_not_promote_fba": true
+  },
+  "inventory": {
+    "runner": "scripts/evidence/inventory-pages-page-builder-terminal-readiness.mjs",
+    "runner_test": "scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs",
+    "source_verifier": "scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs",
+    "network_requests": false,
+    "browser_execution": false,
+    "cargo_execution": false,
+    "control_plane_mutation": false,
+    "registry_mutation": false,
+    "local_plan_mutation": false,
+    "readiness_promotion": false,
+    "owner_decision": false,
+    "platform_decision": false,
+    "atomic_replace": true
+  },
+  "output": {
+    "format": "pages_page_builder_terminal_evidence_inventory_v1",
+    "default_path": "target/pages-page-builder-terminal-evidence-inventory.json",
+    "predecessor_sha256_retained": true,
+    "source_commit_retained": true,
+    "canonical_source_sha256_retained": true,
+    "page_builder_fba_blocker_paths_retained": true,
+    "pages_execution_rollout_marker_presence_retained": true,
+    "owner_platform_review_ready_retained": true,
+    "raw_predecessor_path_retained": false,
+    "tenant_identity_retained": false,
+    "api_origin_retained": false,
+    "raw_settings_retained": false,
+    "raw_graphql_or_browser_payload_retained": false
+  },
+  "governance_boundary": {
+    "inventory_is_not_owner_approval": true,
+    "inventory_is_not_platform_approval": true,
+    "inventory_does_not_mutate_registry": true,
+    "inventory_does_not_mutate_local_plans": true,
+    "inventory_does_not_promote_ffa": true,
+    "inventory_does_not_promote_fba": true,
+    "owner_platform_review_must_remain_blocked_when_incomplete": true,
+    "terminal_change_requires_same_pr_local_plan_and_registry_sync": true,
+    "terminal_change_requires_verification_evidence_in_pr": true
+  },
+  "required_source_files": [
+    "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json",
+    "scripts/evidence/inventory-pages-page-builder-terminal-readiness.mjs",
+    "scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs",
+    "scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs",
+    "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json",
+    "scripts/evidence/admit-pages-page-builder-terminal-readiness.mjs",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "crates/rustok-pages/docs/implementation-plan.md",
+    "crates/rustok-page-builder/docs/implementation-plan.md",
+    "docs/modules/registry.md",
+    "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-13.md"
+  ],
+  "non_claims": {
+    "predecessor_executed_by_this_slice": false,
+    "live_evidence_executed_by_this_slice": false,
+    "terminal_evidence_inventory_complete": false,
+    "owner_platform_review_ready": false,
+    "owner_readiness_review_run": false,
+    "platform_readiness_review_run": false,
+    "registry_mutated": false,
+    "local_plan_readiness_status_mutated": false,
+    "pages_ffa_promoted": false,
+    "page_builder_fba_promoted": false,
+    "tests_run": false,
+    "node_verifier_run": false,
+    "workflow_or_ci_run": false
+  },
+  "next_cursor": {
+    "terminal_evidence_inventory_source": "source_ready_maintainer_execution_pending",
+    "remaining_execution_evidence": "execute_and_retain_each_canonical_blocker_before_source_status_clearance",
+    "owner_platform_readiness_review": "blocked_on_terminal_evidence_inventory_complete_owner_platform_review_ready",
+    "readiness_source_change": "blocked_on_explicit_owner_and_platform_approval_after_complete_inventory"
+  }
+}

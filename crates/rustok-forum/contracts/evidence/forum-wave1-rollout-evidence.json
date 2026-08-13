@@ -40,7 +40,12 @@
       "crates/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json",
       "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-admission-source.json",
       "scripts/verify/verify-forum-page-builder-wave-admission.mjs",
-      "scripts/verify/verify-forum-wave-plan-sync.mjs"
+      "scripts/verify/verify-forum-wave-plan-sync.mjs",
+      "crates/rustok-forum/contracts/evidence/forum-wave-live-admission-lineage-source.json",
+      "crates/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json",
+      "scripts/verify/verify-forum-wave-admission-lineage.mjs",
+      "scripts/evidence/accept-forum-page-builder-wave.mjs",
+      "scripts/verify/verify-forum-page-builder-wave-observed-acceptance.mjs"
     ],
     "fallback_profiles": [
       {
@@ -165,7 +170,14 @@
       "rollback.decision",
       "approvals",
       "waivers"
-    ]
+    ],
+    "owner_acceptance": {
+      "required": true,
+      "source_status": "source_ready_maintainer_execution_pending",
+      "format": "forum_page_builder_wave_observed_acceptance_v1",
+      "accepted_status": "owner_accepted_observed_control_plane_wave_promotion_review_pending",
+      "execution_status": "maintainer_execution_pending"
+    }
   },
   "degraded_mode": {
     "builder_off": "forum widgets stay readonly and forum routes remain owner-available",
@@ -180,7 +192,10 @@
       "npm run verify:forum:wave-evidence-freshness",
       "npm run test:verify:forum:wave-evidence-freshness",
       "node scripts/verify/verify-forum-wave-plan-sync.mjs",
-      "node scripts/verify/verify-forum-wave-plan-sync.test.mjs"
+      "node scripts/verify/verify-forum-wave-plan-sync.test.mjs",
+      "node scripts/verify/verify-forum-wave-admission-lineage.mjs",
+      "node scripts/verify/verify-forum-page-builder-wave-observed-acceptance.mjs",
+      "node scripts/evidence/accept-forum-page-builder-wave.test.mjs"
     ],
     "execution_status": "not_run_by_implementation_agent"
   },
@@ -196,6 +211,6 @@
     "measured preview and publish latency",
     "measured sanitize and runtime error rates",
     "correlated builder-write, forum-publication and storefront-read traces",
-    "owner approvals and rollback decision from the observed run"
+    "retrospective observed-Wave owner decision after fresh exact-admission-bound control-plane evidence"
   ]
 }

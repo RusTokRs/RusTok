@@ -528,13 +528,18 @@ for (const marker of [
   'product_tag_sync_reuses_existing_global_taxonomy_term',
   'update_product_tags_resyncs_product_tag_relations_without_metadata_mirror',
   'update_product_tags_only_preserves_existing_non_tag_metadata',
-  'legacy_metadata_tags_are_used_as_read_fallback_but_not_exposed_publicly',
-  'assert!(product.metadata.get("tags").is_none())',
-  'assert!(updated.metadata.get("tags").is_none())',
-  '"tags": ["legacy", "sale", "legacy"]',
+  'metadata_tags_are_rejected_on_product_create',
+  'metadata_tags_are_rejected_on_update_without_mutating_canonical_tags',
+  'assert!(matches!(error, CommerceError::Validation(_)))',
+  'typed tags field',
 ]) {
   requireSource(productTagsTest, marker, productTagsTestPath);
 }
+forbidSource(
+  productTagsTest,
+  'legacy_metadata_tags_are_used_as_read_fallback',
+  productTagsTestPath,
+);
 for (const marker of [
   'admin_graphql_rejects_unknown_shipping_profile_references',
   'storefront_graphql_shipping_options_filter_incompatible_shipping_profiles',

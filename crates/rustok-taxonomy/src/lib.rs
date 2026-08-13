@@ -7,7 +7,11 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod migrations;
+mod module_term_lookup;
 pub mod module_term_mutation;
+mod normalization;
+mod owner_read;
+mod route_key_registry;
 pub mod services;
 mod translation_evidence;
 pub mod translation_target;
@@ -15,14 +19,15 @@ pub mod translation_target;
 pub use dto::{
     ApplyExactTaxonomyTranslationInput, CreateTaxonomyTermInput, ListTaxonomyTermsFilter,
     ResolveTaxonomyTermInput, TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermListItem,
-    TaxonomyTermResponse, TaxonomyTermStatus, TaxonomyTranslationApplyResult,
-    UpdateTaxonomyTermInput,
+    TaxonomyTermResponse, TaxonomyTranslationApplyResult, UpdateTaxonomyTermInput,
 };
 pub use error::{TaxonomyError, TaxonomyResult};
 pub use module_term_mutation::{
     ModuleTermMutationResult, ModuleTermUpdateInput, delete_module_term_in_tx,
     update_module_term_in_tx,
 };
+pub use normalization::{normalize_term_locale, normalize_term_route_key};
+pub use owner_read::{TaxonomyOwnerReader, TaxonomyOwnerTerm};
 pub use services::TaxonomyService;
 pub use translation_target::TaxonomyTranslationTargetProvider;
 
@@ -95,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn module_permissions_cover_term_lifecycle() {
+    fn module_permissions_cover_term_crud() {
         let module = TaxonomyModule;
         let permissions = module.permissions();
 

@@ -1,0 +1,130 @@
+name: Page Builder Static Sanitization Evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "crates/rustok-page-builder/**"
+      - "scripts/evidence/record-page-builder-static-sanitization-execution.mjs"
+      - "scripts/verify/verify-page-builder-static-sanitization-execution.mjs"
+      - "docs/modules/page-builder-static-sanitization-execution-actualization-*.md"
+      - ".github/workflows/page-builder-static-sanitization-evidence.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-page-builder/**"
+      - "scripts/evidence/record-page-builder-static-sanitization-execution.mjs"
+      - "scripts/verify/verify-page-builder-static-sanitization-execution.mjs"
+      - "docs/modules/page-builder-static-sanitization-execution-actualization-*.md"
+      - ".github/workflows/page-builder-static-sanitization-evidence.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  source-contract:
+    name: Static sanitization evidence source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify existing static publish resource-limit boundary
+        run: node crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs
+      - name: Verify static sanitization execution source
+        run: node scripts/verify/verify-page-builder-static-sanitization-execution.mjs
+
+  execution-evidence:
+    name: Static sanitization execution evidence
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: page-builder-static-sanitization-evidence
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Inventory required test identities
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p evidence/page-builder-static-sanitization
+          cargo test --locked -p rustok-page-builder --lib -- --list \
+            | tee evidence/page-builder-static-sanitization/test-list.txt
+          for marker in \
+            'publish_sanitization::tests::sanitization_assigns_stable_ids_and_hashes_policy_bound_project' \
+            'publish_sanitization::tests::sanitization_rejects_excess_global_resources' \
+            'publish_sanitization::tests::sanitization_rejects_insecure_public_resources' \
+            'publish_sanitization::tests::sanitization_rejects_renderer_dropped_attributes_and_css' \
+            'static_publish_policy::tests::' \
+            'static_publish_resource_limits::tests::'
+          do
+            grep -F "$marker" evidence/page-builder-static-sanitization/test-list.txt >/dev/null
+          done
+      - name: Execute static sanitization tests
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-page-builder --lib publish_sanitization::tests:: -- --nocapture \
+            2>&1 | tee evidence/page-builder-static-sanitization/sanitization.log
+      - name: Execute static publish policy tests
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-page-builder --lib static_publish_policy::tests:: -- --nocapture \
+            2>&1 | tee evidence/page-builder-static-sanitization/policy.log
+      - name: Execute static publish resource-limit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-page-builder --lib static_publish_resource_limits::tests:: -- --nocapture \
+            2>&1 | tee evidence/page-builder-static-sanitization/resource-limits.log
+      - name: Record bounded execution receipt
+        run: >-
+          node scripts/evidence/record-page-builder-static-sanitization-execution.mjs
+          --output evidence/page-builder-static-sanitization/receipt.json
+      - name: Archive static sanitization evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: page-builder-static-sanitization-${{ github.run_id }}-${{ github.sha }}
+          path: evidence/page-builder-static-sanitization
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  gate:
+    name: Static Sanitization Evidence Gate
+    if: always()
+    needs:
+      - source-contract
+      - execution-evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require source contract and execution evidence
+        shell: bash
+        run: |
+          if [[ "${{ needs.source-contract.result }}" != "success" ]] || \
+             [[ "${{ needs.execution-evidence.result }}" != "success" ]]; then
+            echo "::error::Page Builder static sanitization evidence did not complete successfully."
+            exit 1
+          fi

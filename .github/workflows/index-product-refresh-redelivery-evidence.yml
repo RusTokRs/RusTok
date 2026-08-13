@@ -1,0 +1,84 @@
+name: Index Product Refresh Redelivery Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Select execute only for an operator-approved external PostgreSQL/Iggy evidence run"
+        required: true
+        default: "not-confirmed"
+        type: choice
+        options:
+          - "not-confirmed"
+          - "execute"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+
+jobs:
+  external-redelivery-evidence:
+    name: Product refresh PostgreSQL/Iggy redelivery evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      RUSTOK_INDEX_PRODUCT_REFRESH_TEST_DATABASE_URL: ${{ secrets.RUSTOK_INDEX_PRODUCT_REFRESH_TEST_DATABASE_URL }}
+      RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_ADDRESS: ${{ secrets.RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_ADDRESS }}
+      RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_USERNAME: ${{ secrets.RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_USERNAME }}
+      RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD: ${{ secrets.RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Require explicit external evidence approval and endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ inputs.confirmation }}" != "execute" ]]; then
+            echo "::error::External Product refresh evidence was not explicitly confirmed."
+            exit 1
+          fi
+
+          if [[ -z "${RUSTOK_INDEX_PRODUCT_REFRESH_TEST_DATABASE_URL}" ]]; then
+            echo "::error::RUSTOK_INDEX_PRODUCT_REFRESH_TEST_DATABASE_URL secret is required."
+            exit 1
+          fi
+          if [[ -z "${RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_ADDRESS}" ]]; then
+            echo "::error::RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_ADDRESS secret is required."
+            exit 1
+          fi
+
+          if [[ -n "${RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_USERNAME}" || -n "${RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD}" ]]; then
+            if [[ -z "${RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_USERNAME}" || -z "${RUSTOK_INDEX_PRODUCT_REFRESH_TEST_IGGY_PASSWORD}" ]]; then
+              echo "::error::Iggy username/password must either both be configured or both be omitted."
+              exit 1
+            fi
+          fi
+
+          echo "External evidence preflight accepted; endpoint values remain masked."
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: index-product-refresh-redelivery-evidence
+      - name: Verify Product refresh redelivery evidence source parity
+        run: node scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
+      - name: Execute Product refresh PostgreSQL/Iggy redelivery evidence
+        run: >-
+          cargo test --locked -p rustok-server
+          --no-default-features --features mod-product
+          --test product_index_refresh_redelivery_postgres_iggy
+          -- --nocapture --test-threads=1

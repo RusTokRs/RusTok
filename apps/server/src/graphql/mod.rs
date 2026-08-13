@@ -16,6 +16,7 @@ pub mod loaders;
 #[cfg(feature = "mod-moderation")]
 pub mod moderation_recovery;
 pub mod module_security;
+pub mod module_settings_cas;
 pub mod mutations;
 pub mod observability;
 pub mod persisted;

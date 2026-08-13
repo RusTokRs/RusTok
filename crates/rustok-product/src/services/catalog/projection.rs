@@ -71,7 +71,6 @@ impl CatalogService {
                 product_id,
                 tag_locale,
                 fallback_locale.or(Some(PLATFORM_FALLBACK_LOCALE)),
-                &product.metadata,
             ),
             resolve_product_metadata(
                 &self.db,

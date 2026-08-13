@@ -14,6 +14,11 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const requireAny = (source, values, label) => {
+  if (!values.some((value) => source.includes(value))) {
+    failures.push(`${label}: missing one of ${values.join(' | ')}`);
+  }
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -238,13 +243,45 @@ forbidAll(orderCheckoutAdapters, [
 requireText(pricing, 'correlation_id = %context.correlation_id', 'pricing correlation logging');
 requireText(payment, 'operation = owner_operation', 'payment owner operation logging');
 requireText(fulfillment, 'correlation_id = %context.correlation_id', 'fulfillment correlation logging');
-requireText(customer, 'correlation_id = %context.correlation_id', 'customer correlation logging');
+requireAny(customer, [
+  'correlation_id_length = context_facts.correlation_id_length',
+  'correlation_id = %context.correlation_id',
+], 'customer correlation logging');
 requireText(inventory, 'correlation_id = %context.correlation_id', 'inventory correlation logging');
 requireText(inventory, 'storage_unavailable_with_context(&context, owner_operation, error)', 'inventory identity storage mapping');
 requireText(inventory, 'storage_unavailable_with_context(context, owner_operation, error)', 'inventory helper storage mapping');
 requireText(order, 'correlation_id = %context.correlation_id', 'order generic correlation logging');
 requireText(orderCompensation, 'correlation_id = %context.correlation_id', 'order compensation correlation logging');
 requireText(orderRecovery, 'correlation_id = %context.correlation_id', 'order recovery correlation logging');
+
+requireAny(paymentCompensation, [
+  'tenant_id_length = context_facts.tenant_id_length',
+  'tenant_id = %context.tenant_id',
+], 'payment compensation tenant diagnostics');
+requireAny(paymentCompensation, [
+  '"payment.checkout_compensation_encoding_failed"',
+  'code = "payment.checkout_compensation_encoding_failed"',
+], 'payment compensation encoding code');
+requireAny(orderCompensation, [
+  'tenant_id_length = context_facts.tenant_id_length',
+  'tenant_id = %context.tenant_id',
+], 'order compensation tenant diagnostics');
+requireAny(orderPaymentSettlement, [
+  'tenant_id_length = context_facts.tenant_id_length',
+  'tenant_id = %context.tenant_id',
+], 'order payment tenant diagnostics');
+requireAny(orderPaymentSettlement, [
+  '"order.checkout_payment_validation"',
+  'code = "order.checkout_payment_validation"',
+], 'order payment validation code');
+requireAny(orderRecovery, [
+  'tenant_id_length = context_facts.tenant_id_length',
+  'tenant_id = %context.tenant_id',
+], 'order recovery tenant diagnostics');
+requireAny(orderRecovery, [
+  '"order.checkout_recovery_validation"',
+  'code = "order.checkout_recovery_validation"',
+], 'order recovery validation code');
 
 const required = [
   [pricing, [
@@ -329,10 +366,8 @@ const required = [
   ], 'payment'],
   [paymentCompensation, [
     'correlation_id = %context.correlation_id',
-    'tenant_id = %context.tenant_id',
     'operation = owner_operation',
     'code = "payment.checkout_compensation_manual_reconciliation"',
-    'code = "payment.checkout_compensation_encoding_failed"',
     '"payment storage is temporarily unavailable"',
     '"payment provider rejected the requested operation"',
     '"payment provider response could not be applied safely"',
@@ -375,7 +410,6 @@ const required = [
     'parse_port_tenant_id(&context, "select_shipping_option")',
   ], 'fulfillment'],
   [customer, [
-    'correlation_id = %context.correlation_id',
     'tenant_id_length = context_facts.tenant_id_length',
     'actor_kind = context_facts.actor_kind',
     'claim_count = context_facts.claim_count',
@@ -470,7 +504,6 @@ const required = [
   ], 'order'],
   [orderCompensation, [
     'correlation_id = %context.correlation_id',
-    'tenant_id = %context.tenant_id',
     'operation,',
     'code = "order.checkout_compensation_manual_reconciliation"',
     '"checkout requires manual reconciliation"',
@@ -479,9 +512,7 @@ const required = [
   ], 'order compensation'],
   [orderPaymentSettlement, [
     'correlation_id = %context.correlation_id',
-    'tenant_id = %context.tenant_id',
     'operation,',
-    'code = "order.checkout_payment_validation"',
     'code = "order.checkout_payment_state_conflict"',
     '"checkout requires manual reconciliation"',
     '"order request context is invalid"',
@@ -489,10 +520,8 @@ const required = [
   ], 'order payment'],
   [orderRecovery, [
     'correlation_id = %context.correlation_id',
-    'tenant_id = %context.tenant_id',
     'operation,',
     'code = "order.checkout_request_encoding_failed"',
-    'code = "order.checkout_recovery_validation"',
     'code = "order.checkout_hash_invalid"',
     '"checkout hash evidence is invalid"',
     '"order request context is invalid"',

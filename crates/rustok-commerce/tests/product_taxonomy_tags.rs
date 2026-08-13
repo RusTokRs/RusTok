@@ -1,16 +1,16 @@
 use rust_decimal::Decimal;
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
-use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
-use rustok_product::entities::{product, product_tag};
+use rustok_product::entities::product_tag;
+use rustok_product::{CatalogService, CommerceError};
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
     entities::taxonomy_term,
 };
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug};
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use sea_orm_migration::MigrationTrait;
 use sea_orm_migration::prelude::SchemaManager;
 use std::str::FromStr;
@@ -310,8 +310,28 @@ async fn update_product_tags_only_preserves_existing_non_tag_metadata() {
 }
 
 #[tokio::test]
-async fn legacy_metadata_tags_are_used_as_read_fallback_but_not_exposed_publicly() {
-    let (db, service) = setup().await;
+async fn metadata_tags_are_rejected_on_product_create() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let mut input = create_test_product_input(&[]);
+    input.metadata = serde_json::json!({
+        "featured": true,
+        "tags": ["legacy", "sale"]
+    });
+
+    let error = service
+        .create_product(tenant_id, actor_id, input)
+        .await
+        .expect_err("metadata.tags must not remain a Product tag write contract");
+
+    assert!(matches!(error, CommerceError::Validation(_)));
+    assert!(error.to_string().contains("typed tags field"));
+}
+
+#[tokio::test]
+async fn metadata_tags_are_rejected_on_update_without_mutating_canonical_tags() {
+    let (_db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
 
@@ -319,41 +339,42 @@ async fn legacy_metadata_tags_are_used_as_read_fallback_but_not_exposed_publicly
         .create_product(
             tenant_id,
             actor_id,
-            create_test_product_input(&["sale", "new"]),
+            create_test_product_input(&["sale"]),
         )
         .await
         .expect("product should be created");
 
-    product_tag::Entity::delete_many()
-        .filter(product_tag::Column::ProductId.eq(product.id))
-        .exec(&db)
+    let error = service
+        .update_product(
+            tenant_id,
+            actor_id,
+            product.id,
+            UpdateProductInput {
+                translations: None,
+                seller_id: None,
+                vendor: None,
+                product_type: None,
+                shipping_profile_slug: None,
+                primary_category_id: None,
+                tags: None,
+                metadata: Some(serde_json::json!({
+                    "featured": false,
+                    "tags": ["legacy", "new"]
+                })),
+                status: None,
+            },
+        )
         .await
-        .expect("product tag relations should be removable");
+        .expect_err("metadata.tags must be rejected on Product update");
 
-    let product_model = product::Entity::find_by_id(product.id)
-        .one(&db)
-        .await
-        .expect("product should load")
-        .expect("product must exist");
-    let mut product_active: product::ActiveModel = product_model.into();
-    product_active.metadata = Set(serde_json::json!({
-        "featured": true,
-        "tags": ["legacy", "sale", "legacy"]
-    }));
-    product_active
-        .update(&db)
-        .await
-        .expect("legacy metadata tags should be stored");
+    assert!(matches!(error, CommerceError::Validation(_)));
+    assert!(error.to_string().contains("typed tags field"));
 
     let reloaded = service
         .get_product(tenant_id, product.id)
         .await
-        .expect("product should load via legacy fallback");
-
-    assert_eq!(
-        reloaded.tags,
-        vec!["legacy".to_string(), "sale".to_string()]
-    );
+        .expect("failed update must leave the Product unchanged");
+    assert_eq!(reloaded.tags, vec!["sale".to_string()]);
     assert_eq!(reloaded.metadata["featured"], true);
     assert!(reloaded.metadata.get("tags").is_none());
 }

@@ -13500,7 +13500,6 @@ dependencies = [
  "postcard",
  "proptest",
  "rust_decimal",
- "rustok-api",
  "rustok-core",
  "rustok-events",
  "rustok-runtime",

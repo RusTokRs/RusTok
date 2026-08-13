@@ -29,6 +29,7 @@ use super::loaders::TenantNameLoader;
 #[cfg(feature = "mod-moderation")]
 use super::moderation_recovery::ModerationRecoveryMutation;
 use super::module_security::GraphqlModuleSecurityPolicy;
+use super::module_settings_cas::ModuleSettingsCasMutation;
 use super::mutations::RootMutation;
 use super::observability::GraphqlObservability;
 use super::principal_tenant_security::GraphqlPrincipalTenantPolicy;
@@ -93,6 +94,7 @@ pub struct Query(
 #[derive(MergedObject, Default)]
 pub struct Mutation(
     RootMutation,
+    ModuleSettingsCasMutation,
     IndexDriftDiagnosisMutation,
     IndexDriftSourcePageDiagnosisMutation,
     IndexReplayMutation,

@@ -609,13 +609,28 @@ pub(crate) fn fulfillment_orchestration_from_context(
     }
 }
 
-pub(crate) fn post_order_orchestration_from_context(
+pub(crate) fn return_decision_owner_orchestration_from_context(
     ctx: &Context<'_>,
     db: DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
-) -> crate::PostOrderOrchestrationService {
-    crate::PostOrderOrchestrationService::new(db, event_bus)
-        .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
+) -> crate::ReturnDecisionOwnerOrchestrationService {
+    let service = match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
+        Some(runtime) => crate::ReturnDecisionOwnerOrchestrationService::new(
+            db,
+            runtime.order_post_order_command_runtime().command_port(),
+            runtime.payment_read_runtime().admin_read_port(),
+        ),
+        None => {
+            let order_runtime = OrderPostOrderCommandRuntime::in_process(db.clone(), event_bus);
+            let payment_runtime = CommercePaymentReadRuntime::in_process(db.clone());
+            crate::ReturnDecisionOwnerOrchestrationService::new(
+                db,
+                order_runtime.command_port(),
+                payment_runtime.admin_read_port(),
+            )
+        }
+    };
+    service.with_payment_provider_registry(payment_provider_registry_from_context(ctx))
 }
 
 pub(crate) fn order_change_orchestration_from_context(

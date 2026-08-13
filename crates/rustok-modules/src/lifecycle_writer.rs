@@ -5,6 +5,9 @@ use uuid::Uuid;
 
 use rustok_core::ModuleRegistry;
 
+use crate::operation_store::{
+    TenantModuleSettingsCompareAndSwapError, TenantModuleSettingsCompareAndSwapRequest,
+};
 use crate::policy::{
     ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyCoRequisite,
     ModuleEffectivePolicyInstallationFact, ModuleEffectivePolicyMaintenanceInput,
@@ -429,6 +432,67 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         }
         self.persist_settings_value(tenant_id, definition, settings)
             .await
+    }
+
+    /// Atomically persists a normalized static-module settings value only while the exact
+    /// reviewed tenant override still has the expected enablement bit and settings snapshot.
+    /// `Ok(None)` is the fail-closed conflict outcome; callers must re-read and re-review before
+    /// retrying instead of overwriting concurrent control-plane changes.
+    pub async fn persist_static_normalized_settings_if_current(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+        expected_enabled: bool,
+        expected_settings: serde_json::Value,
+        settings: serde_json::Value,
+    ) -> Result<Option<TenantModuleSettingsRecord>, ModuleLifecycleDbWriterError> {
+        let catalog = self.definition_catalog()?;
+        let definition = catalog
+            .get(module_slug)
+            .ok_or_else(|| ModuleLifecycleDbWriterError::UnknownModule(module_slug.to_string()))?;
+        if !matches!(
+            &definition.source,
+            ModuleDefinitionSource::PlatformNative { .. }
+                | ModuleDefinitionSource::PromotedNative { .. }
+        ) {
+            return Err(ModuleLifecycleDbWriterError::ArtifactSettings {
+                module_slug: module_slug.to_string(),
+                reason: "artifact settings must use owner-resolved admitted schema validation",
+            });
+        }
+
+        let effective_enabled_modules = self.effective_enabled_modules(tenant_id).await?;
+        if definition.kind != ModuleDefinitionKind::Core
+            && !effective_enabled_modules.contains(&definition.slug)
+        {
+            return Err(ModuleLifecycleDbWriterError::Settings(
+                ModuleOperationStoreError::ModuleNotEnabled(definition.slug.clone()),
+            ));
+        }
+
+        match TenantModuleStateStore::persist_settings_if_current(
+            &self.db,
+            TenantModuleSettingsCompareAndSwapRequest {
+                tenant_id,
+                module_slug: definition.slug.clone(),
+                expected_enabled,
+                expected_settings,
+                settings,
+            },
+        )
+        .await
+        {
+            Ok(record) => Ok(Some(record)),
+            Err(TenantModuleSettingsCompareAndSwapError::Conflict(_)) => Ok(None),
+            Err(TenantModuleSettingsCompareAndSwapError::ModuleNotEnabled(module_slug)) => {
+                Err(ModuleLifecycleDbWriterError::Settings(
+                    ModuleOperationStoreError::ModuleNotEnabled(module_slug),
+                ))
+            }
+            Err(TenantModuleSettingsCompareAndSwapError::Database(error)) => Err(
+                ModuleLifecycleDbWriterError::Settings(ModuleOperationStoreError::Database(error)),
+            ),
+        }
     }
 
     /// Validates and persists artifact settings against the exact immutable

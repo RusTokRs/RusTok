@@ -6,8 +6,6 @@ use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
-use rustok_api::{ModuleWorkError, ModuleWorkHandler, ModuleWorkOutcome, ModuleWorkSource};
-
 mod deployment;
 mod layout;
 
@@ -21,8 +19,10 @@ pub use layout::{
     InstanceLayoutPreparation, InstancePlacement, bind_instance_placement, inspect_instance_layout,
     prepare_instance_layout,
 };
-
-pub use rustok_api::HostRuntimeContext;
+pub use rustok_api::{
+    HostRuntimeContext, ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome,
+    ModuleWorkSource,
+};
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum RuntimeHandleError {
