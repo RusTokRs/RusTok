@@ -11,6 +11,7 @@ const failures = [];
 const files = {
   evidence: 'crates/rustok-blog/contracts/evidence/blog-tag-canonical-projection-source.json',
   tagService: 'crates/rustok-blog/src/services/tag.rs',
+  taxonomyOwnerRead: 'crates/rustok-taxonomy/src/owner_read.rs',
   blogReadHarness: 'crates/rustok-blog/tests/taxonomy_tags.rs',
   projector: 'crates/rustok-search/src/blog_projector.rs',
   searchHarness: 'crates/rustok-search/tests/blog_projection_postgres_test.rs',
@@ -32,6 +33,7 @@ function forbid(source, marker, label) { if (source.includes(marker)) failures.p
 
 const evidence = json(files.evidence);
 const tagService = read(files.tagService);
+const taxonomyOwnerRead = read(files.taxonomyOwnerRead);
 const blogReadHarness = read(files.blogReadHarness);
 const projector = read(files.projector);
 const searchHarness = read(files.searchHarness);
@@ -75,7 +77,20 @@ for (const marker of [
   'let mut tags_by_post = post_ids', '.map(|post_id| (post_id, Vec::new()))',
   'if relations.is_empty() {', 'return Ok(tags_by_post);',
   'resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)',
+  'TaxonomyOwnerReader',
+  '.load_scoped_terms(',
 ]) need(tagService, marker, files.tagService);
+for (const marker of [
+  'taxonomy_term::Entity',
+  'taxonomy_term_translation::Entity',
+]) forbid(tagService, marker, files.tagService);
+for (const marker of [
+  'pub struct TaxonomyOwnerReader',
+  'pub async fn load_scoped_terms(',
+  'taxonomy_term::Entity::find()',
+  'taxonomy_term_translation::Entity::find()',
+  'resolve_by_locale_with_fallback(',
+]) need(taxonomyOwnerRead, marker, files.taxonomyOwnerRead);
 for (const marker of [
   'post_read_does_not_resurrect_metadata_tags_after_relations_are_removed',
   'stale-metadata-tag',
@@ -120,4 +135,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
-console.log('[verify-blog-tag-canonical-projection-source] PASS source=blog_post_tags+taxonomy execution=not-run');
+console.log('[verify-blog-tag-canonical-projection-source] PASS source=blog_post_tags+taxonomy-owner-reader execution=not-run');
