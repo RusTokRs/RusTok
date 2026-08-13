@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "module": "taxonomy",
+  "surface": "route_registry_postgres_contention",
+  "status": "executable_no_run",
+  "compile_policy": "not_run_by_request",
+  "runtime_status": "not_run",
+  "environment": {
+    "primary": "RUSTOK_TAXONOMY_TEST_DATABASE_URL",
+    "fallback": "DATABASE_URL",
+    "required_backend": "postgresql",
+    "isolation": "unique schema with independent single-connection workers"
+  },
+  "test_target": "crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs",
+  "source_guardrail": "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs",
+  "production_contract": {
+    "mutation_path": "update_module_term_in_tx",
+    "route_registry_table": "taxonomy_term_route_keys",
+    "two_independent_writer_connections": true,
+    "both_writers_complete_route_preflight_before_release": true,
+    "contention_is_forced_after_translation_row_prelock": true,
+    "route_registry_primary_key_is_storage_authority": true,
+    "exactly_one_writer_commits": true,
+    "losing_writer_reports_concurrent_route_claim": true,
+    "losing_translation_update_rolls_back": true,
+    "winner_translation_and_route_reservation_commit_together": true,
+    "exactly_one_durable_route_owner": true
+  },
+  "scope": {
+    "tenant_isolated": true,
+    "kind": "tag",
+    "scope_type": "module",
+    "scope_value": "blog",
+    "locale": "en"
+  },
+  "remaining_open_result_4_evidence": [
+    "PostgreSQL concurrent translation apply CAS",
+    "PostgreSQL translation change-cursor monotonic consumption",
+    "recorded maintainer/runtime execution of retained Taxonomy migrations and this contention harness"
+  ]
+}
