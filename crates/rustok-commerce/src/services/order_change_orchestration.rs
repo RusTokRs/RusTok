@@ -30,6 +30,26 @@ pub enum OrderChangeOrchestrationError {
 
 pub type OrderChangeOrchestrationResult<T> = Result<T, OrderChangeOrchestrationError>;
 
+fn with_order_change_apply_action(
+    metadata: Value,
+    action: &'static str,
+) -> PostOrderOrchestrationResult<Value> {
+    let mut object = match metadata {
+        Value::Null => serde_json::Map::new(),
+        Value::Object(object) => object,
+        _ => {
+            return Err(PostOrderOrchestrationError::Validation(
+                "metadata must be a JSON object".to_string(),
+            ));
+        }
+    };
+    object.insert(
+        "apply_action".to_string(),
+        Value::String(action.to_string()),
+    );
+    Ok(Value::Object(object))
+}
+
 /// Routes order-change application through the correct post-order workflow.
 ///
 /// Transport layers must not inspect `change_type` and duplicate exchange/claim
@@ -156,25 +176,40 @@ impl OrderChangeOrchestrationService {
             .await
             .map_err(OrderChangeOrchestrationError::OrderRead)?;
 
-        let post_order =
-            PostOrderOrchestrationService::new(self.db.clone(), self.event_bus.clone())
-                .with_payment_provider_registry(self.payment_provider_registry.clone());
-
         match order_change.change_type.as_str() {
-            "exchange" => post_order
-                .apply_exchange_order_change(
-                    tenant_id,
-                    order_change.order_id,
-                    change_id,
-                    difference_refund,
-                    metadata,
-                )
-                .await
-                .map_err(OrderChangeOrchestrationError::from),
-            "claim" => post_order
-                .apply_claim_order_change(tenant_id, change_id, metadata)
-                .await
-                .map_err(OrderChangeOrchestrationError::from),
+            "exchange" => {
+                let post_order =
+                    PostOrderOrchestrationService::new(self.db.clone(), self.event_bus.clone())
+                        .with_payment_provider_registry(self.payment_provider_registry.clone());
+                post_order
+                    .apply_exchange_order_change(
+                        tenant_id,
+                        order_change.order_id,
+                        change_id,
+                        difference_refund,
+                        metadata,
+                    )
+                    .await
+                    .map_err(OrderChangeOrchestrationError::from)
+            }
+            "claim" => {
+                let metadata = with_order_change_apply_action(metadata, "claim")?;
+                let order_change = self
+                    .order_commands
+                    .apply_change(
+                        order_command_context,
+                        ApplyOrderChangeRequest {
+                            change_id,
+                            input: ApplyOrderChangeInput { metadata },
+                        },
+                    )
+                    .await
+                    .map_err(OrderChangeOrchestrationError::OrderCommand)?;
+                Ok(ApplyOrderChangeResult {
+                    order_change,
+                    refund: None,
+                })
+            }
             _ => {
                 let order_change = self
                     .order_commands
