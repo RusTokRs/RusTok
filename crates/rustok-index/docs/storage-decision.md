@@ -122,7 +122,7 @@ The finalizer fails closed unless:
 
 The standalone renderer enforces the same methodology contract even when invoked directly. Recomputing `comparison_sha256` after removing or changing the methodology does not make the input acceptable.
 
-The directly invokable renderer accepts help only as a sole argument and rejects unknown, incomplete, or duplicate options before changing files. Output collisions with comparison or decision inputs are also non-destructive. A real render attempt withdraws any stale output before evidence validation, writes into a unique same-directory staging location, and publishes the completed Markdown with one rename. Failure leaves neither an old final ADR nor staging residue. The stable `index-storage-tooling.mjs render` command continues to use the stricter accepted-decision finalizer.
+The directly invocable renderer accepts help only as a sole argument and rejects unknown, incomplete, or duplicate options before changing files. Output collisions with comparison or decision inputs are also non-destructive. A real render attempt withdraws any stale output before evidence validation, writes into a unique same-directory staging location, and publishes the completed Markdown with one rename. Failure leaves neither an old final ADR nor staging residue. The stable `index-storage-tooling.mjs render` command continues to use the stricter accepted-decision finalizer.
 
 ## Verify the saved ADR
 

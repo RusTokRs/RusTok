@@ -91,7 +91,7 @@ requireMarkers(router, 'storage tooling router', [
 ]);
 
 requireMarkers(guide, 'storage decision guide', [
-  'The directly invokable renderer accepts help only as a sole argument and rejects unknown, incomplete, or duplicate options before changing files.',
+  'The directly invocable renderer accepts help only as a sole argument and rejects unknown, incomplete, or duplicate options before changing files.',
   'A real render attempt withdraws any stale output before evidence validation, writes into a unique same-directory staging location, and publishes the completed Markdown with one rename.',
   'Failure leaves neither an old final ADR nor staging residue.',
 ]);
