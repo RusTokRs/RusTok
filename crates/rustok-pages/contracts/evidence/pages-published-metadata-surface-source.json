@@ -48,7 +48,9 @@
     "state": "source_ready_maintainer_execution_pending",
     "contract": "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
     "runner": "apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts",
-    "verifier": "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs"
+    "workflow": ".github/workflows/pages-published-metadata-browser-evidence.yml",
+    "verifier": "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs",
+    "workflow_verifier": "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs"
   },
   "suggested_execution": [
     "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs",
