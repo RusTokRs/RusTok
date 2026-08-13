@@ -1,0 +1,72 @@
+{
+  "format": "pages_metadata_properties_registry_admission_v1",
+  "status": "metadata_properties_execution_admitted_registry_update_pending",
+  "generated_at": "2026-08-14",
+  "scope": "pages_metadata_owner_port_execution",
+  "execution": {
+    "workflow": "Pages Consumer Properties Source Evidence",
+    "run_id": "31702550557",
+    "run_attempt": "1",
+    "event": "push",
+    "branch": "main",
+    "source_commit": "a8bf89c642baa7d1e70bab8c3439fd5d19ed6d8f",
+    "status": "completed",
+    "conclusion": "success",
+    "artifact_id": "9181996810",
+    "artifact_digest": "sha256:901d0b483ea595bfe94e9874ae84fa323b4dc466af5e8ed4ad634144c9c9b013",
+    "receipt_format": "pages_consumer_properties_source_execution_v1",
+    "receipt_status": "rust_source_execution_passed_browser_evidence_pending",
+    "receipt_sha256": "aa20e1eba23967344fe7b8eb5bc366742d35db8d9627d85b05f3571572d47c3a",
+    "receipt_bytes": 6825,
+    "all_commands_passed": true
+  },
+  "metadata_subset": {
+    "required_tests": [
+      "metadata_properties::tests::stale_metadata_revision_short_circuits_before_patch_transport",
+      "metadata_properties::tests::metadata_save_is_document_free_and_preserves_dirty_fly_state"
+    ],
+    "check_command": "cargo check --locked -p rustok-pages-admin --all-targets",
+    "network_runtime_under_test": false,
+    "database_used": false,
+    "browser_required_for_this_nested_blocker": false
+  },
+  "source_lineage": {
+    "review_base_commit": "63112adce13879491b838c2128ea546dc1c8da0c",
+    "execution_commit_is_ancestor": true,
+    "compare_ahead_by": 10,
+    "compare_behind_by": 0,
+    "merge_base": "a8bf89c642baa7d1e70bab8c3439fd5d19ed6d8f",
+    "changed_execution_required_source_files": [],
+    "consumer_contract_sha256": "cb41ec647eaebd95ece9f383a2b16c636d05bf60fe2cf67f720a1799b17a2694",
+    "fba_registry_sha256": "c87499c57ea5186bdd58d85c2651835140131ea35f0da7c74c090ef29aecae9d",
+    "metadata_source_sha256": "a4de2fc729bb7a4483f286601dd2b84fb64f0b588da2c92f00396a312ea4d73b",
+    "metadata_revision_source_sha256": "b811f8e3dc01eed581a94ecc3c29d5505d7a1d98983dca479d72af94262086f0"
+  },
+  "target": {
+    "registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "registry_status": "boundary_ready",
+    "json_pointer": "/consumers/0/metadata_properties/executed_evidence",
+    "before": "pending",
+    "admitted_after": "verified",
+    "metadata_state": "source_connected_execution_pending"
+  },
+  "independent_provider_blocker": {
+    "json_pointer": "/provider/consumer_properties_contract/executed_evidence",
+    "current_value": "pending",
+    "browser_and_deployment_evidence_still_required": true
+  },
+  "governance": {
+    "this_packet_mutates_registry": false,
+    "registry_change_requires_separate_evidence_containing_pr": true,
+    "registry_change_must_change_only_target_node": true,
+    "terminal_inventory_must_be_recomputed_after_registry_change": true,
+    "browser_execution_claimed": false,
+    "deployment_provenance_verified": false,
+    "terminal_inventory_complete_claimed": false,
+    "owner_approval_claimed": false,
+    "platform_approval_claimed": false,
+    "pages_ffa_promoted": false,
+    "page_builder_fba_promoted": false,
+    "cryptographic_ci_attestation_claimed": false
+  }
+}
