@@ -80,8 +80,8 @@ async fn concurrent_same_revision_translation_applies_commit_once() -> TestResul
             ),
             translation_patch(
                 &initial_snapshot,
-                "Systemes",
-                "systemes",
+                "Translated Systems",
+                "translated-systems",
                 "taxonomy-seed",
             ),
         )
@@ -105,8 +105,16 @@ async fn concurrent_same_revision_translation_applies_commit_once() -> TestResul
     );
 
     let candidates = [
-        ("Systemes alpha", "systemes-alpha", "candidate-alpha"),
-        ("Systemes beta", "systemes-beta", "candidate-beta"),
+        (
+            "Translated Systems alpha",
+            "translated-systems-alpha",
+            "candidate-alpha",
+        ),
+        (
+            "Translated Systems beta",
+            "translated-systems-beta",
+            "candidate-beta",
+        ),
     ];
     let barrier = Arc::new(Barrier::new(candidates.len()));
     let mut tasks = Vec::with_capacity(candidates.len());
@@ -237,7 +245,7 @@ async fn change_cursor_resumes_after_provider_reconstruction_and_delete() -> Tes
                 "taxonomy-translation-cursor-apply",
                 "taxonomy-translation-cursor-apply-1",
             ),
-            translation_patch(&snapshot, "Recuperation", "recuperation", "cursor-recovery"),
+            translation_patch(&snapshot, "Recovery target", "recovery-target", "cursor-recovery"),
         )
         .await?;
     assert_eq!(receipt.resource_revision.as_str(), "2");
