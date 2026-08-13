@@ -64,7 +64,7 @@ impl TaxonomyOwnerReader {
                     .ok_or_else(|| TaxonomyError::validation("Fallback locale cannot be empty"))
             })
             .transpose()?;
-        let scope_value = normalize_scope(scope_type, scope_value)?;
+        let scope_value = normalize_scope_value(scope_type, scope_value)?;
 
         let mut query = taxonomy_term::Entity::find()
             .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
@@ -123,7 +123,7 @@ impl TaxonomyOwnerReader {
                     id: term.id,
                     kind: term.kind,
                     scope_type: term.scope_type,
-                    scope_value: decode_scope(term.scope_type, &term.scope_value),
+                    scope_value: decode_scope_value(term.scope_type, &term.scope_value),
                     canonical_key: term.canonical_key,
                     requested_locale: locale.clone(),
                     effective_locale,
@@ -136,34 +136,34 @@ impl TaxonomyOwnerReader {
     }
 }
 
-fn normalize_scope(scope_type: TaxonomyScopeType, scope_value: Option<&str>) -> TaxonomyResult<String> {
+fn normalize_scope_value(
+    scope_type: TaxonomyScopeType,
+    scope_value: Option<&str>,
+) -> TaxonomyResult<String> {
     match scope_type {
-        TaxonomyScopeType::Global => {
-            if scope_value.is_some_and(|scope_value| !scope_value.trim().is_empty()) {
-                return Err(TaxonomyError::validation(
-                    "Global taxonomy scope cannot have a scope value",
-                ));
-            }
-            Ok(String::new())
-        }
+        TaxonomyScopeType::Global => Ok(String::new()),
         TaxonomyScopeType::Module => {
-            let scope_value = scope_value.map(str::trim).unwrap_or_default();
-            if scope_value.is_empty() {
+            let value = normalize_optional_scope_label(scope_value.unwrap_or_default());
+            if value.is_empty() {
                 return Err(TaxonomyError::validation(
-                    "Module taxonomy scope requires a scope value",
+                    "Module scope requires a non-empty scope_value",
                 ));
             }
-            if scope_value.chars().count() > 64 {
-                return Err(TaxonomyError::validation(
-                    "Taxonomy scope value cannot exceed 64 characters",
-                ));
-            }
-            Ok(scope_value.to_owned())
+            Ok(value)
         }
     }
 }
 
-fn decode_scope(scope_type: TaxonomyScopeType, scope_value: &str) -> Option<String> {
+fn normalize_optional_scope_label(value: &str) -> String {
+    value
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '-')
+        .collect()
+}
+
+fn decode_scope_value(scope_type: TaxonomyScopeType, scope_value: &str) -> Option<String> {
     match scope_type {
         TaxonomyScopeType::Global => None,
         TaxonomyScopeType::Module => Some(scope_value.to_owned()),
@@ -176,18 +176,18 @@ mod tests {
     use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
     #[test]
-    fn scope_normalization_preserves_taxonomy_storage_encoding() {
+    fn scope_normalization_matches_taxonomy_storage_encoding() {
         assert_eq!(
-            normalize_scope(TaxonomyScopeType::Global, None).expect("global scope"),
+            normalize_scope_value(TaxonomyScopeType::Global, Some("ignored"))
+                .expect("global scope"),
             ""
         );
         assert_eq!(
-            normalize_scope(TaxonomyScopeType::Module, Some(" blog "))
+            normalize_scope_value(TaxonomyScopeType::Module, Some(" Blog! "))
                 .expect("module scope"),
             "blog"
         );
-        assert!(normalize_scope(TaxonomyScopeType::Module, None).is_err());
-        assert!(normalize_scope(TaxonomyScopeType::Global, Some("blog")).is_err());
+        assert!(normalize_scope_value(TaxonomyScopeType::Module, None).is_err());
     }
 
     #[test]
