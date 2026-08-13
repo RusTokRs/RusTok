@@ -134,7 +134,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-current-schema-promotion.md'
   'Status: `postgres_packet_source_complete_execution_pending`',
   'Tenant promotion sequence',
   'Retained PostgreSQL promotion packet — source complete',
-  'storage-only lower-key fixture',
+  'storage-only lower-key',
   '`PostgresSchemaRegistrationStore::register_current`',
   'Mounted Storefront remains owner-native',
 ]);

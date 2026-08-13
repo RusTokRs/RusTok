@@ -66,6 +66,7 @@ const registration = requireMarkers(registrationPath, [
   'pub async fn register_current(',
   'register_current_in_transaction(',
   'retire_lower_active_schemas(',
+  'let version: i32 = row.try_get("", "schema_version").map_err(storage_error)?;',
   "status = 'retired'",
   'schema_version < $4 AND status = \'active\'',
   'Historical entity/link/inbox/replay rows are not deleted or rewritten',
@@ -86,8 +87,9 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_registrat
 ]);
 
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_readiness.rs', [
-  'if status != "active"',
-  'IndexSchemaReadinessFailure::Inactive',
+  'let schema_version: i32 = row.try_get("", "schema_version").map_err(storage_error)?;',
+  'let reason = if persisted.status != "active" {',
+  'Some(PersistedSchemaReadinessFailure::Inactive)',
 ]);
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_port.rs', [
   'if status != "active"',
@@ -111,7 +113,7 @@ requireMarkers('crates/rustok-index/docs/m7-product-current-schema-promotion.md'
   '`PostgresSchemaRegistrationStore::register_current`',
   'Historical state',
   'Retained PostgreSQL promotion packet — source complete',
-  'storage-only lower-key fixture',
+  'storage-only lower-key',
   'Mounted Storefront remains owner-native',
   'Maintainer execution still required',
 ]);

@@ -12,8 +12,10 @@ const fail = (message) => {
 };
 const requireMarkers = (relative, markers) => {
   const source = read(relative);
+  const normalizedSource = source.replace(/\s+/gu, ' ');
   for (const marker of markers) {
-    if (!source.includes(marker)) fail(`${relative} is missing ${marker}`);
+    const normalizedMarker = marker.replace(/\s+/gu, ' ');
+    if (!normalizedSource.includes(normalizedMarker)) fail(`${relative} is missing ${marker}`);
   }
   return source;
 };
@@ -31,6 +33,8 @@ const packet = requireMarkers(packetPath, [
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
   'CURRENT_PRODUCT_SCHEMA_VERSION: u32 = 4',
   'HISTORICAL_PRODUCT_SCHEMA_VERSION: u32 = 3',
+  'CREATE TABLE oauth_apps (',
+  'rustok_channel::migrations::migrations()',
   'rustok_product::migrations::migrations()',
   'for migration_step in IndexModule.migrations()',
   'rustok_distribution::build_runtime_extensions(&registry)?',
@@ -39,7 +43,8 @@ const packet = requireMarkers(packetPath, [
   'current_product_schema(&schemas)?',
   'let mut historical_product_schema = current_product_schema.clone();',
   'historical_product_schema.reference.version =',
-  'schema_store.register(TENANT_ID, &historical_product_schema)',
+  'PostgresSchemaRegistrationStore::new(database.query.clone())',
+  '.register(TENANT_ID, &historical_product_schema)',
   'for registered in schemas.registry().iter()',
   'materialize_postgres_index_sources(&mut extensions, database.source.clone())?',
   'materialize_index_source_registry(&extensions)?',
@@ -74,6 +79,7 @@ forbidMarkers(packetPath, packet, [
   'mod product_v3',
   'SharedIndexSourceRegistry::new',
   'tokio::spawn',
+  'CREATE TABLE channel_index_identity_generations (',
 ]);
 
 // The lower-key contract is deliberately a storage/probe fixture. The packet must never register a key3
