@@ -40,6 +40,8 @@ jobs:
         run: node scripts/verify/verify-commerce-graphql-return-decision-owner-port-cutover.mjs
       - name: Verify admin order-change Order owner ports
         run: node scripts/verify/verify-commerce-rest-admin-order-change-apply-owner-port-cutover.mjs
+      - name: Verify GraphQL order-change owner ports
+        run: node scripts/verify/verify-commerce-graphql-order-change-apply-owner-port-cutover.mjs
       - name: Verify GraphQL shipping-option owner port
         run: node scripts/verify/verify-commerce-graphql-cart-shipping-option-context.mjs
       - name: Verify ecommerce public port errors
