@@ -17,8 +17,7 @@ pub mod translation_target;
 pub use dto::{
     ApplyExactTaxonomyTranslationInput, CreateTaxonomyTermInput, ListTaxonomyTermsFilter,
     ResolveTaxonomyTermInput, TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermListItem,
-    TaxonomyTermResponse, TaxonomyTermStatus, TaxonomyTranslationApplyResult,
-    UpdateTaxonomyTermInput,
+    TaxonomyTermResponse, TaxonomyTranslationApplyResult, UpdateTaxonomyTermInput,
 };
 pub use error::{TaxonomyError, TaxonomyResult};
 pub use module_term_mutation::{
@@ -97,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn module_permissions_cover_term_lifecycle() {
+    fn module_permissions_cover_term_crud() {
         let module = TaxonomyModule;
         let permissions = module.permissions();
 

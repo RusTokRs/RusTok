@@ -39,25 +39,6 @@ impl std::fmt::Display for TaxonomyScopeType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
-#[serde(rename_all = "snake_case")]
-pub enum TaxonomyTermStatus {
-    #[sea_orm(string_value = "active")]
-    Active,
-    #[sea_orm(string_value = "deprecated")]
-    Deprecated,
-}
-
-impl std::fmt::Display for TaxonomyTermStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Active => write!(f, "active"),
-            Self::Deprecated => write!(f, "deprecated"),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateTaxonomyTermInput {
     pub kind: TaxonomyTermKind,
@@ -78,7 +59,6 @@ pub struct UpdateTaxonomyTermInput {
     pub name: Option<String>,
     pub slug: Option<String>,
     pub description: Option<String>,
-    pub status: Option<TaxonomyTermStatus>,
     pub aliases: Option<Vec<String>>,
 }
 
@@ -117,7 +97,6 @@ pub struct TaxonomyTermResponse {
     pub scope_type: TaxonomyScopeType,
     pub scope_value: Option<String>,
     pub canonical_key: String,
-    pub status: TaxonomyTermStatus,
     pub requested_locale: String,
     pub effective_locale: String,
     pub available_locales: Vec<String>,
@@ -136,7 +115,6 @@ pub struct TaxonomyTermListItem {
     pub scope_type: TaxonomyScopeType,
     pub scope_value: Option<String>,
     pub canonical_key: String,
-    pub status: TaxonomyTermStatus,
     pub requested_locale: String,
     pub effective_locale: String,
     pub available_locales: Vec<String>,
@@ -151,7 +129,6 @@ pub struct ListTaxonomyTermsFilter {
     pub kind: Option<TaxonomyTermKind>,
     pub scope_type: Option<TaxonomyScopeType>,
     pub scope_value: Option<String>,
-    pub status: Option<TaxonomyTermStatus>,
     pub locale: Option<String>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,

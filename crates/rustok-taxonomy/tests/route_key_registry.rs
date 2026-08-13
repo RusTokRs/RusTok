@@ -113,7 +113,6 @@ async fn update_reserves_new_route_keys_and_releases_stale_keys() {
                 name: None,
                 slug: Some("ferris".to_string()),
                 description: None,
-                status: None,
                 aliases: Some(vec!["ecosystem".to_string()]),
             },
         )
