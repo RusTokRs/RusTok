@@ -55,7 +55,7 @@
       "crates/rustok-taxonomy/Cargo.toml": "0441c8785f1f6c62596441f9a98c1aed57fa0775",
       "crates/rustok-taxonomy/src": "3d4aae0209a45371e7d329b6e311a2477f8a233d",
       "crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs": "b62692c109d715a4b7d67d2b3467cc502e3d50aa",
-      "crates/rustok-taxonomy/tests/translation_target_postgres.rs": "6f62da2b4bf448e9c58c85ae5345ee9610a7e6bb",
+      "crates/rustok-taxonomy/tests/translation_target_postgres.rs": "6f62da2b1b400723fbcbc8135210771606e37bac",
       "crates/rustok-translation-targets/Cargo.toml": "7cdc77394d05244ca3f4fa41971c58bf0f39e3d3",
       "crates/rustok-translation-targets/src": "a52cc4fb614cc6cc9ab5ee18fdcfab0746a968e8",
       ".github/workflows/taxonomy-postgres-evidence.yml": "ef8623482f7193f2cb7021e8e0c8cafd0a52f32e"
