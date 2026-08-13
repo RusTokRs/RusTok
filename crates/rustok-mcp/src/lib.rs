@@ -11,7 +11,7 @@
 //! RusToK MCP Server
 //!
 //! This crate provides a Model Context Protocol (MCP) server for exploring
-//! and interacting with RusToK modules, including Alloy scripting management.
+//! and interacting with RusToK modules, including Alloy scaffold assistance.
 
 pub mod access;
 pub mod alloy_import;
@@ -19,12 +19,10 @@ mod alloy_scaffold;
 #[path = "alloy_tools.rs"]
 mod alloy_tools_unchecked;
 pub mod alloy_tools {
-    use alloy::storage::ScriptRegistry;
-
     pub use super::alloy_tools_unchecked::*;
 
-    pub async fn alloy_apply_module_scaffold<R: ScriptRegistry>(
-        state: &AlloyMcpState<R>,
+    pub async fn alloy_apply_module_scaffold(
+        state: &AlloyScaffoldState,
         context: Option<crate::McpScaffoldDraftRuntimeContext>,
         request: ApplyModuleScaffoldRequest,
     ) -> Result<ApplyModuleScaffoldResponse, String> {
@@ -54,11 +52,9 @@ pub use alloy_scaffold::{
     StagedModuleScaffold, apply_staged_scaffold, generate_module_scaffold,
 };
 pub use alloy_tools::{
-    ALL_ALLOY_TOOLS, AlloyMcpState, AlloyScriptInfo, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
-    TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT, TOOL_ALLOY_GET_SCRIPT,
-    TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
-    TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_ALLOY_SCRIPT_HELPERS,
-    TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
+    ALL_ALLOY_TOOLS, AlloyScaffoldState, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
+    TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE,
+    TOOL_ALLOY_SCRIPT_HELPERS,
 };
 pub use management::{
     ApplyMcpModuleScaffoldDraftRequest, ApplyMcpScaffoldDraftCommand,

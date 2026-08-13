@@ -21,7 +21,6 @@ use rustok_ai_product::{
 };
 use rustok_api::{PortActor, PortContext};
 use rustok_core::infer_user_role_from_permissions;
-use rustok_mcp::alloy_tools::{AlloyMcpState, ValidateScriptRequest, alloy_validate_script};
 use rustok_media::{MediaService, UploadInput, UpsertTranslationInput};
 use rustok_product::CatalogService;
 use rustok_product::dto::{ProductTranslationInput, UpdateProductInput};
@@ -225,17 +224,21 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
                             "script_source is required for validate_script".to_string(),
                         )
                     })?;
-                let validation = serde_json::to_value(alloy_validate_script(
-                    &AlloyMcpState::new(
-                        scoped.storage.clone(),
-                        scoped.engine.clone(),
-                        scoped.orchestrator.clone(),
-                    ),
-                    ValidateScriptRequest {
-                        code: script_source.clone(),
-                    },
-                ))
-                .map_err(AiError::Json)?;
+                let mut scope = rhai::Scope::new();
+                let validation = match scoped.engine.compile(
+                    "__direct_alloy_validation__",
+                    &script_source,
+                    &mut scope,
+                ) {
+                    Ok(_) => json!({
+                        "valid": true,
+                        "message": "Script compiles successfully",
+                    }),
+                    Err(error) => json!({
+                        "valid": false,
+                        "message": error.to_string(),
+                    }),
+                };
                 let summary = if validation["valid"].as_bool().unwrap_or(false) {
                     "Validated Alloy script successfully.".to_string()
                 } else {
@@ -551,16 +554,16 @@ impl DirectTaskHandler for ProductCopyHandler {
             .iter()
             .find(|translation| locale_matches(&translation.locale, &target_locale));
 
-        let generated_copy = generate_product_copy(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            &target_locale,
-            &product,
-            &source_translation,
+        let generated_copy = generate_product_copy(ProductCopyGenerationRequest {
+            provider: &request.provider,
+            provider_config: &request.provider_config,
+            system_prompt: request.system_prompt.as_deref(),
+            target_locale: &target_locale,
+            product: &product,
+            source_translation: &source_translation,
             current_target_translation,
-            input.copy_instructions.as_deref(),
-        )
+            copy_instructions: input.copy_instructions.as_deref(),
+        })
         .await?;
 
         let title = normalize_optional_text(generated_copy.title)
@@ -809,17 +812,17 @@ impl DirectTaskHandler for BlogDraftHandler {
                 .create_post(
                     operator.tenant_id,
                     security.clone(),
-                    build_blog_draft_create_input(
-                        &input,
-                        &request.resolved_locale,
-                        &title,
-                        &body,
-                        excerpt.as_deref(),
-                        slug.as_deref(),
-                        &tags,
-                        seo_title.as_deref(),
-                        seo_description.as_deref(),
-                    )?,
+                    build_blog_draft_create_input(BlogDraftCreateRequest {
+                        task_input: &input,
+                        locale: &request.resolved_locale,
+                        title: &title,
+                        body: &body,
+                        excerpt: excerpt.as_deref(),
+                        slug: slug.as_deref(),
+                        tags: &tags,
+                        seo_title: seo_title.as_deref(),
+                        seo_description: seo_description.as_deref(),
+                    })?,
                 )
                 .await
                 .map_err(|err| AiError::Runtime(err.to_string()))?
@@ -1246,22 +1249,25 @@ pub(crate) async fn generate_product_attributes(
     Ok(generated)
 }
 
-#[allow(clippy::too_many_arguments)]
+struct ProductCopyGenerationRequest<'a> {
+    provider: &'a Arc<dyn InferenceEngine>,
+    provider_config: &'a AiProviderConfig,
+    system_prompt: Option<&'a str>,
+    target_locale: &'a str,
+    product: &'a rustok_product::dto::ProductResponse,
+    source_translation: &'a ProductSourceTranslation,
+    current_target_translation: Option<&'a rustok_product::dto::ProductTranslationResponse>,
+    copy_instructions: Option<&'a str>,
+}
+
 async fn generate_product_copy(
-    provider: &Arc<dyn InferenceEngine>,
-    provider_config: &AiProviderConfig,
-    system_prompt: Option<&str>,
-    target_locale: &str,
-    product: &rustok_product::dto::ProductResponse,
-    source_translation: &ProductSourceTranslation,
-    current_target_translation: Option<&rustok_product::dto::ProductTranslationResponse>,
-    copy_instructions: Option<&str>,
+    request: ProductCopyGenerationRequest<'_>,
 ) -> AiResult<GeneratedProductCopy> {
     let locale_instruction = concat!(
         "Return valid JSON only with keys `title`, `handle`, `description`, `meta_title`, ",
         "`meta_description`. Write all text values in the target locale. `handle` may be null."
     );
-    let system = match system_prompt {
+    let system = match request.system_prompt {
         Some(system_prompt) if !system_prompt.trim().is_empty() => {
             format!("{system_prompt}\n\n{locale_instruction}")
         }
@@ -1269,24 +1275,24 @@ async fn generate_product_copy(
     };
     let prompt = json!({
         "task": "product_copy",
-        "target_locale": target_locale,
+        "target_locale": request.target_locale,
         "product": {
-            "id": product.id,
-            "vendor": product.vendor,
-            "product_type": product.product_type,
-            "shipping_profile_slug": product.shipping_profile_slug,
-            "tags": product.tags,
+            "id": request.product.id,
+            "vendor": request.product.vendor,
+            "product_type": request.product.product_type,
+            "shipping_profile_slug": request.product.shipping_profile_slug,
+            "tags": request.product.tags,
         },
-        "source_translation": source_translation,
-        "current_target_translation": current_target_translation,
-        "instructions": copy_instructions,
+        "source_translation": request.source_translation,
+        "current_target_translation": request.current_target_translation,
+        "instructions": request.copy_instructions,
     })
     .to_string();
 
     let generated: GeneratedProductCopy = complete_typed(
-        provider,
+        request.provider,
         ProviderChatRequest {
-            model: provider_config.model.clone(),
+            model: request.provider_config.model.clone(),
             messages: vec![
                 ChatMessage {
                     role: ChatMessageRole::System,
@@ -1295,7 +1301,7 @@ async fn generate_product_copy(
                     tool_call_id: None,
                     tool_calls: Vec::new(),
                     metadata: json!({
-                        "locale": target_locale,
+                        "locale": request.target_locale,
                         "direct_generation": "product_copy",
                     }),
                 },
@@ -1306,15 +1312,15 @@ async fn generate_product_copy(
                     tool_call_id: None,
                     tool_calls: Vec::new(),
                     metadata: json!({
-                        "locale": target_locale,
+                        "locale": request.target_locale,
                         "direct_generation": "product_copy",
                     }),
                 },
             ],
             tools: Vec::new(),
-            temperature: provider_config.temperature,
-            max_tokens: provider_config.max_tokens,
-            locale: Some(target_locale.to_string()),
+            temperature: request.provider_config.temperature,
+            max_tokens: request.provider_config.max_tokens,
+            locale: Some(request.target_locale.to_string()),
         },
     )
     .await?;
@@ -1371,17 +1377,20 @@ fn normalize_tag_list(tags: &[String]) -> Vec<String> {
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
+struct BlogDraftCreateRequest<'a> {
+    task_input: &'a AiBlogDraftTaskInput,
+    locale: &'a str,
+    title: &'a str,
+    body: &'a str,
+    excerpt: Option<&'a str>,
+    slug: Option<&'a str>,
+    tags: &'a [String],
+    seo_title: Option<&'a str>,
+    seo_description: Option<&'a str>,
+}
+
 fn build_blog_draft_create_input(
-    task_input: &AiBlogDraftTaskInput,
-    locale: &str,
-    title: &str,
-    body: &str,
-    excerpt: Option<&str>,
-    slug: Option<&str>,
-    tags: &[String],
-    seo_title: Option<&str>,
-    seo_description: Option<&str>,
+    request: BlogDraftCreateRequest<'_>,
 ) -> AiResult<CreatePostInput> {
     if !blog_draft_must_remain_unpublished() {
         return Err(AiError::InvalidConfig(
@@ -1390,17 +1399,17 @@ fn build_blog_draft_create_input(
     }
 
     Ok(CreatePostInput {
-        locale: locale.to_string(),
-        title: title.to_string(),
-        content: crate::rustok_blog::richtext::article_document_from_plain_text(body),
-        excerpt: excerpt.map(ToString::to_string),
-        slug: slug.map(ToString::to_string),
+        locale: request.locale.to_string(),
+        title: request.title.to_string(),
+        content: crate::rustok_blog::richtext::article_document_from_plain_text(request.body),
+        excerpt: request.excerpt.map(ToString::to_string),
+        slug: request.slug.map(ToString::to_string),
         publish: false,
-        tags: tags.to_vec(),
-        category_id: task_input.category_id,
-        featured_image_url: task_input.featured_image_url.clone(),
-        seo_title: seo_title.map(ToString::to_string),
-        seo_description: seo_description.map(ToString::to_string),
+        tags: request.tags.to_vec(),
+        category_id: request.task_input.category_id,
+        featured_image_url: request.task_input.featured_image_url.clone(),
+        seo_title: request.seo_title.map(ToString::to_string),
+        seo_description: request.seo_description.map(ToString::to_string),
         channel_slugs: None,
         metadata: None,
     })
@@ -1527,37 +1536,41 @@ fn parse_runtime_payload(payload: Option<String>) -> AiResult<serde_json::Map<St
     Ok(object)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn explain_result(
-    provider: &Arc<dyn InferenceEngine>,
-    provider_config: &AiProviderConfig,
-    system_prompt: Option<&str>,
-    locale: &str,
-    assistant_prompt: Option<&str>,
-    summary: &str,
-    payload: &Value,
+struct DirectExplanationRequest<'a> {
+    provider: &'a Arc<dyn InferenceEngine>,
+    provider_config: &'a AiProviderConfig,
+    system_prompt: Option<&'a str>,
+    locale: &'a str,
+    assistant_prompt: Option<&'a str>,
+    summary: &'a str,
+    payload: &'a Value,
     stream_emitter: Option<ProviderStreamEmitter>,
-) -> ChatMessage {
-    let locale_instruction =
-        format!("Respond in locale `{locale}`. Keep the answer concise and operator-facing.");
-    let system = match system_prompt {
+}
+
+pub(crate) async fn explain_result(request: DirectExplanationRequest<'_>) -> ChatMessage {
+    let locale_instruction = format!(
+        "Respond in locale `{}`. Keep the answer concise and operator-facing.",
+        request.locale
+    );
+    let system = match request.system_prompt {
         Some(system_prompt) if !system_prompt.trim().is_empty() => {
             format!("{system_prompt}\n\n{locale_instruction}")
         }
         _ => locale_instruction,
     };
     let prompt = json!({
-        "assistant_prompt": assistant_prompt,
-        "summary": summary,
-        "result": payload,
+        "assistant_prompt": request.assistant_prompt,
+        "summary": request.summary,
+        "result": request.payload,
     })
     .to_string();
 
-    match provider
+    match request
+        .provider
         .complete_stream(
-            provider_config,
+            request.provider_config,
             ProviderChatRequest {
-                model: provider_config.model.clone(),
+                model: request.provider_config.model.clone(),
                 messages: vec![
                     ChatMessage {
                         role: ChatMessageRole::System,
@@ -1565,7 +1578,7 @@ pub(crate) async fn explain_result(
                         name: None,
                         tool_call_id: None,
                         tool_calls: Vec::new(),
-                        metadata: json!({ "locale": locale, "direct_explanation": true }),
+                        metadata: json!({ "locale": request.locale, "direct_explanation": true }),
                     },
                     ChatMessage {
                         role: ChatMessageRole::User,
@@ -1573,15 +1586,15 @@ pub(crate) async fn explain_result(
                         name: None,
                         tool_call_id: None,
                         tool_calls: Vec::new(),
-                        metadata: json!({ "locale": locale, "direct_explanation": true }),
+                        metadata: json!({ "locale": request.locale, "direct_explanation": true }),
                     },
                 ],
                 tools: Vec::new(),
-                temperature: provider_config.temperature,
-                max_tokens: provider_config.max_tokens,
-                locale: Some(locale.to_string()),
+                temperature: request.provider_config.temperature,
+                max_tokens: request.provider_config.max_tokens,
+                locale: Some(request.locale.to_string()),
             },
-            stream_emitter.clone(),
+            request.stream_emitter.clone(),
         )
         .await
     {
@@ -1589,7 +1602,7 @@ pub(crate) async fn explain_result(
             metadata: merge_message_metadata(
                 response.assistant_message.metadata,
                 json!({
-                    "locale": locale,
+                    "locale": request.locale,
                     "direct_explanation": true,
                 }),
             ),
@@ -1598,8 +1611,8 @@ pub(crate) async fn explain_result(
         Err(error) => ChatMessage {
             role: ChatMessageRole::Assistant,
             content: {
-                let content = format!("[{locale}] {summary}");
-                if let Some(emitter) = stream_emitter {
+                let content = format!("[{}] {}", request.locale, request.summary);
+                if let Some(emitter) = request.stream_emitter {
                     emitter.emit_text_delta(content.clone());
                 }
                 Some(content)
@@ -1608,7 +1621,7 @@ pub(crate) async fn explain_result(
             tool_call_id: None,
             tool_calls: Vec::new(),
             metadata: json!({
-                "locale": locale,
+                "locale": request.locale,
                 "direct_explanation": true,
                 "provider_error": error.to_string(),
             }),

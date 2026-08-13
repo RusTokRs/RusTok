@@ -16,8 +16,7 @@
     {
       "name": "execution_history_transport_contract",
       "assertions": [
-        "loco_routes_declared",
-        "axum_routes_declared",
+        "host_composed_routes_declared",
         "graphql_history_fields_declared",
         "canonical_rest_fields_preserved",
         "tenant_filter_before_offset_documented"
@@ -58,7 +57,9 @@
         "rest_update_invalidates_cache_and_compiles_new_workspace_entrypoint",
         "graphql_create_update_validate_workspace_and_compile_entrypoint",
         "transport_expected_revision_rejects_stale_updates",
-        "transport_errors_map_to_validation_or_conflict_codes"
+        "transport_errors_map_to_validation_or_conflict_codes",
+        "host_http_and_graphql_bind_authenticated_tenant_and_actor",
+        "generic_http_router_is_not_an_authoring_bypass"
       ]
     },
     {
@@ -66,8 +67,7 @@
       "assertions": [
         "manual_run_requires_expected_revision",
         "manual_run_executes_loaded_snapshot",
-        "mcp_manual_run_requires_expected_revision",
-        "mcp_manual_run_executes_loaded_snapshot"
+        "generic_mcp_does_not_expose_script_execution"
       ]
     },
     {
@@ -77,8 +77,7 @@
         "rest_delete_requires_expected_revision",
         "graphql_status_mutations_require_expected_revision",
         "graphql_delete_requires_expected_revision",
-        "mcp_delete_requires_expected_revision",
-        "mcp_update_requires_expected_revision"
+        "generic_mcp_does_not_expose_script_mutation"
       ]
     },
     {

@@ -261,10 +261,9 @@ impl CommentsTcpDelegationSchedule {
             }
             if let (Some(previous_retirement), Some(candidate_retirement)) =
                 (retained.retires_at_unix_ms, candidate.retires_at_unix_ms)
+                && candidate_retirement < previous_retirement
             {
-                if candidate_retirement < previous_retirement {
-                    return Err(CommentsTcpDelegationScheduleConfigError::RetirementReduced);
-                }
+                return Err(CommentsTcpDelegationScheduleConfigError::RetirementReduced);
             }
         }
 

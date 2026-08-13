@@ -25,7 +25,6 @@ pub mod scheduler;
 pub mod storage;
 pub mod utils;
 
-pub use api::{AppState, create_router};
 pub use artifact::{
     AlloyArtifactError, fork_rhai_module_release, observed_rhai_capabilities,
     package_rhai_module_release, stage_rhai_module_release, validate_rhai_capabilities,

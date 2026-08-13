@@ -66,6 +66,15 @@ Lifecycle status and deletion mutations also require the caller's
 `expected_version`; owner storage applies the same revision CAS before
 mutating or removing a script.
 
+All operator HTTP routes are composed only through `controllers::axum_router`.
+Every route requires an authenticated principal whose tenant matches the request
+tenant and who holds `scripts.manage`; source, execution history, validation,
+manual runs, lifecycle, review, and test operations all use that same gate.
+The transport derives tenant and source-revision author identity from the
+principal, never from client JSON. GraphQL enforces the same tenant equality
+before any Alloy admin operation. The former generic in-memory Axum router is
+not a production surface and has been removed.
+
 The machine-readable static contract lives in
 `crates/alloy/contracts/alloy-runtime-contract.json`; its evidence matrix lives in
 `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json` and is checked
@@ -120,8 +129,6 @@ transport wiring:
   `scriptExecutions(scriptId, limit)` retained as a compact history list.
 - HTTP routes: `GET /api/alloy/executions` and
   `GET /api/alloy/scripts/{id}/executions`.
-- Generic Axum router: `GET /executions` and
-  `GET /scripts/{id}/executions`.
 
 All surfaces return execution id, script id/name, phase, outcome, duration,
 error text, optional user/tenant context, and creation time ordered by newest

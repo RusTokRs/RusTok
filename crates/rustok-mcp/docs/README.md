@@ -38,6 +38,12 @@ spec or turning into a provider/model host.
 - HTTP handlers in `apps/server` import MCP DTOs and actor parsing from `rustok-mcp`
   instead of defining package-local REST contracts;
 - Alloy connects as a capability via runtime state, not as a separate MCP transport stack.
+- Generic MCP owns only Alloy scaffold assistance. It deliberately does not
+  expose tenant-owned Alloy script reads, CRUD, validation, or execution,
+  because it cannot construct the owner-scoped Alloy runtime required for
+  tenant binding and actor provenance. Script authoring remains on the
+  host-composed Alloy HTTP and GraphQL surfaces until a remote owner-composed
+  MCP adapter is implemented.
 - admitted artifacts can call only the host-configured `rustok` server alias.
   The server derives their service identity from exact installation scope,
   applies the MCP owner policy, persists redacted audit evidence before the

@@ -62,30 +62,19 @@ impl PgSearchEngine {
         let limit = query.limit.clamp(1, 50) as i64;
         let offset = query.offset as i64;
         let started_at = std::time::Instant::now();
-        let mut result = run_fts_search(
-            &self.db,
+        let request = RankedSearchRequest {
             tenant_id,
-            &locale,
-            &trimmed_query,
-            &query,
+            locale: &locale,
+            trimmed_query: &trimmed_query,
+            query: &query,
             storefront_channel,
             offset,
             limit,
-        )
-        .await?;
+        };
+        let mut result = run_fts_search(&self.db, &request).await?;
 
         if result.total == 0 && should_run_typo_fallback(&trimmed_query) {
-            result = run_typo_tolerant_search(
-                &self.db,
-                tenant_id,
-                &locale,
-                &trimmed_query,
-                &query,
-                storefront_channel,
-                offset,
-                limit,
-            )
-            .await?;
+            result = run_typo_tolerant_search(&self.db, &request).await?;
         }
 
         result.took_ms = started_at.elapsed().as_millis() as u64;
@@ -252,29 +241,38 @@ fn build_filter_clause(
     FilterClause { clause, values }
 }
 
-async fn run_fts_search(
-    db: &DatabaseConnection,
+struct RankedSearchRequest<'a> {
     tenant_id: uuid::Uuid,
-    locale: &str,
-    trimmed_query: &str,
-    query: &SearchQuery,
-    storefront_channel: Option<&TrustedStorefrontChannel>,
+    locale: &'a str,
+    trimmed_query: &'a str,
+    query: &'a SearchQuery,
+    storefront_channel: Option<&'a TrustedStorefrontChannel>,
     offset: i64,
     limit: i64,
+}
+
+async fn run_fts_search(
+    db: &DatabaseConnection,
+    request: &RankedSearchRequest<'_>,
 ) -> Result<SearchResult> {
-    let filters = build_filter_clause(query, 4, storefront_channel);
-    let cte = build_fts_cte(query.ranking_profile);
+    let filters = build_filter_clause(request.query, 4, request.storefront_channel);
+    let cte = build_fts_cte(request.query.ranking_profile);
 
     finalize_ranked_search(
         db,
         RankedSearchPlan {
             cte: &cte,
-            base_values: build_base_values(tenant_id, locale, trimmed_query, &filters.values),
+            base_values: build_base_values(
+                request.tenant_id,
+                request.locale,
+                request.trimmed_query,
+                &filters.values,
+            ),
             filters: &filters,
-            query,
-            ranking_profile: query.ranking_profile,
-            offset,
-            limit,
+            query: request.query,
+            ranking_profile: request.query.ranking_profile,
+            offset: request.offset,
+            limit: request.limit,
         },
     )
     .await
@@ -282,32 +280,26 @@ async fn run_fts_search(
 
 async fn run_typo_tolerant_search(
     db: &DatabaseConnection,
-    tenant_id: uuid::Uuid,
-    locale: &str,
-    trimmed_query: &str,
-    query: &SearchQuery,
-    storefront_channel: Option<&TrustedStorefrontChannel>,
-    offset: i64,
-    limit: i64,
+    request: &RankedSearchRequest<'_>,
 ) -> Result<SearchResult> {
-    let filters = build_filter_clause(query, 4, storefront_channel);
-    let cte = build_typo_cte(query.ranking_profile);
+    let filters = build_filter_clause(request.query, 4, request.storefront_channel);
+    let cte = build_typo_cte(request.query.ranking_profile);
 
     finalize_ranked_search(
         db,
         RankedSearchPlan {
             cte: &cte,
             base_values: build_base_values(
-                tenant_id,
-                locale,
-                &trimmed_query.to_ascii_lowercase(),
+                request.tenant_id,
+                request.locale,
+                &request.trimmed_query.to_ascii_lowercase(),
                 &filters.values,
             ),
             filters: &filters,
-            query,
-            ranking_profile: query.ranking_profile,
-            offset,
-            limit,
+            query: request.query,
+            ranking_profile: request.query.ranking_profile,
+            offset: request.offset,
+            limit: request.limit,
         },
     )
     .await

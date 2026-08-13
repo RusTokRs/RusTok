@@ -428,10 +428,10 @@ impl SeoService {
 
     async fn load_redirect_lookup(&self, tenant_id: Uuid) -> SeoResult<Arc<RedirectLookup>> {
         let source = self.load_redirect_models(tenant_id).await?;
-        if let Some(lookup) = REDIRECT_LOOKUP_CACHE.get(&tenant_id).await {
-            if Arc::ptr_eq(&lookup.source, &source) {
-                return Ok(lookup);
-            }
+        if let Some(lookup) = REDIRECT_LOOKUP_CACHE.get(&tenant_id).await
+            && Arc::ptr_eq(&lookup.source, &source)
+        {
+            return Ok(lookup);
         }
 
         let lookup = Arc::new(RedirectLookup::from_source(source));

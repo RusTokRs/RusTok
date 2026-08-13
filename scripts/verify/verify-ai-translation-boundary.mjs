@@ -25,10 +25,13 @@ const files = {
   aiStructuredResult: "crates/rustok-ai/src/structured_result.rs",
   aiService: "crates/rustok-ai/src/service.rs",
   aiScheduler: "crates/rustok-ai/src/scheduler.rs",
+  aiEntities: "crates/rustok-ai/src/entities.rs",
   aiGraphqlQuery: "crates/rustok-ai/src/graphql/query.rs",
   aiGraphqlMutation: "crates/rustok-ai/src/graphql/mutation.rs",
+  aiGraphqlTypes: "crates/rustok-ai/src/graphql/types.rs",
   aiNativeAdmin:
     "crates/rustok-ai/admin/src/transport/native_server_adapter.rs",
+  aiGraphqlAdmin: "crates/rustok-ai/admin/src/transport/graphql_adapter.rs",
   aiMigration:
     "crates/rustok-ai/src/migrations/m20260729_000001_structured_execution.rs",
   aiLocalePolicy: "crates/rustok-ai/src/service/helpers.rs",
@@ -74,9 +77,12 @@ const aiStructuredLive = read(files.aiStructuredLive);
 const aiStructuredResult = read(files.aiStructuredResult);
 const aiService = read(files.aiService);
 const aiScheduler = read(files.aiScheduler);
+const aiEntities = read(files.aiEntities);
 const aiGraphqlQuery = read(files.aiGraphqlQuery);
 const aiGraphqlMutation = read(files.aiGraphqlMutation);
+const aiGraphqlTypes = read(files.aiGraphqlTypes);
 const aiNativeAdmin = read(files.aiNativeAdmin);
+const aiGraphqlAdmin = read(files.aiGraphqlAdmin);
 const aiMigration = read(files.aiMigration);
 const aiLocalePolicy = read(files.aiLocalePolicy);
 const translationCargo = read(files.translationCargo);
@@ -148,6 +154,7 @@ for (const marker of [
   "ai_structured_reservations",
   "ai_structured_results",
   "ai_structured_cancellation_intents",
+  "ProviderPolicies::AllowedClassifications",
   "uq_ai_structured_cancellation_execution_key",
 ])
   requireText(aiMigration, marker, "AI structured-task migration");
@@ -179,8 +186,20 @@ for (const marker of [
   "RUSTOK_AI_TEST_STRUCTURED_DB_PATH",
   "std::env::current_exe()",
   "attempt.error_code.as_deref(), Some(RECOVERY_ERROR_CODE)",
+  "PROVIDER_EGRESS_CLASSIFICATION_DENIED_CODE",
+  "provider_profile_ids_permitting_classification",
+  "provider_policies_permitting_classification",
+  "provider_egress_policy_in_use",
+  "AllowedClassifications",
+  "provider_egress_allowlist_rejects_unapproved_classification_before_estimate",
+  "provider_egress_allowlist_is_rechecked_before_attempt_egress",
 ])
   requireText(aiAccounting, marker, "AI structured-task accounting");
+requireText(
+  aiEntities,
+  "pub allowed_classifications: Json",
+  "AI provider egress-policy entity",
+);
 requireText(
   aiRouter,
   "ordered_provider_candidates",
@@ -208,6 +227,11 @@ for (const marker of [
   "assert_eq!(budget_after_cancellation.reserved_minor_units, 0)",
   'assert_eq!(quota_error.code, "ai.structured.quota_exhausted")',
   "assert_eq!(quota_engine.calls(), 0)",
+  "AiStructuredTaskHealthRequest",
+  "provider_profile_ids_permitting_classification",
+  "PROVIDER_EGRESS_CLASSIFICATION_DENIED_CODE",
+  "disallowed data classification must not reach a provider",
+  "assert_eq!(egress_denied_engine.calls(), 0)",
   "AiStructuredTaskAvailability::Degraded",
   'Some("ai.structured.provider_unavailable")',
 ])
@@ -268,8 +292,20 @@ for (const marker of [
 for (const marker of [
   "ai_put_structured_budget_policy_native",
   "ai_put_structured_provider_policy_native",
+  "allowed_classifications: Vec<String>",
+  "parse_data_classifications",
 ])
   requireText(aiNativeAdmin, marker, "AI structured-accounting native writes");
+for (const marker of [
+  "AiTaskDataClassificationGql",
+  "allowed_classifications: Vec<AiTaskDataClassificationGql>",
+])
+  requireText(aiGraphqlTypes, marker, "AI provider egress-policy GraphQL contract");
+requireText(
+  aiGraphqlAdmin,
+  "allowedClassifications",
+  "AI structured-accounting admin GraphQL contract",
+);
 for (const marker of [
   "AiStructuredTaskEstimate",
   "async fn estimate",
@@ -299,6 +335,10 @@ for (const marker of [
   "SharedMachineTranslationPortFactory",
   "machine_translation_port_from_context",
   "MachineTranslationBatchRequest",
+  "validate_glossary_context",
+  "translation.machine.glossary_digest_mismatch",
+  "validate_memory_context",
+  "translation.machine.memory_digest_mismatch",
   "MachineTranslationEstimate",
   "MachineTranslationExecutionEvidence",
   "review_required",
@@ -496,6 +536,9 @@ for (const marker of [
   "machine_translation_task_descriptor",
   "machine_translation_input_schema_digest",
   "machine_translation_output_schema_digest",
+  '#[serde(rename_all = "camelCase")]',
+  "sourceLocale",
+  "translatedValue",
   "machine_translation_port_from_context",
   "AiStructuredTaskExecutionKey",
   "estimate_batch",
@@ -503,8 +546,12 @@ for (const marker of [
   "cancel_by_key",
   "recover_batch",
   "output_unit_missing",
-  "output_tokens_changed",
+  "output_constraints_changed",
   "review_required: true",
+  "AiStructuredTaskHealthRequest",
+  "batch_classification(request)",
+  "batch_classification_protects_tenant_scoped_packet_context",
+  "AiTaskDataClassification::TenantPrivate",
 ])
   requireText(adapterSource, marker, "AI Translation adapter");
 for (const marker of [
@@ -572,6 +619,11 @@ forbidText(
 );
 requireText(adapterReadme, "never mutates", "adapter ownership docs");
 requireText(
+  adapterReadme,
+  "at least\n  `tenant_private`",
+  "adapter egress-classification docs",
+);
+requireText(
   adapterPlan,
   "Production-profile composition and fail-closed missing-keyring evidence are complete",
   "adapter gate docs",
@@ -587,6 +639,11 @@ requireText(
   "adapter process-recovery evidence docs",
 );
 requireText(
+  adapterPlan,
+  "Every structured machine-translation packet",
+  "adapter egress-classification plan",
+);
+requireText(
   translationPlan,
   "File-backed separate-process recovery now covers both canonical `saving`",
   "Translation process-recovery evidence docs",
@@ -600,6 +657,11 @@ requireText(
   translationPlan,
   "File-backed Translation-side inventory evidence now covers independent",
   "Translation inventory recovery evidence docs",
+);
+requireText(
+  translationPlan,
+  "AI-owned provider policy rejects unpermitted egress before registration or a",
+  "Translation provider egress-classification plan",
 );
 
 if (failures.length > 0) {

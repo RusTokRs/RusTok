@@ -13,7 +13,8 @@ use uuid::Uuid;
 
 use crate::{
     AiStructuredTaskAttempt, AiStructuredTaskExecution, AiStructuredTaskExecutionKey,
-    AiStructuredTaskRequest, AiStructuredTaskStatus, AiStructuredTaskUsage,
+    AiStructuredTaskLimits, AiStructuredTaskRequest, AiStructuredTaskRequestBinding,
+    AiStructuredTaskStatus, AiStructuredTaskUsage,
     entities::{
         ai_structured_attempts, ai_structured_cancellation_intents, ai_structured_executions,
     },
@@ -71,26 +72,24 @@ impl StructuredExecutionLedger {
                 "write port calls require a non-empty idempotency key",
             )
         })?;
-        let input_digest = hash(&request.input)?;
+        let binding = request.binding()?;
         let input_bytes = serde_json::to_vec(&request.input)
             .map_err(|_| ledger_invariant())?
             .len();
-        let output_schema_digest = hash(&request.output_schema)?;
-        let evidence_digest = hash(&request.evidence)?;
         let request_digest = hash(&RequestDigestManifest {
             tenant_id: &context.tenant_id,
             actor_kind: actor_kind(&context.actor.kind),
             actor_id: &context.actor.id,
-            owner: &request.owner,
-            task_slug: &request.task_slug,
-            prompt_policy_digest: &request.prompt_policy_digest,
-            input_schema_digest: &request.input_schema_digest,
-            input_digest: &input_digest,
-            output_schema_digest: &output_schema_digest,
-            classification: classification_slug(request.classification),
-            evidence_digest: &evidence_digest,
-            max_output_bytes: request.limits.max_output_bytes,
-            max_attempts: request.limits.max_attempts,
+            owner: &binding.owner,
+            task_slug: &binding.task_slug,
+            prompt_policy_digest: &binding.prompt_policy_digest,
+            input_schema_digest: &binding.input_schema_digest,
+            input_digest: &binding.input_digest,
+            output_schema_digest: &binding.output_schema_digest,
+            classification: classification_slug(binding.classification),
+            evidence_digest: &binding.evidence_digest,
+            max_output_bytes: binding.limits.max_output_bytes,
+            max_attempts: binding.limits.max_attempts,
         })?;
         let execution_key = AiStructuredTaskExecutionKey {
             owner: request.owner.clone(),
@@ -120,19 +119,19 @@ impl StructuredExecutionLedger {
         let active = ai_structured_executions::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
-            owner: Set(request.owner.clone()),
-            task_slug: Set(request.task_slug.clone()),
+            owner: Set(binding.owner),
+            task_slug: Set(binding.task_slug),
             idempotency_key: Set(idempotency_key.to_string()),
             request_digest: Set(request_digest.clone()),
-            prompt_policy_digest: Set(request.prompt_policy_digest.clone()),
-            input_schema_digest: Set(request.input_schema_digest.clone()),
-            input_digest: Set(input_digest),
-            output_schema_digest: Set(output_schema_digest),
-            classification: Set(classification_slug(request.classification).to_string()),
-            evidence_digest: Set(evidence_digest),
+            prompt_policy_digest: Set(binding.prompt_policy_digest),
+            input_schema_digest: Set(binding.input_schema_digest),
+            input_digest: Set(binding.input_digest),
+            output_schema_digest: Set(binding.output_schema_digest),
+            classification: Set(classification_slug(binding.classification).to_string()),
+            evidence_digest: Set(binding.evidence_digest),
             input_bytes: Set(i64::try_from(input_bytes).map_err(|_| ledger_invariant())?),
-            max_output_bytes: Set(i64::from(request.limits.max_output_bytes)),
-            max_attempts: Set(i32::from(request.limits.max_attempts)),
+            max_output_bytes: Set(i64::from(binding.limits.max_output_bytes)),
+            max_attempts: Set(i32::from(binding.limits.max_attempts)),
             status: Set(status_slug(AiStructuredTaskStatus::Queued).to_string()),
             actor_kind: Set(actor_kind(&context.actor.kind).to_string()),
             actor_id: Set(context.actor.id.clone()),
@@ -649,9 +648,26 @@ fn map_execution(
         })
         .collect::<Result<Vec<_>, PortError>>()?;
     let usage = aggregate_usage(&attempts)?;
+    let binding = AiStructuredTaskRequestBinding {
+        owner: execution.owner,
+        task_slug: execution.task_slug,
+        prompt_policy_digest: execution.prompt_policy_digest,
+        input_schema_digest: execution.input_schema_digest,
+        input_digest: execution.input_digest,
+        output_schema_digest: execution.output_schema_digest,
+        classification: parse_classification(&execution.classification)?,
+        evidence_digest: execution.evidence_digest,
+        limits: AiStructuredTaskLimits {
+            max_output_bytes: u32::try_from(execution.max_output_bytes)
+                .map_err(|_| ledger_invariant())?,
+            max_attempts: u16::try_from(execution.max_attempts).map_err(|_| ledger_invariant())?,
+        },
+    };
+    binding.validate()?;
     Ok(AiStructuredTaskExecution {
         execution_id: execution.id.to_string(),
         request_digest: execution.request_digest,
+        binding,
         status,
         output: None,
         attempts: attempt_evidence,
@@ -775,6 +791,16 @@ const fn classification_slug(classification: crate::AiTaskDataClassification) ->
     }
 }
 
+fn parse_classification(value: &str) -> Result<crate::AiTaskDataClassification, PortError> {
+    match value {
+        "public" => Ok(crate::AiTaskDataClassification::Public),
+        "tenant_private" => Ok(crate::AiTaskDataClassification::TenantPrivate),
+        "personal" => Ok(crate::AiTaskDataClassification::Personal),
+        "sensitive" => Ok(crate::AiTaskDataClassification::Sensitive),
+        _ => Err(ledger_invariant()),
+    }
+}
+
 const fn status_slug(status: AiStructuredTaskStatus) -> &'static str {
     match status {
         AiStructuredTaskStatus::Queued => "queued",
@@ -883,6 +909,25 @@ mod tests {
             "only a digest may enter the execution ledger"
         );
         let serialized = serde_json::to_string(&created.execution).unwrap();
+        assert!(!serialized.contains("Do not persist me"));
+        assert!(!serialized.contains("job-a"));
+    }
+
+    #[tokio::test]
+    async fn durable_view_reconstructs_the_exact_content_free_request_binding() {
+        let (ledger, tenant_id) = ledger().await;
+        let context = context(tenant_id, "idem-a");
+        let request = request(json!({"secret_source_text": "Do not persist me"}));
+        let expected_binding = request.binding().unwrap();
+
+        let registered = ledger.register(&context, &request).await.unwrap();
+        let view = ledger
+            .view(&context, registered.execution.id)
+            .await
+            .unwrap();
+
+        assert_eq!(view.binding, expected_binding);
+        let serialized = serde_json::to_string(&view.binding).unwrap();
         assert!(!serialized.contains("Do not persist me"));
         assert!(!serialized.contains("job-a"));
     }

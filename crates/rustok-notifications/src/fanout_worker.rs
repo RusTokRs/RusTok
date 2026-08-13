@@ -215,15 +215,13 @@ impl NotificationFanoutWorker {
             .set(source_inbox::ActiveModel {
                 status: Set(NotificationSourceInboxStatus::RetryableError),
                 attempt_count: Set(current.attempt_count.saturating_add(1)),
-                next_attempt_at: Set(Some(
-                    timestamp.clone() + Duration::seconds(reason.retry_seconds()),
-                )),
+                next_attempt_at: Set(Some(timestamp + Duration::seconds(reason.retry_seconds()))),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
                 last_error_code: Set(Some(reason.error_code().to_string())),
                 last_error_message: Set(Some(reason.error_message().to_string())),
                 completed_at: Set(None),
-                updated_at: Set(timestamp.clone()),
+                updated_at: Set(timestamp),
                 ..Default::default()
             })
             .filter(source_inbox::Column::Id.eq(work.inbox_id))
@@ -255,15 +253,13 @@ impl NotificationFanoutWorker {
             .set(fanout_job::ActiveModel {
                 status: Set(NotificationJobStatus::RetryableError),
                 attempt_count: Set(current.attempt_count.saturating_add(1)),
-                next_attempt_at: Set(Some(
-                    timestamp.clone() + Duration::seconds(reason.retry_seconds()),
-                )),
+                next_attempt_at: Set(Some(timestamp + Duration::seconds(reason.retry_seconds()))),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
                 last_error_code: Set(Some(reason.error_code().to_string())),
                 last_error_message: Set(Some(reason.error_message().to_string())),
                 completed_at: Set(None),
-                updated_at: Set(timestamp.clone()),
+                updated_at: Set(timestamp),
                 ..Default::default()
             })
             .filter(fanout_job::Column::Id.eq(work.job_id))
@@ -357,7 +353,7 @@ fn claimable_source_condition(timestamp: DateTime<FixedOffset>) -> Condition {
                 .add(
                     Condition::any()
                         .add(source_inbox::Column::NextAttemptAt.is_null())
-                        .add(source_inbox::Column::NextAttemptAt.lte(timestamp.clone())),
+                        .add(source_inbox::Column::NextAttemptAt.lte(timestamp)),
                 ),
         )
         .add(
@@ -376,7 +372,7 @@ fn claimable_job_condition(timestamp: DateTime<FixedOffset>) -> Condition {
                 .add(
                     Condition::any()
                         .add(fanout_job::Column::NextAttemptAt.is_null())
-                        .add(fanout_job::Column::NextAttemptAt.lte(timestamp.clone())),
+                        .add(fanout_job::Column::NextAttemptAt.lte(timestamp)),
                 ),
         )
         .add(

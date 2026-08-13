@@ -463,6 +463,52 @@ const MODULE_ARTIFACT_DATA_PURGED_FIELDS: &[FieldSchema] = &[
     field!("namespace_revision", "uint64"),
     field!("purged_records", "uint64"),
 ];
+const MODULE_ARTIFACT_SETTINGS_RECOVERY_POINT_CREATED_FIELDS: &[FieldSchema] = &[
+    field!("recovery_point_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("installation_id", "uuid"),
+    field!("settings_instance_id", "uuid"),
+    field!("settings_revision", "uint64"),
+];
+const MODULE_ARTIFACT_SETTINGS_PURGED_FIELDS: &[FieldSchema] = &[
+    field!("recovery_point_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("installation_id", "uuid"),
+    field!("settings_instance_id", "uuid"),
+    field!("tombstone_revision", "uint64"),
+];
+const MODULE_ARTIFACT_SETTINGS_RESTORED_FIELDS: &[FieldSchema] = &[
+    field!("recovery_point_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("target_installation_id", "uuid", optional),
+    field!("settings_instance_id", "uuid"),
+];
+const MODULE_ARTIFACT_SETTINGS_RECOVERY_RETENTION_UPDATED_FIELDS: &[FieldSchema] = &[
+    field!("recovery_point_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("retention_revision", "uint64"),
+    field!("retain_until", "string"),
+    field!("legal_hold", "bool"),
+    field!("audit_hold", "bool"),
+    field!("incident_hold", "bool"),
+];
+const MODULE_ARTIFACT_SETTINGS_RECOVERY_REWRAPPED_FIELDS: &[FieldSchema] = &[
+    field!("recovery_point_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("previous_key_version", "string"),
+    field!("key_version", "string"),
+];
+const MODULE_ARTIFACT_SETTINGS_RECOVERY_COLLECTED_FIELDS: &[FieldSchema] = &[
+    field!("collection_id", "uuid"),
+    field!("recovery_point_id", "uuid"),
+    field!("tenant_id", "uuid"),
+];
+const MODULE_ARTIFACT_SETTINGS_RECOVERY_BOUND_FIELDS: &[FieldSchema] = &[
+    field!("recovery_point_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("target_installation_id", "uuid"),
+    field!("settings_instance_id", "uuid"),
+];
 const MODULE_ARTIFACT_DATA_EXPORTED_FIELDS: &[FieldSchema] = &[
     field!("export_id", "uuid"),
     field!("tenant_id", "uuid"),
@@ -1566,6 +1612,48 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "Module artifact tenant data was purged.",
         fields: MODULE_ARTIFACT_DATA_PURGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.settings_recovery_point_created",
+        version: 1,
+        description: "A protected module artifact settings recovery point was created.",
+        fields: MODULE_ARTIFACT_SETTINGS_RECOVERY_POINT_CREATED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.settings_purged",
+        version: 1,
+        description: "Protected module artifact settings were purged.",
+        fields: MODULE_ARTIFACT_SETTINGS_PURGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.settings_restored",
+        version: 1,
+        description: "Protected module artifact settings were restored.",
+        fields: MODULE_ARTIFACT_SETTINGS_RESTORED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.settings_recovery_retention_updated",
+        version: 1,
+        description: "A protected module artifact settings recovery retention policy changed.",
+        fields: MODULE_ARTIFACT_SETTINGS_RECOVERY_RETENTION_UPDATED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.settings_recovery_rewrapped",
+        version: 1,
+        description: "A protected module artifact settings recovery point was rewrapped.",
+        fields: MODULE_ARTIFACT_SETTINGS_RECOVERY_REWRAPPED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.settings_recovery_collected",
+        version: 1,
+        description: "A protected module artifact settings recovery ciphertext was collected.",
+        fields: MODULE_ARTIFACT_SETTINGS_RECOVERY_COLLECTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.settings_recovery_bound",
+        version: 1,
+        description: "An unbound restored module artifact settings instance was continuity-bound.",
+        fields: MODULE_ARTIFACT_SETTINGS_RECOVERY_BOUND_FIELDS,
     },
     EventSchema {
         event_type: "module.artifact.data_exported",

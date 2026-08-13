@@ -20,6 +20,10 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
   taking ownership of domain operations or role-specific policy.
 - own the generic `AiStructuredTaskPort` contract used by domain adapters for
   bounded, billable structured inference without exposing provider engines.
+- enforce a tenant-scoped, non-empty egress-classification allowlist on every
+  structured provider policy. It is checked for health, routing, estimates,
+  reservations, and immediately before a provider call; no permitted provider
+  means no execution registration or external egress.
 
 ## What is already implemented
 
@@ -185,12 +189,13 @@ activation gate.
   the existing AI scheduler adapter performs recovery/result-cleanup before
   claims. Exact descriptor validation, ordered provider
   inference/fallback, typed failure mapping, deadline/cancellation observation,
-  the content-free execution schema,
+  the content-free execution schema and per-execution request binding (owner,
+  task, policy/schema/input/evidence digests, classification, and limits),
   request-hash replay/conflict detection, execution leases, durable
   cancellation by execution id or stable owner/idempotency identity (including
   cancellation before registration), tenant budget reservation, atomic terminal
   execution/budget settlement, accounting-aware expired-lease recovery, immutable
-  provider pricing policy, provider concurrency acquisition/release,
+  provider pricing and egress-classification policy, provider concurrency acquisition/release,
   per-attempt price snapshot and actual token/cost evidence, exact
   task-descriptor catalog, and authenticated encrypted TTL-bound result replay
   without duplicate billing already exist;

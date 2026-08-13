@@ -35,11 +35,19 @@ Current implementation includes:
   injection
 - the owner-neutral `AiStructuredTaskPort` contract for bounded billable
   structured execution, health, durable execution/status identity, usage/cost
-  evidence, polling, and cancellation; a content-free execution/attempt ledger,
+  evidence, polling, and cancellation. Every execution exposes a content-free
+  request binding (owner/task identity, policy/schema/input/evidence digests,
+  classification, and limits) so an owner adapter can verify durable recovery
+  without retaining raw inputs. A content-free execution/attempt ledger,
   idempotent registration, leases, cancellation receipts, durable
   pre-registration cancellation intents keyed by owner/idempotency, recovery, tenant
-  budget reservations, immutable provider price policies, and an exact
-  registered-task catalog now back the implementation track. Provider attempt
+  budget reservations, immutable provider price and egress-classification
+  policies, and an exact registered-task catalog now back the implementation
+  track. Every tenant provider policy declares a non-empty classification
+  allowlist. Candidate selection, estimates/reservations, classification-aware
+  health, and provider-slot acquisition enforce it; a denied classification
+  fails before execution registration or provider egress, and the slot
+  acquisition rechecks it against concurrent policy changes. Provider attempt
   slots, immutable per-attempt price snapshots, actual token/cost recording,
   slot release, accounting-aware expired-lease recovery, and an encrypted
   TTL-bound result handoff are also durable. Successful attempt evidence,

@@ -63,6 +63,12 @@ Remaining:
   execute the loaded snapshot without a second registry lookup. Idempotency,
   workspace-level command revisions, review, and publication orchestration still
   need owner contracts;
+- all host-composed HTTP operator routes now require a matching authenticated
+  tenant and `scripts.manage`, including source/history reads, validation,
+  manual runs, lifecycle, review, and tests. HTTP and GraphQL derive every
+  source-revision author from that principal, and the generic in-memory Axum
+  router has been removed so it cannot bypass tenant, permission, or provenance
+  policy;
 - published-release import now has durable exact-replay receipts and immutable
   parent lineage. Registry publication projects the canonical artifact/evidence
   and source-lineage contract through the module owner. The production source
@@ -145,17 +151,27 @@ Remaining:
   errors); stale lifecycle writes fail with a revision conflict.
 - [x] Require the expected revision for REST and GraphQL deletion, with the
   owner storage applying an atomic version predicate before removing a script.
-- [x] Require the same expected revision in the MCP delete tool so management
-  transport cannot bypass owner deletion CAS.
-- [x] Keep MCP Alloy create/update responses on the canonical workspace model;
-  MCP update and manual-run tools require the expected revision and execute the
-  loaded workspace snapshot.
+- [x] Remove generic MCP script CRUD, validation, and execution. It cannot
+  compose an owner-scoped Alloy runtime, so it must not simulate tenant or
+  actor binding. Canonical authoring stays on host-composed HTTP and GraphQL.
+- [ ] Add remote MCP script authoring only through the same owner-scoped Alloy
+  runtime used by host HTTP and GraphQL, with authenticated tenant matching,
+  `scripts.manage`, authenticated actor provenance, source-redaction policy,
+  and integration evidence for tenant isolation. Do not restore generic stdio
+  or in-process script tools.
 - Durable review decisions now bind an exact source digest, expected current
   revision, policy revision, reviewer identity, reason, and request fingerprint.
   The owner storage replays only an identical idempotency key/fingerprint pair
   and rejects invalid per-revision transitions. GraphQL and host HTTP transports
   require a verified `scripts.manage` actor and never accept an actor identity
   from client JSON.
+- [x] Use only host-composed tenant-bound HTTP routes and matching GraphQL
+  authorization for Alloy authoring. Source/history reads, validation, manual
+  execution, lifecycle, reviews, and tests require `scripts.manage`; create,
+  update, and every lifecycle revision derive `author_id` from the authenticated
+  principal, and manual execution evidence records that actor. The former
+  generic in-memory Axum router was deleted instead of retained as a parallel
+  unauthenticated surface.
 - Require workspace revision/CAS and idempotency for test, build, and
   publish. Test commands now durably reserve a revision-pinned source digest,
   declared test path, actor, and request fingerprint before sandbox execution.

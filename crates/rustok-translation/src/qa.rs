@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use rustok_translation_targets::{
     FieldKey, TranslationPatchIssue, TranslationPatchIssueSeverity, TranslationPatchRequest,
     TranslationPatchValidation, TranslationResourceLifecycle, TranslationResourceSnapshot,
-    TranslationStrategy,
+    TranslationStrategy, protected_token_multiplicities_match, whitespace_shape_matches,
 };
 
 use crate::{
@@ -90,18 +90,19 @@ pub fn evaluate_patch_qa(
                 ));
             }
         }
-        for token in &field.protected_tokens {
-            if occurrences(&field.source_value, token) != occurrences(&field_patch.value, token) {
-                issues.push(error_issue(
-                    Some(field_patch.key.clone()),
-                    "translation.qa.protected_token_mismatch",
-                    "the translation must preserve every owner-declared protected token exactly",
-                ));
-                break;
-            }
+        if !protected_token_multiplicities_match(
+            &field.source_value,
+            &field_patch.value,
+            &field.protected_tokens,
+        ) {
+            issues.push(error_issue(
+                Some(field_patch.key.clone()),
+                "translation.qa.protected_token_mismatch",
+                "the translation must preserve every owner-declared protected token exactly",
+            ));
         }
         if field.descriptor.preserves_whitespace
-            && whitespace_shape(&field.source_value) != whitespace_shape(&field_patch.value)
+            && !whitespace_shape_matches(&field.source_value, &field_patch.value)
         {
             issues.push(error_issue(
                 Some(field_patch.key.clone()),
@@ -335,34 +336,6 @@ fn term_matches(
             starts_at_boundary && ends_at_boundary
         }),
     }
-}
-
-fn occurrences(value: &str, token: &str) -> usize {
-    value.match_indices(token).count()
-}
-
-fn whitespace_shape(value: &str) -> (String, String, Vec<String>) {
-    let leading = value
-        .chars()
-        .take_while(|character| character.is_whitespace())
-        .collect();
-    let trailing = value
-        .chars()
-        .rev()
-        .take_while(|character| character.is_whitespace())
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
-    let line_breaks = value
-        .split_inclusive('\n')
-        .filter_map(|line| {
-            line.strip_suffix("\r\n")
-                .map(|_| "\r\n".to_string())
-                .or_else(|| line.strip_suffix('\n').map(|_| "\n".to_string()))
-        })
-        .collect();
-    (leading, trailing, line_breaks)
 }
 
 fn severity_order(severity: TranslationPatchIssueSeverity) -> u8 {

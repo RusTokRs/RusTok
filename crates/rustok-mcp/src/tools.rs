@@ -397,8 +397,8 @@ mod invocation_tests {
     async fn owner_invoker_rejects_non_registry_tools() {
         let result = invoke_registry_tool(
             &ModuleRegistry::new(),
-            &access_for("alloy_run_script"),
-            "alloy_run_script",
+            &access_for("alloy_scaffold_module"),
+            "alloy_scaffold_module",
             Some(json!({})),
         )
         .await;

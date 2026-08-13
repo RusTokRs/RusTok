@@ -1,4 +1,4 @@
-pub(super) fn render_sitemap_file(urls: &[String]) -> String {
+pub(in super::super) fn render_sitemap_file(urls: &[String]) -> String {
     let body = urls
         .iter()
         .map(|url| format!("<url><loc>{}</loc></url>", xml_escape(url)))
@@ -10,7 +10,7 @@ pub(super) fn render_sitemap_file(urls: &[String]) -> String {
     )
 }
 
-pub(super) fn render_sitemap_index(urls: &[String]) -> String {
+pub(in super::super) fn render_sitemap_index(urls: &[String]) -> String {
     let body = urls
         .iter()
         .map(|url| format!("<sitemap><loc>{}</loc></sitemap>", xml_escape(url)))

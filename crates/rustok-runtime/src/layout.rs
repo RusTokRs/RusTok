@@ -186,8 +186,29 @@ impl InstanceLayout {
         self.state().join("deployment/slots")
     }
 
+    /// Durable, role-scoped agent slot record. The slot contains only the
+    /// exact assignment receipt; executable bytes live in the immutable
+    /// release materialization addressed by the bundle digest.
+    pub fn deployment_slot(&self, role: &str, slot: &str) -> Result<PathBuf, InstanceLayoutError> {
+        Ok(self
+            .deployment_slots()
+            .join(path_segment("deployment role", role)?)
+            .join(format!("{}.json", path_segment("deployment slot", slot)?)))
+    }
+
     pub fn deployment_journal(&self) -> PathBuf {
         self.state().join("deployment/journal")
+    }
+
+    /// Restart-safe local journal for one owner operation. It is evidence only:
+    /// PostgreSQL desired/observed state remains the release authority.
+    pub fn deployment_operation_journal(
+        &self,
+        operation_id: &str,
+    ) -> Result<PathBuf, InstanceLayoutError> {
+        Ok(self
+            .deployment_journal()
+            .join(path_segment("deployment operation", operation_id)?))
     }
 
     pub fn operations_slots(&self) -> PathBuf {
@@ -750,7 +771,18 @@ mod tests {
                 "ab".repeat(32)
             ))
         );
+        assert_eq!(
+            layout.deployment_slot("api", "blue").unwrap(),
+            base.join("shop-a/state/deployment/slots/api/blue.json")
+        );
+        assert_eq!(
+            layout
+                .deployment_operation_journal("operation-123")
+                .unwrap(),
+            base.join("shop-a/state/deployment/journal/operation-123")
+        );
         assert!(layout.platform_role(&digest, "../foreign").is_err());
+        assert!(layout.deployment_slot("api", "../foreign").is_err());
         assert!(layout.source_object(&"AB".repeat(32)).is_err());
     }
 

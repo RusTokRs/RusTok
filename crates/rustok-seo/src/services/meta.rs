@@ -229,12 +229,14 @@ impl SeoService {
 
         self.publish_seo_meta_upserted_event_in_tx(
             txn,
-            tenant.id,
-            target_kind.as_str(),
-            target_id,
-            response_locale,
-            "explicit",
-            transition_ref,
+            super::events::SeoMetaUpsertedEventInput {
+                tenant_id: tenant.id,
+                target_kind: target_kind.as_str(),
+                target_id,
+                locale: response_locale,
+                source: "explicit",
+                transition_ref,
+            },
         )
         .await
     }

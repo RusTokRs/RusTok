@@ -50,26 +50,26 @@ pub fn validate_schema_block(block: &SeoStructuredDataBlock) -> Vec<SchemaValida
 
     match block.schema_kind {
         SeoSchemaBlockKind::BreadcrumbList | SeoSchemaBlockKind::ItemList => {
-            if let Some(value) = object.get("itemListElement") {
-                if !value.is_array() {
-                    issues.push(SchemaValidationIssue {
-                        code: "invalid_schema_shape",
-                        severity: SeoDiagnosticSeverity::Error,
-                        message: "itemListElement must be an array for BreadcrumbList/ItemList."
-                            .to_string(),
-                    });
-                }
+            if let Some(value) = object.get("itemListElement")
+                && !value.is_array()
+            {
+                issues.push(SchemaValidationIssue {
+                    code: "invalid_schema_shape",
+                    severity: SeoDiagnosticSeverity::Error,
+                    message: "itemListElement must be an array for BreadcrumbList/ItemList."
+                        .to_string(),
+                });
             }
         }
         SeoSchemaBlockKind::FAQPage => {
-            if let Some(value) = object.get("mainEntity") {
-                if !value.is_array() {
-                    issues.push(SchemaValidationIssue {
-                        code: "invalid_schema_shape",
-                        severity: SeoDiagnosticSeverity::Error,
-                        message: "mainEntity must be an array for FAQPage.".to_string(),
-                    });
-                }
+            if let Some(value) = object.get("mainEntity")
+                && !value.is_array()
+            {
+                issues.push(SchemaValidationIssue {
+                    code: "invalid_schema_shape",
+                    severity: SeoDiagnosticSeverity::Error,
+                    message: "mainEntity must be an array for FAQPage.".to_string(),
+                });
             }
         }
         _ => {}

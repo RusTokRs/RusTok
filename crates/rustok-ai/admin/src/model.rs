@@ -157,6 +157,7 @@ pub struct AiStructuredBudgetPolicyPayload {
 pub struct AiStructuredProviderPolicyPayload {
     pub id: String,
     pub provider_profile_id: String,
+    pub allowed_classifications: Vec<String>,
     pub currency_code: String,
     pub input_cost_per_million_minor: u64,
     pub output_cost_per_million_minor: u64,

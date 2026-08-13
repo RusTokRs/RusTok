@@ -1652,15 +1652,18 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   expected-revision CAS, record actor/reason/idempotency metadata, and publish
   a revisioned transactional-outbox event without changing admission or runtime
   bindings. They accept only an admitted Optional artifact visible in the
-  requesting tenant scope. Their durable lifecycle row also records the
-  command's expected revision and requested enabled state, making replays fail
-  closed unless actor, reason, revision, state, and key all match.
+  requesting tenant scope that has not been uninstalled. An uninstall operation
+  rejects a later tenant lifecycle command before it can write a new intent
+  record. Their durable lifecycle row also records the command's expected
+  revision and requested enabled state, making replays fail closed unless
+  actor, reason, revision, state, and key all match.
 - [x] Artifact uninstall is an owner-owned, revision-guarded and idempotent
   scope-selection removal. It requires an inactive installation, rejects an
   active direct dependent in the same scope, writes audit/outbox atomically,
   and only releases the CAS reference; it does not purge retained data or
   evidence. Its replay contract likewise matches the complete immutable
-  command rather than accepting a reused key alone.
+  command rather than accepting a reused key alone; a new command against the
+  terminal uninstalled selection rejects before it can reach persistence.
 - [x] The current structured artifact-data purge is a separate destructive
   operation. Its generic command/tenant-module attach identity is an explicit
   cutover gap; the target callable is `dynamic_artifact_data_purge`. It
@@ -1669,10 +1672,22 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   count, emits a transactional-outbox fact, and leaves a durable namespace
   tombstone. A host-owned authorizer must approve lifecycle, retention, and
   legal-hold policy before the operation begins.
-- [ ] Add `dynamic_artifact_settings_purge` as the independently authorized
-  settings-owner operation with its recovery point, tombstone, retention, and
-  restore lifecycle; reject any combined data/settings apply and retain no
-  generic `purge` command after the cutover.
+- [x] Complete `dynamic_artifact_settings_purge` as the independently
+  authorized settings-owner lifecycle. The implemented core has exact
+  encrypted recovery points, immutable KMS key-version/schema/descriptor/value
+  roots, unresolved-secret-handle digest, policy/retention/hold-aware
+  authorization context, authenticated decrypt/revalidation, idempotent
+  tombstoned purge, fresh-instance restore, and transactional outbox facts. It
+  rejects combined data/settings apply and retains no generic `purge` command.
+  Recovery retention has its own revision-CAS receipt and may only extend
+  expiry or add holds; the host KMS port rewraps authenticated ciphertext under the current
+  approved key; collection records durable `ready`/`collecting`/`collected`
+  state before terminally clearing ciphertext while preserving evidence; and an
+  intentionally unbound restore has a separate one-time continuity-authorized
+  bind command. Direct restore pins its selected target admission revision;
+  binding requires exact data owner, registry/repository lineage,
+  slug, schema, and inactive successor compatibility and never clears the
+  source tombstone. Each lifecycle action emits an owner outbox fact.
 - [x] Uninstall never silently deletes tenant data, logs, evidence, or rollback
   artifacts. It removes only the scoped selection and its CAS reference;
   retention, legal-hold, audit, and rollback policy remain responsible for any
@@ -2516,7 +2531,14 @@ evolution while sharing the production sandbox and module release contracts.
   exact replays return terminal evidence, concurrent callers see a bounded
   pending lease, and only an expired lease can be reclaimed against the same
   immutable source snapshot. Host HTTP and GraphQL derive `scripts.manage`
-  authority from authentication. Build-command idempotency remains pending.
+  authority from authentication. Canonical Alloy authoring now uses only
+  host-composed HTTP routes and GraphQL: every operator source/history read,
+  validation, manual run, lifecycle, review, and test operation requires a
+  matching authenticated tenant plus `scripts.manage`; source-revision author
+  and manual-execution actor are derived from that principal. The generic
+  in-memory Axum router was removed, so it cannot bypass tenant, permission,
+  or provenance policy. Prompt/tool provenance retention and redaction remain
+  unfinished. Build-command idempotency remains pending.
   Alloy release staging now selects the current immutable source revision and
   latest approved review, then delegates an idempotent `alloy_authored` stage
   to `rustok-modules`. The owner records source/review evidence together with
@@ -2542,11 +2564,17 @@ evolution while sharing the production sandbox and module release contracts.
 - Alloy deletion now also requires the expected revision on direct REST,
   host-composed REST, and GraphQL transports; owner storage applies the same
   version predicate atomically before removing the script.
-- The owner-owned MCP delete tool carries the same expected revision and uses
-  the owner CAS path, so management transport cannot bypass stale-write guards.
-- MCP Alloy create/update/run tools now use the canonical workspace contract;
-  update and manual execution require expected revisions and pin the loaded
-  workspace snapshot.
+- Generic MCP Alloy script CRUD, validation, and execution have been removed:
+  the generic adapter cannot compose an owner-scoped Alloy runtime, so it must
+  not simulate tenant or actor binding. Canonical authoring stays on
+  host-composed HTTP and GraphQL; no generic stdio or in-process MCP path can
+  bypass owner CAS or immutable snapshot checks.
+- [ ] Compose remote MCP script authoring from the same owner-scoped Alloy
+  runtime as HTTP and GraphQL. It must require an authenticated tenant match
+  and `scripts.manage`, derive actor identity, apply source-redaction policy,
+  and prove tenant isolation by integration evidence before any script tool is
+  advertised. This is the explicit A5 follow-up; generic MCP remains
+  scaffold-only.
 - [x] Reject execution/publish commands for stale revisions. Caller-driven
   manual, test, review, lifecycle, deletion, and release-stage commands use
   explicit revision CAS; hook and schedule dispatch execute the exact current

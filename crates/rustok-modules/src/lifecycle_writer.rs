@@ -1043,5 +1043,9 @@ fn map_artifact_settings_error(
                 reason: "artifact settings instance schema does not match the active installation",
             }
         }
+        ArtifactSettingsStoreError::Tombstoned => ModuleLifecycleDbWriterError::ArtifactSettings {
+            module_slug: module_slug.to_string(),
+            reason: "artifact settings instance was purged and requires an explicit recovery restore",
+        },
     }
 }

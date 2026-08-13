@@ -7,9 +7,10 @@ use crate::{
     AiAgentPrincipalRecord, AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord,
     AiChatSessionDetail, AiChatSessionSummary, AiMetricBucket, AiProviderProfileRecord,
     AiRecentRunRecord, AiRunStreamEvent, AiRunStreamEventKind, AiRuntimeMetricsSnapshot,
-    AiStructuredBudgetPolicyRecord, AiStructuredProviderPolicyRecord, AiTaskProfileRecord,
-    AiToolProfileRecord, ChatMessageRole, ExecutionMode, ProviderCapability, ProviderConfigField,
-    ProviderFeature, ProviderFieldKind, ProviderUsagePolicy, ToolCall, ToolTrace,
+    AiStructuredBudgetPolicyRecord, AiStructuredProviderPolicyRecord, AiTaskDataClassification,
+    AiTaskProfileRecord, AiToolProfileRecord, ChatMessageRole, ExecutionMode, ProviderCapability,
+    ProviderConfigField, ProviderFeature, ProviderFieldKind, ProviderUsagePolicy, ToolCall,
+    ToolTrace,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
@@ -18,6 +19,36 @@ pub enum AiAgentKindGql {
     Code,
     Orchestrator,
     Review,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
+pub enum AiTaskDataClassificationGql {
+    Public,
+    TenantPrivate,
+    Personal,
+    Sensitive,
+}
+
+impl From<AiTaskDataClassification> for AiTaskDataClassificationGql {
+    fn from(value: AiTaskDataClassification) -> Self {
+        match value {
+            AiTaskDataClassification::Public => Self::Public,
+            AiTaskDataClassification::TenantPrivate => Self::TenantPrivate,
+            AiTaskDataClassification::Personal => Self::Personal,
+            AiTaskDataClassification::Sensitive => Self::Sensitive,
+        }
+    }
+}
+
+impl From<AiTaskDataClassificationGql> for AiTaskDataClassification {
+    fn from(value: AiTaskDataClassificationGql) -> Self {
+        match value {
+            AiTaskDataClassificationGql::Public => Self::Public,
+            AiTaskDataClassificationGql::TenantPrivate => Self::TenantPrivate,
+            AiTaskDataClassificationGql::Personal => Self::Personal,
+            AiTaskDataClassificationGql::Sensitive => Self::Sensitive,
+        }
+    }
 }
 
 impl From<AgentKind> for AiAgentKindGql {
@@ -777,6 +808,7 @@ impl From<AiStructuredBudgetPolicyRecord> for AiStructuredBudgetPolicyGql {
 pub struct AiStructuredProviderPolicyGql {
     pub id: Uuid,
     pub provider_profile_id: Uuid,
+    pub allowed_classifications: Vec<AiTaskDataClassificationGql>,
     pub currency_code: String,
     pub input_cost_per_million_minor: i64,
     pub output_cost_per_million_minor: i64,
@@ -793,6 +825,11 @@ impl From<AiStructuredProviderPolicyRecord> for AiStructuredProviderPolicyGql {
         Self {
             id: value.id,
             provider_profile_id: value.provider_profile_id,
+            allowed_classifications: value
+                .allowed_classifications
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             currency_code: value.currency_code,
             input_cost_per_million_minor: i64::try_from(value.input_cost_per_million_minor)
                 .expect("persisted structured provider input cost fits i64"),
@@ -1187,6 +1224,7 @@ pub struct PutAiStructuredBudgetPolicyInputGql {
 #[derive(Debug, Clone, InputObject)]
 pub struct PutAiStructuredProviderPolicyInputGql {
     pub provider_profile_id: Uuid,
+    pub allowed_classifications: Vec<AiTaskDataClassificationGql>,
     pub currency_code: String,
     pub input_cost_per_million_minor: i64,
     pub output_cost_per_million_minor: i64,

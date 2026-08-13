@@ -104,8 +104,7 @@ pub fn AiAdmin() -> impl IntoView {
     );
     let tool_denied = RwSignal::new(String::new());
     let tool_sensitive = RwSignal::new(
-        "alloy_create_script,alloy_update_script,alloy_delete_script,alloy_apply_module_scaffold"
-            .to_string(),
+        "alloy_apply_module_scaffold".to_string(),
     );
     let tool_active = RwSignal::new(true);
 
@@ -2582,8 +2581,7 @@ fn clear_tool_profile(
     tool_allowed.set("list_modules,query_modules,module_details,mcp_health,mcp_whoami".to_string());
     tool_denied.set(String::new());
     tool_sensitive.set(
-        "alloy_create_script,alloy_update_script,alloy_delete_script,alloy_apply_module_scaffold"
-            .to_string(),
+        "alloy_apply_module_scaffold".to_string(),
     );
     tool_active.set(true);
 }

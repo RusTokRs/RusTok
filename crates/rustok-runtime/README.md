@@ -15,6 +15,11 @@ adapters away from framework-specific runtime contexts.
   CLI, deployment agents, workers, and runtime adapters.
 - Resolve `RUSTOK_INSTANCE_ROOT`, prepare the owned root restart-safely, and
   reject paths that escape it when executable adapters derive local subtrees.
+- Provide the node-local static-role materialization primitive: it rehashes
+  already pre-staged bytes, creates an immutable digest-addressed role
+  directory, and records a non-authoritative restart receipt. It never pulls
+  a registry, interprets a tag, selects a release, runs DDL, or starts an
+  arbitrary command.
 
 ## Entry Points
 
@@ -28,6 +33,9 @@ adapters away from framework-specific runtime contexts.
   `inspect_instance_layout`, `bind_instance_placement`, and
   `prepare_instance_layout`. Runtime inspection never claims an unprepared
   directory; installer binding is the only ownership transition.
+- `RoleMaterializationRequest`, `materialize_role`, and
+  `RoleMaterializationReceipt` for the narrow deployment-agent filesystem
+  boundary.
 - `db_clone`
 - `require_shared`
 - `RuntimeHandleError`

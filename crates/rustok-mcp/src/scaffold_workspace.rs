@@ -1,9 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use alloy::storage::ScriptRegistry;
-
 use crate::{
-    AlloyMcpState, ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse,
+    AlloyScaffoldState, ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse,
     McpScaffoldDraftRuntimeContext,
 };
 
@@ -18,8 +16,8 @@ pub fn authorize_scaffold_workspace(requested_root: &str) -> Result<String, Stri
     authorize_scaffold_workspace_with_config(requested_root, &configured)
 }
 
-pub async fn apply_authorized_module_scaffold<R: ScriptRegistry>(
-    state: &AlloyMcpState<R>,
+pub async fn apply_authorized_module_scaffold(
+    state: &AlloyScaffoldState,
     context: Option<McpScaffoldDraftRuntimeContext>,
     mut request: ApplyModuleScaffoldRequest,
 ) -> Result<ApplyModuleScaffoldResponse, String> {

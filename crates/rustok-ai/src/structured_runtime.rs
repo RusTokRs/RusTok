@@ -10,10 +10,14 @@ use crate::{
     AiError, AiHostRuntime, AiManagementService, AiStructuredTaskAvailability,
     AiStructuredTaskCatalog, AiStructuredTaskDescriptor, AiStructuredTaskEstimate,
     AiStructuredTaskExecution, AiStructuredTaskExecutionKey, AiStructuredTaskExecutionRef,
-    AiStructuredTaskHealth, AiStructuredTaskPort, AiStructuredTaskRequest, AiStructuredTaskStatus,
-    ChatMessage, ChatMessageRole, InferenceEngine, ProviderCapability, ProviderChatRequest,
-    ProviderStructuredRequest, ProviderStructuredResponse, RouterProviderProfile,
-    accounting::{AttemptOutcome, StructuredAccounting, TerminalOutcome},
+    AiStructuredTaskHealth, AiStructuredTaskHealthRequest, AiStructuredTaskPort,
+    AiStructuredTaskRequest, AiStructuredTaskStatus, ChatMessage, ChatMessageRole, InferenceEngine,
+    ProviderCapability, ProviderChatRequest, ProviderStructuredRequest, ProviderStructuredResponse,
+    RouterProviderProfile,
+    accounting::{
+        AttemptOutcome, PROVIDER_EGRESS_CLASSIFICATION_DENIED_CODE, StructuredAccounting,
+        TerminalOutcome,
+    },
     router::ordered_provider_candidates,
     service::{
         list_router_provider_profiles, provider_config, require_provider_profile,
@@ -217,6 +221,7 @@ impl DurableAiStructuredTaskPort {
         tenant_id: Uuid,
         task_slug: &str,
         roles: &[String],
+        classification: crate::AiTaskDataClassification,
     ) -> Result<Vec<ProviderCandidate>, PortError> {
         let task = AiManagementService::list_task_profiles(self.runtime.db(), tenant_id)
             .await
@@ -259,6 +264,18 @@ impl DurableAiStructuredTaskPort {
             .map_err(map_runtime_error)?;
             candidates.push(ProviderCandidate { profile, config });
         }
+        let permitted = self
+            .accounting
+            .provider_profile_ids_permitting_classification(
+                tenant_id,
+                &candidates
+                    .iter()
+                    .map(|candidate| candidate.profile.id)
+                    .collect::<Vec<_>>(),
+                classification,
+            )
+            .await?;
+        candidates.retain(|candidate| permitted.contains(&candidate.profile.id));
         if candidates.is_empty() {
             return Err(PortError::unavailable(
                 "ai.structured.provider_unavailable",
@@ -352,7 +369,10 @@ impl DurableAiStructuredTaskPort {
                 .await
             {
                 Ok(attempt) => attempt,
-                Err(error) if error.retryable => {
+                Err(error)
+                    if error.retryable
+                        || error.code == PROVIDER_EGRESS_CLASSIFICATION_DENIED_CODE =>
+                {
                     last_failure = Some(AttemptFailure::from_port_error(error));
                     continue;
                 }
@@ -585,12 +605,31 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
     async fn health(
         &self,
         context: PortContext,
-        task_slug: String,
+        request: AiStructuredTaskHealthRequest,
     ) -> Result<AiStructuredTaskHealth, PortError> {
         context.require_read_semantics()?;
-        self.descriptor_for_health(&task_slug).await?;
+        request.validate()?;
+        let descriptor = self.descriptor_for_health(&request.task_slug).await?;
+        if !descriptor
+            .allowed_classifications
+            .contains(&request.classification)
+        {
+            return Ok(AiStructuredTaskHealth {
+                availability: AiStructuredTaskAvailability::Unavailable,
+                reason_code: Some("ai.structured.classification_denied".to_string()),
+                retry_after_ms: None,
+            });
+        }
         let tenant_id = parse_tenant_id(&context)?;
-        match self.candidates(tenant_id, &task_slug, &context.roles).await {
+        match self
+            .candidates(
+                tenant_id,
+                &request.task_slug,
+                &context.roles,
+                request.classification,
+            )
+            .await
+        {
             Ok(_) => Ok(AiStructuredTaskHealth {
                 availability: AiStructuredTaskAvailability::Available,
                 reason_code: None,
@@ -617,7 +656,12 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
         Self::validate_descriptor(&self.catalog, &request)?;
         let tenant_id = parse_tenant_id(&context)?;
         let mut candidates = self
-            .candidates(tenant_id, &request.task_slug, &context.roles)
+            .candidates(
+                tenant_id,
+                &request.task_slug,
+                &context.roles,
+                request.classification,
+            )
             .await?;
         candidates.truncate(usize::from(request.limits.max_attempts));
         let input_tokens_upper_bound = u64::try_from(
@@ -629,6 +673,7 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
         self.accounting
             .estimate(
                 tenant_id,
+                request.classification,
                 input_tokens_upper_bound,
                 u64::from(request.limits.max_output_bytes),
                 request.limits.max_attempts,
@@ -651,7 +696,12 @@ impl AiStructuredTaskPort for DurableAiStructuredTaskPort {
         let task = Self::validate_descriptor(&self.catalog, &request)?;
         let tenant_id = parse_tenant_id(&context)?;
         let mut candidates = self
-            .candidates(tenant_id, &request.task_slug, &context.roles)
+            .candidates(
+                tenant_id,
+                &request.task_slug,
+                &context.roles,
+                request.classification,
+            )
             .await?;
         candidates.truncate(usize::from(request.limits.max_attempts));
         let registered = self.ledger.register(&context, &request).await?;
@@ -1148,6 +1198,7 @@ mod tests {
                 .put_provider_policy(ProviderPolicy {
                     tenant_id,
                     provider_profile_id,
+                    allowed_classifications: vec![crate::AiTaskDataClassification::TenantPrivate],
                     currency_code: "USD".to_string(),
                     input_cost_per_million_minor: 1_000_000,
                     output_cost_per_million_minor: 2_000_000,
@@ -1413,6 +1464,64 @@ mod tests {
         assert_eq!(exhausted_budget.reserved_minor_units, 0);
         assert_eq!(exhausted_budget.in_flight, 0);
 
+        for provider_profile_id in [
+            primary_provider_id,
+            invalid_output_provider_id,
+            successful_fallback_provider_id,
+        ] {
+            accounting
+                .put_provider_policy(ProviderPolicy {
+                    tenant_id,
+                    provider_profile_id,
+                    allowed_classifications: vec![crate::AiTaskDataClassification::Public],
+                    currency_code: "USD".to_string(),
+                    input_cost_per_million_minor: 1_000_000,
+                    output_cost_per_million_minor: 2_000_000,
+                    max_concurrent: 1,
+                    is_active: true,
+                })
+                .await
+                .expect("deny tenant-private structured egress");
+        }
+        let egress_denied_engine =
+            Arc::new(ScriptedStructuredEngine::new([StructuredStep::Success(
+                json!({"translated_text": "Must not run"}),
+            )]));
+        let egress_denied_port = DurableAiStructuredTaskPort::new(
+            provider_runtime(
+                database.clone(),
+                Arc::clone(&egress_denied_engine),
+                provider_targets.clone(),
+                egress_policy.clone(),
+            ),
+            catalog.clone(),
+            keyring.clone(),
+        );
+        let executions_before_egress_denial = ai_structured_executions::Entity::find()
+            .count(&database)
+            .await
+            .expect("structured execution count");
+        let egress_error = egress_denied_port
+            .execute(
+                request_context(tenant_id).with_idempotency_key("translation-job-egress-denied"),
+                request.clone(),
+            )
+            .await
+            .expect_err("disallowed data classification must not reach a provider");
+        assert_eq!(
+            egress_error.code,
+            PROVIDER_EGRESS_CLASSIFICATION_DENIED_CODE
+        );
+        assert_eq!(egress_denied_engine.calls(), 0);
+        assert_eq!(
+            ai_structured_executions::Entity::find()
+                .count(&database)
+                .await
+                .expect("structured execution count"),
+            executions_before_egress_denial,
+            "provider egress denial must happen before execution registration"
+        );
+
         let provider_profiles = ai_provider_profiles::Entity::find()
             .filter(ai_provider_profiles::Column::TenantId.eq(tenant_id))
             .all(&database)
@@ -1429,7 +1538,10 @@ mod tests {
         let health = quota_port
             .health(
                 request_context(tenant_id),
-                "machine_translation".to_string(),
+                AiStructuredTaskHealthRequest {
+                    task_slug: "machine_translation".to_string(),
+                    classification: crate::AiTaskDataClassification::TenantPrivate,
+                },
             )
             .await
             .expect("degraded structured provider health");

@@ -25,6 +25,8 @@ allowed_edges = [
   "rustok-forum -> rustok-content",
   "rustok-pages -> rustok-content",
   "rustok-pages -> rustok-tenant",
+  # Commerce resolves tenant locale policy exclusively through tenant owner ports.
+  "rustok-commerce -> rustok-tenant",
 ]
 
 [imports]

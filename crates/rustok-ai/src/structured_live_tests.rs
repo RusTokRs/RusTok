@@ -93,6 +93,7 @@ async fn executes_declared_live_provider_through_durable_structured_runtime() {
         .put_provider_policy(ProviderPolicy {
             tenant_id,
             provider_profile_id,
+            allowed_classifications: vec![AiTaskDataClassification::TenantPrivate],
             currency_code: "USD".to_string(),
             input_cost_per_million_minor: 1_000_000,
             output_cost_per_million_minor: 2_000_000,

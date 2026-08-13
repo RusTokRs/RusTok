@@ -195,29 +195,30 @@ fn validate_string_field_patch(
 }
 
 fn validate_bool_field_patch(patch: Option<&SeoBulkBoolFieldPatch>, field: &str) -> SeoResult<()> {
-    if let Some(patch) = patch {
-        if matches!(patch.mode, SeoBulkFieldPatchMode::Set) && patch.value.is_none() {
-            return Err(SeoError::validation(format!(
-                "bulk patch field `{field}` requires a boolean `value`"
-            )));
-        }
+    if let Some(patch) = patch
+        && matches!(patch.mode, SeoBulkFieldPatchMode::Set)
+        && patch.value.is_none()
+    {
+        return Err(SeoError::validation(format!(
+            "bulk patch field `{field}` requires a boolean `value`"
+        )));
     }
     Ok(())
 }
 
 fn validate_json_field_patch(patch: Option<&SeoBulkJsonFieldPatch>, field: &str) -> SeoResult<()> {
-    if let Some(patch) = patch {
-        if matches!(patch.mode, SeoBulkFieldPatchMode::Set) {
-            let value = patch.value.as_ref().ok_or_else(|| {
-                SeoError::validation(format!(
-                    "bulk patch field `{field}` requires a JSON `value`"
-                ))
-            })?;
-            if !is_valid_structured_data_payload(&value.0) {
-                return Err(SeoError::validation(format!(
-                    "bulk patch field `{field}` must be a JSON-LD object, array, or @graph with at least one non-empty @type"
-                )));
-            }
+    if let Some(patch) = patch
+        && matches!(patch.mode, SeoBulkFieldPatchMode::Set)
+    {
+        let value = patch.value.as_ref().ok_or_else(|| {
+            SeoError::validation(format!(
+                "bulk patch field `{field}` requires a JSON `value`"
+            ))
+        })?;
+        if !is_valid_structured_data_payload(&value.0) {
+            return Err(SeoError::validation(format!(
+                "bulk patch field `{field}` must be a JSON-LD object, array, or @graph with at least one non-empty @type"
+            )));
         }
     }
     Ok(())

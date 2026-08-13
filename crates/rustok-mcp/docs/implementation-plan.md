@@ -20,6 +20,12 @@ from the persisted runtime binding, requires `scripts.manage` and
 same owner-backed published-Rhai source provider as HTTP and GraphQL. Source
 bytes are never returned; generic stdio MCP does not advertise this operation.
 
+Generic stdio and in-process MCP expose Alloy scaffold assistance only. They do
+not expose tenant-owned Alloy script reads, CRUD, validation, or execution,
+because the generic adapter cannot construct the owner-scoped Alloy runtime
+that binds a tenant and actor. Canonical script authoring remains on
+host-composed Alloy HTTP and GraphQL.
+
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
@@ -56,6 +62,11 @@ bytes are never returned; generic stdio MCP does not advertise this operation.
    before invocation. An isolated sandbox worker must return capability calls
    to this host adapter; it must never receive an MCP endpoint, token,
    credential, database handle, or network client.
+5. **Compose remote Alloy authoring through the owner runtime.** Add script
+   reads, mutations, validation, or execution to remote MCP only after the
+   adapter reuses the same owner-scoped Alloy runtime as host HTTP and GraphQL,
+   verifies tenant match and `scripts.manage`, derives actor provenance, applies
+   source-redaction policy, and proves tenant isolation in an integration test.
 
 ## Verification
 

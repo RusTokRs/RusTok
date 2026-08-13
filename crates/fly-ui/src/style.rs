@@ -308,11 +308,11 @@ pub fn style_patch(
             });
             continue;
         }
-        if let Some(descriptor) = descriptor {
-            if let Err(message) = validate_value(descriptor, value) {
-                errors.push(StyleInputError { property, message });
-                continue;
-            }
+        if let Some(descriptor) = descriptor
+            && let Err(message) = validate_value(descriptor, value)
+        {
+            errors.push(StyleInputError { property, message });
+            continue;
         }
         style.insert(property, Value::String(value.to_string()));
     }

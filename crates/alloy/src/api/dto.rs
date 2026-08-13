@@ -23,7 +23,6 @@ pub struct CreateScriptRequest {
     pub permissions: Vec<String>,
     #[serde(default)]
     pub run_as_system: bool,
-    pub tenant_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]

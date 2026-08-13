@@ -4,6 +4,7 @@
 //! agents perform the actual binary rollout outside this crate.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, QueryResult, Statement,
     TransactionTrait,
@@ -31,6 +32,8 @@ const MAX_REFERENCE_BYTES: usize = 512;
 const MAX_POLICY_REVISION_BYTES: usize = 128;
 const MAX_FAILURE_CODE_BYTES: usize = 128;
 const MAX_FAILURE_DETAIL_BYTES: usize = 2_000;
+const MAX_AGENT_ID_BYTES: usize = 128;
+const ASSIGNMENT_LEASE_SECONDS: i64 = 300;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -197,6 +200,7 @@ pub struct ModuleStaticDistributionAssignmentFailure {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModuleStaticDistributionAssignmentReport {
+    pub claim_id: Uuid,
     pub rollout_id: Uuid,
     pub node_id: String,
     pub role: ModuleStaticDistributionRole,
@@ -213,8 +217,66 @@ pub struct ModuleStaticDistributionAssignmentReport {
     pub executor_mode: ModuleStaticDistributionExecutorMode,
     pub health_evidence: Option<ModuleStaticDistributionHealthEvidence>,
     pub failure: Option<ModuleStaticDistributionAssignmentFailure>,
-    pub reporter_id: String,
+    pub agent_id: String,
     pub idempotency_key: Uuid,
+}
+
+/// Authenticated pull request from a node agent. The agent can claim only an
+/// owner-selected assignment for its own node; it never receives a generic
+/// command or chooses a release, role, or artifact identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleStaticDistributionAssignmentClaimCommand {
+    pub node_id: String,
+    pub agent_id: String,
+}
+
+/// Extends one exact assignment lease while bounded materialization or a
+/// process/health transition is still in progress.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleStaticDistributionAssignmentHeartbeatCommand {
+    pub claim_id: Uuid,
+    pub agent_id: String,
+}
+
+/// Immutable work handed to an authenticated outside-candidate node agent.
+/// It is valid only while `lease_expires_at` remains current in the owner
+/// ledger. The agent reports through the same claim and cannot mutate any
+/// other assignment.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleStaticDistributionAssignmentWorkItem {
+    pub claim_id: Uuid,
+    pub lease_expires_at: DateTime<Utc>,
+    pub expected_observation_revision: u64,
+    pub rollout: ModuleStaticDistributionRolloutWorkIdentity,
+    pub assignment: ModuleStaticDistributionRolloutAssignment,
+}
+
+/// The minimum rollout identity needed by one node agent. It deliberately
+/// excludes assignments and observations for other nodes and roles.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleStaticDistributionRolloutWorkIdentity {
+    pub rollout_id: Uuid,
+    pub rollout_revision: u64,
+    pub distribution_release_id: Uuid,
+    pub distribution_release_revision: u64,
+    pub composition_revision: u64,
+    pub composition_digest: String,
+    pub bundle_reference: String,
+    pub bundle_root_digest: String,
+    pub role_set_digest: String,
+    pub policy_revision: String,
+    pub executor_mode: ModuleStaticDistributionExecutorMode,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleStaticDistributionAssignmentHeartbeatReceipt {
+    pub claim_id: Uuid,
+    pub lease_expires_at: DateTime<Utc>,
 }
 
 #[async_trait]
@@ -227,6 +289,16 @@ pub trait ModuleStaticDistributionRolloutAuthorizer: Send + Sync {
     async fn authorize_report(
         &self,
         command: &ModuleStaticDistributionAssignmentReport,
+    ) -> Result<(), ModuleStaticDistributionRolloutError>;
+
+    async fn authorize_assignment_claim(
+        &self,
+        command: &ModuleStaticDistributionAssignmentClaimCommand,
+    ) -> Result<(), ModuleStaticDistributionRolloutError>;
+
+    async fn authorize_assignment_heartbeat(
+        &self,
+        command: &ModuleStaticDistributionAssignmentHeartbeatCommand,
     ) -> Result<(), ModuleStaticDistributionRolloutError>;
 
     async fn authorize_recovery(
@@ -255,6 +327,9 @@ pub struct ModuleStaticDistributionRolloutAssignment {
     pub failure: Option<ModuleStaticDistributionAssignmentFailure>,
     pub reported_by: Option<String>,
     pub last_report_digest: Option<String>,
+    pub active_claim_id: Option<Uuid>,
+    pub claimed_by_agent: Option<String>,
+    pub claim_expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -681,6 +756,116 @@ where
         Ok(receipt)
     }
 
+    /// Returns one exact owner-issued role assignment for the authenticated
+    /// node agent. A stale lease may be reclaimed after the agent process
+    /// dies; an active lease is never handed to a second agent.
+    pub async fn claim_assignment(
+        &self,
+        command: ModuleStaticDistributionAssignmentClaimCommand,
+    ) -> Result<
+        Option<ModuleStaticDistributionAssignmentWorkItem>,
+        ModuleStaticDistributionRolloutError,
+    > {
+        validate_assignment_claim(&command)?;
+        self.authorizer.authorize_assignment_claim(&command).await?;
+        let transaction = self.db.begin().await.map_err(store_error)?;
+        let state = load_rollout_state(&transaction, true).await?;
+        let Some(rollout_id) = state.desired_rollout_id else {
+            transaction.commit().await.map_err(store_error)?;
+            return Ok(None);
+        };
+        let rollout = load_rollout(&transaction, rollout_id, true).await?;
+        if !matches!(
+            rollout.status,
+            ModuleStaticDistributionRolloutStatus::Preparing
+                | ModuleStaticDistributionRolloutStatus::Activating
+        ) {
+            transaction.commit().await.map_err(store_error)?;
+            return Ok(None);
+        }
+        validate_rollout_release_identity(&transaction, &rollout).await?;
+        let now = self.infrastructure.now();
+        let Some(assignment) = load_next_assignment_for_node(
+            &transaction,
+            rollout_id,
+            &command.node_id,
+            &command.agent_id,
+            &now,
+        )
+        .await?
+        else {
+            transaction.commit().await.map_err(store_error)?;
+            return Ok(None);
+        };
+        // Claim replay is deliberately exact. An agent can lose the response
+        // after the owner commits a lease; returning the same lease lets its
+        // local journal resume work without a second rollout assignment.
+        if let (Some(claim_id), Some(claimed_by_agent), Some(lease_expires_at)) = (
+            assignment.active_claim_id,
+            assignment.claimed_by_agent.as_deref(),
+            assignment.claim_expires_at.clone(),
+        ) {
+            if claimed_by_agent == command.agent_id.as_str() {
+                transaction.commit().await.map_err(store_error)?;
+                return Ok(Some(ModuleStaticDistributionAssignmentWorkItem {
+                    claim_id,
+                    lease_expires_at,
+                    expected_observation_revision: assignment.observation_revision,
+                    rollout: rollout_work_identity(&rollout),
+                    assignment,
+                }));
+            }
+        }
+        let lease_expires_at = now
+            .checked_add_signed(Duration::seconds(ASSIGNMENT_LEASE_SECONDS))
+            .ok_or(ModuleStaticDistributionRolloutError::LeaseOverflow)?;
+        let claim_id = self.infrastructure.new_id();
+        claim_rollout_assignment(
+            &transaction,
+            rollout_id,
+            &assignment,
+            claim_id,
+            &command.agent_id,
+            &now,
+            &lease_expires_at,
+        )
+        .await?;
+        transaction.commit().await.map_err(store_error)?;
+        Ok(Some(ModuleStaticDistributionAssignmentWorkItem {
+            claim_id,
+            lease_expires_at,
+            expected_observation_revision: assignment.observation_revision,
+            rollout: rollout_work_identity(&rollout),
+            assignment,
+        }))
+    }
+
+    /// Renews an exact owner-issued assignment lease. This does not change
+    /// desired identity or serving state.
+    pub async fn heartbeat_assignment(
+        &self,
+        command: ModuleStaticDistributionAssignmentHeartbeatCommand,
+    ) -> Result<
+        ModuleStaticDistributionAssignmentHeartbeatReceipt,
+        ModuleStaticDistributionRolloutError,
+    > {
+        validate_assignment_heartbeat(&command)?;
+        self.authorizer
+            .authorize_assignment_heartbeat(&command)
+            .await?;
+        let now = self.infrastructure.now();
+        let lease_expires_at = now
+            .checked_add_signed(Duration::seconds(ASSIGNMENT_LEASE_SECONDS))
+            .ok_or(ModuleStaticDistributionRolloutError::LeaseOverflow)?;
+        let transaction = self.db.begin().await.map_err(store_error)?;
+        heartbeat_rollout_assignment(&transaction, &command, &now, &lease_expires_at).await?;
+        transaction.commit().await.map_err(store_error)?;
+        Ok(ModuleStaticDistributionAssignmentHeartbeatReceipt {
+            claim_id: command.claim_id,
+            lease_expires_at,
+        })
+    }
+
     pub async fn report(
         &self,
         command: ModuleStaticDistributionAssignmentReport,
@@ -694,7 +879,7 @@ where
             command.idempotency_key,
             "report",
             &request_digest,
-            &command.reporter_id,
+            &command.agent_id,
         )
         .await?
         {
@@ -707,7 +892,7 @@ where
             command.idempotency_key,
             "report",
             &request_digest,
-            &command.reporter_id,
+            &command.agent_id,
         )
         .await?
         {
@@ -784,6 +969,15 @@ where
             true,
         )
         .await?;
+        let now = self.infrastructure.now();
+        if assignment.active_claim_id != Some(command.claim_id)
+            || assignment.claimed_by_agent.as_deref() != Some(command.agent_id.as_str())
+            || assignment
+                .claim_expires_at
+                .is_none_or(|expires_at| expires_at < now)
+        {
+            return Err(ModuleStaticDistributionRolloutError::ClaimConflict);
+        }
         if assignment.observation_revision != command.expected_observation_revision {
             return Err(
                 ModuleStaticDistributionRolloutError::ObservationRevisionConflict {
@@ -805,6 +999,7 @@ where
             &command,
             observation_revision,
             &request_digest,
+            &now,
         )
         .await?;
 
@@ -949,7 +1144,7 @@ where
                         node_id: command.node_id,
                         role: role_name(command.role).to_string(),
                         candidate_artifact_digest: command.candidate_artifact_digest,
-                        reporter_id: command.reporter_id,
+                        reporter_id: command.agent_id,
                         observation_revision,
                         phase: command.phase.as_str().to_string(),
                         report_digest: request_digest,
@@ -1168,6 +1363,10 @@ pub enum ModuleStaticDistributionRolloutError {
     RecoveryUnavailable,
     #[error("static distribution rollout assignment was not found")]
     AssignmentNotFound,
+    #[error("static distribution rollout assignment claim conflicts or has expired")]
+    ClaimConflict,
+    #[error("static distribution rollout assignment lease overflow")]
+    LeaseOverflow,
     #[error("static distribution assignment report identity does not match the desired rollout")]
     ObservationIdentityMismatch,
     #[error("static distribution assignment phase transition is invalid")]
@@ -1352,7 +1551,8 @@ fn validate_report(
         }
         ModuleStaticDistributionAssignmentPhase::Pending => false,
     };
-    if command.rollout_id.is_nil()
+    if command.claim_id.is_nil()
+        || command.rollout_id.is_nil()
         || !valid_text(&command.node_id, MAX_NODE_ID_BYTES)
         || !valid_digest(&command.candidate_artifact_digest)
         || command.distribution_release_id.is_nil()
@@ -1364,9 +1564,29 @@ fn validate_report(
         || !valid_text(&command.policy_revision, MAX_POLICY_REVISION_BYTES)
         || command.executor_mode != ModuleStaticDistributionExecutorMode::StaticNative
         || !phase_payload_valid
-        || !valid_text(&command.reporter_id, MAX_NODE_ID_BYTES)
+        || !valid_text(&command.agent_id, MAX_AGENT_ID_BYTES)
         || command.idempotency_key.is_nil()
     {
+        return Err(ModuleStaticDistributionRolloutError::InvalidCommand);
+    }
+    Ok(())
+}
+
+fn validate_assignment_claim(
+    command: &ModuleStaticDistributionAssignmentClaimCommand,
+) -> Result<(), ModuleStaticDistributionRolloutError> {
+    if !valid_text(&command.node_id, MAX_NODE_ID_BYTES)
+        || !valid_text(&command.agent_id, MAX_AGENT_ID_BYTES)
+    {
+        return Err(ModuleStaticDistributionRolloutError::InvalidCommand);
+    }
+    Ok(())
+}
+
+fn validate_assignment_heartbeat(
+    command: &ModuleStaticDistributionAssignmentHeartbeatCommand,
+) -> Result<(), ModuleStaticDistributionRolloutError> {
+    if command.claim_id.is_nil() || !valid_text(&command.agent_id, MAX_AGENT_ID_BYTES) {
         return Err(ModuleStaticDistributionRolloutError::InvalidCommand);
     }
     Ok(())
@@ -1547,6 +1767,7 @@ async fn update_rollout_assignment(
     command: &ModuleStaticDistributionAssignmentReport,
     observation_revision: u64,
     report_digest: &str,
+    now: &DateTime<Utc>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let health_reference = command
@@ -1575,8 +1796,11 @@ async fn update_rollout_assignment(
                      health_evidence_reference = {}, health_evidence_digest = {},
                      failure_code = {}, failure_detail = {}, reported_by = {},
                      last_report_digest = {}, first_reported_at = COALESCE(first_reported_at, {}),
-                     last_reported_at = {}
-                 WHERE rollout_id = {} AND node_id = {} AND role = {} AND observation_revision = {}",
+                     last_reported_at = {}, active_claim_id = NULL, claimed_by_agent = NULL,
+                     claim_expires_at = NULL
+                 WHERE rollout_id = {} AND node_id = {} AND role = {} AND observation_revision = {}
+                   AND active_claim_id = {} AND claimed_by_agent = {}
+                   AND claim_expires_at >= {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
@@ -1591,13 +1815,16 @@ async fn update_rollout_assignment(
                 placeholder(backend, 12),
                 placeholder(backend, 13),
                 placeholder(backend, 14),
-                now_expression(backend),
-                now_expression(backend),
                 placeholder(backend, 15),
                 placeholder(backend, 16),
                 placeholder(backend, 17),
                 placeholder(backend, 18),
                 placeholder(backend, 19),
+                placeholder(backend, 20),
+                placeholder(backend, 21),
+                placeholder(backend, 22),
+                placeholder(backend, 23),
+                placeholder(backend, 24),
             ),
             vec![
                 revision_value(observation_revision)?,
@@ -1613,25 +1840,94 @@ async fn update_rollout_assignment(
                 health_digest.into(),
                 failure_code.into(),
                 failure_detail.into(),
-                command.reporter_id.clone().into(),
+                command.agent_id.clone().into(),
                 report_digest.to_owned().into(),
+                now.to_owned().into(),
+                now.to_owned().into(),
                 uuid_value(command.rollout_id, backend),
                 command.node_id.clone().into(),
                 role_name(command.role).to_string().into(),
                 revision_value_allow_zero(command.expected_observation_revision)?,
+                uuid_value(command.claim_id, backend),
+                command.agent_id.clone().into(),
+                now.to_owned().into(),
             ],
         ))
         .await
         .map_err(store_error)?;
     if updated.rows_affected() != 1 {
-        return Err(
-            ModuleStaticDistributionRolloutError::ObservationRevisionConflict {
-                expected: command.expected_observation_revision,
-                current: observation_revision.saturating_sub(1),
-            },
-        );
+        return Err(ModuleStaticDistributionRolloutError::ClaimConflict);
     }
     Ok(())
+}
+
+async fn validate_rollout_release_identity(
+    transaction: &DatabaseTransaction,
+    rollout: &ModuleStaticDistributionRollout,
+) -> Result<(), ModuleStaticDistributionRolloutError> {
+    let release_state = load_release_state(transaction, true)
+        .await
+        .map_err(release_error)?;
+    let current_release = load_release_record(transaction, rollout.distribution_release_id, true)
+        .await
+        .map_err(release_error)?;
+    let recovery_source_release =
+        if rollout.transition_kind == ModuleStaticDistributionTransitionKind::Recovery {
+            let predecessor_rollout_id = rollout
+                .predecessor_rollout_id
+                .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?;
+            Some(
+                load_rollout(transaction, predecessor_rollout_id, false)
+                    .await?
+                    .distribution_release_id,
+            )
+        } else {
+            None
+        };
+    let valid = match rollout.transition_kind {
+        ModuleStaticDistributionTransitionKind::Update => {
+            current_release.status == ModuleStaticDistributionReleaseStatus::Admitted
+                && release_state.revision == rollout.release_state_revision_at_request
+        }
+        ModuleStaticDistributionTransitionKind::Recovery => {
+            let source_release_id = recovery_source_release
+                .ok_or(ModuleStaticDistributionRolloutError::RecoveryUnavailable)?;
+            let source_release = load_release_record(transaction, source_release_id, true)
+                .await
+                .map_err(release_error)?;
+            release_state.revision == rollout.release_state_revision_at_request
+                && ((current_release.status == ModuleStaticDistributionReleaseStatus::Superseded
+                    && source_release.status == ModuleStaticDistributionReleaseStatus::Active
+                    && release_state.active_release_id == Some(source_release_id))
+                    || (current_release.status == ModuleStaticDistributionReleaseStatus::Active
+                        && source_release.status
+                            == ModuleStaticDistributionReleaseStatus::Admitted
+                        && release_state.active_release_id
+                            == Some(rollout.distribution_release_id)))
+        }
+    };
+    if !valid || current_release.release_revision != rollout.distribution_release_revision {
+        return Err(ModuleStaticDistributionRolloutError::StaleRollout);
+    }
+    Ok(())
+}
+
+fn rollout_work_identity(
+    rollout: &ModuleStaticDistributionRollout,
+) -> ModuleStaticDistributionRolloutWorkIdentity {
+    ModuleStaticDistributionRolloutWorkIdentity {
+        rollout_id: rollout.rollout_id,
+        rollout_revision: rollout.rollout_revision,
+        distribution_release_id: rollout.distribution_release_id,
+        distribution_release_revision: rollout.distribution_release_revision,
+        composition_revision: rollout.composition_revision,
+        composition_digest: rollout.composition_digest.clone(),
+        bundle_reference: rollout.bundle_reference.clone(),
+        bundle_root_digest: rollout.bundle_root_digest.clone(),
+        role_set_digest: rollout.role_set_digest.clone(),
+        policy_revision: rollout.policy_revision.clone(),
+        executor_mode: rollout.executor_mode,
+    }
 }
 
 async fn update_rollout_status(
@@ -1861,7 +2157,8 @@ async fn load_rollout<C: ConnectionTrait>(
                 "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
                         ordinal, observation_revision, phase,
                         health_evidence_reference, health_evidence_digest,
-                        failure_code, failure_detail, reported_by, last_report_digest
+                        failure_code, failure_detail, reported_by, last_report_digest,
+                        active_claim_id, claimed_by_agent, claim_expires_at
                  FROM module_static_distribution_rollout_assignments
                  WHERE rollout_id = {} ORDER BY ordinal",
                 placeholder(backend, 1),
@@ -1872,7 +2169,7 @@ async fn load_rollout<C: ConnectionTrait>(
         .map_err(store_error)?;
     let assignments = assignment_rows
         .iter()
-        .map(assignment_from_row)
+        .map(|row| assignment_from_row(row, backend))
         .collect::<Result<Vec<_>, _>>()?;
     let target_assignment_count: i64 = row
         .try_get("", "target_assignment_count")
@@ -1965,7 +2262,8 @@ async fn load_rollout_assignment<C: ConnectionTrait>(
                 "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
                         ordinal, observation_revision, phase,
                         health_evidence_reference, health_evidence_digest,
-                        failure_code, failure_detail, reported_by, last_report_digest
+                        failure_code, failure_detail, reported_by, last_report_digest,
+                        active_claim_id, claimed_by_agent, claim_expires_at
                  FROM module_static_distribution_rollout_assignments
                  WHERE rollout_id = {} AND node_id = {} AND role = {}{lock}",
                 placeholder(backend, 1),
@@ -1981,11 +2279,158 @@ async fn load_rollout_assignment<C: ConnectionTrait>(
         .await
         .map_err(store_error)?
         .ok_or(ModuleStaticDistributionRolloutError::AssignmentNotFound)?;
-    assignment_from_row(&row)
+    assignment_from_row(&row, backend)
+}
+
+/// Locks the next unclaimed (or expired) exact role assignment for one node.
+/// Assignment order is deterministic so crash recovery does not depend on
+/// process-local scheduling.
+async fn load_next_assignment_for_node(
+    transaction: &DatabaseTransaction,
+    rollout_id: Uuid,
+    node_id: &str,
+    agent_id: &str,
+    now: &DateTime<Utc>,
+) -> Result<Option<ModuleStaticDistributionRolloutAssignment>, ModuleStaticDistributionRolloutError>
+{
+    let backend = transaction.get_database_backend();
+    let lock = if backend == DbBackend::Postgres {
+        " FOR UPDATE SKIP LOCKED"
+    } else {
+        ""
+    };
+    let row = transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT node_id, role, candidate_artifact_digest, predecessor_artifact_digest,
+                        ordinal, observation_revision, phase,
+                        health_evidence_reference, health_evidence_digest,
+                        failure_code, failure_detail, reported_by, last_report_digest,
+                        active_claim_id, claimed_by_agent, claim_expires_at
+                 FROM module_static_distribution_rollout_assignments
+                 WHERE rollout_id = {} AND node_id = {}
+                   AND phase IN ('pending', 'prepared', 'healthy')
+                   AND (active_claim_id IS NULL OR claim_expires_at < {}
+                        OR (claimed_by_agent = {} AND claim_expires_at >= {}))
+                 ORDER BY CASE WHEN claimed_by_agent = {} AND claim_expires_at >= {} THEN 0 ELSE 1 END,
+                          ordinal
+                 LIMIT 1{lock}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
+                placeholder(backend, 7),
+            ),
+            vec![
+                uuid_value(rollout_id, backend),
+                node_id.to_owned().into(),
+                now.to_owned().into(),
+                agent_id.to_owned().into(),
+                now.to_owned().into(),
+                agent_id.to_owned().into(),
+                now.to_owned().into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+    row.map(|row| assignment_from_row(&row, backend))
+        .transpose()
+}
+
+async fn claim_rollout_assignment(
+    transaction: &DatabaseTransaction,
+    rollout_id: Uuid,
+    assignment: &ModuleStaticDistributionRolloutAssignment,
+    claim_id: Uuid,
+    agent_id: &str,
+    now: &DateTime<Utc>,
+    lease_expires_at: &DateTime<Utc>,
+) -> Result<(), ModuleStaticDistributionRolloutError> {
+    let backend = transaction.get_database_backend();
+    let updated = transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "UPDATE module_static_distribution_rollout_assignments
+                 SET active_claim_id = {}, claimed_by_agent = {}, claim_expires_at = {},
+                     last_claimed_at = {}
+                 WHERE rollout_id = {} AND node_id = {} AND role = {}
+                   AND phase IN ('pending', 'prepared', 'healthy')
+                   AND observation_revision = {}
+                   AND (active_claim_id IS NULL OR claim_expires_at < {})",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
+                placeholder(backend, 7),
+                placeholder(backend, 8),
+                placeholder(backend, 9),
+            ),
+            vec![
+                uuid_value(claim_id, backend),
+                agent_id.to_owned().into(),
+                lease_expires_at.to_owned().into(),
+                now.to_owned().into(),
+                uuid_value(rollout_id, backend),
+                assignment.node_id.clone().into(),
+                role_name(assignment.role).to_string().into(),
+                revision_value_allow_zero(assignment.observation_revision)?,
+                now.to_owned().into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+    if updated.rows_affected() != 1 {
+        return Err(ModuleStaticDistributionRolloutError::ClaimConflict);
+    }
+    Ok(())
+}
+
+async fn heartbeat_rollout_assignment(
+    transaction: &DatabaseTransaction,
+    command: &ModuleStaticDistributionAssignmentHeartbeatCommand,
+    now: &DateTime<Utc>,
+    lease_expires_at: &DateTime<Utc>,
+) -> Result<(), ModuleStaticDistributionRolloutError> {
+    let backend = transaction.get_database_backend();
+    let updated = transaction
+        .execute(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "UPDATE module_static_distribution_rollout_assignments
+                 SET claim_expires_at = {}, last_claimed_at = {}
+                 WHERE active_claim_id = {} AND claimed_by_agent = {}
+                   AND claim_expires_at >= {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
+            ),
+            vec![
+                lease_expires_at.to_owned().into(),
+                now.to_owned().into(),
+                uuid_value(command.claim_id, backend),
+                command.agent_id.clone().into(),
+                now.to_owned().into(),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+    if updated.rows_affected() != 1 {
+        return Err(ModuleStaticDistributionRolloutError::ClaimConflict);
+    }
+    Ok(())
 }
 
 fn assignment_from_row(
     row: &QueryResult,
+    backend: DbBackend,
 ) -> Result<ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutError> {
     let ordinal: i64 = row.try_get("", "ordinal").map_err(store_error)?;
     let health_reference: Option<String> = row
@@ -2040,6 +2485,11 @@ fn assignment_from_row(
         failure,
         reported_by: row.try_get("", "reported_by").map_err(store_error)?,
         last_report_digest: row.try_get("", "last_report_digest").map_err(store_error)?,
+        active_claim_id: optional_uuid_from_row(row, "active_claim_id", backend)?,
+        claimed_by_agent: row.try_get("", "claimed_by_agent").map_err(store_error)?,
+        claim_expires_at: row
+            .try_get::<Option<DateTime<Utc>>>("", "claim_expires_at")
+            .map_err(store_error)?,
     })
 }
 
@@ -2411,8 +2861,15 @@ fn store_error(error: impl std::fmt::Display) -> ModuleStaticDistributionRollout
 
 #[cfg(test)]
 mod tests {
-    use super::{ModuleStaticDistributionAssignment, module_static_distribution_topology_digest};
+    use super::{
+        ModuleStaticDistributionAssignment, ModuleStaticDistributionAssignmentClaimCommand,
+        ModuleStaticDistributionAssignmentHeartbeatCommand,
+        ModuleStaticDistributionAssignmentPhase, ModuleStaticDistributionAssignmentReport,
+        ModuleStaticDistributionRolloutError, module_static_distribution_topology_digest,
+        validate_assignment_claim, validate_assignment_heartbeat, validate_report,
+    };
     use crate::ModuleStaticDistributionRole;
+    use uuid::Uuid;
 
     #[test]
     fn topology_digest_binds_each_role_digest_on_the_same_node() {
@@ -2438,5 +2895,52 @@ mod tests {
             module_static_distribution_topology_digest("topology:portable-a", &changed).unwrap();
 
         assert_ne!(first_digest, changed_digest);
+    }
+
+    #[test]
+    fn node_agent_contract_rejects_unidentified_claims_and_reports() {
+        assert!(matches!(
+            validate_assignment_claim(&ModuleStaticDistributionAssignmentClaimCommand {
+                node_id: "node-a".to_string(),
+                agent_id: " ".to_string(),
+            }),
+            Err(ModuleStaticDistributionRolloutError::InvalidCommand)
+        ));
+        assert!(matches!(
+            validate_assignment_heartbeat(&ModuleStaticDistributionAssignmentHeartbeatCommand {
+                claim_id: Uuid::nil(),
+                agent_id: "agent-a".to_string(),
+            }),
+            Err(ModuleStaticDistributionRolloutError::InvalidCommand)
+        ));
+
+        let report = ModuleStaticDistributionAssignmentReport {
+            claim_id: Uuid::nil(),
+            rollout_id: Uuid::new_v4(),
+            node_id: "node-a".to_string(),
+            role: ModuleStaticDistributionRole::Api,
+            candidate_artifact_digest: digest('a'),
+            expected_observation_revision: 0,
+            phase: ModuleStaticDistributionAssignmentPhase::Prepared,
+            distribution_release_id: Uuid::new_v4(),
+            distribution_release_revision: 1,
+            composition_revision: 1,
+            composition_digest: digest('b'),
+            bundle_root_digest: digest('c'),
+            role_set_digest: digest('d'),
+            policy_revision: "policy-a".to_string(),
+            executor_mode: crate::ModuleStaticDistributionExecutorMode::StaticNative,
+            health_evidence: None,
+            failure: None,
+            agent_id: "agent-a".to_string(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        assert!(matches!(
+            validate_report(&report),
+            Err(ModuleStaticDistributionRolloutError::InvalidCommand)
+        ));
+    }
+    fn digest(character: char) -> String {
+        format!("sha256:{}", character.to_string().repeat(64))
     }
 }

@@ -13,6 +13,14 @@ memory, glossaries, bounded direct interchange and private artifact lifecycle,
 and owner-application receipts.
 It also owns the provider-neutral `MachineTranslationPort` SPI and bounded
 request/result evidence. AI routing and inference remain outside this module.
+Machine requests carry glossary or Translation Memory context only as an exact
+digest-bound non-empty projection; empty subsets carry no binding, so replay
+and recovery cannot substitute context.
+Every machine-translation packet is at least `tenant_private`, including a
+batch of public units, because the packet contains tenant-scoped resource
+identity and may carry glossary, memory, style, or evidence context. Personal
+and sensitive units raise its classification. The AI-owned provider policy
+enforces that classification before routing, reservation, and external egress.
 
 The implemented persistence foundation owns:
 
@@ -137,8 +145,9 @@ The implemented persistence foundation owns:
   one actor/idempotency-bound recovery receipt per operation. Recovery is
   accepted only for the exact observed `saving` revision, revalidates the
   original generation command and reconstructed request digest, retrieves only
-  an already completed provider result, and resumes canonical proposal save
-  without another billable translation call.
+  an already completed provider result whose content-free execution binding
+  matches that exact batch, and resumes canonical proposal save without another
+  billable translation call.
 
 File-backed separate-process evidence closes the original runtime before
 recovery and covers both durable `saving` states: no proposal persisted yet,

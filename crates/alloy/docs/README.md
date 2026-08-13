@@ -148,8 +148,8 @@ modified by publication.
    GraphQL `scriptExecutionHistory(scriptId, pagination)` /
    `recentScriptExecutions(pagination)` and legacy compact list
    `scriptExecutions(scriptId, limit)`, HTTP
-   `GET /api/alloy/executions`, `GET /api/alloy/scripts/{id}/executions` or
-   generic Axum router `GET /executions`, `GET /scripts/{id}/executions`.
+   `GET /api/alloy/executions` and
+   `GET /api/alloy/scripts/{id}/executions`.
    All responses are based on `SeaOrmExecutionLog`, normalize `page >= 1` and `per_page` into the range 1..100 before DB-level offset/limit
    pagination, apply tenant filter before offset, return exact scoped total
    metadata from the database and are sorted newest-first.
@@ -173,3 +173,13 @@ modified by publication.
 6. Do not bypass GraphQL/HTTP/module wiring when debugging production scripts; these
    surfaces are part of the supported capability contract and keep audit and
    permission checks in a single path.
+
+## Operator Transport Authorization
+
+The only Alloy HTTP router is `controllers::axum_router`, composed by the host.
+Every script, source, review, test, execution-history, lifecycle, validation,
+and manual-run operation requires a `scripts.manage` principal whose tenant
+equals the host-resolved request tenant. HTTP and GraphQL derive the author of
+each new source revision from that authenticated principal; client payloads
+cannot select a tenant or author identity. The generic in-memory Axum router
+was removed because it could not enforce these production boundaries.

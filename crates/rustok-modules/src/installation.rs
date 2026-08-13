@@ -1970,7 +1970,12 @@ impl SeaOrmArtifactInstallationStore {
                        ON admission.installation_id = installation.installation_id \
                      WHERE installation.installation_id = {installation_placeholder} \
                        AND ({tenant_scope}) \
-                       AND admission.status IN ('admitted', 'installed', 'active', 'inactive', 'rolled_back')",
+                       AND admission.status IN ('admitted', 'installed', 'active', 'inactive', 'rolled_back') \
+                       AND NOT EXISTS ( \
+                           SELECT 1 \
+                           FROM module_artifact_uninstall_operations uninstall \
+                           WHERE uninstall.installation_id = installation.installation_id \
+                       )",
                 ),
                 vec![
                     uuid_value(request.installation_id, backend),
@@ -2264,8 +2269,39 @@ impl SeaOrmArtifactInstallationStore {
                 revision: request.expected_revision + 1,
             });
         }
-        let row = transaction.query_one(Statement::from_sql_and_values(backend, format!(
-            "SELECT installation.slug, admission.status, admission.revision FROM module_artifact_installations installation JOIN module_artifact_admissions admission ON admission.installation_id = installation.installation_id WHERE installation.installation_id = {} AND {scope}", if backend == DbBackend::Postgres { "$1" } else { "?1" }), vec![uuid_value(request.installation_id, backend), scope_kind.into(), optional_uuid_value(tenant_id, backend)])).await.map_err(|e| ModuleInstallationError::Store(e.to_string()))?.ok_or_else(|| ModuleInstallationError::AdmissionRevisionConflict("installation is absent from the requested scope".into()))?;
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT installation.slug, admission.status, admission.revision \
+             FROM module_artifact_installations installation \
+             JOIN module_artifact_admissions admission \
+               ON admission.installation_id = installation.installation_id \
+             WHERE installation.installation_id = {} AND {scope} \
+               AND NOT EXISTS ( \
+                   SELECT 1 \
+                   FROM module_artifact_uninstall_operations uninstall \
+                   WHERE uninstall.installation_id = installation.installation_id \
+               )",
+                    if backend == DbBackend::Postgres {
+                        "$1"
+                    } else {
+                        "?1"
+                    }
+                ),
+                vec![
+                    uuid_value(request.installation_id, backend),
+                    scope_kind.into(),
+                    optional_uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|e| ModuleInstallationError::Store(e.to_string()))?
+            .ok_or_else(|| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "installation is absent, uninstalled, or outside the requested scope".into(),
+                )
+            })?;
         let status: String = row
             .try_get("", "status")
             .map_err(|e| ModuleInstallationError::Store(e.to_string()))?;
@@ -5418,6 +5454,32 @@ mod tests {
                 .expect("idempotent uninstall"),
             uninstalled
         );
+        assert!(matches!(
+            store
+                .uninstall_artifact(ArtifactUninstallRequest {
+                    installation_id: installed.installation_id,
+                    scope: ModuleInstallationScope::Tenant { tenant_id },
+                    expected_revision: 5,
+                    actor_id: Uuid::new_v4(),
+                    reason: "must not repeat terminal uninstall".to_string(),
+                    idempotency_key: Uuid::new_v4(),
+                })
+                .await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+        assert!(matches!(
+            store
+                .disable_artifact_for_tenant(ArtifactTenantDisableRequest {
+                    installation_id: installed.installation_id,
+                    tenant_id,
+                    expected_revision: 2,
+                    actor_id: Uuid::new_v4(),
+                    reason: "must not revive uninstalled tenant intent".to_string(),
+                    idempotency_key: Uuid::new_v4(),
+                })
+                .await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
         let uninstall_outbox_count = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,

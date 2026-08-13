@@ -479,7 +479,6 @@ pub struct CreateScriptInput {
     pub run_as_system: bool,
     #[graphql(default)]
     pub permissions: Vec<String>,
-    pub author_id: Option<String>,
 }
 
 #[derive(InputObject)]
@@ -492,9 +491,6 @@ pub struct UpdateScriptInput {
     pub status: Option<GqlScriptStatus>,
     pub run_as_system: Option<bool>,
     pub permissions: Option<Vec<String>>,
-    pub author_id: Option<String>,
-    #[graphql(default)]
-    pub clear_author_id: bool,
 }
 
 #[derive(InputObject)]

@@ -8,6 +8,7 @@ use sea_orm::{
     sea_query::{Expr, ExprTrait},
 };
 use serde::Serialize;
+use std::collections::BTreeSet;
 use uuid::Uuid;
 
 use crate::entities::{
@@ -15,12 +16,14 @@ use crate::entities::{
     ai_structured_provider_policies, ai_structured_reservations, ai_structured_results,
 };
 use crate::structured_result::SealedStructuredResult;
-use crate::{AiStructuredTaskEstimate, ProviderUsage};
+use crate::{AiStructuredTaskEstimate, AiTaskDataClassification, ProviderUsage};
 
 const TOKENS_PER_PRICE_UNIT: u128 = 1_000_000;
 const RECOVERY_ERROR_CODE: &str = "ai.structured.execution_lease_expired";
 const RESULT_HANDOFF_ERROR_CODE: &str = "ai.structured.result_handoff_incomplete";
 const RECOVERY_LEASE_SECONDS: i64 = 30;
+pub(crate) const PROVIDER_EGRESS_CLASSIFICATION_DENIED_CODE: &str =
+    "ai.structured.provider_egress_classification_denied";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BudgetPolicy {
@@ -39,6 +42,7 @@ pub(crate) struct ProviderPolicy {
     pub output_cost_per_million_minor: u64,
     pub max_concurrent: u32,
     pub is_active: bool,
+    pub allowed_classifications: Vec<AiTaskDataClassification>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +95,8 @@ pub(crate) struct StructuredAccounting {
 #[derive(Serialize)]
 struct PriceSnapshot<'a> {
     provider_profile_id: Uuid,
+    allowed_classifications: &'a [AiTaskDataClassification],
+    is_active: bool,
     currency_code: &'a str,
     input_cost_per_million_minor: i64,
     output_cost_per_million_minor: i64,
@@ -177,6 +183,11 @@ impl StructuredAccounting {
         policy: ProviderPolicy,
     ) -> Result<(), PortError> {
         validate_currency(&policy.currency_code)?;
+        let allowed_classifications =
+            canonical_allowed_classifications(&policy.allowed_classifications)?;
+        let allowed_classifications_json =
+            serde_json::to_value(&allowed_classifications).map_err(|_| accounting_invariant())?;
+        let policy_is_active = policy.is_active;
         if policy.max_concurrent == 0 {
             return Err(PortError::validation(
                 "ai.structured.provider_concurrency_invalid",
@@ -188,13 +199,18 @@ impl StructuredAccounting {
         let max_concurrent =
             i32::try_from(policy.max_concurrent).map_err(|_| accounting_limit())?;
         let now = Utc::now();
+        let transaction = self
+            .database
+            .begin()
+            .await
+            .map_err(|_| accounting_unavailable())?;
         let existing = ai_structured_provider_policies::Entity::find()
             .filter(ai_structured_provider_policies::Column::TenantId.eq(policy.tenant_id))
             .filter(
                 ai_structured_provider_policies::Column::ProviderProfileId
                     .eq(policy.provider_profile_id),
             )
-            .one(&self.database)
+            .one(&transaction)
             .await
             .map_err(|_| accounting_unavailable())?;
         match existing {
@@ -205,28 +221,78 @@ impl StructuredAccounting {
                         "provider concurrency cannot be reduced below current usage",
                     ));
                 }
+                let existing_allowed_classifications = provider_allowed_classifications(&existing)?;
+                if existing.in_flight > 0
+                    && (existing_allowed_classifications != allowed_classifications
+                        || existing.is_active != policy.is_active)
+                {
+                    return Err(PortError::conflict(
+                        "ai.structured.provider_egress_policy_in_use",
+                        "provider egress classification policy cannot change while structured attempts are in flight",
+                    ));
+                }
                 let next_revision = existing
                     .revision
                     .checked_add(1)
                     .ok_or_else(accounting_limit)?;
-                let mut active: ai_structured_provider_policies::ActiveModel = existing.into();
-                active.currency_code = Set(policy.currency_code);
-                active.input_cost_per_million_minor = Set(input_price);
-                active.output_cost_per_million_minor = Set(output_price);
-                active.max_concurrent = Set(max_concurrent);
-                active.is_active = Set(policy.is_active);
-                active.revision = Set(next_revision);
-                active.updated_at = Set(now.into());
-                active
-                    .update(&self.database)
+                let egress_changed = existing_allowed_classifications != allowed_classifications
+                    || existing.is_active != policy.is_active;
+                let mut update = ai_structured_provider_policies::Entity::update_many()
+                    .col_expr(
+                        ai_structured_provider_policies::Column::AllowedClassifications,
+                        Expr::value(allowed_classifications_json.clone()),
+                    )
+                    .col_expr(
+                        ai_structured_provider_policies::Column::CurrencyCode,
+                        Expr::value(policy.currency_code.clone()),
+                    )
+                    .col_expr(
+                        ai_structured_provider_policies::Column::InputCostPerMillionMinor,
+                        Expr::value(input_price),
+                    )
+                    .col_expr(
+                        ai_structured_provider_policies::Column::OutputCostPerMillionMinor,
+                        Expr::value(output_price),
+                    )
+                    .col_expr(
+                        ai_structured_provider_policies::Column::MaxConcurrent,
+                        Expr::value(max_concurrent),
+                    )
+                    .col_expr(
+                        ai_structured_provider_policies::Column::IsActive,
+                        Expr::value(policy_is_active),
+                    )
+                    .col_expr(
+                        ai_structured_provider_policies::Column::Revision,
+                        Expr::value(next_revision),
+                    )
+                    .col_expr(
+                        ai_structured_provider_policies::Column::UpdatedAt,
+                        Expr::value(now),
+                    )
+                    .filter(ai_structured_provider_policies::Column::Id.eq(existing.id));
+                if egress_changed {
+                    update = update.filter(
+                        ai_structured_provider_policies::Column::InFlight.eq(existing.in_flight),
+                    );
+                }
+                let updated = update
+                    .exec(&transaction)
                     .await
                     .map_err(|_| accounting_unavailable())?;
+                if updated.rows_affected != 1 {
+                    return Err(PortError::conflict(
+                        "ai.structured.provider_policy_conflict",
+                        "structured provider policy changed concurrently",
+                    ));
+                }
             }
             None => {
                 ai_structured_provider_policies::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     tenant_id: Set(policy.tenant_id),
                     provider_profile_id: Set(policy.provider_profile_id),
+                    allowed_classifications: Set(allowed_classifications_json),
                     currency_code: Set(policy.currency_code),
                     input_cost_per_million_minor: Set(input_price),
                     output_cost_per_million_minor: Set(output_price),
@@ -237,12 +303,78 @@ impl StructuredAccounting {
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
                 }
-                .insert(&self.database)
+                .insert(&transaction)
                 .await
                 .map_err(|_| accounting_unavailable())?;
             }
         }
+        transaction
+            .commit()
+            .await
+            .map_err(|_| accounting_unavailable())?;
         Ok(())
+    }
+
+    pub(crate) async fn provider_profile_ids_permitting_classification(
+        &self,
+        tenant_id: Uuid,
+        provider_profile_ids: &[Uuid],
+        classification: AiTaskDataClassification,
+    ) -> Result<BTreeSet<Uuid>, PortError> {
+        Ok(self
+            .provider_policies_permitting_classification(
+                tenant_id,
+                provider_profile_ids,
+                classification,
+            )
+            .await?
+            .into_iter()
+            .map(|policy| policy.provider_profile_id)
+            .collect())
+    }
+
+    async fn provider_policies_permitting_classification(
+        &self,
+        tenant_id: Uuid,
+        provider_profile_ids: &[Uuid],
+        classification: AiTaskDataClassification,
+    ) -> Result<Vec<ai_structured_provider_policies::Model>, PortError> {
+        if provider_profile_ids.is_empty() {
+            return Err(PortError::unavailable(
+                "ai.structured.provider_unavailable",
+                "no structured generation provider is available",
+            ));
+        }
+        let policies = ai_structured_provider_policies::Entity::find()
+            .filter(ai_structured_provider_policies::Column::TenantId.eq(tenant_id))
+            .filter(
+                ai_structured_provider_policies::Column::ProviderProfileId
+                    .is_in(provider_profile_ids.iter().copied()),
+            )
+            .filter(ai_structured_provider_policies::Column::IsActive.eq(true))
+            .all(&self.database)
+            .await
+            .map_err(|_| accounting_unavailable())?;
+        if policies.len() != provider_profile_ids.len() {
+            return Err(PortError::unavailable(
+                "ai.structured.provider_accounting_unavailable",
+                "one or more structured generation providers have no active accounting policy",
+            ));
+        }
+        let permitted = policies
+            .into_iter()
+            .map(|policy| {
+                let allowed = provider_allowed_classifications(&policy)?;
+                Ok((policy, allowed))
+            })
+            .collect::<Result<Vec<_>, PortError>>()?
+            .into_iter()
+            .filter_map(|(policy, allowed)| allowed.contains(&classification).then_some(policy))
+            .collect::<Vec<_>>();
+        if permitted.is_empty() {
+            return Err(provider_egress_classification_denied());
+        }
+        Ok(permitted)
     }
 
     pub(crate) async fn reserve(
@@ -284,9 +416,11 @@ impl StructuredAccounting {
         let input_tokens = u64::try_from(execution.input_bytes).map_err(|_| accounting_limit())?;
         let output_tokens =
             u64::try_from(execution.max_output_bytes).map_err(|_| accounting_limit())?;
+        let classification = parse_execution_classification(&execution.classification)?;
         let estimate = self
             .estimate(
                 execution.tenant_id,
+                classification,
                 input_tokens,
                 output_tokens,
                 u16::try_from(execution.max_attempts).map_err(|_| accounting_limit())?,
@@ -1025,6 +1159,10 @@ impl StructuredAccounting {
                     "structured generation provider has no active accounting policy",
                 )
             })?;
+        let classification = parse_execution_classification(&execution.classification)?;
+        if !provider_allowed_classifications(&policy)?.contains(&classification) {
+            return Err(provider_egress_classification_denied());
+        }
         if policy.currency_code != reservation.currency_code {
             return Err(PortError::conflict(
                 "ai.structured.provider_currency_changed",
@@ -1047,6 +1185,10 @@ impl StructuredAccounting {
             .filter(ai_structured_provider_policies::Column::Id.eq(policy.id))
             .filter(ai_structured_provider_policies::Column::IsActive.eq(true))
             .filter(
+                ai_structured_provider_policies::Column::AllowedClassifications
+                    .eq(policy.allowed_classifications.clone()),
+            )
+            .filter(
                 Expr::col(ai_structured_provider_policies::Column::InFlight).lt(Expr::col(
                     ai_structured_provider_policies::Column::MaxConcurrent,
                 )),
@@ -1055,6 +1197,18 @@ impl StructuredAccounting {
             .await
             .map_err(|_| accounting_unavailable())?;
         if acquired.rows_affected != 1 {
+            let current = ai_structured_provider_policies::Entity::find_by_id(policy.id)
+                .one(&transaction)
+                .await
+                .map_err(|_| accounting_unavailable())?;
+            if current.is_none_or(|current| {
+                !current.is_active
+                    || provider_allowed_classifications(&current)
+                        .map(|allowed| !allowed.contains(&classification))
+                        .unwrap_or(true)
+            }) {
+                return Err(provider_egress_classification_denied());
+            }
             return Err(PortError::new(
                 rustok_api::PortErrorKind::Unavailable,
                 "ai.structured.provider_concurrency_exhausted",
@@ -1241,8 +1395,11 @@ impl StructuredAccounting {
     pub(crate) fn price_snapshot_digest(
         policy: &ai_structured_provider_policies::Model,
     ) -> Result<String, PortError> {
+        let allowed_classifications = provider_allowed_classifications(policy)?;
         hash_manifest(&PriceSnapshot {
             provider_profile_id: policy.provider_profile_id,
+            allowed_classifications: &allowed_classifications,
+            is_active: policy.is_active,
             currency_code: &policy.currency_code,
             input_cost_per_million_minor: policy.input_cost_per_million_minor,
             output_cost_per_million_minor: policy.output_cost_per_million_minor,
@@ -1254,33 +1411,19 @@ impl StructuredAccounting {
     pub(crate) async fn estimate(
         &self,
         tenant_id: Uuid,
+        classification: AiTaskDataClassification,
         input_tokens_upper_bound: u64,
         output_tokens_upper_bound: u64,
         max_attempts: u16,
         provider_profile_ids: &[Uuid],
     ) -> Result<AiStructuredTaskEstimate, PortError> {
-        if provider_profile_ids.is_empty() {
-            return Err(PortError::unavailable(
-                "ai.structured.provider_unavailable",
-                "no structured generation provider is available",
-            ));
-        }
-        let policies = ai_structured_provider_policies::Entity::find()
-            .filter(ai_structured_provider_policies::Column::TenantId.eq(tenant_id))
-            .filter(
-                ai_structured_provider_policies::Column::ProviderProfileId
-                    .is_in(provider_profile_ids.iter().copied()),
+        let policies = self
+            .provider_policies_permitting_classification(
+                tenant_id,
+                provider_profile_ids,
+                classification,
             )
-            .filter(ai_structured_provider_policies::Column::IsActive.eq(true))
-            .all(&self.database)
-            .await
-            .map_err(|_| accounting_unavailable())?;
-        if policies.len() != provider_profile_ids.len() {
-            return Err(PortError::unavailable(
-                "ai.structured.provider_accounting_unavailable",
-                "one or more structured generation providers have no active accounting policy",
-            ));
-        }
+            .await?;
         let currency_code = policies[0].currency_code.clone();
         if policies
             .iter()
@@ -1307,8 +1450,8 @@ impl StructuredAccounting {
             .into_iter()
             .max()
             .unwrap_or_default();
-        let attempts_upper_bound = max_attempts
-            .min(u16::try_from(provider_profile_ids.len()).map_err(|_| accounting_limit())?);
+        let attempts_upper_bound =
+            max_attempts.min(u16::try_from(policies.len()).map_err(|_| accounting_limit())?);
         let cost_minor_units_upper_bound = maximum_attempt_cost
             .checked_mul(u64::from(attempts_upper_bound))
             .ok_or_else(accounting_limit)?;
@@ -1690,6 +1833,45 @@ fn validate_currency(value: &str) -> Result<(), PortError> {
     Ok(())
 }
 
+fn canonical_allowed_classifications(
+    classifications: &[AiTaskDataClassification],
+) -> Result<Vec<AiTaskDataClassification>, PortError> {
+    let unique = classifications.iter().copied().collect::<BTreeSet<_>>();
+    if unique.is_empty() || unique.len() != classifications.len() {
+        return Err(PortError::validation(
+            "ai.structured.provider_egress_policy_invalid",
+            "structured provider egress policy must allow one or more unique data classifications",
+        ));
+    }
+    Ok(unique.into_iter().collect())
+}
+
+pub(crate) fn provider_allowed_classifications(
+    policy: &ai_structured_provider_policies::Model,
+) -> Result<Vec<AiTaskDataClassification>, PortError> {
+    let classifications: Vec<AiTaskDataClassification> =
+        serde_json::from_value(policy.allowed_classifications.clone())
+            .map_err(|_| accounting_invariant())?;
+    canonical_allowed_classifications(&classifications).map_err(|_| accounting_invariant())
+}
+
+fn parse_execution_classification(value: &str) -> Result<AiTaskDataClassification, PortError> {
+    match value {
+        "public" => Ok(AiTaskDataClassification::Public),
+        "tenant_private" => Ok(AiTaskDataClassification::TenantPrivate),
+        "personal" => Ok(AiTaskDataClassification::Personal),
+        "sensitive" => Ok(AiTaskDataClassification::Sensitive),
+        _ => Err(accounting_invariant()),
+    }
+}
+
+fn provider_egress_classification_denied() -> PortError {
+    PortError::forbidden(
+        PROVIDER_EGRESS_CLASSIFICATION_DENIED_CODE,
+        "no eligible structured generation provider permits this data classification",
+    )
+}
+
 fn to_i64(value: u64) -> Result<i64, PortError> {
     i64::try_from(value).map_err(|_| accounting_limit())
 }
@@ -1770,6 +1952,7 @@ mod tests {
             .put_provider_policy(ProviderPolicy {
                 tenant_id,
                 provider_profile_id: provider_id,
+                allowed_classifications: vec![AiTaskDataClassification::TenantPrivate],
                 currency_code: "USD".to_string(),
                 input_cost_per_million_minor: 1_000_000,
                 output_cost_per_million_minor: 2_000_000,
@@ -1830,11 +2013,25 @@ mod tests {
         let (_ledger, accounting, tenant_id, provider_id) = runtime(10_000, 1).await;
 
         let first = accounting
-            .estimate(tenant_id, 25, 100, 3, &[provider_id])
+            .estimate(
+                tenant_id,
+                AiTaskDataClassification::TenantPrivate,
+                25,
+                100,
+                3,
+                &[provider_id],
+            )
             .await
             .unwrap();
         let replay = accounting
-            .estimate(tenant_id, 25, 100, 3, &[provider_id])
+            .estimate(
+                tenant_id,
+                AiTaskDataClassification::TenantPrivate,
+                25,
+                100,
+                3,
+                &[provider_id],
+            )
             .await
             .unwrap();
 
@@ -1867,6 +2064,80 @@ mod tests {
         assert_eq!(budget.reserved_minor_units, 0);
         assert_eq!(budget.committed_minor_units, 0);
         assert_eq!(budget.in_flight, 0);
+    }
+
+    #[tokio::test]
+    async fn provider_egress_allowlist_rejects_unapproved_classification_before_estimate() {
+        let (_ledger, accounting, tenant_id, provider_id) = runtime(10_000, 1).await;
+
+        let error = accounting
+            .estimate(
+                tenant_id,
+                AiTaskDataClassification::Personal,
+                25,
+                100,
+                3,
+                &[provider_id],
+            )
+            .await
+            .expect_err("personal data must not use a tenant-private-only provider");
+
+        assert_eq!(error.kind, PortErrorKind::Forbidden);
+        assert_eq!(error.code, PROVIDER_EGRESS_CLASSIFICATION_DENIED_CODE);
+    }
+
+    #[tokio::test]
+    async fn provider_egress_allowlist_is_rechecked_before_attempt_egress() {
+        let (ledger, accounting, tenant_id, provider_id) = runtime(10_000, 1).await;
+        let execution = ledger
+            .register(&context(tenant_id, "egress-policy-race"), &request())
+            .await
+            .unwrap()
+            .execution;
+        accounting
+            .reserve(execution.id, &[provider_id])
+            .await
+            .unwrap();
+        let lease = ledger
+            .claim(execution.id, Duration::from_secs(30))
+            .await
+            .unwrap()
+            .unwrap();
+
+        accounting
+            .put_provider_policy(ProviderPolicy {
+                tenant_id,
+                provider_profile_id: provider_id,
+                currency_code: "USD".to_string(),
+                input_cost_per_million_minor: 1_000_000,
+                output_cost_per_million_minor: 2_000_000,
+                max_concurrent: 1,
+                is_active: true,
+                allowed_classifications: vec![AiTaskDataClassification::Public],
+            })
+            .await
+            .unwrap();
+
+        let error = accounting
+            .begin_attempt(
+                execution.id,
+                lease.token,
+                provider_id,
+                "openai_compatible",
+                "test-model",
+            )
+            .await
+            .expect_err("changed egress policy must stop the provider call");
+        assert_eq!(error.kind, PortErrorKind::Forbidden);
+        assert_eq!(error.code, PROVIDER_EGRESS_CLASSIFICATION_DENIED_CODE);
+        assert!(
+            ai_structured_attempts::Entity::find()
+                .one(&accounting.database)
+                .await
+                .unwrap()
+                .is_none(),
+            "denied egress must not create an attempt"
+        );
     }
 
     #[tokio::test]

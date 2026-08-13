@@ -12,6 +12,7 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_tenant::TenantLocalePolicyPort;
 use rustok_translation_targets::{
     FieldKey, TranslationResourceSnapshot, TranslationTargetRegistry,
+    protected_token_ledger_matches, protected_token_multiplicities_match, whitespace_shape_matches,
 };
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
@@ -800,6 +801,9 @@ async fn project_glossary(
             }
         })
         .collect::<Vec<_>>();
+    if terms.is_empty() {
+        return Ok((None, None, terms));
+    }
     let digest = hash_manifest(&terms)?;
     Ok((Some(binding.revision.to_string()), Some(digest), terms))
 }
@@ -1518,8 +1522,10 @@ fn validate_machine_result(
         || result.execution.execution_id.trim().is_empty()
         || !is_digest(&result.execution.request_digest)
         || !is_digest(&result.execution.prompt_policy_digest)
+        || result.execution.prompt_policy_digest != request.adapter_policy_digest
         || result.provider_slug.trim().is_empty()
         || result.provider_slug.len() > 191
+        || !result.review_required
         || result.execution.attempts.is_empty()
         || result.execution.attempts.len() > 16
         || result.execution.attempts.iter().any(|attempt| {
@@ -1558,12 +1564,14 @@ fn validate_machine_result(
             || source
                 .max_characters
                 .is_some_and(|max| unit.translated_value.chars().count() > max as usize)
-            || unit.protected_tokens.iter().collect::<BTreeSet<_>>()
-                != source.protected_tokens.iter().collect::<BTreeSet<_>>()
-            || unit
-                .protected_tokens
-                .iter()
-                .any(|token| !unit.translated_value.contains(token))
+            || !protected_token_ledger_matches(&source.protected_tokens, &unit.protected_tokens)
+            || !protected_token_multiplicities_match(
+                &source.source_value,
+                &unit.translated_value,
+                &source.protected_tokens,
+            )
+            || (source.preserves_whitespace
+                && !whitespace_shape_matches(&source.source_value, &unit.translated_value))
             || unit.diagnostics.len() > 64
             || unit.diagnostics.iter().any(|diagnostic| {
                 diagnostic.code.trim().is_empty()
@@ -2205,7 +2213,7 @@ mod tests {
             execution: MachineTranslationExecutionEvidence {
                 execution_id: "execution-a".to_string(),
                 request_digest: "c".repeat(64),
-                prompt_policy_digest: "d".repeat(64),
+                prompt_policy_digest: "b".repeat(64),
                 attempts: vec![MachineTranslationAttemptEvidence {
                     attempt: 1,
                     provider_profile_id: "profile-a".to_string(),
@@ -2305,6 +2313,46 @@ mod tests {
         result.units[0].protected_tokens = vec!["{name}".to_string()];
         assert!(matches!(
             validate_machine_result(&request(), &result),
+            Err(TranslationError::InvalidMachineTranslationResult)
+        ));
+    }
+
+    #[test]
+    fn result_rejects_duplicate_protected_token_occurrences() {
+        let mut result = result();
+        result.units[0].translated_value = "Hallo {name} {count} {count}".to_string();
+        assert!(matches!(
+            validate_machine_result(&request(), &result),
+            Err(TranslationError::InvalidMachineTranslationResult)
+        ));
+    }
+
+    #[test]
+    fn result_rejects_changed_required_whitespace_shape() {
+        let mut request = request();
+        request.units[0].source_value = "  Hello {name} {count}\r\n".to_string();
+        request.units[0].preserves_whitespace = true;
+        let result = result();
+        assert!(matches!(
+            validate_machine_result(&request, &result),
+            Err(TranslationError::InvalidMachineTranslationResult)
+        ));
+    }
+
+    #[test]
+    fn result_rejects_unbound_policy_or_missing_review_requirement() {
+        let mut wrong_policy = result();
+        wrong_policy.execution.prompt_policy_digest = "f".repeat(64);
+        assert!(matches!(
+            validate_machine_result(&request(), &wrong_policy),
+            Err(TranslationError::InvalidMachineTranslationResult)
+        ));
+
+        let mut missing_review_requirement = result();
+        missing_review_requirement.execution.prompt_policy_digest = request().adapter_policy_digest;
+        missing_review_requirement.review_required = false;
+        assert!(matches!(
+            validate_machine_result(&request(), &missing_review_requirement),
             Err(TranslationError::InvalidMachineTranslationResult)
         ));
     }

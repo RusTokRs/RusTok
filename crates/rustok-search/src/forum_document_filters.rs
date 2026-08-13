@@ -27,17 +27,16 @@ impl ForumStorefrontDocumentFilters {
     }
 
     pub fn matches(&self, item: &SearchResultItem) -> bool {
-        if let Some(exact_locale) = self.exact_locale.as_deref() {
-            if item.source_module != "forum"
+        if let Some(exact_locale) = self.exact_locale.as_deref()
+            && (item.source_module != "forum"
                 || !item
                     .locale
                     .as_deref()
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
-                    .is_some_and(|value| value.eq_ignore_ascii_case(exact_locale))
-            {
-                return false;
-            }
+                    .is_some_and(|value| value.eq_ignore_ascii_case(exact_locale)))
+        {
+            return false;
         }
 
         if self.is_empty() {
@@ -141,11 +140,11 @@ impl ForumStorefrontDocumentFilters {
 
         self.published_from
             .as_ref()
-            .map_or(true, |from| &published_at >= from)
+            .is_none_or(|from| &published_at >= from)
             && self
                 .published_to
                 .as_ref()
-                .map_or(true, |to| &published_at <= to)
+                .is_none_or(|to| &published_at <= to)
     }
 }
 

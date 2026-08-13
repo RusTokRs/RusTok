@@ -189,8 +189,13 @@ the declared mixed-fleet/client lifetime, and return not-found rather than
 current HTML when an immutable asset is absent.
 
 The outside-candidate controller and node agents are operations infrastructure,
-not role-bundle contents. An agent accepts only exact operation/node/role/bundle
-and role-digest work, has no build, signing, DDL, restore, release-selection,
+not role-bundle contents. An agent claims only exact operation/node/role/bundle
+and role-digest work under a short owner-issued lease. The same authenticated
+agent receives the same unexpired claim after a lost response so it can replay
+its local journal; another agent may claim only after expiry. Claim, heartbeat,
+and report compare against the same owner-clock value. A work item contains
+only the assigned node/role's immutable identity, not other-node observations.
+The agent has no build, signing, DDL, restore, release-selection,
 arbitrary-command, or Next.js authority, and reports authenticated monotonic
 receipts. Application/module processes cannot write the deployment root or
 access the agent control socket.

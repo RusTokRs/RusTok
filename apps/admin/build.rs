@@ -135,17 +135,16 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
     let mut metadata_entries = Vec::new();
 
     for spec in modules.modules.into_values() {
-        if spec.required {
-            if let Some(module_root) = spec.path.as_ref().map(|value| workspace_root().join(value))
-            {
-                let package_manifest_path = module_root.join("rustok-module.toml");
-                if package_manifest_path.exists() {
-                    let package_manifest: ModulePackageManifest =
-                        toml::from_str(&fs::read_to_string(&package_manifest_path)?)?;
-                    core_modules.push(CoreModuleEntry {
-                        slug: package_manifest.module.slug,
-                    });
-                }
+        if spec.required
+            && let Some(module_root) = spec.path.as_ref().map(|value| workspace_root().join(value))
+        {
+            let package_manifest_path = module_root.join("rustok-module.toml");
+            if package_manifest_path.exists() {
+                let package_manifest: ModulePackageManifest =
+                    toml::from_str(&fs::read_to_string(&package_manifest_path)?)?;
+                core_modules.push(CoreModuleEntry {
+                    slug: package_manifest.module.slug,
+                });
             }
         }
 

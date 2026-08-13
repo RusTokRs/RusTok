@@ -8,7 +8,7 @@ const SITEMAP_SUBMIT_MAX_ENDPOINT_VALUE_LEN: usize = 160;
 const SITEMAP_SUBMIT_MAX_ENDPOINT_STATUS_SAMPLE: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) enum SitemapSubmissionEndpointState {
+pub(in super::super) enum SitemapSubmissionEndpointState {
     Success,
     Failure,
     Timeout,
@@ -27,27 +27,27 @@ impl SitemapSubmissionEndpointState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct SitemapSubmissionEndpointStatus {
-    pub(super) endpoint: String,
-    pub(super) state: SitemapSubmissionEndpointState,
-    pub(super) detail: Option<String>,
+pub(in super::super) struct SitemapSubmissionEndpointStatus {
+    pub(in super::super) endpoint: String,
+    pub(in super::super) state: SitemapSubmissionEndpointState,
+    pub(in super::super) detail: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(super) struct SitemapSubmissionTelemetrySnapshot {
-    pub(super) endpoint_statuses: Vec<SitemapSubmissionEndpointStatus>,
-    pub(super) omitted_endpoint_status_count: usize,
+pub(in super::super) struct SitemapSubmissionTelemetrySnapshot {
+    pub(in super::super) endpoint_statuses: Vec<SitemapSubmissionEndpointStatus>,
+    pub(in super::super) omitted_endpoint_status_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(super) struct SitemapSubmissionSummary {
-    pub(super) success_count: usize,
-    pub(super) failure_count: usize,
-    pub(super) endpoint_results: Vec<SitemapSubmissionEndpointStatus>,
+pub(in super::super) struct SitemapSubmissionSummary {
+    pub(in super::super) success_count: usize,
+    pub(in super::super) failure_count: usize,
+    pub(in super::super) endpoint_results: Vec<SitemapSubmissionEndpointStatus>,
 }
 
 impl SitemapSubmissionSummary {
-    pub(super) fn into_error(self) -> Option<String> {
+    pub(in super::super) fn into_error(self) -> Option<String> {
         if self.failure_count == 0 {
             return None;
         }
@@ -126,7 +126,7 @@ impl SitemapSubmissionSummary {
         ))
     }
 
-    pub(super) fn telemetry_snapshot(&self) -> SitemapSubmissionTelemetrySnapshot {
+    pub(in super::super) fn telemetry_snapshot(&self) -> SitemapSubmissionTelemetrySnapshot {
         let mut statuses = sorted_endpoint_results(self.endpoint_results.as_slice());
         let omitted_endpoint_status_count = statuses
             .len()
@@ -140,7 +140,10 @@ impl SitemapSubmissionSummary {
     }
 }
 
-pub(super) fn record_submission_success(summary: &mut SitemapSubmissionSummary, endpoint: &str) {
+pub(in super::super) fn record_submission_success(
+    summary: &mut SitemapSubmissionSummary,
+    endpoint: &str,
+) {
     summary.success_count += 1;
     summary
         .endpoint_results
@@ -151,7 +154,7 @@ pub(super) fn record_submission_success(summary: &mut SitemapSubmissionSummary, 
         });
 }
 
-pub(super) fn record_invalid_endpoint(summary: &mut SitemapSubmissionSummary, endpoint: &str) {
+pub(in super::super) fn record_invalid_endpoint(summary: &mut SitemapSubmissionSummary, endpoint: &str) {
     summary.failure_count += 1;
     summary
         .endpoint_results
@@ -165,7 +168,7 @@ pub(super) fn record_invalid_endpoint(summary: &mut SitemapSubmissionSummary, en
         });
 }
 
-pub(super) fn record_submission_failure(
+pub(in super::super) fn record_submission_failure(
     summary: &mut SitemapSubmissionSummary,
     endpoint: &str,
     detail: String,

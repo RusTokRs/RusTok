@@ -66,7 +66,9 @@ As of today `rustok-mcp` covers:
 
 - MCP server/tool surface via `rmcp`;
 - module discovery tools;
-- Alloy-related tools when `AlloyMcpState` is present;
+- Alloy scaffold tools when `AlloyScaffoldState` is present; tenant-owned Alloy
+  script CRUD, validation, and execution are deliberately absent from generic
+  MCP because it has no owner-scoped Alloy runtime;
 - identity/policy foundation via `McpIdentity`, `McpAccessContext`, `McpAccessPolicy`;
 - introspection tool `mcp_whoami`;
 - compatibility shim via legacy `enabled_tools`;

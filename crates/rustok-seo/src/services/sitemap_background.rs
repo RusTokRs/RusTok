@@ -1,9 +1,4 @@
-#[path = "sitemaps/index_generation.rs"]
-mod background_sitemap_index_generation;
-#[path = "sitemaps/submission_adapters.rs"]
-mod background_sitemap_submission_adapters;
-#[path = "sitemaps/submission_aggregation.rs"]
-mod background_sitemap_submission_aggregation;
+use super::sitemaps::{index_generation, submission_adapters, submission_aggregation};
 
 const SITEMAP_JOB_QUEUED: &str = "queued";
 const SITEMAP_JOB_RUNNING: &str = "running";
@@ -336,7 +331,7 @@ impl SeoService {
                     job_id: Set(job_id),
                     path: Set(format!("sitemap-{}.xml", index + 1)),
                     url_count: Set(chunk.len() as i32),
-                    content: Set(background_sitemap_index_generation::render_sitemap_file(chunk)),
+                    content: Set(index_generation::render_sitemap_file(chunk)),
                     created_at: Set(now),
                     updated_at: Set(now),
                 }
@@ -355,9 +350,7 @@ impl SeoService {
             job_id: Set(job_id),
             path: Set("sitemap.xml".to_string()),
             url_count: Set(urls.len() as i32),
-            content: Set(background_sitemap_index_generation::render_sitemap_index(
-                index_urls.as_slice(),
-            )),
+            content: Set(index_generation::render_sitemap_index(index_urls.as_slice())),
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -448,7 +441,7 @@ impl SeoService {
                 publication.event,
             )
             .await
-            .map_err(|error| background_sitemap_transactional_event_error(error))?;
+            .map_err(background_sitemap_transactional_event_error)?;
         crate::entities::seo_event_delivery::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(publication.tenant_id),
@@ -488,32 +481,32 @@ async fn submit_background_sitemap_endpoints(
     endpoints: &[String],
     sitemap_index_url: &str,
 ) -> Result<(), String> {
-    let runtime = background_sitemap_submission_adapters::SitemapSubmissionRuntime::default_with_timeout(
+    let runtime = submission_adapters::SitemapSubmissionRuntime::default_with_timeout(
         SITEMAP_BACKGROUND_SUBMIT_TIMEOUT_SECS,
     )?;
     let mut summary =
-        background_sitemap_submission_aggregation::SitemapSubmissionSummary::default();
+        submission_aggregation::SitemapSubmissionSummary::default();
     for endpoint in endpoints {
         let Some(request_url) =
             build_background_sitemap_submission_url(endpoint.as_str(), sitemap_index_url)
         else {
-            background_sitemap_submission_aggregation::record_invalid_endpoint(
+            submission_aggregation::record_invalid_endpoint(
                 &mut summary,
                 endpoint.as_str(),
             );
             continue;
         };
-        let request = background_sitemap_submission_adapters::SitemapSubmitEndpoint {
+        let request = submission_adapters::SitemapSubmitEndpoint {
             endpoint: endpoint.clone(),
             request_url,
         };
         match runtime.adapter().submit_sitemap_index(request).await {
-            Ok(()) => background_sitemap_submission_aggregation::record_submission_success(
+            Ok(()) => submission_aggregation::record_submission_success(
                 &mut summary,
                 endpoint.as_str(),
             ),
             Err(message) => {
-                background_sitemap_submission_aggregation::record_submission_failure(
+                submission_aggregation::record_submission_failure(
                     &mut summary,
                     endpoint.as_str(),
                     message,

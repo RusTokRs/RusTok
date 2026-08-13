@@ -27,8 +27,8 @@
   "execution_history_contract": {
     "routes": {
       "axum": [
-        "/executions",
-        "/scripts/{id}/executions"
+        "/api/alloy/executions",
+        "/api/alloy/scripts/{id}/executions"
       ],
       "graphql": [
         "scriptExecutionHistory",
@@ -114,7 +114,8 @@
       "reject_duplicate_name",
       "validate_cron_trigger",
       "validate_workspace_and_compile_entrypoint_before_save",
-      "persist_optional_tenant_id"
+      "tenant_and_author_from_authenticated_context",
+      "require_scripts_manage"
     ],
     "rest_update": [
       "invalidate_old_name_on_rename",
@@ -125,9 +126,11 @@
     ],
     "graphql_create_update": [
       "require_admin",
+      "require_matching_authenticated_tenant",
       "validate_cron_trigger",
       "validate_workspace_and_compile_entrypoint_before_save",
       "tenant_from_context_on_create",
+      "author_from_authenticated_context",
       "require_expected_version"
     ],
     "error_mapping": {
@@ -139,16 +142,16 @@
   "execution_command_contract": {
     "manual_run": [
       "require_expected_version",
-      "execute_loaded_snapshot"
-    ],
-    "mcp_manual_run": [
-      "require_expected_version",
-      "execute_loaded_snapshot"
+      "execute_loaded_snapshot",
+      "require_scripts_manage_and_matching_authenticated_tenant",
+      "record_authenticated_actor"
     ]
   },
   "lifecycle_command_contract": {
     "rest_activate_pause": [
-      "require_expected_version"
+      "require_expected_version",
+      "require_scripts_manage_and_matching_authenticated_tenant",
+      "record_authenticated_actor"
     ],
     "rest_delete": [
       "require_expected_version"
@@ -157,12 +160,6 @@
       "require_expected_version"
     ],
     "graphql_delete": [
-      "require_expected_version"
-    ],
-    "mcp_delete": [
-      "require_expected_version"
-    ],
-    "mcp_update": [
       "require_expected_version"
     ]
   },
@@ -175,6 +172,17 @@
       "workspace",
       "author_id",
       "parent_revision"
+    ]
+  },
+  "authoring_transport_contract": {
+    "http": "only_host_composed_tenant_bound_routes",
+    "graphql": "authenticated_tenant_must_match_request_tenant",
+    "generic_mcp": "must_not_expose_tenant_owned_script_crud_or_execution",
+    "permission": "scripts.manage",
+    "author_identity": "derived_from_authenticated_principal",
+    "forbidden_client_fields": [
+      "tenant_id",
+      "author_id"
     ]
   },
   "review_contract": {

@@ -214,14 +214,12 @@ impl NotificationCandidateWorker {
                 status: Set(FanoutItemStatus::RetryableError),
                 notification_id: Set(None),
                 attempt_count: Set(current.attempt_count.saturating_add(1)),
-                next_attempt_at: Set(Some(
-                    timestamp.clone() + Duration::seconds(reason.retry_seconds()),
-                )),
+                next_attempt_at: Set(Some(timestamp + Duration::seconds(reason.retry_seconds()))),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
                 last_error_code: Set(Some(reason.error_code().to_string())),
                 processed_at: Set(None),
-                updated_at: Set(timestamp.clone()),
+                updated_at: Set(timestamp),
                 ..Default::default()
             })
             .filter(candidate_item::Column::Id.eq(work.item_id))
@@ -300,7 +298,7 @@ fn claimable_condition(timestamp: DateTime<FixedOffset>) -> Condition {
                 .add(
                     Condition::any()
                         .add(candidate_item::Column::NextAttemptAt.is_null())
-                        .add(candidate_item::Column::NextAttemptAt.lte(timestamp.clone())),
+                        .add(candidate_item::Column::NextAttemptAt.lte(timestamp)),
                 ),
         )
         .add(

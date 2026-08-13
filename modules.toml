@@ -72,10 +72,10 @@ blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", de
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content", "taxonomy", "page_builder"] }
 notifications = { crate = "rustok-notifications", source = "path", path = "crates/rustok-notifications", depends_on = ["outbox"] }
 comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-comments" }
-pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages", depends_on = ["content", "page_builder"] }
-navigation = { crate = "rustok-navigation", source = "path", path = "crates/rustok-navigation", depends_on = ["channel"] }
+pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages", depends_on = ["content", "outbox", "page_builder"] }
+navigation = { crate = "rustok-navigation", source = "path", path = "crates/rustok-navigation", depends_on = ["channel", "outbox"] }
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/rustok-page-builder" }
-taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/rustok-taxonomy", depends_on = ["content"] }
+taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/rustok-taxonomy", depends_on = ["content", "outbox"] }
 media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" }
 translation = { crate = "rustok-translation", source = "path", path = "crates/rustok-translation" }
 seo = { crate = "rustok-seo", source = "path", path = "crates/rustok-seo", depends_on = ["content"] }

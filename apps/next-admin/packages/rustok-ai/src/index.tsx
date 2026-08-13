@@ -580,8 +580,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
     allowedTools:
       'list_modules,query_modules,module_details,mcp_health,mcp_whoami',
     deniedTools: '',
-    sensitiveTools:
-      'alloy_create_script,alloy_update_script,alloy_delete_script,alloy_apply_module_scaffold',
+    sensitiveTools: 'alloy_apply_module_scaffold',
     isActive: true
   });
 
@@ -962,8 +961,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
     allowedTools:
       'list_modules,query_modules,module_details,mcp_health,mcp_whoami',
     deniedTools: '',
-    sensitiveTools:
-      'alloy_create_script,alloy_update_script,alloy_delete_script,alloy_apply_module_scaffold',
+    sensitiveTools: 'alloy_apply_module_scaffold',
     isActive: true
   };
 

@@ -678,6 +678,52 @@ pub enum DomainEvent {
         namespace_revision: u64,
         purged_records: u64,
     },
+    ModuleArtifactSettingsRecoveryPointCreated {
+        recovery_point_id: Uuid,
+        tenant_id: Uuid,
+        installation_id: Uuid,
+        settings_instance_id: Uuid,
+        settings_revision: u64,
+    },
+    ModuleArtifactSettingsPurged {
+        recovery_point_id: Uuid,
+        tenant_id: Uuid,
+        installation_id: Uuid,
+        settings_instance_id: Uuid,
+        tombstone_revision: u64,
+    },
+    ModuleArtifactSettingsRestored {
+        recovery_point_id: Uuid,
+        tenant_id: Uuid,
+        target_installation_id: Option<Uuid>,
+        settings_instance_id: Uuid,
+    },
+    ModuleArtifactSettingsRecoveryRetentionUpdated {
+        recovery_point_id: Uuid,
+        tenant_id: Uuid,
+        retention_revision: u64,
+        retain_until: DateTime<Utc>,
+        legal_hold: bool,
+        audit_hold: bool,
+        incident_hold: bool,
+    },
+    ModuleArtifactSettingsRecoveryRewrapped {
+        recovery_point_id: Uuid,
+        tenant_id: Uuid,
+        previous_key_version: String,
+        key_version: String,
+    },
+    ModuleArtifactSettingsRecoveryCollected {
+        collection_id: Uuid,
+        recovery_point_id: Uuid,
+        tenant_id: Uuid,
+    },
+    ModuleArtifactSettingsRecoveryBound {
+        recovery_point_id: Uuid,
+        tenant_id: Uuid,
+        target_installation_id: Uuid,
+        settings_instance_id: Uuid,
+    },
     ModuleArtifactDataExported {
         export_id: Uuid,
         tenant_id: Uuid,
@@ -1099,6 +1145,23 @@ impl DomainEvent {
             Self::ModuleArtifactTenantDisabled { .. } => "module.artifact.tenant_disabled",
             Self::ModuleArtifactTenantEnabled { .. } => "module.artifact.tenant_enabled",
             Self::ModuleArtifactDataPurged { .. } => "module.artifact.data_purged",
+            Self::ModuleArtifactSettingsRecoveryPointCreated { .. } => {
+                "module.artifact.settings_recovery_point_created"
+            }
+            Self::ModuleArtifactSettingsPurged { .. } => "module.artifact.settings_purged",
+            Self::ModuleArtifactSettingsRestored { .. } => "module.artifact.settings_restored",
+            Self::ModuleArtifactSettingsRecoveryRetentionUpdated { .. } => {
+                "module.artifact.settings_recovery_retention_updated"
+            }
+            Self::ModuleArtifactSettingsRecoveryRewrapped { .. } => {
+                "module.artifact.settings_recovery_rewrapped"
+            }
+            Self::ModuleArtifactSettingsRecoveryCollected { .. } => {
+                "module.artifact.settings_recovery_collected"
+            }
+            Self::ModuleArtifactSettingsRecoveryBound { .. } => {
+                "module.artifact.settings_recovery_bound"
+            }
             Self::ModuleArtifactDataExported { .. } => "module.artifact.data_exported",
             Self::ModuleArtifactDataSnapshotCreated { .. } => {
                 "module.artifact.data_snapshot_created"
@@ -1305,6 +1368,13 @@ impl DomainEvent {
             Self::ModuleArtifactTenantDisabled { .. } => 1,
             Self::ModuleArtifactTenantEnabled { .. } => 1,
             Self::ModuleArtifactDataPurged { .. } => 1,
+            Self::ModuleArtifactSettingsRecoveryPointCreated { .. } => 1,
+            Self::ModuleArtifactSettingsPurged { .. } => 1,
+            Self::ModuleArtifactSettingsRestored { .. } => 1,
+            Self::ModuleArtifactSettingsRecoveryRetentionUpdated { .. } => 1,
+            Self::ModuleArtifactSettingsRecoveryRewrapped { .. } => 1,
+            Self::ModuleArtifactSettingsRecoveryCollected { .. } => 1,
+            Self::ModuleArtifactSettingsRecoveryBound { .. } => 1,
             Self::ModuleArtifactDataExported { .. } => 1,
             Self::ModuleArtifactDataSnapshotCreated { .. } => 1,
             Self::ModuleArtifactDataSnapshotRestored { .. } => 1,
@@ -2394,6 +2464,112 @@ impl ValidateEvent for DomainEvent {
                     ));
                 }
                 Ok(())
+            }
+            Self::ModuleArtifactSettingsRecoveryPointCreated {
+                recovery_point_id,
+                tenant_id,
+                installation_id,
+                settings_instance_id,
+                settings_revision,
+            } => {
+                validators::validate_not_nil_uuid("recovery_point_id", recovery_point_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                validators::validate_not_nil_uuid("settings_instance_id", settings_instance_id)?;
+                if *settings_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "settings_revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactSettingsPurged {
+                recovery_point_id,
+                tenant_id,
+                installation_id,
+                settings_instance_id,
+                tombstone_revision,
+            } => {
+                validators::validate_not_nil_uuid("recovery_point_id", recovery_point_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                validators::validate_not_nil_uuid("settings_instance_id", settings_instance_id)?;
+                if *tombstone_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "tombstone_revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactSettingsRestored {
+                recovery_point_id,
+                tenant_id,
+                target_installation_id,
+                settings_instance_id,
+            } => {
+                validators::validate_not_nil_uuid("recovery_point_id", recovery_point_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                if target_installation_id.is_some_and(|installation_id| installation_id.is_nil()) {
+                    return Err(EventValidationError::NilUuid("target_installation_id"));
+                }
+                validators::validate_not_nil_uuid("settings_instance_id", settings_instance_id)
+            }
+            Self::ModuleArtifactSettingsRecoveryRetentionUpdated {
+                recovery_point_id,
+                tenant_id,
+                retention_revision,
+                retain_until: _,
+                legal_hold: _,
+                audit_hold: _,
+                incident_hold: _,
+            } => {
+                validators::validate_not_nil_uuid("recovery_point_id", recovery_point_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                if *retention_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "retention_revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactSettingsRecoveryRewrapped {
+                recovery_point_id,
+                tenant_id,
+                previous_key_version,
+                key_version,
+            } => {
+                validators::validate_not_nil_uuid("recovery_point_id", recovery_point_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("previous_key_version", previous_key_version)?;
+                validators::validate_not_empty("key_version", key_version)?;
+                validators::validate_max_length("previous_key_version", previous_key_version, 256)?;
+                validators::validate_max_length("key_version", key_version, 256)
+            }
+            Self::ModuleArtifactSettingsRecoveryCollected {
+                collection_id,
+                recovery_point_id,
+                tenant_id,
+            } => {
+                validators::validate_not_nil_uuid("collection_id", collection_id)?;
+                validators::validate_not_nil_uuid("recovery_point_id", recovery_point_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)
+            }
+            Self::ModuleArtifactSettingsRecoveryBound {
+                recovery_point_id,
+                tenant_id,
+                target_installation_id,
+                settings_instance_id,
+            } => {
+                validators::validate_not_nil_uuid("recovery_point_id", recovery_point_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_nil_uuid(
+                    "target_installation_id",
+                    target_installation_id,
+                )?;
+                validators::validate_not_nil_uuid("settings_instance_id", settings_instance_id)
             }
             Self::ModuleArtifactDataExported {
                 export_id,

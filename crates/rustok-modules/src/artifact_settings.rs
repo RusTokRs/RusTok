@@ -39,6 +39,8 @@ pub(crate) enum ArtifactSettingsStoreError {
     ValidatorUnavailable,
     #[error("artifact settings instance schema differs from its active installation")]
     SchemaMismatch,
+    #[error("artifact settings instance was purged and cannot be reused")]
+    Tombstoned,
     #[error("artifact settings persistence failed: {0}")]
     Database(String),
 }
@@ -70,6 +72,7 @@ pub(crate) async fn persist(
         .await
         .map_err(|error| ArtifactSettingsStoreError::Database(error.to_string()))?;
     let installation = resolve_active_installation(&transaction, tenant_id, module_slug).await?;
+    ensure_not_tombstoned(&transaction, tenant_id, &installation).await?;
     let schema_digest = installation
         .schema_digest
         .as_deref()
@@ -106,6 +109,7 @@ pub(crate) async fn load(
         .await
         .map_err(|error| ArtifactSettingsStoreError::Database(error.to_string()))?;
     let installation = resolve_active_installation(&transaction, tenant_id, module_slug).await?;
+    ensure_not_tombstoned(&transaction, tenant_id, &installation).await?;
     let Some(expected_schema_digest) = installation.schema_digest.as_deref() else {
         transaction.commit().await.map_err(database_error)?;
         return Ok(serde_json::json!({}));
@@ -318,6 +322,35 @@ async fn persist_settings_instance<C: ConnectionTrait>(
     Ok(())
 }
 
+async fn ensure_not_tombstoned<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+    installation: &ActiveSettingsInstallation,
+) -> Result<(), ArtifactSettingsStoreError> {
+    let backend = connection.get_database_backend();
+    let tombstone = connection
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT 1 FROM module_artifact_settings_tombstones WHERE tenant_id = {} AND data_owner_id = {} AND settings_instance_id = {}",
+                placeholder(backend, 1),
+                placeholder(backend, 2),
+                placeholder(backend, 3),
+            ),
+            vec![
+                uuid_value(tenant_id, backend),
+                uuid_value(installation.data_owner_id, backend),
+                uuid_value(installation.settings_instance_id, backend),
+            ],
+        ))
+        .await
+        .map_err(database_error)?;
+    if tombstone.is_some() {
+        return Err(ArtifactSettingsStoreError::Tombstoned);
+    }
+    Ok(())
+}
+
 fn map_validation_error(error: ArtifactSchemaValidationError) -> ArtifactSettingsStoreError {
     match error {
         ArtifactSchemaValidationError::Compilation => {
@@ -391,6 +424,7 @@ mod tests {
             "CREATE TABLE module_artifact_admissions (installation_id TEXT PRIMARY KEY, status TEXT NOT NULL)",
             "CREATE TABLE module_artifact_uninstall_operations (installation_id TEXT PRIMARY KEY)",
             "CREATE TABLE module_artifact_settings_instances (tenant_id TEXT NOT NULL, data_owner_id TEXT NOT NULL, settings_instance_id TEXT NOT NULL, schema_digest TEXT NOT NULL, settings JSON NOT NULL, revision INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id, data_owner_id, settings_instance_id))",
+            "CREATE TABLE module_artifact_settings_tombstones (tenant_id TEXT NOT NULL, data_owner_id TEXT NOT NULL, settings_instance_id TEXT NOT NULL, PRIMARY KEY (tenant_id, data_owner_id, settings_instance_id))",
         ] {
             database
                 .execute(Statement::from_string(

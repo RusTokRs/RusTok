@@ -31,7 +31,7 @@ sameArray(contract.script_list_contract?.storage_parity, ['sea_orm', 'in_memory'
 if (contract.script_list_contract?.status_filter !== 'known_script_status_or_validation_error') fail('status filter policy drift');
 if (contract.script_list_contract?.page_min !== 1 || contract.script_list_contract?.per_page_min !== 1 || contract.script_list_contract?.per_page_max !== 100) fail('script pagination bounds drift');
 
-sameArray(contract.execution_history_contract?.routes?.axum, ['/executions', '/scripts/{id}/executions'], 'axum routes');
+sameArray(contract.execution_history_contract?.routes?.axum, ['/api/alloy/executions', '/api/alloy/scripts/{id}/executions'], 'host HTTP routes');
 sameArray(contract.execution_history_contract?.routes?.graphql, ['scriptExecutionHistory', 'recentScriptExecutions', 'scriptExecutions'], 'graphql routes');
 sameArray(contract.execution_history_contract?.canonical_fields, ['id', 'script_id', 'script_name', 'phase', 'outcome', 'duration_ms', 'error', 'user_id', 'tenant_id', 'created_at'], 'execution canonical fields');
 if (contract.execution_history_contract?.tenant_filter_before_offset !== true) fail('tenant filter ordering drift');
@@ -45,20 +45,24 @@ if (contract.sandbox_contract?.brokered_capability_adapter !== 'rustok_sandbox::
 if (contract.sandbox_contract?.timeout_enforcement !== 'progress_callback_interrupts_execution_with_timeout') fail('sandbox timeout enforcement drift');
 sameArray(contract.sandbox_contract?.rhai_native_limit_mapping, ['ErrorTooManyOperations_to_OperationLimit', 'ErrorDataTooLarge_to_ResourceLimit'], 'rhai native limit mapping');
 if (contract.scheduler_hook_contract?.scheduler_phase !== 'Scheduled' || contract.scheduler_hook_contract?.scheduler_tenant_context !== 'script_tenant_id') fail('scheduler context drift');
-sameArray(contract.script_crud_validation_contract?.rest_create, ['reject_duplicate_name', 'validate_cron_trigger', 'validate_workspace_and_compile_entrypoint_before_save', 'persist_optional_tenant_id'], 'REST create validation');
+sameArray(contract.script_crud_validation_contract?.rest_create, ['reject_duplicate_name', 'validate_cron_trigger', 'validate_workspace_and_compile_entrypoint_before_save', 'tenant_and_author_from_authenticated_context', 'require_scripts_manage'], 'REST create validation');
 sameArray(contract.script_crud_validation_contract?.rest_update, ['invalidate_old_name_on_rename', 'validate_new_workspace_and_compile_entrypoint_before_save', 'validate_cron_trigger_before_save', 'invalidate_cache_on_workspace_change', 'require_expected_version'], 'REST update validation');
-sameArray(contract.script_crud_validation_contract?.graphql_create_update, ['require_admin', 'validate_cron_trigger', 'validate_workspace_and_compile_entrypoint_before_save', 'tenant_from_context_on_create', 'require_expected_version'], 'GraphQL create/update validation');
-sameArray(contract.execution_command_contract?.manual_run, ['require_expected_version', 'execute_loaded_snapshot'], 'manual execution revision contract');
-sameArray(contract.execution_command_contract?.mcp_manual_run, ['require_expected_version', 'execute_loaded_snapshot'], 'MCP manual execution revision contract');
-sameArray(contract.lifecycle_command_contract?.rest_activate_pause, ['require_expected_version'], 'REST lifecycle revision contract');
+sameArray(contract.script_crud_validation_contract?.graphql_create_update, ['require_admin', 'require_matching_authenticated_tenant', 'validate_cron_trigger', 'validate_workspace_and_compile_entrypoint_before_save', 'tenant_from_context_on_create', 'author_from_authenticated_context', 'require_expected_version'], 'GraphQL create/update validation');
+sameArray(contract.execution_command_contract?.manual_run, ['require_expected_version', 'execute_loaded_snapshot', 'require_scripts_manage_and_matching_authenticated_tenant', 'record_authenticated_actor'], 'manual execution revision contract');
+sameArray(contract.lifecycle_command_contract?.rest_activate_pause, ['require_expected_version', 'require_scripts_manage_and_matching_authenticated_tenant', 'record_authenticated_actor'], 'REST lifecycle revision contract');
 sameArray(contract.lifecycle_command_contract?.rest_delete, ['require_expected_version'], 'REST delete revision contract');
 sameArray(contract.lifecycle_command_contract?.graphql_status_mutations, ['require_expected_version'], 'GraphQL lifecycle revision contract');
 sameArray(contract.lifecycle_command_contract?.graphql_delete, ['require_expected_version'], 'GraphQL delete revision contract');
-sameArray(contract.lifecycle_command_contract?.mcp_delete, ['require_expected_version'], 'MCP delete revision contract');
 if (contract.source_revision_ledger_contract?.persistence !== 'durable_immutable_source_snapshots') fail('source revision ledger persistence contract drift');
 if (contract.source_revision_ledger_contract?.lookup !== 'owner_scoped_by_script_id_and_revision') fail('source revision ledger lookup contract drift');
 if (contract.source_revision_ledger_contract?.listing !== 'owner_tenant_scoped_revision_ascending') fail('source revision ledger listing contract drift');
 sameArray(contract.source_revision_ledger_contract?.snapshot_fields, ['source_digest', 'workspace', 'author_id', 'parent_revision'], 'source revision ledger fields');
+if (contract.authoring_transport_contract?.http !== 'only_host_composed_tenant_bound_routes') fail('host HTTP authoring route contract drift');
+if (contract.authoring_transport_contract?.graphql !== 'authenticated_tenant_must_match_request_tenant') fail('GraphQL tenant binding contract drift');
+if (contract.authoring_transport_contract?.generic_mcp !== 'must_not_expose_tenant_owned_script_crud_or_execution') fail('generic MCP Alloy authority contract drift');
+if (contract.authoring_transport_contract?.permission !== 'scripts.manage') fail('authoring permission contract drift');
+if (contract.authoring_transport_contract?.author_identity !== 'derived_from_authenticated_principal') fail('author identity contract drift');
+sameArray(contract.authoring_transport_contract?.forbidden_client_fields, ['tenant_id', 'author_id'], 'forbidden client authoring fields');
 if (contract.review_contract?.persistence !== 'durable_immutable_revision_decisions') fail('review persistence contract drift');
 if (contract.review_contract?.subject !== 'tenant_scoped_script_source_revision' || contract.review_contract?.precondition !== 'expected_current_revision') fail('review subject contract drift');
 if (contract.review_contract?.idempotency !== 'script_revision_idempotency_key_and_request_digest') fail('review idempotency contract drift');
@@ -305,22 +309,21 @@ hasAll(reviewQuery, [
 ], 'Alloy GraphQL review history');
 const reviewHttp = read('crates/alloy/src/controllers/mod.rs');
 hasAll(reviewHttp, [
-  'fn review_actor',
-  'Script review requires scripts.manage permission',
+  'fn scripts_manage_auth(',
+  'scripts_manage_actor(auth, &tenant, "Alloy script review")?',
   'async fn review_script',
   'async fn list_reviews',
   'actor_id,',
   '/api/alloy/scripts/{id}/reviews'
 ], 'Alloy host HTTP review transport');
 hasAll(reviewHttp, [
-  'fn test_actor',
-  'Script test requires scripts.manage permission',
+  'scripts_manage_actor(auth, &tenant, "Alloy script test")?',
   'async fn run_workspace_test',
   '/api/alloy/scripts/{id}/tests/run'
 ], 'Alloy host HTTP test transport');
 hasAll(reviewHttp, [
   'fn release_actor',
-  'scripts.manage and modules.manage permissions',
+  'Alloy release staging requires modules.manage permission',
   'async fn stage_release',
   '/api/alloy/scripts/{id}/releases/stage',
   'AlloyReleaseStageCommand'
@@ -380,22 +383,6 @@ hasAll(brokeredHttpRhai, [
 if (brokeredHttpRhai.includes('reqwest::')) fail('neutral Rhai bridge must not own a direct HTTP client');
 if (read('crates/alloy/Cargo.toml').includes('reqwest')) fail('Alloy must not depend on a direct HTTP client');
 
-const handlers = read('crates/alloy/src/api/handlers.rs');
-hasAll(handlers, [
-  'Script with name',
-  'code: "conflict".to_string()',
-  'validate_trigger(&req.trigger)?',
-  '.entrypoint_source()',
-  'state.engine.compile(&req.name, source, &mut scope)?',
-  'state.engine.invalidate(&script.name);',
-  'script.workspace = workspace;',
-  'state.engine.compile(&script.name, source, &mut scope)?',
-  'req.expected_version',
-  'validate_trigger(&trigger)?',
-  'fn validate_trigger(trigger: &ScriptTrigger) -> ApiResult<()>',
-  'Invalid cron expression: {error}'
-], 'REST CRUD validation');
-
 const gqlMutation = read('crates/alloy/src/graphql/mutation.rs');
 hasAll(gqlMutation, [
   'fn validate_cron_trigger(trigger: &ScriptTriggerInput) -> Result<()>',
@@ -406,7 +393,8 @@ hasAll(gqlMutation, [
   'validate_cron_trigger(trigger)?',
   '.compile(&script.name, source, &mut scope)',
   'input.expected_version',
-  'data::<rustok_api::TenantContext>()'
+  'script.tenant_id = runtime.tenant_id;',
+  'script.author_id = Some(auth.user_id.to_string());'
 ], 'GraphQL CRUD validation');
 
 const controllers = read('crates/alloy/src/controllers/mod.rs');
@@ -415,8 +403,15 @@ hasAll(controllers, [
   '.compile(&req.name, source, &mut scope)',
   'req.expected_version',
   'validate_trigger(trigger)?',
-  '.compile(&script.name, source, &mut scope)'
+  '.compile(&script.name, source, &mut scope)',
+  'fn scripts_manage_auth(',
+  'fn scripts_manage_actor(',
+  'scripts_manage_actor(auth, &tenant, "Alloy script creation")?',
+  'script.tenant_id = tenant.id;',
+  'script.author_id = Some(actor_id);'
 ], 'host-composed REST CRUD validation');
+if (read('crates/alloy/src/api/mod.rs').includes('handlers') || read('crates/alloy/src/api/mod.rs').includes('routes')) fail('generic Alloy HTTP router must not remain exported');
+if (fs.existsSync('crates/alloy/src/api/handlers.rs') || fs.existsSync('crates/alloy/src/api/routes.rs')) fail('generic Alloy HTTP router files must be removed');
 hasAll(dto, [
   'pub struct ScriptRevisionRequest',
   'pub expected_version: u32'
@@ -426,13 +421,6 @@ hasAll(controllers, [
   'script.version != request.expected_version',
   'ScriptError::RevisionConflict'
 ], 'REST lifecycle revision validation');
-const apiHandlers = read('crates/alloy/src/api/handlers.rs');
-hasAll(apiHandlers, [
-  'Json(request): Json<ScriptRevisionRequest>',
-  '.delete(id, request.expected_version)',
-  'script.version != request.expected_version'
-], 'direct REST delete revision validation');
-
 const workspace = read('crates/rustok-sandbox/src/rhai_workspace.rs');
 hasAll(workspace, [
   'pub const MAX_RHAI_WORKSPACE_FILES: usize = 64',
@@ -475,13 +463,9 @@ hasAll(alloyDraft, [
   '.digest()'
 ], 'Alloy workspace sandbox payload');
 
-hasAll(handlers, [
-  'req.expected_version',
-  '.run_manual_snapshot(&script, params, entity, None)'
-], 'REST manual execution revision validation');
 hasAll(controllers, [
   'req.expected_version',
-  '.run_manual_snapshot(&script, params, entity, None)'
+  '.run_manual_snapshot(&script, params, entity, Some(actor_id))'
 ], 'host-composed REST manual execution revision validation');
 hasAll(gqlMutation, [
   'input.expected_version',
@@ -520,23 +504,24 @@ hasAll(seaOrmStorage, [
   'ScriptError::RevisionConflict'
 ], 'SeaORM delete CAS');
 const mcpAlloyTools = read('crates/rustok-mcp/src/alloy_tools.rs');
+for (const forbidden of [
+  'alloy_list_scripts',
+  'alloy_get_script',
+  'alloy_create_script',
+  'alloy_update_script',
+  'alloy_delete_script',
+  'alloy_validate_script',
+  'alloy_run_script',
+  'ScriptRegistry'
+]) {
+  if (mcpAlloyTools.includes(forbidden)) fail(`generic MCP Alloy tool surface must not contain ${forbidden}`);
+}
 hasAll(mcpAlloyTools, [
-  'pub struct DeleteScriptRequest',
-  'pub expected_version: u32',
-  'if script.version != request.expected_version',
-  '.delete(id, request.expected_version)'
-], 'MCP delete revision validation');
-hasAll(mcpAlloyTools, [
-  'pub workspace: RhaiWorkspace',
-  'pub expected_version: u32',
-  'validate_rhai_workspace()',
-  'run_manual_snapshot(&script, params, entity, None)'
-], 'MCP workspace and execution revision validation');
-hasAll(mcpAlloyTools, [
-  'pub struct UpdateScriptRequest',
-  'if script.version != request.expected_version',
-  'script.workspace = workspace'
-], 'MCP update revision validation');
+  'pub struct AlloyScaffoldState',
+  'TOOL_ALLOY_SCAFFOLD_MODULE',
+  'TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD',
+  'TOOL_ALLOY_APPLY_MODULE_SCAFFOLD'
+], 'generic MCP Alloy scaffold-only surface');
 const orchestrator = read('crates/alloy/src/runner/orchestrator.rs');
 hasAll(orchestrator, [
   'pub async fn run_manual_snapshot',
@@ -573,19 +558,14 @@ hasAll(hookExecutor, [
   'Vec<crate::runner::ExecutionResult>'
 ], 'hook executor typed outcome contract');
 
-const axumRoutes = read('crates/alloy/src/api/routes.rs');
-hasAll(axumRoutes, [
-  'AXUM_EXECUTION_HISTORY_ROUTES: &[&str] = &["/executions", "/scripts/{id}/executions"]',
-  'get(handlers::list_recent_executions::<S>)',
-  'get(handlers::list_script_executions::<S>)'
-], 'axum routes');
-
 const controllerRoutes = read('crates/alloy/src/controllers/mod.rs');
 hasAll(controllerRoutes, [
-  'AXUM_EXECUTION_HISTORY_ROUTES as EXECUTION_HISTORY_ROUTES',
+  'pub const EXECUTION_HISTORY_ROUTES',
+  '"/api/alloy/executions"',
+  '"/api/alloy/scripts/{id}/executions"',
   'list_recent_executions',
   'list_script_executions'
-], 'controller route bridge');
+], 'host HTTP controller routes');
 
 const graphql = read('crates/alloy/src/graphql/query.rs');
 hasAll(graphql, [

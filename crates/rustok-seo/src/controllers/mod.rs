@@ -607,20 +607,20 @@ fn apply_diagnostics_filters(
         .issues
         .into_iter()
         .filter(|issue| {
-            if let Some(severity) = query.severity {
-                if issue.severity != severity {
-                    return false;
-                }
+            if let Some(severity) = query.severity
+                && issue.severity != severity
+            {
+                return false;
             }
-            if let Some(code) = code_filter.as_deref() {
-                if issue.code.to_ascii_lowercase() != code {
-                    return false;
-                }
+            if let Some(code) = code_filter.as_deref()
+                && issue.code.to_ascii_lowercase() != code
+            {
+                return false;
             }
-            if let Some(target_kind) = query.target_kind.as_ref() {
-                if issue.target_kind != *target_kind {
-                    return false;
-                }
+            if let Some(target_kind) = query.target_kind.as_ref()
+                && issue.target_kind != *target_kind
+            {
+                return false;
             }
             true
         })

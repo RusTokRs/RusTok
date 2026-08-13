@@ -11,7 +11,9 @@ bounded request mapping, and deterministic validation of AI output. It never
 stores translation workflow state and never mutates owner-owned content.
 It also maps Translation status, result recovery, and cancellation to the
 AI execution's stable owner/idempotency identity, so a caller does not need to
-observe the generated execution UUID before a timeout or restart.
+observe the generated execution UUID before a timeout or restart. Before it
+accepts an executed or recovered result, the bridge compares the AI
+content-free request binding with the exact bounded batch it submitted.
 
 ## Responsibilities
 
@@ -19,10 +21,16 @@ observe the generated execution UUID before a timeout or restart.
 - Map non-billable conservative estimates from the same request, tenant
   routing, attempt bounds, and immutable AI price snapshots used by execution.
 - Preserve source/target locale, unit identity, source revision/hash, field
-  semantics, protected tokens, glossary/Translation Memory context, and
-  content-safe evidence.
-- Reject stale prompt policy, missing/extra/duplicate units, changed protected
-  tokens, owner length violations, invalid usage, and missing attempt evidence.
+  semantics, protected tokens, exact-digest-bound glossary/Translation Memory
+  context, and content-safe evidence. Every packet is at least
+  `tenant_private`: it carries tenant-scoped resource identity and may carry
+  glossary, memory, style, or evidence context. Personal and sensitive units
+  raise that classification. The external structured payload uses canonical
+  camel-case JSON names.
+- Reject stale prompt policy, mismatched execution bindings,
+  missing/extra/duplicate units, changed protected-token multiplicity or
+  required whitespace shape, unknown output fields, owner length violations,
+  invalid usage, and missing attempt evidence.
 - Return proposal-only, human-review-required results with execution, model,
 fallback, token, price, and cost evidence.
 The estimate path never registers an execution, reserves budget, or calls a
@@ -58,6 +66,11 @@ health. Live external-provider runtime failure/restart evidence remains open;
 ignored operator-only durable structured-runtime probe for collecting it.
 Separate-process file-backed evidence already covers expired-attempt recovery,
 reservation preservation, and reclaim with a new lease.
+
+The bridge requests `tenant_private` health because that is the minimum egress
+classification for every machine-translation packet. AI policy evaluates the
+same classification at health, routing, estimate, reservation, and provider
+attempt boundaries, so a tenant-private denial fails before an external call.
 
 ## Entry points
 

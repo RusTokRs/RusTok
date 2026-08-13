@@ -5,6 +5,7 @@ mod artifact_capability_router;
 mod artifact_cas;
 mod artifact_schema;
 mod artifact_settings;
+mod artifact_settings_recovery;
 mod authoring;
 mod binding_idempotency;
 mod build;
@@ -81,6 +82,21 @@ pub use artifact_capability_router::{
     resolve_granted_artifact_capability,
 };
 pub use artifact_cas::StorageArtifactBlobStore;
+pub use artifact_settings_recovery::{
+    ArtifactSettingsPurgeRequest, ArtifactSettingsPurgeResult,
+    ArtifactSettingsRecoveryAuthorizationContext, ArtifactSettingsRecoveryAuthorizer,
+    ArtifactSettingsRecoveryBindRequest, ArtifactSettingsRecoveryBindResult,
+    ArtifactSettingsRecoveryCipher, ArtifactSettingsRecoveryCipherContext,
+    ArtifactSettingsRecoveryCiphertext, ArtifactSettingsRecoveryCollectionCandidate,
+    ArtifactSettingsRecoveryCollectionPolicy, ArtifactSettingsRecoveryCollectionRequest,
+    ArtifactSettingsRecoveryCollectionResult, ArtifactSettingsRecoveryError,
+    ArtifactSettingsRecoveryPoint, ArtifactSettingsRecoveryPointCreateRequest,
+    ArtifactSettingsRecoveryRetention, ArtifactSettingsRecoveryRetentionUpdate,
+    ArtifactSettingsRecoveryRetentionUpdateRequest, ArtifactSettingsRecoveryRetentionUpdateResult,
+    ArtifactSettingsRecoveryRewrapRequest, ArtifactSettingsRecoveryRewrapResult,
+    ArtifactSettingsRestoreRequest, ArtifactSettingsRestoreResult,
+    SeaOrmArtifactSettingsRecoveryService,
+};
 pub use authoring::{
     MODULE_AUTHORING_BUILD_MAX_ARCHIVE_BYTES, MODULE_AUTHORING_BUILD_MAX_SOURCE_BYTES,
     MODULE_AUTHORING_BUILD_MAX_SOURCE_ENTRIES, ModuleAuthoringBuildCommand,
@@ -209,16 +225,19 @@ pub use distribution_release::{
     resolve_static_distribution_install_binding,
 };
 pub use distribution_rollout::{
-    ModuleStaticDistributionAssignment, ModuleStaticDistributionAssignmentFailure,
-    ModuleStaticDistributionAssignmentPhase, ModuleStaticDistributionAssignmentReport,
-    ModuleStaticDistributionAssignmentReportReceipt, ModuleStaticDistributionHealthEvidence,
+    ModuleStaticDistributionAssignment, ModuleStaticDistributionAssignmentClaimCommand,
+    ModuleStaticDistributionAssignmentFailure, ModuleStaticDistributionAssignmentHeartbeatCommand,
+    ModuleStaticDistributionAssignmentHeartbeatReceipt, ModuleStaticDistributionAssignmentPhase,
+    ModuleStaticDistributionAssignmentReport, ModuleStaticDistributionAssignmentReportReceipt,
+    ModuleStaticDistributionAssignmentWorkItem, ModuleStaticDistributionHealthEvidence,
     ModuleStaticDistributionRecoveryRequest, ModuleStaticDistributionRollout,
     ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutAuthorizer,
     ModuleStaticDistributionRolloutError, ModuleStaticDistributionRolloutReceipt,
     ModuleStaticDistributionRolloutRequest, ModuleStaticDistributionRolloutState,
-    ModuleStaticDistributionRolloutStatus, ModuleStaticDistributionTopologyResolver,
-    ModuleStaticDistributionTopologySnapshot, ModuleStaticDistributionTransitionKind,
-    SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_topology_digest,
+    ModuleStaticDistributionRolloutStatus, ModuleStaticDistributionRolloutWorkIdentity,
+    ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionTopologySnapshot,
+    ModuleStaticDistributionTransitionKind, SeaOrmModuleStaticDistributionRolloutService,
+    module_static_distribution_topology_digest,
 };
 pub use event_delivery::{
     ARTIFACT_EVENT_DELIVERY_WORKER, ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig,

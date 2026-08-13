@@ -82,7 +82,7 @@ query AiBootstrap {
   }
   aiStructuredProviderPolicies {
     id providerProfileId currencyCode inputCostPerMillionMinor outputCostPerMillionMinor
-    maxConcurrent inFlight isActive revision createdAt updatedAt
+    allowedClassifications maxConcurrent inFlight isActive revision createdAt updatedAt
   }
   aiTaskProfiles { id slug displayName description targetCapability systemPrompt allowedProviderProfileIds preferredProviderProfileIds fallbackStrategy toolProfileId defaultExecutionMode isActive }
   aiToolProfiles { id slug displayName description allowedTools deniedTools sensitiveTools isActive }
@@ -137,7 +137,7 @@ pub const AI_PUT_STRUCTURED_PROVIDER_POLICY_MUTATION: &str = r#"
 mutation PutAiStructuredProviderPolicy($input: PutAiStructuredProviderPolicyInputGql!) {
   putAiStructuredProviderPolicy(input: $input) {
     id providerProfileId currencyCode inputCostPerMillionMinor outputCostPerMillionMinor
-    maxConcurrent inFlight isActive revision createdAt updatedAt
+    allowedClassifications maxConcurrent inFlight isActive revision createdAt updatedAt
   }
 }
 "#;
@@ -272,6 +272,7 @@ mod contract_tests {
             "aiStructuredProviderPolicies",
             "inputCostPerMillionMinor",
             "outputCostPerMillionMinor",
+            "allowedClassifications",
             "maxConcurrent",
             "inFlight",
             "revision",

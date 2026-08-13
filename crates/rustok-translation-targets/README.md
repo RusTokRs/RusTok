@@ -17,7 +17,10 @@ plane.
 - Declare field value profiles, translation strategy, data classification, and
   AI-export eligibility.
 - Carry an explicit protected-token ledger and typed warning/error validation
-  evidence; consumers never infer placeholder syntax.
+  evidence; consumers never infer placeholder syntax. Provide shared pure
+  comparison helpers for exact unique ledgers, token multiplicity, and
+  owner-declared whitespace shape so every Translation path has identical
+  semantics.
 - Register owner-contributed providers through `ModuleRuntimeExtensions`.
 - Provide contract validation and conformance fixtures.
 - Provide `provider_support` helpers for contract-level source hashing, patch
@@ -47,6 +50,9 @@ plane.
 - `TranslationApplicationReceipt`
 - `TranslationTargetProgressRequest`
 - `TranslationTargetProgressFacts`
+- `protected_token_ledger_matches`
+- `protected_token_multiplicities_match`
+- `whitespace_shape_matches`
 - `provider_support`
 
 Executable positive and negative reference-provider fixtures live in

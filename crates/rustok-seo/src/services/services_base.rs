@@ -257,12 +257,12 @@ fn parse_persisted_settings(value: serde_json::Value) -> SeoResult<SeoModuleSett
 }
 
 fn validate_persisted_settings(settings: &SeoModuleSettings) -> SeoResult<()> {
-    if let Some(locale) = settings.x_default_locale.as_deref() {
-        if normalize_locale_tag(locale).is_none() {
-            return Err(SeoError::configuration(format!(
-                "invalid persisted SEO x_default_locale `{locale}`"
-            )));
-        }
+    if let Some(locale) = settings.x_default_locale.as_deref()
+        && normalize_locale_tag(locale).is_none()
+    {
+        return Err(SeoError::configuration(format!(
+            "invalid persisted SEO x_default_locale `{locale}`"
+        )));
     }
 
     for (field, hosts) in [

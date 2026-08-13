@@ -1,5 +1,3 @@
-#![allow(clippy::items_after_test_module)]
-
 use uuid::Uuid;
 
 use rustok_api::TenantContext;
@@ -58,31 +56,25 @@ impl SeoService {
             .resolve_route(tenant.id, locale, route)
             .await
             .map_err(|err| SeoError::validation(err.to_string()))?
+            && let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str())
+            && let Some(mut context) = self
+                .load_target_page_context(
+                    tenant,
+                    kind,
+                    resolved.target_id,
+                    Some(locale.to_string()),
+                    Some(resolved.canonical_url.clone()),
+                    channel_slug,
+                )
+                .await?
         {
-            if let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str()) {
-                if let Some(mut context) = self
-                    .load_target_page_context(
-                        tenant,
-                        kind,
-                        resolved.target_id,
-                        Some(locale.to_string()),
-                        Some(resolved.canonical_url.clone()),
-                        channel_slug,
-                    )
-                    .await?
-                {
-                    if resolved.redirect_required {
-                        context.route.redirect = Some(SeoRedirectDecision {
-                            target_url: locale_prefixed_path(
-                                locale,
-                                resolved.canonical_url.as_str(),
-                            ),
-                            status_code: 308,
-                        });
-                    }
-                    return Ok(Some(context));
-                }
+            if resolved.redirect_required {
+                context.route.redirect = Some(SeoRedirectDecision {
+                    target_url: locale_prefixed_path(locale, resolved.canonical_url.as_str()),
+                    status_code: 308,
+                });
             }
+            return Ok(Some(context));
         }
 
         if let Some(redirect) = self.match_redirect(tenant.id, route).await? {
@@ -90,8 +82,8 @@ impl SeoService {
                 return Err(SeoError::validation("redirect loop detected"));
             }
 
-            if redirect.target_url.starts_with('/') {
-                if let Some(mut context) = self
+            if redirect.target_url.starts_with('/')
+                && let Some(mut context) = self
                     .resolve_redirect_target_once(
                         tenant,
                         locale,
@@ -99,17 +91,12 @@ impl SeoService {
                         channel_slug,
                     )
                     .await?
-                {
-                    context.route.redirect = Some(SeoRedirectDecision {
-                        target_url: if redirect.target_url.starts_with("http") {
-                            redirect.target_url.clone()
-                        } else {
-                            locale_prefixed_path(locale, redirect.target_url.as_str())
-                        },
-                        status_code: redirect.status_code,
-                    });
-                    return Ok(Some(context));
-                }
+            {
+                context.route.redirect = Some(SeoRedirectDecision {
+                    target_url: locale_prefixed_path(locale, redirect.target_url.as_str()),
+                    status_code: redirect.status_code,
+                });
+                return Ok(Some(context));
             }
 
             return Ok(Some(SeoPageContext {
@@ -183,19 +170,18 @@ impl SeoService {
             .resolve_route(tenant.id, locale, route)
             .await
             .map_err(|err| SeoError::validation(err.to_string()))?
+            && let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str())
         {
-            if let Ok(kind) = SeoTargetSlug::new(resolved.target_kind.as_str()) {
-                return self
-                    .load_target_page_context(
-                        tenant,
-                        kind,
-                        resolved.target_id,
-                        Some(locale.to_string()),
-                        Some(resolved.canonical_url),
-                        channel_slug,
-                    )
-                    .await;
-            }
+            return self
+                .load_target_page_context(
+                    tenant,
+                    kind,
+                    resolved.target_id,
+                    Some(locale.to_string()),
+                    Some(resolved.canonical_url),
+                    channel_slug,
+                )
+                .await;
         }
 
         let state = if let Some(route_match) = self

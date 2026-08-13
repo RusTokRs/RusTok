@@ -235,10 +235,7 @@ fn require_region_read_policy(
 ) -> Result<(), PortError> {
     context
         .require_policy(PortCallPolicy::read())
-        .map_err(|error| {
-            log_region_read_admission_rejection(context, owner_operation, &error);
-            error
-        })
+        .inspect_err(|error| log_region_read_admission_rejection(context, owner_operation, error))
 }
 
 fn log_region_read_admission_rejection(

@@ -19,7 +19,7 @@ use crate::model::{
     AiRunDecisionTrace, ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderCapability,
     ProviderUsagePolicy, ToolCall, ToolTrace,
 };
-use crate::{ProviderSlug, ProviderTargetId};
+use crate::{AiTaskDataClassification, ProviderSlug, ProviderTargetId};
 
 type AiRunCancellationSenders = HashMap<Uuid, watch::Sender<()>>;
 type SharedAiRunCancellations = Arc<Mutex<AiRunCancellationSenders>>;
@@ -332,6 +332,7 @@ pub struct PutAiStructuredBudgetPolicyInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PutAiStructuredProviderPolicyInput {
     pub provider_profile_id: Uuid,
+    pub allowed_classifications: Vec<AiTaskDataClassification>,
     pub currency_code: String,
     pub input_cost_per_million_minor: u64,
     pub output_cost_per_million_minor: u64,
@@ -357,6 +358,7 @@ pub struct AiStructuredBudgetPolicyRecord {
 pub struct AiStructuredProviderPolicyRecord {
     pub id: Uuid,
     pub provider_profile_id: Uuid,
+    pub allowed_classifications: Vec<AiTaskDataClassification>,
     pub currency_code: String,
     pub input_cost_per_million_minor: u64,
     pub output_cost_per_million_minor: u64,

@@ -8,13 +8,13 @@ const MAX_SITEMAP_SUBMIT_URL_LEN: usize = 2_048;
 const ALLOW_INSECURE_HTTP_ENV: &str = "RUSTOK_SEO_ALLOW_INSECURE_SITEMAP_SUBMISSION";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct SitemapSubmitEndpoint {
-    pub(super) endpoint: String,
-    pub(super) request_url: String,
+pub(in super::super) struct SitemapSubmitEndpoint {
+    pub(in super::super) endpoint: String,
+    pub(in super::super) request_url: String,
 }
 
 #[async_trait::async_trait]
-pub(super) trait SitemapSubmissionAdapter: Send + Sync {
+pub(in super::super) trait SitemapSubmissionAdapter: Send + Sync {
     async fn submit_sitemap_index(&self, endpoint: SitemapSubmitEndpoint) -> Result<(), String>;
 }
 
@@ -22,7 +22,7 @@ pub(super) struct HttpSitemapSubmissionAdapter {
     timeout: Duration,
 }
 
-pub(super) struct SitemapSubmissionRuntime {
+pub(in super::super) struct SitemapSubmissionRuntime {
     adapter: Box<dyn SitemapSubmissionAdapter>,
 }
 
@@ -41,7 +41,7 @@ struct ResolvedSitemapSubmitTarget {
 }
 
 impl SitemapSubmissionRuntime {
-    pub(super) fn default_with_timeout(timeout_secs: u64) -> Result<Self, String> {
+    pub(in super::super) fn default_with_timeout(timeout_secs: u64) -> Result<Self, String> {
         if timeout_secs == 0 {
             return Err("sitemap submission timeout must be greater than zero".to_string());
         }
@@ -52,7 +52,7 @@ impl SitemapSubmissionRuntime {
         })
     }
 
-    pub(super) fn adapter(&self) -> &dyn SitemapSubmissionAdapter {
+    pub(in super::super) fn adapter(&self) -> &dyn SitemapSubmissionAdapter {
         self.adapter.as_ref()
     }
 }

@@ -379,6 +379,11 @@ impl AiMutation {
             &operator,
             crate::PutAiStructuredProviderPolicyInput {
                 provider_profile_id: input.provider_profile_id,
+                allowed_classifications: input
+                    .allowed_classifications
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
                 currency_code: input.currency_code,
                 input_cost_per_million_minor: nonnegative_u64(
                     input.input_cost_per_million_minor,

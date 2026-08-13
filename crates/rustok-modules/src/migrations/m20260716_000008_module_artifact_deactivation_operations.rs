@@ -82,6 +82,201 @@ impl MigrationTrait for Migration {
                  ON module_artifact_settings_instances \
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
+                "CREATE TABLE module_artifact_settings_recovery_points (\
+                    recovery_point_id UUID PRIMARY KEY,\
+                    tenant_id UUID NOT NULL,\
+                    installation_id UUID NOT NULL REFERENCES module_artifact_installations(installation_id),\
+                    data_owner_id UUID NOT NULL,\
+                    settings_instance_id UUID NOT NULL,\
+                    settings_revision BIGINT NOT NULL CHECK (settings_revision > 0),\
+                    schema_digest TEXT NOT NULL CHECK (schema_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    descriptor_digest TEXT NOT NULL CHECK (descriptor_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    value_digest TEXT NOT NULL CHECK (value_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    key_version TEXT NOT NULL CHECK (length(trim(key_version)) > 0 AND length(key_version) <= 256),\
+                    ciphertext BYTEA NULL CHECK (ciphertext IS NULL OR (octet_length(ciphertext) > 0 AND octet_length(ciphertext) <= 131072)),\
+                    retention_revision BIGINT NOT NULL CHECK (retention_revision > 0),\
+                    policy_snapshot_id TEXT NOT NULL CHECK (length(trim(policy_snapshot_id)) > 0 AND length(policy_snapshot_id) <= 128),\
+                    secret_handle_digest TEXT NOT NULL CHECK (secret_handle_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    retain_until TIMESTAMPTZ NOT NULL,\
+                    legal_hold BOOLEAN NOT NULL,\
+                    audit_hold BOOLEAN NOT NULL,\
+                    incident_hold BOOLEAN NOT NULL,\
+                    state TEXT NOT NULL CHECK (state IN ('ready', 'collecting', 'collected')),\
+                    restored_at TIMESTAMPTZ NULL,\
+                    restored_installation_id UUID NULL REFERENCES module_artifact_installations(installation_id),\
+                    restored_settings_instance_id UUID NULL,\
+                    collected_at TIMESTAMPTZ NULL,\
+                    created_at TIMESTAMPTZ NOT NULL,\
+                    CHECK ((restored_at IS NULL AND restored_settings_instance_id IS NULL) \
+                        OR (restored_at IS NOT NULL AND restored_settings_instance_id IS NOT NULL)),\
+                    CHECK ((state IN ('ready', 'collecting') AND ciphertext IS NOT NULL AND collected_at IS NULL) \
+                        OR (state = 'collected' AND ciphertext IS NULL AND collected_at IS NOT NULL))\
+                )",
+                "CREATE UNIQUE INDEX module_artifact_settings_recovery_points_tenant_recovery_idx \
+                 ON module_artifact_settings_recovery_points (tenant_id, recovery_point_id)",
+                "CREATE INDEX module_artifact_settings_recovery_points_scope_idx \
+                 ON module_artifact_settings_recovery_points (tenant_id, installation_id, created_at DESC)",
+                "ALTER TABLE module_artifact_settings_recovery_points ENABLE ROW LEVEL SECURITY",
+                "CREATE POLICY module_artifact_settings_recovery_points_scope \
+                 ON module_artifact_settings_recovery_points \
+                 USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
+                 WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
+                "CREATE TABLE module_artifact_settings_recovery_operations (\
+                    operation_id UUID PRIMARY KEY,\
+                    tenant_id UUID NOT NULL,\
+                    installation_id UUID NOT NULL REFERENCES module_artifact_installations(installation_id),\
+                    expected_installation_revision BIGINT NOT NULL CHECK (expected_installation_revision > 0),\
+                    expected_settings_revision BIGINT NOT NULL CHECK (expected_settings_revision > 0),\
+                    recovery_point_id UUID NOT NULL UNIQUE,\
+                    actor_id UUID NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    idempotency_key UUID NOT NULL,\
+                    committed_at TIMESTAMPTZ NOT NULL,\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    UNIQUE (tenant_id, operation_id),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "ALTER TABLE module_artifact_settings_recovery_operations ENABLE ROW LEVEL SECURITY",
+                "CREATE POLICY module_artifact_settings_recovery_operations_scope \
+                 ON module_artifact_settings_recovery_operations \
+                 USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
+                 WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
+                "CREATE TABLE module_artifact_settings_purge_operations (\
+                    operation_id UUID PRIMARY KEY,\
+                    tenant_id UUID NOT NULL,\
+                    installation_id UUID NOT NULL REFERENCES module_artifact_installations(installation_id),\
+                    recovery_point_id UUID NOT NULL UNIQUE,\
+                    expected_installation_revision BIGINT NOT NULL CHECK (expected_installation_revision > 0),\
+                    expected_settings_revision BIGINT NOT NULL CHECK (expected_settings_revision > 0),\
+                    tombstone_revision BIGINT NOT NULL CHECK (tombstone_revision > 0),\
+                    actor_id UUID NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    idempotency_key UUID NOT NULL,\
+                    committed_at TIMESTAMPTZ NOT NULL,\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    UNIQUE (tenant_id, operation_id),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "ALTER TABLE module_artifact_settings_purge_operations ENABLE ROW LEVEL SECURITY",
+                "CREATE POLICY module_artifact_settings_purge_operations_scope \
+                 ON module_artifact_settings_purge_operations \
+                 USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
+                 WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
+                "CREATE TABLE module_artifact_settings_tombstones (\
+                    tenant_id UUID NOT NULL,\
+                    data_owner_id UUID NOT NULL,\
+                    settings_instance_id UUID NOT NULL,\
+                    tombstone_revision BIGINT NOT NULL CHECK (tombstone_revision > 0),\
+                    recovery_point_id UUID NOT NULL UNIQUE,\
+                    purge_operation_id UUID NOT NULL UNIQUE,\
+                    purged_at TIMESTAMPTZ NOT NULL,\
+                    PRIMARY KEY (tenant_id, data_owner_id, settings_instance_id),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id),\
+                    FOREIGN KEY (tenant_id, purge_operation_id) REFERENCES module_artifact_settings_purge_operations(tenant_id, operation_id)\
+                )",
+                "ALTER TABLE module_artifact_settings_tombstones ENABLE ROW LEVEL SECURITY",
+                "CREATE POLICY module_artifact_settings_tombstones_scope \
+                 ON module_artifact_settings_tombstones \
+                 USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
+                 WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
+                "CREATE TABLE module_artifact_settings_restore_operations (\
+                    operation_id UUID PRIMARY KEY,\
+                    tenant_id UUID NOT NULL,\
+                    recovery_point_id UUID NOT NULL UNIQUE,\
+                    target_installation_id UUID NULL REFERENCES module_artifact_installations(installation_id),\
+                    expected_target_installation_revision BIGINT NULL CHECK (expected_target_installation_revision IS NULL OR expected_target_installation_revision > 0),\
+                    settings_instance_id UUID NOT NULL,\
+                    actor_id UUID NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    idempotency_key UUID NOT NULL,\
+                    committed_at TIMESTAMPTZ NOT NULL,\
+                    CHECK ((target_installation_id IS NULL) = (expected_target_installation_revision IS NULL)),\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    UNIQUE (tenant_id, operation_id),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "ALTER TABLE module_artifact_settings_restore_operations ENABLE ROW LEVEL SECURITY",
+                "CREATE POLICY module_artifact_settings_restore_operations_scope \
+                 ON module_artifact_settings_restore_operations \
+                 USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
+                 WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
+                "CREATE TABLE module_artifact_settings_recovery_retention_operations (\
+                    operation_id UUID PRIMARY KEY,\
+                    tenant_id UUID NOT NULL,\
+                    recovery_point_id UUID NOT NULL,\
+                    idempotency_key UUID NOT NULL,\
+                    request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    expected_retention_revision BIGINT NOT NULL CHECK (expected_retention_revision > 0),\
+                    retention_revision BIGINT NOT NULL CHECK (retention_revision > 0),\
+                    retain_until TIMESTAMPTZ NOT NULL,\
+                    legal_hold BOOLEAN NOT NULL,\
+                    audit_hold BOOLEAN NOT NULL,\
+                    incident_hold BOOLEAN NOT NULL,\
+                    policy_snapshot_id TEXT NOT NULL CHECK (length(trim(policy_snapshot_id)) > 0 AND length(policy_snapshot_id) <= 128),\
+                    actor_id UUID NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    committed_at TIMESTAMPTZ NOT NULL,\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "ALTER TABLE module_artifact_settings_recovery_retention_operations ENABLE ROW LEVEL SECURITY",
+                "CREATE POLICY module_artifact_settings_recovery_retention_operations_scope \
+                 ON module_artifact_settings_recovery_retention_operations \
+                 USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
+                 WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
+                "CREATE TABLE module_artifact_settings_recovery_rewrap_operations (\
+                    operation_id UUID PRIMARY KEY,\
+                    tenant_id UUID NOT NULL,\
+                    recovery_point_id UUID NOT NULL,\
+                    idempotency_key UUID NOT NULL,\
+                    previous_key_version TEXT NOT NULL CHECK (length(trim(previous_key_version)) > 0 AND length(previous_key_version) <= 256),\
+                    key_version TEXT NOT NULL CHECK (length(trim(key_version)) > 0 AND length(key_version) <= 256),\
+                    actor_id UUID NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    committed_at TIMESTAMPTZ NOT NULL,\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "ALTER TABLE module_artifact_settings_recovery_rewrap_operations ENABLE ROW LEVEL SECURITY",
+                "CREATE POLICY module_artifact_settings_recovery_rewrap_operations_scope \
+                 ON module_artifact_settings_recovery_rewrap_operations \
+                 USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
+                 WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
+                "CREATE TABLE module_artifact_settings_recovery_collections (\
+                    collection_id UUID PRIMARY KEY,\
+                    tenant_id UUID NOT NULL,\
+                    recovery_point_id UUID NOT NULL UNIQUE,\
+                    policy_snapshot_id TEXT NOT NULL CHECK (length(trim(policy_snapshot_id)) > 0 AND length(policy_snapshot_id) <= 128),\
+                    actor_id UUID NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    collecting_at TIMESTAMPTZ NOT NULL,\
+                    completed_at TIMESTAMPTZ NULL,\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "ALTER TABLE module_artifact_settings_recovery_collections ENABLE ROW LEVEL SECURITY",
+                "CREATE POLICY module_artifact_settings_recovery_collections_scope \
+                 ON module_artifact_settings_recovery_collections \
+                 USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
+                 WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
+                "CREATE TABLE module_artifact_settings_recovery_bind_operations (\
+                    operation_id UUID PRIMARY KEY,\
+                    tenant_id UUID NOT NULL,\
+                    recovery_point_id UUID NOT NULL UNIQUE,\
+                    target_installation_id UUID NOT NULL REFERENCES module_artifact_installations(installation_id),\
+                    expected_target_installation_revision BIGINT NOT NULL CHECK (expected_target_installation_revision > 0),\
+                    settings_instance_id UUID NOT NULL,\
+                    actor_id UUID NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    idempotency_key UUID NOT NULL,\
+                    committed_at TIMESTAMPTZ NOT NULL,\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "ALTER TABLE module_artifact_settings_recovery_bind_operations ENABLE ROW LEVEL SECURITY",
+                "CREATE POLICY module_artifact_settings_recovery_bind_operations_scope \
+                 ON module_artifact_settings_recovery_bind_operations \
+                 USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
+                 WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
             DbBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_deactivation_operations (\
@@ -128,6 +323,155 @@ impl MigrationTrait for Migration {
                     updated_at TEXT NOT NULL,\
                     PRIMARY KEY (tenant_id, data_owner_id, settings_instance_id)\
                 )",
+                "CREATE TABLE module_artifact_settings_recovery_points (\
+                    recovery_point_id TEXT PRIMARY KEY NOT NULL,\
+                    tenant_id TEXT NOT NULL,\
+                    installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
+                    data_owner_id TEXT NOT NULL,\
+                    settings_instance_id TEXT NOT NULL,\
+                    settings_revision INTEGER NOT NULL CHECK (settings_revision > 0),\
+                    schema_digest TEXT NOT NULL CHECK (length(schema_digest) = 71 AND substr(schema_digest, 1, 7) = 'sha256:' AND substr(schema_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
+                    descriptor_digest TEXT NOT NULL CHECK (length(descriptor_digest) = 71 AND substr(descriptor_digest, 1, 7) = 'sha256:' AND substr(descriptor_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
+                    value_digest TEXT NOT NULL CHECK (length(value_digest) = 71 AND substr(value_digest, 1, 7) = 'sha256:' AND substr(value_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
+                    key_version TEXT NOT NULL CHECK (length(trim(key_version)) > 0 AND length(key_version) <= 256),\
+                    ciphertext BLOB NULL CHECK (ciphertext IS NULL OR (length(ciphertext) > 0 AND length(ciphertext) <= 131072)),\
+                    retention_revision INTEGER NOT NULL CHECK (retention_revision > 0),\
+                    policy_snapshot_id TEXT NOT NULL CHECK (length(trim(policy_snapshot_id)) > 0 AND length(policy_snapshot_id) <= 128),\
+                    secret_handle_digest TEXT NOT NULL CHECK (length(secret_handle_digest) = 71 AND substr(secret_handle_digest, 1, 7) = 'sha256:' AND substr(secret_handle_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
+                    retain_until TEXT NOT NULL,\
+                    legal_hold INTEGER NOT NULL CHECK (legal_hold IN (0, 1)),\
+                    audit_hold INTEGER NOT NULL CHECK (audit_hold IN (0, 1)),\
+                    incident_hold INTEGER NOT NULL CHECK (incident_hold IN (0, 1)),\
+                    state TEXT NOT NULL CHECK (state IN ('ready', 'collecting', 'collected')),\
+                    restored_at TEXT NULL,\
+                    restored_installation_id TEXT NULL REFERENCES module_artifact_installations(installation_id),\
+                    restored_settings_instance_id TEXT NULL,\
+                    collected_at TEXT NULL,\
+                    created_at TEXT NOT NULL,\
+                    CHECK ((restored_at IS NULL AND restored_settings_instance_id IS NULL) \
+                        OR (restored_at IS NOT NULL AND restored_settings_instance_id IS NOT NULL)),\
+                    CHECK ((state IN ('ready', 'collecting') AND ciphertext IS NOT NULL AND collected_at IS NULL) \
+                        OR (state = 'collected' AND ciphertext IS NULL AND collected_at IS NOT NULL))\
+                )",
+                "CREATE UNIQUE INDEX module_artifact_settings_recovery_points_tenant_recovery_idx \
+                 ON module_artifact_settings_recovery_points (tenant_id, recovery_point_id)",
+                "CREATE INDEX module_artifact_settings_recovery_points_scope_idx \
+                 ON module_artifact_settings_recovery_points (tenant_id, installation_id, created_at DESC)",
+                "CREATE TABLE module_artifact_settings_recovery_operations (\
+                    operation_id TEXT PRIMARY KEY NOT NULL,\
+                    tenant_id TEXT NOT NULL,\
+                    installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
+                    expected_installation_revision INTEGER NOT NULL CHECK (expected_installation_revision > 0),\
+                    expected_settings_revision INTEGER NOT NULL CHECK (expected_settings_revision > 0),\
+                    recovery_point_id TEXT NOT NULL UNIQUE,\
+                    actor_id TEXT NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    idempotency_key TEXT NOT NULL,\
+                    committed_at TEXT NOT NULL,\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "CREATE TABLE module_artifact_settings_purge_operations (\
+                    operation_id TEXT PRIMARY KEY NOT NULL,\
+                    tenant_id TEXT NOT NULL,\
+                    installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
+                    recovery_point_id TEXT NOT NULL UNIQUE,\
+                    expected_installation_revision INTEGER NOT NULL CHECK (expected_installation_revision > 0),\
+                    expected_settings_revision INTEGER NOT NULL CHECK (expected_settings_revision > 0),\
+                    tombstone_revision INTEGER NOT NULL CHECK (tombstone_revision > 0),\
+                    actor_id TEXT NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    idempotency_key TEXT NOT NULL,\
+                    committed_at TEXT NOT NULL,\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    UNIQUE (tenant_id, operation_id),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "CREATE TABLE module_artifact_settings_tombstones (\
+                    tenant_id TEXT NOT NULL,\
+                    data_owner_id TEXT NOT NULL,\
+                    settings_instance_id TEXT NOT NULL,\
+                    tombstone_revision INTEGER NOT NULL CHECK (tombstone_revision > 0),\
+                    recovery_point_id TEXT NOT NULL UNIQUE,\
+                    purge_operation_id TEXT NOT NULL UNIQUE,\
+                    purged_at TEXT NOT NULL,\
+                    PRIMARY KEY (tenant_id, data_owner_id, settings_instance_id),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id),\
+                    FOREIGN KEY (tenant_id, purge_operation_id) REFERENCES module_artifact_settings_purge_operations(tenant_id, operation_id)\
+                )",
+                "CREATE TABLE module_artifact_settings_restore_operations (\
+                    operation_id TEXT PRIMARY KEY NOT NULL,\
+                    tenant_id TEXT NOT NULL,\
+                    recovery_point_id TEXT NOT NULL UNIQUE,\
+                    target_installation_id TEXT NULL REFERENCES module_artifact_installations(installation_id),\
+                    expected_target_installation_revision INTEGER NULL CHECK (expected_target_installation_revision IS NULL OR expected_target_installation_revision > 0),\
+                    settings_instance_id TEXT NOT NULL,\
+                    actor_id TEXT NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    idempotency_key TEXT NOT NULL,\
+                    committed_at TEXT NOT NULL,\
+                    CHECK ((target_installation_id IS NULL) = (expected_target_installation_revision IS NULL)),\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    UNIQUE (tenant_id, operation_id),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "CREATE TABLE module_artifact_settings_recovery_retention_operations (\
+                    operation_id TEXT PRIMARY KEY NOT NULL,\
+                    tenant_id TEXT NOT NULL,\
+                    recovery_point_id TEXT NOT NULL,\
+                    idempotency_key TEXT NOT NULL,\
+                    request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
+                    expected_retention_revision INTEGER NOT NULL CHECK (expected_retention_revision > 0),\
+                    retention_revision INTEGER NOT NULL CHECK (retention_revision > 0),\
+                    retain_until TEXT NOT NULL,\
+                    legal_hold INTEGER NOT NULL CHECK (legal_hold IN (0, 1)),\
+                    audit_hold INTEGER NOT NULL CHECK (audit_hold IN (0, 1)),\
+                    incident_hold INTEGER NOT NULL CHECK (incident_hold IN (0, 1)),\
+                    policy_snapshot_id TEXT NOT NULL CHECK (length(trim(policy_snapshot_id)) > 0 AND length(policy_snapshot_id) <= 128),\
+                    actor_id TEXT NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    committed_at TEXT NOT NULL,\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "CREATE TABLE module_artifact_settings_recovery_rewrap_operations (\
+                    operation_id TEXT PRIMARY KEY NOT NULL,\
+                    tenant_id TEXT NOT NULL,\
+                    recovery_point_id TEXT NOT NULL,\
+                    idempotency_key TEXT NOT NULL,\
+                    previous_key_version TEXT NOT NULL CHECK (length(trim(previous_key_version)) > 0 AND length(previous_key_version) <= 256),\
+                    key_version TEXT NOT NULL CHECK (length(trim(key_version)) > 0 AND length(key_version) <= 256),\
+                    actor_id TEXT NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    committed_at TEXT NOT NULL,\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "CREATE TABLE module_artifact_settings_recovery_collections (\
+                    collection_id TEXT PRIMARY KEY NOT NULL,\
+                    tenant_id TEXT NOT NULL,\
+                    recovery_point_id TEXT NOT NULL UNIQUE,\
+                    policy_snapshot_id TEXT NOT NULL CHECK (length(trim(policy_snapshot_id)) > 0 AND length(policy_snapshot_id) <= 128),\
+                    actor_id TEXT NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    collecting_at TEXT NOT NULL,\
+                    completed_at TEXT NULL,\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
+                "CREATE TABLE module_artifact_settings_recovery_bind_operations (\
+                    operation_id TEXT PRIMARY KEY NOT NULL,\
+                    tenant_id TEXT NOT NULL,\
+                    recovery_point_id TEXT NOT NULL UNIQUE,\
+                    target_installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
+                    expected_target_installation_revision INTEGER NOT NULL CHECK (expected_target_installation_revision > 0),\
+                    settings_instance_id TEXT NOT NULL,\
+                    actor_id TEXT NOT NULL,\
+                    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
+                    idempotency_key TEXT NOT NULL,\
+                    committed_at TEXT NOT NULL,\
+                    UNIQUE (tenant_id, idempotency_key),\
+                    FOREIGN KEY (tenant_id, recovery_point_id) REFERENCES module_artifact_settings_recovery_points(tenant_id, recovery_point_id)\
+                )",
             ],
             backend => {
                 return Err(DbErr::Migration(format!(
@@ -149,6 +493,15 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         for statement in [
+            "DROP TABLE module_artifact_settings_restore_operations",
+            "DROP TABLE module_artifact_settings_recovery_bind_operations",
+            "DROP TABLE module_artifact_settings_recovery_collections",
+            "DROP TABLE module_artifact_settings_recovery_rewrap_operations",
+            "DROP TABLE module_artifact_settings_recovery_retention_operations",
+            "DROP TABLE module_artifact_settings_tombstones",
+            "DROP TABLE module_artifact_settings_purge_operations",
+            "DROP TABLE module_artifact_settings_recovery_operations",
+            "DROP TABLE module_artifact_settings_recovery_points",
             "DROP TABLE module_artifact_settings_instances",
             "DROP TABLE module_artifact_activation_operations",
             "DROP TABLE module_artifact_activation_locks",

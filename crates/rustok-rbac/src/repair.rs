@@ -101,10 +101,10 @@ where
 {
     ensure_supported_backend(db.get_database_backend())?;
     let tenant_ids = load_tenant_ids(db, options.tenant_id).await?;
-    if let Some(tenant_id) = options.tenant_id {
-        if tenant_ids.is_empty() {
-            return Err(RbacSystemRoleRepairError::TenantNotFound(tenant_id));
-        }
+    if let Some(tenant_id) = options.tenant_id
+        && tenant_ids.is_empty()
+    {
+        return Err(RbacSystemRoleRepairError::TenantNotFound(tenant_id));
     }
 
     let mut report = RbacSystemRoleRepairReport {
@@ -213,11 +213,9 @@ where
         .role_permission_links_removed
         .saturating_add(stale_permission_ids.len() as u64);
 
-    if apply {
-        if let Some(role_id) = role_id {
-            for permission_id in stale_permission_ids {
-                delete_role_permission(db, role_id, permission_id).await?;
-            }
+    if apply && let Some(role_id) = role_id {
+        for permission_id in stale_permission_ids {
+            delete_role_permission(db, role_id, permission_id).await?;
         }
     }
 
@@ -258,11 +256,9 @@ where
         }
     }
 
-    if role_changed {
-        if let Some(role_id) = role_id {
-            for user_id in load_role_user_ids(db, role_id).await? {
-                affected_users.insert((tenant_id, user_id));
-            }
+    if role_changed && let Some(role_id) = role_id {
+        for user_id in load_role_user_ids(db, role_id).await? {
+            affected_users.insert((tenant_id, user_id));
         }
     }
 

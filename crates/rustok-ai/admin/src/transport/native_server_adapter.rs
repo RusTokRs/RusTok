@@ -131,6 +131,7 @@ pub async fn put_structured_budget_policy(
 
 pub async fn put_structured_provider_policy(
     provider_profile_id: String,
+    allowed_classifications: Vec<String>,
     currency_code: String,
     input_cost_per_million_minor: u64,
     output_cost_per_million_minor: u64,
@@ -139,6 +140,7 @@ pub async fn put_structured_provider_policy(
 ) -> Result<AiStructuredProviderPolicyPayload, ApiError> {
     ai_put_structured_provider_policy_native(
         provider_profile_id,
+        allowed_classifications,
         currency_code,
         input_cost_per_million_minor,
         output_cost_per_million_minor,
@@ -582,6 +584,7 @@ async fn ai_put_structured_budget_policy_native(
 #[server(prefix = "/api/fn", endpoint = "ai/put-structured-provider-policy")]
 async fn ai_put_structured_provider_policy_native(
     provider_profile_id: String,
+    allowed_classifications: Vec<String>,
     currency_code: String,
     input_cost_per_million_minor: u64,
     output_cost_per_million_minor: u64,
@@ -601,6 +604,7 @@ async fn ai_put_structured_provider_policy_native(
             &operator(&auth, &db).await?,
             rustok_ai::PutAiStructuredProviderPolicyInput {
                 provider_profile_id: parse_uuid(&provider_profile_id, "provider_profile_id")?,
+                allowed_classifications: parse_data_classifications(allowed_classifications)?,
                 currency_code,
                 input_cost_per_million_minor,
                 output_cost_per_million_minor,
@@ -616,6 +620,7 @@ async fn ai_put_structured_provider_policy_native(
     {
         let _ = (
             provider_profile_id,
+            allowed_classifications,
             currency_code,
             input_cost_per_million_minor,
             output_cost_per_million_minor,
@@ -1800,6 +1805,12 @@ fn map_structured_provider_policy(
     AiStructuredProviderPolicyPayload {
         id: value.id.to_string(),
         provider_profile_id: value.provider_profile_id.to_string(),
+        allowed_classifications: value
+            .allowed_classifications
+            .into_iter()
+            .map(data_classification_slug)
+            .map(str::to_string)
+            .collect(),
         currency_code: value.currency_code,
         input_cost_per_million_minor: value.input_cost_per_million_minor,
         output_cost_per_million_minor: value.output_cost_per_million_minor,
@@ -2175,6 +2186,39 @@ fn parse_capability(value: &str) -> Result<rustok_ai::ProviderCapability, Server
         "alloy_assist" => Ok(rustok_ai::ProviderCapability::AlloyAssist),
         "text_generation" | "" => Ok(rustok_ai::ProviderCapability::TextGeneration),
         _ => Err(ServerFnError::new("Invalid target_capability")),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn parse_data_classification(
+    value: &str,
+) -> Result<rustok_ai::AiTaskDataClassification, ServerFnError> {
+    match value.trim() {
+        "public" => Ok(rustok_ai::AiTaskDataClassification::Public),
+        "tenant_private" => Ok(rustok_ai::AiTaskDataClassification::TenantPrivate),
+        "personal" => Ok(rustok_ai::AiTaskDataClassification::Personal),
+        "sensitive" => Ok(rustok_ai::AiTaskDataClassification::Sensitive),
+        _ => Err(ServerFnError::new("Invalid allowed_classifications")),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn parse_data_classifications(
+    values: Vec<String>,
+) -> Result<Vec<rustok_ai::AiTaskDataClassification>, ServerFnError> {
+    values
+        .into_iter()
+        .map(|value| parse_data_classification(&value))
+        .collect()
+}
+
+#[cfg(feature = "ssr")]
+fn data_classification_slug(value: rustok_ai::AiTaskDataClassification) -> &'static str {
+    match value {
+        rustok_ai::AiTaskDataClassification::Public => "public",
+        rustok_ai::AiTaskDataClassification::TenantPrivate => "tenant_private",
+        rustok_ai::AiTaskDataClassification::Personal => "personal",
+        rustok_ai::AiTaskDataClassification::Sensitive => "sensitive",
     }
 }
 

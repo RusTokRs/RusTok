@@ -817,13 +817,22 @@ Each bounded request includes:
 - typed source segments;
 - field semantics and owner constraints;
 - placeholder/token ledger;
-- selected glossary revision and relevant term subset;
-- bounded translation-memory suggestions with provenance;
+- selected glossary revision and relevant term subset, bound by its exact
+  projection digest only when non-empty;
+- bounded translation-memory suggestions with provenance, bound by their exact
+  projection digest only when non-empty;
 - safe resource context;
 - requested tone/domain/style policy;
-- data classification and external-egress decision;
+- data classification and external-egress decision. The complete
+  machine-translation packet is at least `tenant_private` because resource
+  identity and optional glossary, memory, style, and evidence context are
+  tenant-scoped; personal and sensitive source units raise that classification;
 - adapter policy digest, prompt/template version, and idempotency fingerprint;
 - hard segment, character, nesting, and output limits.
+
+The bridge serializes this task contract as canonical camel-case JSON. The
+schema digest changes atomically with that contract; snake-case internal Rust
+fields are never an alternate provider wire format.
 
 The request excludes secrets, credentials, unrelated customer data, raw
 database records, and arbitrary owner JSON.
@@ -884,8 +893,14 @@ treated as atomically applied owner data.
 - Initial rollout is proposal-only and human-review-required.
 - AI execution is forbidden for `secret` and unsupported sensitive
   classifications.
-- Tenant egress policy decides whether personal/internal content may leave the
-  deployment.
+- Each tenant structured-provider policy has a non-empty explicit
+  classification allowlist. Candidate selection, health, estimate, budget
+  reservation, and provider-slot acquisition enforce it; slot acquisition
+  rechecks the live policy immediately before external egress. A packet with no
+  permitted provider fails closed before execution registration or provider
+  invocation. The policy cannot change its allowed classifications or active
+  state while an attempt is in flight, and the immutable price snapshot binds
+  the allowlist.
 - Richtext and Page Builder input is segmented; only text segments are sent and
   the owner reassembles the original structure.
 - Templates use protected placeholder tokens and exact round-trip checks.
@@ -1235,7 +1250,8 @@ risk, and required data-policy review rather than from module count alone.
   errors, runtime fallback, and restart recovery have live evidence.
 - [ ] Durable attempts, tokens, price/cost, budget reservation, and concurrency
   controls reconcile after success, retry, cancellation, and crash.
-- [ ] `rustok-ai-translation` input/output and prompt-policy fixtures pass.
+- [ ] `rustok-ai-translation` input/output, prompt-policy, execution-binding,
+  protected-token multiplicity, and whitespace fixtures pass.
 - [x] Translation-memory snapshots and matching are revisioned and
   deterministic; approved-only ingestion, bounded exact/contextual fuzzy
   ranking, retention CAS, tombstone/purge replay, and historical provenance
@@ -1246,8 +1262,11 @@ risk, and required data-policy review rather than from module count alone.
   and approval QA use that captured historical revision.
 - [ ] Plain text, placeholder templates, and selected structured formats have
   lossless round-trip tests.
-- [ ] Egress classification, secrets exclusion, quotas, cost estimate,
-  cancellation, and content-free audit are verified.
+- [x] Egress classification policy is enforced before execution registration
+  and rechecked before provider egress; packet classification, secrets
+  exclusion, quotas, cost estimate, cancellation, and content-free audit have
+  deterministic coverage. Live external-provider outage/restart evidence
+  remains required.
 - [ ] Same-key/same-payload replay, same-key/different-payload conflict, invalid
   structured output, quota exhaustion, and non-retryable rejection are tested.
 - [ ] AI persistence contains no raw provider payload or unnecessary full
@@ -1426,8 +1445,8 @@ Deliverables:
 - add plain-text and placeholder-template translation first;
 - remove the hard-coded legacy task slug path and prevent generic chat/agent
   persistence or direct owner writes for machine translation;
-- add tenant egress policy, estimate, quota, trace correlation, content-safe
-  evidence, and deterministic validation;
+- add tenant provider egress-classification policy, estimate, quota, trace
+  correlation, content-safe evidence, and deterministic validation;
 - compose AI controls inside the translation workbench while generic run
   diagnostics remain visible in the AI owner surface;
 - pilot selected locale pairs on the representative owner providers.
@@ -1529,7 +1548,7 @@ both truthful, separately owned, and never share an implicit fallback store.
 | Progress | deterministic denominators, required/optional split, fallback exclusion, rebuild parity, lag |
 | Memory/glossary | tenant isolation, approved-only ingestion, deterministic matching, term conflict/QA, deletion propagation |
 | Formats | plain text, placeholders, richtext, Fly, Flex, SEO/template constraints, structure preservation |
-| AI | bridge-only dependency guard, structured task port, durable attempt/usage/cost, budget/retry/fallback/cancel/restart, typed output, content-free traces, no raw packet or direct owner write |
+| AI | bridge-only dependency guard, structured task port, tenant provider egress-classification allowlist with pre-registration and pre-egress enforcement, durable attempt/usage/cost, budget/retry/fallback/cancel/restart, typed output, exact content-free request-binding recovery, no raw packet or direct owner write |
 | Security/privacy | RBAC, tenant isolation, data classification, secret rejection, retention, export access, formula injection |
 | UGC/sensitive | fail-closed eligibility, consent/moderation policy, no author overwrite, deletion/retention propagation |
 | Transport | native `#[server]` selected path, GraphQL parity, bounded REST exchange, no cross-protocol mutation retry |

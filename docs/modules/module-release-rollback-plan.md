@@ -475,14 +475,20 @@ This finite host bootstrap boundary avoids an unfenced self-update and keeps
 module rollback available while application code is broken.
 
 The node agent is installed and updated as operations infrastructure, not as a
-module or candidate role. It accepts only an exact `(operation, node, role,
-bundle digest, role digest)` assignment; pre-pulls or materializes, rehashes and
-verifies, prepares slots, starts/stops the process, performs the authorized
-health probe and traffic/worker activation, and returns authenticated monotonic
-receipts. It owns no release selection, build/signing credentials, migration or
-restore authority, Next.js deployment, or arbitrary command execution. Its
-local journal permits exact restart, but PostgreSQL owner state remains the
-durable authority.
+module or candidate role. It claims only an exact `(operation, node, role,
+bundle digest, role digest)` assignment under one short owner-issued lease.
+The same authenticated agent receives the same unexpired claim after a lost
+response, so its local journal can resume exact work; a different agent can
+claim only after expiry. Claim, heartbeat, and report compare time against the
+same owner-clock value. The assignment contains only that node/role's
+immutable rollout identity and never exposes another node's progress. It
+pre-pulls or materializes, rehashes and verifies,
+prepares slots, starts/stops the process, performs the authorized health probe
+and traffic/worker activation, and returns authenticated monotonic receipts.
+It owns no release selection, build/signing credentials, migration or restore
+authority, Next.js deployment, or arbitrary command execution. Its local
+journal permits exact restart, but PostgreSQL owner state and the lease remain
+the durable authority.
 
 ## Non-Negotiable Safety Invariants
 
@@ -1766,8 +1772,11 @@ backend preflight.
 - [ ] Implement the outside-candidate controller and role-aware node agent with
   exact `(node, failure domain, role, bundle, candidate/predecessor digest)`
   assignments for automatic updates, candidate-only first-install assignments,
+  same-agent lease replay after a lost response, expiry-only reassignment,
   immutable materialization, local journal, bounded commands, and no
-  build/migration/restore authority.
+  build/migration/restore authority. The completed agent must compose the
+  owner lease with `rustok-runtime::materialize_role`; that helper alone does
+  not start a process, switch traffic, or constitute deployment.
 - [ ] Define and publish the separately signed operations-tool release, bind
   its exact package/component digests and external protocol revision into
   installer/bootstrap and every affected owner preflight. Add

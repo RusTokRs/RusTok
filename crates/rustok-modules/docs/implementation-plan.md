@@ -291,13 +291,18 @@ constructor retains compiled handles without flattening promoted identity.
 The first runtime-activation slice now adds a durable native rollout aggregate.
 `ModuleControlPlane::static_distribution_rollout` pins a topology reference and
 digest, the active verified release, policy revision, and executor mode in a
-desired rollout. Node observations are exact-identity, reporter-bound, and
-revisioned. The owner enforces `prepared -> healthy -> active`, emits an
-activation transition only after every target is healthy, converges only after
-every target is active, and turns post-convergence drift into a recoverable
-`degraded` state. Request/report idempotency and all state transitions are
-transactional with outbox events; external deployment and transport wiring are
-the remaining boundary.
+desired rollout. Node observations are exact-identity, agent-bound, and
+revisioned. An authenticated agent claims exactly one node/role assignment
+under a five-minute owner-clock lease; a lost claim response replays the same
+unexpired claim to that agent, while another agent can reclaim it only after
+expiry. Heartbeat and report verify the same lease, and an agent receives only
+the minimum immutable rollout identity for its node/role. The owner enforces
+`prepared -> healthy -> active`, emits an activation transition only after
+every target is healthy, converges only after every target is active, and turns
+post-convergence drift into a recoverable `degraded` state. Request/report
+idempotency and all state transitions are transactional with outbox events;
+authenticated outside-candidate deployment transport, process supervision, and
+traffic wiring remain the uncomposed boundary.
 
 The lifecycle entrypoints now use `ModuleExecutionDispatcher`, which resolves
 the active definition before invoking a static implementation. Artifact
@@ -1251,28 +1256,36 @@ tenant-scoped `SeaOrmArtifactDataObjectGcService` deletes a queued key only
 after a supplied retention snapshot explicitly approves it; missing rules and
 legal/audit/rollback holds fail closed rather than issuing a guest-driven
 physical delete.
-That current purge does not delete artifact settings. The release-safety
-target adds a distinct dynamic artifact-settings preview/apply and protected
-recovery point binding exact scope, stable data owner,
-installation-to-settings-instance binding, settings instance/revision,
-admitted schema digest, canonical validated value, and unresolved secret
-handles. Purge commits a monotonic settings tombstone. Restore creates a new
-non-serving settings instance and may bind it only to an explicit non-retired
-inactive installation under the same owner; after uninstall/retirement it stays
-unbound until a continuity-authorized reinstall and never clears retirement.
+That purge does not delete artifact settings. The implemented separate dynamic
+artifact-settings owner service creates a protected encrypted recovery point
+bound to exact scope, stable data owner, installation-to-settings-instance
+binding, settings instance/revision, admitted schema/descriptor, canonical
+validated value, and unresolved secret handles. Host policy supplies the
+retention snapshot; its purge/restore authorization receives immutable
+recovery policy, retention revision, holds, KMS key version, and lineage.
+Purge revalidates authenticated ciphertext and commits a monotonic settings
+tombstone. Restore creates a fresh non-serving settings instance and may bind
+it only to an explicit compatible inactive installation under the same owner;
+after uninstall/retirement it stays unbound and never clears retirement.
 Settings deletion is denied when matching restore-tested evidence is missing;
 role/actor grants and external secret bytes are never implicit snapshot or
-purge targets.
+purge targets. Recovery retention is revision-guarded and monotonic (it can
+only extend expiry or add holds), KMS rewrap is host-owned, and collection records a durable `collecting` intent
+before it terminally clears ciphertext while preserving recovery evidence. An
+intentionally unbound restored instance has a separate one-time,
+continuity-authorized bind command that requires exact data owner,
+registry/repository lineage, slug, schema, and inactive successor checks.
 The target settings owner installs a compatibility guard before dynamic or
 native/static rollout, binding both N/N+1 schema digests and rollback-window
 identity. Every concurrent write CAS-revalidates the intersection through
 rollback closure. A one-sided value requires a separate confirmed maintenance
 command that fences writers and atomically closes rollback eligibility.
-Settings recovery points also receive independent encrypted
-retention/hold/collection state and exact KMS-key/schema/descriptor roots;
-purge/restore revalidate decryptability, target schema, secret handles, and
-holds, while status exposes the retained copy until crash-resumable terminal
-collection.
+Settings recovery points persist independent encrypted retention/hold/
+collection state and exact KMS-key/schema/descriptor roots; purge/restore
+  revalidate decryptability, target schema/admission revision, secret handles, and holds. Retention
+mutation, KMS rewrap, terminal crash-resumable collection, and one-time
+continuity binding are explicit owner-service lifecycle operations with their
+own durable receipts and outbox facts.
 The current artifact-settings owner already binds values to a stable opaque
 data owner and exact settings instance rather than a tenant/slug row. The
 structured-data `ArtifactDataScope` still derives its persistence identity from
@@ -1469,7 +1482,8 @@ Artifact uninstall replaces a scoped, inactive marketplace selection only after
 checking active direct dependents and records actor, reason, revision,
 idempotency, and outbox evidence in one transaction. An idempotency replay must
 match the complete immutable command (installation, revision, actor, and
-reason), not just its key. It retains CAS bytes,
+reason), not just its key; a new command against an already uninstalled
+selection is rejected before it can reach persistence. It retains CAS bytes,
 tenant data, evidence, and rollback history for the retention/reconciler path.
 Artifact deactivation is a separate scoped lifecycle operation: it moves only
 an active admission to `inactive`, checks active direct dependents, and writes
@@ -1488,8 +1502,10 @@ one revision-CAS tenant-intent path with actor/reason/idempotency metadata and
 the corresponding `module.artifact.tenant_disabled` or
 `module.artifact.tenant_enabled` outbox fact. They do not change immutable
 admission, CAS, data, or runtime-binding state and accept only an admitted
-Optional artifact visible in the requesting tenant scope. Destructive purge
-remains a separate authorized data-owner operation.
+non-uninstalled Optional artifact visible in the requesting tenant scope. An
+uninstall operation therefore rejects a later tenant lifecycle command before
+it can write a new intent record. Destructive purge remains a separate
+authorized data-owner operation.
 
 The owned tenant lifecycle schema now separates `enabled` intent and its
 revision from the immutable installation/admission record. It persists the
@@ -1771,11 +1787,13 @@ tenant installs never share authority, raw logs, or replay identity.
 
 Current production gaps include the uncomposed release-admission installer and
 update coordinator, empty unfinished-admission recovery scan, absent executor
-prefetch/readiness and admission/recovery reconcilers, singular static
-  publisher and rollout identity,
-missing `operations_tool_maintenance` coordinator/fleet projection, and
-incomplete retention collection. The artifact runtime lifecycle executor
-itself is already composed by the server and is not this gap.
+prefetch/readiness and admission/recovery reconcilers, the authenticated
+outside-candidate deployment transport/process supervisor that composes the
+owner-issued assignment lease with node-local materialization, singular static
+publisher and rollout identity, missing `operations_tool_maintenance`
+coordinator/fleet projection, and incomplete retention collection. The artifact
+runtime lifecycle executor itself is already composed by the server and is not
+this gap.
 The cutover removes these authorities and gaps atomically; documentation or UI
 projection cannot report the release-safety target as available before the
 corresponding runtime verification gates pass.

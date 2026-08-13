@@ -55,20 +55,10 @@ official docs as the source of truth for protocol/SDK behavior.
 - `mcp_health`
 - `mcp_whoami`
 
-### Alloy scripting tools
+### Alloy scaffold tools
 
-Available when `AlloyMcpState` is configured:
+Available when `AlloyScaffoldState` is configured:
 
-- `alloy_list_scripts`
-- `alloy_get_script`
-- `alloy_create_script`
-- `alloy_update_script` requires `expected_version` and updates the canonical
-  Alloy workspace.
-- `alloy_delete_script` requires the caller's `expected_version` and rejects
-  stale deletion requests.
-- `alloy_validate_script`
-- `alloy_run_script` requires `expected_version` and executes that immutable
-  workspace revision.
 - `alloy_import_published_release` is available only through the authenticated
   server remote MCP JSON/SSE transport. It derives tenant and actor identity
   from the durable MCP runtime binding, requires `scripts.manage` plus
@@ -79,6 +69,13 @@ Available when `AlloyMcpState` is configured:
 - `alloy_apply_module_scaffold`
 - `alloy_list_entity_types`
 - `alloy_script_helpers`
+
+Generic stdio and in-process MCP do not expose tenant-owned Alloy script reads,
+CRUD, validation, or execution. The generic adapter has no owner-scoped Alloy
+runtime, so exposing those operations would make tenant binding and actor audit
+ambiguous. Canonical script authoring remains on Alloy's host-composed HTTP and
+GraphQL surfaces. A future remote MCP authoring surface must be composed from
+that owner-scoped runtime before it can be added.
 
 `alloy_scaffold_module` is the first real `AI -> MCP -> Alloy -> Platform` slice in RusToK. It now
 stages a draft `crates/rustok-<slug>` module skeleton for review, and the actual workspace write is
@@ -157,21 +154,15 @@ let enabled = HashSet::from([
 let config = McpServerConfig::with_enabled_tools(registry, enabled);
 ```
 
-To enable Alloy scripting tools, construct the server with `with_alloy`:
+To enable Alloy scaffold tools, construct the server with `with_scaffold_tools`:
 
 ```rust
-use std::sync::Arc;
-
-use alloy::{create_default_engine, InMemoryStorage, ScriptOrchestrator};
 use rustok_core::registry::ModuleRegistry;
-use rustok_mcp::{AlloyMcpState, RusToKMcpServer};
+use rustok_mcp::{AlloyScaffoldState, RusToKMcpServer};
 
 let registry = ModuleRegistry::new();
-let engine = Arc::new(create_default_engine());
-let storage = Arc::new(InMemoryStorage::new());
-let orchestrator = Arc::new(ScriptOrchestrator::new(engine.clone(), storage.clone()));
-let alloy = AlloyMcpState::new(storage, engine, orchestrator);
-let server = RusToKMcpServer::with_alloy(registry, alloy);
+let scaffolds = AlloyScaffoldState::new();
+let server = RusToKMcpServer::with_scaffold_tools(registry, scaffolds);
 ```
 
 To attach an MCP identity and permission-aware tool policy:
@@ -218,7 +209,7 @@ persisted drafts from `apps/server` instead of process-local in-memory state.
 - embedded binary target `rustok-mcp-server`
 - `crates/rustok-core` for registry/services
 - domain and capability crates through their service layers
-- `alloy` when Alloy tools are enabled
+- Alloy scaffold contracts when scaffold tools are enabled
 - `apps/server` for persisted MCP clients/tokens/policies/audit and runtime bridge wiring
 
 ## Entry points
@@ -226,7 +217,7 @@ persisted drafts from `apps/server` instead of process-local in-memory state.
 - `serve_stdio`
 - `McpServerConfig`
 - `RusToKMcpServer`
-- `AlloyMcpState`
+- `AlloyScaffoldState`
 - MCP tool registry exported from `src/lib.rs`
 
 ## Docs

@@ -34,7 +34,13 @@ machine-translation orchestration.
 - Call owner modules only through `rustok-translation-targets`; never read or
   write owner translation tables directly.
 - Keep machine-translation output review-required and route AI execution
-  through the separate `rustok-ai-translation` adapter.
+  through the separate `rustok-ai-translation` adapter. Accept an adapter
+  result only when it retains the requested policy digest, is review-required,
+  and preserves the owner-declared protected-token multiplicity and required
+  whitespace shape. Every AI packet is at least tenant-private because it
+  contains tenant-scoped resource context; personal and sensitive units raise
+  that classification. AI provider policy must reject an unpermitted packet
+  before it is registered or sent externally.
 - Remain fully usable for manual translation when the AI capability is absent.
 
 ## Entry points

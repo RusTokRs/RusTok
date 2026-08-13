@@ -321,7 +321,7 @@ fn snapshot_from_runtime_window(
 fn p95_ms(samples: &VecDeque<ProviderHealthRuntimeSample>) -> u64 {
     let mut values: Vec<_> = samples.iter().map(|sample| sample.elapsed_ms).collect();
     values.sort_unstable();
-    let rank = ((values.len() * 95 + 99) / 100).saturating_sub(1);
+    let rank = (values.len() * 95).div_ceil(100).saturating_sub(1);
     values[rank]
 }
 

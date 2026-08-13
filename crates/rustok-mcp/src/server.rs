@@ -12,17 +12,11 @@ use rustok_core::registry::ModuleRegistry;
 
 use crate::access::{McpAccessContext, McpWhoAmIResponse, default_tool_requirement};
 use crate::alloy_tools::{
-    ALL_ALLOY_TOOLS, AlloyMcpState, ApplyModuleScaffoldRequest, CreateScriptRequest,
-    DeleteScriptRequest, GetScriptRequest, ListScriptsRequest, ReviewModuleScaffoldRequest,
-    RunScriptRequest, ScaffoldModuleRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
-    TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT, TOOL_ALLOY_GET_SCRIPT,
-    TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
-    TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_ALLOY_SCRIPT_HELPERS,
-    TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT, UpdateScriptRequest,
-    ValidateScriptRequest, alloy_apply_module_scaffold, alloy_create_script, alloy_delete_script,
-    alloy_get_script, alloy_list_entity_types, alloy_list_scripts, alloy_review_module_scaffold,
-    alloy_run_script, alloy_scaffold_module, alloy_script_helpers, alloy_update_script,
-    alloy_validate_script,
+    ALL_ALLOY_TOOLS, AlloyScaffoldState, ApplyModuleScaffoldRequest, ReviewModuleScaffoldRequest,
+    ScaffoldModuleRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_LIST_ENTITY_TYPES,
+    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_ALLOY_SCRIPT_HELPERS,
+    alloy_apply_module_scaffold, alloy_list_entity_types, alloy_review_module_scaffold,
+    alloy_scaffold_module, alloy_script_helpers,
 };
 use crate::runtime::{
     McpRuntimeBinding, McpScaffoldDraftRuntimeContext, McpSessionContext, McpToolCallAuditEvent,
@@ -36,8 +30,6 @@ use crate::tools::{
     TOOL_MODULE_EXISTS, TOOL_PAGES_MODULE, TOOL_QUERY_MODULES, list_modules, list_modules_filtered,
     module_details, module_details_by_slug, module_exists,
 };
-use alloy::storage::ScriptRegistry;
-
 /// Configuration for the MCP server
 pub struct McpServerConfig {
     pub registry: ModuleRegistry,
@@ -103,9 +95,9 @@ impl McpServerConfig {
 }
 
 /// MCP Server handler for RusToK modules
-pub struct RusToKMcpServer<R: ScriptRegistry + 'static = alloy::InMemoryStorage> {
+pub struct RusToKMcpServer {
     state: Arc<McpState>,
-    alloy: Option<Arc<AlloyMcpState<R>>>,
+    scaffolds: Option<Arc<AlloyScaffoldState>>,
     enabled_tools: Option<Arc<HashSet<String>>>,
     access_context: Option<Arc<McpAccessContext>>,
     runtime_binding: Option<Arc<McpRuntimeBinding>>,
@@ -113,11 +105,11 @@ pub struct RusToKMcpServer<R: ScriptRegistry + 'static = alloy::InMemoryStorage>
     audit_sink: Option<SharedMcpAuditSink>,
 }
 
-impl<R: ScriptRegistry + 'static> Clone for RusToKMcpServer<R> {
+impl Clone for RusToKMcpServer {
     fn clone(&self) -> Self {
         Self {
             state: Arc::clone(&self.state),
-            alloy: self.alloy.as_ref().map(Arc::clone),
+            scaffolds: self.scaffolds.as_ref().map(Arc::clone),
             enabled_tools: self.enabled_tools.as_ref().map(Arc::clone),
             access_context: self.access_context.as_ref().map(Arc::clone),
             runtime_binding: self.runtime_binding.as_ref().map(Arc::clone),
@@ -127,11 +119,11 @@ impl<R: ScriptRegistry + 'static> Clone for RusToKMcpServer<R> {
     }
 }
 
-impl RusToKMcpServer<alloy::InMemoryStorage> {
+impl RusToKMcpServer {
     pub fn new(registry: ModuleRegistry) -> Self {
         Self {
             state: Arc::new(McpState { registry }),
-            alloy: None,
+            scaffolds: None,
             enabled_tools: None,
             access_context: None,
             runtime_binding: None,
@@ -143,7 +135,7 @@ impl RusToKMcpServer<alloy::InMemoryStorage> {
     pub fn with_enabled_tools(registry: ModuleRegistry, enabled_tools: HashSet<String>) -> Self {
         Self {
             state: Arc::new(McpState { registry }),
-            alloy: None,
+            scaffolds: None,
             enabled_tools: Some(Arc::new(enabled_tools)),
             access_context: None,
             runtime_binding: None,
@@ -153,11 +145,11 @@ impl RusToKMcpServer<alloy::InMemoryStorage> {
     }
 }
 
-impl<R: ScriptRegistry + 'static> RusToKMcpServer<R> {
-    pub fn with_alloy(registry: ModuleRegistry, alloy: AlloyMcpState<R>) -> Self {
+impl RusToKMcpServer {
+    pub fn with_scaffold_tools(registry: ModuleRegistry, scaffolds: AlloyScaffoldState) -> Self {
         Self {
             state: Arc::new(McpState { registry }),
-            alloy: Some(Arc::new(alloy)),
+            scaffolds: Some(Arc::new(scaffolds)),
             enabled_tools: None,
             access_context: None,
             runtime_binding: None,
@@ -166,14 +158,14 @@ impl<R: ScriptRegistry + 'static> RusToKMcpServer<R> {
         }
     }
 
-    pub fn with_alloy_and_enabled_tools(
+    pub fn with_scaffold_tools_and_enabled_tools(
         registry: ModuleRegistry,
-        alloy: AlloyMcpState<R>,
+        scaffolds: AlloyScaffoldState,
         enabled_tools: HashSet<String>,
     ) -> Self {
         Self {
             state: Arc::new(McpState { registry }),
-            alloy: Some(Arc::new(alloy)),
+            scaffolds: Some(Arc::new(scaffolds)),
             enabled_tools: Some(Arc::new(enabled_tools)),
             access_context: None,
             runtime_binding: None,
@@ -271,14 +263,16 @@ impl<R: ScriptRegistry + 'static> RusToKMcpServer<R> {
             return false;
         }
 
-        match &self.access_context {
+        let access_allowed = match &self.access_context {
             Some(access_context) => {
                 access_context
                     .authorize_tool(&default_tool_requirement(tool_name))
                     .allowed
             }
             None => true,
-        }
+        };
+
+        access_allowed
     }
 
     fn protocol_version() -> rmcp::model::ProtocolVersion {
@@ -330,7 +324,7 @@ impl<R: ScriptRegistry + 'static> RusToKMcpServer<R> {
             TOOL_MCP_WHOAMI,
         ];
 
-        if self.alloy.is_some() {
+        if self.scaffolds.is_some() {
             tools.extend_from_slice(ALL_ALLOY_TOOLS);
         }
 
@@ -392,7 +386,7 @@ impl<R: ScriptRegistry + 'static> RusToKMcpServer<R> {
     }
 }
 
-impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServer<R> {
+impl ServerHandler for RusToKMcpServer {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
@@ -544,12 +538,12 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
 
             // ── Alloy tools ──────────────────────────────────────────────────────────
             name if ALL_ALLOY_TOOLS.contains(&name) => {
-                let alloy = match &self.alloy {
+                let scaffolds = match &self.scaffolds {
                     Some(a) => Arc::clone(a),
                     None => {
                         let content = Self::serialize_response(McpToolResponse::<()>::error(
                             "not_configured",
-                            "Alloy scripting is not configured in this MCP server",
+                            "Alloy scaffold tools are not configured in this MCP server",
                         ))?;
                         return Ok(CallToolResult::success(vec![
                             rmcp::model::ContentBlock::text(content),
@@ -558,104 +552,6 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
                 };
 
                 match name {
-                    TOOL_ALLOY_LIST_SCRIPTS => {
-                        let req: ListScriptsRequest = parse_optional_args(request.arguments)?;
-                        let result = alloy_list_scripts(&alloy, req).await;
-                        let content = Self::serialize_response(match result {
-                            Ok(v) => McpToolResponse::success(v),
-                            Err(e) => McpToolResponse::error("alloy_error", e),
-                        })?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
-                    }
-                    TOOL_ALLOY_GET_SCRIPT => {
-                        let args = require_args(request.arguments)?;
-                        let req: GetScriptRequest = serde_json::from_value(
-                            serde_json::Value::Object(args),
-                        )
-                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
-                        let result = alloy_get_script(&alloy, req).await;
-                        let content = Self::serialize_response(match result {
-                            Ok(v) => McpToolResponse::success(v),
-                            Err(e) => McpToolResponse::error("alloy_error", e),
-                        })?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
-                    }
-                    TOOL_ALLOY_CREATE_SCRIPT => {
-                        let args = require_args(request.arguments)?;
-                        let req: CreateScriptRequest = serde_json::from_value(
-                            serde_json::Value::Object(args),
-                        )
-                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
-                        let result = alloy_create_script(&alloy, req).await;
-                        let content = Self::serialize_response(match result {
-                            Ok(v) => McpToolResponse::success(v),
-                            Err(e) => McpToolResponse::error("alloy_error", e),
-                        })?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
-                    }
-                    TOOL_ALLOY_UPDATE_SCRIPT => {
-                        let args = require_args(request.arguments)?;
-                        let req: UpdateScriptRequest = serde_json::from_value(
-                            serde_json::Value::Object(args),
-                        )
-                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
-                        let result = alloy_update_script(&alloy, req).await;
-                        let content = Self::serialize_response(match result {
-                            Ok(v) => McpToolResponse::success(v),
-                            Err(e) => McpToolResponse::error("alloy_error", e),
-                        })?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
-                    }
-                    TOOL_ALLOY_DELETE_SCRIPT => {
-                        let args = require_args(request.arguments)?;
-                        let req: DeleteScriptRequest = serde_json::from_value(
-                            serde_json::Value::Object(args),
-                        )
-                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
-                        let result = alloy_delete_script(&alloy, req).await;
-                        let content = Self::serialize_response(match result {
-                            Ok(v) => McpToolResponse::success(v),
-                            Err(e) => McpToolResponse::error("alloy_error", e),
-                        })?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
-                    }
-                    TOOL_ALLOY_VALIDATE_SCRIPT => {
-                        let args = require_args(request.arguments)?;
-                        let req: ValidateScriptRequest = serde_json::from_value(
-                            serde_json::Value::Object(args),
-                        )
-                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
-                        let result = alloy_validate_script(&alloy, req);
-                        let content = Self::serialize_response(McpToolResponse::success(result))?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
-                    }
-                    TOOL_ALLOY_RUN_SCRIPT => {
-                        let args = require_args(request.arguments)?;
-                        let req: RunScriptRequest = serde_json::from_value(
-                            serde_json::Value::Object(args),
-                        )
-                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
-                        let result = alloy_run_script(&alloy, req).await;
-                        let content = Self::serialize_response(match result {
-                            Ok(v) => McpToolResponse::success(v),
-                            Err(e) => McpToolResponse::error("alloy_error", e),
-                        })?;
-                        Ok(CallToolResult::success(vec![
-                            rmcp::model::ContentBlock::text(content),
-                        ]))
-                    }
                     TOOL_ALLOY_SCAFFOLD_MODULE => {
                         let args = require_args(request.arguments)?;
                         let req: ScaffoldModuleRequest = serde_json::from_value(
@@ -663,7 +559,7 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
                         )
                         .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
                         let result = alloy_scaffold_module(
-                            &alloy,
+                            &scaffolds,
                             Some(self.scaffold_runtime_context()),
                             req,
                         )
@@ -683,7 +579,7 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
                         )
                         .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
                         let result = alloy_review_module_scaffold(
-                            &alloy,
+                            &scaffolds,
                             Some(self.scaffold_runtime_context()),
                             req,
                         )
@@ -703,7 +599,7 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
                         )
                         .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
                         let result = alloy_apply_module_scaffold(
-                            &alloy,
+                            &scaffolds,
                             Some(self.scaffold_runtime_context()),
                             req,
                         )
@@ -763,48 +659,6 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
 
         let module_query_schema =
             match serde_json::to_value(schema_for!(crate::tools::ModuleQueryRequest)) {
-                Ok(serde_json::Value::Object(map)) => map,
-                _ => serde_json::Map::new(),
-            };
-
-        let list_scripts_schema =
-            match serde_json::to_value(schema_for!(crate::alloy_tools::ListScriptsRequest)) {
-                Ok(serde_json::Value::Object(map)) => map,
-                _ => serde_json::Map::new(),
-            };
-
-        let get_script_schema =
-            match serde_json::to_value(schema_for!(crate::alloy_tools::GetScriptRequest)) {
-                Ok(serde_json::Value::Object(map)) => map,
-                _ => serde_json::Map::new(),
-            };
-
-        let create_script_schema =
-            match serde_json::to_value(schema_for!(crate::alloy_tools::CreateScriptRequest)) {
-                Ok(serde_json::Value::Object(map)) => map,
-                _ => serde_json::Map::new(),
-            };
-
-        let update_script_schema =
-            match serde_json::to_value(schema_for!(crate::alloy_tools::UpdateScriptRequest)) {
-                Ok(serde_json::Value::Object(map)) => map,
-                _ => serde_json::Map::new(),
-            };
-
-        let delete_script_schema =
-            match serde_json::to_value(schema_for!(crate::alloy_tools::DeleteScriptRequest)) {
-                Ok(serde_json::Value::Object(map)) => map,
-                _ => serde_json::Map::new(),
-            };
-
-        let validate_script_schema =
-            match serde_json::to_value(schema_for!(crate::alloy_tools::ValidateScriptRequest)) {
-                Ok(serde_json::Value::Object(map)) => map,
-                _ => serde_json::Map::new(),
-            };
-
-        let run_script_schema =
-            match serde_json::to_value(schema_for!(crate::alloy_tools::RunScriptRequest)) {
                 Ok(serde_json::Value::Object(map)) => map,
                 _ => serde_json::Map::new(),
             };
@@ -880,43 +734,8 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
             ),
         ];
 
-        if self.alloy.is_some() {
+        if self.scaffolds.is_some() {
             tools.extend([
-                Tool::new(
-                    TOOL_ALLOY_LIST_SCRIPTS,
-                    "List Alloy scripts with optional status filter",
-                    list_scripts_schema,
-                ),
-                Tool::new(
-                    TOOL_ALLOY_GET_SCRIPT,
-                    "Get a single Alloy script by name or UUID",
-                    get_script_schema,
-                ),
-                Tool::new(
-                    TOOL_ALLOY_CREATE_SCRIPT,
-                    "Create a new Alloy Rhai script",
-                    create_script_schema,
-                ),
-                Tool::new(
-                    TOOL_ALLOY_UPDATE_SCRIPT,
-                    "Update an existing Alloy script (code, description, status)",
-                    update_script_schema,
-                ),
-                Tool::new(
-                    TOOL_ALLOY_DELETE_SCRIPT,
-                    "Delete an Alloy script by UUID",
-                    delete_script_schema,
-                ),
-                Tool::new(
-                    TOOL_ALLOY_VALIDATE_SCRIPT,
-                    "Validate Rhai script syntax without executing",
-                    validate_script_schema,
-                ),
-                Tool::new(
-                    TOOL_ALLOY_RUN_SCRIPT,
-                    "Execute an Alloy script manually with optional params and entity context",
-                    run_script_schema,
-                ),
                 Tool::new(
                     TOOL_ALLOY_SCAFFOLD_MODULE,
                     "Stage a reviewed draft RusToK module crate scaffold without writing it into the workspace yet",
@@ -960,7 +779,7 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
         server_info.version = env!("CARGO_PKG_VERSION").to_string();
         server_info.title = Some("RusToK MCP Server".to_string());
         server_info.description = Some(
-            "MCP server for exploring RusToK modules, introspecting MCP identity/policy, managing Alloy scripts, and staging/reviewing/applying draft RusToK module scaffolds. Use mcp_whoami for access context and alloy_* tools for Alloy capabilities.".to_string(),
+            "MCP server for exploring RusToK modules, introspecting MCP identity/policy, and staging/reviewing/applying draft RusToK module scaffolds. Use mcp_whoami for access context and alloy_* scaffold tools for module-authoring assistance.".to_string(),
         );
 
         let mut info = ServerInfo::default();
@@ -968,7 +787,7 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
         info.capabilities = rmcp::model::ServerCapabilities::default();
         info.server_info = server_info;
         info.instructions = Some(
-            "MCP server for RusToK. Use mcp_whoami for access context, list_modules/module_exists for module discovery, and alloy_* tools for script management plus staged draft module scaffolding with explicit review/apply.".to_string(),
+            "MCP server for RusToK. Use mcp_whoami for access context, list_modules/module_exists for module discovery, and alloy_* scaffold tools for staged draft module scaffolding with explicit review/apply.".to_string(),
         );
 
         info
@@ -1028,14 +847,4 @@ fn require_args(
     args: Option<serde_json::Map<String, serde_json::Value>>,
 ) -> Result<serde_json::Map<String, serde_json::Value>, rmcp::ErrorData> {
     args.ok_or_else(|| rmcp::ErrorData::invalid_params("Missing arguments", None))
-}
-
-fn parse_optional_args<T: serde::de::DeserializeOwned + Default>(
-    args: Option<serde_json::Map<String, serde_json::Value>>,
-) -> Result<T, rmcp::ErrorData> {
-    match args {
-        Some(map) => serde_json::from_value(serde_json::Value::Object(map))
-            .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None)),
-        None => Ok(T::default()),
-    }
 }

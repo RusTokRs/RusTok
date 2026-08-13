@@ -21,12 +21,9 @@ use crate::{SeoError, SeoResult};
 
 use super::routing::locale_prefixed_path;
 use super::{normalize_effective_locale, SeoService, SITEMAP_CHUNK_SIZE};
-#[allow(dead_code)]
-mod index_generation;
-#[allow(dead_code)]
-mod submission_adapters;
-#[allow(dead_code)]
-mod submission_aggregation;
+pub(super) mod index_generation;
+pub(super) mod submission_adapters;
+pub(super) mod submission_aggregation;
 
 use index_generation::{render_sitemap_file, render_sitemap_index};
 use submission_adapters::{

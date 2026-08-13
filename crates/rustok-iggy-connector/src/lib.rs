@@ -1248,7 +1248,7 @@ impl BundledConnector {
         }
     }
 
-    #[cfg(any(test, not(target_os = "windows")))]
+    #[cfg(any(test, all(feature = "iggy", not(target_os = "windows"))))]
     fn bundled_address(config: &ConnectorConfig) -> Result<String, ConnectorError> {
         if config.external.protocol != "tcp" {
             return Err(ConnectorError::Config(

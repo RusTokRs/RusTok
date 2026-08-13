@@ -51,6 +51,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 ### Module Control Plane and Workers
 
 - [`rustok-modules` Control-Plane Documentation](../crates/rustok-modules/docs/README.md)
+- [`rustok-runtime` Portable Instance and Deployment Primitives](../crates/rustok-runtime/docs/README.md)
 - [Module Control-plane Consolidation Plan](./modules/module-control-plane-consolidation-plan.md)
 - [`rustok-build-source` Deterministic Source Archives](../crates/rustok-build-source/docs/README.md)
 - [`rustok-build-publication` Credential and Signing Foundation](../crates/rustok-build-publication/docs/README.md)

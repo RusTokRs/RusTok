@@ -217,15 +217,17 @@ pub async fn execute_forum_storefront_search(
     };
     let result = execute_result_eligible_search(
         db,
-        &search_query,
-        result_eligibility_port,
-        effective_locale,
-        auth,
-        request_context,
-        &trusted_channel,
-        &document_filters,
-        &current_channel_filter,
-        input.transport,
+        ResultEligibleSearchRequest {
+            query: &search_query,
+            eligibility_port: result_eligibility_port,
+            effective_locale,
+            auth,
+            request_context,
+            trusted_channel: &trusted_channel,
+            document_filters: &document_filters,
+            current_channel_filter: &current_channel_filter,
+            transport: input.transport,
+        },
     )
     .await?;
     let result = if document_filters.is_empty() && current_channel_filter.is_empty() {
@@ -267,26 +269,30 @@ pub async fn execute_forum_storefront_search(
     })
 }
 
-async fn execute_result_eligible_search(
-    db: &DatabaseConnection,
-    query: &SearchQuery,
+struct ResultEligibleSearchRequest<'a> {
+    query: &'a SearchQuery,
     eligibility_port: Option<SharedStorefrontSearchResultEligibilityPort>,
     effective_locale: String,
     auth: Option<AuthContext>,
     request_context: Option<RequestContext>,
-    trusted_channel: &TrustedStorefrontChannel,
-    document_filters: &ForumStorefrontDocumentFilters,
-    current_channel_filter: &ForumStorefrontCurrentChannelFilter,
+    trusted_channel: &'a TrustedStorefrontChannel,
+    document_filters: &'a ForumStorefrontDocumentFilters,
+    current_channel_filter: &'a ForumStorefrontCurrentChannelFilter,
     transport: StorefrontSearchTransport,
+}
+
+async fn execute_result_eligible_search(
+    db: &DatabaseConnection,
+    request: ResultEligibleSearchRequest<'_>,
 ) -> Result<SearchResult, ForumStorefrontSearchExecutionError> {
     let started_at = Instant::now();
     let engine = PgSearchEngine::new(db.clone());
-    let mut scan_query = query.clone();
+    let mut scan_query = request.query.clone();
     scan_query.limit = FORUM_RESULT_SCAN_PAGE_SIZE;
     scan_query.offset = 0;
 
     let first_page = engine
-        .search_storefront(scan_query.clone(), trusted_channel)
+        .search_storefront(scan_query.clone(), request.trusted_channel)
         .await?;
     let raw_total = usize::try_from(first_page.total).map_err(|_| {
         ForumStorefrontSearchExecutionError::Validation(
@@ -307,7 +313,7 @@ async fn execute_result_eligible_search(
     while all_items.len() < raw_total {
         scan_query.offset = all_items.len();
         let page = engine
-            .search_storefront(scan_query.clone(), trusted_channel)
+            .search_storefront(scan_query.clone(), request.trusted_channel)
             .await?;
         if page.total != raw_total as u64 || page.items.is_empty() {
             return Err(ForumStorefrontSearchExecutionError::Invariant(
@@ -328,7 +334,9 @@ async fn execute_result_eligible_search(
         ));
     }
 
-    all_items.retain(|item| document_filters.matches(item) && current_channel_filter.matches(item));
+    all_items.retain(|item| {
+        request.document_filters.matches(item) && request.current_channel_filter.matches(item)
+    });
 
     let mut seen_candidates = HashSet::new();
     let candidates = all_items
@@ -337,14 +345,17 @@ async fn execute_result_eligible_search(
         .filter(|candidate| seen_candidates.insert(*candidate))
         .collect::<Vec<_>>();
     let allowed = resolve_storefront_search_result_candidates(
-        eligibility_port,
+        request.eligibility_port,
         StorefrontSearchResultEligibilityRequest {
-            tenant_id: query.tenant_id.expect("validated Forum Search tenant"),
-            locale: effective_locale,
+            tenant_id: request
+                .query
+                .tenant_id
+                .expect("validated Forum Search tenant"),
+            locale: request.effective_locale,
             candidates,
-            auth,
-            request_context,
-            transport,
+            auth: request.auth,
+            request_context: request.request_context,
+            transport: request.transport,
         },
     )
     .await?;
@@ -364,8 +375,8 @@ async fn execute_result_eligible_search(
     let facets = build_forum_result_facets(&visible_items);
     let items = visible_items
         .into_iter()
-        .skip(query.offset)
-        .take(query.limit)
+        .skip(request.query.offset)
+        .take(request.query.limit)
         .collect();
 
     Ok(SearchResult {
@@ -508,10 +519,10 @@ fn normalize_request(
         .ranking_profile
         .map(|value| value.trim().to_ascii_lowercase())
         .filter(|value| !value.is_empty());
-    if let Some(value) = ranking_profile.as_deref() {
-        if SearchRankingProfile::try_from_str(value).is_none() {
-            return validation("Unsupported ranking profile");
-        }
+    if let Some(value) = ranking_profile.as_deref()
+        && SearchRankingProfile::try_from_str(value).is_none()
+    {
+        return validation("Unsupported ranking profile");
     }
 
     Ok(NormalizedForumStorefrontSearchRequest {
@@ -714,14 +725,13 @@ fn normalize_preset_key(
     let value = value
         .map(|value| value.trim().to_ascii_lowercase())
         .filter(|value| !value.is_empty());
-    if let Some(value) = value.as_deref() {
-        if value.len() > MAX_FILTER_VALUE_LEN
+    if let Some(value) = value.as_deref()
+        && (value.len() > MAX_FILTER_VALUE_LEN
             || !value
                 .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == ':')
-        {
-            return validation("Invalid preset key");
-        }
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == ':'))
+    {
+        return validation("Invalid preset key");
     }
     Ok(value)
 }
@@ -779,10 +789,10 @@ fn normalize_attribute_bound(
     let value = value
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
-    if let Some(value) = value.as_deref() {
-        if value.len() > MAX_FILTER_VALUE_LEN || value.chars().any(char::is_control) {
-            return validation("attribute filter bound contains an invalid value");
-        }
+    if let Some(value) = value.as_deref()
+        && (value.len() > MAX_FILTER_VALUE_LEN || value.chars().any(char::is_control))
+    {
+        return validation("attribute filter bound contains an invalid value");
     }
     Ok(value)
 }

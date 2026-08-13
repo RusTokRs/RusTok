@@ -601,6 +601,11 @@ async fn create_provider_policies(manager: &SchemaManager<'_>) -> Result<(), DbE
                         .not_null(),
                 )
                 .col(
+                    ColumnDef::new(ProviderPolicies::AllowedClassifications)
+                        .json()
+                        .not_null(),
+                )
+                .col(
                     ColumnDef::new(ProviderPolicies::CurrencyCode)
                         .string_len(3)
                         .not_null(),
@@ -983,6 +988,7 @@ enum ProviderPolicies {
     Id,
     TenantId,
     ProviderProfileId,
+    AllowedClassifications,
     CurrencyCode,
     InputCostPerMillionMinor,
     OutputCostPerMillionMinor,
@@ -1098,6 +1104,10 @@ mod tests {
         assert!(!result_columns.contains(&"output_payload".to_string()));
         assert!(!result_columns.contains(&"plaintext".to_string()));
         assert!(!result_columns.contains(&"provider_response".to_string()));
+
+        let provider_policy_columns =
+            table_columns(&database, "ai_structured_provider_policies").await;
+        assert!(provider_policy_columns.contains(&"allowed_classifications".to_string()));
     }
 
     async fn table_columns(database: &sea_orm::DatabaseConnection, table: &str) -> Vec<String> {

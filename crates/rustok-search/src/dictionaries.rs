@@ -351,12 +351,12 @@ impl SearchDictionaryService {
                 continue;
             }
 
-            if let Some(group) = synonym_map.get(token) {
-                if group.len() > 1 {
-                    applied_synonyms.push(token.to_string());
-                    segments.push(format!("({})", group.join(" OR ")));
-                    continue;
-                }
+            if let Some(group) = synonym_map.get(token)
+                && group.len() > 1
+            {
+                applied_synonyms.push(token.to_string());
+                segments.push(format!("({})", group.join(" OR ")));
+                continue;
             }
 
             segments.push(token.to_string());
@@ -704,10 +704,11 @@ fn pinned_item_matches_query(
     if query.published_only && !is_public {
         return false;
     }
-    if let Some(expected_locale) = query.locale.as_deref() {
-        if !expected_locale.is_empty() && locale != expected_locale {
-            return false;
-        }
+    if let Some(expected_locale) = query.locale.as_deref()
+        && !expected_locale.is_empty()
+        && locale != expected_locale
+    {
+        return false;
     }
     if !query.entity_types.is_empty() && !query.entity_types.contains(&entity_type) {
         return false;
@@ -718,15 +719,15 @@ fn pinned_item_matches_query(
     if !query.statuses.is_empty() && !query.statuses.contains(&status) {
         return false;
     }
-    if entity_type == "product" {
-        if let Some(channel) = storefront_channel {
-            let payload = match row.try_get::<serde_json::Value>("", "payload") {
-                Ok(value) => value,
-                Err(_) => return false,
-            };
-            if !product_payload_visible_for_storefront(&payload, channel) {
-                return false;
-            }
+    if entity_type == "product"
+        && let Some(channel) = storefront_channel
+    {
+        let payload = match row.try_get::<serde_json::Value>("", "payload") {
+            Ok(value) => value,
+            Err(_) => return false,
+        };
+        if !product_payload_visible_for_storefront(&payload, channel) {
+            return false;
         }
     }
 

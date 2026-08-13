@@ -32,7 +32,10 @@ use crate::{
     utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
 };
 
-pub use crate::api::AXUM_EXECUTION_HISTORY_ROUTES as EXECUTION_HISTORY_ROUTES;
+pub const EXECUTION_HISTORY_ROUTES: &[&str] = &[
+    "/api/alloy/executions",
+    "/api/alloy/scripts/{id}/executions",
+];
 
 #[derive(Clone)]
 pub struct AlloyHttpRuntime {
@@ -181,73 +184,51 @@ fn import_error(error: AlloyImportError) -> HttpError {
     }
 }
 
-fn review_actor(
+fn scripts_manage_auth(
     auth: Option<Extension<AuthContextExtension>>,
     tenant: &TenantContext,
-) -> HttpResult<String> {
+    operation: &str,
+) -> HttpResult<AuthContextExtension> {
     let auth = auth
         .map(|Extension(auth)| auth)
         .ok_or_else(|| HttpError::unauthorized("unauthenticated", "Authentication is required"))?;
     if auth.0.tenant_id != tenant.id {
         return Err(HttpError::forbidden(
             "forbidden",
-            "Review tenant context does not match the authenticated principal",
+            format!("{operation} tenant context does not match the authenticated principal"),
         ));
     }
     let required = Permission::new(Resource::Scripts, Action::Manage);
     if !has_any_effective_permission(&auth.0.permissions, &[required]) {
         return Err(HttpError::forbidden(
             "forbidden",
-            "Script review requires scripts.manage permission",
+            format!("{operation} requires scripts.manage permission"),
         ));
     }
-    Ok(auth.0.user_id.to_string())
+    Ok(auth)
 }
 
-fn test_actor(
+fn scripts_manage_actor(
     auth: Option<Extension<AuthContextExtension>>,
     tenant: &TenantContext,
+    operation: &str,
 ) -> HttpResult<String> {
-    let auth = auth
-        .map(|Extension(auth)| auth)
-        .ok_or_else(|| HttpError::unauthorized("unauthenticated", "Authentication is required"))?;
-    if auth.0.tenant_id != tenant.id {
-        return Err(HttpError::forbidden(
-            "forbidden",
-            "Test tenant context does not match the authenticated principal",
-        ));
-    }
-    let required = Permission::new(Resource::Scripts, Action::Manage);
-    if !has_any_effective_permission(&auth.0.permissions, &[required]) {
-        return Err(HttpError::forbidden(
-            "forbidden",
-            "Script test requires scripts.manage permission",
-        ));
-    }
-    Ok(auth.0.user_id.to_string())
+    Ok(scripts_manage_auth(auth, tenant, operation)?
+        .0
+        .user_id
+        .to_string())
 }
 
 fn release_actor(
     auth: Option<Extension<AuthContextExtension>>,
     tenant: &TenantContext,
 ) -> HttpResult<String> {
-    let auth = auth
-        .map(|Extension(auth)| auth)
-        .ok_or_else(|| HttpError::unauthorized("unauthenticated", "Authentication is required"))?;
-    if auth.0.tenant_id != tenant.id {
-        return Err(HttpError::forbidden(
-            "forbidden",
-            "Release tenant context does not match the authenticated principal",
-        ));
-    }
-    let scripts_manage = Permission::new(Resource::Scripts, Action::Manage);
+    let auth = scripts_manage_auth(auth, tenant, "Alloy release staging")?;
     let modules_manage = Permission::new(Resource::Modules, Action::Manage);
-    if !has_any_effective_permission(&auth.0.permissions, &[scripts_manage])
-        || !has_any_effective_permission(&auth.0.permissions, &[modules_manage])
-    {
+    if !has_any_effective_permission(&auth.0.permissions, &[modules_manage]) {
         return Err(HttpError::forbidden(
             "forbidden",
-            "Alloy release staging requires scripts.manage and modules.manage permissions",
+            "Alloy release staging requires modules.manage permission",
         ));
     }
     Ok(auth.0.user_id.to_string())
@@ -278,8 +259,10 @@ fn validate_trigger(trigger: &ScriptTrigger) -> HttpResult<()> {
 pub async fn list_scripts(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Query(query): Query<ListScriptsQuery>,
 ) -> HttpResult<Json<ListScriptsResponse>> {
+    scripts_manage_actor(auth, &tenant, "Alloy script listing")?;
     let runtime = runtime.scoped(tenant.id)?;
     let script_query = match query
         .status_filter()
@@ -308,8 +291,10 @@ pub async fn list_scripts(
 pub async fn get_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Path(id): Path<Uuid>,
 ) -> HttpResult<Json<ScriptResponse>> {
+    scripts_manage_actor(auth, &tenant, "Alloy script lookup")?;
     let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
     Ok(Json(script.into()))
@@ -318,8 +303,10 @@ pub async fn get_script(
 pub async fn create_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Json(req): Json<CreateScriptRequest>,
 ) -> HttpResult<(StatusCode, Json<ScriptResponse>)> {
+    let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script creation")?;
     let runtime = runtime.scoped(tenant.id)?;
 
     if runtime.storage.get_by_name(&req.name).await.is_ok() {
@@ -345,10 +332,11 @@ pub async fn create_script(
         .map_err(script_error)?;
 
     let mut script = Script::new(req.name, req.workspace, req.trigger);
-    script.tenant_id = req.tenant_id.unwrap_or(tenant.id);
+    script.tenant_id = tenant.id;
     script.description = req.description;
     script.permissions = req.permissions;
     script.run_as_system = req.run_as_system;
+    script.author_id = Some(actor_id);
 
     let saved = runtime.storage.save(script).await.map_err(script_error)?;
     Ok((StatusCode::CREATED, Json(saved.into())))
@@ -357,9 +345,11 @@ pub async fn create_script(
 pub async fn update_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateScriptRequest>,
 ) -> HttpResult<Json<ScriptResponse>> {
+    let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script update")?;
     let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
     if script.version != req.expected_version {
@@ -404,6 +394,7 @@ pub async fn update_script(
     if let Some(permissions) = req.permissions {
         script.permissions = permissions;
     }
+    script.author_id = Some(actor_id);
 
     let saved = runtime.storage.save(script).await.map_err(script_error)?;
     Ok(Json(saved.into()))
@@ -412,9 +403,11 @@ pub async fn update_script(
 pub async fn delete_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Path(id): Path<Uuid>,
     Json(request): Json<ScriptRevisionRequest>,
 ) -> HttpResult<StatusCode> {
+    scripts_manage_actor(auth, &tenant, "Alloy script deletion")?;
     let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
     if script.version != request.expected_version {
@@ -434,9 +427,11 @@ pub async fn delete_script(
 pub async fn run_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Path(id): Path<Uuid>,
     Json(req): Json<RunScriptRequest>,
 ) -> HttpResult<Json<RunScriptResponse>> {
+    let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script execution")?;
     let runtime = runtime.scoped(tenant.id)?;
     let script = runtime.storage.get(id).await.map_err(script_error)?;
     if script.version != req.expected_version {
@@ -454,7 +449,7 @@ pub async fn run_script(
 
     let result = runtime
         .orchestrator
-        .run_manual_snapshot(&script, params, entity, None)
+        .run_manual_snapshot(&script, params, entity, Some(actor_id))
         .await;
 
     Ok(Json(run_response(result)))
@@ -463,9 +458,11 @@ pub async fn run_script(
 pub async fn run_script_by_name(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Path(name): Path<String>,
     Json(req): Json<RunScriptRequest>,
 ) -> HttpResult<Json<RunScriptResponse>> {
+    let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script execution")?;
     let runtime = runtime.scoped(tenant.id)?;
     let script = runtime
         .storage
@@ -487,7 +484,7 @@ pub async fn run_script_by_name(
 
     let result = runtime
         .orchestrator
-        .run_manual_snapshot(&script, params, entity, None)
+        .run_manual_snapshot(&script, params, entity, Some(actor_id))
         .await;
 
     Ok(Json(run_response(result)))
@@ -496,8 +493,10 @@ pub async fn run_script_by_name(
 pub async fn list_recent_executions(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Query(query): Query<ListExecutionLogQuery>,
 ) -> HttpResult<Json<ListExecutionLogResponse>> {
+    scripts_manage_actor(auth, &tenant, "Alloy execution history lookup")?;
     let runtime = runtime.scoped(tenant.id)?;
     let offset = query.offset();
     let limit = query.limit();
@@ -527,9 +526,11 @@ pub async fn list_recent_executions(
 pub async fn list_script_executions(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Path(id): Path<Uuid>,
     Query(query): Query<ListExecutionLogQuery>,
 ) -> HttpResult<Json<ListExecutionLogResponse>> {
+    scripts_manage_actor(auth, &tenant, "Alloy execution history lookup")?;
     let runtime = runtime.scoped(tenant.id)?;
     let offset = query.offset();
     let limit = query.limit();
@@ -559,8 +560,10 @@ pub async fn list_script_executions(
 pub async fn validate_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Json(req): Json<CreateScriptRequest>,
 ) -> HttpResult<Json<serde_json::Value>> {
+    scripts_manage_actor(auth, &tenant, "Alloy script validation")?;
     let runtime = runtime.scoped(tenant.id)?;
     req.workspace
         .validate_rhai_workspace()
@@ -594,7 +597,7 @@ pub async fn review_script(
     Path(id): Path<Uuid>,
     Json(request): Json<ReviewScriptRequest>,
 ) -> HttpResult<Json<ReviewDecisionResponse>> {
-    let actor_id = review_actor(auth, &tenant)?;
+    let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script review")?;
     let runtime = runtime.scoped(tenant.id)?;
     let decision = runtime
         .storage
@@ -618,7 +621,7 @@ pub async fn list_reviews(
     auth: Option<Extension<AuthContextExtension>>,
     Path((id, revision)): Path<(Uuid, u32)>,
 ) -> HttpResult<Json<Vec<ReviewDecisionResponse>>> {
-    review_actor(auth, &tenant)?;
+    scripts_manage_actor(auth, &tenant, "Alloy script review lookup")?;
     let runtime = runtime.scoped(tenant.id)?;
     let decisions = runtime
         .storage
@@ -638,7 +641,7 @@ pub async fn run_workspace_test(
     Path(id): Path<Uuid>,
     Json(request): Json<RunWorkspaceTestRequest>,
 ) -> HttpResult<Json<TestRunResponse>> {
-    let actor_id = test_actor(auth, &tenant)?;
+    let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script test")?;
     let runtime = runtime.scoped(tenant.id)?;
     let run = RevisionedTestRunner::new(runtime.sandbox.clone(), runtime.storage.clone())
         .execute(TestCommand {
@@ -750,9 +753,11 @@ fn run_response(result: crate::ExecutionResult) -> RunScriptResponse {
 pub async fn activate_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Path(id): Path<Uuid>,
     Json(request): Json<ScriptRevisionRequest>,
 ) -> HttpResult<Json<ScriptResponse>> {
+    let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script activation")?;
     let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
     if script.version != request.expected_version {
@@ -761,6 +766,7 @@ pub async fn activate_script(
         }));
     }
     script.activate();
+    script.author_id = Some(actor_id);
     let saved = runtime.storage.save(script).await.map_err(script_error)?;
     Ok(Json(saved.into()))
 }
@@ -768,9 +774,11 @@ pub async fn activate_script(
 pub async fn pause_script(
     State(runtime): State<AlloyHttpRuntime>,
     tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
     Path(id): Path<Uuid>,
     Json(request): Json<ScriptRevisionRequest>,
 ) -> HttpResult<Json<ScriptResponse>> {
+    let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script pause")?;
     let runtime = runtime.scoped(tenant.id)?;
     let mut script = runtime.storage.get(id).await.map_err(script_error)?;
     if script.version != request.expected_version {
@@ -780,6 +788,7 @@ pub async fn pause_script(
     }
     script.status = ScriptStatus::Paused;
     script.updated_at = Utc::now();
+    script.author_id = Some(actor_id);
     let saved = runtime.storage.save(script).await.map_err(script_error)?;
     Ok(Json(saved.into()))
 }
@@ -788,7 +797,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
     let state = AlloyHttpRuntime::from_host(runtime)?;
     Ok(axum::Router::new()
         .route("/api/alloy/scripts", get(list_scripts).post(create_script))
-        .route("/api/alloy/executions", get(list_recent_executions))
+        .route(EXECUTION_HISTORY_ROUTES[0], get(list_recent_executions))
         .route("/api/alloy/scripts/validate", post(validate_script))
         .route(
             "/api/alloy/scripts/{id}",
@@ -809,10 +818,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
             "/api/alloy/scripts/{id}/revisions/{revision}/reviews",
             get(list_reviews),
         )
-        .route(
-            "/api/alloy/scripts/{id}/executions",
-            get(list_script_executions),
-        )
+        .route(EXECUTION_HISTORY_ROUTES[1], get(list_script_executions))
         .route(
             "/api/alloy/scripts/name/{name}/run",
             post(run_script_by_name),
@@ -824,13 +830,92 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
 
 #[cfg(test)]
 mod tests {
-    use super::EXECUTION_HISTORY_ROUTES;
+    use axum::Extension;
+    use rustok_api::{AuthContext, AuthContextExtension, TenantContext};
+    use uuid::Uuid;
+
+    use super::{EXECUTION_HISTORY_ROUTES, scripts_manage_actor};
+
+    fn tenant(id: Uuid) -> TenantContext {
+        TenantContext {
+            id,
+            name: "test tenant".to_string(),
+            slug: "test-tenant".to_string(),
+            domain: None,
+            settings: serde_json::Value::Null,
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    fn auth(tenant_id: Uuid, permissions: Vec<rustok_api::Permission>) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions,
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "password".to_string(),
+        }
+    }
 
     #[test]
     fn execution_history_routes_match_operator_contract() {
         assert_eq!(
             EXECUTION_HISTORY_ROUTES,
-            &["/executions", "/scripts/{id}/executions"]
+            &[
+                "/api/alloy/executions",
+                "/api/alloy/scripts/{id}/executions"
+            ]
+        );
+    }
+
+    #[test]
+    fn scripts_manage_actor_fails_closed_and_binds_the_authenticated_tenant() {
+        let tenant_id = Uuid::new_v4();
+        let context = tenant(tenant_id);
+        let manage = rustok_api::Permission::SCRIPTS_MANAGE;
+
+        assert_eq!(
+            scripts_manage_actor(None, &context, "test operation")
+                .expect_err("missing authentication must be rejected")
+                .status,
+            axum::http::StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            scripts_manage_actor(
+                Some(Extension(AuthContextExtension(auth(
+                    Uuid::new_v4(),
+                    vec![manage.clone()]
+                )))),
+                &context,
+                "test operation",
+            )
+            .expect_err("a different authenticated tenant must be rejected")
+            .status,
+            axum::http::StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            scripts_manage_actor(
+                Some(Extension(AuthContextExtension(auth(tenant_id, Vec::new())))),
+                &context,
+                "test operation",
+            )
+            .expect_err("a principal without scripts.manage must be rejected")
+            .status,
+            axum::http::StatusCode::FORBIDDEN
+        );
+
+        let actor = auth(tenant_id, vec![manage]);
+        assert_eq!(
+            scripts_manage_actor(
+                Some(Extension(AuthContextExtension(actor.clone()))),
+                &context,
+                "test operation",
+            )
+            .expect("a matching scripts.manage principal must be accepted"),
+            actor.user_id.to_string(),
         );
     }
 }

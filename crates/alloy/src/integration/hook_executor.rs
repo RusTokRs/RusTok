@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use rhai::Dynamic;
 
-use crate::context::ExecutionPhase;
 use crate::error::ScriptResult;
 use crate::model::{EntityProxy, EventType};
 use crate::runner::{HookOutcome, ScriptOrchestrator};
@@ -71,18 +70,5 @@ impl<S: ScriptRegistry> HookExecutor<S> {
         self.orchestrator
             .run_on_commit(entity_type, proxy, user_id)
             .await
-    }
-}
-
-#[allow(dead_code)]
-pub fn event_phase(event: EventType) -> ExecutionPhase {
-    match event {
-        EventType::BeforeCreate | EventType::BeforeUpdate | EventType::BeforeDelete => {
-            ExecutionPhase::Before
-        }
-        EventType::AfterCreate | EventType::AfterUpdate | EventType::AfterDelete => {
-            ExecutionPhase::After
-        }
-        EventType::OnCommit => ExecutionPhase::OnCommit,
     }
 }

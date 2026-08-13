@@ -247,8 +247,9 @@ selection.
   recovery, reservation preservation, and reclaim with a new lease.
 - Translation now owns a bounded `MachineTranslationPort` SPI with explicit
   source/target locales, stable unit/source identities, field
-  profile/strategy/classification, protected tokens, glossary and Translation
-  Memory context, provider health, execution/attempt/usage/cost evidence, and a
+  profile/strategy/classification, protected tokens, exact-digest-bound
+  glossary and Translation Memory context, provider health,
+  execution/attempt/usage/cost evidence, and a
   mandatory review-required result. `rustok-translation` imports no AI crate.
 - The SPI and `TranslationMachineService` expose a conservative estimate path
   over the same canonical batch, glossary, memory, routing, attempt, and price
@@ -258,7 +259,11 @@ selection.
 - The stateless `rustok-ai-translation` support crate now maps that SPI to the
   AI-owned `AiStructuredTaskPort`, owns the `machine_translation` policy and
   typed schemas, and rejects stale policy, missing/extra units, placeholder
-  drift, length violations, and missing usage/attempt evidence. The explicit
+  drift, length violations, and missing usage/attempt evidence. Each complete
+  packet is at least tenant-private because it includes tenant-scoped resource
+  context; personal and sensitive units raise its classification, and the
+  AI-owned provider policy rejects unpermitted egress before registration or a
+  provider call. The explicit
   optional distribution bridge now publishes the Translation-owned lazy
   factory, and the production server selects it. Missing deployment keyring
   composition is verified as optional and fail-closed; live provider evidence
@@ -299,8 +304,9 @@ selection.
   Recovery is Manage/Update-authorized, actor/idempotency-bound, revision
   guarded, and persists a content-free audit receipt before retrieving an
   already completed result through the stable provider key. It reconstructs
-  and revalidates the original request digest and resumes canonical proposal
-  save without another billable execution. Manual Translation surfaces remain
+  and revalidates the original request digest, requires an exact content-free
+  AI execution binding for that batch, and resumes canonical proposal save
+  without another billable execution. Manual Translation surfaces remain
   available when the optional machine provider is absent or fails to
   materialize.
 - File-backed separate-process recovery now covers both canonical `saving`

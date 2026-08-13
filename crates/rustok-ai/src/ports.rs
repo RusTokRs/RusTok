@@ -189,22 +189,7 @@ impl AiStructuredTaskRequest {
             ));
         }
 
-        if self.limits.max_output_bytes == 0
-            || self.limits.max_output_bytes > MAX_STRUCTURED_TASK_OUTPUT_BYTES
-        {
-            return Err(PortError::validation(
-                "ai.structured.output_limit_invalid",
-                format!(
-                    "max_output_bytes must be between 1 and {MAX_STRUCTURED_TASK_OUTPUT_BYTES}"
-                ),
-            ));
-        }
-        if self.limits.max_attempts == 0 || self.limits.max_attempts > 8 {
-            return Err(PortError::validation(
-                "ai.structured.attempt_limit_invalid",
-                "max_attempts must be between 1 and 8",
-            ));
-        }
+        validate_limits(&self.limits)?;
 
         if self.evidence.len() > MAX_STRUCTURED_TASK_EVIDENCE_ENTRIES
             || self.evidence.iter().any(|(key, value)| {
@@ -220,6 +205,55 @@ impl AiStructuredTaskRequest {
             ));
         }
         Ok(())
+    }
+
+    /// Produces the content-free request binding persisted with a durable
+    /// execution. Callers can compare it on recovery without retaining the
+    /// structured input or depending on actor-specific execution hashes.
+    pub fn binding(&self) -> Result<AiStructuredTaskRequestBinding, PortError> {
+        let binding = AiStructuredTaskRequestBinding {
+            owner: self.owner.clone(),
+            task_slug: self.task_slug.clone(),
+            prompt_policy_digest: self.prompt_policy_digest.clone(),
+            input_schema_digest: self.input_schema_digest.clone(),
+            input_digest: manifest_digest(&self.input)?,
+            output_schema_digest: manifest_digest(&self.output_schema)?,
+            classification: self.classification,
+            evidence_digest: manifest_digest(&self.evidence)?,
+            limits: self.limits.clone(),
+        };
+        binding.validate()?;
+        Ok(binding)
+    }
+}
+
+/// Content-free, durable binding between a structured-task request and an
+/// execution. It intentionally excludes raw input, output schema, and
+/// evidence values while preserving every request field that affects execution
+/// semantics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiStructuredTaskRequestBinding {
+    pub owner: String,
+    pub task_slug: String,
+    pub prompt_policy_digest: String,
+    pub input_schema_digest: String,
+    pub input_digest: String,
+    pub output_schema_digest: String,
+    pub classification: AiTaskDataClassification,
+    pub evidence_digest: String,
+    pub limits: AiStructuredTaskLimits,
+}
+
+impl AiStructuredTaskRequestBinding {
+    pub fn validate(&self) -> Result<(), PortError> {
+        require_identity("owner", &self.owner)?;
+        require_identity("task_slug", &self.task_slug)?;
+        require_digest("prompt_policy_digest", &self.prompt_policy_digest)?;
+        require_digest("input_schema_digest", &self.input_schema_digest)?;
+        require_digest("input_digest", &self.input_digest)?;
+        require_digest("output_schema_digest", &self.output_schema_digest)?;
+        require_digest("evidence_digest", &self.evidence_digest)?;
+        validate_limits(&self.limits)
     }
 }
 
@@ -246,6 +280,18 @@ pub struct AiStructuredTaskHealth {
     pub availability: AiStructuredTaskAvailability,
     pub reason_code: Option<String>,
     pub retry_after_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiStructuredTaskHealthRequest {
+    pub task_slug: String,
+    pub classification: AiTaskDataClassification,
+}
+
+impl AiStructuredTaskHealthRequest {
+    pub fn validate(&self) -> Result<(), PortError> {
+        require_identity("task_slug", &self.task_slug)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -283,6 +329,7 @@ pub struct AiStructuredTaskAttempt {
 pub struct AiStructuredTaskExecution {
     pub execution_id: String,
     pub request_digest: String,
+    pub binding: AiStructuredTaskRequestBinding,
     pub status: AiStructuredTaskStatus,
     pub output: Option<Value>,
     pub attempts: Vec<AiStructuredTaskAttempt>,
@@ -343,7 +390,7 @@ pub trait AiStructuredTaskPort: Send + Sync {
     async fn health(
         &self,
         context: PortContext,
-        task_slug: String,
+        request: AiStructuredTaskHealthRequest,
     ) -> Result<AiStructuredTaskHealth, PortError>;
 
     /// Non-billable conservative cost projection. Implementations must use the
@@ -411,6 +458,31 @@ fn require_digest(field: &'static str, value: &str) -> Result<(), PortError> {
         ));
     }
     Ok(())
+}
+
+fn validate_limits(limits: &AiStructuredTaskLimits) -> Result<(), PortError> {
+    if limits.max_output_bytes == 0 || limits.max_output_bytes > MAX_STRUCTURED_TASK_OUTPUT_BYTES {
+        return Err(PortError::validation(
+            "ai.structured.output_limit_invalid",
+            format!("max_output_bytes must be between 1 and {MAX_STRUCTURED_TASK_OUTPUT_BYTES}"),
+        ));
+    }
+    if limits.max_attempts == 0 || limits.max_attempts > 8 {
+        return Err(PortError::validation(
+            "ai.structured.attempt_limit_invalid",
+            "max_attempts must be between 1 and 8",
+        ));
+    }
+    Ok(())
+}
+
+fn manifest_digest<T: Serialize>(value: &T) -> Result<String, PortError> {
+    rustok_api::manifest_hash::hash_manifest(value).map_err(|_| {
+        PortError::invariant_violation(
+            "ai.structured.digest_failed",
+            "structured task request could not be hashed",
+        )
+    })
 }
 
 fn serialized_size(value: &Value) -> Result<usize, PortError> {
@@ -504,9 +576,11 @@ mod tests {
 
     #[test]
     fn completed_execution_requires_bounded_output() {
+        let binding = sample_request().binding().unwrap();
         let execution = AiStructuredTaskExecution {
             execution_id: "execution-a".to_string(),
             request_digest: "c".repeat(64),
+            binding,
             status: AiStructuredTaskStatus::Completed,
             output: Some(json!({"ok": true})),
             attempts: Vec::new(),
@@ -534,5 +608,22 @@ mod tests {
             catalog.register(changed).unwrap_err().code,
             "ai.structured.descriptor_conflict"
         );
+    }
+
+    #[test]
+    fn request_binding_changes_when_execution_semantics_change() {
+        let request = sample_request();
+        let binding = request.binding().unwrap();
+        binding.validate().unwrap();
+
+        let mut changed = request;
+        changed
+            .evidence
+            .insert("item_id".to_string(), "item-a".to_string());
+        assert_ne!(binding, changed.binding().unwrap());
+
+        let mut changed = sample_request();
+        changed.limits.max_attempts = 2;
+        assert_ne!(binding, changed.binding().unwrap());
     }
 }

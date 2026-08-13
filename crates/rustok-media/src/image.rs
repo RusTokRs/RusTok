@@ -347,7 +347,7 @@ fn encode_image(
         ImageOutputFormat::Webp => {
             let encoded = webp::Encoder::from_rgba(rgba.as_raw(), width, height)
                 .encode_simple(false, f32::from(recipe.quality))
-                .map_err(|error| ImageProcessingError::Encoder(error.to_string()))?;
+                .map_err(|error| ImageProcessingError::Encoder(format!("{error:?}")))?;
             Ok(encoded.to_vec())
         }
         ImageOutputFormat::Avif => {
@@ -647,18 +647,18 @@ mod tests {
             let second = process_image(&input, &recipe, ImageProcessingLimits::default()).unwrap();
             assert_eq!(first.bytes, second.bytes, "{format:?} output changed");
             let expected_digest = match format {
-                ImageOutputFormat::Jpeg => Some(
-                    "cfa3d0c44aab3eab0951bb310dc6ce926359c26635297806572a077c39684e97",
-                ),
-                ImageOutputFormat::Png => Some(
-                    "993a5e2ad1e67b33630e77fcf053435d60fa5b41c8a5383c597a19839950db6f",
-                ),
+                ImageOutputFormat::Jpeg => {
+                    Some("cfa3d0c44aab3eab0951bb310dc6ce926359c26635297806572a077c39684e97")
+                }
+                ImageOutputFormat::Png => {
+                    Some("993a5e2ad1e67b33630e77fcf053435d60fa5b41c8a5383c597a19839950db6f")
+                }
                 // WebP output is deterministic but encoder-specific; the codec is
                 // replaceable, so its byte representation is not a media contract.
                 ImageOutputFormat::Webp => None,
-                ImageOutputFormat::Avif => Some(
-                    "0135335872a973e4a3e5fd855082e364ba9b2cd069bc0a868e3c63b8eed02b77",
-                ),
+                ImageOutputFormat::Avif => {
+                    Some("0135335872a973e4a3e5fd855082e364ba9b2cd069bc0a868e3c63b8eed02b77")
+                }
             };
             if let Some(expected_digest) = expected_digest {
                 assert_eq!(hex::encode(Sha256::digest(&first.bytes)), expected_digest);

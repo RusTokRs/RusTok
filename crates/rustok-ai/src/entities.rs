@@ -547,6 +547,7 @@ pub mod ai_structured_provider_policies {
         pub id: Uuid,
         pub tenant_id: Uuid,
         pub provider_profile_id: Uuid,
+        pub allowed_classifications: Json,
         pub currency_code: String,
         pub input_cost_per_million_minor: i64,
         pub output_cost_per_million_minor: i64,

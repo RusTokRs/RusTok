@@ -38,7 +38,12 @@ through its own service and transaction.
 Each field snapshot carries an explicit, unique protected-token ledger. Every
 token must occur in the source value. Translation consumers compare exact token
 multiplicity; they do not guess braces, ICU, template-engine, richtext, or Page
-Builder syntax. Patch issues use typed `warning` or `error` severity, and a
+Builder syntax. The shared `protected_token_ledger_matches`,
+`protected_token_multiplicities_match`, and `whitespace_shape_matches` helpers
+make that comparison identical for AI intake, workflow validation, and QA:
+ledger ordering is not semantic, duplicate ledger entries are invalid, and an
+owner that requires whitespace preservation retains leading/trailing whitespace
+and each line-break sequence. Patch issues use typed `warning` or `error` severity, and a
 provider response is conformant only when `accepted` is true exactly when no
 error issue exists.
 

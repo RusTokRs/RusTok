@@ -32,15 +32,14 @@ impl SearchSettingsService {
         db: &DatabaseConnection,
         tenant_id: Option<Uuid>,
     ) -> Result<SearchSettingsRecord, DbErr> {
-        if let Some(tenant_id) = tenant_id {
-            if let Some(model) = Entity::find()
+        if let Some(tenant_id) = tenant_id
+            && let Some(model) = Entity::find()
                 .filter(Column::TenantId.eq(tenant_id))
                 .order_by_desc(Column::UpdatedAt)
                 .one(db)
                 .await?
-            {
-                return map_model(model);
-            }
+        {
+            return map_model(model);
         }
 
         if let Some(model) = Entity::find()

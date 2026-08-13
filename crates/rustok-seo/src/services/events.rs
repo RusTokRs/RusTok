@@ -126,6 +126,15 @@ struct SeoHistoricalReplayStats {
     replay_run_id: Option<Uuid>,
 }
 
+pub(super) struct SeoMetaUpsertedEventInput<'a> {
+    pub(super) tenant_id: Uuid,
+    pub(super) target_kind: &'a str,
+    pub(super) target_id: Uuid,
+    pub(super) locale: &'a str,
+    pub(super) source: &'a str,
+    pub(super) transition_ref: Option<&'a str>,
+}
+
 impl SeoIndexReindexTrigger {
     fn entity(target_type: &str, target_id: Uuid) -> Self {
         Self {
@@ -159,26 +168,21 @@ impl SeoService {
     pub(super) async fn publish_seo_meta_upserted_event_in_tx(
         &self,
         txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        target_kind: &str,
-        target_id: Uuid,
-        locale: &str,
-        source: &str,
-        transition_ref: Option<&str>,
+        input: SeoMetaUpsertedEventInput<'_>,
     ) -> SeoResult<()> {
         let event_type = "seo.meta.upserted";
         let idempotency_key = self.build_event_key(
             event_type,
-            tenant_id,
+            input.tenant_id,
             &[
-                target_kind.to_string(),
-                target_id.to_string(),
-                locale.to_string(),
-                transition_ref.unwrap_or("direct").to_string(),
+                input.target_kind.to_string(),
+                input.target_id.to_string(),
+                input.locale.to_string(),
+                input.transition_ref.unwrap_or("direct").to_string(),
             ],
         );
         let existing = seo_event_delivery::Entity::find()
-            .filter(seo_event_delivery::Column::TenantId.eq(tenant_id))
+            .filter(seo_event_delivery::Column::TenantId.eq(input.tenant_id))
             .filter(seo_event_delivery::Column::IdempotencyKey.eq(idempotency_key.as_str()))
             .one(txn)
             .await?;
@@ -187,15 +191,15 @@ impl SeoService {
         }
 
         let event = DomainEvent::SeoMetaUpserted {
-            target_kind: target_kind.to_string(),
-            target_id,
-            locale: locale.to_string(),
-            source: source.to_string(),
+            target_kind: input.target_kind.to_string(),
+            target_id: input.target_id,
+            locale: input.locale.to_string(),
+            source: input.source.to_string(),
             idempotency_key: idempotency_key.clone(),
         };
         let outbox_event_id = self
             .event_bus
-            .publish_in_tx_with_envelope_id(txn, tenant_id, None, event.clone())
+            .publish_in_tx_with_envelope_id(txn, input.tenant_id, None, event.clone())
             .await
             .map_err(|error| {
                 SeoError::Database(DbErr::Custom(format!(
@@ -206,11 +210,11 @@ impl SeoService {
 
         seo_event_delivery::ActiveModel {
             id: Set(Uuid::new_v4()),
-            tenant_id: Set(tenant_id),
+            tenant_id: Set(input.tenant_id),
             event_type: Set(event_type.to_string()),
             idempotency_key: Set(idempotency_key.clone()),
-            source_kind: Set(Some(target_kind.to_string())),
-            source_id: Set(Some(target_id)),
+            source_kind: Set(Some(input.target_kind.to_string())),
+            source_id: Set(Some(input.target_id)),
             status: Set(DELIVERY_STATUS_SENT.to_string()),
             outbox_event_id: Set(Some(outbox_event_id)),
             last_error: Set(None),
@@ -224,7 +228,7 @@ impl SeoService {
         for trigger in index_reindex_triggers_for_event(&event) {
             self.publish_entity_reindex_in_tx(
                 txn,
-                tenant_id,
+                input.tenant_id,
                 event_type,
                 idempotency_key.as_str(),
                 &trigger,
@@ -259,12 +263,14 @@ impl SeoService {
         if let Err(error) = self
             .publish_seo_meta_upserted_event_in_tx(
                 &txn,
-                tenant_id,
-                target_kind,
-                target_id,
-                locale,
-                source,
-                transition_ref,
+                SeoMetaUpsertedEventInput {
+                    tenant_id,
+                    target_kind,
+                    target_id,
+                    locale,
+                    source,
+                    transition_ref,
+                },
             )
             .await
         {

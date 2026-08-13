@@ -22,7 +22,7 @@ We introduce a transport-agnostic runtime contract in `rustok-mcp`:
 - `McpScaffoldDraftRuntimeContext`
 - `McpScaffoldDraftStore`
 
-`AlloyMcpState` can now attach a `McpScaffoldDraftStore`. When such a store is present,
+`AlloyScaffoldState` can now attach a `McpScaffoldDraftStore`. When such a store is present,
 `alloy_scaffold_module`, `alloy_review_module_scaffold`, and `alloy_apply_module_scaffold`
 delegate to it instead of using process-local in-memory storage.
 

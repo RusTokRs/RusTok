@@ -67,7 +67,14 @@ pub fn GroupsView() -> impl IntoView {
 
             <Suspense fallback=move || view! { <p>{loading.clone()}</p> }>
                 {move || directory.get().map(|result| match result {
-                    Ok(directory) => render_directory(directory, &empty, &members_label, &apply_label).into_any(),
+                    Ok(directory) => render_directory(
+                        directory,
+                        &route_context,
+                        &empty,
+                        &members_label,
+                        &apply_label,
+                    )
+                    .into_any(),
                     Err(error) => view! {
                         <p class="groups-storefront__error">{groups_storefront_error(&load_error, &error.to_string())}</p>
                     }.into_any(),
@@ -79,6 +86,7 @@ pub fn GroupsView() -> impl IntoView {
 
 fn render_directory(
     directory: GroupsStorefrontDirectory,
+    route_context: &UiRouteContext,
     empty: &str,
     members_label: &str,
     apply_label: &str,
@@ -89,12 +97,13 @@ fn render_directory(
 
     let members_label = members_label.to_string();
     let apply_label = apply_label.to_string();
+    let module_route_base = route_context.module_route_base("groups");
 
     view! {
         <div class="groups-storefront__grid">
             {directory.items.into_iter().map(|group| {
                 let summary = group.summary.unwrap_or_default();
-                let application_href = format!("/modules/groups?apply={}", group.id);
+                let application_href = format!("{module_route_base}?apply={}", group.id);
                 let can_apply = group.join_policy == "request";
                 let apply_label = apply_label.clone();
                 let members_label = members_label.clone();

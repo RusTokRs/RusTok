@@ -7,13 +7,9 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use rustok_mcp::alloy_tools::{
-    self, AlloyMcpState, ApplyModuleScaffoldRequest, CreateScriptRequest, DeleteScriptRequest,
-    GetScriptRequest, ListScriptsRequest, ReviewModuleScaffoldRequest, RunScriptRequest,
-    TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT,
-    TOOL_ALLOY_GET_SCRIPT, TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS,
-    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_SCAFFOLD_MODULE,
-    TOOL_ALLOY_SCRIPT_HELPERS, TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
-    UpdateScriptRequest, ValidateScriptRequest,
+    self, AlloyScaffoldState, ApplyModuleScaffoldRequest, ReviewModuleScaffoldRequest,
+    TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_LIST_ENTITY_TYPES,
+    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_ALLOY_SCRIPT_HELPERS,
 };
 use rustok_mcp::tools::{
     self, McpHealthResponse, McpState, McpToolResponse, ModuleLookupRequest, ModuleQueryRequest,
@@ -30,7 +26,7 @@ use crate::mcp::{McpClientAdapter, ToolExecutionResult};
 use crate::model::ToolDefinition;
 use crate::{AiError, AiResult};
 
-use super::helpers::{json_err, parse_uuid_str};
+use super::helpers::json_err;
 use super::types::{AiHostRuntime, AiOperatorContext};
 
 static STAGED_SCAFFOLDS: Lazy<Arc<Mutex<HashMap<Uuid, StagedModuleScaffold>>>> =
@@ -39,29 +35,18 @@ static STAGED_SCAFFOLDS: Lazy<Arc<Mutex<HashMap<Uuid, StagedModuleScaffold>>>> =
 pub struct InProcessMcpAdapter {
     pub state: McpState,
     pub access_context: McpAccessContext,
-    pub alloy: Option<AlloyMcpState<alloy::SeaOrmStorage>>,
+    pub scaffolds: AlloyScaffoldState,
 }
 
 impl InProcessMcpAdapter {
     pub fn new(runtime: &AiHostRuntime, access_context: McpAccessContext) -> AiResult<Self> {
         let registry = runtime.module_registry();
-        let tenant_id = parse_uuid_str(
-            access_context
-                .identity
-                .as_ref()
-                .and_then(|identity| identity.tenant_id.as_deref()),
-        )?;
-        let alloy = if let Some(scoped) = runtime.scoped_alloy_runtime(tenant_id) {
-            let mut state = AlloyMcpState::new(scoped.storage, scoped.engine, scoped.orchestrator);
-            state.staged_scaffolds = Arc::clone(&STAGED_SCAFFOLDS);
-            Some(state)
-        } else {
-            None
-        };
+        let mut scaffolds = AlloyScaffoldState::new();
+        scaffolds.staged_scaffolds = Arc::clone(&STAGED_SCAFFOLDS);
         Ok(Self {
             state: McpState { registry },
             access_context,
-            alloy,
+            scaffolds,
         })
     }
 
@@ -70,69 +55,8 @@ impl InProcessMcpAdapter {
         tool_name: &str,
         input: serde_json::Value,
     ) -> AiResult<ToolExecutionResult> {
-        let Some(state) = &self.alloy else {
-            return Err(AiError::Mcp(format!("unknown tool: {tool_name}")));
-        };
+        let state = &self.scaffolds;
         let content = match tool_name {
-            TOOL_ALLOY_LIST_SCRIPTS => serde_json::to_value(
-                alloy_tools::alloy_list_scripts(
-                    state,
-                    serde_json::from_value::<ListScriptsRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_GET_SCRIPT => serde_json::to_value(
-                alloy_tools::alloy_get_script(
-                    state,
-                    serde_json::from_value::<GetScriptRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_CREATE_SCRIPT => serde_json::to_value(
-                alloy_tools::alloy_create_script(
-                    state,
-                    serde_json::from_value::<CreateScriptRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_UPDATE_SCRIPT => serde_json::to_value(
-                alloy_tools::alloy_update_script(
-                    state,
-                    serde_json::from_value::<UpdateScriptRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_DELETE_SCRIPT => serde_json::to_value(
-                alloy_tools::alloy_delete_script(
-                    state,
-                    serde_json::from_value::<DeleteScriptRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
-            TOOL_ALLOY_VALIDATE_SCRIPT => serde_json::to_value(alloy_tools::alloy_validate_script(
-                state,
-                serde_json::from_value::<ValidateScriptRequest>(input).map_err(json_err)?,
-            ))
-            .map_err(json_err)?,
-            TOOL_ALLOY_RUN_SCRIPT => serde_json::to_value(
-                alloy_tools::alloy_run_script(
-                    state,
-                    serde_json::from_value::<RunScriptRequest>(input).map_err(json_err)?,
-                )
-                .await
-                .map_err(AiError::Mcp)?,
-            )
-            .map_err(json_err)?,
             TOOL_ALLOY_SCAFFOLD_MODULE => serde_json::to_value(
                 alloy_tools::alloy_scaffold_module(
                     state,
@@ -238,43 +162,7 @@ impl McpClientAdapter for InProcessMcpAdapter {
             ),
         ];
 
-        if self.alloy.is_some() {
-            tools.extend([
-                tool_def(
-                    TOOL_ALLOY_LIST_SCRIPTS,
-                    "List Alloy scripts with optional status filter",
-                    schema_for!(ListScriptsRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_GET_SCRIPT,
-                    "Get a single Alloy script by name or UUID",
-                    schema_for!(GetScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_CREATE_SCRIPT,
-                    "Create a new Alloy Rhai script",
-                    schema_for!(CreateScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_UPDATE_SCRIPT,
-                    "Update an existing Alloy script (code, description, status)",
-                    schema_for!(UpdateScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_DELETE_SCRIPT,
-                    "Delete an Alloy script by UUID",
-                    schema_for!(DeleteScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_VALIDATE_SCRIPT,
-                    "Validate Rhai script syntax without executing",
-                    schema_for!(ValidateScriptRequest),
-                ),
-                tool_def(
-                    TOOL_ALLOY_RUN_SCRIPT,
-                    "Execute an Alloy script manually with optional params and entity context",
-                    schema_for!(RunScriptRequest),
-                ),
+        tools.extend([
                 tool_def(
                     TOOL_ALLOY_SCAFFOLD_MODULE,
                     "Stage a reviewed draft RusToK module crate scaffold without writing it into the workspace yet",
@@ -300,8 +188,7 @@ impl McpClientAdapter for InProcessMcpAdapter {
                     "List available Rhai helper functions with signatures and descriptions",
                     schema_for!(()),
                 ),
-            ]);
-        }
+        ]);
 
         Ok(tools
             .into_iter()

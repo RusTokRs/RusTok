@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError, TenantLocale};
+use rustok_api::{
+    PortCallPolicy, PortContext, PortError, TenantLocale, manifest_hash::hash_manifest,
+};
 use rustok_translation_targets::{
     TranslationDataClassification, TranslationStrategy, TranslationValueProfile,
 };
@@ -125,38 +127,7 @@ impl MachineTranslationBatchRequest {
         require_identity("resource_kind", &self.resource.resource_kind)?;
         require_identity("resource_id", &self.resource.resource_id)?;
         require_digest("adapter_policy_digest", &self.adapter_policy_digest)?;
-        validate_optional_digest("glossary_digest", self.glossary_digest.as_deref())?;
-        validate_optional_digest("memory_digest", self.memory_digest.as_deref())?;
-        if self.glossary_revision.is_some() != self.glossary_digest.is_some() {
-            return Err(PortError::validation(
-                "translation.machine.glossary_binding_invalid",
-                "glossary revision and digest must be supplied together",
-            ));
-        }
-        if self.glossary_terms.len() > MAX_MACHINE_TRANSLATION_GLOSSARY_TERMS
-            || self.glossary_terms.iter().any(|term| {
-                term.concept_id.trim().is_empty()
-                    || term.concept_id.len() > 256
-                    || term.source_term.trim().is_empty()
-                    || term.source_term.len() > 512
-                    || term
-                        .preferred_target_term
-                        .as_ref()
-                        .is_some_and(|value| value.trim().is_empty() || value.len() > 512)
-                    || term.allowed_target_terms.len() > 32
-                    || term.forbidden_target_terms.len() > 32
-                    || term
-                        .allowed_target_terms
-                        .iter()
-                        .chain(&term.forbidden_target_terms)
-                        .any(|value| value.trim().is_empty() || value.len() > 512)
-            })
-        {
-            return Err(PortError::validation(
-                "translation.machine.glossary_terms_invalid",
-                "machine translation glossary context exceeds its bounded term contract",
-            ));
-        }
+        validate_glossary_context(self)?;
         if self.evidence.len() > 32
             || self.evidence.iter().any(|(key, value)| {
                 key.trim().is_empty()
@@ -195,6 +166,7 @@ impl MachineTranslationBatchRequest {
             ));
         }
 
+        let mut memory_suggestion_keys = BTreeSet::new();
         if self.memory_suggestions.len()
             > self
                 .units
@@ -208,6 +180,8 @@ impl MachineTranslationBatchRequest {
                     || suggestion.target_value.len() > 20_000
                     || suggestion.score_basis_points > 10_000
                     || require_digest("memory_source_hash", &suggestion.source_hash).is_err()
+                    || !memory_suggestion_keys
+                        .insert((suggestion.unit_id.as_str(), suggestion.entry_id.as_str()))
             })
         {
             return Err(PortError::validation(
@@ -215,6 +189,7 @@ impl MachineTranslationBatchRequest {
                 "memory suggestions must reference a batch unit and use a 0..=10000 score",
             ));
         }
+        validate_memory_context(self)?;
         Ok(())
     }
 }
@@ -439,11 +414,102 @@ fn require_digest(field: &'static str, value: &str) -> Result<(), PortError> {
     Ok(())
 }
 
-fn validate_optional_digest(field: &'static str, value: Option<&str>) -> Result<(), PortError> {
-    match value {
-        Some(value) => require_digest(field, value),
-        None => Ok(()),
+fn validate_glossary_context(request: &MachineTranslationBatchRequest) -> Result<(), PortError> {
+    let mut concept_ids = BTreeSet::new();
+    if request.glossary_terms.len() > MAX_MACHINE_TRANSLATION_GLOSSARY_TERMS
+        || request.glossary_terms.iter().any(|term| {
+            !concept_ids.insert(term.concept_id.as_str()) || glossary_term_invalid(term)
+        })
+    {
+        return Err(PortError::validation(
+            "translation.machine.glossary_terms_invalid",
+            "machine translation glossary context exceeds its bounded term contract",
+        ));
     }
+
+    match (&request.glossary_revision, &request.glossary_digest) {
+        (None, None) if request.glossary_terms.is_empty() => Ok(()),
+        (None, None) | (Some(_), None) | (None, Some(_)) => Err(PortError::validation(
+            "translation.machine.glossary_binding_invalid",
+            "glossary terms require an exact revision and digest binding",
+        )),
+        (Some(revision), Some(digest)) => {
+            if request.glossary_terms.is_empty() {
+                return Err(PortError::validation(
+                    "translation.machine.glossary_binding_invalid",
+                    "an empty glossary subset must not carry a revision binding",
+                ));
+            }
+            require_identity("glossary_revision", revision)?;
+            require_digest("glossary_digest", digest)?;
+            if manifest_digest(&request.glossary_terms)? != *digest {
+                return Err(PortError::validation(
+                    "translation.machine.glossary_digest_mismatch",
+                    "glossary terms do not match their declared digest",
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn glossary_term_invalid(term: &MachineTranslationGlossaryTerm) -> bool {
+    if term.concept_id.trim().is_empty()
+        || term.concept_id.len() > 256
+        || term.source_term.trim().is_empty()
+        || term.source_term.len() > 512
+        || term.allowed_target_terms.len() > 32
+        || term.forbidden_target_terms.len() > 32
+        || (term.do_not_translate
+            && (term.preferred_target_term.is_some()
+                || !term.allowed_target_terms.is_empty()
+                || !term.forbidden_target_terms.is_empty()))
+    {
+        return true;
+    }
+
+    let mut target_terms = BTreeSet::new();
+    term.preferred_target_term
+        .iter()
+        .chain(&term.allowed_target_terms)
+        .chain(&term.forbidden_target_terms)
+        .any(|value| {
+            value.trim().is_empty()
+                || value.len() > 512
+                || !target_terms.insert(value.to_lowercase())
+        })
+}
+
+fn validate_memory_context(request: &MachineTranslationBatchRequest) -> Result<(), PortError> {
+    match (
+        &request.memory_digest,
+        request.memory_suggestions.is_empty(),
+    ) {
+        (None, true) => Ok(()),
+        (None, false) | (Some(_), true) => Err(PortError::validation(
+            "translation.machine.memory_binding_invalid",
+            "memory suggestions require an exact digest binding",
+        )),
+        (Some(digest), false) => {
+            require_digest("memory_digest", digest)?;
+            if manifest_digest(&request.memory_suggestions)? != *digest {
+                return Err(PortError::validation(
+                    "translation.machine.memory_digest_mismatch",
+                    "memory suggestions do not match their declared digest",
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn manifest_digest<T: Serialize>(value: &T) -> Result<String, PortError> {
+    hash_manifest(value).map_err(|_| {
+        PortError::invariant_violation(
+            "translation.machine.context_digest_failed",
+            "machine translation context could not be hashed",
+        )
+    })
 }
 
 #[cfg(test)]
@@ -523,6 +589,107 @@ mod tests {
         assert_eq!(
             request.validate(&context()).unwrap_err().code,
             "translation.machine.protected_tokens_invalid"
+        );
+    }
+
+    #[test]
+    fn batch_requires_exact_bound_glossary_context() {
+        let mut request = request();
+        request.glossary_terms = vec![MachineTranslationGlossaryTerm {
+            concept_id: "brand".to_string(),
+            source_term: "RusToK".to_string(),
+            preferred_target_term: Some("RusToK".to_string()),
+            allowed_target_terms: Vec::new(),
+            forbidden_target_terms: Vec::new(),
+            do_not_translate: false,
+        }];
+        assert_eq!(
+            request.validate(&context()).unwrap_err().code,
+            "translation.machine.glossary_binding_invalid"
+        );
+
+        request.glossary_revision = Some("7".to_string());
+        request.glossary_digest = Some(manifest_digest(&request.glossary_terms).unwrap());
+        request.validate(&context()).unwrap();
+
+        request.glossary_terms[0].preferred_target_term = Some("RusToK Platform".to_string());
+        assert_eq!(
+            request.validate(&context()).unwrap_err().code,
+            "translation.machine.glossary_digest_mismatch"
+        );
+    }
+
+    #[test]
+    fn batch_requires_exact_bound_memory_context() {
+        let mut request = request();
+        request.memory_suggestions = vec![MachineTranslationMemorySuggestion {
+            unit_id: "unit-a".to_string(),
+            entry_id: "entry-a".to_string(),
+            source_value: "Hello {name}".to_string(),
+            target_value: "Hallo {name}".to_string(),
+            score_basis_points: 9_000,
+            source_hash: "c".repeat(64),
+        }];
+        assert_eq!(
+            request.validate(&context()).unwrap_err().code,
+            "translation.machine.memory_binding_invalid"
+        );
+
+        request.memory_digest = Some(manifest_digest(&request.memory_suggestions).unwrap());
+        request.validate(&context()).unwrap();
+
+        request.memory_suggestions[0].target_value = "Guten Tag {name}".to_string();
+        assert_eq!(
+            request.validate(&context()).unwrap_err().code,
+            "translation.machine.memory_digest_mismatch"
+        );
+    }
+
+    #[test]
+    fn batch_rejects_ambiguous_glossary_or_memory_context() {
+        let mut glossary_request = request();
+        glossary_request.glossary_revision = Some("7".to_string());
+        glossary_request.glossary_digest =
+            Some(manifest_digest(&glossary_request.glossary_terms).unwrap());
+        assert_eq!(
+            glossary_request.validate(&context()).unwrap_err().code,
+            "translation.machine.glossary_binding_invalid"
+        );
+
+        let mut empty_memory_request = request();
+        empty_memory_request.memory_digest = Some("d".repeat(64));
+        assert_eq!(
+            empty_memory_request.validate(&context()).unwrap_err().code,
+            "translation.machine.memory_binding_invalid"
+        );
+
+        let mut duplicate_memory_request = request();
+        duplicate_memory_request.memory_suggestions = vec![
+            MachineTranslationMemorySuggestion {
+                unit_id: "unit-a".to_string(),
+                entry_id: "entry-a".to_string(),
+                source_value: "Hello {name}".to_string(),
+                target_value: "Hallo {name}".to_string(),
+                score_basis_points: 9_000,
+                source_hash: "c".repeat(64),
+            },
+            MachineTranslationMemorySuggestion {
+                unit_id: "unit-a".to_string(),
+                entry_id: "entry-a".to_string(),
+                source_value: "Hello {name}".to_string(),
+                target_value: "Hallo {name}".to_string(),
+                score_basis_points: 9_000,
+                source_hash: "c".repeat(64),
+            },
+        ];
+        duplicate_memory_request.memory_digest =
+            Some(manifest_digest(&duplicate_memory_request.memory_suggestions).unwrap());
+        assert_eq!(
+            duplicate_memory_request
+                .validate(&context())
+                .unwrap_err()
+                .code,
+            "translation.machine.memory_suggestion_invalid"
         );
     }
 }

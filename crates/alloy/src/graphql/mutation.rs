@@ -70,7 +70,7 @@ impl AlloyMutation {
         ctx: &Context<'_>,
         input: CreateScriptInput,
     ) -> Result<GqlScript> {
-        require_admin(ctx).await?;
+        let auth = require_admin(ctx).await?;
         validate_cron_trigger(&input.trigger)?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let workspace = input.workspace.0;
@@ -86,17 +86,12 @@ impl AlloyMutation {
             .compile(&input.name, source, &mut scope)
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
-        let tenant_id = ctx
-            .data::<rustok_api::TenantContext>()
-            .map(|tenant| tenant.id)
-            .unwrap_or_default();
-
         let mut script = Script::new(input.name, workspace, input.trigger.into());
-        script.tenant_id = tenant_id;
+        script.tenant_id = runtime.tenant_id;
         script.description = input.description;
         script.run_as_system = input.run_as_system;
         script.permissions = input.permissions;
-        script.author_id = input.author_id;
+        script.author_id = Some(auth.user_id.to_string());
         if let Some(status) = input.status {
             script.status = status.into();
         }
@@ -116,7 +111,7 @@ impl AlloyMutation {
         id: Uuid,
         input: UpdateScriptInput,
     ) -> Result<GqlScript> {
-        require_admin(ctx).await?;
+        let auth = require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
             .storage
@@ -170,11 +165,7 @@ impl AlloyMutation {
         if let Some(permissions) = input.permissions {
             script.permissions = permissions;
         }
-        if input.clear_author_id {
-            script.author_id = None;
-        } else if let Some(author_id) = input.author_id {
-            script.author_id = Some(author_id);
-        }
+        script.author_id = Some(auth.user_id.to_string());
 
         let saved = runtime
             .storage
@@ -388,7 +379,7 @@ impl AlloyMutation {
         id: Uuid,
         expected_version: u32,
     ) -> Result<GqlScript> {
-        require_admin(ctx).await?;
+        let auth = require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
             .storage
@@ -398,6 +389,7 @@ impl AlloyMutation {
         ensure_expected_revision(&script, expected_version)?;
 
         script.activate();
+        script.author_id = Some(auth.user_id.to_string());
         let saved = runtime
             .storage
             .save(script)
@@ -413,7 +405,7 @@ impl AlloyMutation {
         id: Uuid,
         expected_version: u32,
     ) -> Result<GqlScript> {
-        require_admin(ctx).await?;
+        let auth = require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
             .storage
@@ -424,6 +416,7 @@ impl AlloyMutation {
 
         script.status = ScriptStatus::Paused;
         script.updated_at = Utc::now();
+        script.author_id = Some(auth.user_id.to_string());
 
         let saved = runtime
             .storage
@@ -440,7 +433,7 @@ impl AlloyMutation {
         id: Uuid,
         expected_version: u32,
     ) -> Result<GqlScript> {
-        require_admin(ctx).await?;
+        let auth = require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
             .storage
@@ -450,6 +443,7 @@ impl AlloyMutation {
         ensure_expected_revision(&script, expected_version)?;
 
         script.disable();
+        script.author_id = Some(auth.user_id.to_string());
         let saved = runtime
             .storage
             .save(script)
@@ -465,7 +459,7 @@ impl AlloyMutation {
         id: Uuid,
         expected_version: u32,
     ) -> Result<GqlScript> {
-        require_admin(ctx).await?;
+        let auth = require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
             .storage
@@ -475,6 +469,7 @@ impl AlloyMutation {
         ensure_expected_revision(&script, expected_version)?;
 
         script.archive();
+        script.author_id = Some(auth.user_id.to_string());
         let saved = runtime
             .storage
             .save(script)
@@ -490,7 +485,7 @@ impl AlloyMutation {
         id: Uuid,
         expected_version: u32,
     ) -> Result<GqlScript> {
-        require_admin(ctx).await?;
+        let auth = require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut script = runtime
             .storage
@@ -501,6 +496,7 @@ impl AlloyMutation {
 
         script.reset_errors();
         script.updated_at = Utc::now();
+        script.author_id = Some(auth.user_id.to_string());
 
         let saved = runtime
             .storage

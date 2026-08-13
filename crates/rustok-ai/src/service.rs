@@ -411,6 +411,7 @@ fn map_structured_provider_policy(
     Ok(AiStructuredProviderPolicyRecord {
         id: model.id,
         provider_profile_id: model.provider_profile_id,
+        allowed_classifications: crate::accounting::provider_allowed_classifications(&model)?,
         currency_code: model.currency_code,
         input_cost_per_million_minor: structured_u64(model.input_cost_per_million_minor)?,
         output_cost_per_million_minor: structured_u64(model.output_cost_per_million_minor)?,
@@ -2699,6 +2700,7 @@ impl AiManagementService {
             .put_provider_policy(crate::accounting::ProviderPolicy {
                 tenant_id: operator.tenant_id,
                 provider_profile_id: input.provider_profile_id,
+                allowed_classifications: input.allowed_classifications,
                 currency_code: input.currency_code,
                 input_cost_per_million_minor: input.input_cost_per_million_minor,
                 output_cost_per_million_minor: input.output_cost_per_million_minor,

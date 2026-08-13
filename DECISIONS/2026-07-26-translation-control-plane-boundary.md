@@ -192,6 +192,30 @@ semantics, glossary revision, memory suggestions, context, and data
 classification. It returns typed, deterministically validated proposals.
 Initial AI results always require human review and never write owner data.
 
+### Classification-aware provider egress
+
+Execution classification is not audit metadata alone. Every active
+tenant-scoped structured-provider policy carries a non-empty, unique allowlist
+of data classifications it may receive. AI filters routing candidates by that
+allowlist and applies the same decision to classification-aware health,
+non-billable estimates, budget reservation, and provider-slot acquisition. If
+no candidate permits the classification, the runtime fails closed before it
+registers an execution or invokes a provider.
+
+Provider-slot acquisition repeats the allowlist check inside its transaction
+immediately before external egress. Changes to allowed classifications or
+active state conflict while an attempt is in flight, and the immutable price
+snapshot includes the egress allowlist. This keeps an estimate, reservation,
+and actual provider call bound to one policy decision without retaining any
+source content in AI accounting records.
+
+Machine translation treats the complete outbound packet as at least
+`tenant_private`, even when every source unit is public. Resource identity and
+optional glossary, Translation Memory, style, and evidence context are
+tenant-scoped. Personal and sensitive source units raise the packet
+classification. A public source unit therefore cannot downgrade the surrounding
+tenant packet for provider egress.
+
 Translation owns the machine-proposal command and a content-free durable
 handoff journal. The command derives an exact batch from the persisted job
 snapshot, immutable glossary binding, and bounded Translation Memory lookup,

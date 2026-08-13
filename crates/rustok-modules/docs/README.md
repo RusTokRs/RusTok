@@ -259,10 +259,14 @@ compiled registry. Admission does not deploy code or mutate the running
 composition. `ModuleControlPlane::static_distribution_rollout` freezes the
 then-serving direct predecessor and exact `(node, role)` assignments, persists
 desired/observed rollout, and advances the serving head only after every
-assignment converges healthy. Recovery revalidates and redeploys retained
-predecessor bytes; it never queues a build. Revocation remains a separate
-revision-CAS security operation. Deployment agents report evidence and never
-own release selection.
+assignment converges healthy. Each agent claims one exact assignment under a
+short owner lease; the same agent can replay an unexpired claim after losing a
+response, while a different agent must wait for expiry. The lease work item is
+limited to the assigned node/role identity and never includes other-node
+observations. Recovery revalidates
+and redeploys retained predecessor bytes; it never queues a build. Revocation
+remains a separate revision-CAS security operation. Deployment agents report
+evidence and never own release selection.
 
 The accepted
 [module release rollback safety decision](../../../DECISIONS/2026-08-06-module-release-rollback-safety.md)
@@ -388,31 +392,40 @@ tenant-RLS replay receipt, and queues the now-unreachable private key for the
 same retention-aware GC used by replacement and namespace purge. It never
 returns or deletes the physical storage key inline.
 
-The current namespace purge covers structured records and private-object
-metadata/keys only; it is not artifact-settings-purge evidence. The
-release-safety target keeps dynamic artifact-data and artifact settings as
-separate preview/apply boundaries. Dynamic artifact-settings purge requires
-its own protected, restore-tested recovery point bound to exact scope, stable
-data owner, installation-to-settings-instance binding, settings
-instance/revision, admitted schema digest, canonical validated value, and
-unresolved secret handles. Purge commits a monotonic settings tombstone.
-Restore creates a new non-serving settings instance and binds it only to an
-explicit non-retired inactive installation under the same owner; after
-uninstall/retirement it remains unbound until a continuity-authorized reinstall
-and never resurrects the old installation. It never snapshots or deletes
-role/actor grants or external secret bytes, and it cannot borrow an
-artifact-data snapshot as authorization.
+The namespace purge covers structured records and private-object metadata/keys
+only; it is not artifact-settings-purge evidence. Dynamic artifact settings
+have a separate owner service for recovery-point creation, purge, and restore.
+It requires an inactive uninstalled source installation, exact
+scope/data-owner/settings-instance/revision/schema/descriptor/value identity,
+an unresolved-secret-handle digest, a host-authorized retention snapshot, and
+KMS-backed authenticated ciphertext before purge. Purge revalidates that
+identity and ciphertext, requires its own authorization context (including
+policy, retention revision, holds, and KMS key version), deletes no
+structured data, and commits a monotonic settings tombstone plus outbox fact.
+Restore requires that exact tombstone, creates a fresh non-serving settings
+instance, and may bind it only to a compatible inactive installation under the
+same owner; after uninstall/retirement it remains unbound and never resurrects
+the old installation. It never snapshots or deletes role/actor grants or
+external secret bytes, and cannot borrow an artifact-data snapshot as
+authorization.
 
 The target also installs an owner compatibility guard before a dynamic or
 native/static settings-bearing rollout. It binds both N/N+1 schema digests and
 the rollback window; every concurrent settings write CAS-revalidates the
 intersection until rollback closes. Accepting a one-sided value requires a
 separate confirmed maintenance command that fences writers and atomically
-closes rollback eligibility. The settings recovery point has independent
+closes rollback eligibility. The settings recovery point persists independent
 encrypted retention/hold/collection state and roots its exact KMS key version,
 schema/descriptor, and lineage; purge/restore revalidate decryptability,
-target-schema compatibility, and secret handles. Status shows the retained
-copy until crash-resumable terminal collection.
+  target-schema compatibility, target admission revision, and secret handles. Retention mutation, KMS
+rewrap, and crash-resumable terminal collection are owner-service operations:
+retention uses a revision guard and can only extend expiry or add holds,
+ciphertext rewrap uses the host KMS port, and collection records a durable `collecting` intent
+before terminally nulling ciphertext while retaining the recovery fact.
+Collection authorization is host-owned and expiry alone is never sufficient.
+An unbound restore can be attached once only after host continuity
+authorization and exact data-owner, registry/repository, slug, schema, and
+inactive-installation checks; it cannot clear the source tombstone.
 
 The current artifact-data scope is derived from tenant, module slug, contract
 revision, and policy revision. That is an explicit cutover gap for retained

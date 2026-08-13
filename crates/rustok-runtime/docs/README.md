@@ -33,6 +33,12 @@ Current entry points:
 - Typed digest paths convert protocol `sha256:<hex>` identities to portable
   `<hex>` directory segments, validate role/target segments, and cannot escape
   the selected root.
+- `materialize_role` accepts only an owner-issued, digest-bound role request;
+  it verifies an already pre-staged cache file, atomically materializes it under
+  `releases/platform/sha256/<bundle>/<role>`, and writes a restart-safe local
+  receipt. PostgreSQL rollout state remains authoritative; this helper has no
+  registry, process, migration, release-selection, or traffic-switching
+  authority.
 - `db_clone` for explicit DB handle cloning from host runtime context.
 - `require_shared` and `RuntimeHandleError` for typed shared-handle lookup.
 

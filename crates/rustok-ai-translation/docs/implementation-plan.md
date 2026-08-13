@@ -7,10 +7,21 @@
 - `machine_translation` task identity and proposal-only prompt policy exist.
 - The adapter implements `MachineTranslationPort` over
   `AiStructuredTaskPort`.
-- Typed input/output schemas and deterministic unit/token/length validation
-  exist.
+- Typed camel-case input/output schemas and deterministic
+  unit/token/whitespace/length validation exist; output schemas and
+  deserialization reject unknown fields. Bounded glossary and Translation
+  Memory context must be exact-digest-bound, with no empty or dangling context
+  binding.
+- Every structured machine-translation packet is classified at least
+  `tenant_private`, because it contains tenant-scoped resource identity and
+  may contain glossary, memory, style, or evidence context. Personal and
+  sensitive source units raise that packet classification. The bridge requests
+  tenant-private health; AI checks the same classification before routing,
+  reservation, and provider egress.
 - Stable-key execution status, completed-result recovery, and cancellation are
-  mapped to AI without exposing AI persistence to Translation.
+  mapped to AI without exposing AI persistence to Translation. Live and
+  recovered completions must match the exact content-free request binding
+  recreated from the original bounded batch.
 - Provider-neutral conservative cost estimation uses the exact structured
   request, tenant routing, attempt limits, and immutable price policies used
   by execution without registering work, reserving budget, or invoking a
@@ -21,7 +32,8 @@
 - The optional `server` feature composes the descriptor and AI port from the
   neutral host context without exposing the concrete AI runtime to the host.
 - Tests cover request and estimate mapping, review-required output, stale
-  policy, missing units, and protected-token drift.
+  policy, missing units, protected-token multiplicity and whitespace drift,
+  unknown output fields, and live/recovered execution-binding mismatch.
 - The optional distribution feature `ai-translation` publishes the
   Translation-owned lazy runtime factory without a server-owned capability
   match.
@@ -52,7 +64,8 @@ Before production activation:
 
 1. `rustok-ai` must finish the structured executor over the now-present
    content-free execution/attempt schema, idempotent ledger, task catalog,
-   budget reservation, immutable provider price policy, concurrency slots and
+   budget reservation, immutable provider price and egress-classification
+   policy, concurrency slots and
    actual attempt token/cost evidence. Ordered inference/fallback, atomic
    encrypted terminal-result handoff/replay, recovery safety, operator
    accounting-policy provisioning, deployment keyring publication,

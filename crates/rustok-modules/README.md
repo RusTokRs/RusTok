@@ -50,8 +50,9 @@ around the owner contracts.
   registry release, distribution release, and native artifact identity before
   lifecycle dispatch; platform-native definitions remain distinct.
 - Own topology-bound native rollout state with exact role/failure-domain candidate and
-  predecessor assignments, per-role observation revisions, convergence,
-  degradation/recovery, exact replay, and transactional outbox facts.
+  predecessor assignments, per-role observation revisions, owner-issued agent
+  leases with same-agent exact replay and expiry-only reassignment, convergence,
+  degradation/recovery, and transactional outbox facts.
   Deployment agents report evidence; this crate never starts a native process
   or mutates the running server.
 - Retain, pre-stage, revalidate, and redeploy the exact
@@ -72,6 +73,17 @@ around the owner contracts.
 - Validate artifact settings, structured data, and every runtime binding payload
   against exact descriptor-bundled schemas through one bounded validator
   implementation.
+- Own dynamic artifact-settings recovery separately from structured-data
+  deletion: a host-composed KMS cipher and policy port create an exact
+  encrypted recovery point before an independently authorized purge writes its
+  tombstone; recovery retention is revision-guarded and monotonic (expiry and
+  holds may only increase), rewrap is
+  KMS-owned, and a crash-resumable collection erases ciphertext but preserves
+  terminal evidence. A direct restore pins the target's admission revision;
+  restore otherwise creates a fresh non-serving settings instance;
+  an intentionally unbound instance can later be one-time bound only to a
+  continuity-authorized compatible inactive installation under the same data
+  owner and exact registry/repository lineage.
 - Resolve secret values only inside a host-composed exact-revision consumer;
   sandbox capabilities receive logical handles and redacted receipts only.
 - Create bounded durable artifact-data snapshots with private verified object

@@ -244,6 +244,63 @@ pub struct TranslationFieldSnapshot {
     pub protected_tokens: Vec<String>,
 }
 
+/// Returns whether two protected-token ledgers contain exactly the same unique
+/// tokens. Ledger ordering is intentionally not semantic, while duplicate
+/// evidence is always invalid.
+pub fn protected_token_ledger_matches(expected: &[String], actual: &[String]) -> bool {
+    let expected_tokens = expected.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    let actual_tokens = actual.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    expected_tokens.len() == expected.len()
+        && actual_tokens.len() == actual.len()
+        && expected_tokens == actual_tokens
+}
+
+/// Returns whether every owner-declared protected token occurs exactly as many
+/// times in a translated value as it does in its source value.
+pub fn protected_token_multiplicities_match(
+    source_value: &str,
+    translated_value: &str,
+    protected_tokens: &[String],
+) -> bool {
+    protected_tokens.iter().all(|token| {
+        token_occurrences(source_value, token) == token_occurrences(translated_value, token)
+    })
+}
+
+/// Returns whether leading/trailing whitespace and every line-break sequence
+/// are preserved between an owner source value and its translation.
+pub fn whitespace_shape_matches(source_value: &str, translated_value: &str) -> bool {
+    whitespace_shape(source_value) == whitespace_shape(translated_value)
+}
+
+fn token_occurrences(value: &str, token: &str) -> usize {
+    value.match_indices(token).count()
+}
+
+fn whitespace_shape(value: &str) -> (String, String, Vec<String>) {
+    let leading = value
+        .chars()
+        .take_while(|character| character.is_whitespace())
+        .collect();
+    let trailing = value
+        .chars()
+        .rev()
+        .take_while(|character| character.is_whitespace())
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    let line_breaks = value
+        .split_inclusive('\n')
+        .filter_map(|line| {
+            line.strip_suffix("\r\n")
+                .map(|_| "\r\n".to_string())
+                .or_else(|| line.strip_suffix('\n').map(|_| "\n".to_string()))
+        })
+        .collect();
+    (leading, trailing, line_breaks)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TranslationResourceSummary {
     pub identity: TranslationResourceIdentity,
@@ -911,6 +968,35 @@ mod tests {
             snapshot.validate(),
             Err(TranslationTargetContractError::DuplicateProtectedToken)
         );
+    }
+
+    #[test]
+    fn protected_token_helpers_preserve_unique_ledger_counts_and_whitespace_shape() {
+        let expected = vec!["{name}".to_string(), "{count}".to_string()];
+        assert!(protected_token_ledger_matches(
+            &expected,
+            &["{count}".to_string(), "{name}".to_string()]
+        ));
+        assert!(!protected_token_ledger_matches(
+            &expected,
+            &[
+                "{name}".to_string(),
+                "{name}".to_string(),
+                "{count}".to_string(),
+            ]
+        ));
+        assert!(protected_token_multiplicities_match(
+            "Hello {name} {name}",
+            "Hallo {name} {name}",
+            &["{name}".to_string()]
+        ));
+        assert!(!protected_token_multiplicities_match(
+            "Hello {name} {name}",
+            "Hallo {name}",
+            &["{name}".to_string()]
+        ));
+        assert!(whitespace_shape_matches("  Hello\r\n", "  Hallo\r\n"));
+        assert!(!whitespace_shape_matches("  Hello\r\n", "Hallo\n"));
     }
 
     #[test]

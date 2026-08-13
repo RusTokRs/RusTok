@@ -18,7 +18,7 @@ We split the scaffold flow into three MCP tools:
 - `alloy_review_module_scaffold` returns the staged draft for inspection;
 - `alloy_apply_module_scaffold` writes the reviewed scaffold into the workspace only with `confirm=true`.
 
-This boundary currently lives in the in-memory `rustok-mcp` runtime through `AlloyMcpState`.
+This boundary currently lives in the in-memory `rustok-mcp` runtime through `AlloyScaffoldState`.
 
 ## Consequences
 

@@ -15,6 +15,29 @@ AI task catalog. The descriptor binds owner/task identity, prompt policy,
 input/output schema digests, system prompt, allowed classifications and hard
 limits, so a caller cannot reuse the task slug with a different contract.
 
+The external structured-task payload uses canonical camel-case JSON field
+names. Its glossary and Translation Memory context are bounded and accepted
+only when their declared digests exactly match the projected values; an empty
+subset carries no binding. This makes retry/recovery deterministic and rejects
+context substitution before any provider call.
+
+Every machine-translation packet has a minimum egress classification of
+`tenant_private`, even when all source units are public. The packet carries
+tenant-scoped resource identity and may carry tenant-owned glossary, memory,
+style, or evidence context; a public source unit must not downgrade that
+complete payload. Personal and sensitive source units raise the packet
+classification. The bridge asks AI health for `tenant_private`, and the AI
+provider policy enforces the same classification before routing, reservation,
+and every external provider attempt.
+
+The AI execution carries a content-free request binding: owner/task identity,
+policy and schema digests, input and evidence digests, classification, and
+limits. The adapter independently recreates that binding from its bounded
+Translation batch and requires exact equality before accepting either a live
+result or a recovered completed execution. This prevents stable-key recovery
+from accepting an execution for another request without retaining source text
+in AI persistence.
+
 Every accepted result is `review_required`. The adapter cannot approve a
 proposal, publish content, call an owner service, or construct an owner patch.
 
@@ -43,7 +66,8 @@ with a new lease; production-database multi-replica concurrency remains open.
 The adapter resolves and cancels executions through the stable
 `(owner, idempotency_key)` AI contract. Cancellation therefore remains durable
 when it arrives before AI execution registration, and completed encrypted
-results can be recovered without another billable call.
+results can be recovered without another billable call only after the exact
+request binding has been revalidated.
 Registering this adapter against chat sessions, direct provider engines, or a
 non-durable fallback would violate the machine-translation architecture.
 

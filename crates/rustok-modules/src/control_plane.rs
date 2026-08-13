@@ -11,7 +11,8 @@ use crate::{
     ArtifactEventDeliveryError, ArtifactLifecycleExecutor, ArtifactMcpCapabilityBrokerResolver,
     ArtifactMcpInvoker, ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError,
     ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer,
-    ArtifactSecretValueConsumer, ControlPlaneInfrastructure, ModuleArtifactSecurityAuthorizer,
+    ArtifactSecretValueConsumer, ArtifactSettingsRecoveryAuthorizer,
+    ArtifactSettingsRecoveryCipher, ControlPlaneInfrastructure, ModuleArtifactSecurityAuthorizer,
     ModuleDefinitionCatalog, ModuleDefinitionError, ModuleEffectivePolicy,
     ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyMaintenanceInput,
     ModuleEffectivePolicyNodeReadinessInput, ModuleLifecycleDbWriter,
@@ -27,12 +28,13 @@ use crate::{
     SeaOrmArtifactInstallationStore, SeaOrmArtifactSandboxPolicyResolver,
     SeaOrmArtifactScheduleDeliveryQueue, SeaOrmArtifactSecretCapabilityBrokerResolver,
     SeaOrmArtifactSecretHandlePolicy, SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
-    SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService,
-    SeaOrmModuleBuildService, SeaOrmModuleCompositionService, SeaOrmModuleGovernanceService,
-    SeaOrmModulePolicyRevisionConsumer, SeaOrmModulePromotionService,
-    SeaOrmModuleStaticDistributionBootstrapService, SeaOrmModuleStaticDistributionReleaseService,
-    SeaOrmModuleStaticDistributionRolloutService, SeaOrmModuleStaticDistributionService,
-    SeaOrmModuleStaticDistributionWorkerService, StorageArtifactBlobStore,
+    SeaOrmArtifactSettingsRecoveryService, SeaOrmModuleArtifactSecurityResolver,
+    SeaOrmModuleArtifactSecurityService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
+    SeaOrmModuleGovernanceService, SeaOrmModulePolicyRevisionConsumer,
+    SeaOrmModulePromotionService, SeaOrmModuleStaticDistributionBootstrapService,
+    SeaOrmModuleStaticDistributionReleaseService, SeaOrmModuleStaticDistributionRolloutService,
+    SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
+    StorageArtifactBlobStore,
 };
 use rustok_storage::StorageRuntime;
 
@@ -430,6 +432,28 @@ impl ModuleControlPlane {
         SeaOrmArtifactDataPurgeService::with_infrastructure(
             self.db.clone(),
             authorizer,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the separately authorized, KMS-backed owner service for dynamic
+    /// artifact-settings recovery, retention, rewrap, purge, restore,
+    /// continuity binding, and collection. It has no guest path and cannot be
+    /// combined with structured artifact-data deletion.
+    pub fn artifact_settings_recovery<A, C>(
+        &self,
+        authorizer: A,
+        cipher: C,
+    ) -> SeaOrmArtifactSettingsRecoveryService<A, C>
+    where
+        A: ArtifactSettingsRecoveryAuthorizer,
+        C: ArtifactSettingsRecoveryCipher,
+    {
+        SeaOrmArtifactSettingsRecoveryService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            cipher,
+            std::sync::Arc::new(crate::artifact_schema::ArtifactSchemaValidatorCache::default()),
             self.infrastructure.clone(),
         )
     }

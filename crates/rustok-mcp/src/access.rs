@@ -7,10 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::alloy_import::TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE;
 use crate::alloy_tools::{
-    TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT,
-    TOOL_ALLOY_GET_SCRIPT, TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS,
-    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_SCAFFOLD_MODULE,
-    TOOL_ALLOY_SCRIPT_HELPERS, TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
+    TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_LIST_ENTITY_TYPES,
+    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_ALLOY_SCRIPT_HELPERS,
 };
 use crate::tools::{
     TOOL_BLOG_MODULE, TOOL_CONTENT_MODULE, TOOL_FORUM_MODULE, TOOL_LIST_MODULES, TOOL_MCP_HEALTH,
@@ -250,15 +248,9 @@ pub fn default_tool_requirement(tool_name: &str) -> McpToolRequirement {
         TOOL_LIST_MODULES | TOOL_QUERY_MODULES => vec![Permission::MODULES_LIST.to_string()],
         TOOL_MODULE_EXISTS | TOOL_MODULE_DETAILS | TOOL_CONTENT_MODULE | TOOL_BLOG_MODULE
         | TOOL_FORUM_MODULE | TOOL_PAGES_MODULE => vec![Permission::MODULES_READ.to_string()],
-        TOOL_ALLOY_LIST_SCRIPTS => vec![Permission::SCRIPTS_LIST.to_string()],
-        TOOL_ALLOY_GET_SCRIPT
-        | TOOL_ALLOY_LIST_ENTITY_TYPES
-        | TOOL_ALLOY_SCRIPT_HELPERS
-        | TOOL_ALLOY_VALIDATE_SCRIPT => vec![Permission::SCRIPTS_READ.to_string()],
-        TOOL_ALLOY_CREATE_SCRIPT => vec![Permission::SCRIPTS_CREATE.to_string()],
-        TOOL_ALLOY_UPDATE_SCRIPT => vec![Permission::SCRIPTS_UPDATE.to_string()],
-        TOOL_ALLOY_DELETE_SCRIPT => vec![Permission::SCRIPTS_DELETE.to_string()],
-        TOOL_ALLOY_RUN_SCRIPT => vec![Permission::SCRIPTS_EXECUTE.to_string()],
+        TOOL_ALLOY_LIST_ENTITY_TYPES | TOOL_ALLOY_SCRIPT_HELPERS => {
+            vec![Permission::SCRIPTS_READ.to_string()]
+        }
         TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE => vec![
             Permission::SCRIPTS_MANAGE.to_string(),
             Permission::MODULES_MANAGE.to_string(),
@@ -375,16 +367,6 @@ mod tests {
         let decision = context.authorize_tool(&requirement);
 
         assert!(decision.allowed);
-    }
-
-    #[test]
-    fn maps_run_script_to_execute_permission() {
-        let requirement = default_tool_requirement(TOOL_ALLOY_RUN_SCRIPT);
-
-        assert_eq!(
-            requirement.required_permissions,
-            vec![Permission::SCRIPTS_EXECUTE.to_string()]
-        );
     }
 
     #[test]

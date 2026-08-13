@@ -8,7 +8,13 @@ use tokio::sync::RwLock;
 
 use rustok_api::{ModuleWorkError, ModuleWorkHandler, ModuleWorkOutcome, ModuleWorkSource};
 
+mod deployment;
 mod layout;
+
+pub use deployment::{
+    RoleMaterializationError, RoleMaterializationReceipt, RoleMaterializationRequest,
+    materialize_role,
+};
 
 pub use layout::{
     INSTANCE_LAYOUT_REVISION, InstanceLayout, InstanceLayoutError, InstanceLayoutMarker,
