@@ -6,6 +6,8 @@
   "runner": "apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts",
   "config": "apps/next-admin/playwright.pages-published-metadata.config.ts",
   "global_setup": "apps/next-admin/tests/pages-published-metadata/global-setup.ts",
+  "workflow": ".github/workflows/pages-published-metadata-browser-evidence.yml",
+  "workflow_verifier": "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
   "output": {
     "environment": "RUSTOK_PAGES_PUBLISHED_METADATA_BROWSER_EVIDENCE_OUTPUT",
     "default_path": "target/pages-published-metadata-browser-evidence.json",
@@ -20,6 +22,19 @@
     "draft_url": "RUSTOK_PAGES_PUBLISHED_METADATA_DRAFT_URL",
     "archived_url": "RUSTOK_PAGES_PUBLISHED_METADATA_ARCHIVED_URL",
     "missing_url": "RUSTOK_PAGES_PUBLISHED_METADATA_MISSING_URL"
+  },
+  "workflow_execution": {
+    "trigger": "workflow_dispatch",
+    "required_ref": "refs/heads/main",
+    "source_commit_must_equal_dispatch_sha": true,
+    "review_confirmation_input": "reviewed_deployment_identity",
+    "protected_environment": "pages-published-metadata-browser-evidence",
+    "protected_environment_requires_main_only_and_reviewers": true,
+    "storage_state_secret": "RUSTOK_PAGES_PUBLISHED_METADATA_EDITOR_STORAGE_STATE_B64",
+    "raw_external_inputs_masked": true,
+    "artifact_contains_only_bounded_packet": true,
+    "artifact_retention_days": 90,
+    "workflow_mutates_repository": false
   },
   "deployment_identity": {
     "source_commit_verified_against_checkout_head": true,
@@ -49,6 +64,8 @@
   ],
   "required_source_files": [
     "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+    ".github/workflows/pages-published-metadata-browser-evidence.yml",
+    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
     "apps/next-admin/playwright.pages-published-metadata.config.ts",
     "apps/next-admin/tests/pages-published-metadata/global-setup.ts",
     "apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts",

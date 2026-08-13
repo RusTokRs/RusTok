@@ -52,6 +52,18 @@ const portMapper = between(
   'fn map_admin_order_change_orchestration_error(',
   'REST owner-port mapper',
 );
+const refundContext = between(
+  orchestration,
+  'fn with_exchange_refund_context(',
+  '/// Explicit compatibility seam for the still-open Payment half of exchange application.',
+  'exchange refund metadata helper',
+);
+const compatRefund = between(
+  orchestration,
+  'async fn create_exchange_difference_refund_compat(',
+  '/// Routes order-change application through the correct post-order workflow.',
+  'exchange Payment compatibility helper',
+);
 const ownerMethod = between(
   orchestration,
   'pub async fn apply_order_change_with_owner_ports(',
@@ -70,13 +82,16 @@ for (const [value, label] of [
 ]) requireText(adminRouter, value, label);
 
 for (const [value, label] of [
-  ['request_context: RequestContext,', 'request context extractor'],
   ['fn admin_order_change_read_context(', 'read context builder'],
   ['fn admin_order_change_apply_context(', 'write context builder'],
   ['PortActor::user(auth.user_id.to_string())', 'authenticated owner actor'],
   ['format!("commerce-admin-order-change:read:{change_id}")', 'read correlation identity'],
   ['format!("commerce-admin-order-change:apply:{change_id}")', 'write correlation identity'],
   ['.with_idempotency_key(Uuid::new_v4().to_string())', 'write admission identity'],
+]) requireText(controller, value, label);
+
+for (const [value, label] of [
+  ['request_context: RequestContext,', 'request context extractor'],
   ['OrderChangeOrchestrationService::from_order_ports(', 'host-composed orchestration'],
   ['runtime.order_read_port()', 'host-selected Order read'],
   ['runtime.order_post_order_command_port()', 'host-selected Order command'],
@@ -100,6 +115,7 @@ for (const [value, label] of [
 ]) requireText(httpRuntime, value, label);
 
 for (const [value, label] of [
+  ['fn with_order_change_apply_action(', 'mounted apply-action metadata helper'],
   ['pub async fn apply_order_change_with_owner_ports(', 'owner-port orchestration method'],
   ['.read_order_change_projection(', 'typed Order read'],
   ['ReadOrderChangeProjectionRequest { change_id }', 'typed read request'],
@@ -107,11 +123,38 @@ for (const [value, label] of [
   ['ApplyOrderChangeRequest {', 'typed apply request'],
   ['OrderChangeOrchestrationError::OrderRead', 'read error preservation'],
   ['OrderChangeOrchestrationError::OrderCommand', 'command error preservation'],
-  ['.apply_exchange_order_change(', 'exchange orchestration retained'],
-  ['.apply_claim_order_change(', 'claim orchestration retained'],
-]) requireText(ownerMethod, value, label);
-for (const value of ['OrderService::new(', '.get_order_change(']) {
-  forbidText(ownerMethod, value, 'mounted owner-port orchestration concrete Order dependency');
+  ['with_order_change_apply_action(metadata, "exchange")', 'exchange apply-action preservation'],
+  ['create_exchange_difference_refund_compat(', 'explicit Payment compatibility seam'],
+  ['with_order_change_apply_action(metadata, "claim")', 'claim apply-action preservation'],
+]) requireText(orchestration, value, label);
+for (const value of [
+  'OrderService::new(',
+  '.get_order_change(',
+  'PostOrderOrchestrationService::new(',
+  '.apply_exchange_order_change(',
+  '.apply_claim_order_change(',
+]) forbidText(ownerMethod, value, 'mounted owner-port orchestration concrete/re-entry dependency');
+const mountedApplyCommands = ownerMethod.match(/\.apply_change\(/g) ?? [];
+if (mountedApplyCommands.length < 3) {
+  failures.push(
+    `mounted owner-port orchestration: expected exchange, claim, and default Order apply commands, found ${mountedApplyCommands.length}`,
+  );
+}
+
+for (const [value, label] of [
+  ['PaymentService::new(db.clone())', 'remaining Payment collection compatibility'],
+  ['status: Some("captured".to_string())', 'captured collection semantics'],
+  ['order_id: Some(order_id)', 'order collection filter'],
+  ['PaymentOrchestrationService::new(db.clone())', 'remaining Payment provider compatibility'],
+  ['.create_refund(', 'difference refund creation'],
+  ['Some("exchange_difference".to_string())', 'default difference-refund reason'],
+]) requireText(compatRefund, value, label);
+for (const [value, label] of [
+  ['"order_change_id".to_string()', 'durable refund workflow identity'],
+  ['Value::String("exchange".to_string())', 'refund apply-action identity'],
+]) requireText(refundContext, value, label);
+for (const value of ['OrderService::new(', '.apply_order_change(']) {
+  forbidText(compatRefund, value, 'Payment compatibility helper must not own Order transition');
 }
 
 for (const [value, label] of [
@@ -135,9 +178,6 @@ for (const value of ['error = ?error', 'error.message', 'internal_message', 'err
   forbidText(portMapper, value, 'REST owner-port raw diagnostics');
 }
 
-// The later GraphQL slice may supersede the historical deferred scope, but must
-// reuse the same owner-port orchestration entrypoint rather than reintroduce a
-// concrete Order dependency.
 requireText(
   graphql,
   '.apply_order_change_with_owner_ports(',
@@ -157,7 +197,7 @@ forbidText(
 requireText(
   plan,
   '- [ ] Move remaining mounted Commerce REST/GraphQL construction of Product, Order,\n  Payment, and Fulfillment concrete services behind host-composed owner ports.',
-  'broad ecommerce topology P0 remains open',
+  'broad ecommerce topology P0 remains open for Payment compatibility',
 );
 
 for (const [value, label] of [
@@ -170,9 +210,11 @@ for (const [value, label] of [
 ]) requireText(record, value, label);
 
 if (failures.length > 0) {
-  console.error('Commerce REST admin order-change apply owner-port verification failed:');
+  console.error('Commerce admin order-change Order-owner verification failed:');
   for (const failure of failures) console.error(`✗ ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('✔ mounted REST admin order-change apply uses host-selected Order owner ports');
+console.log(
+  '✔ mounted REST/GraphQL order-change apply uses host-selected Order owner ports for exchange, claim, and default transitions; Payment difference-refund compatibility remains explicit',
+);

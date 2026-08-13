@@ -1,0 +1,131 @@
+name: Pages Consumer Properties Source Evidence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/pages-consumer-properties-source-evidence.yml"
+      - ".github/workflows/pages-published-metadata-browser-evidence.yml"
+      - "scripts/evidence/record-pages-consumer-properties-source-execution.mjs"
+      - "scripts/verify/verify-pages-consumer-properties-source-execution.mjs"
+      - "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md"
+      - "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json"
+      - "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json"
+      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json"
+      - "crates/rustok-pages/admin/src/metadata_properties.rs"
+      - "crates/rustok-pages/admin/src/model.rs"
+      - "crates/rustok-pages/admin/src/standalone_metadata.rs"
+      - "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs"
+      - "apps/next-admin/playwright.pages-published-metadata.config.ts"
+      - "apps/next-admin/tests/pages-published-metadata/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Consumer properties source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify consumer properties source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs
+      - name: Verify metadata revision isolation source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs
+      - name: Verify published metadata surface source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs
+      - name: Verify published metadata browser harness source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
+      - name: Verify published metadata browser workflow source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs
+      - name: Verify exact-main source execution contract
+        run: node scripts/verify/verify-pages-consumer-properties-source-execution.mjs
+
+  execution-evidence:
+    name: Consumer properties Rust source execution evidence
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-consumer-properties-source-evidence
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Inventory required test identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/pages-consumer-properties
+          cargo test --locked -p rustok-pages-admin --lib -- --list \
+            > target/pages-consumer-properties/test-list.txt
+          for marker in \
+            "standalone_metadata::tests::published_page_admits_registered_metadata_surface" \
+            "standalone_metadata::tests::non_published_or_missing_page_hides_registered_metadata_surface" \
+            "metadata_properties::tests::stale_metadata_revision_short_circuits_before_patch_transport" \
+            "metadata_properties::tests::metadata_save_is_document_free_and_preserves_dirty_fly_state"
+          do
+            grep -F -- "$marker" target/pages-consumer-properties/test-list.txt >/dev/null
+          done
+      - name: Execute published surface admission regression
+        run: cargo test --locked -p rustok-pages-admin published_page_admits_registered_metadata_surface -- --nocapture
+      - name: Execute hidden surface admission regression
+        run: cargo test --locked -p rustok-pages-admin non_published_or_missing_page_hides_registered_metadata_surface -- --nocapture
+      - name: Execute stale metadata revision regression
+        run: cargo test --locked -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport -- --nocapture
+      - name: Execute dirty Fly isolation regression
+        run: cargo test --locked -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state -- --nocapture
+      - name: Check Pages admin all targets
+        run: cargo check --locked -p rustok-pages-admin --all-targets
+      - name: Record bounded Rust source receipt
+        run: node scripts/evidence/record-pages-consumer-properties-source-execution.mjs
+      - name: Archive consumer properties source evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: pages-consumer-properties-source-${{ github.run_id }}-${{ github.sha }}
+          path: evidence/pages-consumer-properties/receipt.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  gate:
+    name: Consumer Properties Source Evidence Gate
+    if: always()
+    needs:
+      - source-contract
+      - execution-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require source and execution success
+        env:
+          SOURCE_RESULT: ${{ needs.source-contract.result }}
+          EXECUTION_RESULT: ${{ needs.execution-evidence.result }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_RESULT" = "success"
+          test "$EXECUTION_RESULT" = "success"

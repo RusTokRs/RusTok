@@ -73,8 +73,11 @@ impl TestDatabase {
         )
         .await?;
         create_product_migration_prerequisites(&migration).await?;
-        ProductMigrator::up(&migration, None).await?;
         let manager = SchemaManager::new(&migration);
+        for migration_step in rustok_channel::migrations::migrations() {
+            migration_step.up(&manager).await?;
+        }
+        ProductMigrator::up(&migration, None).await?;
         for migration_step in IndexModule.migrations() {
             migration_step.up(&manager).await?;
         }
@@ -545,9 +548,8 @@ CREATE TABLE taxonomy_terms (
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     UNIQUE (tenant_id, id)
 );
-CREATE TABLE channel_index_identity_generations (
-    tenant_id UUID PRIMARY KEY,
-    generation BIGINT NOT NULL CHECK (generation > 0)
+CREATE TABLE oauth_apps (
+    id UUID PRIMARY KEY
 );
 "#,
     )

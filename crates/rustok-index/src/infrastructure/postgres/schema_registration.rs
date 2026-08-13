@@ -361,7 +361,7 @@ async fn load_latest_version(
         .await
         .map_err(storage_error)?
         .map(|row| {
-            let version: i64 = row.try_get("", "schema_version").map_err(storage_error)?;
+            let version: i32 = row.try_get("", "schema_version").map_err(storage_error)?;
             let version = u32::try_from(version).map_err(|_| {
                 SchemaRegistrationError::Storage(
                     "stored schema version is outside the supported range".to_owned(),
