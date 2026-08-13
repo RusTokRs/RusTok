@@ -1,0 +1,74 @@
+{
+  "format": "pages_metadata_properties_registry_admission_source_v1",
+  "status": "source_ready_candidate_admission_pending",
+  "predecessor": {
+    "source_contract": "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
+    "source_format": "pages_consumer_properties_source_execution_source_v1",
+    "source_status": "source_ready_main_execution_pending",
+    "receipt_format": "pages_consumer_properties_source_execution_v1",
+    "receipt_status": "rust_source_execution_passed_browser_evidence_pending"
+  },
+  "candidate": {
+    "run_id": "31702550557",
+    "run_attempt": "1",
+    "source_commit": "a8bf89c642baa7d1e70bab8c3439fd5d19ed6d8f",
+    "artifact_id": "9181996810",
+    "artifact_name": "pages-consumer-properties-source-31702550557-a8bf89c642baa7d1e70bab8c3439fd5d19ed6d8f",
+    "artifact_digest": "sha256:901d0b483ea595bfe94e9874ae84fa323b4dc466af5e8ed4ad634144c9c9b013"
+  },
+  "run": {
+    "repository": "RusTokRs/RusTok",
+    "workflow": "Pages Consumer Properties Source Evidence",
+    "workflow_path": ".github/workflows/pages-consumer-properties-source-evidence.yml",
+    "event": "push",
+    "branch": "main",
+    "status": "completed",
+    "conclusion": "success"
+  },
+  "metadata_subset": {
+    "tests": [
+      "metadata_properties::tests::stale_metadata_revision_short_circuits_before_patch_transport",
+      "metadata_properties::tests::metadata_save_is_document_free_and_preserves_dirty_fly_state"
+    ],
+    "commands": [
+      "cargo test --locked -p rustok-pages-admin stale_metadata_revision_short_circuits_before_patch_transport -- --nocapture",
+      "cargo test --locked -p rustok-pages-admin metadata_save_is_document_free_and_preserves_dirty_fly_state -- --nocapture"
+    ],
+    "check": "cargo check --locked -p rustok-pages-admin --all-targets",
+    "browser_required": false
+  },
+  "target": {
+    "registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "registry_status": "boundary_ready",
+    "pointer": "/consumers/0/metadata_properties/executed_evidence",
+    "projection": "/consumers/0/metadata_properties",
+    "before": "pending",
+    "after": "verified"
+  },
+  "semantic_lineage": {
+    "registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "consumer_contract": "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
+    "ignored_key": "executed_evidence",
+    "unrelated_registry_drift_allowed": true,
+    "metadata_projection_drift_requires_new_execution": true
+  },
+  "files": {
+    "lib": "scripts/evidence/pages-metadata-properties-admission-lib.mjs",
+    "runner": "scripts/evidence/admit-pages-metadata-properties-registry-update.mjs",
+    "test": "scripts/evidence/admit-pages-metadata-properties-registry-update.test.mjs",
+    "verifier": "scripts/verify/verify-pages-metadata-properties-registry-admission.mjs",
+    "doc": "docs/modules/pages-metadata-properties-registry-admission-actualization-2026-08-14.md"
+  },
+  "output": {
+    "format": "pages_metadata_properties_registry_admission_v1",
+    "status": "metadata_properties_execution_admitted_registry_update_pending",
+    "path": "target/pages-metadata-properties-registry-admission.json"
+  },
+  "governance": {
+    "registry_mutation": false,
+    "provider_consumer_evidence_independent": true,
+    "browser_evidence_still_required_for_provider": true,
+    "terminal_inventory_recompute_after_registry_change": true,
+    "ffa_fba_promotion": false
+  }
+}
