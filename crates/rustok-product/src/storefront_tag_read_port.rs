@@ -31,8 +31,8 @@ pub struct ProductStorefrontTagHydrationItem {
 /// Product-owned post-page tag projection.
 ///
 /// Consumers provide only Product identities that were already selected by an authoritative page. Product
-/// remains responsible for product-tag relation ordering, Taxonomy requested/fallback name resolution,
-/// canonical-key fallback, and legacy metadata-tag compatibility.
+/// remains responsible for tenant-scoped product-tag relation ordering and Taxonomy requested/fallback name
+/// resolution. `product_tags` is the only Product tag attachment source.
 #[async_trait]
 pub trait ProductStorefrontTagReadPort: Send + Sync {
     async fn hydrate_storefront_product_tags(

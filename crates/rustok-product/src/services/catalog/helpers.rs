@@ -144,40 +144,16 @@ pub fn normalize_tag_names(tag_names: &[String]) -> Vec<String> {
     normalized
 }
 
-pub fn metadata_has_tags_field(metadata: &Value) -> bool {
-    metadata
+fn reject_reserved_tag_metadata(metadata: &Value) -> CommerceResult<()> {
+    if metadata
         .as_object()
-        .map(|object| object.contains_key("tags"))
-        .unwrap_or(false)
-}
-
-pub fn extract_metadata_tags(metadata: &Value) -> Vec<String> {
-    metadata
-        .get("tags")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.as_str().map(ToOwned::to_owned))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-pub fn strip_metadata_tags(mut metadata: Value) -> Value {
-    if let Some(object) = metadata.as_object_mut() {
-        object.remove("tags");
+        .is_some_and(|object| object.contains_key("tags"))
+    {
+        return Err(CommerceError::Validation(
+            "product metadata key `tags` is reserved; use the typed tags field".to_owned(),
+        ));
     }
-    metadata
-}
-
-pub fn normalize_metadata_tag_state(input_tags: &[String], metadata: &Value) -> Vec<String> {
-    let normalized_input_tags = normalize_tag_names(input_tags);
-    if !normalized_input_tags.is_empty() || !metadata_has_tags_field(metadata) {
-        return normalized_input_tags;
-    }
-
-    normalize_tag_names(&extract_metadata_tags(metadata))
+    Ok(())
 }
 
 pub fn normalize_shipping_profile_slug(value: &str) -> Option<String> {
@@ -232,9 +208,8 @@ pub fn normalize_create_product_metadata(
     shipping_profile_slug: Option<String>,
     metadata: Value,
 ) -> (Value, Option<Vec<String>>) {
-    let normalized_tags = normalize_metadata_tag_state(&input_tags, &metadata);
-    let metadata =
-        apply_shipping_profile_to_metadata(strip_metadata_tags(metadata), shipping_profile_slug);
+    let normalized_tags = normalize_tag_names(&input_tags);
+    let metadata = apply_shipping_profile_to_metadata(metadata, shipping_profile_slug);
 
     (metadata, Some(normalized_tags))
 }
@@ -250,23 +225,16 @@ pub fn normalize_update_product_metadata(
             let normalized_tags = normalize_tag_names(&tags);
             let metadata = metadata.unwrap_or(existing_metadata);
             Some((
-                apply_shipping_profile_to_metadata(strip_metadata_tags(metadata), profile_slug),
+                apply_shipping_profile_to_metadata(metadata, profile_slug),
                 Some(normalized_tags),
             ))
         }
-        (None, profile_slug, Some(metadata)) => {
-            let normalized_tags = metadata_has_tags_field(&metadata)
-                .then(|| normalize_tag_names(&extract_metadata_tags(&metadata)));
-            Some((
-                apply_shipping_profile_to_metadata(strip_metadata_tags(metadata), profile_slug),
-                normalized_tags,
-            ))
-        }
+        (None, profile_slug, Some(metadata)) => Some((
+            apply_shipping_profile_to_metadata(metadata, profile_slug),
+            None,
+        )),
         (None, Some(profile_slug), None) => Some((
-            apply_shipping_profile_to_metadata(
-                strip_metadata_tags(existing_metadata),
-                Some(profile_slug),
-            ),
+            apply_shipping_profile_to_metadata(existing_metadata, Some(profile_slug)),
             None,
         )),
         (None, None, None) => None,
@@ -590,6 +558,7 @@ pub async fn prepare_product_custom_fields_for_create<C>(
 where
     C: ConnectionTrait,
 {
+    reject_reserved_tag_metadata(&payload)?;
     let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
     let (reserved_payload, flex_payload) = split_product_metadata_payload(&schema, &payload);
     flex::prepare_attached_values_create(schema, Some(Value::Object(flex_payload)), locale)
@@ -614,6 +583,7 @@ pub async fn prepare_product_custom_fields_for_update<C>(
 where
     C: ConnectionTrait,
 {
+    reject_reserved_tag_metadata(&payload)?;
     let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
     let (reserved_patch, flex_payload) = split_product_metadata_payload(&schema, &payload);
     let (existing_reserved_metadata, existing_flex_metadata) =
@@ -653,7 +623,6 @@ pub async fn resolve_product_metadata<C>(
 where
     C: ConnectionTrait,
 {
-    let shared_metadata = strip_metadata_tags(metadata.clone());
     let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
     flex::resolve_attached_payload(
         conn,
@@ -663,7 +632,7 @@ where
             entity_id: product_id,
         },
         schema,
-        &shared_metadata,
+        metadata,
         locale,
         fallback_locale,
     )
@@ -855,7 +824,7 @@ where
 #[cfg(test)]
 mod product_metadata_tests {
     use super::{
-        merge_product_metadata_patch, merge_reserved_product_metadata,
+        merge_product_metadata_patch, merge_reserved_product_metadata, reject_reserved_tag_metadata,
         split_product_metadata_payload,
     };
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
@@ -898,6 +867,15 @@ mod product_metadata_tests {
         );
         assert_eq!(flex.get("fit"), Some(&json!("regular")));
         assert_eq!(flex.get("material"), Some(&json!("linen")));
+    }
+
+    #[test]
+    fn metadata_tags_are_a_rejected_reserved_key() {
+        let error = reject_reserved_tag_metadata(&json!({"tags": ["sale"]}))
+            .expect_err("metadata tags must be rejected");
+        assert!(error.to_string().contains("typed tags field"));
+        reject_reserved_tag_metadata(&json!({"source": "erp"}))
+            .expect("unrelated metadata should remain valid");
     }
 
     #[test]
