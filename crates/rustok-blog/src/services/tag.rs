@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, JoinType, QueryFilter, QueryOrder, RelationTrait,
-    TransactionTrait,
+    DatabaseTransaction, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
+    RelationTrait, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
