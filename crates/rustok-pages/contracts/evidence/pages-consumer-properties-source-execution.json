@@ -28,6 +28,7 @@
     },
     "published_browser_execution": {
       "path": "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+      "workflow": ".github/workflows/pages-published-metadata-browser-evidence.yml",
       "required_status": "source_ready_maintainer_execution_pending",
       "browser_execution_required_before_consumer_admission": true
     }
@@ -72,6 +73,7 @@
     "scripts/evidence/record-pages-consumer-properties-source-execution.mjs",
     "scripts/verify/verify-pages-consumer-properties-source-execution.mjs",
     ".github/workflows/pages-consumer-properties-source-evidence.yml",
+    ".github/workflows/pages-published-metadata-browser-evidence.yml",
     "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md",
     "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
     "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
@@ -85,7 +87,8 @@
     "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
     "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs",
     "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs",
-    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs"
+    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs"
   ],
   "governance_boundary": {
     "execution_packet_is_not_consumer_contract_update": true,
