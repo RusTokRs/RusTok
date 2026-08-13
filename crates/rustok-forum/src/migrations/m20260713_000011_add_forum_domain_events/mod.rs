@@ -6,8 +6,13 @@ mod postgres_up;
 mod sqlite_down;
 mod sqlite_up;
 
-#[derive(DeriveMigrationName)]
 pub struct Migration;
+
+impl MigrationName for Migration {
+    fn name(&self) -> &str {
+        "m20260713_000011_add_forum_domain_events"
+    }
+}
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {

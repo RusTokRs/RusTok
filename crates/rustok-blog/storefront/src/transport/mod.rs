@@ -1,10 +1,18 @@
+#[cfg(not(feature = "comment-island"))]
 pub mod graphql_adapter;
 pub mod native_server_adapter;
 
+#[cfg(not(feature = "comment-island"))]
 use crate::core::BlogStorefrontFetchRequest;
-use crate::model::{BlogCommentCreateRequest, BlogCommentDetail, StorefrontBlogData};
+#[cfg(not(feature = "comment-island"))]
+use crate::model::StorefrontBlogData;
+use crate::model::{BlogCommentCreateRequest, BlogCommentDetail};
 use leptos::prelude::ServerFnError;
-use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_transport};
+use rustok_ui_transport::UiTransportError;
+#[cfg(not(feature = "comment-island"))]
+use rustok_ui_transport::UiTransportPath;
+#[cfg(not(feature = "comment-island"))]
+use rustok_ui_transport::execute_selected_transport;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -33,6 +41,7 @@ impl From<ServerFnError> for ApiError {
 
 pub type BlogTransportError = UiTransportError;
 
+#[cfg(not(feature = "comment-island"))]
 fn selected_transport_path() -> UiTransportPath {
     #[cfg(any(feature = "ssr", feature = "hydrate"))]
     {
@@ -44,6 +53,7 @@ fn selected_transport_path() -> UiTransportPath {
     }
 }
 
+#[cfg(not(feature = "comment-island"))]
 pub(crate) fn configured_tenant_slug() -> Option<String> {
     [
         "RUSTOK_TENANT_SLUG",
@@ -63,6 +73,7 @@ pub(crate) fn configured_tenant_slug() -> Option<String> {
     })
 }
 
+#[cfg(not(feature = "comment-island"))]
 pub async fn fetch_blog(
     request: BlogStorefrontFetchRequest,
     comments_page: u64,
@@ -81,14 +92,24 @@ pub async fn create_comment(
     token: Option<String>,
     request: BlogCommentCreateRequest,
 ) -> Result<BlogCommentDetail, BlogTransportError> {
-    let native_request = request.clone();
-    execute_selected_transport(
-        "blog_comment_create",
-        selected_transport_path(),
-        move || native_server_adapter::create_comment(native_request),
-        move || graphql_adapter::create_comment(token, request),
-    )
-    .await
+    #[cfg(feature = "comment-island")]
+    {
+        let _ = token;
+        return native_server_adapter::create_comment(request)
+            .await
+            .map_err(|error| UiTransportError::native("blog_comment_create", error));
+    }
+    #[cfg(not(feature = "comment-island"))]
+    {
+        let native_request = request.clone();
+        execute_selected_transport(
+            "blog_comment_create",
+            selected_transport_path(),
+            move || native_server_adapter::create_comment(native_request),
+            move || graphql_adapter::create_comment(token, request),
+        )
+        .await
+    }
 }
 
 #[cfg(test)]

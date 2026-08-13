@@ -11,11 +11,11 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, manifest_hash::hash_man
 #[cfg(feature = "server")]
 use rustok_translation::MachineTranslationPortFactory;
 use rustok_translation::{
-    MachineTranslationAttemptEvidence, MachineTranslationBatchRequest,
-    MachineTranslationBatchResult, MachineTranslationDiagnostic, MachineTranslationEstimate,
-    MachineTranslationExecutionEvidence, MachineTranslationExecutionStatus,
-    MachineTranslationExecutionStatusEvidence, MachineTranslationGlossaryTerm,
-    MachineTranslationMemorySuggestion, MachineTranslationPort,
+    MachineTranslationAttemptEvidence, MachineTranslationBatchExecution,
+    MachineTranslationBatchRequest, MachineTranslationBatchResult, MachineTranslationDiagnostic,
+    MachineTranslationEstimate, MachineTranslationExecutionEvidence,
+    MachineTranslationExecutionStatus, MachineTranslationExecutionStatusEvidence,
+    MachineTranslationGlossaryTerm, MachineTranslationMemorySuggestion, MachineTranslationPort,
     MachineTranslationProviderDescriptor, MachineTranslationProviderHealth,
     MachineTranslationProviderState, MachineTranslationUnit, MachineTranslationUnitResult,
     MachineTranslationUsage,
@@ -271,7 +271,7 @@ impl MachineTranslationPort for AiMachineTranslationAdapter {
         &self,
         context: PortContext,
         request: MachineTranslationBatchRequest,
-    ) -> Result<MachineTranslationBatchResult, PortError> {
+    ) -> Result<MachineTranslationBatchExecution, PortError> {
         let structured_request = self.structured_request(&context, &request)?;
         let expected_binding = structured_request.binding()?;
         let execution = self.ai.execute(context, structured_request).await?;
@@ -334,7 +334,7 @@ impl MachineTranslationPort for AiMachineTranslationAdapter {
                 "machine translation recovery resolved an execution for another request",
             ));
         }
-        map_execution(&self.descriptor, &request, execution).map(Some)
+        map_completed_execution(&self.descriptor, &request, execution).map(Some)
     }
 
     async fn cancel_execution(
@@ -416,7 +416,7 @@ fn map_execution(
     descriptor: &MachineTranslationProviderDescriptor,
     request: &MachineTranslationBatchRequest,
     execution: AiStructuredTaskExecution,
-) -> Result<MachineTranslationBatchResult, PortError> {
+) -> Result<MachineTranslationBatchExecution, PortError> {
     if execution.execution_id.trim().is_empty()
         || execution.execution_id.len() > 256
         || !is_digest(&execution.request_digest)
@@ -426,6 +426,23 @@ fn map_execution(
             "machine translation execution identity evidence is invalid",
         ));
     }
+    if matches!(
+        execution.status,
+        AiStructuredTaskStatus::Queued | AiStructuredTaskStatus::Running
+    ) {
+        return Ok(MachineTranslationBatchExecution::InProgress(
+            map_execution_status(Some(&execution), false),
+        ));
+    }
+    map_completed_execution(descriptor, request, execution)
+        .map(MachineTranslationBatchExecution::Completed)
+}
+
+fn map_completed_execution(
+    descriptor: &MachineTranslationProviderDescriptor,
+    request: &MachineTranslationBatchRequest,
+    execution: AiStructuredTaskExecution,
+) -> Result<MachineTranslationBatchResult, PortError> {
     let output = execution.validate_completed_output(1_048_576)?;
     let output: MachineTranslationTaskOutput =
         serde_json::from_value(output.clone()).map_err(|_| {
@@ -880,6 +897,7 @@ mod tests {
         output: Mutex<Option<Value>>,
         resolved: Mutex<Option<AiStructuredTaskExecution>>,
         execution_binding: Mutex<Option<rustok_ai::AiStructuredTaskRequestBinding>>,
+        execution: Mutex<Option<AiStructuredTaskExecution>>,
     }
 
     #[async_trait]
@@ -917,13 +935,16 @@ mod tests {
             _context: PortContext,
             request: AiStructuredTaskRequest,
         ) -> Result<AiStructuredTaskExecution, PortError> {
+            self.requests.lock().unwrap().push(request.clone());
+            if let Some(execution) = self.execution.lock().unwrap().clone() {
+                return Ok(execution);
+            }
             let binding = self
                 .execution_binding
                 .lock()
                 .unwrap()
                 .clone()
                 .unwrap_or(request.binding()?);
-            self.requests.lock().unwrap().push(request);
             Ok(AiStructuredTaskExecution {
                 execution_id: "execution-a".to_string(),
                 request_digest: "c".repeat(64),
@@ -1212,7 +1233,10 @@ mod tests {
         }));
         let adapter = AiMachineTranslationAdapter::new(ai.clone());
 
-        let result = adapter.translate_batch(context(), request()).await.unwrap();
+        let execution = adapter.translate_batch(context(), request()).await.unwrap();
+        let MachineTranslationBatchExecution::Completed(result) = execution else {
+            panic!("expected a completed machine translation result");
+        };
 
         assert!(result.review_required);
         assert_eq!(result.units[0].translated_value, "Hallo {name}");
@@ -1224,6 +1248,177 @@ mod tests {
             AiTaskDataClassification::TenantPrivate
         );
         assert!(requests[0].input.get("policy").is_some());
+    }
+
+    #[tokio::test]
+    async fn maps_queued_or_running_execution_to_typed_in_progress_result() {
+        for status in [
+            AiStructuredTaskStatus::Queued,
+            AiStructuredTaskStatus::Running,
+        ] {
+            let ai = Arc::new(RecordingAiPort::default());
+            let request = request();
+            let mut execution = completed_execution(&request);
+            execution.status = status;
+            execution.output = None;
+            execution.attempts.clear();
+            execution.usage = None;
+            *ai.execution.lock().unwrap() = Some(execution);
+            let adapter = AiMachineTranslationAdapter::new(ai.clone());
+
+            let outcome = adapter
+                .translate_batch(context(), request)
+                .await
+                .expect("in-flight execution must remain a typed polling outcome");
+            let MachineTranslationBatchExecution::InProgress(evidence) = outcome else {
+                panic!("expected an in-progress machine translation result");
+            };
+            let expected_status = match status {
+                AiStructuredTaskStatus::Queued => MachineTranslationExecutionStatus::Queued,
+                AiStructuredTaskStatus::Running => MachineTranslationExecutionStatus::Running,
+                _ => unreachable!("test only supplies an in-progress AI status"),
+            };
+            assert_eq!(evidence.status, expected_status);
+            assert_eq!(evidence.execution_id.as_deref(), Some("execution-a"));
+            assert_eq!(ai.requests.lock().unwrap().len(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn preserves_lossless_scalar_profiles_and_rejects_structural_profiles() {
+        let ai = Arc::new(RecordingAiPort::default());
+        *ai.output.lock().unwrap() = Some(json!({
+            "units": [
+                {
+                    "unitId": "plain",
+                    "translatedValue": "Hallo 😀",
+                    "protectedTokens": [],
+                    "diagnostics": []
+                },
+                {
+                    "unitId": "seo",
+                    "translatedValue": "  Suche {brand}\r\n",
+                    "protectedTokens": ["{brand}"],
+                    "diagnostics": []
+                },
+                {
+                    "unitId": "scalar",
+                    "translatedValue": "Значение {id}",
+                    "protectedTokens": ["{id}"],
+                    "diagnostics": []
+                },
+                {
+                    "unitId": "template",
+                    "translatedValue": "Hallo {name}",
+                    "protectedTokens": ["{name}"],
+                    "diagnostics": []
+                }
+            ]
+        }));
+        let adapter = AiMachineTranslationAdapter::new(ai.clone());
+        let mut request = request();
+        request.units = vec![
+            MachineTranslationUnit {
+                unit_id: "plain".to_string(),
+                field_key: "plain".to_string(),
+                source_value: "Hello 😀".to_string(),
+                source_hash: "1".repeat(64),
+                source_revision: "revision-a".to_string(),
+                profile: TranslationValueProfile::PlainText,
+                strategy: TranslationStrategy::Translate,
+                classification: TranslationDataClassification::TenantPrivate,
+                ai_export_allowed: true,
+                max_characters: Some(200),
+                preserves_whitespace: false,
+                protected_tokens: Vec::new(),
+            },
+            MachineTranslationUnit {
+                unit_id: "seo".to_string(),
+                field_key: "seo".to_string(),
+                source_value: "  Search {brand}\r\n".to_string(),
+                source_hash: "2".repeat(64),
+                source_revision: "revision-a".to_string(),
+                profile: TranslationValueProfile::SeoText,
+                strategy: TranslationStrategy::TranslateWithPlaceholders,
+                classification: TranslationDataClassification::TenantPrivate,
+                ai_export_allowed: true,
+                max_characters: Some(200),
+                preserves_whitespace: true,
+                protected_tokens: vec!["{brand}".to_string()],
+            },
+            MachineTranslationUnit {
+                unit_id: "scalar".to_string(),
+                field_key: "scalar".to_string(),
+                source_value: "Value {id}".to_string(),
+                source_hash: "3".repeat(64),
+                source_revision: "revision-a".to_string(),
+                profile: TranslationValueProfile::LocalizedScalar,
+                strategy: TranslationStrategy::TranslateWithPlaceholders,
+                classification: TranslationDataClassification::TenantPrivate,
+                ai_export_allowed: true,
+                max_characters: Some(200),
+                preserves_whitespace: false,
+                protected_tokens: vec!["{id}".to_string()],
+            },
+            MachineTranslationUnit {
+                unit_id: "template".to_string(),
+                field_key: "template".to_string(),
+                source_value: "Hello {name}".to_string(),
+                source_hash: "4".repeat(64),
+                source_revision: "revision-a".to_string(),
+                profile: TranslationValueProfile::TemplateText,
+                strategy: TranslationStrategy::TranslateWithPlaceholders,
+                classification: TranslationDataClassification::TenantPrivate,
+                ai_export_allowed: true,
+                max_characters: Some(200),
+                preserves_whitespace: false,
+                protected_tokens: vec!["{name}".to_string()],
+            },
+        ];
+
+        let execution = adapter
+            .translate_batch(context(), request.clone())
+            .await
+            .expect("lossless scalar profile batch");
+        let MachineTranslationBatchExecution::Completed(result) = execution else {
+            panic!("expected a completed lossless scalar profile batch");
+        };
+        assert_eq!(
+            result
+                .units
+                .iter()
+                .map(|unit| unit.unit_id.as_str())
+                .collect::<Vec<_>>(),
+            ["plain", "seo", "scalar", "template"]
+        );
+        assert_eq!(result.units[1].translated_value, "  Suche {brand}\r\n");
+        assert_eq!(result.units[2].translated_value, "Значение {id}");
+        assert!(result.review_required);
+        {
+            let sent = ai.requests.lock().unwrap();
+            let sent_units = sent[0].input["units"].as_array().expect("task units");
+            assert_eq!(sent_units.len(), 4);
+            assert_eq!(sent_units[0]["profile"], "plain_text");
+            assert_eq!(sent_units[1]["profile"], "seo_text");
+            assert_eq!(sent_units[2]["profile"], "localized_scalar");
+            assert_eq!(sent_units[3]["profile"], "template_text");
+        }
+
+        for profile in [
+            TranslationValueProfile::Richtext,
+            TranslationValueProfile::PageBuilderText,
+        ] {
+            let mut structural = request.clone();
+            structural.units[0].profile = profile;
+            assert_eq!(
+                adapter
+                    .translate_batch(context(), structural)
+                    .await
+                    .expect_err("unsegmented structural profile must be rejected")
+                    .code,
+                "translation.machine.profile_unsupported"
+            );
+        }
     }
 
     #[tokio::test]

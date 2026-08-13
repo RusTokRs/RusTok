@@ -17,9 +17,8 @@ registerStorefrontModule({
   moduleSlug: "blog",
   slot: "home:afterHero",
   order: 20,
-  render: ({ graphql, tenantId, tenantSlug, locale, searchParams }) => (
+  render: ({ tenantId, tenantSlug, locale, searchParams }) => (
     <BlogSection
-      graphql={graphql}
       tenantId={tenantId}
       tenantSlug={tenantSlug}
       locale={locale}

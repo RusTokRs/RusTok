@@ -24,7 +24,7 @@ use super::{
         CreateTranslationJobInput, CreateTranslationWorkflowNoteInput,
         GenerateMachineTranslationProposalInput, ImportTranslationItemInput,
         MachineTranslationCancellation, MachineTranslationEstimate, MachineTranslationProposal,
-        ProcessTranslationInterchangeImportArtifactInput,
+        MachineTranslationProposalOutcome, ProcessTranslationInterchangeImportArtifactInput,
         RecoverMachineTranslationOperationInput as GraphqlRecoverMachineTranslationOperationInput,
         RecoverTranslationApplyInput, ReplaceTranslationGlossaryTermsInput,
         ReplaceTranslationPolicyInput, ResolveTranslationWorkflowNoteInput,
@@ -450,7 +450,7 @@ impl TranslationMutation {
         &self,
         ctx: &Context<'_>,
         input: GenerateMachineTranslationProposalInput,
-    ) -> Result<MachineTranslationProposal> {
+    ) -> Result<MachineTranslationProposalOutcome> {
         let mut context =
             write_port_context(ctx, "generate-machine-proposal", input.idempotency_key)?;
         context.deadline_ms = Some(120_000);

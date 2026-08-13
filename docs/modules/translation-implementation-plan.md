@@ -36,7 +36,7 @@ operations, not request-locale selection.
 
 ## Planning status
 
-This is the active cross-cutting implementation plan. As of 2026-08-09:
+This is the active cross-cutting implementation plan. As of 2026-08-13:
 
 - the dependency boundary for machine translation now exists:
   `rustok-translation` owns `MachineTranslationPort`, `rustok-ai` owns
@@ -51,7 +51,10 @@ This is the active cross-cutting implementation plan. As of 2026-08-09:
   slots, per-attempt price snapshots, and actual token/cost evidence; ordered
   atomic terminal settlement and accounting-aware expired-lease recovery are
   implemented; the private runtime now covers ordered inference/fallback and
-  cancellation/deadline observation. Authenticated AES-256-GCM transient-result
+  cancellation/deadline observation. Concurrent submissions with the same
+  owner/idempotency key coalesce onto one running provider execution, and a
+  terminal same-key replay returns the stored result without another billable
+  call. Authenticated AES-256-GCM transient-result
   storage now commits with successful attempt/accounting evidence, supports
   tenant-scoped retained-key replay, and expires without re-billing.
   Tenant accounting-policy provisioning, deployment keyring publication, and
@@ -1267,11 +1270,21 @@ risk, and required data-policy review rather than from module count alone.
   exclusion, quotas, cost estimate, cancellation, and content-free audit have
   deterministic coverage. Live external-provider outage/restart evidence
   remains required.
-- [ ] Same-key/same-payload replay, same-key/different-payload conflict, invalid
-  structured output, quota exhaustion, and non-retryable rejection are tested.
-- [ ] AI persistence contains no raw provider payload or unnecessary full
-  source packet, and the adapter imports no owner service/entity.
-- [ ] Every AI result remains review-required.
+- [x] Same-key/same-payload replay (including concurrent coalescing),
+  same-key/different-payload conflict, invalid structured output, quota
+  exhaustion, and non-retryable rejection are covered by deterministic tests.
+  A queued or running same-key execution is exposed through the typed
+  `MachineTranslationBatchExecution::InProgress` result and Translation returns
+  `MachineProposalOutcome::InProgress` with the durable operation identifier,
+  so callers poll it instead of issuing another provider call.
+- [x] Structured AI persistence contains no open raw provider payload or full
+  source packet: deterministic database evidence reads execution, attempt, and
+  result rows, verifies that source and provider-response markers remain out
+  of open ledger evidence, and verifies that retained terminal output is
+  AES-GCM ciphertext. The adapter's static boundary forbids owner
+  service/entity persistence imports.
+- [x] Every AI result remains review-required; both the bridge and Translation
+  workflow reject a missing review requirement.
 
 ### Gate D — before “all platform translation” is claimed
 

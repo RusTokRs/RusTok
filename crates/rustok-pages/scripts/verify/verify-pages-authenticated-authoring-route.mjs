@@ -32,7 +32,10 @@ const storefrontCore = read("apps/storefront/src/modules/core.rs");
 const storefrontCargo = read("apps/storefront/Cargo.toml");
 const storefrontBuild = read("apps/storefront/build.rs");
 const bootstrap = read("apps/storefront/public/assets/pages-inline-edit-bootstrap.js");
-const builder = read("apps/storefront/scripts/build-pages-inline-edit-client.mjs");
+const builder = [
+  read("apps/storefront/scripts/build-pages-inline-edit-client.mjs"),
+  read("apps/storefront/scripts/build-wasm-client.mjs"),
+].join("\n");
 const auth = read("apps/server/src/middleware/auth_context.rs");
 const serverCargo = read("apps/server/Cargo.toml");
 const consumer = read("crates/rustok-pages/storefront/src/inline_edit.rs");

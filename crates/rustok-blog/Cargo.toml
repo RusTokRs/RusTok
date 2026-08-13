@@ -45,4 +45,5 @@ tokio.workspace = true
 
 [features]
 default = []
+comment-assets = []
 proptest = ["dep:proptest"]

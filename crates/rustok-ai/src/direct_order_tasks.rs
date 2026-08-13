@@ -7,8 +7,9 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::direct::{
-    DirectExecutionRequest, DirectExecutionResult, DirectTaskHandler, direct_operator_port_context,
-    explain_result, generate_order_analytics, generate_order_ops_assistant,
+    DirectExecutionRequest, DirectExecutionResult, DirectExplanationRequest, DirectTaskHandler,
+    direct_operator_port_context, explain_result, generate_order_analytics,
+    generate_order_ops_assistant,
 };
 use crate::model::{AiOrderAnalyticsTaskInput, AiOrderOpsAssistantTaskInput};
 use crate::model::{DirectExecutionTarget, ToolTrace};
@@ -125,16 +126,16 @@ impl DirectTaskHandler for OrderAnalyticsHandler {
             error_message: None,
             created_at: Utc::now(),
         };
-        let explanation = explain_result(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            input.assistant_prompt.as_deref(),
-            &summary,
-            &operation_payload,
-            request.stream_emitter.clone(),
-        )
+        let explanation = explain_result(DirectExplanationRequest {
+            provider: &request.provider,
+            provider_config: &request.provider_config,
+            system_prompt: request.system_prompt.as_deref(),
+            locale: request.resolved_locale.as_str(),
+            assistant_prompt: input.assistant_prompt.as_deref(),
+            summary: &summary,
+            payload: &operation_payload,
+            stream_emitter: request.stream_emitter.clone(),
+        })
         .await;
         Ok(DirectExecutionResult {
             execution_target: DirectExecutionTarget::Orders,
@@ -201,16 +202,16 @@ impl DirectTaskHandler for OrderOpsAssistantHandler {
             error_message: None,
             created_at: Utc::now(),
         };
-        let explanation = explain_result(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            input.assistant_prompt.as_deref(),
-            &summary,
-            &operation_payload,
-            request.stream_emitter.clone(),
-        )
+        let explanation = explain_result(DirectExplanationRequest {
+            provider: &request.provider,
+            provider_config: &request.provider_config,
+            system_prompt: request.system_prompt.as_deref(),
+            locale: request.resolved_locale.as_str(),
+            assistant_prompt: input.assistant_prompt.as_deref(),
+            summary: &summary,
+            payload: &operation_payload,
+            stream_emitter: request.stream_emitter.clone(),
+        })
         .await;
         Ok(DirectExecutionResult {
             execution_target: DirectExecutionTarget::Orders,

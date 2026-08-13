@@ -22,6 +22,8 @@ pub mod graphql;
 pub mod locale;
 pub mod migrations;
 pub mod richtext;
+#[cfg(feature = "richtext-assets")]
+pub mod richtext_assets;
 pub mod services;
 pub mod state_machine;
 

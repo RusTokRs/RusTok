@@ -10,6 +10,9 @@ hydrate = [
   "leptos/hydrate",
   "rustok-comments-storefront-support/hydrate",
 ]
+comment-island = [
+  "hydrate",
+]
 ssr = [
   "leptos/ssr",
   "dep:leptos_axum",

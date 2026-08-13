@@ -24,7 +24,6 @@ fn anonymous_pages_host_source_has_no_executable_client_bootstrap() {
 
     for forbidden in [
         "<script src=",
-        "<script type=\"module\"",
         "rel=\"modulepreload\"",
         ".wasm",
         "/pkg/",
@@ -56,4 +55,16 @@ fn anonymous_pages_host_source_has_no_executable_client_bootstrap() {
             "anonymous storefront host source unexpectedly contains client/authoring marker {forbidden}"
         );
     }
+
+    assert!(document.contains("data-blog-comment-island=\"true\""));
+    assert!(document.contains("csp_nonce.map"));
+    assert!(document.contains("/assets/blog-comment-bootstrap.js"));
+}
+
+#[test]
+fn anonymous_document_call_does_not_receive_a_script_nonce() {
+    assert!(
+        HOST_SOURCE
+            .contains("render_document(locale, \"RusToK Storefront\", \"\", app_html, None)")
+    );
 }

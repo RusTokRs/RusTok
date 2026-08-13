@@ -60,6 +60,8 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
   - `ai_structured_budgets`
   - `ai_structured_provider_policies`
   - `ai_structured_reservations`
+  - `ai_structured_cancellation_intents`
+  - `ai_structured_results`
 - owner-owned GraphQL query/mutation/subscription surface in `crates/rustok-ai/src/graphql` for providers,
   tool profiles, sessions, traces and approvals;
 - server-side orchestration service `AiManagementService`;
@@ -148,6 +150,11 @@ ignored by default, and must be run only against a provider/model where a
 billable structured request is approved. The presence of the harness is not
 live evidence; retain the deployment run output separately before clearing the
 activation gate.
+
+Deterministic database evidence reads the persisted execution, attempt, and
+result rows after a structured translation request. It proves that source and
+provider-response markers do not occur in the open ledger evidence and that
+the retained terminal result is AES-GCM ciphertext rather than plaintext.
 
 ## Responsibility Zone
 

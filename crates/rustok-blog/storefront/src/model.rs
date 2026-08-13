@@ -1,18 +1,21 @@
 use rustok_api::{RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
 
+#[cfg(not(feature = "comment-island"))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StorefrontBlogData {
     pub selected_post: Option<BlogPostDetail>,
     pub posts: BlogPostList,
 }
 
+#[cfg(not(feature = "comment-island"))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostList {
     pub items: Vec<BlogPostListItem>,
     pub total: u64,
 }
 
+#[cfg(not(feature = "comment-island"))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostListItem {
     pub id: String,
@@ -26,6 +29,7 @@ pub struct BlogPostListItem {
     pub published_at: Option<String>,
 }
 
+#[cfg(not(feature = "comment-island"))]
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum BlogCommentsAvailability {
@@ -35,6 +39,7 @@ pub enum BlogCommentsAvailability {
     Timeout,
 }
 
+#[cfg(not(feature = "comment-island"))]
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct BlogCommentList {
     #[serde(default)]
@@ -45,6 +50,7 @@ pub struct BlogCommentList {
     pub total: u64,
 }
 
+#[cfg(not(feature = "comment-island"))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogCommentListItem {
     pub id: String,
@@ -96,6 +102,7 @@ pub struct BlogCommentDetail {
     pub updated_at: String,
 }
 
+#[cfg(not(feature = "comment-island"))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostDetail {
     pub id: String,

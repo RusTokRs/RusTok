@@ -41,13 +41,15 @@ async fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
     let database = Database::connect(database_url).await?;
     match command {
         Command::Up => {
-            Migrator::up(&database, None).await?;
-            let pending = Migrator::get_pending_migrations(&database).await?;
-            if !pending.is_empty() {
-                return Err(invalid_input(format!(
-                    "migration run completed with {} migration(s) still pending",
-                    pending.len(),
-                )));
+            loop {
+                let pending = Migrator::get_pending_migrations(&database).await?;
+                let Some(next) = pending.first() else {
+                    break;
+                };
+                let migration_name = next.name().to_string();
+                Migrator::up(&database, Some(1)).await.map_err(|error| {
+                    io::Error::other(format!("migration {migration_name} failed: {error}"))
+                })?;
             }
             println!("all migrations are applied");
         }

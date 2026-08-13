@@ -57,9 +57,18 @@ Translation-owned lazy factory is published without host capability imports
 and resolves to no machine provider when the deployment keyring is absent.
 Deterministic composed runtime evidence covers ordered provider fallback,
 fail-closed JSON Schema enforcement, sanitized failure recording, exact attempt
-usage/cost settlement, request-hash conflict rejection, in-flight cancellation
-with reservation release, quota rejection before provider execution, and
-encrypted restart replay without another provider call or bill.
+usage/cost settlement, request-hash conflict rejection, same-key concurrent
+execution coalescing, in-flight cancellation with reservation release, quota
+rejection before provider execution, and encrypted restart replay without
+another provider call or bill.
+The same deterministic database evidence reads the persisted structured
+execution, attempt, and result rows: source and provider-response markers stay
+out of open ledger evidence, while the retained terminal result is AES-GCM
+ciphertext rather than plaintext.
+If a same-key execution is still queued or running, the bridge returns the
+typed `MachineTranslationBatchExecution::InProgress` result with the durable AI
+execution status. Translation returns its own operation identifier for polling
+instead of creating another provider call.
 Configuration-level provider unavailability also produces typed degraded
 health. Live external-provider runtime failure/restart evidence remains open;
 `rustok-ai` now provides an

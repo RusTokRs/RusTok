@@ -401,10 +401,12 @@ async fn build_ws_connection_data(
     Ok(data)
 }
 
+const GRAPHQL_HTTP_PATH: &str = "/api/graphql";
+
 pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
         .route(
-            "/api/graphql/",
+            GRAPHQL_HTTP_PATH,
             get(graphql_playground).post(graphql_handler),
         )
         .route("/api/graphql/schema.graphql", get(graphql_schema_sdl))
@@ -413,7 +415,7 @@ pub fn router() -> crate::routes::ServerRouter {
 
 #[cfg(test)]
 mod tests {
-    use super::{graphql_http_response, graphql_permissions};
+    use super::{GRAPHQL_HTTP_PATH, graphql_http_response, graphql_permissions};
     use crate::{
         common::settings::RustokSettings, middleware::tenant,
         services::server_runtime_context::ServerRuntimeContext,
@@ -424,6 +426,11 @@ mod tests {
     use rustok_migrations::Migrator;
     use sea_orm::{ActiveModelTrait, Set};
     use serial_test::serial;
+
+    #[test]
+    fn graphql_router_uses_the_canonical_http_path() {
+        assert_eq!(GRAPHQL_HTTP_PATH, "/api/graphql");
+    }
 
     #[test]
     fn graphql_http_response_preserves_extension_headers() {

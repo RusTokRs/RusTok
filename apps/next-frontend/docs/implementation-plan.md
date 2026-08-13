@@ -76,18 +76,23 @@ Develop `apps/next-frontend` as the primary Next.js storefront with clear API/UI
   comment previews, and composes the Comments-owned React editor with the
   Blog-bound GraphQL mutation. The host passes route locale and query state
   through `StorefrontRenderContext`; the browser never selects an arbitrary
-  Comments target. Forum storefront, full comment-body rendering, and mounted
-  auth/save/error/browser evidence remain open.
+  Comments target. Authenticated Chromium evidence now covers SSR, the shared
+  iframe and toolbar, canonical document submission, and moderation-pending
+  PostgreSQL persistence. Forum storefront, full comment-body rendering, and
+  rejection/reload/cross-browser evidence remain open.
 - Pages body remains Page Builder/Fly and is outside the richtext body
   migration. A future embedded Page component property is a separate opt-in.
 
-The Blog/Comments Next source slice was verified locally on 2026-08-11 with
-`npm run typecheck`, `npm run lint`, and a successful production `npm run build`.
+The Blog/Comments Next source slice was verified locally on 2026-08-13 with
+`npm run typecheck` and an authenticated mounted Chromium submission against a
+fresh PostgreSQL schema and the built API server. Earlier lint and production
+build evidence remains valid for the unchanged frame asset route.
 The generated route table includes `/richtext/frame` and its immutable asset
-route. Mounted authenticated submission and save/reload browser evidence remain
-open and are not implied by these source/build checks.
+route. Save/reload, rejection, and cross-browser evidence remain open.
 
 Server-rendered module GraphQL uses `NEXT_PUBLIC_API_URL`, then
 `RUSTOK_API_URL`, then the local server default `http://localhost:5150`.
-Browser calls use the public configured origin or same-origin `/api/graphql`;
-module packages do not invent another endpoint resolver.
+Browser calls use `NEXT_PUBLIC_API_URL` only when an explicitly public API
+origin is configured; otherwise they use same-origin `/api/graphql` and the
+Next host proxies `/api/*` to `RUSTOK_API_URL`. Module packages do not invent
+another endpoint resolver.

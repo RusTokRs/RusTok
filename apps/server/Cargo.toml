@@ -44,6 +44,14 @@ redis-cache = []
 embed-admin = ["dep:rustok-admin", "embed-admin-assets"]
 embed-admin-assets = ["dep:rust-embed"]
 embed-storefront = ["dep:rustok-storefront"]
+richtext-assets = ["mod-content", "rustok-content/richtext-assets"]
+blog-comment-assets = [
+    "embed-storefront",
+    "mod-blog",
+    "rustok-blog/comment-assets",
+    "richtext-assets",
+    "rustok-storefront/blog-comment-assets",
+]
 pages-inline-edit = ["embed-storefront", "mod-pages", "rustok-storefront/pages-inline-edit"]
 pages-inline-edit-assets = ["pages-inline-edit", "rustok-pages/inline-edit-assets"]
 # Domain module feature flags — compile the module into the binary;

@@ -7,12 +7,11 @@ registerStorefrontModule({
   moduleSlug: "search",
   slot: "home:afterHero",
   order: 30,
-  render: ({ locale, enabledModules, tenantSlug, graphql }) => (
+  render: ({ locale, enabledModules, tenantSlug }) => (
     <SearchSection
       locale={locale}
       enabledModules={enabledModules}
       tenantSlug={tenantSlug}
-      graphql={graphql}
     />
   ),
 });

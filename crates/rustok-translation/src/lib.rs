@@ -60,10 +60,11 @@ pub use machine::{
     MAX_MACHINE_TRANSLATION_BATCH_CHARACTERS, MAX_MACHINE_TRANSLATION_BATCH_UNITS,
     MAX_MACHINE_TRANSLATION_GLOSSARY_TERMS, MAX_MACHINE_TRANSLATION_MEMORY_SUGGESTIONS_PER_UNIT,
     MAX_MACHINE_TRANSLATION_PROTECTED_TOKENS_PER_UNIT, MachineTranslationAttemptEvidence,
-    MachineTranslationBatchRequest, MachineTranslationBatchResult, MachineTranslationDiagnostic,
-    MachineTranslationEstimate, MachineTranslationExecutionEvidence,
-    MachineTranslationExecutionStatus, MachineTranslationExecutionStatusEvidence,
-    MachineTranslationGlossaryTerm, MachineTranslationMemorySuggestion, MachineTranslationPort,
+    MachineTranslationBatchExecution, MachineTranslationBatchRequest,
+    MachineTranslationBatchResult, MachineTranslationDiagnostic, MachineTranslationEstimate,
+    MachineTranslationExecutionEvidence, MachineTranslationExecutionStatus,
+    MachineTranslationExecutionStatusEvidence, MachineTranslationGlossaryTerm,
+    MachineTranslationMemorySuggestion, MachineTranslationPort,
     MachineTranslationProviderDescriptor, MachineTranslationProviderHealth,
     MachineTranslationProviderState, MachineTranslationResourceContext, MachineTranslationUnit,
     MachineTranslationUnitResult, MachineTranslationUsage,
@@ -75,8 +76,9 @@ pub use machine::{
 };
 pub use machine_service::{
     CancelMachineOperationInput, GenerateMachineProposalInput, MachineCancellationRecord,
-    MachineDiagnosticEvidence, MachineOperationStatusRecord, MachineProposalRecord,
-    RecoverMachineOperationInput, TranslationMachineControlService, TranslationMachineService,
+    MachineDiagnosticEvidence, MachineOperationStatusRecord, MachineProposalOutcome,
+    MachineProposalRecord, RecoverMachineOperationInput, TranslationMachineControlService,
+    TranslationMachineService,
 };
 pub use memory::{
     MemoryEntryRecord, MemoryListInput, MemoryLookupInput, MemoryMatchEvidence, MemoryMatchKind,

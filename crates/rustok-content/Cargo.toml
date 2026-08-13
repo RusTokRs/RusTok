@@ -4,9 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description.workspace = true
+build = "build.rs"
 
 [dependencies]
 rustok-api.workspace = true
+axum = { workspace = true, optional = true }
 async-graphql = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono.workspace = true
@@ -19,6 +21,7 @@ serde.workspace = true
 serde_json.workspace = true
 slug = "0.1"
 rustok-telemetry.workspace = true
+rustok-web = { workspace = true, optional = true }
 tracing.workspace = true
 utoipa = { workspace = true, features = ["uuid", "chrono"] }
 thiserror.workspace = true
@@ -34,3 +37,7 @@ proptest = "1.11"
 [features]
 default = []
 graphql = ["dep:async-graphql", "rustok-api/server"]
+richtext-assets = ["dep:axum", "dep:rustok-web"]
+
+[build-dependencies]
+serde_json.workspace = true

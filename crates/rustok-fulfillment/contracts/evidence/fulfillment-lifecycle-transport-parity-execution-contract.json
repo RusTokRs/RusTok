@@ -41,7 +41,7 @@
   "request_policy": {
     "graphql_method": "POST",
     "rest_method": "GET",
-    "graphql_mounted_path": "/api/graphql/",
+    "graphql_mounted_path": "/api/graphql",
     "rest_list_path": "/admin/fulfillments",
     "rest_detail_path_template": "/admin/fulfillments/{fulfillment_id}",
     "maximum_response_bytes": 1048576,

@@ -11,7 +11,6 @@ import {
   buildSeoMetadata,
   buildSeoStructuredDataScripts,
 } from "@/shared/seo/metadata";
-import { storefrontGraphql } from "@/shared/lib/graphql";
 import { getStorefrontTenantId } from "@/shared/api/modules";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
 import { Button } from "@/shared/ui/base/button";
@@ -157,7 +156,6 @@ export default async function StorefrontHome({
               enabledModules,
               tenantSlug,
               tenantId: getStorefrontTenantId(),
-              graphql: storefrontGraphql,
             })}
           </section>
         ))}

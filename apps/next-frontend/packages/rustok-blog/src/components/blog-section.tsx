@@ -1,12 +1,12 @@
 import { RichTextHtml } from '@rustok/richtext/view';
 import { getTranslations } from 'next-intl/server';
 
-import { fetchPublishedPost, fetchPublishedPosts, type BlogGraphqlExecutor } from "../api/posts";
+import { storefrontGraphql } from '@/shared/lib/graphql';
+import { fetchPublishedPost, fetchPublishedPosts } from "../api/posts";
 import { BlogCommentComposer } from './blog-comment-composer';
 import { PostCard } from "./post-card";
 
-export async function BlogSection({ graphql, tenantId, tenantSlug, locale, selectedSlug }: {
-  graphql: BlogGraphqlExecutor;
+export async function BlogSection({ tenantId, tenantSlug, locale, selectedSlug }: {
   tenantId: string | null;
   tenantSlug: string | null;
   locale: string;
@@ -16,13 +16,13 @@ export async function BlogSection({ graphql, tenantId, tenantSlug, locale, selec
 
   let posts;
   try {
-    posts = (await fetchPublishedPosts(graphql, tenantId, tenantSlug)).items;
+    posts = (await fetchPublishedPosts(storefrontGraphql, tenantId, tenantSlug)).items;
   } catch {
     return null;
   }
   if (posts.length === 0) return null;
   const selectedPost = selectedSlug
-    ? await fetchPublishedPost(graphql, tenantId, tenantSlug, selectedSlug, locale)
+    ? await fetchPublishedPost(storefrontGraphql, tenantId, tenantSlug, selectedSlug, locale)
     : null;
   const t = await getTranslations('Blog');
   const degradedCommentsMessage = selectedPost

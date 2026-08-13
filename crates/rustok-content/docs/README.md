@@ -22,6 +22,8 @@ implementation and generic shared-node service have been removed under the
 - `ContentOrchestrationService`, orchestration audit/idempotency and canonical URL state;
 - shared richtext policy and locale fallback helpers without shared domain-body
   persistence;
+- opt-in same-origin delivery of the canonical browser frame artifacts selected
+  from `packages/richtext/dist/asset-manifest.json` at build time;
 - conversion flows `topic <-> post`, split/merge topic and canonical URL policy, including prohibition of cross-target canonical collisions and alias shadowing;
 - owner-owned GraphQL query `resolveCanonicalRoute` for canonical URL read contract;
 - owner-owned dashboard helper `load_post_stats_snapshot` and DTO `ContentCountSnapshot` for post-statistics without SQL on `nodes` inside `apps/server`;

@@ -253,7 +253,7 @@ read diagnostic payloads remain separate open slices.
 - [x] Publish the deterministic lifecycle read deadline and typed-failure harness.
 - [ ] Execute the mounted GraphQL/REST projection-parity capture and retain its immutable packet.
 - [ ] Execute the deterministic deadline/failure harness and retain its immutable result.
-- [ ] Prove process restart and remote-adapter behavior separately.
+- [ ] Prove deadline/failure injection, process restart, and remote-adapter behavior separately.
 - [ ] Execute compile and remaining tenant/context/runtime evidence before any
   status promotion.
 

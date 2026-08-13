@@ -31,7 +31,8 @@ That output file is intentionally absent until the mounted capture succeeds.
 
 The runner requires full mounted URLs instead of assuming a server prefix:
 
-- `RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL`, normally ending in `/api/graphql/`;
+- `RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL`, ending in the canonical
+  `/api/graphql` path;
 - `RUSTOK_FULFILLMENT_PARITY_REST_BASE_URL`, the prefix immediately before
   `/admin/fulfillments`.
 
@@ -73,7 +74,7 @@ transport-visible and must match. Equivalent RFC3339 timestamps are normalized t
 ## Capture command
 
 ```bash
-export RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL='http://127.0.0.1:3000/api/graphql/'
+export RUSTOK_FULFILLMENT_PARITY_GRAPHQL_URL='http://127.0.0.1:3000/api/graphql'
 export RUSTOK_FULFILLMENT_PARITY_REST_BASE_URL='http://127.0.0.1:3000/api'
 export RUSTOK_FULFILLMENT_PARITY_TENANT_ID='<tenant-uuid>'
 export RUSTOK_FULFILLMENT_PARITY_AUTH_TOKEN='<bearer-token>'

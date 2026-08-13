@@ -1,9 +1,12 @@
-#[cfg(feature = "ssr")]
+#[cfg(all(feature = "ssr", not(feature = "comment-island")))]
 use crate::comments_pagination::COMMENTS_PAGE_SIZE;
+#[cfg(not(feature = "comment-island"))]
 use crate::core::BlogStorefrontFetchRequest;
 #[cfg(feature = "ssr")]
 use crate::model::BlogPostListItem;
-use crate::model::{BlogCommentCreateRequest, BlogCommentDetail, StorefrontBlogData};
+#[cfg(not(feature = "comment-island"))]
+use crate::model::StorefrontBlogData;
+use crate::model::{BlogCommentCreateRequest, BlogCommentDetail};
 #[cfg(feature = "ssr")]
 use crate::model::{
     BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostDetail, BlogPostList,
@@ -12,13 +15,16 @@ use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use std::sync::Arc;
 
-use super::{ApiError, configured_tenant_slug};
+use super::ApiError;
+#[cfg(not(feature = "comment-island"))]
+use super::configured_tenant_slug;
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "blog";
 #[cfg(feature = "ssr")]
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
+#[cfg(not(feature = "comment-island"))]
 pub async fn fetch_blog(
     request: BlogStorefrontFetchRequest,
     comments_page: u64,
@@ -40,7 +46,11 @@ pub async fn create_comment(
         .map_err(ApiError::from)
 }
 
-#[server(prefix = "/api/fn", endpoint = "blog/comment-create")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "blog/comment-create",
+    client = leptos_auth::AuthorizedBrowserClient
+)]
 async fn create_blog_comment_native(
     request: BlogCommentCreateRequest,
 ) -> Result<BlogCommentDetail, ServerFnError> {
@@ -140,6 +150,7 @@ async fn create_blog_comment_native(
     }
 }
 
+#[cfg(not(feature = "comment-island"))]
 async fn fetch_storefront_blog_server(
     tenant_slug: Option<String>,
     post_slug: String,
@@ -152,6 +163,7 @@ async fn fetch_storefront_blog_server(
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/storefront-data")]
+#[cfg(not(feature = "comment-island"))]
 async fn storefront_blog_native(
     tenant_slug: Option<String>,
     post_slug: String,

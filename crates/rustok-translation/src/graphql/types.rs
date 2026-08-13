@@ -1,4 +1,4 @@
-use async_graphql::{Enum, FieldError, InputObject, SimpleObject};
+use async_graphql::{Enum, FieldError, InputObject, SimpleObject, Union};
 use chrono::{DateTime, FixedOffset};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::{PortActor, PortActorKind, TenantLocale};
@@ -11,10 +11,11 @@ use crate::{
     ApplyRecord, AssignmentRecord, CancellationRecord, GlossaryBinding, GlossaryConcept,
     GlossaryMatchKind, GlossaryRecord, GlossaryScope, GlossarySummaryRecord, GlossaryTermPolicy,
     GlossaryVariant, JobItemRecord, JobProgressRecord, JobRecord, MachineCancellationRecord,
-    MachineProposalRecord, MemoryEntryRecord, MemoryMatchEvidence, MemoryMatchKind,
-    MemoryMutationRecord, MemoryRetentionPolicy, MemorySuggestion, ProposalOrigin, ProposalRecord,
-    ProviderProgressRecord, RequiredProviderProgressRecord, RetryRecord, ReviewerQueueRecord,
-    ReviewerWorkloadRecord, TranslationInterchangeArtifactContent as InterchangeArtifactContent,
+    MachineProposalOutcome, MachineProposalRecord, MemoryEntryRecord, MemoryMatchEvidence,
+    MemoryMatchKind, MemoryMutationRecord, MemoryRetentionPolicy, MemorySuggestion, ProposalOrigin,
+    ProposalRecord, ProviderProgressRecord, RequiredProviderProgressRecord, RetryRecord,
+    ReviewerQueueRecord, ReviewerWorkloadRecord,
+    TranslationInterchangeArtifactContent as InterchangeArtifactContent,
     TranslationInterchangeArtifactRecord as InterchangeArtifactRecord,
     TranslationInterchangeConflictReport as InterchangeConflictReport,
     TranslationInterchangeDocument as InterchangeDocument,
@@ -1322,6 +1323,12 @@ impl From<MachineProposalRecord> for MachineTranslationProposal {
     }
 }
 
+#[derive(Union)]
+pub enum MachineTranslationProposalOutcome {
+    Completed(Box<MachineTranslationProposal>),
+    InProgress(MachineTranslationOperationStatus),
+}
+
 #[derive(SimpleObject)]
 pub struct MachineTranslationCancellation {
     pub cancellation_id: Uuid,
@@ -1355,6 +1362,17 @@ impl From<crate::MachineOperationStatusRecord> for MachineTranslationOperationSt
             provider_status: value.provider_status,
             provider_error_code: value.provider_error_code,
             updated_at: value.updated_at,
+        }
+    }
+}
+
+impl From<MachineProposalOutcome> for MachineTranslationProposalOutcome {
+    fn from(value: MachineProposalOutcome) -> Self {
+        match value {
+            MachineProposalOutcome::Completed(proposal) => {
+                Self::Completed(Box::new((*proposal).into()))
+            }
+            MachineProposalOutcome::InProgress(status) => Self::InProgress(status.into()),
         }
     }
 }

@@ -22,6 +22,13 @@ pages-inline-edit-hydrate = [
   "dep:wasm-bindgen",
   "rustok-pages-storefront/hydrate",
 ]
+blog-comment-island = [
+  "hydrate",
+  "dep:wasm-bindgen",
+  "dep:rustok-blog-storefront",
+  "rustok-blog-storefront/comment-island",
+]
+blog-comment-assets = []
 ssr = [
   "dep:axum",
   "leptos/ssr",
@@ -35,6 +42,7 @@ ssr = [
   "dep:rustok-seo-render",
   "dep:rustok-tenant",
   "dep:rustok-web",
+  "dep:sea-orm",
   "dep:tokio",
   "dep:tracing",
   "dep:rustok-blog-storefront",
@@ -109,6 +117,7 @@ rustok-seo = { workspace = true, optional = true }
 rustok-seo-render = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 rustok-web = { workspace = true, optional = true }
+sea-orm = { workspace = true, optional = true }
 rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront", default-features = false, optional = true }
 rustok-cart-storefront = { path = "../../crates/rustok-cart/storefront", default-features = false, optional = true }
 rustok-commerce-storefront = { path = "../../crates/rustok-commerce/storefront", default-features = false, optional = true }
@@ -140,6 +149,12 @@ bootstrap-path = "/assets/pages-inline-edit-bootstrap.js"
 module-path = "/assets/pages-inline-edit/rustok_storefront.js"
 wasm-path = "/assets/pages-inline-edit/rustok_storefront_bg.wasm"
 export = "start_pages_inline_edit_client"
+
+[package.metadata.blog-comment-client]
+bootstrap-path = "/assets/blog-comment-bootstrap.js"
+module-path = "/assets/blog-comment/rustok_storefront.js"
+wasm-path = "/assets/blog-comment/rustok_storefront_bg.wasm"
+export = "start_blog_comment_client"
 
 [package.metadata.cargo-udeps.ignore]
 normal = [

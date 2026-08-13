@@ -66,8 +66,6 @@ pub enum TranslationError {
     ProposalValidationFailed,
     #[error("machine translation returned invalid execution evidence or output")]
     InvalidMachineTranslationResult,
-    #[error("machine translation operation is still in progress")]
-    MachineTranslationInProgress,
     #[error("machine translation operation was not found")]
     MachineOperationNotFound,
     #[error("machine translation operation was cancelled")]

@@ -3176,10 +3176,18 @@ fn WorkflowTab(
                 Callback::new(move |response| {
                     set_generate_machine_key
                         .set(core::new_idempotency_key("generate-machine-proposal"));
-                    if let TranslationAdminResponse::MachineProposal(proposal) = response {
-                        set_machine_operation_id.set(proposal.operation_id);
-                        set_machine_expected_updated_at.set(proposal.updated_at);
-                        set_proposal_id.set(proposal.proposal_id);
+                    match response {
+                        TranslationAdminResponse::MachineProposal(proposal) => {
+                            set_machine_operation_id.set(proposal.operation_id);
+                            set_machine_expected_updated_at.set(proposal.updated_at);
+                            set_proposal_id.set(proposal.proposal_id);
+                        }
+                        TranslationAdminResponse::MachineOperationStatus(status) => {
+                            set_machine_operation_id.set(status.operation_id);
+                            set_machine_expected_updated_at.set(status.updated_at);
+                            set_item_id.set(status.item_id);
+                        }
+                        _ => {}
                     }
                 }),
             );

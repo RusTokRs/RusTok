@@ -394,6 +394,10 @@ export type MachineOperationStatus = {
   updatedAt: string;
 };
 
+export type MachineProposalOutcome =
+  | ({ __typename: 'MachineTranslationProposal' } & MachineProposal)
+  | ({ __typename: 'MachineTranslationOperationStatus' } & MachineOperationStatus);
+
 export type ApplyResult = {
   operationId: string;
   itemId: string;

@@ -24,8 +24,9 @@ use uuid::Uuid;
 
 use crate::{
     GlossaryBinding, GlossaryTermPolicy, MachineTranslationAttemptEvidence,
-    MachineTranslationBatchRequest, MachineTranslationBatchResult, MachineTranslationEstimate,
-    MachineTranslationExecutionStatus, MachineTranslationGlossaryTerm,
+    MachineTranslationBatchExecution, MachineTranslationBatchRequest,
+    MachineTranslationBatchResult, MachineTranslationEstimate, MachineTranslationExecutionStatus,
+    MachineTranslationExecutionStatusEvidence, MachineTranslationGlossaryTerm,
     MachineTranslationMemorySuggestion, MachineTranslationPort, MachineTranslationProviderState,
     MachineTranslationResourceContext, MachineTranslationUnit, MachineTranslationUsage,
     MemoryLookupInput, ProposalOrigin, ProposalValue, SaveProposalInput, TranslationError,
@@ -117,6 +118,12 @@ pub struct MachineProposalRecord {
     pub updated_at: DateTime<FixedOffset>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MachineProposalOutcome {
+    Completed(Box<MachineProposalRecord>),
+    InProgress(MachineOperationStatusRecord),
+}
+
 pub struct TranslationMachineService {
     database: DatabaseConnection,
     workflow: TranslationWorkflowService,
@@ -188,7 +195,7 @@ impl TranslationMachineService {
         &self,
         context: PortContext,
         input: GenerateMachineProposalInput,
-    ) -> TranslationResult<MachineProposalRecord> {
+    ) -> TranslationResult<MachineProposalOutcome> {
         let tenant_id = authorize_machine_generation(&context)?;
         validate_generation_input(&input)?;
         let idempotency_key = context.idempotency_key.clone().unwrap_or_default();
@@ -199,7 +206,9 @@ impl TranslationMachineService {
         if let Some(existing) = existing_operation.as_ref() {
             validate_operation_replay(existing, &context, &command_hash)?;
             if existing.status == "completed" {
-                return machine_proposal_record(existing.clone());
+                return machine_proposal_record(existing.clone())
+                    .map(Box::new)
+                    .map(MachineProposalOutcome::Completed);
             }
             if existing.status == "cancelled" {
                 return Err(TranslationError::MachineOperationCancelled);
@@ -257,7 +266,9 @@ impl TranslationMachineService {
             return Err(TranslationError::IdempotencyConflict);
         }
         if operation.status == "completed" {
-            return machine_proposal_record(operation);
+            return machine_proposal_record(operation)
+                .map(Box::new)
+                .map(MachineProposalOutcome::Completed);
         }
         if operation.status == "cancelled" {
             return Err(TranslationError::MachineOperationCancelled);
@@ -278,20 +289,31 @@ impl TranslationMachineService {
         let current = find_operation(&self.database, tenant_id, operation.id).await?;
         match current.status.as_str() {
             "registered" | "saving" => {}
-            "completed" => return machine_proposal_record(current),
+            "completed" => {
+                return machine_proposal_record(current)
+                    .map(Box::new)
+                    .map(MachineProposalOutcome::Completed);
+            }
             "cancelled" => return Err(TranslationError::MachineOperationCancelled),
             _ => return Err(TranslationError::WorkflowRevisionConflict),
         }
         let machine_context = child_write_context(&context, "machine-port")?;
-        let result = self
+        let execution = self
             .machine_port
             .translate_batch(machine_context, request.clone())
             .await?;
+        let result = match execution {
+            MachineTranslationBatchExecution::Completed(result) => result,
+            MachineTranslationBatchExecution::InProgress(evidence) => {
+                let current = find_operation(&self.database, tenant_id, operation.id).await?;
+                return machine_proposal_outcome(current, evidence);
+            }
+        };
         validate_machine_result(&request, &result)?;
         if let Some(completed) =
             begin_machine_proposal_save(&self.database, tenant_id, operation.id).await?
         {
-            return Ok(completed);
+            return Ok(MachineProposalOutcome::Completed(Box::new(completed)));
         }
 
         let values = result
@@ -328,6 +350,8 @@ impl TranslationMachineService {
             &result,
         )
         .await
+        .map(Box::new)
+        .map(MachineProposalOutcome::Completed)
     }
 
     pub async fn estimate_proposal(
@@ -1741,7 +1765,7 @@ fn machine_proposal_record(
     model: machine_operation::Model,
 ) -> TranslationResult<MachineProposalRecord> {
     if model.status != "completed" {
-        return Err(TranslationError::MachineTranslationInProgress);
+        return Err(TranslationError::WorkflowRevisionConflict);
     }
     Ok(MachineProposalRecord {
         operation_id: model.id,
@@ -1782,6 +1806,34 @@ fn machine_proposal_record(
     })
 }
 
+fn machine_proposal_outcome(
+    model: machine_operation::Model,
+    evidence: MachineTranslationExecutionStatusEvidence,
+) -> TranslationResult<MachineProposalOutcome> {
+    match model.status.as_str() {
+        "completed" => machine_proposal_record(model)
+            .map(Box::new)
+            .map(MachineProposalOutcome::Completed),
+        "registered" | "saving" => {
+            let provider_execution_id = evidence.execution_id;
+            let provider_status = machine_execution_status(evidence.status).to_string();
+            Ok(MachineProposalOutcome::InProgress(
+                MachineOperationStatusRecord {
+                    operation_id: model.id,
+                    item_id: model.item_id,
+                    status: model.status,
+                    provider_execution_id,
+                    provider_status,
+                    provider_error_code: None,
+                    updated_at: model.updated_at,
+                },
+            ))
+        }
+        "cancelled" => Err(TranslationError::MachineOperationCancelled),
+        _ => Err(TranslationError::WorkflowRevisionConflict),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -1819,6 +1871,11 @@ mod tests {
     struct CancellationMachinePort {
         descriptor: MachineTranslationProviderDescriptor,
         calls: AtomicUsize,
+    }
+
+    struct InProgressMachinePort {
+        descriptor: MachineTranslationProviderDescriptor,
+        translate_calls: AtomicUsize,
     }
 
     struct RecoveryMachinePort {
@@ -1915,7 +1972,7 @@ mod tests {
             &self,
             _context: PortContext,
             _request: MachineTranslationBatchRequest,
-        ) -> Result<MachineTranslationBatchResult, rustok_api::PortError> {
+        ) -> Result<MachineTranslationBatchExecution, rustok_api::PortError> {
             unreachable!("cancellation test does not translate")
         }
 
@@ -1959,6 +2016,72 @@ mod tests {
     }
 
     #[async_trait]
+    impl MachineTranslationPort for InProgressMachinePort {
+        fn descriptor(&self) -> &MachineTranslationProviderDescriptor {
+            &self.descriptor
+        }
+
+        async fn health(
+            &self,
+            _context: PortContext,
+        ) -> Result<crate::MachineTranslationProviderHealth, PortError> {
+            Ok(crate::MachineTranslationProviderHealth {
+                state: MachineTranslationProviderState::Available,
+                reason_code: None,
+                retry_after_ms: None,
+            })
+        }
+
+        async fn estimate_batch(
+            &self,
+            _context: PortContext,
+            _request: MachineTranslationBatchRequest,
+        ) -> Result<crate::MachineTranslationEstimate, PortError> {
+            unreachable!("in-progress generation test does not estimate")
+        }
+
+        async fn translate_batch(
+            &self,
+            context: PortContext,
+            request: MachineTranslationBatchRequest,
+        ) -> Result<MachineTranslationBatchExecution, PortError> {
+            request.validate(&context)?;
+            self.translate_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(MachineTranslationBatchExecution::InProgress(
+                MachineTranslationExecutionStatusEvidence {
+                    execution_id: Some("execution-in-progress".to_string()),
+                    status: MachineTranslationExecutionStatus::Running,
+                },
+            ))
+        }
+
+        async fn execution_status(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+        ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
+            unreachable!("in-progress generation test returns status with the command outcome")
+        }
+
+        async fn recover_batch(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+            _request: MachineTranslationBatchRequest,
+        ) -> Result<Option<MachineTranslationBatchResult>, PortError> {
+            unreachable!("in-progress generation test does not recover")
+        }
+
+        async fn cancel_execution(
+            &self,
+            _context: PortContext,
+            _execution_idempotency_key: String,
+        ) -> Result<MachineTranslationExecutionStatusEvidence, PortError> {
+            unreachable!("in-progress generation test does not cancel")
+        }
+    }
+
+    #[async_trait]
     impl MachineTranslationPort for RecoveryMachinePort {
         fn descriptor(&self) -> &MachineTranslationProviderDescriptor {
             &self.descriptor
@@ -1983,7 +2106,7 @@ mod tests {
             &self,
             _context: PortContext,
             _request: MachineTranslationBatchRequest,
-        ) -> Result<MachineTranslationBatchResult, PortError> {
+        ) -> Result<MachineTranslationBatchExecution, PortError> {
             unreachable!("machine recovery must never start another translation")
         }
 
@@ -2050,7 +2173,7 @@ mod tests {
             &self,
             _context: PortContext,
             _request: MachineTranslationBatchRequest,
-        ) -> Result<MachineTranslationBatchResult, PortError> {
+        ) -> Result<MachineTranslationBatchExecution, PortError> {
             unreachable!("estimate must not execute machine translation")
         }
 
@@ -2427,6 +2550,61 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn generation_returns_pollable_operation_when_machine_execution_is_in_progress() {
+        let (database, tenant_id, actor_id, operation_id, _) = persistence_fixture(false).await;
+        let port = Arc::new(InProgressMachinePort {
+            descriptor: descriptor(100),
+            translate_calls: AtomicUsize::new(0),
+        });
+        let service = recovery_service(database.clone(), port.clone());
+        let input = prepare_registered_generation(&service, tenant_id, operation_id).await;
+        let operation_count = machine_operation::Entity::find()
+            .count(&database)
+            .await
+            .unwrap();
+        let proposal_count = crate::entities::proposal::Entity::find()
+            .count(&database)
+            .await
+            .unwrap();
+
+        let outcome = service
+            .generate_proposal(
+                machine_control_context(tenant_id, actor_id, "fixture-machine").with_claim(
+                    Permission::new(Resource::Translations, Action::Update).to_string(),
+                ),
+                input,
+            )
+            .await
+            .unwrap();
+
+        let MachineProposalOutcome::InProgress(status) = outcome else {
+            panic!("expected a pollable in-progress machine operation");
+        };
+        assert_eq!(status.operation_id, operation_id);
+        assert_eq!(status.status, "registered");
+        assert_eq!(status.provider_status, "running");
+        assert_eq!(
+            status.provider_execution_id.as_deref(),
+            Some("execution-in-progress")
+        );
+        assert_eq!(port.translate_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            machine_operation::Entity::find()
+                .count(&database)
+                .await
+                .unwrap(),
+            operation_count
+        );
+        assert_eq!(
+            crate::entities::proposal::Entity::find()
+                .count(&database)
+                .await
+                .unwrap(),
+            proposal_count
+        );
+    }
+
     async fn persistence_fixture_at(
         database_path: &Path,
         tombstoned: bool,
@@ -2710,6 +2888,42 @@ mod tests {
             proposal,
             reason: "Recover the completed provider result after an interrupted save".to_string(),
         }
+    }
+
+    async fn prepare_registered_generation(
+        service: &TranslationMachineService,
+        tenant_id: Uuid,
+        operation_id: Uuid,
+    ) -> GenerateMachineProposalInput {
+        let operation = find_operation(&service.database, tenant_id, operation_id)
+            .await
+            .unwrap();
+        let proposal = recovery_proposal(operation.item_id);
+        let item = find_item(&service.database, tenant_id, proposal.item_id)
+            .await
+            .unwrap();
+        let request = service
+            .build_request(tenant_id, &item, &snapshot(), &proposal, Some(&operation))
+            .await
+            .unwrap();
+        machine_operation::Entity::update_many()
+            .col_expr(
+                machine_operation::Column::CommandHash,
+                Expr::value(hash_manifest(&proposal).unwrap()),
+            )
+            .col_expr(
+                machine_operation::Column::MachineRequestDigest,
+                Expr::value(hash_manifest(&request).unwrap()),
+            )
+            .col_expr(
+                machine_operation::Column::ProviderPolicyDigest,
+                Expr::value(descriptor(100).policy_digest),
+            )
+            .filter(machine_operation::Column::Id.eq(operation_id))
+            .exec(&service.database)
+            .await
+            .unwrap();
+        proposal
     }
 
     async fn save_proposal_without_completing_operation(

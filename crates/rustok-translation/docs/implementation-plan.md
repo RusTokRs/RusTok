@@ -3,7 +3,7 @@ id: doc://crates/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-08-09
+last_reviewed: 2026-08-13
 ---
 
 # Translation implementation plan
@@ -276,6 +276,11 @@ selection.
   Successful output is revalidated and saved through
   `TranslationWorkflowService::save_proposal` with `ProposalOrigin::Ai`, so
   owner validation and deterministic QA cannot be bypassed.
+- A same-key queued or running AI execution maps through the typed
+  `MachineTranslationBatchExecution::InProgress` port result to a
+  `MachineProposalOutcome::InProgress` response carrying the durable operation
+  identifier and provider state. Callers poll that operation instead of
+  starting another provider execution.
 - `translation_machine_operations` is the durable, tenant-scoped,
   actor/idempotency-bound handoff journal. It stores request/context digests,
   provider policy, execution/attempt/usage/cost evidence, diagnostic codes, and

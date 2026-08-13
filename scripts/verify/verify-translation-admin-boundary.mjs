@@ -238,6 +238,32 @@ contains(
   "rustok_graphql",
   `${files.graphql}: GraphQL adapter must use rustok-graphql`,
 );
+for (const marker of [
+  "GraphqlMachineProposalOutcome",
+  "MachineTranslationOperationStatus",
+]) {
+  contains(
+    source.graphql,
+    marker,
+    `${files.graphql}: machine proposal generation must preserve the typed polling outcome (${marker})`,
+  );
+}
+contains(
+  source.native,
+  "map_machine_proposal_outcome",
+  `${files.native}: native adapter must preserve the typed machine polling outcome`,
+);
+for (const marker of [
+  "MACHINE_PROPOSAL_OUTCOME_FIELDS",
+  "MachineProposalOutcome",
+  "MachineTranslationOperationStatus",
+]) {
+  contains(
+    source.nextApi,
+    marker,
+    `${files.nextApi}: Next adapter must preserve the typed machine polling outcome (${marker})`,
+  );
+}
 
 const rustOperations = [
   "ReadPolicy",

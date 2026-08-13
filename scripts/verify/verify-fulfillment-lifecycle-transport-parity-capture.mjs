@@ -95,7 +95,7 @@ if (!sameRecord(contract.scenarios?.map((scenario) => scenario.id), expectedScen
 if (
   contract.request_policy?.graphql_method !== 'POST' ||
   contract.request_policy?.rest_method !== 'GET' ||
-  contract.request_policy?.graphql_mounted_path !== '/api/graphql/' ||
+  contract.request_policy?.graphql_mounted_path !== '/api/graphql' ||
   contract.request_policy?.rest_list_path !== '/admin/fulfillments' ||
   contract.request_policy?.maximum_response_bytes !== 1048576 ||
   contract.request_policy?.allow_http_for_local_capture !== true

@@ -965,7 +965,10 @@ mod tests {
     use rustok_core::ModuleRegistry;
     use rustok_outbox::{OutboxTransport, TransactionalEventBus};
     use rustok_secrets::SecretResolverRegistry;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
+    use sea_orm::{
+        ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
+        QueryFilter, Set,
+    };
     use serde_json::json;
     use tokio::sync::Notify;
 
@@ -976,8 +979,8 @@ mod tests {
         accounting::{BudgetPolicy, ProviderPolicy},
         engine::{AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy},
         entities::{
-            ai_provider_profiles, ai_structured_budgets, ai_structured_executions,
-            ai_structured_reservations,
+            ai_provider_profiles, ai_structured_attempts, ai_structured_budgets,
+            ai_structured_executions, ai_structured_reservations, ai_structured_results,
         },
         structured_result::StructuredResultKeyring,
         structured_test_support,
@@ -986,6 +989,11 @@ mod tests {
     enum StructuredStep {
         ProviderFailure,
         Pending(Arc<Notify>),
+        Blocked {
+            started: Arc<Notify>,
+            release: Arc<Notify>,
+            output: serde_json::Value,
+        },
         Success(serde_json::Value),
     }
 
@@ -1057,6 +1065,18 @@ mod tests {
                 StructuredStep::Pending(started) => {
                     started.notify_one();
                     std::future::pending().await
+                }
+                StructuredStep::Blocked {
+                    started,
+                    release,
+                    output,
+                } => {
+                    started.notify_one();
+                    release.notified().await;
+                    Ok(ProviderStructuredResponse {
+                        output,
+                        usage: Some(ProviderUsage::normalized(20, 5, None)),
+                    })
                 }
                 StructuredStep::Success(output) => Ok(ProviderStructuredResponse {
                     output,
@@ -1137,6 +1157,206 @@ mod tests {
         )
         .with_idempotency_key("translation-job-a")
         .with_deadline(Duration::from_secs(5))
+    }
+
+    async fn single_provider_runtime(
+        engine: Arc<ScriptedStructuredEngine>,
+    ) -> (
+        DatabaseConnection,
+        DurableAiStructuredTaskPort,
+        Uuid,
+        AiStructuredTaskRequest,
+    ) {
+        let database = structured_test_support::database().await;
+        let tenant_id = Uuid::new_v4();
+        let provider_id = Uuid::new_v4();
+        structured_test_support::insert_tenant(&database, tenant_id).await;
+        structured_test_support::insert_provider_profile(
+            &database,
+            tenant_id,
+            provider_id,
+            "single-provider",
+        )
+        .await;
+        structured_test_support::insert_task_profile(&database, tenant_id, &[provider_id]).await;
+
+        let accounting = StructuredAccounting::new(database.clone());
+        accounting
+            .put_budget(BudgetPolicy {
+                tenant_id,
+                currency_code: "USD".to_string(),
+                limit_minor_units: 100_000,
+                max_concurrent: 1,
+            })
+            .await
+            .expect("structured budget policy");
+        accounting
+            .put_provider_policy(ProviderPolicy {
+                tenant_id,
+                provider_profile_id: provider_id,
+                allowed_classifications: vec![crate::AiTaskDataClassification::TenantPrivate],
+                currency_code: "USD".to_string(),
+                input_cost_per_million_minor: 1_000_000,
+                output_cost_per_million_minor: 2_000_000,
+                max_concurrent: 1,
+                is_active: true,
+            })
+            .await
+            .expect("structured provider policy");
+
+        let egress_policy = ProviderEgressPolicy {
+            allowed_origins: vec!["provider.example.test".to_string()],
+            allow_local_origins: false,
+        };
+        let provider_targets = AiProviderTargetCatalog::new_with_egress_policy(
+            vec![AiProviderTarget {
+                id: crate::ProviderTargetId::new("openai_compatible").expect("provider target id"),
+                provider_slug: crate::ProviderSlug::openai_compatible(),
+                display_name: "Structured runtime provider".to_string(),
+                auth: crate::ProviderTargetAuth::None,
+                settings: BTreeMap::from([(
+                    "base_url".to_string(),
+                    json!("https://provider.example.test/v1"),
+                )]),
+            }],
+            &egress_policy,
+        )
+        .expect("structured provider targets");
+        let (descriptor, request) = descriptor_and_request();
+        let catalog = AiStructuredTaskCatalog::default();
+        catalog
+            .register(descriptor)
+            .expect("structured task descriptor");
+        let keyring = StructuredResultKeyring::for_test(
+            "test-v1",
+            Duration::from_secs(300),
+            BTreeMap::from([("test-v1".to_string(), [7_u8; 32])]),
+        );
+        let port = DurableAiStructuredTaskPort::new(
+            provider_runtime(database.clone(), engine, provider_targets, egress_policy),
+            catalog,
+            keyring,
+        );
+        (database, port, tenant_id, request)
+    }
+
+    #[tokio::test]
+    async fn same_key_concurrent_execution_calls_the_provider_once() {
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let engine = Arc::new(ScriptedStructuredEngine::new([StructuredStep::Blocked {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+            output: json!({"translated_text": "Hello"}),
+        }]));
+        let (_database, port, tenant_id, request) =
+            single_provider_runtime(Arc::clone(&engine)).await;
+        let context = request_context(tenant_id).with_idempotency_key("translation-job-concurrent");
+
+        let first_port = port.clone();
+        let first_context = context.clone();
+        let first_request = request.clone();
+        let first =
+            tokio::spawn(async move { first_port.execute(first_context, first_request).await });
+        started.notified().await;
+
+        let in_flight = port
+            .execute(context.clone(), request.clone())
+            .await
+            .expect("same-key in-flight replay");
+        assert_eq!(in_flight.status, AiStructuredTaskStatus::Running);
+        assert_eq!(engine.calls(), 1);
+
+        release.notify_one();
+        let completed = tokio::time::timeout(Duration::from_secs(2), first)
+            .await
+            .expect("first execution completion timeout")
+            .expect("first execution join")
+            .expect("first execution result");
+        assert_eq!(completed.status, AiStructuredTaskStatus::Completed);
+        assert_eq!(engine.calls(), 1);
+
+        let replayed = port
+            .execute(context, request)
+            .await
+            .expect("completed same-key replay");
+        assert_eq!(replayed.execution_id, completed.execution_id);
+        assert_eq!(replayed.output, completed.output);
+        assert_eq!(engine.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn structured_ledger_keeps_translation_packet_out_of_open_persistence() {
+        let source_packet_marker = "SOURCE_TRANSLATION_PACKET_DO_NOT_PERSIST";
+        let provider_response_marker = "TRANSLATED_PROVIDER_RESPONSE_DO_NOT_PERSIST_OPENLY";
+        let engine = Arc::new(ScriptedStructuredEngine::new([StructuredStep::Success(
+            json!({"translated_text": provider_response_marker}),
+        )]));
+        let (database, port, tenant_id, mut request) =
+            single_provider_runtime(Arc::clone(&engine)).await;
+        request.input = json!({
+            "source_locale": "de",
+            "target_locale": "en",
+            "text": source_packet_marker,
+        });
+
+        let completed = port
+            .execute(
+                request_context(tenant_id).with_idempotency_key("translation-private-persistence"),
+                request,
+            )
+            .await
+            .expect("structured translation execution");
+        assert_eq!(completed.status, AiStructuredTaskStatus::Completed);
+        let execution_id =
+            Uuid::parse_str(&completed.execution_id).expect("structured execution UUID");
+
+        let execution = ai_structured_executions::Entity::find_by_id(execution_id)
+            .one(&database)
+            .await
+            .expect("structured execution query")
+            .expect("structured execution row");
+        let attempts = ai_structured_attempts::Entity::find()
+            .filter(ai_structured_attempts::Column::TenantId.eq(tenant_id))
+            .filter(ai_structured_attempts::Column::ExecutionId.eq(execution_id))
+            .all(&database)
+            .await
+            .expect("structured attempt query");
+        assert_eq!(attempts.len(), 1);
+        let result = ai_structured_results::Entity::find()
+            .filter(ai_structured_results::Column::TenantId.eq(tenant_id))
+            .filter(ai_structured_results::Column::ExecutionId.eq(execution_id))
+            .one(&database)
+            .await
+            .expect("structured result query")
+            .expect("encrypted structured result row");
+
+        let execution_evidence =
+            serde_json::to_string(&execution).expect("serialize execution evidence");
+        let attempt_evidence =
+            serde_json::to_string(&attempts).expect("serialize attempt evidence");
+        let result_evidence = serde_json::to_string(&result).expect("serialize result evidence");
+        for persisted in [&execution_evidence, &attempt_evidence, &result_evidence] {
+            assert!(
+                !persisted.contains(source_packet_marker),
+                "source translation packet must not persist in open structured evidence"
+            );
+            assert!(
+                !persisted.contains(provider_response_marker),
+                "provider response must not persist in open structured evidence"
+            );
+        }
+
+        let plaintext = serde_json::to_vec(&json!({"translated_text": provider_response_marker}))
+            .expect("provider response plaintext");
+        assert_eq!(
+            result.plaintext_bytes,
+            i64::try_from(plaintext.len()).expect("plaintext byte length")
+        );
+        assert_eq!(result.nonce.len(), 12);
+        assert_eq!(result.ciphertext.len(), plaintext.len().saturating_add(16));
+        assert_ne!(result.ciphertext, plaintext);
+        assert_eq!(engine.calls(), 1);
     }
 
     #[tokio::test]
@@ -1439,16 +1659,16 @@ mod tests {
             provider_runtime(
                 database.clone(),
                 Arc::clone(&quota_engine),
-                provider_targets,
-                egress_policy,
+                provider_targets.clone(),
+                egress_policy.clone(),
             ),
-            catalog,
-            keyring,
+            catalog.clone(),
+            keyring.clone(),
         );
         let quota_error = quota_port
             .execute(
                 request_context(tenant_id).with_idempotency_key("translation-job-quota"),
-                request,
+                request.clone(),
             )
             .await
             .expect_err("exhausted budget must fail before provider execution");

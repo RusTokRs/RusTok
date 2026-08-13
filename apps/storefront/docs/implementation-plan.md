@@ -73,11 +73,16 @@ Develop `apps/storefront` as a stable SSR storefront with predictable performanc
   browser parity remain open.
 - **Storefront (Leptos SSR, `apps/storefront`)**: [~] Blog articles and Forum
   topics/replies render owner-provided, server-sanitized HTML projections.
-  Blog now composes the Comments-owned reusable editor with a Blog-bound native
-  command and retains the parallel GraphQL command. Mounted save/auth/error
-  evidence remains open; approved lists still use bounded projections.
-- **Storefront (Next.js, `apps/next-frontend`)**: [ ] Matching Blog detail,
-  Forum, Comments, effective-locale, and canonical HTML projection coverage is
-  not implemented.
+  Blog composes the Comments-owned reusable editor as an isolated authenticated
+  WASM island with a Blog-bound native command and retains the parallel GraphQL
+  command. Selected article SSR stays inert; a CSP-nonced bootstrap loads the
+  editor only for an active browser session, without hydrating the storefront.
+  Content serves the canonical manifest-selected frame assets from the same
+  origin. The wasm32 artifact build passes; mounted persistence/reload evidence
+  remains open. Approved lists still use bounded projections.
+- **Storefront (Next.js, `apps/next-frontend`)**: [~] The selected Blog detail
+  renders the canonical projection and composes the same Comments-owned editor.
+  Authenticated mounted submission and moderation-pending PostgreSQL persistence
+  pass; rejection/reload and broader Forum parity remain open.
 - Pages body remains Page Builder/Fly and is outside the richtext body
   migration. A future embedded Page component property is a separate opt-in.

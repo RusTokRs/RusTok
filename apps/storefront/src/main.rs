@@ -16,6 +16,8 @@ use axum::{
 };
 #[cfg(all(feature = "ssr", not(feature = "csr")))]
 use std::path::PathBuf;
+#[cfg(all(feature = "ssr", not(feature = "csr")))]
+use std::sync::Arc;
 
 #[cfg(all(feature = "ssr", not(feature = "csr")))]
 fn static_dir() -> PathBuf {
@@ -34,7 +36,13 @@ async fn css_handler() -> impl IntoResponse {
 #[cfg(all(feature = "ssr", not(feature = "csr")))]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let app = rustok_storefront::router().route("/assets/app.css", get(css_handler));
+    let database_url = std::env::var("DATABASE_URL")?;
+    let database = sea_orm::Database::connect(database_url).await?;
+    let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
+        rustok_outbox::OutboxTransport::new(database.clone()),
+    ));
+    let runtime = rustok_api::HostRuntimeContext::new(database).with_shared_value(event_bus);
+    let app = rustok_storefront::router(runtime).route("/assets/app.css", get(css_handler));
 
     let listener = tokio::net::TcpListener::bind("[::1]:3100").await?;
     println!("Storefront SSR running on http://localhost:3100");

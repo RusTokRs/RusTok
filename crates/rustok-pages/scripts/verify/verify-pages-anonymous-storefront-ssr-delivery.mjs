@@ -146,7 +146,6 @@ for (const marker of [
 }
 for (const marker of [
   "<script src=",
-  '<script type="module"',
   'rel="modulepreload"',
   ".wasm",
   "/pkg/",
@@ -156,6 +155,18 @@ for (const marker of [
 ]) {
   forbid(renderDocument, marker, "anonymous SSR document renderer");
 }
+for (const marker of [
+  'let comment_bootstrap = if app_html.contains',
+  '.map(|nonce|',
+  '/assets/blog-comment-bootstrap.js',
+]) {
+  need(renderDocument, marker, "gated Blog comment island bootstrap");
+}
+need(
+  host,
+  'render_document(locale, "RusToK Storefront", "", app_html, None)',
+  "anonymous SSR shell invocation",
+);
 
 for (const marker of [
   '#[cfg(feature = "pages-inline-edit")]',

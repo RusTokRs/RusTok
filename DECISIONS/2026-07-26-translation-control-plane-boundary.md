@@ -191,6 +191,9 @@ The adapter receives bounded exact-locale segments, placeholders, field
 semantics, glossary revision, memory suggestions, context, and data
 classification. It returns typed, deterministically validated proposals.
 Initial AI results always require human review and never write owner data.
+A queued or running execution is a typed machine-proposal outcome carrying the
+Translation operation identifier and provider state for polling; it is not
+reported as a transient public error.
 
 ### Classification-aware provider egress
 

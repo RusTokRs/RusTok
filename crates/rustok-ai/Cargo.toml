@@ -94,6 +94,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 rust_decimal.workspace = true
+rustok-taxonomy.workspace = true
 rustok-test-utils.workspace = true
 rustok-product-transport = { path = "../rustok-product-transport" }
 tokio.workspace = true

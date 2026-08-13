@@ -283,13 +283,13 @@ mod tests {
     }
 
     #[test]
-    fn rejects_the_removed_envelope() {
+    fn rejects_outer_document_envelopes() {
         let error = serde_json::from_value::<RichTextDocument>(json!({
-            "version": "rt_json_v1",
+            "format": "richtext",
             "locale": "en",
-            "doc": {"type": "doc", "content": []}
+            "document": {"type": "doc", "content": []}
         }))
-        .expect_err("the old envelope must not be a RichTextDocument");
+        .expect_err("an outer envelope must not be a RichTextDocument");
 
         assert!(error.to_string().contains("unknown field"));
     }

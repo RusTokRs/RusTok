@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const withNextIntl = createNextIntlPlugin();
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const apiBaseUrl = (process.env.RUSTOK_API_URL ?? "http://localhost:5150").replace(/\/$/, "");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -19,6 +20,14 @@ const nextConfig = {
     "@rustok/comments-frontend",
     "@rustok/richtext",
   ],
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${apiBaseUrl}/api/:path*`,
+      },
+    ];
+  },
   webpack(config) {
     config.resolve.alias = {
       ...config.resolve.alias,

@@ -53,21 +53,29 @@ the factory resolves to no machine provider while manual Translation workflows
 remain available. Deterministic composed runtime evidence covers ordered
 provider fallback, fail-closed JSON Schema enforcement, sanitized failure
 recording, exact attempt usage/cost settlement, request-hash conflict rejection,
-in-flight cancellation with reservation release, quota rejection before
-provider execution, and encrypted restart replay without another provider call
-or bill. Configuration-level provider unavailability also produces typed
-degraded health. Live external-provider runtime failure/restart evidence remains
-pending. An ignored operator-only `rustok-ai` structured-runtime probe is ready
-to collect the approved billable deployment evidence without creating another
-adapter path.
+same-key concurrent execution coalescing, in-flight cancellation with
+reservation release, quota rejection before provider execution, and encrypted
+restart replay without another provider call or bill. Configuration-level
+provider unavailability also produces typed degraded health. Live
+external-provider runtime failure/restart evidence remains pending. An ignored
+operator-only `rustok-ai` structured-runtime probe is ready to collect the
+approved billable deployment evidence without creating another adapter path.
 Real separate-process file-backed evidence also covers expired-attempt
 recovery, reservation preservation, immutable failure recording, and reclaim
 with a new lease; production-database multi-replica concurrency remains open.
+Deterministic database evidence reads the persisted execution, attempt, and
+result rows after a translation packet: source and provider-response markers do
+not appear in open ledger evidence, and the retained terminal result is
+AES-GCM ciphertext rather than plaintext.
 The adapter resolves and cancels executions through the stable
 `(owner, idempotency_key)` AI contract. Cancellation therefore remains durable
 when it arrives before AI execution registration, and completed encrypted
 results can be recovered without another billable call only after the exact
-request binding has been revalidated.
+request binding has been revalidated. Concurrent same-key submissions observe
+that stable running execution as a typed
+`MachineTranslationBatchExecution::InProgress` result; Translation exposes its
+durable operation identifier for polling, while a terminal replay returns its
+stored result without a second provider invocation or bill.
 Registering this adapter against chat sessions, direct provider engines, or a
 non-durable fallback would violate the machine-translation architecture.
 

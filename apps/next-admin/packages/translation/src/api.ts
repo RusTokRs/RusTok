@@ -19,6 +19,7 @@ import type {
   MachineTranslationEstimate,
   MachineOperationStatus,
   MachineProposal,
+  MachineProposalOutcome,
   Proposal,
   ProviderProgress,
   RequiredProviderProgress,
@@ -48,6 +49,9 @@ const MACHINE_CANCELLATION_FIELDS =
   'cancellationId operationId status providerExecutionId providerStatus providerErrorCode providerObservedAt createdAt';
 const MACHINE_OPERATION_STATUS_FIELDS =
   'operationId itemId status providerExecutionId providerStatus providerErrorCode updatedAt';
+const MACHINE_PROPOSAL_OUTCOME_FIELDS = `__typename
+  ... on MachineTranslationProposal { ${MACHINE_PROPOSAL_FIELDS} }
+  ... on MachineTranslationOperationStatus { ${MACHINE_OPERATION_STATUS_FIELDS} }`;
 const APPLY_RESULT_FIELDS =
   'operationId itemId proposalId providerReceiptId resourceRevision targetRevision appliedFieldKeys';
 const ASSIGNMENT_FIELDS =
@@ -809,21 +813,25 @@ export async function executeTranslationOperation(
       const input = withoutKind(operation);
       const data = await request<
         { input: typeof input },
-        { generateMachineTranslationProposal: MachineProposal }
+        { generateMachineTranslationProposal: MachineProposalOutcome }
       >(
         context,
         `mutation GenerateMachineTranslationProposal(
           $input: GenerateMachineTranslationProposalInput!
         ) {
           generateMachineTranslationProposal(input: $input) {
-            ${MACHINE_PROPOSAL_FIELDS}
+            ${MACHINE_PROPOSAL_OUTCOME_FIELDS}
           }
         }`,
         { input }
       );
+      const outcome = data.generateMachineTranslationProposal;
+      if (outcome.__typename === 'MachineTranslationOperationStatus') {
+        return { kind: 'machine_operation_status', value: outcome };
+      }
       return {
         kind: 'machine_proposal',
-        value: data.generateMachineTranslationProposal
+        value: outcome
       };
     }
     case 'cancel_machine_operation': {

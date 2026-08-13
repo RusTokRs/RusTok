@@ -28,7 +28,14 @@ across GraphQL and native SSR. Public comment reads carry typed `AVAILABLE`,
 availability across both transports, while the article remains renderable for the
 two degraded states. The active DTO/UI path has no legacy body or format field.
 The typed storefront comments availability is source-locked. The remote transport remains pending.
-The cached snapshot and comment-form fallback remain planned.
+The Leptos article SSR path renders an inert localized comment marker and loads
+an isolated authenticated comment island instead of hydrating the storefront.
+Its CSP-nonced bootstrap imports the shared Tiptap frame only for an active
+browser session, while the canonical authorized server-function client attaches
+the stored bearer and tenant context to `blog/comment-create`. The minimal WASM
+artifact builds successfully. Content serves the canonical manifest-selected
+frame HTML, adapter, script, and stylesheet; Blog serves only its island assets.
+Mounted persistence/reload evidence remains open.
 
 The Blog admin uses typed `RichTextDocument` state and the owner
 `BlogRichTextEditor`. The fixed Article frame is isolated with an
@@ -844,7 +851,12 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
   locale and reserves the host UI locale for new posts. `npm run verify
   --prefix packages/richtext`, the Chromium frame
   harness, native Blog admin check and shared WASM check cover this slice;
-  mounted Blog save/reload and dirty locale-switch evidence remain open.
+  authenticated Next storefront now also has mounted canonical comment
+  submission and moderation-pending PostgreSQL persistence evidence. The
+  isolated Leptos Blog comment island builds as real WASM and retains the
+  authenticated native server-function path without full storefront hydration.
+  Mounted Blog article save/reload, Leptos comment persistence/reload and
+  rejection, and dirty locale-switch evidence remain open.
 - Blog FBA source-gate chain: `source_verified_no_compile`; registry schema v13
   locks exact verify/test order, source-gate paths, leaf npm commands, evidence,
   self-tests, the Comments projection classifier, deterministic retry policy,
@@ -904,7 +916,8 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
 - Next admin Forum UI ownership: `source_verified_no_compile`.
 - Blog admin canonical richtext guardrail: `source_verified_no_compile`.
 - Blog GraphQL richtext boundary: `implemented_source_verified_no_compile`.
-- Blog storefront richtext boundary: `source_verified_no_compile`.
+- Blog storefront richtext boundary: `next_mounted_postgresql_verified_leptos_wasm_built`;
+  Leptos mounted persistence parity and rejection/reload evidence remain pending.
 - AI Blog draft owner writes and shim: `source_verified_no_compile`.
 - Comments thread write invariants: Comments-owned `executable_no_run`; registry
   schema v4, evidence schema v3, owner identity classifier, guarded canonical
@@ -1229,6 +1242,22 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
     Search projection target compiles. Blog module validation now passes after
     synchronizing its required `outbox` dependency and correcting the validator
     so always-linked required modules do not require invented `mod-*` features.
+71. Mounted the authenticated Next Blog detail against the built server and a
+    fresh PostgreSQL schema. The selected article rendered the server-owned
+    richtext projection, the Comments-owned iframe exposed the generated
+    `comment` toolbar, and submission persisted the canonical root document in
+    `comment_bodies` with `pending` moderation state. The Next host now owns the
+    same-origin `/api/*` rewrite, and the server and every client agree on the
+    canonical no-trailing-slash `/api/graphql` route.
+72. Added the isolated Leptos Blog comment island. Selected article SSR emits a
+    localized inert marker and a CSP-nonced same-origin bootstrap; only an active
+    canonical browser session loads the minimal WASM artifact and shared Tiptap
+    frame. The shared authorized server-function client supplies bearer and
+    tenant headers to `blog/comment-create`, and the full storefront graph stays
+    outside the island build. The real wasm32 artifact build passes. Shared WASM
+    build and embedded-asset response helpers remove duplication with Pages;
+    the Content-owned frame router is generated from the canonical richtext asset
+    manifest so Leptos does not duplicate Next route logic or Blog asset ownership.
 
 ## Next results
 
@@ -1267,10 +1296,10 @@ existing first-class Comments port leaf rather than a parallel duplicate leaf.
    same commit. No conversion or corrective migration path may be restored.
 7. **Complete public comment storefront parity.** The Comments-owned React
    composer is connected to the selected Next Blog detail surface through the
-   implemented Blog-bound GraphQL mutation. Retain mounted auth,
-   hidden/draft/channel rejection,
-   canonical document submission, moderation-pending, and save/reload evidence
-   for Next and Leptos. Do not add a generic Comments target mutation.
+   implemented Blog-bound GraphQL mutation; mounted Next authentication,
+   canonical submission, and moderation-pending persistence now pass. Retain
+   hidden/draft/channel rejection and save/reload evidence for Next, plus the
+   full mounted Leptos path. Do not add a generic Comments target mutation.
 
 ## Verification
 

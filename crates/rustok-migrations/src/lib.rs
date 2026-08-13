@@ -681,6 +681,19 @@ mod tests {
     }
 
     #[test]
+    fn migrator_uses_unique_canonical_migration_names() {
+        let mut names = std::collections::BTreeSet::new();
+        for migration in Migrator::migrations() {
+            let name = migration.name().to_string();
+            assert_ne!(name, "mod", "migration identity must not come from mod.rs");
+            assert!(
+                names.insert(name.clone()),
+                "migration identity must be unique: {name}"
+            );
+        }
+    }
+
+    #[test]
     fn dependency_sort_rejects_missing_dependency() {
         let mut migrations: Vec<Box<dyn sea_orm_migration::MigrationTrait>> = vec![
             Box::new(super::m20250101_000001_create_tenants::Migration),

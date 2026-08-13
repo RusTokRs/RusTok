@@ -30,8 +30,8 @@ mod m20260806_000005_add_product_index_locale_refresh_ledger;
 mod m20260806_000006_add_product_variant_index_refresh_ledger;
 mod m20260806_000007_add_product_index_refresh_relay_cursors;
 mod m20260807_000008_add_product_sales_channel_index_relation_snapshots;
-// Historical bootstrap retained so databases that already applied it keep a valid migration chain.
-// The next migration removes its versioned runtime object names.
+// Immutable migration history is retained; the next migration removes the
+// versioned database objects so the live schema exposes only canonical names.
 mod m20260807_000009_add_product_index_graph_v3_projection_snapshots;
 mod m20260807_000010_canonicalize_product_index_graph_projection;
 mod m20260807_000011_add_product_sales_channel_relation_freshness;

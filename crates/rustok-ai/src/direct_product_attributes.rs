@@ -6,8 +6,8 @@ use serde_json::json;
 use std::time::Duration;
 
 use crate::direct::{
-    DirectExecutionRequest, DirectExecutionResult, DirectTaskHandler, direct_operator_port_context,
-    explain_result, generate_product_attributes,
+    DirectExecutionRequest, DirectExecutionResult, DirectExplanationRequest, DirectTaskHandler,
+    direct_operator_port_context, explain_result, generate_product_attributes,
 };
 use crate::model::{AiProductAttributesTaskInput, DirectExecutionTarget, ToolTrace};
 use crate::service::{AiHostRuntime, AiOperatorContext};
@@ -144,16 +144,16 @@ impl DirectTaskHandler for ProductAttributesHandler {
             error_message: None,
             created_at: Utc::now(),
         };
-        let explanation = explain_result(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            input.assistant_prompt.as_deref(),
-            &summary,
-            &operation_payload,
-            request.stream_emitter.clone(),
-        )
+        let explanation = explain_result(DirectExplanationRequest {
+            provider: &request.provider,
+            provider_config: &request.provider_config,
+            system_prompt: request.system_prompt.as_deref(),
+            locale: request.resolved_locale.as_str(),
+            assistant_prompt: input.assistant_prompt.as_deref(),
+            summary: &summary,
+            payload: &operation_payload,
+            stream_emitter: request.stream_emitter.clone(),
+        })
         .await;
         Ok(DirectExecutionResult {
             execution_target: DirectExecutionTarget::Commerce,

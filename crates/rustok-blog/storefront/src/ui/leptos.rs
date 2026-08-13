@@ -1,11 +1,12 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::use_token;
-use leptos_ui::{RichTextHtml, localized_richtext_frame_copy};
+use leptos_ui::RichTextHtml;
 use leptos_ui_routing::{read_route_query_value, use_route_query_value, use_route_query_writer};
-use rustok_comments_storefront_support::{CommentComposer, CommentComposerCopy};
+#[cfg(target_arch = "wasm32")]
+use rustok_comments_storefront_support::CommentComposer;
 use rustok_ui_core::UiRouteContext;
 
-use crate::i18n::t;
+use crate::i18n::{comment_composer_copy, t};
 use crate::model::{
     BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostDetail,
     BlogPostListItem, StorefrontBlogData,
@@ -200,60 +201,30 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
                 .map_err(|error| error.to_string())
         }
     });
-    let richtext_locale = locale.clone();
-    let comment_composer_copy = CommentComposerCopy {
-        title: t(
-            locale.as_deref(),
-            "blog.comments.composer.title",
-            "Join the discussion",
-        ),
-        editor_label: t(
-            locale.as_deref(),
-            "blog.comments.composer.editorLabel",
-            "Comment",
-        ),
-        hint: t(
-            locale.as_deref(),
-            "blog.comments.composer.hint",
-            "Formatting is preserved with the shared richtext editor.",
-        ),
-        submit: t(
-            locale.as_deref(),
-            "blog.comments.composer.submit",
-            "Submit comment",
-        ),
-        submitting: t(
-            locale.as_deref(),
-            "blog.comments.composer.submitting",
-            "Submitting...",
-        ),
-        success: t(
-            locale.as_deref(),
-            "blog.comments.composer.success",
-            "Your comment was submitted for moderation.",
-        ),
-        sign_in_required: t(
-            locale.as_deref(),
-            "blog.comments.composer.signInRequired",
-            "Sign in to join the discussion.",
-        ),
-        empty_error: t(
-            locale.as_deref(),
-            "blog.comments.composer.emptyError",
-            "Write a comment before submitting.",
-        ),
-        richtext: localized_richtext_frame_copy(|key, fallback| {
-            t(richtext_locale.as_deref(), key, fallback)
-        }),
-    };
+    let comment_composer_copy = comment_composer_copy(locale.as_deref());
+    #[cfg(target_arch = "wasm32")]
     let comment_composer = view! {
-        <CommentComposer
-            content_locale=effective_locale.clone()
-            submit_action=submit_comment
-            copy=comment_composer_copy
-        />
-    }
-    .into_any();
+        <CommentComposer content_locale=effective_locale.clone() submit_action=submit_comment copy=comment_composer_copy />
+    }.into_any();
+    #[cfg(not(target_arch = "wasm32"))]
+    let comment_composer = {
+        let _ = (submit_comment, comment_composer_copy);
+        view! {
+            <section
+                class="mt-6 rounded-2xl border border-border bg-card/50 p-5"
+                data-blog-comment-island="true"
+                data-post-id=post_id
+                data-content-locale=effective_locale.clone()
+            >
+                <h4 class="text-base font-semibold text-foreground">
+                    {t(locale.as_deref(), "blog.comments.composer.title", "Join the discussion")}
+                </h4>
+                <p class="mt-3 rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                    {t(locale.as_deref(), "blog.comments.composer.signInRequired", "Sign in to join the discussion.")}
+                </p>
+            </section>
+        }.into_any()
+    };
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">

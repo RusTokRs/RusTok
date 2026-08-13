@@ -3,7 +3,7 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 use crate::model::{
@@ -135,8 +135,18 @@ pub async fn execute(
         TranslationAdminOperation::EstimateMachineTranslation { .. } => Ok(
             TranslationAdminResponse::MachineEstimate(field_value(&data, field)?),
         ),
-        TranslationAdminOperation::GenerateMachineProposal { .. }
-        | TranslationAdminOperation::RecoverMachineOperation { .. } => Ok(
+        TranslationAdminOperation::GenerateMachineProposal { .. } => {
+            let outcome: GraphqlMachineProposalOutcome = field_value(&data, field)?;
+            Ok(match outcome {
+                GraphqlMachineProposalOutcome::Completed(proposal) => {
+                    TranslationAdminResponse::MachineProposal(*proposal)
+                }
+                GraphqlMachineProposalOutcome::InProgress(status) => {
+                    TranslationAdminResponse::MachineOperationStatus(status)
+                }
+            })
+        }
+        TranslationAdminOperation::RecoverMachineOperation { .. } => Ok(
             TranslationAdminResponse::MachineProposal(field_value(&data, field)?),
         ),
         TranslationAdminOperation::CancelMachineOperation { .. } => Ok(
@@ -632,7 +642,9 @@ fn operation_graphql(operation: &TranslationAdminOperation) -> (String, Value, &
             style,
             idempotency_key,
         } => (
-            format!("mutation GenerateMachineTranslationProposal($input: GenerateMachineTranslationProposalInput!) {{ generateMachineTranslationProposal(input: $input) {{ {MACHINE_PROPOSAL_FIELDS} }} }}"),
+            format!(
+                "mutation GenerateMachineTranslationProposal($input: GenerateMachineTranslationProposalInput!) {{ generateMachineTranslationProposal(input: $input) {{ __typename ... on MachineTranslationProposal {{ {MACHINE_PROPOSAL_FIELDS} }} ... on MachineTranslationOperationStatus {{ {MACHINE_OPERATION_STATUS_FIELDS} }} }} }}"
+            ),
             json!({ "input": {
                 "itemId": item_id,
                 "fieldKeys": field_keys,
@@ -899,6 +911,15 @@ fn field_value<T: DeserializeOwned>(data: &Value, field: &str) -> Result<T, Tran
         .ok_or_else(|| GraphqlHttpError::Graphql(format!("Missing response field `{field}`")))?;
     serde_json::from_value(value)
         .map_err(|error| GraphqlHttpError::Graphql(format!("Invalid `{field}` response: {error}")))
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "__typename")]
+enum GraphqlMachineProposalOutcome {
+    #[serde(rename = "MachineTranslationProposal")]
+    Completed(Box<crate::model::MachineProposal>),
+    #[serde(rename = "MachineTranslationOperationStatus")]
+    InProgress(crate::model::MachineOperationStatus),
 }
 
 fn graphql_endpoint_from_base(base: &str) -> String {
@@ -1284,6 +1305,56 @@ mod tests {
             assert!(
                 query.contains(field),
                 "{field} missing from GraphQL document"
+            );
+        }
+    }
+
+    #[test]
+    fn decodes_in_progress_machine_proposal_outcome() {
+        let outcome: GraphqlMachineProposalOutcome = serde_json::from_value(serde_json::json!({
+            "__typename": "MachineTranslationOperationStatus",
+            "operationId": "00000000-0000-0000-0000-000000000020",
+            "itemId": "00000000-0000-0000-0000-000000000021",
+            "status": "registered",
+            "providerExecutionId": "execution-in-progress",
+            "providerStatus": "running",
+            "providerErrorCode": null,
+            "updatedAt": "2026-08-13T00:00:00+00:00"
+        }))
+        .expect("machine proposal polling outcome must deserialize");
+
+        let GraphqlMachineProposalOutcome::InProgress(status) = outcome else {
+            panic!("expected an in-progress machine proposal outcome");
+        };
+        assert_eq!(status.status, "registered");
+        assert_eq!(status.provider_status, "running");
+        assert_eq!(
+            status.provider_execution_id.as_deref(),
+            Some("execution-in-progress")
+        );
+    }
+
+    #[test]
+    fn generate_machine_proposal_requests_both_outcome_members() {
+        let operation = TranslationAdminOperation::GenerateMachineProposal {
+            item_id: "00000000-0000-0000-0000-000000000020".to_string(),
+            field_keys: vec!["title".to_string()],
+            minimum_memory_similarity_basis_points: 0,
+            tone: None,
+            domain: None,
+            style: None,
+            idempotency_key: "machine-proposal-outcome".to_string(),
+        };
+
+        let (document, _, _) = operation_graphql(&operation);
+        for marker in [
+            "__typename",
+            "... on MachineTranslationProposal",
+            "... on MachineTranslationOperationStatus",
+        ] {
+            assert!(
+                document.contains(marker),
+                "missing GraphQL outcome field {marker}"
             );
         }
     }

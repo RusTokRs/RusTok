@@ -193,6 +193,7 @@ for (const marker of [
   "AllowedClassifications",
   "provider_egress_allowlist_rejects_unapproved_classification_before_estimate",
   "provider_egress_allowlist_is_rechecked_before_attempt_egress",
+  "provider_egress_policy_cannot_change_while_an_attempt_is_in_flight",
 ])
   requireText(aiAccounting, marker, "AI structured-task accounting");
 requireText(
@@ -221,6 +222,9 @@ for (const marker of [
   "jsonschema::options()",
   "ai.structured.provider_output_schema_invalid",
   "structured_runtime_preserves_contract_and_accounting_across_failure_paths",
+  "same_key_concurrent_execution_calls_the_provider_once",
+  "structured_ledger_keeps_translation_packet_out_of_open_persistence",
+  "assert_eq!(in_flight.status, AiStructuredTaskStatus::Running)",
   'assert_eq!(conflict.code, "ai.structured.idempotency_conflict")',
   "assert_eq!(restarted_engine.calls(), 0)",
   "assert_eq!(committed_after_restart, committed_before_restart)",
@@ -341,6 +345,7 @@ for (const marker of [
   "translation.machine.memory_digest_mismatch",
   "MachineTranslationEstimate",
   "MachineTranslationExecutionEvidence",
+  "MachineTranslationBatchExecution",
   "review_required",
   "execution_status",
   "estimate_batch",
@@ -368,6 +373,8 @@ for (const marker of [
   "pub async fn recover_operation",
   "resume_machine_recovery",
   "MachineRecoveryResultUnavailable",
+  "MachineProposalOutcome",
+  "generation_returns_pollable_operation_when_machine_execution_is_in_progress",
 ])
   requireText(
     translationService,
@@ -543,8 +550,11 @@ for (const marker of [
   "AiStructuredTaskExecutionKey",
   "estimate_batch",
   "estimates_with_the_same_bounded_request_without_execution",
+  "preserves_lossless_scalar_profiles_and_rejects_structural_profiles",
   "cancel_by_key",
   "recover_batch",
+  "maps_queued_or_running_execution_to_typed_in_progress_result",
+  "MachineTranslationBatchExecution::InProgress",
   "output_unit_missing",
   "output_constraints_changed",
   "review_required: true",
@@ -604,6 +614,12 @@ for (const marker of [
   "rustok_blog",
   "rustok_commerce",
   "graphql",
+  "TranslationMachineService",
+  "TranslationMachineControlService",
+  "TranslationWorkflowService",
+  "TranslationMemoryService",
+  "machine_operation::",
+  "entities::",
 ])
   forbidText(adapterSource, marker, "stateless adapter boundary");
 

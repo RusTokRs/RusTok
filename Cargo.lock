@@ -7169,6 +7169,7 @@ dependencies = [
 name = "leptos-auth"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "gloo-storage",
  "js-sys",
  "leptos 0.8.20",
@@ -12179,6 +12180,7 @@ dependencies = [
  "rustok-runtime",
  "rustok-secrets",
  "rustok-storage",
+ "rustok-taxonomy",
  "rustok-telemetry",
  "rustok-test-utils",
  "schemars 1.2.1",
@@ -12932,6 +12934,7 @@ version = "0.1.0"
 dependencies = [
  "async-graphql",
  "async-trait",
+ "axum",
  "chrono",
  "proptest",
  "rustok-api",
@@ -12940,6 +12943,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-telemetry",
  "rustok-test-utils",
+ "rustok-web",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -15602,6 +15606,7 @@ dependencies = [
  "rustok-ui-core",
  "rustok-ui-transport",
  "rustok-web",
+ "sea-orm",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -15886,6 +15891,7 @@ dependencies = [
  "rustok-api",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "uuid",
 ]

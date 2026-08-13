@@ -9,10 +9,8 @@ use rustok_core::ModuleRuntimeExtensions;
 use std::sync::Arc;
 
 #[cfg(feature = "embed-admin")]
-#[allow(unused_imports)]
 use rustok_admin as _;
 #[cfg(feature = "embed-storefront")]
-#[allow(unused_imports)]
 use rustok_storefront as _;
 
 use crate::common::settings::RustokSettings;
@@ -142,12 +140,15 @@ pub fn build_admin_router() -> AxumRouter {
 }
 
 #[cfg(feature = "embed-storefront")]
-pub fn build_storefront_router() -> AxumRouter {
-    rustok_storefront::router()
+pub fn build_storefront_router(runtime: HostRuntimeContext) -> AxumRouter {
+    let router = rustok_storefront::router(runtime);
+    #[cfg(feature = "richtext-assets")]
+    let router = router.merge(rustok_content::richtext_assets::router());
+    router
 }
 
 #[cfg(not(feature = "embed-storefront"))]
-pub fn build_storefront_router() -> AxumRouter {
+pub fn build_storefront_router(_runtime: HostRuntimeContext) -> AxumRouter {
     AxumRouter::new().fallback(|| async {
         (
             axum::http::StatusCode::SERVICE_UNAVAILABLE,
@@ -302,6 +303,7 @@ pub fn compose_application_router(
         server_fn_runtime_ctx
     };
     let server_fn_registry = runtime.registry.clone();
+    let storefront_runtime_ctx = server_fn_runtime_ctx.clone();
 
     let router =
         routes_codegen::append_optional_module_axum_routers(router, &server_fn_runtime_ctx)
@@ -336,7 +338,7 @@ pub fn compose_application_router(
         runtime
             .deployment_surfaces
             .embed_storefront
-            .then(build_storefront_router),
+            .then(|| build_storefront_router(storefront_runtime_ctx)),
     )
     .layer(Extension(runtime.registry))
     .layer(Extension(runtime.graphql_schema));

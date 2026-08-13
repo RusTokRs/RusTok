@@ -274,6 +274,18 @@ pub struct MachineTranslationExecutionStatusEvidence {
     pub status: MachineTranslationExecutionStatus,
 }
 
+/// The terminal or in-progress result of one idempotent batch execution.
+///
+/// A port must return `InProgress` only for a durable queued or running
+/// execution. Callers retain the Translation operation as the stable polling
+/// identity instead of interpreting a transient transport failure as a result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MachineTranslationBatchExecution {
+    Completed(MachineTranslationBatchResult),
+    InProgress(MachineTranslationExecutionStatusEvidence),
+}
+
 #[async_trait]
 pub trait MachineTranslationPort: Send + Sync {
     fn descriptor(&self) -> &MachineTranslationProviderDescriptor;
@@ -293,7 +305,7 @@ pub trait MachineTranslationPort: Send + Sync {
         &self,
         context: PortContext,
         request: MachineTranslationBatchRequest,
-    ) -> Result<MachineTranslationBatchResult, PortError>;
+    ) -> Result<MachineTranslationBatchExecution, PortError>;
 
     async fn execution_status(
         &self,

@@ -10,6 +10,8 @@ use std::sync::Arc;
 use crate::CommentService;
 
 pub mod categories;
+#[cfg(feature = "comment-assets")]
+mod comment_assets;
 pub mod comments;
 pub mod posts;
 
@@ -53,7 +55,7 @@ impl BlogHttpRuntime {
 
 pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
     let state = BlogHttpRuntime::from_host(runtime)?;
-    Ok(Router::new()
+    let router = Router::new()
         .route(
             "/api/blog/posts",
             get(posts::list_posts).post(posts::create_post),
@@ -83,7 +85,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
             "/api/blog/comments/{id}/moderate",
             post(comments::moderate_comment),
         )
-        .with_state(state))
+        .with_state(state);
+    #[cfg(feature = "comment-assets")]
+    let router = router.merge(comment_assets::router());
+    Ok(router)
 }
 
 #[cfg(test)]

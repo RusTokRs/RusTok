@@ -20,6 +20,9 @@ the [central implementation plan](../../docs/modules/rich-text-implementation-pl
   `comment` profiles; strict tree/attribute/link validation; deterministic
   normalization; one escaped semantic HTML renderer; and one plain-text
   projection.
+- Under the opt-in `richtext-assets` server feature, expose the canonical
+  manifest-selected frame HTML, Leptos adapter, script, and stylesheet through
+  same-origin `/richtext/frame` routes with content-derived cache validators.
 - Own orchestration state, idempotency, audit records, and canonical URL/alias mappings for cross-domain flows.
 - Own content dashboard post analytics snapshots (`ContentCountSnapshot` and
   `load_post_stats_snapshot`) so host GraphQL does not embed `nodes` SQL.
@@ -68,6 +71,7 @@ canonical and their corrective migration/conversion artifacts are absent.
 - `graphql::ContentQuery` (feature `graphql`)
 - owner-neutral content DTO/entity helpers documented by `CRATE_API.md`
 - `richtext::{RichTextProfile, validate_and_normalize, render_html, plain_text}`
+- `richtext_assets::router` (feature `richtext-assets`)
 
 ## Docs
 

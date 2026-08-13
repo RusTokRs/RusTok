@@ -48,9 +48,17 @@
 - Deterministic composed runtime evidence covers ordered provider fallback,
   fail-closed JSON Schema enforcement, sanitized failure recording, exact
   per-attempt token/price/cost settlement, request-hash conflict rejection,
-  in-flight cancellation with reservation release, quota rejection before
-  provider execution, and authenticated encrypted restart replay without
-  another provider call or bill.
+  same-key concurrent execution coalescing, in-flight cancellation with
+  reservation release, quota rejection before provider execution, and
+  authenticated encrypted restart replay without another provider call or bill.
+- Deterministic database evidence reads persisted structured execution,
+  attempt, and result rows after a translation packet. It verifies that source
+  and provider-response markers remain out of open ledger evidence and that
+  retained output is AES-GCM ciphertext rather than plaintext.
+- A same-key queued or running execution maps to the typed
+  `MachineTranslationBatchExecution::InProgress` result. Translation returns
+  its durable operation identifier and polls it instead of starting another
+  provider call.
 - Configuration-level provider unavailability produces typed degraded health.
 - An ignored operator-only `rustok-ai` probe executes a deployment-owned
   provider config through the durable structured runtime and restart-replay

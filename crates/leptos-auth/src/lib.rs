@@ -1,3 +1,4 @@
+mod client;
 pub mod components;
 pub mod context;
 pub mod hooks;
@@ -53,6 +54,7 @@ impl AuthError {
     }
 }
 
+pub use client::AuthorizedBrowserClient;
 pub use components::{GuestRoute, ProtectedRoute, RequireAuth};
 pub use context::{AuthContext, AuthProvider};
 pub use hooks::{

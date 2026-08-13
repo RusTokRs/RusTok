@@ -54,11 +54,17 @@ and hashed frame assets. The shared `leptos-ui` frame owns the Leptos WASM
 lifecycle; Blog and Forum expose only thin profile/locale wrappers. The Blog
 editor selects `article` and Forum selects `discussion`. A Chromium spike verified the
 sandbox boundary, blocked cookie/parent-DOM access, CSP headers, private
-`MessageChannel`, and canonical document updates. The Leptos Trunk/SSR static
-fallback copies the same hashed frame plus browser adapter, applies dedicated
-no-store bootstrap headers and immutable hashed-asset headers, and mounts editor
-frames only during hydration; SSR emits inert iframe markup and executes no
-WASM editor runtime. The internal frame protocol is unversioned,
+`MessageChannel`, and canonical document updates. The Leptos SSR host now also
+has an isolated Blog comment island. Article SSR emits an inert localized
+composer marker; a CSP-nonced same-origin bootstrap loads the minimal comment
+WASM artifact and the shared Tiptap frame only when a canonical browser session
+exists. The island uses the shared Auth provider and an authorized Leptos
+server-function client, so bearer and tenant context remain browser-owned and
+never appear in SSR markup. Anonymous Pages shell rendering still emits no
+client bootstrap, and the full storefront graph is not hydrated for a comment
+form. Content owns the same-origin Leptos frame asset router, generated from the
+canonical `@rustok/richtext` asset manifest at build time; Blog owns only its
+small comment-island bootstrap/module assets. The internal frame protocol is unversioned,
 the host revalidates frame documents, and the browser validator now enforces the
 same tree, mark, attribute, URL, and size rules as the Rust policy. Host-selected
 content locale, derived direction, spellcheck and dynamic read-only state now
@@ -127,7 +133,7 @@ Blog supplies the exact target-bound commands for the first composition.
 
 ## Verified current state and inconsistencies
 
-The repository was re-audited against the current tree on 2026-08-11. The
+The repository was re-audited against the current tree on 2026-08-13. The
 following is the live closeout inventory, not historical phase evidence:
 
 - Blog, Forum, and Comments owner services accept typed documents, select their
@@ -173,6 +179,19 @@ following is the live closeout inventory, not historical phase evidence:
 - The parent Leptos/server CSP forbids style attributes, while ProseMirror core
   writes them during editing. The isolated frame remains required; loading
   Tiptap directly into the parent document is not an alternative.
+- A fresh PostgreSQL database applies the complete current 457-migration chain.
+  The canonical no-trailing-slash `/api/graphql` endpoint was exercised on the
+  built server; the trailing-slash variant is intentionally absent.
+- An authenticated Next storefront browser run rendered the selected Blog
+  `RichTextView`, mounted the shared iframe and its ten-command `comment`
+  toolbar, submitted a canonical ProseMirror document through the Blog-owned
+  GraphQL mutation, and persisted it in `comment_bodies` with `pending` status.
+  The Next host now proxies same-origin `/api/*` requests to the server-owned
+  `RUSTOK_API_URL`; client bundles do not require a public cross-origin API URL.
+  The mounted Next evidence closes the first Comments composer path. The
+  isolated Leptos artifact now builds successfully for
+  `wasm32-unknown-unknown`; mounted Leptos persistence/reload and cross-browser
+  evidence remain open.
 
 ## Target architecture
 
@@ -623,7 +642,9 @@ needed for production reads.
 Status: source implemented; unversioned bounded protocol, browser grammar,
 locale/direction/spellcheck and dynamic read-only behavior are verified by
 package typecheck, ten unit tests, native/WASM checks and the Chromium frame
-harness. Firefox, WebKit and full mounted-host evidence remain pending.
+harness. The Next storefront now also has authenticated mounted-host
+submission evidence. Firefox, WebKit and mounted Leptos evidence remain
+pending.
 
 Deliverables:
 
@@ -645,8 +666,10 @@ returns byte-equivalent canonical documents without CSP violations.
 Status: backend/storage/read parity is implemented for the three Wave 1 owners.
 Blog authoring is present in Next and Leptos. Forum has matching topic and reply
 authoring on both hosts, including native/GraphQL Leptos reply-write selection.
-Comments has shared editor UI for both storefront frameworks. Mounted
-save/reload/rejection evidence is still open, so Phase 3 remains in progress.
+Comments has shared editor UI for both storefront frameworks. The authenticated
+Next Blog path now has mounted canonical submission and moderation-pending
+persistence evidence; Leptos mounted save/reload and rejection evidence is
+still open, so Phase 3 remains in progress.
 
 Deliverables:
 

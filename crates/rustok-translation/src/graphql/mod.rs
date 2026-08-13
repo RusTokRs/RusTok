@@ -81,5 +81,9 @@ mod tests {
         ] {
             assert!(sdl.contains(field), "missing GraphQL field {field}");
         }
+        assert!(
+            sdl.contains("union MachineTranslationProposalOutcome"),
+            "machine proposal mutation must expose a typed completion or polling outcome"
+        );
     }
 }

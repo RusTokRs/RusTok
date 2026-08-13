@@ -2141,6 +2141,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn provider_egress_policy_cannot_change_while_an_attempt_is_in_flight() {
+        let (ledger, accounting, tenant_id, provider_id) = runtime(10_000, 1).await;
+        let execution = ledger
+            .register(&context(tenant_id, "egress-policy-in-flight"), &request())
+            .await
+            .unwrap()
+            .execution;
+        accounting
+            .reserve(execution.id, &[provider_id])
+            .await
+            .unwrap();
+        let lease = ledger
+            .claim(execution.id, Duration::from_secs(30))
+            .await
+            .unwrap()
+            .unwrap();
+        let attempt = accounting
+            .begin_attempt(
+                execution.id,
+                lease.token,
+                provider_id,
+                "openai_compatible",
+                "test-model",
+            )
+            .await
+            .unwrap();
+
+        let error = accounting
+            .put_provider_policy(ProviderPolicy {
+                tenant_id,
+                provider_profile_id: provider_id,
+                allowed_classifications: vec![AiTaskDataClassification::Public],
+                currency_code: "USD".to_string(),
+                input_cost_per_million_minor: 1_000_000,
+                output_cost_per_million_minor: 2_000_000,
+                max_concurrent: 1,
+                is_active: true,
+            })
+            .await
+            .expect_err("in-flight provider egress policy must remain immutable");
+        assert_eq!(error.kind, PortErrorKind::Conflict);
+        assert_eq!(error.code, "ai.structured.provider_egress_policy_in_use");
+
+        let policy = ai_structured_provider_policies::Entity::find()
+            .one(&accounting.database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            provider_allowed_classifications(&policy).unwrap(),
+            vec![AiTaskDataClassification::TenantPrivate]
+        );
+        assert!(policy.is_active);
+
+        accounting
+            .finish_attempt(
+                execution.id,
+                lease.token,
+                attempt.model.id,
+                AttemptOutcome::Failed {
+                    usage: None,
+                    error_code: "ai.structured.provider_timeout".to_string(),
+                    retryable: true,
+                    retry_after_ms: Some(100),
+                },
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
     async fn successful_attempt_result_and_budget_settle_atomically() {
         let (ledger, accounting, tenant_id, provider_id) = runtime(10_000, 1).await;
         let execution = ledger

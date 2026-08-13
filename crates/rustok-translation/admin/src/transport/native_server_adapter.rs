@@ -114,12 +114,14 @@ async fn execute_with_runtime(
     dispatch(
         operation,
         context,
-        database,
-        providers,
-        tenant_locale_policies,
-        event_bus,
-        machine_port,
-        storage,
+        TranslationNativeDependencies {
+            database,
+            providers,
+            tenant_locale_policies,
+            event_bus,
+            machine_port,
+            storage,
+        },
     )
     .await
 }
@@ -157,15 +159,20 @@ fn port_context(
 }
 
 #[cfg(feature = "ssr")]
-async fn dispatch(
-    operation: TranslationAdminOperation,
-    context: rustok_api::PortContext,
+struct TranslationNativeDependencies {
     database: sea_orm::DatabaseConnection,
     providers: std::sync::Arc<rustok_translation_targets::TranslationTargetRegistry>,
     tenant_locale_policies: std::sync::Arc<dyn rustok_tenant::TenantLocalePolicyPort>,
     event_bus: rustok_outbox::TransactionalEventBus,
     machine_port: Option<std::sync::Arc<dyn rustok_translation::MachineTranslationPort>>,
     storage: Option<rustok_storage::StorageRuntime>,
+}
+
+#[cfg(feature = "ssr")]
+async fn dispatch(
+    operation: TranslationAdminOperation,
+    context: rustok_api::PortContext,
+    dependencies: TranslationNativeDependencies,
 ) -> Result<TranslationAdminResponse, ServerFnError> {
     use rustok_translation::{
         AddItemInput, ApplyProposalInput, ApproveProposalInput, AssignItemInput, CancelJobInput,
@@ -184,6 +191,15 @@ async fn dispatch(
         TranslationProgressService, TranslationWorkflowService, UnassignItemInput,
         UpdateGlossaryInput,
     };
+
+    let TranslationNativeDependencies {
+        database,
+        providers,
+        tenant_locale_policies,
+        event_bus,
+        machine_port,
+        storage,
+    } = dependencies;
 
     let policy = || TranslationPolicyService::new(database.clone(), tenant_locale_policies.clone());
     let glossary =
@@ -859,7 +875,7 @@ async fn dispatch(
             domain,
             style,
             ..
-        } => TranslationAdminResponse::MachineProposal(map_machine_proposal(
+        } => map_machine_proposal_outcome(
             machine()?
                 .generate_proposal(
                     context,
@@ -877,7 +893,7 @@ async fn dispatch(
                 )
                 .await
                 .map_err(public_error)?,
-        )),
+        ),
         TranslationAdminOperation::CancelMachineOperation {
             operation_id,
             reason,
@@ -1816,6 +1832,20 @@ fn map_machine_proposal(value: rustok_translation::MachineProposalRecord) -> Mac
 }
 
 #[cfg(feature = "ssr")]
+fn map_machine_proposal_outcome(
+    value: rustok_translation::MachineProposalOutcome,
+) -> TranslationAdminResponse {
+    match value {
+        rustok_translation::MachineProposalOutcome::Completed(proposal) => {
+            TranslationAdminResponse::MachineProposal(map_machine_proposal(*proposal))
+        }
+        rustok_translation::MachineProposalOutcome::InProgress(status) => {
+            TranslationAdminResponse::MachineOperationStatus(map_machine_operation_status(status))
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn map_machine_cancellation(
     value: rustok_translation::MachineCancellationRecord,
 ) -> MachineCancellation {
@@ -1964,8 +1994,9 @@ mod tests {
         TenantLocalePolicyProjection,
     };
     use rustok_translation::{
-        MachineTranslationAttemptEvidence, MachineTranslationBatchRequest,
-        MachineTranslationBatchResult, MachineTranslationDiagnostic, MachineTranslationEstimate,
+        MachineTranslationAttemptEvidence, MachineTranslationBatchExecution,
+        MachineTranslationBatchRequest, MachineTranslationBatchResult,
+        MachineTranslationDiagnostic, MachineTranslationEstimate,
         MachineTranslationExecutionEvidence, MachineTranslationExecutionStatus,
         MachineTranslationExecutionStatusEvidence, MachineTranslationPort,
         MachineTranslationPortFactory, MachineTranslationProviderDescriptor,
@@ -2016,6 +2047,7 @@ mod tests {
     struct NativeMachinePort {
         descriptor: MachineTranslationProviderDescriptor,
         health: Mutex<MachineTranslationProviderState>,
+        execution_status: Mutex<MachineTranslationExecutionStatus>,
     }
 
     struct NativeMachinePortFactory {
@@ -2038,11 +2070,16 @@ mod tests {
                     review_required: true,
                 },
                 health: Mutex::new(MachineTranslationProviderState::Available),
+                execution_status: Mutex::new(MachineTranslationExecutionStatus::Completed),
             }
         }
 
         async fn set_health(&self, state: MachineTranslationProviderState) {
             *self.health.lock().await = state;
+        }
+
+        async fn set_execution_status(&self, status: MachineTranslationExecutionStatus) {
+            *self.execution_status.lock().await = status;
         }
 
         fn result(request: &MachineTranslationBatchRequest) -> MachineTranslationBatchResult {
@@ -2065,7 +2102,7 @@ mod tests {
                 execution: MachineTranslationExecutionEvidence {
                     execution_id: "native-execution".to_string(),
                     request_digest: "c".repeat(64),
-                    prompt_policy_digest: "d".repeat(64),
+                    prompt_policy_digest: request.adapter_policy_digest.clone(),
                     attempts: vec![MachineTranslationAttemptEvidence {
                         attempt: 1,
                         provider_profile_id: "native-profile".to_string(),
@@ -2128,9 +2165,24 @@ mod tests {
             &self,
             context: PortContext,
             request: MachineTranslationBatchRequest,
-        ) -> Result<MachineTranslationBatchResult, PortError> {
+        ) -> Result<MachineTranslationBatchExecution, PortError> {
             request.validate(&context)?;
-            Ok(Self::result(&request))
+            let status = *self.execution_status.lock().await;
+            if matches!(
+                status,
+                MachineTranslationExecutionStatus::Queued
+                    | MachineTranslationExecutionStatus::Running
+            ) {
+                return Ok(MachineTranslationBatchExecution::InProgress(
+                    MachineTranslationExecutionStatusEvidence {
+                        execution_id: Some("native-execution".to_string()),
+                        status,
+                    },
+                ));
+            }
+            Ok(MachineTranslationBatchExecution::Completed(Self::result(
+                &request,
+            )))
         }
 
         async fn execution_status(
@@ -2859,6 +2911,49 @@ mod tests {
             Some("native-execution")
         );
 
+        machine_port
+            .set_execution_status(MachineTranslationExecutionStatus::Running)
+            .await;
+        let (_, in_progress_item) =
+            create_http_job_item(&runtime, &auth, &tenant, "native-machine-in-progress").await;
+        let response = execute_http_ok(
+            &runtime,
+            &auth,
+            &tenant,
+            TranslationAdminOperation::GenerateMachineProposal {
+                item_id: in_progress_item.id.clone(),
+                field_keys: vec!["title".to_string()],
+                minimum_memory_similarity_basis_points: 0,
+                tone: None,
+                domain: None,
+                style: None,
+                idempotency_key: "native-machine-in-progress-generate".to_string(),
+            },
+        )
+        .await;
+        let TranslationAdminResponse::MachineOperationStatus(in_progress) = response else {
+            panic!("expected a pollable in-progress machine operation response");
+        };
+        assert_eq!(in_progress.item_id, in_progress_item.id);
+        assert_eq!(in_progress.status, "registered");
+        assert_eq!(in_progress.provider_status, "running");
+        assert_eq!(
+            in_progress.provider_execution_id.as_deref(),
+            Some("native-execution")
+        );
+        let persisted_in_progress = machine_operation::Entity::find_by_id(
+            Uuid::parse_str(&in_progress.operation_id).expect("valid machine operation id"),
+        )
+        .one(runtime.db())
+        .await
+        .expect("read in-progress machine operation")
+        .expect("in-progress machine operation");
+        assert_eq!(persisted_in_progress.status, "registered");
+        assert!(persisted_in_progress.proposal_id.is_none());
+
+        machine_port
+            .set_execution_status(MachineTranslationExecutionStatus::Completed)
+            .await;
         machine_port
             .set_health(MachineTranslationProviderState::Unavailable)
             .await;

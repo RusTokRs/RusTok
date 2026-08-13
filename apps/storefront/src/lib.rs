@@ -10,12 +10,62 @@
 
 #![recursion_limit = "256"]
 
+#[cfg(not(feature = "blog-comment-island"))]
 pub mod app;
+#[cfg(not(feature = "blog-comment-island"))]
 pub mod entities;
+#[cfg(not(feature = "blog-comment-island"))]
 pub mod modules;
+#[cfg(not(feature = "blog-comment-island"))]
 pub mod pages;
+#[cfg(not(feature = "blog-comment-island"))]
 pub mod shared;
+#[cfg(not(feature = "blog-comment-island"))]
 pub mod widgets;
+
+#[cfg(all(feature = "blog-comment-island", target_arch = "wasm32"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn start_blog_comment_client() {
+    use leptos::prelude::*;
+    use wasm_bindgen::JsCast;
+
+    let Some(document) = web_sys::window().and_then(|window| window.document()) else {
+        return;
+    };
+    let Some(root) = document
+        .query_selector("[data-blog-comment-island='true']")
+        .ok()
+        .flatten()
+    else {
+        return;
+    };
+    let Some(post_id) = root
+        .get_attribute("data-post-id")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    else {
+        return;
+    };
+    let content_locale = root
+        .get_attribute("data-content-locale")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "en".to_string());
+    let Ok(root) = root.dyn_into::<web_sys::HtmlElement>() else {
+        return;
+    };
+
+    console_error_panic_hook::set_once();
+    root.set_inner_html("");
+    mount_to(root, move || {
+        view! {
+            <leptos_auth::AuthProvider>
+                <rustok_blog_storefront::BlogCommentComposer post_id content_locale />
+            </leptos_auth::AuthProvider>
+        }
+    })
+    .forget();
+}
 
 #[cfg(feature = "ssr")]
 mod forum_category_route;
@@ -27,6 +77,10 @@ use axum::http::{
     HeaderMap, HeaderValue, StatusCode,
     header::{CACHE_CONTROL, ETAG, IF_NONE_MATCH, LOCATION},
 };
+#[cfg(feature = "ssr")]
+use axum::extract::{Request, State};
+#[cfg(feature = "ssr")]
+use axum::middleware::{Next, from_fn_with_state};
 #[cfg(feature = "ssr")]
 use axum::response::{Html, IntoResponse, Redirect, Response};
 #[cfg(feature = "ssr")]
@@ -64,7 +118,28 @@ const PAGES_ROUTE_SEGMENT: &str = "pages";
 const PRIVATE_NO_STORE: &str = "private, no-store";
 
 #[cfg(feature = "ssr")]
-fn render_document(locale: &str, title: &str, extra_head: &str, app_html: String) -> String {
+fn render_document(
+    locale: &str,
+    title: &str,
+    extra_head: &str,
+    app_html: String,
+    csp_nonce: Option<&CspNonce>,
+) -> String {
+    #[cfg(feature = "blog-comment-assets")]
+    let comment_bootstrap = if app_html.contains("data-blog-comment-island=\"true\"") {
+        csp_nonce
+            .map(|nonce| {
+                format!(
+                    r#"<script nonce="{}" type="module" src="/assets/blog-comment-bootstrap.js"></script>"#,
+                    nonce.as_str()
+                )
+            })
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    #[cfg(not(feature = "blog-comment-assets"))]
+    let comment_bootstrap = String::new();
     format!(
         r#"<!DOCTYPE html>
 <html lang="{locale}">
@@ -77,12 +152,14 @@ fn render_document(locale: &str, title: &str, extra_head: &str, app_html: String
 </head>
 <body>
   <div id="app">{app_html}</div>
+  {comment_bootstrap}
 </body>
 </html>"#,
         locale = locale,
         title = rustok_core::html_escape(title),
         extra_head = extra_head,
-        app_html = app_html
+        app_html = app_html,
+        comment_bootstrap = comment_bootstrap,
     )
 }
 
@@ -117,7 +194,7 @@ pub async fn render_shell(
         }
         .to_html()
     });
-    render_document(locale, "RusToK Storefront", "", app_html)
+    render_document(locale, "RusToK Storefront", "", app_html, None)
 }
 
 #[cfg(feature = "ssr")]
@@ -181,7 +258,13 @@ async fn render_module_page_with_nonce(
     let head_html = seo_context
         .map(|context| build_seo_head(context, csp_nonce))
         .unwrap_or_default();
-    render_document(locale, title.as_str(), head_html.as_str(), app_html)
+    render_document(
+        locale,
+        title.as_str(),
+        head_html.as_str(),
+        app_html,
+        csp_nonce,
+    )
 }
 
 #[cfg(feature = "ssr")]
@@ -531,7 +614,24 @@ fn resolve_storefront_locale(
 }
 
 #[cfg(feature = "ssr")]
-pub fn router() -> Router {
+async fn provide_leptos_request_context(
+    State(runtime): State<rustok_api::HostRuntimeContext>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let (request, parts) = leptos_axum::generate_request_and_parts(request);
+    let owner = Owner::new();
+    let future = owner.with(|| {
+        provide_context(runtime);
+        provide_context(parts);
+        provide_context(leptos_axum::ResponseOptions::default());
+        leptos::reactive::computed::ScopedFuture::new(next.run(request))
+    });
+    future.await
+}
+
+#[cfg(feature = "ssr")]
+pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
     Router::new()
         .route(
             "/",
@@ -659,6 +759,7 @@ pub fn router() -> Router {
                 },
             ),
         )
+        .layer(from_fn_with_state(runtime, provide_leptos_request_context))
 }
 
 #[cfg(feature = "ssr")]

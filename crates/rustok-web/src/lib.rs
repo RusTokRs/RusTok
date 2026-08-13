@@ -1,6 +1,17 @@
-use axum::{Json, http::StatusCode, response::IntoResponse};
+use std::fmt::Write as _;
+
+use axum::{
+    Json,
+    body::Body,
+    http::{
+        HeaderMap, StatusCode,
+        header::{CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_NONE_MATCH},
+    },
+    response::{IntoResponse, Response},
+};
 use rustok_api::{PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -90,6 +101,53 @@ impl IntoResponse for HttpError {
 
 pub type HttpResult<T> = Result<T, HttpError>;
 
+/// Build a same-origin immutable-input asset response with content-derived revalidation.
+pub fn embedded_asset_response(
+    headers: &HeaderMap,
+    bytes: &'static [u8],
+    content_type: &'static str,
+    cache_control: &'static str,
+    context: &'static str,
+) -> Response {
+    let etag = content_etag(bytes);
+    let not_modified = headers
+        .get(IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| if_none_match_matches(value, etag.as_str()));
+    let builder = Response::builder()
+        .header(CACHE_CONTROL, cache_control)
+        .header(ETAG, etag)
+        .header("cross-origin-resource-policy", "same-origin");
+    if not_modified {
+        return builder
+            .status(StatusCode::NOT_MODIFIED)
+            .body(Body::empty())
+            .unwrap_or_else(|error| panic!("{context} headers are invalid: {error}"));
+    }
+    builder
+        .header(CONTENT_TYPE, content_type)
+        .status(StatusCode::OK)
+        .body(Body::from(bytes))
+        .unwrap_or_else(|error| panic!("{context} headers are invalid: {error}"))
+}
+
+fn content_etag(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(digest.len() * 2 + 2);
+    encoded.push('"');
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    encoded.push('"');
+    encoded
+}
+
+fn if_none_match_matches(value: &str, etag: &str) -> bool {
+    value.split(',').map(str::trim).any(|candidate| {
+        candidate == "*" || candidate.strip_prefix("W/").unwrap_or(candidate) == etag
+    })
+}
+
 /// Preserve the typed semantics of a module port failure at an HTTP boundary.
 ///
 /// Retryable infrastructure failures intentionally receive stable public messages instead of
@@ -130,8 +188,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{CspNonce, port_error_to_http_error};
-    use axum::http::StatusCode;
+    use super::{CspNonce, embedded_asset_response, port_error_to_http_error};
+    use axum::http::{HeaderMap, HeaderValue, StatusCode, header::IF_NONE_MATCH};
     use rustok_api::PortError;
 
     #[test]
@@ -168,6 +226,36 @@ mod tests {
         assert_eq!(
             unavailable.message,
             "The requested service is temporarily unavailable"
+        );
+    }
+
+    #[test]
+    fn embedded_assets_support_strong_and_weak_revalidation() {
+        let first = embedded_asset_response(
+            &HeaderMap::new(),
+            b"asset",
+            "text/plain",
+            "public, max-age=0, must-revalidate",
+            "test asset response",
+        );
+        let etag = first.headers().get("etag").expect("etag").clone();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            IF_NONE_MATCH,
+            HeaderValue::from_str(format!("W/{}", etag.to_str().expect("etag text")).as_str())
+                .expect("weak etag"),
+        );
+        let revalidated = embedded_asset_response(
+            &headers,
+            b"asset",
+            "text/plain",
+            "public, max-age=0, must-revalidate",
+            "test asset response",
+        );
+        assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(
+            revalidated.headers()["cross-origin-resource-policy"],
+            "same-origin"
         );
     }
 }

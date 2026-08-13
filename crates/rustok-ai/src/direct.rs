@@ -1534,7 +1534,7 @@ fn parse_runtime_payload(payload: Option<String>) -> AiResult<serde_json::Map<St
     Ok(object)
 }
 
-struct DirectExplanationRequest<'a> {
+pub(crate) struct DirectExplanationRequest<'a> {
     provider: &'a Arc<dyn InferenceEngine>,
     provider_config: &'a AiProviderConfig,
     system_prompt: Option<&'a str>,
@@ -1654,9 +1654,10 @@ mod tests {
     use super::direct_order_tasks::{OrderAnalyticsHandler, OrderOpsAssistantHandler};
     use super::direct_product_attributes::ProductAttributesHandler;
     use super::{
-        BlogDraftHandler, DirectExecutionRequest, DirectTaskHandler, MediaImageAssetHandler,
-        ProductCopyHandler, build_blog_draft_create_input, build_generated_file_name,
-        build_image_provider_request, locale_matches, normalize_tag_list,
+        BlogDraftCreateRequest, BlogDraftHandler, DirectExecutionRequest, DirectTaskHandler,
+        MediaImageAssetHandler, ProductCopyHandler, build_blog_draft_create_input,
+        build_generated_file_name, build_image_provider_request, locale_matches,
+        normalize_tag_list,
     };
     use crate::{
         AiHostRuntime, AiOperatorContext, AiProviderTargetCatalog, ProviderEgressPolicy,
@@ -1678,7 +1679,7 @@ mod tests {
     use rustok_ai_order::order_ai_verticals;
     use rustok_ai_product::product_ai_verticals;
     use rustok_api::{PortContext, PortError};
-    use rustok_core::{Rbac, UserRole, registry::ModuleRegistry};
+    use rustok_core::{MigrationSource, Rbac, UserRole, registry::ModuleRegistry};
     use rustok_order::{
         CheckoutCompletionPort, CheckoutCompletionSnapshot, CheckoutResultRequest,
         CompleteCheckoutPortRequest, OrderStatusRequest, OrderStatusSnapshot,
@@ -1687,6 +1688,7 @@ mod tests {
     use rustok_product::{CatalogService, ProductCatalogReadPort, ProductProjectionRequest};
     use rustok_secrets::SecretResolverRegistry;
     use rustok_storage::{LocalStorageConfig, StorageConfig, StorageDriver, StorageRuntime};
+    use rustok_taxonomy::TaxonomyModule;
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use serde_json::json;
@@ -2153,18 +2155,14 @@ mod tests {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("blog draft database");
-        database
-            .execute(Statement::from_string(
-                DbBackend::Sqlite,
-                "CREATE TABLE taxonomy_terms (id TEXT PRIMARY KEY)".to_string(),
-            ))
-            .await
-            .expect("taxonomy term fixture");
         let manager = SchemaManager::new(&database);
         SysEventsMigration
             .up(&manager)
             .await
             .expect("outbox migration");
+        for migration in TaxonomyModule.migrations() {
+            migration.up(&manager).await.expect("taxonomy migration");
+        }
         for migration in crate::rustok_blog::migrations::migrations() {
             migration.up(&manager).await.expect("blog migration");
         }
@@ -2533,7 +2531,6 @@ mod tests {
                 base_url: "https://assets.example.test/media".to_string(),
                 fsync: false,
             },
-            ..Default::default()
         })
         .await
         .expect("media fixture storage");
