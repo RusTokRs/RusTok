@@ -285,6 +285,7 @@ impl BlogSearchProjector {
                      AND fallback.tenant_id = p.tenant_id
                      AND fallback.locale = '{fallback_locale}'
                     WHERE relation.post_id = p.id
+                      AND relation.tenant_id = p.tenant_id
                       AND BTRIM(
                           COALESCE(localized.name, fallback.name, term.canonical_key)
                       ) <> ''

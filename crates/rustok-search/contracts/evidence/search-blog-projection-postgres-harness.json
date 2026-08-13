@@ -21,6 +21,7 @@
     "source_guardrail": "scripts/verify/verify-search-blog-projection.mjs",
     "blog_tag_attachment_source": "blog_post_tags",
     "tag_dictionary_source": "taxonomy_terms + taxonomy_term_translations",
+    "blog_tag_relation_tenant_constrained": true,
     "legacy_metadata_tags_are_projection_source": false
   },
   "cases": [
@@ -34,7 +35,7 @@
     },
     {
       "name": "canonical_taxonomy_tag_projection",
-      "expected": "Blog tag payload and keywords resolve from blog_post_tags plus tenant-local taxonomy translations for the document locale with platform fallback and canonical-key fallback; stale blog_posts.metadata.tags does not affect projection"
+      "expected": "Blog tag payload and keywords resolve from tenant-local blog_post_tags plus tenant-local taxonomy translations for the document locale with platform fallback and canonical-key fallback; stale blog_posts.metadata.tags does not affect projection"
     },
     {
       "name": "full_blog_reindex",

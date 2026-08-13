@@ -70,6 +70,8 @@ for (const marker of [
   "JOIN taxonomy_terms term",
   "LEFT JOIN taxonomy_term_translations localized",
   "LEFT JOIN taxonomy_term_translations fallback",
+  "relation.tenant_id = p.tenant_id",
+  "term.tenant_id = p.tenant_id",
   "localized.tenant_id = p.tenant_id",
   "fallback.tenant_id = p.tenant_id",
   "COALESCE(localized.name, fallback.name, term.canonical_key)",
@@ -139,6 +141,7 @@ if (evidence) {
   if (
     evidence.production_contract?.blog_tag_attachment_source !== "blog_post_tags" ||
     evidence.production_contract?.tag_dictionary_source !== "taxonomy_terms + taxonomy_term_translations" ||
+    evidence.production_contract?.blog_tag_relation_tenant_constrained !== true ||
     evidence.production_contract?.legacy_metadata_tags_are_projection_source !== false
   ) failures.push(`${evidencePath}: canonical Blog tag projection source drift`);
   const caseNames = new Set((evidence.cases ?? []).map((item) => item.name));
