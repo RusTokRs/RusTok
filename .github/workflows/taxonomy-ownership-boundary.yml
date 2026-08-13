@@ -1,0 +1,58 @@
+name: Taxonomy Ownership Boundary
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-taxonomy/**"
+      - "crates/rustok-blog/src/entities/blog_post_tag.rs"
+      - "crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs"
+      - "crates/rustok-forum/src/entities/forum_topic_tag.rs"
+      - "crates/rustok-forum/src/migrations/m20260329_000005_create_forum_topic_tags.rs"
+      - "crates/rustok-product/src/entities/product_tag.rs"
+      - "crates/rustok-product/src/migrations/m20260329_000001_create_product_tags.rs"
+      - "crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs"
+      - "crates/rustok-product/docs/category-locale-contract.md"
+      - "crates/rustok-profiles/src/entities/profile_tag.rs"
+      - "crates/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs"
+      - "scripts/verify/verify-taxonomy-ownership-boundary.mjs"
+      - ".github/workflows/taxonomy-ownership-boundary.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-taxonomy/**"
+      - "crates/rustok-blog/src/entities/blog_post_tag.rs"
+      - "crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs"
+      - "crates/rustok-forum/src/entities/forum_topic_tag.rs"
+      - "crates/rustok-forum/src/migrations/m20260329_000005_create_forum_topic_tags.rs"
+      - "crates/rustok-product/src/entities/product_tag.rs"
+      - "crates/rustok-product/src/migrations/m20260329_000001_create_product_tags.rs"
+      - "crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs"
+      - "crates/rustok-product/docs/category-locale-contract.md"
+      - "crates/rustok-profiles/src/entities/profile_tag.rs"
+      - "crates/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs"
+      - "scripts/verify/verify-taxonomy-ownership-boundary.mjs"
+      - ".github/workflows/taxonomy-ownership-boundary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ownership-boundary:
+    name: Taxonomy owner-storage boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify Taxonomy and consumer ownership boundary
+        run: node scripts/verify/verify-taxonomy-ownership-boundary.mjs
