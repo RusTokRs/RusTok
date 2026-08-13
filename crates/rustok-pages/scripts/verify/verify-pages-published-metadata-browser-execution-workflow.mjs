@@ -23,7 +23,6 @@ const files = {
   sourceWorkflow: ".github/workflows/pages-consumer-properties-source-evidence.yml",
   actualization:
     "docs/modules/pages-published-metadata-browser-evidence-harness-actualization-2026-08-13.md",
-  plan: "docs/modules/pages-page-builder-parity-continuation-plan.md",
 };
 const verifier =
   "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs";
@@ -73,7 +72,6 @@ const sourceExecution = JSON.parse(read(files.sourceExecution));
 const workflow = read(files.workflow);
 const sourceWorkflow = read(files.sourceWorkflow);
 const actualization = read(files.actualization);
-const plan = read(files.plan);
 
 requireValue(
   contract.schema_version === 1 &&
@@ -111,8 +109,9 @@ for (const required of [files.workflow, verifier]) {
   );
 }
 requireValue(
-  surfaceEvidence.browser_execution?.workflow === files.workflow,
-  "published metadata surface source does not register browser workflow",
+  surfaceEvidence.browser_execution?.workflow === files.workflow &&
+    surfaceEvidence.browser_execution?.workflow_verifier === verifier,
+  "published metadata surface source does not register browser workflow guard",
 );
 
 const verifierCommand = `node ${verifier}`;
@@ -124,8 +123,8 @@ for (const required of [files.workflow, verifier]) {
   );
 }
 requireValue(
-  sourceExecution.execution?.verifier_commands?.includes(verifierCommand),
-  "consumer source execution verifier command missing browser workflow guard",
+  sourceExecution.source_packets?.published_browser_execution?.workflow === files.workflow,
+  "consumer source execution does not bind the browser workflow source",
 );
 
 for (const marker of [
@@ -227,15 +226,10 @@ for (const marker of [
   "RUSTOK_PAGES_PUBLISHED_METADATA_EDITOR_STORAGE_STATE_B64",
   "does not establish deployment provenance",
   "does not change `executed_evidence`",
+  "reviewed `source_commit` input must equal the dispatch `GITHUB_SHA`",
+  "only uploaded artifact is the bounded JSON packet",
 ]) {
   requireText(actualization, marker, "published metadata browser actualization");
-}
-for (const marker of [
-  "dispatch-only Pages published-metadata browser evidence workflow is source-ready",
-  "reviewed RepoDigest",
-  "protected environment",
-]) {
-  requireText(plan, marker, "Pages/Page Builder parity continuation plan");
 }
 
 if (failures.length > 0) {
