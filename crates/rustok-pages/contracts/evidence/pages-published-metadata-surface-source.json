@@ -9,7 +9,7 @@
     "published_page_admits_registered_surface": true,
     "draft_page_admits_registered_surface": false,
     "archived_page_admits_registered_surface": false,
-    "missing_selection_admits_registered_surface": false,
+    "missing_page_admits_registered_surface": false,
     "registered_consumer_properties_panel_used": true,
     "existing_metadata_runtime_reused": true,
     "pages_contribution_assembly_reused": true,
