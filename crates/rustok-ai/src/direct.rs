@@ -1687,7 +1687,7 @@ mod tests {
     use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
     use rustok_product::{CatalogService, ProductCatalogReadPort, ProductProjectionRequest};
     use rustok_secrets::SecretResolverRegistry;
-    use rustok_storage::{LocalStorageConfig, StorageConfig, StorageDriver, StorageRuntime};
+    use rustok_storage::{LocalStorageConfig, StorageRuntime};
     use rustok_taxonomy::TaxonomyModule;
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
@@ -2524,15 +2524,11 @@ mod tests {
     async fn direct_image_asset_persists_media_and_localized_owner_translation() {
         let storage_dir =
             std::env::temp_dir().join(format!("rustok-ai-image-test-{}", Uuid::new_v4()));
-        let storage = StorageRuntime::from_config(&StorageConfig {
-            driver: StorageDriver::Local,
-            local: LocalStorageConfig {
-                base_dir: storage_dir.to_string_lossy().into_owned(),
-                base_url: "https://assets.example.test/media".to_string(),
-                fsync: false,
-            },
+        let storage = StorageRuntime::local(&LocalStorageConfig {
+            base_dir: storage_dir.to_string_lossy().into_owned(),
+            base_url: "https://assets.example.test/media".to_string(),
+            fsync: false,
         })
-        .await
         .expect("media fixture storage");
         let (runtime, operator) = media_runtime(storage).await;
         let captured_request = Arc::new(Mutex::new(None));

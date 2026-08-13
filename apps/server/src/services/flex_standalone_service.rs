@@ -57,9 +57,14 @@ impl FlexStandaloneSeaOrmService {
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
-        Ok(tenant
-            .and_then(|row| normalize_locale_tag(&row.default_locale))
-            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()))
+        let tenant = tenant.ok_or_else(|| {
+            FlexError::Database(format!(
+                "tenant {tenant_id} is missing while resolving Flex locale"
+            ))
+        })?;
+
+        normalize_locale_tag(&tenant.default_locale)
+            .ok_or_else(|| FlexError::InvalidLocale(tenant.default_locale))
     }
 
     fn select_schema_translation<'a>(
@@ -170,6 +175,15 @@ impl FlexStandaloneSeaOrmService {
         rows.first()
     }
 
+    fn select_exact_entry_localization<'a>(
+        rows: &'a [flex_entry_localized_values::Model],
+        locale: &str,
+    ) -> Option<&'a flex_entry_localized_values::Model> {
+        let locale = normalize_locale_tag(locale)?;
+        rows.iter()
+            .find(|localized| locale_tags_match(&localized.locale, &locale))
+    }
+
     async fn load_entry_localization_map(
         &self,
         tenant_id: Uuid,
@@ -202,8 +216,8 @@ impl FlexStandaloneSeaOrmService {
         locale: &str,
         data: Option<JsonValue>,
     ) -> Result<Option<JsonValue>, FlexError> {
-        let locale =
-            normalize_locale_tag(locale).unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let locale = normalize_locale_tag(locale)
+            .ok_or_else(|| FlexError::InvalidLocale(locale.to_string()))?;
 
         let existing = flex_entry_localized_values::Entity::find()
             .filter(flex_entry_localized_values::Column::EntryId.eq(entry_id))
@@ -601,7 +615,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                 .await?;
             let existing_localized_data = existing_localized
                 .get(&entry_id)
-                .and_then(|items| Self::select_entry_localization(items, &locale))
+                .and_then(|items| Self::select_exact_entry_localization(items, &locale))
                 .map(|item| &item.data);
             let merged_data = flex::merge_standalone_entry_patch(
                 &existing_row.data,
@@ -631,7 +645,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                 .await?;
             resolved_localized_data = localized
                 .get(&updated.id)
-                .and_then(|items| Self::select_entry_localization(items, &locale))
+                .and_then(|items| Self::select_exact_entry_localization(items, &locale))
                 .map(|item| item.data.clone());
         }
 
@@ -891,6 +905,119 @@ mod tests {
             .expect("find entry should succeed")
             .expect("entry should resolve");
         assert_eq!(found.data, json!({"slug": "landing", "title": "Привет"}));
+    }
+
+    #[tokio::test]
+    async fn update_entry_does_not_seed_default_locale_from_another_locale() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let builder = db.get_database_backend();
+        let schema = sea_orm::Schema::new(builder);
+        let mut stmt = schema.create_table_from_entity(flex_entry_localized_values::Entity);
+        stmt.if_not_exists();
+        db.execute(builder.build(&stmt))
+            .await
+            .expect("create flex_entry_localized_values table for standalone flex tests");
+        let service = FlexStandaloneSeaOrmService::new(db.clone());
+        let tenant_id = Uuid::new_v4();
+        let schema_id = Uuid::new_v4();
+        let entry_id = Uuid::new_v4();
+
+        tenants::ActiveModel {
+            id: Set(tenant_id),
+            name: Set("Flex Tenant".to_string()),
+            slug: Set("flex-tenant-exact-update".to_string()),
+            domain: Set(None),
+            settings: Set(json!({})),
+            default_locale: Set("en".to_string()),
+            is_active: Set(true),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("tenant should insert");
+
+        flex_schemas::ActiveModel {
+            id: Set(schema_id),
+            tenant_id: Set(tenant_id),
+            slug: Set("landing_form_exact_update".to_string()),
+            fields_config: Set(json!([
+                field_definition("slug", false),
+                field_definition("title", true),
+                field_definition("tagline", true)
+            ])),
+            settings: Set(json!({})),
+            is_active: Set(true),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("schema should insert");
+
+        flex_entries::ActiveModel {
+            id: Set(entry_id),
+            tenant_id: Set(tenant_id),
+            schema_id: Set(schema_id),
+            entity_type: Set(None),
+            entity_id: Set(None),
+            data: Set(json!({"slug": "landing"})),
+            status: Set("draft".to_string()),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("entry should insert");
+
+        flex_entry_localized_values::ActiveModel {
+            entry_id: Set(entry_id),
+            locale: Set("ru".to_string()),
+            tenant_id: Set(tenant_id),
+            data: Set(json!({"title": "Russian title"})),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("foreign locale row should insert");
+
+        let updated = service
+            .update_entry(
+                tenant_id,
+                None,
+                schema_id,
+                entry_id,
+                flex::UpdateFlexEntryCommand {
+                    data: Some(json!({"tagline": "English tagline"})),
+                    status: None,
+                },
+            )
+            .await
+            .expect("exact locale update should succeed");
+
+        assert_eq!(
+            updated.data,
+            json!({"slug": "landing", "tagline": "English tagline"})
+        );
+
+        let english = flex_entry_localized_values::Entity::find()
+            .filter(flex_entry_localized_values::Column::EntryId.eq(entry_id))
+            .filter(flex_entry_localized_values::Column::Locale.eq("en"))
+            .one(&db)
+            .await
+            .expect("English localization should load")
+            .expect("English localization should exist");
+        assert_eq!(english.data, json!({"tagline": "English tagline"}));
+
+        let russian = flex_entry_localized_values::Entity::find()
+            .filter(flex_entry_localized_values::Column::EntryId.eq(entry_id))
+            .filter(flex_entry_localized_values::Column::Locale.eq("ru"))
+            .one(&db)
+            .await
+            .expect("Russian localization should load")
+            .expect("Russian localization should remain");
+        assert_eq!(russian.data, json!({"title": "Russian title"}));
     }
 
     fn field_definition(field_key: &str, is_localized: bool) -> FieldDefinition {

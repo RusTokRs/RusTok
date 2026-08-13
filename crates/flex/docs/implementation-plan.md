@@ -12,6 +12,10 @@ Owner-owned contracts live in `flex::graphql`, `flex::registry`, `flex::rest` an
 Axum REST handlers only. Localized attached and standalone values use parallel storage; inline
 localized JSON is not a canonical runtime fallback.
 
+Localized authoring accepts only a valid normalized locale and starts from its exact row for both
+attached and standalone updates. Presentation fallback is confined to explicit read resolution and
+never becomes input to an authoring write.
+
 The field-definition cache is byte-weighted and keeps the local EventBus consumer as a low-latency
 exact-invalidation path. Durable convergence is source-complete:
 
@@ -73,12 +77,13 @@ workflow passes its compiled and PostgreSQL jobs on one revision.
    **Done when:** server holds only the allowed adapters and owner-owned roots execute with
    persistence, RBAC, errors, events and cache invalidation.
 
-3. **Close attached and standalone migration verification.** Verify localized value
-   backfill/cleanup, PATCH merges, tenant scoping, schema validation, donor read/write paths and
-   standalone schema/entry roundtrips against production persistence.
+3. **Close attached and standalone migration and exact-authoring verification.** Verify localized
+   value backfill/cleanup, PATCH merges, tenant scoping, schema validation, donor read/write paths
+   and standalone schema/entry roundtrips against production persistence.
    **Depends on:** donor migrations, standalone SeaORM adapter and compiled integration fixtures.
-   **Done when:** no runtime reads inline localized payload as canonical, all live donors retain
-   their data and standalone integration tests are stable.
+   **Done when:** no runtime reads inline localized payload as canonical, a localized update never
+   copies another locale into its target, all live donors retain their data and standalone
+   integration tests are stable.
 
 4. **Evolve advanced Flex capability only for demonstrated product needs.** Add future
    schema/entry features only with explicit donor ownership, governance, permissions, indexing and

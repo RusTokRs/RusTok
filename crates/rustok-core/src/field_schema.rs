@@ -884,6 +884,8 @@ pub enum FlexError {
     TooManyFields { entity_type: String, max: usize },
     /// The provided field key does not match `^[a-z][a-z0-9_]{0,127}$`.
     InvalidFieldKey(String),
+    /// The provided locale is not a valid normalized locale tag.
+    InvalidLocale(String),
     /// A field with this key already exists for the entity type + tenant.
     DuplicateFieldKey(String),
     /// Field definition not found.
@@ -905,6 +907,7 @@ impl std::fmt::Display for FlexError {
                 )
             }
             Self::InvalidFieldKey(k) => write!(f, "Invalid field key: {k}"),
+            Self::InvalidLocale(locale) => write!(f, "Invalid locale: {locale}"),
             Self::DuplicateFieldKey(k) => write!(f, "Field key already exists: {k}"),
             Self::NotFound(id) => write!(f, "Field definition not found: {id}"),
             Self::ValidationFailed(_) => write!(f, "Custom field validation failed"),

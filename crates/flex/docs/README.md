@@ -7,6 +7,7 @@
 
 > **Important regarding multilingual support:** a common platform contract already applies for `flex`. `FieldDefinition.is_localized` is a live part of the DB/runtime contract; standalone schema copy (`name`, `description`) is stored in `flex_schema_translations`; standalone entry values are now split into `flex_entries.data` (shared/non-localized payload) and `flex_entry_localized_values` (locale-aware payload per `entry_id + locale`); attached-mode locale-aware values have a canonical storage-path in `flex_attached_localized_values`, and shared entity/helpers for this path live in `crates/flex`. Live write/read path is already wired for `user`, `product`, `order` and `topic`; for `topic` the donor payload now lives in `forum_topics.metadata`, and locale-aware Flex values go into parallel attached rows under the same contract.
 > Cleanup/backfill of residual inline locale-aware payloads must be done via migrations; the runtime path must not read donor/base-row inline localized JSON as a canonical fallback.
+> Authoring accepts only a valid normalized locale and reads only that exact row. Presentation fallback belongs exclusively to read resolution and must never seed a locale or become input to a write.
 
 ---
 

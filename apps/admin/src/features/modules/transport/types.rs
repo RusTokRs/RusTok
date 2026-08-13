@@ -231,6 +231,7 @@ pub struct RegistryPublishStatusContract {
     pub next_step: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize)]
 pub struct ToggleModuleVariables {
     #[serde(rename = "moduleSlug")]
     pub module_slug: String,

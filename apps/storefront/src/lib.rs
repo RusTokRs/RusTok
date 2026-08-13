@@ -139,7 +139,10 @@ fn render_document(
         String::new()
     };
     #[cfg(not(feature = "blog-comment-assets"))]
-    let comment_bootstrap = String::new();
+    let comment_bootstrap = {
+        let _ = csp_nonce;
+        String::new()
+    };
     format!(
         r#"<!DOCTYPE html>
 <html lang="{locale}">

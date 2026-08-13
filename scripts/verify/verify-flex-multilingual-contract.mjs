@@ -77,6 +77,21 @@ expectContains(
 );
 expectNotContains(
   "crates/flex/src/attached.rs",
+  "first_available_localized_values",
+  "first-available attached locale fallback in authoring",
+);
+expectContains(
+  "crates/flex/src/attached.rs",
+  "FlexError::InvalidLocale(locale.to_string())",
+  "attached authoring to reject an invalid locale instead of using a fallback",
+);
+expectContains(
+  "apps/server/src/services/flex_standalone_service.rs",
+  "Self::select_exact_entry_localization(items, &locale)",
+  "standalone authoring to select an exact locale localization",
+);
+expectNotContains(
+  "crates/flex/src/attached.rs",
   "unwrap_or_else(|| Value::Object(legacy_localized.into_iter().collect()))",
   "legacy inline localized fallback in attached update path",
 );

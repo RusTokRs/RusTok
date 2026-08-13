@@ -71,10 +71,7 @@ pub async fn prepare_attached_values_update<C>(
 where
     C: ConnectionTrait,
 {
-    let exact_locale = canonical_locale(locale);
-    let localized_by_locale =
-        load_localized_values_by_locale(db, entity.tenant_id, entity.entity_type, entity.entity_id)
-            .await?;
+    let exact_locale = canonical_locale(locale)?;
     let existing_localized = load_exact_locale_values(
         db,
         entity.tenant_id,
@@ -83,7 +80,6 @@ where
         exact_locale.as_str(),
     )
     .await?
-    .or_else(|| first_available_localized_values(localized_by_locale))
     .unwrap_or_else(|| Value::Object(Map::new()));
 
     prepare_write(
@@ -160,7 +156,7 @@ pub async fn persist_localized_values<C>(
 where
     C: ConnectionTrait,
 {
-    let locale = canonical_locale(locale);
+    let locale = canonical_locale(locale)?;
     let desired = object_map(Some(values));
     let existing = Entity::find()
         .filter(Column::TenantId.eq(tenant_id))
@@ -286,7 +282,9 @@ where
 
     let mut localized_by_locale: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
     for row in rows {
-        let locale = canonical_locale(&row.locale);
+        let Some(locale) = normalize_locale_tag(&row.locale) else {
+            continue;
+        };
         localized_by_locale
             .entry(locale)
             .or_default()
@@ -294,12 +292,6 @@ where
     }
 
     Ok(localized_by_locale)
-}
-
-fn first_available_localized_values(
-    localized_by_locale: BTreeMap<String, Map<String, Value>>,
-) -> Option<Value> {
-    localized_by_locale.into_values().next().map(Value::Object)
 }
 
 fn prepare_write(
@@ -355,7 +347,7 @@ fn prepare_write(
     Ok(PreparedAttachedValuesWrite {
         metadata,
         localized_values,
-        locale: Some(canonical_locale(locale)),
+        locale: Some(canonical_locale(locale)?),
     })
 }
 
@@ -427,8 +419,8 @@ fn validate_schema(schema: &CustomFieldsSchema, payload: &Value) -> Result<(), F
     }
 }
 
-fn canonical_locale(locale: &str) -> String {
-    normalize_locale_tag(locale).unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
+fn canonical_locale(locale: &str) -> Result<String, FlexError> {
+    normalize_locale_tag(locale).ok_or_else(|| FlexError::InvalidLocale(locale.to_string()))
 }
 
 fn normalize_owner_payload(shared_metadata: &Value) -> Result<Option<Value>, FlexError> {
@@ -449,19 +441,19 @@ fn is_missing_attached_storage_error(message: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::HashMap;
 
     use sea_orm::{
         ActiveModelTrait, ConnectionTrait, Database, DatabaseBackend, EntityTrait, Set, Statement,
     };
-    use serde_json::{Map, json};
+    use serde_json::json;
     use uuid::Uuid;
 
-    use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
+    use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, FlexError};
 
     use super::{
-        ActiveModel, Entity, delete_attached_localized_values, first_available_localized_values,
-        prepare_attached_values_create, split_existing_metadata,
+        ActiveModel, AttachedEntityRef, Entity, delete_attached_localized_values,
+        prepare_attached_values_create, prepare_attached_values_update, split_existing_metadata,
     };
 
     fn definition(field_key: &str, is_localized: bool) -> FieldDefinition {
@@ -510,20 +502,17 @@ mod tests {
     }
 
     #[test]
-    fn first_available_localized_values_uses_deterministic_locale_order() {
-        let mut localized_by_locale = BTreeMap::new();
-        localized_by_locale.insert(
-            "ru".to_string(),
-            Map::from_iter([("bio".into(), json!("Привет"))]),
-        );
-        localized_by_locale.insert(
-            "en".to_string(),
-            Map::from_iter([("bio".into(), json!("Hello"))]),
-        );
+    fn create_rejects_invalid_locale_instead_of_using_platform_fallback() {
+        let schema = CustomFieldsSchema::new(vec![definition("bio", true)]);
 
-        let resolved = first_available_localized_values(localized_by_locale);
+        let error = prepare_attached_values_create(
+            schema,
+            Some(json!({"bio": "Biography"})),
+            "not a locale",
+        )
+        .expect_err("invalid authoring locale must not write to a fallback locale");
 
-        assert_eq!(resolved, Some(json!({"bio": "Hello"})));
+        assert!(matches!(error, FlexError::InvalidLocale(locale) if locale == "not a locale"));
     }
 
     #[tokio::test]
@@ -596,5 +585,72 @@ mod tests {
         let remaining = Entity::find().all(&db).await.expect("rows should load");
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].entity_id, other_entity_id);
+    }
+
+    #[tokio::test]
+    async fn update_does_not_seed_a_locale_from_another_locale() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+
+        db.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            r#"
+            CREATE TABLE flex_attached_localized_values (
+                id TEXT PRIMARY KEY NOT NULL,
+                tenant_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                field_key TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                value TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#
+            .to_string(),
+        ))
+        .await
+        .expect("table should be created");
+
+        let tenant_id = Uuid::new_v4();
+        let entity_id = Uuid::new_v4();
+        ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            entity_type: Set("product".to_string()),
+            entity_id: Set(entity_id),
+            field_key: Set("bio".to_string()),
+            locale: Set("ru".to_string()),
+            value: Set(json!("Russian biography")),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("source locale row should insert");
+
+        let schema =
+            CustomFieldsSchema::new(vec![definition("bio", true), definition("tagline", true)]);
+        let prepared = prepare_attached_values_update(
+            &db,
+            AttachedEntityRef {
+                tenant_id,
+                entity_type: "product",
+                entity_id,
+            },
+            schema,
+            "en",
+            &json!({}),
+            Some(json!({"tagline": "English tagline"})),
+        )
+        .await
+        .expect("exact locale update should prepare");
+
+        assert_eq!(prepared.locale.as_deref(), Some("en"));
+        assert_eq!(
+            prepared.localized_values,
+            Some(json!({"tagline": "English tagline"}))
+        );
     }
 }

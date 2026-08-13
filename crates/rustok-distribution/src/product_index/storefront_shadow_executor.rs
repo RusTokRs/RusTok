@@ -361,4 +361,36 @@ mod tests {
             ProductStorefrontIndexPageScopeDecision::OwnerNativeDeepPage { offset: 10_032 }
         );
     }
+
+    #[test]
+    fn shadow_execution_retains_public_projection_and_tag_hydration_layers() {
+        let authoritative = StorefrontProductList {
+            items: Vec::new(),
+            total: 0,
+            page: 1,
+            per_page: 12,
+            has_next: false,
+        };
+        let projected = IndexQueryPage {
+            items: Vec::new(),
+            exact_count: Some(0),
+            has_more: false,
+            next_cursor: None,
+        };
+        let execution = ProductStorefrontIndexShadowExecution {
+            authoritative,
+            projected: Ok(projected.clone()),
+            public_projected: Some(Ok(projected)),
+            tag_hydration: Some(Ok(ProductStorefrontTagHydration { items: Vec::new() })),
+            comparison: Some(ProductStorefrontIndexShadowComparison {
+                identities_match: true,
+                exact_count_matches: true,
+                has_more_matches: true,
+            }),
+        };
+        assert!(execution.projected.is_ok());
+        assert!(execution.public_projected.as_ref().unwrap().is_ok());
+        assert!(execution.tag_hydration.as_ref().unwrap().is_ok());
+        assert!(execution.comparison.unwrap().is_match());
+    }
 }

@@ -227,6 +227,27 @@ async fn run_localized_projection_and_search_evidence(database: &TestDatabase) -
     assert_eq!(projected_string(index_c, "title")?, None);
     assert_eq!(projected_string(index_c, "handle")?, None);
 
+    let public_projected = execution
+        .public_projected
+        .as_ref()
+        .ok_or("missing public projection")?
+        .as_ref()
+        .map_err(|err| err.to_string())?;
+    let public_c = index_item(public_projected, PRODUCT_C)?;
+    assert_eq!(
+        projected_string(public_c, "title")?,
+        Some("Untitled product")
+    );
+    assert_eq!(projected_string(public_c, "handle")?, Some(""));
+
+    let tag_hydration = execution
+        .tag_hydration
+        .as_ref()
+        .ok_or("missing tag hydration")?
+        .as_ref()
+        .map_err(|err| err.to_string())?;
+    assert_eq!(tag_hydration.items.len(), 3);
+
     Ok(())
 }
 

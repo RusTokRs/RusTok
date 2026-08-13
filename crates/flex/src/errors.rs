@@ -27,6 +27,7 @@ pub fn map_flex_error(error: FlexError) -> FlexMappedError {
         },
         FlexError::UnknownEntityType(message)
         | FlexError::InvalidFieldKey(message)
+        | FlexError::InvalidLocale(message)
         | FlexError::DuplicateFieldKey(message) => FlexMappedError {
             kind: FlexMappedErrorKind::BadUserInput,
             message,
@@ -68,6 +69,7 @@ mod tests {
     fn map_domain_errors_to_bad_user_input() {
         let variants = vec![
             FlexError::InvalidFieldKey("invalid".to_string()),
+            FlexError::InvalidLocale("invalid locale".to_string()),
             FlexError::DuplicateFieldKey("dup".to_string()),
             FlexError::TooManyFields {
                 entity_type: "user".to_string(),

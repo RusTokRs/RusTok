@@ -245,7 +245,7 @@
       "data_classification": ["tenant_private"],
       "ai_export": "restricted",
       "evidence_paths": ["crates/flex/docs/README.md"],
-      "blockers": ["Expose exact-locale operations and only schema-declared localized leaves."]
+      "blockers": ["Expose provider-facing exact source/target reads, revision-safe apply, and a field policy limited to declared localized leaves."]
     },
     {
       "id": "flex_attached_values",
@@ -256,8 +256,8 @@
       "field_profiles": ["localized_scalar"],
       "data_classification": ["tenant_private", "personal"],
       "ai_export": "restricted",
-      "evidence_paths": ["crates/flex/src/attached.rs"],
-      "blockers": ["Remove first-available/default fallback from exact authoring reads and add revision-safe apply."]
+      "evidence_paths": ["crates/flex/src/attached.rs", "apps/server/src/services/flex_standalone_service.rs"],
+      "blockers": ["Exact authoring fallback is removed and invalid locales are rejected; donor owners still need provider-facing exact source/target operations, revision-safe apply, and idempotency."]
     },
     {
       "id": "seo_overrides",
