@@ -4,6 +4,7 @@ use rustok_taxonomy::{
     TaxonomyService, TaxonomyTermKind,
 };
 use rustok_test_utils::db::setup_test_db;
+use sea_orm::TransactionTrait;
 use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;
 
@@ -134,4 +135,63 @@ async fn owner_reader_treats_empty_identity_filter_as_empty_result() {
         .expect("empty identity page should be accepted");
 
     assert!(terms.is_empty());
+}
+
+#[tokio::test]
+async fn transaction_owner_reader_preserves_mixed_scope_and_rejects_foreign_tenant_ids() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let foreign_tenant_id = Uuid::new_v4();
+    let module_term_id = create_term(
+        &service,
+        tenant_id,
+        TaxonomyScopeType::Module,
+        Some("blog"),
+        "Rust",
+        "rust",
+    )
+    .await;
+    let global_term_id = create_term(
+        &service,
+        tenant_id,
+        TaxonomyScopeType::Global,
+        None,
+        "Systems",
+        "systems",
+    )
+    .await;
+    let foreign_term_id = create_term(
+        &service,
+        foreign_tenant_id,
+        TaxonomyScopeType::Module,
+        Some("blog"),
+        "Foreign",
+        "foreign",
+    )
+    .await;
+
+    let txn = db.begin().await.expect("owner read transaction should start");
+    let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
+        &txn,
+        tenant_id,
+        TaxonomyTermKind::Tag,
+        &[foreign_term_id, global_term_id, module_term_id],
+        "fr",
+        Some("en"),
+    )
+    .await
+    .expect("transaction owner read should succeed");
+    txn.rollback()
+        .await
+        .expect("owner read transaction should roll back");
+
+    assert_eq!(terms.len(), 2);
+    assert!(terms.iter().any(|term| term.id == module_term_id));
+    assert!(terms.iter().any(|term| term.id == global_term_id));
+    assert!(!terms.iter().any(|term| term.id == foreign_term_id));
+    assert!(
+        terms
+            .iter()
+            .all(|term| term.requested_locale == "fr" && term.effective_locale == "en")
+    );
 }
