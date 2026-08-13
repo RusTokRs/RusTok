@@ -70,13 +70,16 @@ for (const [value, label] of [
 ]) requireText(adminRouter, value, label);
 
 for (const [value, label] of [
-  ['request_context: RequestContext,', 'request context extractor'],
   ['fn admin_order_change_read_context(', 'read context builder'],
   ['fn admin_order_change_apply_context(', 'write context builder'],
   ['PortActor::user(auth.user_id.to_string())', 'authenticated owner actor'],
   ['format!("commerce-admin-order-change:read:{change_id}")', 'read correlation identity'],
   ['format!("commerce-admin-order-change:apply:{change_id}")', 'write correlation identity'],
   ['.with_idempotency_key(Uuid::new_v4().to_string())', 'write admission identity'],
+]) requireText(controller, value, label);
+
+for (const [value, label] of [
+  ['request_context: RequestContext,', 'request context extractor'],
   ['OrderChangeOrchestrationService::from_order_ports(', 'host-composed orchestration'],
   ['runtime.order_read_port()', 'host-selected Order read'],
   ['runtime.order_post_order_command_port()', 'host-selected Order command'],
@@ -100,6 +103,7 @@ for (const [value, label] of [
 ]) requireText(httpRuntime, value, label);
 
 for (const [value, label] of [
+  ['fn with_order_change_apply_action(', 'mounted apply-action metadata helper'],
   ['pub async fn apply_order_change_with_owner_ports(', 'owner-port orchestration method'],
   ['.read_order_change_projection(', 'typed Order read'],
   ['ReadOrderChangeProjectionRequest { change_id }', 'typed read request'],
@@ -107,11 +111,22 @@ for (const [value, label] of [
   ['ApplyOrderChangeRequest {', 'typed apply request'],
   ['OrderChangeOrchestrationError::OrderRead', 'read error preservation'],
   ['OrderChangeOrchestrationError::OrderCommand', 'command error preservation'],
-  ['.apply_exchange_order_change(', 'exchange orchestration retained'],
-  ['.apply_claim_order_change(', 'claim orchestration retained'],
-]) requireText(ownerMethod, value, label);
+  ['.apply_exchange_order_change(', 'exchange payment orchestration retained'],
+  ['with_order_change_apply_action(metadata, "claim")', 'claim apply-action preservation'],
+]) requireText(orchestration, value, label);
 for (const value of ['OrderService::new(', '.get_order_change(']) {
   forbidText(ownerMethod, value, 'mounted owner-port orchestration concrete Order dependency');
+}
+forbidText(
+  ownerMethod,
+  '.apply_claim_order_change(',
+  'mounted claim apply must not re-enter concrete Order orchestration',
+);
+const mountedApplyCommands = ownerMethod.match(/\.apply_change\(/g) ?? [];
+if (mountedApplyCommands.length < 2) {
+  failures.push(
+    `mounted owner-port orchestration: expected claim and default Order apply commands, found ${mountedApplyCommands.length}`,
+  );
 }
 
 for (const [value, label] of [
@@ -135,9 +150,6 @@ for (const value of ['error = ?error', 'error.message', 'internal_message', 'err
   forbidText(portMapper, value, 'REST owner-port raw diagnostics');
 }
 
-// The later GraphQL slice may supersede the historical deferred scope, but must
-// reuse the same owner-port orchestration entrypoint rather than reintroduce a
-// concrete Order dependency.
 requireText(
   graphql,
   '.apply_order_change_with_owner_ports(',
@@ -175,4 +187,6 @@ if (failures.length > 0) {
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('✔ mounted REST admin order-change apply uses host-selected Order owner ports');
+console.log(
+  '✔ mounted REST/GraphQL admin order-change apply uses host-selected Order owner ports for default and claim transitions; exchange payment orchestration remains explicit',
+);
