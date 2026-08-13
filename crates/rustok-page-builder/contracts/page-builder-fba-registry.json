@@ -64,7 +64,7 @@
       "stable_component_ids": true,
       "secure_public_resources": true,
       "integrity_revalidates_project": true,
-      "executed_evidence": "pending"
+      "executed_evidence": "verified"
     },
     "static_materialization_contract": {
       "format": "page_builder_static_runtime_materialization_v1",
