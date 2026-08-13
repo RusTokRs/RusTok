@@ -350,16 +350,16 @@ impl DirectTaskHandler for AlloyScriptAssistHandler {
             created_at: Utc::now(),
         };
 
-        let explanation = explain_result(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            input.assistant_prompt.as_deref(),
-            &summary,
-            &operation_payload,
-            request.stream_emitter.clone(),
-        )
+        let explanation = explain_result(DirectExplanationRequest {
+            provider: &request.provider,
+            provider_config: &request.provider_config,
+            system_prompt: request.system_prompt.as_deref(),
+            locale: request.resolved_locale.as_str(),
+            assistant_prompt: input.assistant_prompt.as_deref(),
+            summary: &summary,
+            payload: &operation_payload,
+            stream_emitter: request.stream_emitter.clone(),
+        })
         .await;
 
         Ok(DirectExecutionResult {
@@ -487,16 +487,16 @@ impl DirectTaskHandler for MediaImageAssetHandler {
             error_message: None,
             created_at: Utc::now(),
         };
-        let explanation = explain_result(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            input.assistant_prompt.as_deref(),
-            &summary,
-            &operation_payload,
-            request.stream_emitter.clone(),
-        )
+        let explanation = explain_result(DirectExplanationRequest {
+            provider: &request.provider,
+            provider_config: &request.provider_config,
+            system_prompt: request.system_prompt.as_deref(),
+            locale: request.resolved_locale.as_str(),
+            assistant_prompt: input.assistant_prompt.as_deref(),
+            summary: &summary,
+            payload: &operation_payload,
+            stream_emitter: request.stream_emitter.clone(),
+        })
         .await;
 
         Ok(DirectExecutionResult {
@@ -679,16 +679,16 @@ impl DirectTaskHandler for ProductCopyHandler {
             error_message: None,
             created_at: Utc::now(),
         };
-        let explanation = explain_result(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            input.assistant_prompt.as_deref(),
-            &summary,
-            &operation_payload,
-            request.stream_emitter.clone(),
-        )
+        let explanation = explain_result(DirectExplanationRequest {
+            provider: &request.provider,
+            provider_config: &request.provider_config,
+            system_prompt: request.system_prompt.as_deref(),
+            locale: request.resolved_locale.as_str(),
+            assistant_prompt: input.assistant_prompt.as_deref(),
+            summary: &summary,
+            payload: &operation_payload,
+            stream_emitter: request.stream_emitter.clone(),
+        })
         .await;
 
         Ok(DirectExecutionResult {
@@ -886,16 +886,16 @@ impl DirectTaskHandler for BlogDraftHandler {
             error_message: None,
             created_at: Utc::now(),
         };
-        let explanation = explain_result(
-            &request.provider,
-            &request.provider_config,
-            request.system_prompt.as_deref(),
-            request.resolved_locale.as_str(),
-            input.assistant_prompt.as_deref(),
-            &summary,
-            &operation_payload,
-            request.stream_emitter.clone(),
-        )
+        let explanation = explain_result(DirectExplanationRequest {
+            provider: &request.provider,
+            provider_config: &request.provider_config,
+            system_prompt: request.system_prompt.as_deref(),
+            locale: request.resolved_locale.as_str(),
+            assistant_prompt: input.assistant_prompt.as_deref(),
+            summary: &summary,
+            payload: &operation_payload,
+            stream_emitter: request.stream_emitter.clone(),
+        })
         .await;
 
         Ok(DirectExecutionResult {
@@ -1389,9 +1389,7 @@ struct BlogDraftCreateRequest<'a> {
     seo_description: Option<&'a str>,
 }
 
-fn build_blog_draft_create_input(
-    request: BlogDraftCreateRequest<'_>,
-) -> AiResult<CreatePostInput> {
+fn build_blog_draft_create_input(request: BlogDraftCreateRequest<'_>) -> AiResult<CreatePostInput> {
     if !blog_draft_must_remain_unpublished() {
         return Err(AiError::InvalidConfig(
             "blog_draft policy must require draft review before persistence".to_string(),
@@ -2461,17 +2459,17 @@ mod tests {
             featured_image_url: Some("https://cdn.example.test/hero.webp".to_string()),
             ..Default::default()
         };
-        let create = build_blog_draft_create_input(
-            &input,
-            "ru",
-            "Generated title",
-            "Generated body",
-            Some("Excerpt"),
-            Some("generated-title"),
-            &["ai".to_string()],
-            Some("SEO title"),
-            Some("SEO description"),
-        )
+        let create = build_blog_draft_create_input(BlogDraftCreateRequest {
+            task_input: &input,
+            locale: "ru",
+            title: "Generated title",
+            body: "Generated body",
+            excerpt: Some("Excerpt"),
+            slug: Some("generated-title"),
+            tags: &["ai".to_string()],
+            seo_title: Some("SEO title"),
+            seo_description: Some("SEO description"),
+        })
         .unwrap();
 
         assert!(!create.publish);
