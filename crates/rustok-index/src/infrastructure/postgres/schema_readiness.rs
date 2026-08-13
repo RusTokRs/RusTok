@@ -226,7 +226,7 @@ struct StoredSchema {
 fn stored_schema(row: QueryResult) -> Result<StoredSchema, IndexSchemaReadinessError> {
     let module_name: String = row.try_get("", "module_name").map_err(storage_error)?;
     let entity_name: String = row.try_get("", "entity_name").map_err(storage_error)?;
-    let schema_version: i64 = row.try_get("", "schema_version").map_err(storage_error)?;
+    let schema_version: i32 = row.try_get("", "schema_version").map_err(storage_error)?;
     let schema_version = u32::try_from(schema_version)
         .ok()
         .filter(|version| *version > 0)
