@@ -1,0 +1,72 @@
+{
+  "format": "page_builder_static_sanitization_execution_v1",
+  "status": "static_sanitization_execution_passed_registry_update_pending",
+  "generated_at": "2026-08-13T08:02:32.765Z",
+  "source_commit": "4afd59de877c71e1b22d155c99d1fb6c2abc9ff2",
+  "provenance": {
+    "repository": "RusTokRs/RusTok",
+    "workflow": "Page Builder Static Sanitization Evidence",
+    "run_id": "31678544586",
+    "run_attempt": "1",
+    "event_name": "push",
+    "github_actions": true,
+    "cryptographic_ci_attestation_claimed": false
+  },
+  "target": {
+    "fba_registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "registry_status_before": "boundary_ready",
+    "registry_sha256": "dbb731faba7656f3a0103fae35279c4f0bf8310ed81539a9e61c0b512ee557c2",
+    "executed_evidence_json_pointer": "/provider/static_sanitization_contract/executed_evidence",
+    "executed_evidence_before": "pending"
+  },
+  "execution": {
+    "test_list_command": "cargo test --locked -p rustok-page-builder --lib -- --list",
+    "required_test_name_fragments": [
+      "publish_sanitization::tests::sanitization_assigns_stable_ids_and_hashes_policy_bound_project",
+      "publish_sanitization::tests::sanitization_rejects_excess_global_resources",
+      "publish_sanitization::tests::sanitization_rejects_insecure_public_resources",
+      "publish_sanitization::tests::sanitization_rejects_renderer_dropped_attributes_and_css",
+      "static_publish_policy::tests::",
+      "static_publish_resource_limits::tests::"
+    ],
+    "test_commands": [
+      "cargo test --locked -p rustok-page-builder --lib publish_sanitization::tests:: -- --nocapture",
+      "cargo test --locked -p rustok-page-builder --lib static_publish_policy::tests:: -- --nocapture",
+      "cargo test --locked -p rustok-page-builder --lib static_publish_resource_limits::tests:: -- --nocapture"
+    ],
+    "all_commands_passed": true,
+    "packet_generated_only_after_test_steps": true,
+    "network_runtime_under_test": false,
+    "database_used": false,
+    "browser_used": false
+  },
+  "source_sha256": {
+    "crates/rustok-page-builder/src/publish_sanitization.rs": "4cf0b3e7f5c843f57d4446ced301a1582bae738e504072a1962482eb6e09af4b",
+    "crates/rustok-page-builder/src/static_publish_policy.rs": "d22cbf08e52d3d2929a6ca57a9c7e9f67bfed2a35f328d045819e44a5667ee6f",
+    "crates/rustok-page-builder/src/static_publish_resource_limits.rs": "3c41228267236abb82dcf8ecfc66b1f0ba1d153327afb6a9874ef67a378fad68",
+    "crates/rustok-page-builder/src/static_landing.rs": "07af3caa8d8e3c36ee54c86152e1337d9b2e38800d86da174fd9cc2feffdbb5d",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json": "dbb731faba7656f3a0103fae35279c4f0bf8310ed81539a9e61c0b512ee557c2",
+    "crates/rustok-page-builder/contracts/evidence/page-builder-static-publish-resource-limits-source.json": "34e032ef5417eb4fae7c7af60fe988d6749c6ebd30c6c460a5b5a99c134121f5",
+    "crates/rustok-page-builder/scripts/verify/verify-page-builder-static-publish-resource-limits.mjs": "a52831b657c8e24229d919334586cb5f68e68ee7852717a31e10a200d35a0221",
+    "crates/rustok-page-builder/contracts/evidence/page-builder-static-sanitization-execution-source.json": "3fb833378d92f01da7b03e3a163ce2bfd4f2cb3faf93e15249efc4a97935703e",
+    "scripts/evidence/record-page-builder-static-sanitization-execution.mjs": "2f52808399e5422a2c41aa6088a44a363ae84a11da070ec781547ee1081359a0",
+    "scripts/verify/verify-page-builder-static-sanitization-execution.mjs": "7bd8c854b2ce81278fe4449f0d9dbbeb525f3e98def19f2e844bc63d444a47a0",
+    ".github/workflows/page-builder-static-sanitization-evidence.yml": "69c214ded492a22f40b3069578ffb77c77a45572af40ef98e7152331971e0c05",
+    "docs/modules/page-builder-static-sanitization-execution-actualization-2026-08-13.md": "3e2585eac85545f9e33c44191f334702da3bf9735b95b6e8b4f16202da266ea7"
+  },
+  "governance": {
+    "registry_mutated": false,
+    "executed_evidence_cleared": false,
+    "terminal_inventory_complete_claimed": false,
+    "owner_approval_claimed": false,
+    "platform_approval_claimed": false,
+    "page_builder_fba_promoted": false,
+    "later_evidence_containing_registry_pr_required": true
+  },
+  "privacy": {
+    "raw_test_logs_embedded": false,
+    "tenant_identity_retained": false,
+    "credentials_or_cookies_retained": false,
+    "raw_graphql_or_browser_payload_retained": false
+  }
+}
