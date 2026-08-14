@@ -137,10 +137,11 @@ claim a global `translation.target.changed` event contract.
    Taxonomy lookup, route-key, locale-normalization, migration, dependency-lock,
    or test inputs change, independently of unrelated workspace build jobs.
 
-3. **Maintain dictionary operational guidance.** Add documentation and runbooks
-   when a changed vocabulary contract introduces drift or integration recovery
-   risk. Route-registry migration failures must be repaired by resolving the
-   reported cross-term owner collision, never by deleting an arbitrary winner.
+3. **Maintain dictionary operational guidance. — COMPLETE.** Add documentation
+   and runbooks when a changed vocabulary contract introduces drift or
+   integration recovery risk. Route-registry migration failures must be repaired
+   by resolving the reported cross-term owner collision, never by deleting an
+   arbitrary winner.
    **Depends on:** an actual runtime or consumer incident class.
    **Done when:** operators can reconcile terms, aliases, registry reservations,
    and owner attachments without inventing shared relation ownership.
@@ -158,11 +159,22 @@ claim a global `translation.target.changed` event contract.
    The runbook also keeps attachment repair with Blog (`blog_post_tags`), Forum
    (`forum_topic_tags`), Product (`product_tags`), and Profiles (`profile_tags`),
    and keeps Blog/Forum/Product category hierarchy in those owner modules.
-   `tests/route_key_registry.rs` proves both operational outcomes: a normal
-   owner-service update restores a deliberately missing reservation, while a
-   cross-term collision rejects the losing repair and preserves the existing
+   `tests/route_key_registry.rs` proves all three concrete recovery outcomes: a
+   normal owner-service update restores a deliberately missing reservation; an
+   unchanged authoritative re-save releases a deliberately stale registry-only
+   route while preserving desired slug/alias ownership and lookup; and a
+   cross-term collision rejects the losing repair without stealing the existing
    registry owner. No generic Taxonomy relation table or `parent_id` is part of
    recovery.
+
+   Result 3 is complete for the demonstrated route-registry drift incident
+   class after PRs #3549, #3550, and #3559. Exact-head PR #3559 run
+   `31818118097` (`Taxonomy Lookup Contract`) and run `31818118039`
+   (`Taxonomy Ownership Boundary`) succeeded on
+   `5912fb172006b707b083260c0636bc8c6ea945f5`; PostgreSQL evidence run
+   `31818118093` also succeeded on that same head. A future distinct incident
+   class can add new guidance without reopening or weakening the established
+   missing/stale/cross-term recovery contract.
 
 4. **Collect production target and route-registry evidence. — COMPLETE.** Run
    the canonical server migration graph, including the owner-operation receipt
