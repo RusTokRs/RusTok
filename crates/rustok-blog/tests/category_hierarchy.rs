@@ -39,8 +39,8 @@ async fn setup() -> DatabaseConnection {
 fn services(db: &DatabaseConnection) -> (CategoryService, CategoryCommandService) {
     let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
     (
-        CategoryService::new(db.clone(), event_bus.clone()),
-        CategoryCommandService::new(db.clone(), event_bus),
+        CategoryService::new(db.clone(), event_bus),
+        CategoryCommandService::new(db.clone()),
     )
 }
 
