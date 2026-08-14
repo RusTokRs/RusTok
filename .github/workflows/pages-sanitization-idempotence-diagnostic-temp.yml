@@ -1,0 +1,35 @@
+name: Pages Sanitization Idempotence Diagnostic Temp
+
+on:
+  push:
+    branches:
+      - pages-sanitization-idempotence-diagnostic-20260814
+    paths:
+      - ".github/workflows/pages-sanitization-idempotence-diagnostic-temp.yml"
+      - "crates/rustok-page-builder/**"
+      - "crates/fly/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  diagnostic:
+    name: Sanitizer idempotence diagnostic
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-sanitization-idempotence-diagnostic
+      - name: Run exact fixture sanitizer idempotence diagnostic
+        run: cargo test --locked -p rustok-page-builder --test sanitization_idempotence_temp -- --nocapture
