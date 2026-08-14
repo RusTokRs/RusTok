@@ -385,7 +385,10 @@ async fn owner_service_repair_refuses_cross_term_route_collision() {
         )
         .await
         .expect_err("repair must not steal a route key from another term");
-    assert!(matches!(error, TaxonomyError::Conflict(_)));
+    assert!(matches!(
+        error,
+        TaxonomyError::DuplicateAlias(alias) if alias == "systems"
+    ));
 
     assert_eq!(
         route_keys(&db, tenant_id, drifted_term_id).await,
