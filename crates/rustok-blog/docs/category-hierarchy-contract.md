@@ -4,7 +4,7 @@ Blog owns its category hierarchy. `rustok-taxonomy` remains the shared flat voca
 
 ## Structural command
 
-Existing localized category updates continue to own `name`, `slug`, `description`, `position` compatibility, and settings. Moving an existing category is a distinct structural operation:
+Localized category updates own `name`, `slug`, `description`, and settings. `UpdateCategoryInput.position` is retained only for compatibility decoding and is rejected by `CategoryService::update`; moving or reordering an existing category is a distinct structural operation:
 
 `POST /api/blog/categories/{id}/move`
 
@@ -24,6 +24,8 @@ The owner command executes in one database transaction and:
 - publishes the existing Blog-wide `ReindexRequested` event before commit so search cannot observe a committed hierarchy move without the corresponding reindex request.
 
 The 512-node bound is an execution-safety limit, not a newly invented category-depth policy. The retained hierarchy migration remains the storage/bootstrap authority for tenant-parent foreign-key integrity and legacy cycle/depth validation. Runtime reparent semantics are owner-service policy rather than Taxonomy policy.
+
+`CategoryService::update` no longer writes `position`, even when the compatibility field is absent. That prevents a stale localized update from overwriting a concurrent structural move and leaves hierarchy placement with one owner-side write path.
 
 ## Translation boundary
 
