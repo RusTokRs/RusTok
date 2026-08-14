@@ -140,7 +140,7 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
                 ready.initial_generation
             )));
         }
-        wait_for_redis_subscribers(&redis_url, 1).await?;
+        wait_for_redis_subscribers(&redis_url, 1, "parent initial observer subscription").await?;
 
         let fast_started = Instant::now();
         let mut first_mutator = spawn_mutator(
@@ -199,7 +199,8 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
 
         let restart_started = Instant::now();
         redis_process = spawn_redis(redis_binary.as_str(), redis_port).await?;
-        wait_for_redis_subscribers(&redis_url, 1).await?;
+        wait_for_redis_subscribers(&redis_url, 1, "observer resubscription after Redis restart")
+            .await?;
         wait_for_file(&restart_result_path, RESTART_RECOVERY_BOUND).await?;
         if restart_started.elapsed() > RESTART_RECOVERY_BOUND {
             return Err(test_error("Redis reconnect recovery exceeded the eight-second bound"));
@@ -263,7 +264,12 @@ async fn run_child(role: &str) -> TestResult<()> {
 
     match role {
         "observer" => {
-            wait_for_redis_subscribers(redis_url.as_str(), 1).await?;
+            wait_for_redis_subscribers(
+                redis_url.as_str(),
+                1,
+                "observer child initial subscription",
+            )
+            .await?;
             let fast_user_id = Uuid::parse_str(&required_env(CHILD_FAST_USER_ID_ENV)?)?;
             let restart_user_id = Uuid::parse_str(&required_env(CHILD_RESTART_USER_ID_ENV)?)?;
             run_observer(
@@ -548,7 +554,7 @@ async fn wait_for_redis(url: &str) -> TestResult<()> {
     Ok(())
 }
 
-async fn wait_for_redis_subscribers(url: &str, expected: usize) -> TestResult<()> {
+async fn wait_for_redis_subscribers(url: &str, expected: usize, stage: &str) -> TestResult<()> {
     tokio::time::timeout(Duration::from_secs(6), async {
         loop {
             if let Ok(client) = redis::Client::open(url)
@@ -571,7 +577,11 @@ async fn wait_for_redis_subscribers(url: &str, expected: usize) -> TestResult<()
         }
     })
     .await
-    .map_err(|_| test_error(format!("Redis did not expose {expected} RBAC subscribers")))?;
+    .map_err(|_| {
+        test_error(format!(
+            "Redis did not expose {expected} RBAC subscribers during {stage}"
+        ))
+    })?;
     Ok(())
 }
 
