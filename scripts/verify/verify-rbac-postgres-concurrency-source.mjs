@@ -13,6 +13,12 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const requireNormalizedText = (source, value, label) => {
+  if (!normalizeWhitespace(source).includes(normalizeWhitespace(value))) {
+    failures.push(`${label}: missing ${value}`);
+  }
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -134,20 +140,20 @@ for (const marker of [
   "There is no SQLite fallback.",
   "source_ready_unvalidated",
   "does not prove Redis delivery",
-]) requireText(sources.docs, marker, `${files.docs}: evidence contract`);
+]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence contract`);
 
 for (const marker of [
-  "### P0. Database concurrency and multi-replica recovery evidence",
-  "PostgreSQL integration evidence",
-  "multi-replica",
+  "### P0 — runtime evidence",
+  "Execute #2849 PostgreSQL concurrency.",
+  "Execute #2853 independent-process watchdog recovery.",
   "Status: `in_progress`",
-]) requireText(sources.plan, marker, `${files.plan}: owner gate`);
+]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "PostgreSQL concurrency",
-]) requireText(sources.master, marker, `${files.master}: active cursor`);
+  "PostgreSQL concurrency/watchdog runs",
+]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
   console.error("RBAC PostgreSQL concurrency source verification failed:");
