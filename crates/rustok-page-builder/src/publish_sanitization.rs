@@ -131,12 +131,29 @@ fn sanitization_hash(
     policy_format: &str,
     policy_hash: &str,
 ) -> Result<String, PageBuilderStaticLandingSanitizationError> {
+    let canonical_project = canonicalize_json(sanitized_project);
     stable_hash(&(
         PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,
         policy_format,
         policy_hash,
-        sanitized_project,
+        canonical_project,
     ))
+}
+
+fn canonicalize_json(value: &Value) -> Value {
+    match value {
+        Value::Object(object) => {
+            let mut keys = object.keys().collect::<Vec<_>>();
+            keys.sort_unstable();
+            let mut canonical = serde_json::Map::new();
+            for key in keys {
+                canonical.insert(key.clone(), canonicalize_json(&object[key]));
+            }
+            Value::Object(canonical)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(canonicalize_json).collect()),
+        _ => value.clone(),
+    }
 }
 
 fn stable_hash(
@@ -208,6 +225,26 @@ mod tests {
                 .is_some_and(|id| id.starts_with("fly-static-"))
         );
         first.verify_integrity().expect("sanitization integrity");
+    }
+
+    #[test]
+    fn sanitization_hash_ignores_recursive_json_object_key_order() {
+        let first = json!({
+            "z": { "b": 2, "a": 1 },
+            "a": [{ "d": 4, "c": 3 }]
+        });
+        let second = json!({
+            "a": [{ "c": 3, "d": 4 }],
+            "z": { "a": 1, "b": 2 }
+        });
+
+        assert_eq!(first, second);
+        assert_eq!(
+            sanitization_hash(&first, "policy-v1", "policy-hash")
+                .expect("first canonical hash"),
+            sanitization_hash(&second, "policy-v1", "policy-hash")
+                .expect("second canonical hash")
+        );
     }
 
     #[test]
