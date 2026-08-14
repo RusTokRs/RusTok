@@ -91,6 +91,15 @@ claim a global `translation.target.changed` event contract.
    this guard whenever Taxonomy or one of those ownership-defining artifacts
    changes.
 
+   `scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs` proves the
+   guard fails closed on representative regressions: a Taxonomy `parent_id`, a
+   consumer relation table moved into Taxonomy persistence, generic
+   `owner_type/owner_id` attachment storage, missing Forum category translation
+   ownership, missing Product category closure storage, and a missing owner-side
+   profile relation artifact. The dedicated workflow runs this fixture suite
+   before the real repository scan, and both checks are available through
+   `scripts/verify/verify-all.sh` for local parity.
+
 2. **Expand kinds and lookup semantics only for demonstrated domain pressure.**
    Do not add speculative vocabulary kinds or polymorphic attachment storage.
    The current tag lookup baseline requires locale-aware route ownership,
@@ -174,6 +183,7 @@ claim a global `translation.target.changed` event contract.
 
 - `cargo xtask module validate taxonomy`
 - `cargo xtask module test taxonomy`
+- `node scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs`
 - `node scripts/verify/verify-taxonomy-ownership-boundary.mjs`
 - Targeted term CRUD, cross slug/alias collision, scope restriction, locale
   fallback, registry-authority lookup, route-registry reservation/release/
