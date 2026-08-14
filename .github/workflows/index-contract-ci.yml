@@ -16,6 +16,7 @@ on:
       - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
       - "scripts/verify/verify-event-contract-digest-admission.mjs"
+      - "scripts/verify/verify-index-query-planner.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
@@ -43,6 +44,7 @@ on:
       - "apps/server/src/services/server_bootstrap.rs"
       - "apps/server/tests/product_index_refresh_redelivery_postgres_iggy.rs"
       - "scripts/verify/verify-event-contract-digest-admission.mjs"
+      - "scripts/verify/verify-index-query-planner.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
@@ -80,6 +82,8 @@ jobs:
           node-version: 22
       - name: Verify Index CI source contract
         run: node scripts/verify/verify-index-contract-ci.mjs
+      - name: Verify Index query planner source contract
+        run: node scripts/verify/verify-index-query-planner.mjs
       - name: Verify event digest admission contract
         run: node scripts/verify/verify-event-contract-digest-admission.mjs
       - name: Verify Product Index refresh family
