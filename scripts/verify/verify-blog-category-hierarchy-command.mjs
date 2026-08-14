@@ -22,6 +22,11 @@ function requireMarkers(relative, markers) {
   }
 }
 
+requireMarkers("crates/rustok-blog/src/dto/category.rs", [
+  "Compatibility field retained for decoding only",
+  "use `MoveCategoryInput` instead",
+]);
+
 requireMarkers("crates/rustok-blog/src/dto/category_command.rs", [
   "pub struct MoveCategoryInput",
   "pub parent_id: Option<Uuid>",
@@ -30,6 +35,23 @@ requireMarkers("crates/rustok-blog/src/dto/category_command.rs", [
   "pub depth: i32",
   "MAX_BLOG_CATEGORY_TREE_NODES",
 ]);
+
+requireMarkers("crates/rustok-blog/src/services/category.rs", [
+  "if input.position.is_some()",
+  "Category position is structural; use the category move command",
+]);
+const localizedUpdate = read("crates/rustok-blog/src/services/category.rs");
+const updateStart = localizedUpdate.indexOf("pub async fn update(");
+const updateEnd = localizedUpdate.indexOf("pub async fn delete(", updateStart);
+const updateBody =
+  updateStart >= 0 && updateEnd > updateStart
+    ? localizedUpdate.slice(updateStart, updateEnd)
+    : "";
+if (updateBody.includes("Column::Position")) {
+  failures.push(
+    "crates/rustok-blog/src/services/category.rs: localized update must not write hierarchy position",
+  );
+}
 
 requireMarkers("crates/rustok-blog/src/services/category_command.rs", [
   "pub struct CategoryCommandService",
@@ -84,6 +106,7 @@ requireMarkers("crates/rustok-blog/src/migrations/m20260812_000017_enforce_blog_
 
 requireMarkers("crates/rustok-blog/tests/category_hierarchy.rs", [
   "move_reparents_subtree_and_failed_moves_leave_tree_unchanged",
+  "localized update must not be a second hierarchy placement write path",
   "child should move under the second root",
   "child should move to the root level",
   "a category cannot become its own parent",
@@ -95,6 +118,7 @@ requireMarkers("crates/rustok-blog/docs/category-hierarchy-contract.md", [
   "Blog owns its category hierarchy",
   "POST /api/blog/categories/{id}/move",
   "maximum 512 nodes",
+  "one owner-side write path",
   "recomputes materialized `depth`",
   "does not rewrite localized category rows",
 ]);
