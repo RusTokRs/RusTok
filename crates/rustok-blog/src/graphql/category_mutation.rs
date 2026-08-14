@@ -9,7 +9,7 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{CategoryCommandService, CategoryService};
+use crate::services::{CategoryCommandService, CategoryService};
 
 use super::category_types::{
     GqlBlogCategory, GqlCreateBlogCategoryInput, GqlMoveBlogCategoryInput,
