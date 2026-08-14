@@ -16,6 +16,7 @@ on:
       - "crates/rustok-profiles/src/entities/profile_tag.rs"
       - "crates/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs"
       - "scripts/verify/verify-taxonomy-ownership-boundary.mjs"
+      - "scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs"
       - ".github/workflows/taxonomy-ownership-boundary.yml"
   push:
     branches:
@@ -34,6 +35,7 @@ on:
       - "crates/rustok-profiles/src/entities/profile_tag.rs"
       - "crates/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs"
       - "scripts/verify/verify-taxonomy-ownership-boundary.mjs"
+      - "scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs"
       - ".github/workflows/taxonomy-ownership-boundary.yml"
   workflow_dispatch:
 
@@ -56,5 +58,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Self-test Taxonomy ownership boundary verifier
+        run: node scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs
       - name: Verify Taxonomy and consumer ownership boundary
         run: node scripts/verify/verify-taxonomy-ownership-boundary.mjs
