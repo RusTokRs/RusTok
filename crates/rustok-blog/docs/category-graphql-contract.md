@@ -43,6 +43,7 @@ Localized copy and structural placement remain distinct contracts:
 
 - `UpdateBlogCategoryInput` contains locale/name/slug/description/settings only;
 - `MoveBlogCategoryInput` contains `parentId` and `position` only;
+- `MoveBlogCategoryInput.position` is a non-negative GraphQL integer represented as signed `i32` at the schema boundary and checked into the owner command's `u32` position before any hierarchy mutation;
 - converting `UpdateBlogCategoryInput` to the domain update always sets the compatibility `position` field to `None`;
 - move-to-root remains unambiguous because `parentId = null` is represented only by the structural move input.
 
