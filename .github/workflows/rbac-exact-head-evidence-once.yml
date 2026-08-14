@@ -1,0 +1,112 @@
+name: RBAC Exact-Head Evidence Once
+
+on:
+  push:
+    branches:
+      - agent/rbac-exact-head-evidence-cycle-001
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rbac-exact-head-evidence-cycle-001
+  cancel-in-progress: true
+
+env:
+  TARGET_SHA: 87d3c88e564de54dac838f70cbb392adb71d1f9b
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 1
+  CARGO_PROFILE_TEST_DEBUG: 1
+  SQLX_OFFLINE: true
+  PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+
+jobs:
+  format-and-event-digest:
+    name: Format and event digest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo run -p rustok-events --example event_contract_digests -- --write
+      - name: Verify generated digest is committed
+        run: git diff --exit-code
+
+  rbac-compilation:
+    name: RBAC compilation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p rustok-events --all-targets
+      - run: cargo check -p rustok-rbac --all-features
+      - run: cargo check -p rustok-rbac-admin --features ssr
+
+  api-server-compilation:
+    name: API and server compilation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p rustok-api
+      - run: cargo check -p rustok-api --features server
+      - run: cargo check -p rustok-server --lib
+
+  sqlite-and-contract-tests:
+    name: SQLite and contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p rustok-events --test rbac_artifact_permission_contracts
+      - run: cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite
+      - run: cargo test -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite
+      - run: cargo test -p rustok-rbac --test artifact_permission_upgrade_sqlite
+      - run: cargo test -p rustok-migrations migrator_preserves_append_only_migration_tail
+
+  architecture-and-verifiers:
+    name: Architecture and source verifiers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard
+      - run: cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard
+      - run: cargo test -p rustok-server --test rbac_mutation_api_architecture_guard
+      - run: node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs
+      - run: node scripts/verify/verify-rbac-artifact-permission-outbox.mjs
+      - run: node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs
+      - run: node scripts/verify/verify-rbac-explicit-principal-kind.mjs
+      - run: node scripts/verify/verify-rbac-invalidation-observability.mjs
+
+  module-gates:
+    name: RBAC module gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo xtask module validate rbac
+      - run: cargo xtask module test rbac
