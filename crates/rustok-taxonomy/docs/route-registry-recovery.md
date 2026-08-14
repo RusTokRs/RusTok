@@ -39,8 +39,11 @@ The conflicting owner decision must be resolved at the owning domain level.
 ### Stale reservation
 
 A registry row exists for a localized slug/alias that is no longer desired by
-its owning term. A normal localized Taxonomy mutation reconciles desired keys
-before releasing stale reservations in the same transaction.
+its owning term. Because registry lookup is authoritative, that stale key can
+continue resolving to the recorded owner until a normal localized Taxonomy
+mutation reconciles the owner's desired route set. Reconciliation inserts any
+missing desired reservations before releasing stale reservations in the same
+transaction.
 
 ## Read-only diagnosis
 
@@ -73,7 +76,9 @@ classified as one of:
 This second, registry-driven pass is required: a diagnostic that starts only
 from translation/alias rows cannot see a stale registry-only reservation.
 `scripts/verify/verify-taxonomy-route-registry-recovery.mjs` pins that property,
-requires tenant scoping, and rejects mutation SQL in the retained diagnostic.
+requires tenant scoping, rejects mutation SQL in the retained diagnostic, and
+requires executable recovery coverage for the missing, stale, and cross-term
+incident classes.
 
 For one reported route, also resolve it through the normal Taxonomy service.
 The service result is the user-visible authority; raw translation/alias rows do
@@ -92,14 +97,20 @@ not override a different registry owner.
 4. The service transaction calls localized route reconciliation before durable
    change evidence is committed. Missing reservations are inserted and stale
    reservations are released atomically with the localized mutation.
-5. Re-run the read-only diagnostic and the normal route lookup. The registry
-   owner must now be the intended `term_id` and the public route must resolve to
-   it.
+5. Re-run the read-only diagnostic and the normal route lookup. Every desired
+   route must resolve to the intended `term_id`, and any stale registry-only
+   route must stop resolving.
 
-`tests/route_key_registry.rs::owner_service_update_repairs_missing_route_reservation`
-keeps the missing-reservation recovery path executable. For a stale reservation,
-re-save the authoritative current translation/alias set for that locale; route
-reconciliation releases registry keys absent from that desired set.
+The integration suite keeps both repair paths executable:
+
+- `tests/route_key_registry.rs::owner_service_update_repairs_missing_route_reservation`
+  removes one desired registry key, re-saves the authoritative localized state,
+  and proves the missing alias reservation is restored;
+- `tests/route_key_registry.rs::owner_service_update_releases_stale_route_reservation`
+  injects a registry-only key for the correct owner, proves registry-authority
+  lookup sees the stale key before repair, re-saves the unchanged authoritative
+  translation/alias set, then proves the stale key is released while desired
+  routes remain owned and resolvable.
 
 ## Repair a cross-term collision
 
@@ -160,6 +171,6 @@ node scripts/verify/verify-taxonomy-ownership-boundary.mjs
 ```
 
 The path-filtered `Taxonomy Lookup Contract` workflow runs the read-only
-recovery source guard before both Rust integration binaries, independently of
-unrelated workspace CI failures. PostgreSQL route contention and
-translation-target evidence remain covered by `Taxonomy PostgreSQL Evidence`.
+recovery source/coverage guard before both Rust integration binaries,
+independently of unrelated workspace CI failures. PostgreSQL route contention
+and translation-target evidence remain covered by `Taxonomy PostgreSQL Evidence`.
