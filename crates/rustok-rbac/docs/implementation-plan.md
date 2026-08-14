@@ -34,6 +34,11 @@ role-assignment authority.
 
 `cycle-001/core-rbac` remains `in_progress`.
 
+Active verification task (2026-08-14): `[in_progress]` fix the RBAC mutation API
+architecture guard so production call-site counting excludes only `#[cfg(test)]` test
+modules, then classify PostgreSQL evidence from workflow run `31808510809` without
+moving the verification cursor.
+
 PR #2980 reconstructed the useful product changes from superseded draft #2870 on current
 `main`. The task-specific workflow and obsolete migration-tail repair path were excluded.
 The superseded draft is closed and must not be merged.
