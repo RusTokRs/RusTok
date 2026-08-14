@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  TARGET_SHA: 87d3c88e564de54dac838f70cbb392adb71d1f9b
+  TARGET_SHA: 7b2490abe6fc6e119725cd9573dd9313344a4245
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
   CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
