@@ -119,7 +119,6 @@ requireValue(
 const currentPendingPaths = collectPendingEvidence(fbaRegistry).sort();
 const expectedCurrentPaths = [
   "/provider/consumer_properties_contract/executed_evidence",
-  "/consumers/0/artifact_repair/physical_loss_recovery/rollback_activated_current_set_recovery/executed_evidence",
   "/consumers/0/artifact_repair/physical_loss_recovery/repeated_loss_recovery/executed_evidence",
   "/consumers/0/artifact_repair/physical_loss_recovery/executed_evidence",
   "/consumers/0/artifact_repair/rollback_continuity/physical_loss_activation_prefix/executed_evidence",
@@ -141,7 +140,7 @@ requireValue(
     source.page_builder_fba_inventory?.all_recursive_blocker_paths_must_be_zero_for_completion ===
       true &&
     source.page_builder_fba_inventory?.current_source_expected_to_have_blockers === true &&
-    source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 8 &&
+    source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 7 &&
     source.page_builder_fba_inventory?.pending_blockers_prevent_transport_verified === true,
   `${sourcePath}: Page Builder FBA inventory contract drifted`,
 );
@@ -266,7 +265,7 @@ for (const marker of [
 
 for (const marker of [
   "terminal-evidence-inventory-source-ready",
-  "8",
+  "7",
   "/provider/consumer_properties_contract/executed_evidence",
   "/consumers/0/artifact_repair/executed_evidence",
   "/consumers/0/cache_consumer/executed_evidence",
