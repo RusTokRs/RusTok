@@ -152,6 +152,25 @@ function writeBaseline(root) {
       "",
     ].join("\n"),
   );
+  write(
+    root,
+    ".github/workflows/taxonomy-ownership-boundary.yml",
+    [
+      '- "crates/rustok-blog/rustok-module.toml"',
+      '- "crates/rustok-blog/CRATE_API.md"',
+      '- "crates/rustok-forum/rustok-module.toml"',
+      '- "crates/rustok-forum/docs/README.md"',
+      '- "crates/rustok-product/rustok-module.toml"',
+      '- "crates/rustok-product/README.md"',
+      '- "crates/rustok-profiles/rustok-module.toml"',
+      '- "crates/rustok-profiles/README.md"',
+      '- "scripts/verify/verify-taxonomy-contract-matrix.mjs"',
+      '- "scripts/verify/verify-taxonomy-contract-matrix.test.mjs"',
+      "run: node scripts/verify/verify-taxonomy-contract-matrix.test.mjs",
+      "run: node scripts/verify/verify-taxonomy-contract-matrix.mjs",
+      "",
+    ].join("\n"),
+  );
 }
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "rustok-taxonomy-contract-"));
@@ -210,6 +229,31 @@ try {
     root,
     /crates\/rustok-taxonomy\/src\/dto\.rs/,
     "kind changes must stay inside the focused lookup workflow trigger set",
+  );
+  writeBaseline(root);
+
+  write(
+    root,
+    ".github/workflows/taxonomy-ownership-boundary.yml",
+    [
+      '- "crates/rustok-blog/CRATE_API.md"',
+      '- "crates/rustok-forum/rustok-module.toml"',
+      '- "crates/rustok-forum/docs/README.md"',
+      '- "crates/rustok-product/rustok-module.toml"',
+      '- "crates/rustok-product/README.md"',
+      '- "crates/rustok-profiles/rustok-module.toml"',
+      '- "crates/rustok-profiles/README.md"',
+      '- "scripts/verify/verify-taxonomy-contract-matrix.mjs"',
+      '- "scripts/verify/verify-taxonomy-contract-matrix.test.mjs"',
+      "run: node scripts/verify/verify-taxonomy-contract-matrix.test.mjs",
+      "run: node scripts/verify/verify-taxonomy-contract-matrix.mjs",
+      "",
+    ].join("\n"),
+  );
+  expectFailure(
+    root,
+    /crates\/rustok-blog\/rustok-module\.toml/,
+    "consumer manifest changes must stay inside the focused ownership workflow trigger set",
   );
 
   console.log("[verify-taxonomy-contract-matrix.test] PASS");
