@@ -46,54 +46,48 @@ fn map_storefront_customer_port_error(
     match &error.kind {
         PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation => {
             tracing::error!(
-                error = ?error,
                 owner = STOREFRONT_ORDER_CUSTOMER_OWNER,
                 owner_operation = STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION,
                 consumer_operation,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                user_id = %user_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
+                correlation_id_length = context.correlation_id.chars().count(),
+                tenant_id_non_empty = !context.tenant_id.is_empty(),
+                user_id_non_nil = !user_id.is_nil(),
+                channel_present = context.channel.is_some(),
+                locale_length = context.locale.chars().count(),
+                causation_id_present = context.causation_id.is_some(),
+                traceparent_present = context.traceparent.is_some(),
+                idempotency_key_present = context.idempotency_key.is_some(),
                 deadline_ms = ?context.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
+                owner_error_kind = ?error.kind,
+                owner_code_length = error.code.chars().count(),
                 retryable = error.retryable,
                 public_code = %public.code,
                 status = %public.status,
                 boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-                "storefront customer read failed"
+                "storefront customer read failed with bounded diagnostics"
             );
         }
         _ => {
             tracing::warn!(
-                error = ?error,
                 owner = STOREFRONT_ORDER_CUSTOMER_OWNER,
                 owner_operation = STOREFRONT_ORDER_CUSTOMER_OWNER_OPERATION,
                 consumer_operation,
-                correlation_id = %context.correlation_id,
-                tenant_id = %context.tenant_id,
-                user_id = %user_id,
-                actor = ?context.actor,
-                channel = ?context.channel,
-                locale = %context.locale,
-                causation_id = ?context.causation_id,
-                traceparent = ?context.traceparent,
-                idempotency_key = ?context.idempotency_key,
+                correlation_id_length = context.correlation_id.chars().count(),
+                tenant_id_non_empty = !context.tenant_id.is_empty(),
+                user_id_non_nil = !user_id.is_nil(),
+                channel_present = context.channel.is_some(),
+                locale_length = context.locale.chars().count(),
+                causation_id_present = context.causation_id.is_some(),
+                traceparent_present = context.traceparent.is_some(),
+                idempotency_key_present = context.idempotency_key.is_some(),
                 deadline_ms = ?context.deadline_ms,
-                internal_code = %error.code,
-                internal_message = %error.message,
-                error_kind = ?error.kind,
+                owner_error_kind = ?error.kind,
+                owner_code_length = error.code.chars().count(),
                 retryable = error.retryable,
                 public_code = %public.code,
                 status = %public.status,
                 boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-                "storefront customer read was rejected"
+                "storefront customer read was rejected with bounded diagnostics"
             );
         }
     }
@@ -188,27 +182,25 @@ fn map_storefront_order_port_error(
         ),
     };
     tracing::error!(
-        error = ?error,
         owner = STOREFRONT_ORDER_OWNER,
         owner_operation,
         consumer_operation,
-        correlation_id = %context.correlation_id,
-        tenant_id = %context.tenant_id,
-        actor_id = %actor_id,
-        customer_id = %customer_id,
-        order_id = %order_id,
-        actor = ?context.actor,
-        channel = ?context.channel,
-        locale = %context.locale,
+        correlation_id_length = context.correlation_id.chars().count(),
+        tenant_id_non_empty = !context.tenant_id.is_empty(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        customer_id_non_nil = !customer_id.is_nil(),
+        order_id_non_nil = !order_id.is_nil(),
+        channel_present = context.channel.is_some(),
+        locale_length = context.locale.chars().count(),
         deadline_ms = ?context.deadline_ms,
-        internal_code = %error.code,
-        internal_message = %error.message,
+        owner_error_kind = ?error.kind,
+        owner_code_length = error.code.chars().count(),
         retryable = error.retryable,
         error_kind,
         public_code = code,
         status = %status,
         boundary = STOREFRONT_ORDER_CUSTOMER_BOUNDARY,
-        "storefront order owner read failed"
+        "storefront order owner read failed with bounded diagnostics"
     );
     HttpError::new(status, code, message)
 }
