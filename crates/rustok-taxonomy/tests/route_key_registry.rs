@@ -1,7 +1,7 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, ModuleTermUpdateInput, TaxonomyError, TaxonomyModule,
-    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, UpdateTaxonomyTermInput,
+    CreateTaxonomyTermInput, ModuleTermUpdateInput, ResolveTaxonomyTermInput, TaxonomyError,
+    TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, UpdateTaxonomyTermInput,
     entities::taxonomy_term_route_key, update_module_term_in_tx,
 };
 use rustok_test_utils::db::setup_test_db;
@@ -202,4 +202,83 @@ async fn deleting_term_cascades_route_reservations() {
         .expect("term deletion should succeed");
 
     assert!(route_keys(&db, tenant_id, term_id).await.is_empty());
+}
+
+#[tokio::test]
+async fn hard_delete_removes_lookup_and_allows_route_identity_reuse() {
+    let (_db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let deleted_term_id = create_module_term(
+        &service,
+        tenant_id,
+        "Rust",
+        "rust",
+        vec!["systems".to_string()],
+    )
+    .await;
+
+    let before_delete = service
+        .resolve_term_for_module(
+            tenant_id,
+            admin(),
+            ResolveTaxonomyTermInput {
+                kind: TaxonomyTermKind::Tag,
+                module_slug: "blog".to_string(),
+                locale: "en".to_string(),
+                slug_or_alias: "rust".to_string(),
+                fallback_locale: None,
+            },
+        )
+        .await
+        .expect("route lookup before deletion should succeed")
+        .expect("route should exist before deletion");
+    assert_eq!(before_delete.id, deleted_term_id);
+
+    service
+        .delete_term(tenant_id, deleted_term_id, admin())
+        .await
+        .expect("hard deletion should succeed");
+
+    let after_delete = service
+        .resolve_term_for_module(
+            tenant_id,
+            admin(),
+            ResolveTaxonomyTermInput {
+                kind: TaxonomyTermKind::Tag,
+                module_slug: "blog".to_string(),
+                locale: "en".to_string(),
+                slug_or_alias: "rust".to_string(),
+                fallback_locale: None,
+            },
+        )
+        .await
+        .expect("route lookup after deletion should succeed");
+    assert!(after_delete.is_none(), "deleted route must stop resolving");
+
+    let replacement_term_id = create_module_term(
+        &service,
+        tenant_id,
+        "Rust Replacement",
+        "rust",
+        vec!["systems".to_string()],
+    )
+    .await;
+    assert_ne!(replacement_term_id, deleted_term_id);
+
+    let replacement = service
+        .resolve_term_for_module(
+            tenant_id,
+            admin(),
+            ResolveTaxonomyTermInput {
+                kind: TaxonomyTermKind::Tag,
+                module_slug: "blog".to_string(),
+                locale: "en".to_string(),
+                slug_or_alias: "rust".to_string(),
+                fallback_locale: None,
+            },
+        )
+        .await
+        .expect("replacement route lookup should succeed")
+        .expect("replacement route should resolve");
+    assert_eq!(replacement.id, replacement_term_id);
 }
