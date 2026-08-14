@@ -93,26 +93,19 @@ async fn sanitized_project_hash_survives_postgres_jsonb_roundtrip() -> TestResul
     let after_materialized =
         compile_materialized_static_landing(after.project_data(), reviewed.preview_runtime()?)?;
 
-    let source_hash_equal = before_materialized.artifact.identity.source_hash
-        == after_materialized.artifact.identity.source_hash;
-    let artifact_hash_equal =
-        before_materialized.artifact.artifact_hash == after_materialized.artifact.artifact_hash;
-    let materialization_hash_equal = before_materialized.identity.materialization_hash
-        == after_materialized.identity.materialization_hash;
-    eprintln!(
-        "jsonb materialization identity equality: source_hash={source_hash_equal} artifact_hash={artifact_hash_equal} materialization_hash={materialization_hash_equal}"
-    );
-
-    assert!(
-        source_hash_equal,
+    assert_eq!(
+        before_materialized.artifact.identity.source_hash,
+        after_materialized.artifact.identity.source_hash,
         "PostgreSQL JSONB roundtrip changed Fly source_hash"
     );
-    assert!(
-        artifact_hash_equal,
+    assert_eq!(
+        before_materialized.artifact.artifact_hash,
+        after_materialized.artifact.artifact_hash,
         "PostgreSQL JSONB roundtrip changed Fly artifact_hash"
     );
-    assert!(
-        materialization_hash_equal,
+    assert_eq!(
+        before_materialized.identity.materialization_hash,
+        after_materialized.identity.materialization_hash,
         "PostgreSQL JSONB roundtrip changed Page Builder materialization_hash"
     );
     Ok(())
