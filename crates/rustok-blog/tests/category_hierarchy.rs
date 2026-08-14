@@ -5,9 +5,7 @@ use rustok_blog::entities::blog_category;
 use rustok_blog::services::{CategoryCommandService, CategoryService};
 use rustok_blog::{BlogError, BlogModule};
 use rustok_comments::CommentsModule;
-use rustok_core::{
-    EventTransport, MemoryTransport, MigrationSource, SecurityContext, UserRole,
-};
+use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
