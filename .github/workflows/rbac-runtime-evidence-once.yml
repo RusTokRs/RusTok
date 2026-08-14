@@ -1,0 +1,93 @@
+name: RBAC Runtime Evidence Once
+
+on:
+  push:
+    branches:
+      - agent/rbac-runtime-evidence-cycle-001
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rbac-runtime-evidence-cycle-001
+  cancel-in-progress: true
+
+env:
+  TARGET_SHA: 9e311126fae48787e8f7cbf9ce1e0d983f4482db
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 1
+  CARGO_PROFILE_TEST_DEBUG: 1
+  SQLX_OFFLINE: true
+  RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+
+jobs:
+  postgres-concurrency:
+    name: PostgreSQL concurrency packet
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p rustok-server --test rbac_postgres_concurrency -- --ignored --nocapture
+      - run: node scripts/verify/verify-rbac-postgres-concurrency-source.mjs
+
+  durable-watchdog:
+    name: Independent-process watchdog packet
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: >-
+          cargo test -p rustok-server
+          --test rbac_two_process_durable_recovery
+          separate_process_replica_recovers_missed_local_publication_from_durable_generation
+          -- --ignored --nocapture
+      - run: node scripts/verify/verify-rbac-two-process-durable-recovery-source.mjs
+
+  source-contracts:
+    name: Remaining runtime source contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node scripts/verify/verify-rbac-two-process-redis-restart-source.mjs
+      - run: node scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs
