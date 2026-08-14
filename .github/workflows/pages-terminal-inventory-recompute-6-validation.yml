@@ -1,0 +1,42 @@
+name: Pages Terminal Inventory Recompute 6 Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json"
+      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs"
+      - "scripts/evidence/inventory-pages-page-builder-terminal-readiness.mjs"
+      - "scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs"
+      - "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-14.md"
+      - ".github/workflows/pages-terminal-inventory-recompute-6-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-terminal-inventory-recompute-6-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Terminal inventory six-blocker validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Require exact PR head checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - name: Verify terminal evidence inventory source
+        run: node scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs
+      - name: Run terminal inventory synthetic evaluator tests
+        run: node --test scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs
