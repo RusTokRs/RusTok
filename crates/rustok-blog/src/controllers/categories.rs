@@ -16,8 +16,8 @@ use crate::dto::{
     CategoryListResponse, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
     MoveCategoryInput, MoveCategoryResponse, UpdateCategoryInput,
 };
-use crate::{BlogError, CategoryService};
 use crate::services::CategoryCommandService;
+use crate::{BlogError, CategoryService};
 
 fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::security_context_from_access_token(
@@ -43,7 +43,7 @@ fn category_service(runtime: &BlogHttpRuntime) -> CategoryService {
 }
 
 fn category_command_service(runtime: &BlogHttpRuntime) -> CategoryCommandService {
-    CategoryCommandService::new(runtime.db_clone(), runtime.event_bus())
+    CategoryCommandService::new(runtime.db_clone())
 }
 
 fn map_category_error(error: BlogError) -> HttpError {
