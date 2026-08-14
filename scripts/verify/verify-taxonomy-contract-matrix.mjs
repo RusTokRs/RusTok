@@ -43,8 +43,11 @@ function requireMarkers(relative, markers) {
 }
 
 function dependencyBlock(source) {
-  const match = source.match(/^\[dependencies\]\s*\n([\s\S]*?)(?=^\[|\s*$)/m);
-  return match?.[1] ?? null;
+  const header = /^\[dependencies\]\s*$/m.exec(source);
+  if (!header) return null;
+  const rest = source.slice((header.index ?? 0) + header[0].length);
+  const nextHeader = rest.search(/^\[[^\]]+\]\s*$/m);
+  return nextHeader >= 0 ? rest.slice(0, nextHeader) : rest;
 }
 
 function requireTaxonomyDependency(consumer) {
