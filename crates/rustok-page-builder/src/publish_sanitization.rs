@@ -114,6 +114,7 @@ pub fn sanitize_static_landing_project(
     validate_static_publish_resource_limits(&document)?;
     let sanitized_project = serde_json::to_value(document.project)
         .map_err(|error| PageBuilderStaticLandingSanitizationError::Encode(error.to_string()))?;
+    let sanitized_project = canonicalize_json(&sanitized_project);
     let sanitized_hash = sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?;
     let result = PageBuilderSanitizedStaticLandingProject {
         format: PAGE_BUILDER_STATIC_SANITIZATION_FORMAT.to_string(),
