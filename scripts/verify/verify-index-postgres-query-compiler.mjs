@@ -57,7 +57,7 @@ const sql = requireMarkers(sqlPath, [
   'compile_keyset(plan, cursor, &mut bindings)?',
   'ASC NULLS LAST',
   'DESC NULLS FIRST',
-  'SELECT COUNT(*)::bigint AS "__exact_count"',
+  'SELECT COUNT(*)::bigint AS \\"__exact_count\\"',
   'format!("${}", self.values.len())',
 ]);
 
