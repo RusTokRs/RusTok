@@ -82,6 +82,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
                 .delete(categories::delete_category),
         )
         .route(
+            "/api/blog/categories/{id}/move",
+            post(categories::move_category),
+        )
+        .route(
             "/api/blog/comments/{id}/moderate",
             post(comments::moderate_comment),
         )
