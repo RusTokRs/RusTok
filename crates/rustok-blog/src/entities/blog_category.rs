@@ -1,5 +1,5 @@
-use sea_orm::Set;
 use sea_orm::entity::prelude::*;
+use sea_orm::{ConnectionTrait, DatabaseBackend, Set, Statement};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -45,6 +45,7 @@ impl ActiveModelBehavior for ActiveModel {
             self.tenant_id.try_as_ref().copied().ok_or_else(|| {
                 DbErr::Custom("blog category insert requires tenant_id".to_string())
             })?;
+        lock_category_tree_for_insert(db, tenant_id).await?;
         let parent_id = self.parent_id.try_as_ref().copied().flatten();
 
         let depth = match parent_id {
@@ -66,6 +67,21 @@ impl ActiveModelBehavior for ActiveModel {
 
         Ok(self)
     }
+}
+
+async fn lock_category_tree_for_insert<C>(db: &C, tenant_id: Uuid) -> Result<(), DbErr>
+where
+    C: ConnectionTrait,
+{
+    if db.get_database_backend() == DatabaseBackend::Postgres {
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            [format!("blog-category-tree:{tenant_id}").into()],
+        ))
+        .await?;
+    }
+    Ok(())
 }
 
 fn child_depth(parent_depth: i32, parent_id: Uuid) -> Result<i32, DbErr> {
