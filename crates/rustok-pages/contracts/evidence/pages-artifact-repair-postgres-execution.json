@@ -1,0 +1,79 @@
+{
+  "format": "pages_artifact_repair_postgres_execution_source_v1",
+  "status": "source_ready_main_execution_pending",
+  "scope": "page_builder_fba_consumer_artifact_repair_parent",
+  "purpose": "Retain exact-main PostgreSQL execution evidence for the parent Pages explicit artifact repair obligation without inferring or mutating physical-loss recovery, rollback-continuity, cache-consumer, provider-consumer-properties, terminal-readiness, FFA or FBA state.",
+  "workflow": ".github/workflows/pages-artifact-repair-postgres-evidence.yml",
+  "source_contract": "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json",
+  "registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  "required_source_files": [
+    "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs",
+    "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json",
+    "crates/rustok-pages/tests/explicit_artifact_repair_postgres.rs",
+    "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+    "crates/rustok-pages/src/services/page/artifact_rebuild.rs",
+    "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+    "crates/rustok-pages/src/migrations/m20260806_000014_add_explicit_artifact_rebuild.rs",
+    "crates/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
+    "crates/rustok-outbox/src/transactional.rs",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "docs/modules/pages-page-builder-repair-postgres-continuation-2026-08-07.md",
+    "crates/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json",
+    ".github/workflows/pages-artifact-repair-postgres-evidence.yml"
+  ],
+  "execution": {
+    "pull_request_preflight": true,
+    "exact_main_event": "push",
+    "exact_main_branch": "main",
+    "postgres": "16",
+    "rust_toolchain": "1.96.0",
+    "source_verifier": "node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-postgres.mjs",
+    "integration_test": "cargo test --locked -p rustok-pages --test explicit_artifact_repair_postgres -- --nocapture",
+    "cargo_check": "cargo check --locked -p rustok-pages --all-targets",
+    "exact_checkout_required": true,
+    "contents_write_permission": false,
+    "registry_mutation": false
+  },
+  "output": {
+    "format": "pages_artifact_repair_postgres_execution_v1",
+    "success_status": "postgres_execution_passed_artifact_repair_admission_pending",
+    "default_path": "evidence/pages-artifact-repair-postgres/receipt.json",
+    "artifact_retention_days": 90,
+    "source_commit_retained": true,
+    "workflow_run_identity_retained": true,
+    "required_source_sha256_retained": true,
+    "registry_pre_state_retained": true,
+    "parent_artifact_repair_scope_retained": true,
+    "nested_repair_non_claims_retained": true
+  },
+  "admission_boundary": {
+    "target_json_pointer": "/consumers/0/artifact_repair/executed_evidence",
+    "target_pre_state": "pending",
+    "target_post_state_not_performed_by_workflow": "verified",
+    "physical_loss_recovery_must_not_be_inferred": true,
+    "rollback_continuity_must_not_be_inferred": true,
+    "cache_consumer_must_not_be_inferred": true,
+    "provider_consumer_properties_must_not_be_inferred": true,
+    "separate_registry_admission_required": true,
+    "separate_terminal_inventory_recompute_required_after_admission": true
+  },
+  "privacy": {
+    "database_url_retained": false,
+    "tenant_identity_retained": false,
+    "raw_database_rows_retained": false,
+    "event_payload_retained": false,
+    "credentials_retained": false,
+    "logs_uploaded_by_evidence_artifact": false
+  },
+  "non_claims": {
+    "artifact_repair_registry_verified": false,
+    "physical_loss_recovery_verified": false,
+    "rollback_continuity_verified": false,
+    "cache_consumer_verified": false,
+    "provider_consumer_properties_verified": false,
+    "terminal_inventory_complete": false,
+    "owner_platform_review_ready": false,
+    "page_builder_fba_promoted": false,
+    "pages_ffa_promoted": false
+  }
+}
