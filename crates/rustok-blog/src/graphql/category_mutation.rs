@@ -27,7 +27,7 @@ impl BlogCategoryMutation {
         &self,
         ctx: &Context<'_>,
         input: GqlCreateBlogCategoryInput,
-    ) -> Result<GqlBlogCategory> {
+    ) -> Result<Uuid> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let auth = require_category_permission(
             ctx,
@@ -37,18 +37,10 @@ impl BlogCategoryMutation {
         let tenant = current_authenticated_tenant(ctx, &auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = security_context(&auth);
-        let locale = input.locale.clone();
-        let service = CategoryService::new(db.clone(), event_bus.clone());
-        let category_id = service
-            .create(tenant.id, security.clone(), input.into())
+        CategoryService::new(db.clone(), event_bus.clone())
+            .create(tenant.id, security_context(&auth), input.into())
             .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        let category = service
-            .get(tenant.id, security, category_id, &locale)
-            .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        Ok(category.into())
+            .map_err(|error| async_graphql::Error::new(error.to_string()))
     }
 
     async fn update_blog_category(
