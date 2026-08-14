@@ -32,7 +32,7 @@
 
 - Depends on `rustok-core` for module contracts, permission vocabulary, and typed runtime extensions.
 - Uses SeaORM-backed storage and module-local migrations for profile persistence.
-- Depends on `rustok-taxonomy` for shared scope-aware tags while keeping `profile_tags` module-owned; Profiles consumes Taxonomy vocabulary through its owner read/service boundaries and does not read Taxonomy persistence entities directly.
+- Depends on `rustok-taxonomy` for shared scope-aware tags while keeping `profile_tags` module-owned. Profiles consumes Taxonomy vocabulary through its owner read/service boundaries and does not read Taxonomy persistence entities directly.
 - Depends on Media owner ports for tenant-scoped asset lookup and public descriptor selection; Profiles accepts only owner-uploaded image assets and revalidates tenant/uploader/MIME before exposing the Media-selected descriptor.
 - Server composition prefers a deployment-preseeded `ProfileMediaPublicImageProvider`, then an existing module extension, then the embedded owner service. It publishes the same selected wrapper to GraphQL and native server-function host contexts.
 - Profiles never imports the Media gRPC adapter, endpoint configuration, object keys, or capability route construction.
