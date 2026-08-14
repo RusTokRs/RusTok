@@ -5,7 +5,9 @@ use rustok_blog::entities::blog_category;
 use rustok_blog::services::{CategoryCommandService, CategoryService};
 use rustok_blog::{BlogError, BlogModule};
 use rustok_comments::CommentsModule;
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{
+    EventTransport, MemoryTransport, MigrationSource, SecurityContext, UserRole,
+};
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
@@ -252,7 +254,10 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
 #[tokio::test]
 async fn delete_rejects_non_leaf_and_compacts_remaining_siblings() {
     let db = setup().await;
-    let (category_service, _) = services(&db);
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let category_service = CategoryService::new(db.clone(), event_bus);
     let tenant_id = Uuid::new_v4();
 
     let parent = create_category(&category_service, tenant_id, "Parent", None, 0).await;
