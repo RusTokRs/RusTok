@@ -5,9 +5,6 @@ use uuid::Uuid;
 /// Maximum number of Blog categories admitted into one structural tree command.
 pub const MAX_BLOG_CATEGORY_TREE_NODES: u64 = 512;
 
-/// Maximum supported zero-based Blog category depth.
-pub const MAX_BLOG_CATEGORY_TREE_DEPTH: usize = 16;
-
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MoveCategoryInput {
     /// Destination parent. `None` moves the category to the root level.
