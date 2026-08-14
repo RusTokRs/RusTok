@@ -124,11 +124,18 @@ claim a global `translation.target.changed` event contract.
    owner modules may preserve their own input ordering/display casing without
    becoming a second identity authority.
 
+   Hard deletion is also a route-identity lifecycle boundary. After a term is
+   deleted, its localized route must stop resolving and its route, alias, and
+   canonical identities must be available to a later replacement in the same
+   tenant and scope. `tests/route_key_registry.rs` exercises the full
+   resolve -> hard delete -> no result -> replacement reuse path in addition to
+   the storage-level reservation cascade assertions.
+
    `.github/workflows/taxonomy-lookup-contract.yml` is the path-filtered Rust
-   gate for these lookup and owner-write semantics. It runs the integration
-   suite whenever Taxonomy lookup, route-key, locale-normalization, migration,
-   dependency-lock, or test inputs change, independently of unrelated workspace
-   build jobs.
+   gate for these lookup, owner-write, and route-registry semantics. It runs
+   both the localized lookup and route-registry integration suites whenever
+   Taxonomy lookup, route-key, locale-normalization, migration, dependency-lock,
+   or test inputs change, independently of unrelated workspace build jobs.
 
 3. **Maintain dictionary operational guidance.** Add documentation and runbooks
    when a changed vocabulary contract introduces drift or integration recovery
@@ -205,10 +212,12 @@ claim a global `translation.target.changed` event contract.
 - `node scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs`
 - `node scripts/verify/verify-taxonomy-ownership-boundary.mjs`
 - `cargo test -p rustok-taxonomy --test localized_route_lookup`
+- `cargo test -p rustok-taxonomy --test route_key_registry`
 - Targeted term CRUD, cross slug/alias collision, scope restriction, locale
   fallback, owner-write batch identity, canonical-key tenant isolation,
-  registry-authority lookup, route-registry reservation/release/cascade,
-  status-removal migration, and consumer-integration tests.
+  registry-authority lookup, hard-delete route lookup/reuse, route-registry
+  reservation/release/cascade, status-removal migration, and
+  consumer-integration tests.
 - `cargo test -p rustok-taxonomy --lib`
 - `DATABASE_URL=postgresql://... cargo run --locked -p rustok-migrations --bin rustok-migrate -- up`
 - `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture`
