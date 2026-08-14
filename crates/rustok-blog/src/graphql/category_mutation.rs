@@ -9,6 +9,7 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+use crate::dto::MoveCategoryInput as DomainMoveCategoryInput;
 use crate::services::{CategoryCommandService, CategoryService};
 
 use super::category_types::{
@@ -79,8 +80,10 @@ impl BlogCategoryMutation {
         )?;
         let tenant = current_authenticated_tenant(ctx, &auth)?;
         let db = ctx.data::<DatabaseConnection>()?;
+        let domain_input = DomainMoveCategoryInput::try_from(input)
+            .map_err(async_graphql::Error::new)?;
         let moved = CategoryCommandService::new(db.clone())
-            .move_category(tenant.id, id, security_context(&auth), input.into())
+            .move_category(tenant.id, id, security_context(&auth), domain_input)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         Ok(moved.into())
