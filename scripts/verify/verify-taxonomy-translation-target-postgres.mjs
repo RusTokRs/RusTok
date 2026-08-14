@@ -78,6 +78,10 @@ function normalizeWhitespace(source) {
   return source.replace(/\s+/g, ' ').trim();
 }
 
+function workflowCommandValue(value) {
+  return String(value).replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+}
+
 function gitObjectId(relativePath) {
   try {
     return execFileSync('git', ['rev-parse', `HEAD:${relativePath}`], {
@@ -355,7 +359,12 @@ requireMarkers(
 
 if (failures.length > 0) {
   console.error('[verify-taxonomy-translation-target-postgres] FAIL');
-  for (const failure of failures) console.error(`- ${failure}`);
+  for (const failure of failures) {
+    console.error(`- ${failure}`);
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      console.error(`::error title=Taxonomy translation evidence::${workflowCommandValue(failure)}`);
+    }
+  }
   process.exit(Math.min(failures.length, 255));
 }
 
