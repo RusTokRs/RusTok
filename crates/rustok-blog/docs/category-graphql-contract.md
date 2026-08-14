@@ -21,10 +21,10 @@ The 512-node bound is an execution-safety limit inherited from the Blog owner hi
 
 The merged Blog GraphQL root exposes:
 
-- `blogCategory(id, locale)` for one localized category through `CategoryService::get`;
-- `blogCategoryTree(locale)` for the bounded owner tree through `CategoryTreeService::read`.
+- `blogCategory(id, locale)` for one localized category through `CategoryService::get`, requiring authenticated `blog_categories:read`;
+- `blogCategoryTree(locale)` for the bounded owner tree through `CategoryTreeService::read`, requiring authenticated `blog_categories:list`.
 
-Queries use the current `TenantContext`; they do not expose a category `tenantId` override.
+The owner service can still represent a public-read security context for future storefront adapters, but this GraphQL category surface intentionally follows the existing authenticated Blog category adapter boundary. Queries use the current `TenantContext`; they do not expose a category `tenantId` override.
 
 ## GraphQL mutations
 
