@@ -45,6 +45,11 @@ for (const marker of [
   'const RESTART_RECOVERY_BOUND: Duration = Duration::from_secs(8)',
   'const REPLICA_SEQUENCE_BOUND: Duration = Duration::from_secs(25)',
   'const REDIS_SERVER_BIN_ENV: &str = "RUSTOK_CACHE_REDIS_SERVER_BIN"',
+  'const CHILD_RESTART_ACK_PATH_ENV: &str = "RUSTOK_RBAC_REDIS_RESTART_ACK_PATH"',
+  'let restart_ack_path = workspace.path().join("restart-result.ack")',
+  ".env(CHILD_RESTART_ACK_PATH_ENV, restart_ack_path)",
+  'std::fs::write(&restart_ack_path, b"release-observer")?',
+  "wait_for_file(&restart_ack_path, Duration::from_secs(3)).await?",
   "std::env::current_exe()",
   'child_command("observer"',
   'child_command("mutator"',
@@ -170,5 +175,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready RBAC two-process Redis harness proves the fast path without a watchdog, labels initial vs restart subscription waits, and retains the Redis/CLI runtime gates",
+  "✔ source-ready RBAC two-process Redis harness holds the recovered observer through parent NUMSUB proof, labels subscription phases, and retains the Redis/CLI runtime gates",
 );
