@@ -1,0 +1,46 @@
+name: Pages JSONB Sanitized Hash Diagnostic Temp
+
+on:
+  push:
+    branches:
+      - pages-jsonb-sanitized-hash-diagnostic-20260814
+    paths:
+      - crates/rustok-pages/tests/sanitized_jsonb_roundtrip_temp.rs
+      - .github/workflows/pages-jsonb-sanitized-hash-diagnostic-temp.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    name: PostgreSQL sanitized JSONB roundtrip diagnostic
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      RUSTOK_PAGES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-jsonb-sanitized-hash-diagnostic
+          cache-on-failure: false
+      - name: Run PostgreSQL JSONB sanitized hash diagnostic
+        run: cargo test --locked -p rustok-pages --test sanitized_jsonb_roundtrip_temp -- --nocapture
