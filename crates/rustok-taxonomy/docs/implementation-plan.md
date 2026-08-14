@@ -111,6 +111,15 @@ claim a global `translation.target.changed` event contract.
    **Done when:** canonical-key, alias/slug, tenant, module-scope, locale,
    deletion, and any newly demonstrated kind semantics are defined and tested.
 
+   Owner-write batch semantics are exercised in
+   `tests/localized_route_lookup.rs`: equivalent case/whitespace labels collapse
+   to one normalized route identity, module scope wins before global even when
+   the requested locale must use the platform fallback, and a global term is
+   reused without creating a shadow module term when no module owner exists.
+   Module scope labels and locale tags are normalized at the Taxonomy boundary;
+   owner modules may preserve their own input ordering/display casing without
+   becoming a second identity authority.
+
 3. **Maintain dictionary operational guidance.** Add documentation and runbooks
    when a changed vocabulary contract introduces drift or integration recovery
    risk. Route-registry migration failures must be repaired by resolving the
@@ -185,9 +194,11 @@ claim a global `translation.target.changed` event contract.
 - `cargo xtask module test taxonomy`
 - `node scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs`
 - `node scripts/verify/verify-taxonomy-ownership-boundary.mjs`
+- `cargo test -p rustok-taxonomy --test localized_route_lookup`
 - Targeted term CRUD, cross slug/alias collision, scope restriction, locale
-  fallback, registry-authority lookup, route-registry reservation/release/
-  cascade, status-removal migration, and consumer-integration tests.
+  fallback, owner-write batch identity, registry-authority lookup,
+  route-registry reservation/release/cascade, status-removal migration, and
+  consumer-integration tests.
 - `cargo test -p rustok-taxonomy --lib`
 - `DATABASE_URL=postgresql://... cargo run --locked -p rustok-migrations --bin rustok-migrate -- up`
 - `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture`
