@@ -15,7 +15,6 @@ on:
       - "crates/rustok-outbox/src/**"
       - "docs/modules/pages-page-builder-repair-postgres-continuation-2026-08-07.md"
       - "docs/modules/pages-artifact-repair-postgres-evidence-actualization-2026-08-14.md"
-      - ".github/workflows/pages-artifact-repair-postgres-evidence.yml"
   pull_request:
     paths:
       - "Cargo.toml"
