@@ -261,7 +261,7 @@ async fn social_graph_index_worker_loop(
                     poison_publisher_id,
                     &config,
                     &mut stop_rx,
-                    failure,
+                    *failure,
                 )
                 .await
                 {

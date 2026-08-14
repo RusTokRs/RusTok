@@ -371,7 +371,7 @@ async fn process_consumed_delivery(
         }
     };
 
-    let Some(delivery) = delivery else {
+    let Some(_) = delivery else {
         return acknowledge_unrelated(runtime, config, stop_rx, &consumed).await;
     };
 
