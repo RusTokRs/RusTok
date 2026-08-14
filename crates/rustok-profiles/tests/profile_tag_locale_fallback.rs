@@ -1,12 +1,12 @@
-use chrono::Utc;
+use rustok_core::{SecurityContext, UserRole};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_profiles::dto::{ProfileVisibility, UpsertProfileInput};
 use rustok_profiles::entities;
 use rustok_profiles::{
     ProfileMutationContext, ProfileMutationService, ProfileService, ProfilesReader,
 };
-use rustok_taxonomy::entities::taxonomy_term_translation;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use rustok_taxonomy::{TaxonomyService, UpdateTaxonomyTermInput};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -54,7 +54,7 @@ async fn attached_term_id(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uui
         .term_id
 }
 
-async fn insert_term_translation(
+async fn add_term_translation(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     term_id: Uuid,
@@ -62,22 +62,21 @@ async fn insert_term_translation(
     name: &str,
     slug: &str,
 ) {
-    let now = Utc::now();
-    taxonomy_term_translation::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        term_id: Set(term_id),
-        tenant_id: Set(tenant_id),
-        locale: Set(locale.to_string()),
-        name: Set(name.to_string()),
-        slug: Set(slug.to_string()),
-        description: Set(None),
-        revision: Set(1),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-    }
-    .insert(db)
-    .await
-    .expect("taxonomy translation fixture should insert");
+    TaxonomyService::new(db.clone())
+        .update_term(
+            tenant_id,
+            term_id,
+            SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4())),
+            UpdateTaxonomyTermInput {
+                locale: locale.to_string(),
+                name: Some(name.to_string()),
+                slug: Some(slug.to_string()),
+                description: None,
+                aliases: None,
+            },
+        )
+        .await
+        .expect("taxonomy translation fixture should apply through the owner service");
 }
 
 #[tokio::test]
@@ -98,7 +97,7 @@ async fn profile_tags_follow_requested_preferred_then_tenant_default_locale() {
         .expect("profile should be created");
 
     let term_id = attached_term_id(&db, tenant_id, user_id).await;
-    insert_term_translation(
+    add_term_translation(
         &db,
         tenant_id,
         term_id,
@@ -107,7 +106,7 @@ async fn profile_tags_follow_requested_preferred_then_tenant_default_locale() {
         "tenant-default-en",
     )
     .await;
-    insert_term_translation(
+    add_term_translation(
         &db,
         tenant_id,
         term_id,
@@ -163,7 +162,7 @@ async fn batched_profile_tags_resolve_each_profiles_own_preferred_locale() {
 
     let ru_term_id = attached_term_id(&db, tenant_id, ru_user_id).await;
     let fr_term_id = attached_term_id(&db, tenant_id, fr_user_id).await;
-    insert_term_translation(
+    add_term_translation(
         &db,
         tenant_id,
         ru_term_id,
@@ -172,7 +171,7 @@ async fn batched_profile_tags_resolve_each_profiles_own_preferred_locale() {
         "ru-tenant-default",
     )
     .await;
-    insert_term_translation(
+    add_term_translation(
         &db,
         tenant_id,
         fr_term_id,
