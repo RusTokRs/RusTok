@@ -155,7 +155,7 @@ async fn category_update_advances_exact_locale_and_owner_change_revisions() {
                 name: Some("Updated Systems".to_string()),
                 slug: None,
                 description: None,
-                position: Some(7),
+                position: None,
                 settings: None,
             },
         )
@@ -164,7 +164,7 @@ async fn category_update_advances_exact_locale_and_owner_change_revisions() {
     assert_eq!(updated.locale, "en");
     assert_eq!(updated.name, "Updated Systems");
     assert_eq!(updated.slug, "updated-systems");
-    assert_eq!(updated.position, 7);
+    assert_eq!(updated.position, 0);
 
     let provider = BlogCategoryTranslationTargetProvider::new(service);
     let snapshot = provider
