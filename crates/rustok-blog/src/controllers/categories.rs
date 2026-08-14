@@ -14,9 +14,10 @@ use uuid::Uuid;
 use super::BlogHttpRuntime;
 use crate::dto::{
     CategoryListResponse, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
-    UpdateCategoryInput,
+    MoveCategoryInput, MoveCategoryResponse, UpdateCategoryInput,
 };
 use crate::{BlogError, CategoryService};
+use crate::services::CategoryCommandService;
 
 fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::security_context_from_access_token(
@@ -39,6 +40,10 @@ fn ensure_category_permission(auth: &AuthContext, action: Action) -> HttpResult<
 
 fn category_service(runtime: &BlogHttpRuntime) -> CategoryService {
     CategoryService::new(runtime.db_clone(), runtime.event_bus())
+}
+
+fn category_command_service(runtime: &BlogHttpRuntime) -> CategoryCommandService {
+    CategoryCommandService::new(runtime.db_clone(), runtime.event_bus())
 }
 
 fn map_category_error(error: BlogError) -> HttpError {
@@ -188,6 +193,37 @@ pub async fn update_category(
         .map_err(map_category_error)?;
 
     Ok(Json(category))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/blog/categories/{id}/move",
+    tag = "blog",
+    params(("id" = Uuid, Path, description = "Category ID")),
+    request_body = MoveCategoryInput,
+    responses(
+        (status = 200, description = "Blog category moved", body = MoveCategoryResponse),
+        (status = 400, description = "Invalid hierarchy move"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Category not found")
+    )
+)]
+pub async fn move_category(
+    State(runtime): State<BlogHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<MoveCategoryInput>,
+) -> HttpResult<Json<MoveCategoryResponse>> {
+    ensure_category_permission(&auth, Action::Manage)?;
+
+    let response = category_command_service(&runtime)
+        .move_category(tenant.id, id, security_context(&auth), input)
+        .await
+        .map_err(map_category_error)?;
+
+    Ok(Json(response))
 }
 
 #[utoipa::path(
