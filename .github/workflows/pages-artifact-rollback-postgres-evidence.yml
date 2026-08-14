@@ -1,0 +1,242 @@
+name: Pages Artifact Rollback PostgreSQL Evidence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-pages/src/**"
+      - "crates/rustok-pages/admin/src/**"
+      - "crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs"
+      - "crates/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-artifact-rollback-postgres-execution.json"
+      - "crates/rustok-outbox/src/**"
+      - "docs/modules/pages-page-builder-postgres-outbox-cache-packet-2026-08-04.md"
+      - ".github/workflows/pages-artifact-rollback-postgres-evidence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-artifact-rollback-postgres-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_pages_rollback_evidence
+  RUSTOK_PAGES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_pages_rollback_evidence
+
+jobs:
+  source-contract:
+    name: Artifact rollback source contract
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Require exact main checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "push"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Verify rollback source boundary
+        run: node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs
+      - name: Verify PostgreSQL rollback/outbox/cache source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
+      - name: Validate execution contract
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'crates/rustok-pages/contracts/evidence/pages-artifact-rollback-postgres-execution.json';
+          const contract = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const fail = (message) => { console.error(message); process.exit(1); };
+          if (contract.format !== 'pages_artifact_rollback_postgres_execution_source_v1') fail('execution contract format drifted');
+          if (contract.status !== 'source_ready_main_execution_pending') fail('execution contract status drifted');
+          if (contract.workflow !== '.github/workflows/pages-artifact-rollback-postgres-evidence.yml') fail('workflow binding drifted');
+          if (contract.output?.format !== 'pages_artifact_rollback_postgres_execution_v1') fail('output format drifted');
+          if (contract.output?.success_status !== 'postgres_execution_passed_artifact_rollback_admission_pending') fail('success status drifted');
+          if (contract.admission_boundary?.target_json_pointer !== '/consumers/0/artifact_rollback/executed_evidence') fail('admission target drifted');
+          if (contract.admission_boundary?.separate_registry_admission_required !== true) fail('registry admission must stay separate');
+          if (contract.non_claims?.artifact_repair_registry_verified !== false) fail('nested repair must remain a non-claim');
+          NODE
+
+  postgres-evidence:
+    name: Artifact rollback PostgreSQL execution evidence
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_pages_rollback_evidence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_pages_rollback_evidence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-artifact-rollback-postgres-evidence
+      - name: Require exact main checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "push"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Execute PostgreSQL rollback/outbox/cache evidence
+        run: cargo test --locked -p rustok-pages --test publish_rollback_outbox_cache_postgres -- --nocapture
+      - name: Check Pages targets
+        run: cargo check --locked -p rustok-pages --all-targets
+      - name: Record bounded exact-main receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/pages-artifact-rollback-postgres
+          node <<'NODE'
+          const crypto = require('node:crypto');
+          const fs = require('node:fs');
+          const contractPath = 'crates/rustok-pages/contracts/evidence/pages-artifact-rollback-postgres-execution.json';
+          const registryPath = 'crates/rustok-page-builder/contracts/page-builder-fba-registry.json';
+          const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
+          const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+          const consumer = registry.consumers?.[0];
+          const target = consumer?.artifact_rollback?.executed_evidence;
+          if (target !== 'pending') {
+            console.error(`artifact rollback registry pre-state must be pending, got ${String(target)}`);
+            process.exit(1);
+          }
+          if (process.env.GITHUB_ACTIONS !== 'true' || process.env.GITHUB_EVENT_NAME !== 'push' || process.env.GITHUB_REF !== 'refs/heads/main') {
+            console.error('receipt recorder requires GitHub Actions push on main');
+            process.exit(1);
+          }
+          const hash = (content) => crypto.createHash('sha256').update(content).digest('hex');
+          const sourceSha256 = {};
+          for (const sourcePath of contract.required_source_files ?? []) {
+            const stat = fs.lstatSync(sourcePath);
+            if (!stat.isFile() || stat.isSymbolicLink()) {
+              console.error(`${sourcePath}: required source must be a regular non-symlink file`);
+              process.exit(1);
+            }
+            sourceSha256[sourcePath] = hash(fs.readFileSync(sourcePath));
+          }
+          const receipt = {
+            format: contract.output.format,
+            status: contract.output.success_status,
+            generated_at: new Date().toISOString(),
+            source_commit: process.env.GITHUB_SHA,
+            provenance: {
+              repository: process.env.GITHUB_REPOSITORY,
+              workflow: process.env.GITHUB_WORKFLOW,
+              run_id: process.env.GITHUB_RUN_ID,
+              run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+              event: process.env.GITHUB_EVENT_NAME,
+              ref: process.env.GITHUB_REF
+            },
+            execution: {
+              source_verifiers_passed: true,
+              postgres_16_used: true,
+              integration_test_passed: true,
+              cargo_check_all_targets_passed: true
+            },
+            registry_pre_state: {
+              artifact_rollback_executed_evidence: target,
+              artifact_repair_executed_evidence: consumer?.artifact_repair?.executed_evidence ?? null,
+              provider_consumer_properties_executed_evidence: registry.provider?.consumer_properties_contract?.executed_evidence ?? null
+            },
+            scope: {
+              parent_artifact_rollback_only: true,
+              nested_artifact_repair_claimed: false,
+              cache_consumer_claimed: false,
+              provider_consumer_properties_claimed: false
+            },
+            governance: {
+              registry_mutated: false,
+              artifact_rollback_registry_verified: false,
+              artifact_repair_registry_verified: false,
+              terminal_inventory_complete: false,
+              owner_platform_review_ready: false,
+              page_builder_fba_promoted: false,
+              pages_ffa_promoted: false,
+              separate_registry_admission_required: true
+            },
+            privacy: {
+              database_url_retained: false,
+              tenant_identity_retained: false,
+              raw_database_rows_retained: false,
+              event_payload_retained: false,
+              cache_values_retained: false,
+              credentials_retained: false
+            },
+            source_sha256: sourceSha256
+          };
+          fs.writeFileSync(
+            'evidence/pages-artifact-rollback-postgres/receipt.json',
+            `${JSON.stringify(receipt, null, 2)}\n`,
+            { mode: 0o600 }
+          );
+          NODE
+      - name: Validate bounded receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f evidence/pages-artifact-rollback-postgres/receipt.json
+          test "$(stat -c %s evidence/pages-artifact-rollback-postgres/receipt.json)" -le 1048576
+          node -e 'const r=require("./evidence/pages-artifact-rollback-postgres/receipt.json"); if(r.format!=="pages_artifact_rollback_postgres_execution_v1"||r.status!=="postgres_execution_passed_artifact_rollback_admission_pending"||r.source_commit!==process.env.GITHUB_SHA||r.scope?.parent_artifact_rollback_only!==true||r.scope?.nested_artifact_repair_claimed!==false||r.governance?.registry_mutated!==false) process.exit(1)'
+      - name: Archive bounded rollback evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: pages-artifact-rollback-postgres-${{ github.run_id }}-${{ github.sha }}
+          path: evidence/pages-artifact-rollback-postgres/receipt.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  gate:
+    name: Artifact Rollback PostgreSQL Evidence Gate
+    if: always()
+    needs:
+      - source-contract
+      - postgres-evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require source and PostgreSQL execution success
+        shell: bash
+        run: |
+          if [[ "${{ needs.source-contract.result }}" != "success" ]] || \
+             [[ "${{ needs.postgres-evidence.result }}" != "success" ]]; then
+            echo "::error::Pages artifact rollback PostgreSQL evidence did not complete successfully."
+            exit 1
+          fi
