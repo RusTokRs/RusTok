@@ -163,6 +163,22 @@ requireMarkers(lookupWorkflow, [
   "--test route_key_registry",
 ]);
 
+const ownershipWorkflow = ".github/workflows/taxonomy-ownership-boundary.yml";
+requireMarkers(ownershipWorkflow, [
+  '"crates/rustok-blog/rustok-module.toml"',
+  '"crates/rustok-blog/CRATE_API.md"',
+  '"crates/rustok-forum/rustok-module.toml"',
+  '"crates/rustok-forum/docs/README.md"',
+  '"crates/rustok-product/rustok-module.toml"',
+  '"crates/rustok-product/README.md"',
+  '"crates/rustok-profiles/rustok-module.toml"',
+  '"crates/rustok-profiles/README.md"',
+  '"scripts/verify/verify-taxonomy-contract-matrix.mjs"',
+  '"scripts/verify/verify-taxonomy-contract-matrix.test.mjs"',
+  "node scripts/verify/verify-taxonomy-contract-matrix.test.mjs",
+  "node scripts/verify/verify-taxonomy-contract-matrix.mjs",
+]);
+
 if (failures.length > 0) {
   console.error("Taxonomy contract matrix verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
@@ -170,5 +186,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Taxonomy contract matrix checks passed: ${consumers.length} consumer manifests/public relation contracts are synchronized; demonstrated kinds=Tag; focused lookup coverage remains wired.`,
+  `Taxonomy contract matrix checks passed: ${consumers.length} consumer manifests/public relation contracts are synchronized; demonstrated kinds=Tag; focused lookup and ownership coverage remain wired.`,
 );
