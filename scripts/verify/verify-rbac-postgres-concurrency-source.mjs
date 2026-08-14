@@ -107,7 +107,7 @@ for (const marker of [
 
 const evidence = JSON.parse(sources.evidence);
 const evidenceChecks = [
-  [evidence.status === "source_ready_unvalidated", "status must remain source_ready_unvalidated"],
+  [evidence.status === "source_ready_unvalidated", "source-shape status must remain source_ready_unvalidated"],
   [evidence.cycle === "cycle-001", "cycle must remain cycle-001"],
   [evidence.component === "core/rbac", "component must remain core/rbac"],
   [evidence.fixture?.backend === "postgresql", "fixture backend must be PostgreSQL"],
@@ -121,9 +121,9 @@ const evidenceChecks = [
   [evidence.scenarios?.generation_allocation?.concurrent_transactions === 8, "generation allocation must retain eight transactions"],
   [evidence.scenarios?.generation_allocation?.expected_unique === true, "unique generation requirement must remain true"],
   [evidence.scenarios?.generation_allocation?.expected_contiguous === true, "contiguous generation requirement must remain true"],
-  [evidence.validation?.rust_test_executed === false, "Rust execution must not be claimed"],
-  [evidence.validation?.source_verifier_executed === false, "source verifier execution must not be claimed"],
-  [evidence.validation?.postgresql_runtime_executed === false, "PostgreSQL execution must not be claimed"],
+  [evidence.validation?.rust_test_executed === false, "source-shape JSON must not claim Rust execution"],
+  [evidence.validation?.source_verifier_executed === false, "source-shape JSON must not claim verifier execution"],
+  [evidence.validation?.postgresql_runtime_executed === false, "source-shape JSON must not claim PostgreSQL execution"],
   [evidence.multi_replica_evidence === false, "multi-replica evidence must remain open"],
   [evidence.redis_transport_evidence === false, "Redis evidence must remain open"],
   [evidence.cli_repair_live_replica_evidence === false, "CLI repair live-replica evidence must remain open"],
@@ -143,21 +143,23 @@ for (const marker of [
   "top-level harness cases must run serially at the libtest layer",
   "internal synchronized concurrency of two, two and eight operations",
   "--test-threads=1",
-  "source_ready_unvalidated",
+  "## Retained execution",
+  "Runtime execution is retained by the workflow run and artifact above.",
   "does not prove Redis delivery",
 ]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence contract`);
 
 for (const marker of [
   "### P0 — runtime evidence",
-  "Execute #2849 PostgreSQL concurrency.",
-  "Execute #2853 independent-process watchdog recovery.",
+  "[x] Execute #2849 PostgreSQL concurrency",
+  "[x] Execute #2853 independent-process watchdog recovery",
   "Status: `in_progress`",
 ]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "PostgreSQL concurrency/watchdog runs",
+  "PostgreSQL concurrency packet #2849 passed 3/3",
+  "durable watchdog packet #2853 passed 1/1",
 ]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
@@ -167,5 +169,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready PostgreSQL RBAC concurrency harness covers synchronized role replacement, last-super-admin continuity and unique contiguous generation allocation without claiming execution or multi-replica evidence",
+  "✔ PostgreSQL RBAC concurrency source shape remains strict while the owner handoff retains completed #2849/#2853 runtime evidence and keeps later gates open",
 );
