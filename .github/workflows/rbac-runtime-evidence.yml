@@ -188,7 +188,7 @@ jobs:
 
   gate:
     name: RBAC Runtime Evidence Gate
-    if: always()
+    if: ${{ !cancelled() }}
     needs:
       - source-contract
       - runtime-evidence
