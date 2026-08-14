@@ -1,9 +1,8 @@
 use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, ListTaxonomyTermsFilter, ResolveTaxonomyTermInput, TaxonomyError,
-    TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    entities::taxonomy_term_alias,
+    CreateTaxonomyTermInput, ListTaxonomyTermsFilter, ResolveTaxonomyTermInput, TaxonomyModule,
+    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, entities::taxonomy_term_alias,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, TransactionTrait};
@@ -74,7 +73,12 @@ async fn create_module_term(
     .await
 }
 
-async fn inject_legacy_alias(db: &DatabaseConnection, tenant_id: Uuid, term_id: Uuid, slug: &str) {
+async fn inject_unregistered_legacy_alias(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    term_id: Uuid,
+    slug: &str,
+) {
     taxonomy_term_alias::ActiveModel {
         id: Set(Uuid::new_v4()),
         term_id: Set(term_id),
@@ -86,18 +90,18 @@ async fn inject_legacy_alias(db: &DatabaseConnection, tenant_id: Uuid, term_id: 
     }
     .insert(db)
     .await
-    .expect("legacy alias fixture should bypass service admission checks");
+    .expect("legacy alias fixture should bypass route-registry admission");
 }
 
 #[tokio::test]
-async fn public_route_lookup_fails_closed_on_cross_table_ambiguity() {
+async fn public_route_lookup_uses_registry_authority_over_unregistered_legacy_alias() {
     let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
-    let _translation_owner = create_module_term(&service, tenant_id, "Systems", "systems").await;
+    let translation_owner = create_module_term(&service, tenant_id, "Systems", "systems").await;
     let alias_owner = create_module_term(&service, tenant_id, "Zig", "zig").await;
-    inject_legacy_alias(&db, tenant_id, alias_owner, "systems").await;
+    inject_unregistered_legacy_alias(&db, tenant_id, alias_owner, "systems").await;
 
-    let error = service
+    let resolved = service
         .resolve_term_for_module(
             tenant_id,
             admin(),
@@ -110,23 +114,23 @@ async fn public_route_lookup_fails_closed_on_cross_table_ambiguity() {
             },
         )
         .await
-        .expect_err("ambiguous localized route key must fail closed");
+        .expect("registry-authority lookup should remain resolvable")
+        .expect("registered route owner should resolve");
 
-    assert!(
-        matches!(error, TaxonomyError::Conflict(message) if message.contains("ambiguous localized taxonomy route key"))
-    );
+    assert_eq!(resolved.id, translation_owner);
+    assert_ne!(resolved.id, alias_owner);
 }
 
 #[tokio::test]
-async fn owner_transaction_lookup_fails_closed_on_cross_table_ambiguity() {
+async fn owner_transaction_lookup_uses_registry_authority_over_unregistered_legacy_alias() {
     let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
-    let _translation_owner = create_module_term(&service, tenant_id, "Systems", "systems").await;
+    let translation_owner = create_module_term(&service, tenant_id, "Systems", "systems").await;
     let alias_owner = create_module_term(&service, tenant_id, "Zig", "zig").await;
-    inject_legacy_alias(&db, tenant_id, alias_owner, "systems").await;
+    inject_unregistered_legacy_alias(&db, tenant_id, alias_owner, "systems").await;
 
     let txn = db.begin().await.expect("transaction should start");
-    let error = service
+    let term_ids = service
         .ensure_terms_for_module_in_tx(
             &txn,
             tenant_id,
@@ -136,12 +140,11 @@ async fn owner_transaction_lookup_fails_closed_on_cross_table_ambiguity() {
             &["systems".to_string()],
         )
         .await
-        .expect_err("ambiguous owner route key must fail closed");
-    txn.rollback().await.expect("transaction should roll back");
+        .expect("owner lookup should use the registered route owner");
+    txn.commit().await.expect("transaction should commit");
 
-    assert!(
-        matches!(error, TaxonomyError::Conflict(message) if message.contains("ambiguous localized taxonomy route key"))
-    );
+    assert_eq!(term_ids, vec![translation_owner]);
+    assert_ne!(term_ids[0], alias_owner);
 }
 
 #[tokio::test]
@@ -282,7 +285,10 @@ async fn owner_batch_reuses_global_term_when_module_term_is_absent() {
         )
         .await
         .expect("module term list should load");
-    assert_eq!(module_total, 0, "global reuse must not create a shadow module term");
+    assert_eq!(
+        module_total, 0,
+        "global reuse must not create a shadow module term"
+    );
 }
 
 #[tokio::test]
