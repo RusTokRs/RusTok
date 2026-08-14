@@ -1,4 +1,5 @@
 mod category;
+mod category_command;
 mod comment;
 mod post;
 mod tag;
@@ -6,6 +7,10 @@ mod tag;
 pub use category::{
     CategoryListItem, CategoryListResponse, CategoryResponse, CreateCategoryInput,
     ListCategoriesFilter, UpdateCategoryInput,
+};
+pub use category_command::{
+    CategoryPlacementResponse, MAX_BLOG_CATEGORY_TREE_DEPTH, MAX_BLOG_CATEGORY_TREE_NODES,
+    MoveCategoryInput, MoveCategoryResponse,
 };
 pub use comment::{
     CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
