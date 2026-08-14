@@ -181,14 +181,14 @@ requireMarkers("crates/rustok-blog/docs/category-hierarchy-contract.md", [
   "Blog owns its category hierarchy",
   "POST /api/blog/categories/{id}/move",
   "zero-based insertion index",
-  "maximum 512 nodes",
+  "maximum of 512 nodes",
   "leaf-only",
   "ON DELETE RESTRICT",
   "projection-neutral",
   "compacts remaining sibling positions",
   "one owner-side write path",
-  "recomputes materialized `depth`",
-  "does not rewrite localized category rows",
+  "recompute materialized `depth`",
+  "Structural moves do not rewrite localized category rows",
 ]);
 
 if (failures.length > 0) {
