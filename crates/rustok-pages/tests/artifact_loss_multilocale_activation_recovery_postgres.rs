@@ -282,7 +282,7 @@ async fn missing_binding_activation_rejects_unexplained_version_between_locales_
         result,
         Err(PagesError::RollbackTargetUnavailable(message))
             if message.contains(PAGE_ARTIFACT_BINDING_REPLACEMENT_CURRENT_CONFLICT)
-                && message.contains("source publish version is stale")
+                && message.contains("recovery activation anchor version is stale")
                 && message.contains("not fully explained")
     ));
     assert_eq!(SysEvents::find().count(&db).await?, events_before_rejection);
