@@ -13,6 +13,12 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const requireNormalizedText = (source, value, label) => {
+  if (!normalizeWhitespace(source).includes(normalizeWhitespace(value))) {
+    failures.push(`${label}: missing ${value}`);
+  }
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -136,20 +142,21 @@ for (const marker of [
   "It does not prove:",
   "Redis publication between live replicas",
   "The full multi-replica P0 gate remains open.",
-]) requireText(sources.docs, marker, `${files.docs}: evidence boundary`);
+]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence boundary`);
 
 for (const marker of [
-  "### P0. Database concurrency and multi-replica recovery evidence",
-  "Exercise at least two server replicas",
-  "Redis available, unavailable",
+  "### P0 — runtime evidence",
+  "Execute #2853 independent-process watchdog recovery.",
+  "Execute #2856 Redis available/outage/restart recovery.",
   "Status: `in_progress`",
-]) requireText(sources.plan, marker, `${files.plan}: owner gate`);
+]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "multi-replica Redis recovery remain absent",
-]) requireText(sources.master, marker, `${files.master}: active cursor`);
+  "PostgreSQL concurrency/watchdog runs",
+  "mandatory current-revision runtime evidence remains open",
+]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
   console.error("RBAC two-process durable recovery source verification failed:");
