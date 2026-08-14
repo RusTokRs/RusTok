@@ -56,6 +56,7 @@ for (const marker of [
   "barrier.wait().await",
   "RbacService::replace_user_role_committed",
   "RbacRoleAssignmentDbWriter::new(db_a.clone())",
+  'slug: Set(format!("rbac-pg-{tenant_id}"))',
   "assignments.len() != 1",
   "generation_before + 2",
   "cannot demote the last active super administrator",
@@ -76,6 +77,7 @@ for (const forbidden of [
   "connect_for_assertions",
   "RUSTOK_RBAC_ACTIVE_TEST_DATABASE",
   "tokio::time::sleep",
+  'rbac-postgres-{suffix}-{tenant_id}',
 ]) forbidText(sources.harness, forbidden, `${files.harness}: shortcut`);
 
 for (const marker of [
