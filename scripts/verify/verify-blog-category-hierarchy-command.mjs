@@ -37,8 +37,15 @@ requireMarkers("crates/rustok-blog/src/dto/category_command.rs", [
 ]);
 
 requireMarkers("crates/rustok-blog/src/services/category.rs", [
+  "lock_category_tree_for_create_in_tx(&txn, tenant_id).await?",
+  "ensure_category_tree_capacity_in_tx(&txn, tenant_id).await?",
+  "canonicalize_siblings_for_insert_in_tx",
+  "Category position cannot be negative",
+  "exceeds sibling count",
+  "Blog category tree cannot exceed",
   "if input.position.is_some()",
   "Category position is structural; use the category move command",
+  'format!("blog-category-tree:{tenant_id}")',
 ]);
 const localizedUpdate = read("crates/rustok-blog/src/services/category.rs");
 const updateStart = localizedUpdate.indexOf("pub async fn update(");
@@ -105,6 +112,8 @@ requireMarkers("crates/rustok-blog/src/migrations/m20260812_000017_enforce_blog_
 ]);
 
 requireMarkers("crates/rustok-blog/tests/category_hierarchy.rs", [
+  "create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position",
+  "create position must be an insertion index inside the sibling list",
   "move_reparents_subtree_and_failed_moves_leave_tree_unchanged",
   "localized update must not be a second hierarchy placement write path",
   "child should move under the second root",
@@ -114,9 +123,16 @@ requireMarkers("crates/rustok-blog/tests/category_hierarchy.rs", [
   "cross-tenant parent must be rejected",
 ]);
 
+requireMarkers("crates/rustok-blog/src/translation_target_tests.rs", [
+  "category_update_advances_exact_locale_and_owner_change_revisions",
+  "position: None",
+  "assert_eq!(updated.position, 0)",
+]);
+
 requireMarkers("crates/rustok-blog/docs/category-hierarchy-contract.md", [
   "Blog owns its category hierarchy",
   "POST /api/blog/categories/{id}/move",
+  "zero-based insertion index",
   "maximum 512 nodes",
   "one owner-side write path",
   "recomputes materialized `depth`",
