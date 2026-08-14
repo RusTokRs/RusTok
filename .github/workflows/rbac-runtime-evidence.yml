@@ -165,7 +165,7 @@ jobs:
           set -o pipefail
           cargo test --locked -p rustok-server \
             --test rbac_postgres_concurrency \
-            -- --ignored --nocapture \
+            -- --ignored --nocapture --test-threads=1 \
             2>&1 | tee evidence/rbac-runtime/postgres-concurrency.log
       - name: Execute RBAC two-process watchdog recovery evidence
         shell: bash
