@@ -1,7 +1,8 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    Statement, TransactionTrait, sea_query::Expr,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -14,7 +15,7 @@ use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
     CategoryListItem, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
-    UpdateCategoryInput,
+    MAX_BLOG_CATEGORY_TREE_NODES, UpdateCategoryInput,
 };
 use crate::entities::{blog_category, blog_category_translation};
 use crate::error::{BlogError, BlogResult};
@@ -66,15 +67,31 @@ impl CategoryService {
         enforce_scope(&security, Resource::BlogCategories, Action::Create)?;
         validate_category_name(&input.name)?;
         validate_optional_description(input.description.as_deref())?;
+        let requested_position = input.position.unwrap_or(0);
+        if requested_position < 0 {
+            return Err(BlogError::validation(
+                "Category position cannot be negative",
+            ));
+        }
         let slug = normalize_category_slug(input.slug.as_deref(), &input.name)?;
         let locale = normalize_locale(&input.locale)?;
         let now = Utc::now();
         let id = Uuid::new_v4();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        lock_category_tree_for_create_in_tx(&txn, tenant_id).await?;
+        ensure_category_tree_capacity_in_tx(&txn, tenant_id).await?;
 
         if let Some(parent_id) = input.parent_id {
             Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
         }
+        canonicalize_siblings_for_insert_in_tx(
+            &txn,
+            tenant_id,
+            input.parent_id,
+            requested_position,
+            now,
+        )
+        .await?;
         self.ensure_translation_slug_available_in_tx(&txn, tenant_id, &locale, &slug, None)
             .await?;
 
@@ -82,7 +99,7 @@ impl CategoryService {
             id: Set(id),
             tenant_id: Set(tenant_id),
             parent_id: Set(input.parent_id),
-            position: Set(input.position.unwrap_or(0)),
+            position: Set(requested_position),
             depth: Set(0),
             post_count: Set(0),
             settings: Set(input.settings),
@@ -688,6 +705,92 @@ impl CategoryService {
             .await
             .map_err(BlogError::from)
     }
+}
+
+async fn lock_category_tree_for_create_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+) -> BlogResult<()> {
+    match txn.get_database_backend() {
+        DatabaseBackend::Postgres => {
+            txn.execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                [format!("blog-category-tree:{tenant_id}").into()],
+            ))
+            .await?;
+            Ok(())
+        }
+        DatabaseBackend::Sqlite => Ok(()),
+        backend => Err(BlogError::validation(format!(
+            "Blog category creation does not support {backend:?}"
+        ))),
+    }
+}
+
+async fn ensure_category_tree_capacity_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+) -> BlogResult<()> {
+    let count = blog_category::Entity::find()
+        .filter(blog_category::Column::TenantId.eq(tenant_id))
+        .count(txn)
+        .await?;
+    if count >= MAX_BLOG_CATEGORY_TREE_NODES {
+        return Err(BlogError::validation(format!(
+            "Blog category tree cannot exceed {MAX_BLOG_CATEGORY_TREE_NODES} nodes"
+        )));
+    }
+    Ok(())
+}
+
+async fn canonicalize_siblings_for_insert_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    parent_id: Option<Uuid>,
+    requested_position: i32,
+    now: chrono::DateTime<Utc>,
+) -> BlogResult<()> {
+    let mut query = blog_category::Entity::find()
+        .filter(blog_category::Column::TenantId.eq(tenant_id));
+    query = match parent_id {
+        Some(parent_id) => query.filter(blog_category::Column::ParentId.eq(parent_id)),
+        None => query.filter(blog_category::Column::ParentId.is_null()),
+    };
+    let siblings = query
+        .order_by_asc(blog_category::Column::Position)
+        .order_by_asc(blog_category::Column::Id)
+        .all(txn)
+        .await?;
+
+    let insertion_index = usize::try_from(requested_position)
+        .map_err(|_| BlogError::validation("Category position cannot be negative"))?;
+    if insertion_index > siblings.len() {
+        return Err(BlogError::validation(format!(
+            "Category position {requested_position} exceeds sibling count {}",
+            siblings.len()
+        )));
+    }
+
+    for (index, sibling) in siblings.into_iter().enumerate() {
+        let desired_index = if index >= insertion_index {
+            index.checked_add(1).ok_or_else(|| {
+                BlogError::validation("Category sibling position exceeds usize range")
+            })?
+        } else {
+            index
+        };
+        let desired_position = i32::try_from(desired_index)
+            .map_err(|_| BlogError::validation("Category sibling position exceeds i32 range"))?;
+        if sibling.position == desired_position {
+            continue;
+        }
+        let mut active: blog_category::ActiveModel = sibling.into();
+        active.position = Set(desired_position);
+        active.updated_at = Set(now.into());
+        active.update(txn).await?;
+    }
+    Ok(())
 }
 
 fn validate_category_name(name: &str) -> BlogResult<()> {
