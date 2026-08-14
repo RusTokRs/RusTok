@@ -66,12 +66,21 @@ Each test:
 There is no SQLite fallback. The tests do not update the generation row with raw
 SQL and do not issue manual role-lock SQL.
 
+The three top-level harness cases must run serially at the libtest layer. Each
+case creates and fully migrates its own database, so running all three fixture
+setups concurrently can exhaust the PostgreSQL service's shared lock-memory
+budget before the RBAC assertions execute. Serial top-level execution does not
+weaken the evidence: the role-replacement, super-admin and generation scenarios
+retain their internal synchronized concurrency of two, two and eight operations,
+respectively.
+
 ## Execution
 
-Run the ignored PostgreSQL harness explicitly:
+Run the ignored PostgreSQL harness explicitly with debug info disabled and the
+migration-heavy top-level cases serialized:
 
 ```bash
-cargo test -p rustok-server --test rbac_postgres_concurrency -- --ignored --nocapture
+CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-server --test rbac_postgres_concurrency -- --ignored --nocapture --test-threads=1
 ```
 
 Run the focused source guard separately:
