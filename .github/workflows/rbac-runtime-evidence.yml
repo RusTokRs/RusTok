@@ -66,7 +66,6 @@ env:
   CARGO_PROFILE_TEST_DEBUG: 0
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
-  RUST_TOOLCHAIN: "1.96.0"
 
 jobs:
   source-contract:
@@ -123,12 +122,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: Install exact Rust toolchain
+      - name: Record repository-selected Rust toolchain
         shell: bash
         run: |
           set -euo pipefail
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
-          rustup default "$RUST_TOOLCHAIN"
+          rustup show active-toolchain
           rustc --version
           cargo --version
       - name: Record evidence provenance
@@ -148,6 +146,7 @@ jobs:
             echo "expected_sha=$expected"
             echo "actual_sha=$actual"
             echo "cargo_profile_test_debug=${CARGO_PROFILE_TEST_DEBUG}"
+            rustup show active-toolchain
             rustc --version
             cargo --version
           } | tee evidence/rbac-runtime/metadata.txt
