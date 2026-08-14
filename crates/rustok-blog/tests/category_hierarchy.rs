@@ -48,6 +48,18 @@ fn admin() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
 }
 
+fn category_input(name: &str, parent_id: Option<Uuid>, position: i32) -> CreateCategoryInput {
+    CreateCategoryInput {
+        locale: "en".to_string(),
+        name: name.to_string(),
+        slug: Some(name.to_ascii_lowercase().replace(' ', "-")),
+        description: None,
+        parent_id,
+        position: Some(position),
+        settings: serde_json::json!({}),
+    }
+}
+
 async fn create_category(
     service: &CategoryService,
     tenant_id: Uuid,
@@ -59,15 +71,7 @@ async fn create_category(
         .create(
             tenant_id,
             admin(),
-            CreateCategoryInput {
-                locale: "en".to_string(),
-                name: name.to_string(),
-                slug: Some(name.to_ascii_lowercase().replace(' ', "-")),
-                description: None,
-                parent_id,
-                position: Some(position),
-                settings: serde_json::json!({}),
-            },
+            category_input(name, parent_id, position),
         )
         .await
         .expect("category should be created")
@@ -84,6 +88,34 @@ async fn load_category(
         .await
         .expect("category read should succeed")
         .expect("category should exist")
+}
+
+#[tokio::test]
+async fn create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position() {
+    let db = setup().await;
+    let (category_service, _) = services(&db);
+    let tenant_id = Uuid::new_v4();
+
+    let first = create_category(&category_service, tenant_id, "First", None, 0).await;
+    let last = create_category(&category_service, tenant_id, "Last", None, 1).await;
+    let middle = create_category(&category_service, tenant_id, "Middle", None, 1).await;
+
+    assert_eq!(load_category(&db, tenant_id, first).await.position, 0);
+    assert_eq!(load_category(&db, tenant_id, middle).await.position, 1);
+    assert_eq!(load_category(&db, tenant_id, last).await.position, 2);
+
+    let invalid = category_service
+        .create(
+            tenant_id,
+            admin(),
+            category_input("Out of range", None, 4),
+        )
+        .await
+        .expect_err("create position must be an insertion index inside the sibling list");
+    assert!(matches!(invalid, BlogError::Validation(_)));
+    assert_eq!(load_category(&db, tenant_id, first).await.position, 0);
+    assert_eq!(load_category(&db, tenant_id, middle).await.position, 1);
+    assert_eq!(load_category(&db, tenant_id, last).await.position, 2);
 }
 
 #[tokio::test]
