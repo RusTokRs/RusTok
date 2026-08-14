@@ -1,6 +1,7 @@
 //! Services for the Blog module
 
 mod category;
+mod category_command;
 mod comment;
 mod comment_projection;
 mod post;
@@ -9,6 +10,7 @@ mod tag;
 
 pub(crate) use category::ApplyExactCategoryTranslationInput;
 pub use category::CategoryService;
+pub use category_command::CategoryCommandService;
 pub use comment::CommentService;
 pub use comment_projection::BlogCommentProjectionHandler;
 pub use post::PostService;
