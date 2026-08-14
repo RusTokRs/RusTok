@@ -1,3 +1,5 @@
+mod category_mutation;
+mod category_query;
 mod category_types;
 mod mutation;
 mod query;
@@ -5,9 +7,18 @@ mod rate_limit;
 mod runtime_data;
 mod types;
 
+use async_graphql::MergedObject;
+
+#[derive(MergedObject, Default)]
+pub struct BlogQuery(query::BlogQuery, category_query::BlogCategoryQuery);
+
+#[derive(MergedObject, Default)]
+pub struct BlogMutation(
+    mutation::BlogMutation,
+    category_mutation::BlogCategoryMutation,
+);
+
 pub use category_types::*;
-pub use mutation::BlogMutation;
-pub use query::BlogQuery;
 pub use rate_limit::{
     BlogGraphqlRateLimitError, BlogGraphqlRateLimitExceeded, BlogGraphqlRateLimitPolicy,
     BlogGraphqlRateLimiter, BlogGraphqlRateLimiterHandle,
@@ -23,7 +34,12 @@ mod schema_tests {
 
     #[test]
     fn public_comment_command_uses_the_canonical_unversioned_schema_names() {
-        let schema = Schema::build(BlogQuery, BlogMutation, EmptySubscription).finish();
+        let schema = Schema::build(
+            BlogQuery::default(),
+            BlogMutation::default(),
+            EmptySubscription,
+        )
+        .finish();
         let sdl = schema.sdl();
 
         assert!(sdl.contains("createBlogComment("));
@@ -35,7 +51,12 @@ mod schema_tests {
 
     #[test]
     fn category_schema_keeps_localized_and_structural_commands_separate() {
-        let schema = Schema::build(BlogQuery, BlogMutation, EmptySubscription).finish();
+        let schema = Schema::build(
+            BlogQuery::default(),
+            BlogMutation::default(),
+            EmptySubscription,
+        )
+        .finish();
         let sdl = schema.sdl();
 
         assert!(sdl.contains("blogCategoryTree("));
