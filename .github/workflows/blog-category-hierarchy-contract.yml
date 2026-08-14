@@ -3,8 +3,10 @@ name: Blog Category Hierarchy Contract
 on:
   pull_request:
     paths:
+      - "crates/rustok-blog/src/dto/category.rs"
       - "crates/rustok-blog/src/dto/category_command.rs"
       - "crates/rustok-blog/src/dto/mod.rs"
+      - "crates/rustok-blog/src/services/category.rs"
       - "crates/rustok-blog/src/services/category_command.rs"
       - "crates/rustok-blog/src/services/mod.rs"
       - "crates/rustok-blog/src/controllers/categories.rs"
@@ -22,8 +24,10 @@ on:
     branches:
       - main
     paths:
+      - "crates/rustok-blog/src/dto/category.rs"
       - "crates/rustok-blog/src/dto/category_command.rs"
       - "crates/rustok-blog/src/dto/mod.rs"
+      - "crates/rustok-blog/src/services/category.rs"
       - "crates/rustok-blog/src/services/category_command.rs"
       - "crates/rustok-blog/src/services/mod.rs"
       - "crates/rustok-blog/src/controllers/categories.rs"
