@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rustok_blog::dto::{CreateCategoryInput, MoveCategoryInput};
+use rustok_blog::dto::{CreateCategoryInput, MoveCategoryInput, UpdateCategoryInput};
 use rustok_blog::entities::blog_category;
 use rustok_blog::services::{CategoryCommandService, CategoryService};
 use rustok_blog::{BlogError, BlogModule};
@@ -100,6 +100,25 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
 
     assert_eq!(load_category(&db, tenant_id, child).await.depth, 1);
     assert_eq!(load_category(&db, tenant_id, grandchild).await.depth, 2);
+
+    let legacy_position_update = category_service
+        .update(
+            tenant_id,
+            child,
+            admin(),
+            UpdateCategoryInput {
+                locale: "en".to_string(),
+                name: None,
+                slug: None,
+                description: None,
+                position: Some(7),
+                settings: None,
+            },
+        )
+        .await
+        .expect_err("localized update must not be a second hierarchy placement write path");
+    assert!(matches!(legacy_position_update, BlogError::Validation(_)));
+    assert_eq!(load_category(&db, tenant_id, child).await.position, 0);
 
     let moved = command_service
         .move_category(
