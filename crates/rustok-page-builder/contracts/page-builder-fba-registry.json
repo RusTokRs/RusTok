@@ -338,7 +338,7 @@
         "automatic_audit_to_rebuild": false,
         "automatic_rebuild_to_activation": false,
         "automatic_activation_to_rollback": false,
-        "executed_evidence": "pending"
+        "executed_evidence": "verified"
       },
       "cache_consumer": {
         "state": "source_connected_execution_pending",
