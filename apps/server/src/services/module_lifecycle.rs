@@ -484,7 +484,7 @@ mod tests {
     use crate::modules::{ManifestManager, ManifestModuleSpec, ModulesManifest, build_registry};
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;
-    use rustok_migrations::Migrator;
+    use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_modules::ModuleOperationStatus;
     use rustok_rbac::RbacModule;
     use rustok_tenant::TenantModule;

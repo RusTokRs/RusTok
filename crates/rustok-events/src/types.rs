@@ -900,6 +900,41 @@ pub enum DomainEvent {
         observed_rollout_id: Option<Uuid>,
         failure_code: Option<String>,
     },
+    /// Desired dynamic artifact/sandbox assignments have been durably selected
+    /// by the module control-plane owner. The payload deliberately contains no
+    /// tenant data or assignment list; each node agent claims only its own
+    /// exact work item from the owner ledger.
+    ModuleArtifactNodeReconciliationRequested {
+        reconciliation_id: Uuid,
+        predecessor_reconciliation_id: Option<Uuid>,
+        reconciliation_revision: u64,
+        reconciliation_state_revision: u64,
+        topology_digest: String,
+        policy_revision: String,
+        target_assignments: u32,
+    },
+    /// One authenticated node agent observed the exact immutable identity it
+    /// was assigned. Full evidence remains in the owner ledger.
+    ModuleArtifactNodeAssignmentObserved {
+        reconciliation_id: Uuid,
+        node_id: Uuid,
+        installation_id: Uuid,
+        release_digest: String,
+        reporter_id: String,
+        observation_revision: u64,
+        phase: String,
+        report_digest: String,
+    },
+    /// The durable dynamic-artifact reconciliation head changed state. A
+    /// converged head is the only readiness fact that may serve policy.
+    ModuleArtifactNodeReconciliationStatusChanged {
+        reconciliation_id: Uuid,
+        reconciliation_revision: u64,
+        reconciliation_state_revision: u64,
+        status: String,
+        observed_reconciliation_id: Option<Uuid>,
+        failure_code: Option<String>,
+    },
     ModuleArtifactSecurityStateChanged {
         module_slug: String,
         module_version: String,
@@ -1022,6 +1057,9 @@ impl DomainEvent {
                 | Self::ModuleStaticDistributionRecoveryConverged { .. }
                 | Self::ModuleStaticDistributionAssignmentObserved { .. }
                 | Self::ModuleStaticDistributionRolloutStatusChanged { .. }
+                | Self::ModuleArtifactNodeReconciliationRequested { .. }
+                | Self::ModuleArtifactNodeAssignmentObserved { .. }
+                | Self::ModuleArtifactNodeReconciliationStatusChanged { .. }
                 | Self::ModuleArtifactSecurityStateChanged { .. }
         )
     }
@@ -1213,6 +1251,15 @@ impl DomainEvent {
             Self::ModuleStaticDistributionRolloutStatusChanged { .. } => {
                 "module.static_distribution.rollout_status_changed"
             }
+            Self::ModuleArtifactNodeReconciliationRequested { .. } => {
+                "module.artifact_node.reconciliation_requested"
+            }
+            Self::ModuleArtifactNodeAssignmentObserved { .. } => {
+                "module.artifact_node.assignment_observed"
+            }
+            Self::ModuleArtifactNodeReconciliationStatusChanged { .. } => {
+                "module.artifact_node.reconciliation_status_changed"
+            }
             Self::ModuleArtifactSecurityStateChanged { .. } => {
                 "module.artifact.security_state_changed"
             }
@@ -1396,6 +1443,9 @@ impl DomainEvent {
             Self::ModuleStaticDistributionRecoveryConverged { .. } => 1,
             Self::ModuleStaticDistributionAssignmentObserved { .. } => 1,
             Self::ModuleStaticDistributionRolloutStatusChanged { .. } => 1,
+            Self::ModuleArtifactNodeReconciliationRequested { .. } => 1,
+            Self::ModuleArtifactNodeAssignmentObserved { .. } => 1,
+            Self::ModuleArtifactNodeReconciliationStatusChanged { .. } => 1,
             Self::ModuleArtifactSecurityStateChanged { .. } => 1,
             Self::ModuleEffectivePolicyRevisionChanged { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
@@ -3099,6 +3149,93 @@ impl ValidateEvent for DomainEvent {
                     return Err(EventValidationError::InvalidValue(
                         "static distribution rollout status",
                         "must contain canonical revision, observation, and failure state"
+                            .to_string(),
+                    ));
+                }
+                if let Some(failure_code) = failure_code {
+                    validators::validate_not_empty("failure_code", failure_code)?;
+                    validators::validate_max_length("failure_code", failure_code, 128)?;
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactNodeReconciliationRequested {
+                reconciliation_id,
+                predecessor_reconciliation_id,
+                reconciliation_revision,
+                reconciliation_state_revision,
+                topology_digest,
+                policy_revision,
+                target_assignments,
+            } => {
+                validators::validate_not_nil_uuid("reconciliation_id", reconciliation_id)?;
+                if predecessor_reconciliation_id
+                    .is_some_and(|value| value.is_nil() || value == *reconciliation_id)
+                    || *reconciliation_revision == 0
+                    || *reconciliation_state_revision == 0
+                    || *target_assignments == 0
+                    || *target_assignments > 1024
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "artifact node reconciliation identity",
+                        "must contain distinct non-nil identities and positive bounded revisions"
+                            .to_string(),
+                    ));
+                }
+                validate_sha256_digest("topology_digest", topology_digest)?;
+                validate_sha256_digest("policy_revision", policy_revision)
+            }
+            Self::ModuleArtifactNodeAssignmentObserved {
+                reconciliation_id,
+                node_id,
+                installation_id,
+                release_digest,
+                reporter_id,
+                observation_revision,
+                phase,
+                report_digest,
+            } => {
+                validators::validate_not_nil_uuid("reconciliation_id", reconciliation_id)?;
+                validators::validate_not_nil_uuid("node_id", node_id)?;
+                validators::validate_not_nil_uuid("installation_id", installation_id)?;
+                validators::validate_not_empty("reporter_id", reporter_id)?;
+                validators::validate_max_length("reporter_id", reporter_id, 128)?;
+                if *observation_revision == 0
+                    || reporter_id.trim() != reporter_id
+                    || reporter_id.chars().any(char::is_control)
+                    || !matches!(phase.as_str(), "prepared" | "healthy" | "failed")
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "artifact node assignment observation",
+                        "must contain an exact identity, positive revision, canonical reporter, and agent-reportable phase"
+                            .to_string(),
+                    ));
+                }
+                validate_sha256_digest("release_digest", release_digest)?;
+                validate_sha256_digest("report_digest", report_digest)
+            }
+            Self::ModuleArtifactNodeReconciliationStatusChanged {
+                reconciliation_id,
+                reconciliation_revision,
+                reconciliation_state_revision,
+                status,
+                observed_reconciliation_id,
+                failure_code,
+            } => {
+                validators::validate_not_nil_uuid("reconciliation_id", reconciliation_id)?;
+                if *reconciliation_revision == 0
+                    || *reconciliation_state_revision == 0
+                    || !matches!(
+                        status.as_str(),
+                        "activating" | "converged" | "failed" | "degraded"
+                    )
+                    || observed_reconciliation_id.is_some_and(|value| value.is_nil())
+                    || (status == "converged"
+                        && *observed_reconciliation_id != Some(*reconciliation_id))
+                    || matches!(status.as_str(), "failed" | "degraded") != failure_code.is_some()
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "artifact node reconciliation status",
+                        "must contain canonical revision, observed head, and failure state"
                             .to_string(),
                     ));
                 }

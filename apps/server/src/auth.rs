@@ -265,25 +265,6 @@ mod tests {
     }
 
     #[test]
-    fn auth_config_accepts_inline_rs256_keys() {
-        let config = auth_config_from_parts(
-            secret(),
-            900,
-            AuthSettingsOverrides {
-                algorithm: Some(JwtAlgorithm::RS256),
-                rsa_private_key_pem: Some("private".to_string()),
-                rsa_public_key_pem: Some("public".to_string()),
-                ..AuthSettingsOverrides::default()
-            },
-        )
-        .expect("auth config");
-
-        assert_eq!(config.algorithm, JwtAlgorithm::RS256);
-        assert_eq!(config.rsa_private_key_pem.as_deref(), Some("private"));
-        assert_eq!(config.rsa_public_key_pem.as_deref(), Some("public"));
-    }
-
-    #[test]
     fn auth_config_rejects_rs256_without_keys() {
         let result = auth_config_from_parts(
             secret(),

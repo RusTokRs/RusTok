@@ -66,24 +66,6 @@ pub struct ModuleEffectivePolicyMaintenanceInput {
     pub affected_modules: Option<Vec<String>>,
 }
 
-/// Node-owned readiness evidence for the effective-policy boundary. The
-/// observed policy revision refers to the base policy (before this readiness
-/// snapshot is included in the final policy revision), which avoids a
-/// self-referential readiness check.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ModuleEffectivePolicyNodeReadinessInput {
-    pub node_id: uuid::Uuid,
-    pub readiness_revision: String,
-    pub observed_policy_revision: String,
-    pub ready: bool,
-    pub required_core_ready: bool,
-    pub artifact_graph_revision: Option<u64>,
-    pub cas_available: bool,
-    pub executor_abi: Option<String>,
-    pub affected_modules: Option<Vec<String>>,
-}
-
 /// One typed input that contributed to a module availability decision.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
@@ -146,16 +128,6 @@ pub enum ModuleEffectivePolicyFact {
         reason_code: String,
         affected_modules: Option<Vec<String>>,
     },
-    NodeReadiness {
-        node_id: uuid::Uuid,
-        readiness_revision: String,
-        observed_policy_revision: String,
-        ready: bool,
-        required_core_ready: bool,
-        artifact_graph_revision: Option<u64>,
-        cas_available: bool,
-        executor_abi: Option<String>,
-    },
 }
 
 /// Stable owner taxonomy for explaining why a module is unavailable.
@@ -179,7 +151,6 @@ pub enum ModuleEffectivePolicyDenialReason {
     ChannelBindingUnavailable,
     ChannelDisabled,
     MaintenanceActive,
-    NodeReadinessUnavailable,
 }
 
 /// Explainable availability result for one module under one policy revision.
@@ -259,8 +230,6 @@ pub enum ModuleEffectivePolicyError {
     InvalidChannelInput(String),
     #[error("effective module policy maintenance input is invalid: {0}")]
     InvalidMaintenanceInput(String),
-    #[error("effective module policy node readiness input is invalid: {0}")]
-    InvalidNodeReadinessInput(String),
 }
 
 /// One owner transition delivered to a revision-aware outbox consumer. Hashes
@@ -437,7 +406,6 @@ pub(crate) struct ModuleEffectivePolicyQuery<'a> {
     co_requisites: Vec<ModuleEffectivePolicyCoRequisite>,
     channel: Option<ModuleEffectivePolicyChannelInput>,
     maintenance: Option<ModuleEffectivePolicyMaintenanceInput>,
-    node_readiness: Option<ModuleEffectivePolicyNodeReadinessInput>,
 }
 
 /// The resolved module set used by lifecycle, routing, and installer adapters.
@@ -500,7 +468,6 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
             runtime_inputs,
             channel,
             maintenance,
-            None,
         )
     }
 
@@ -511,7 +478,6 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
         runtime_inputs: impl IntoIterator<Item = ModuleEffectivePolicyRuntimeInput>,
         channel: Option<ModuleEffectivePolicyChannelInput>,
         maintenance: Option<ModuleEffectivePolicyMaintenanceInput>,
-        node_readiness: Option<ModuleEffectivePolicyNodeReadinessInput>,
     ) -> Self {
         Self {
             catalog,
@@ -521,7 +487,6 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
             co_requisites: Vec::new(),
             channel,
             maintenance,
-            node_readiness,
         }
     }
 
@@ -539,18 +504,10 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
     pub fn execute(self) -> Result<ModuleEffectivePolicy, ModuleEffectivePolicyError> {
         validate_channel_input(self.channel.as_ref())?;
         validate_maintenance_input(self.maintenance.as_ref())?;
-        validate_node_readiness_input(self.node_readiness.as_ref(), None)?;
         let co_requisites = normalize_corequisites(self.catalog, self.co_requisites)?;
         let channel = self.channel;
         let mut maintenance = self.maintenance;
-        let mut node_readiness = self.node_readiness;
         if let Some(affected_modules) = maintenance
-            .as_mut()
-            .and_then(|input| input.affected_modules.as_mut())
-        {
-            affected_modules.sort();
-        }
-        if let Some(affected_modules) = node_readiness
             .as_mut()
             .and_then(|input| input.affected_modules.as_mut())
         {
@@ -563,27 +520,16 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
         tenant_overrides.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
         let mut runtime_inputs = self.runtime_inputs;
         runtime_inputs.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
-        let base_policy_revision = effective_policy_revision(
-            self.catalog,
-            &default_enabled,
-            &tenant_overrides,
-            &runtime_inputs,
-            &co_requisites,
-            channel.as_ref(),
-            maintenance.as_ref(),
-            None,
-        )?;
-        validate_node_readiness_input(node_readiness.as_ref(), Some(&base_policy_revision))?;
-        let policy_revision = effective_policy_revision(
-            self.catalog,
-            &default_enabled,
-            &tenant_overrides,
-            &runtime_inputs,
-            &co_requisites,
-            channel.as_ref(),
-            maintenance.as_ref(),
-            node_readiness.as_ref(),
-        )?;
+        let policy_revision = effective_policy_revision(&EffectivePolicyRevisionInput {
+            contract: "rustok.module_effective_policy.v2",
+            catalog: self.catalog,
+            default_enabled: &default_enabled,
+            tenant_overrides: &tenant_overrides,
+            runtime_inputs: &runtime_inputs,
+            co_requisites: &co_requisites,
+            channel: channel.as_ref(),
+            maintenance: maintenance.as_ref(),
+        })?;
         let tenant_override_by_slug = tenant_overrides
             .iter()
             .map(|item| (item.module_slug.as_str(), item.enabled))
@@ -685,21 +631,6 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                         .entry(definition.slug.clone())
                         .or_default()
                         .push(ModuleEffectivePolicyDenialReason::MaintenanceActive);
-                }
-            }
-        }
-
-        if let Some(readiness) = node_readiness.as_ref().filter(|input| !input.ready) {
-            for definition in self.catalog.definitions() {
-                let affected = readiness
-                    .affected_modules
-                    .as_ref()
-                    .is_none_or(|modules| modules.iter().any(|slug| slug == &definition.slug));
-                if affected && enabled.remove(&definition.slug) {
-                    denial_reasons
-                        .entry(definition.slug.clone())
-                        .or_default()
-                        .push(ModuleEffectivePolicyDenialReason::NodeReadinessUnavailable);
                 }
             }
         }
@@ -945,18 +876,6 @@ impl<'a> ModuleEffectivePolicyQuery<'a> {
                         affected_modules: maintenance.affected_modules.clone(),
                     });
                 }
-                if let Some(readiness) = node_readiness.as_ref() {
-                    facts.push(ModuleEffectivePolicyFact::NodeReadiness {
-                        node_id: readiness.node_id,
-                        readiness_revision: readiness.readiness_revision.clone(),
-                        observed_policy_revision: readiness.observed_policy_revision.clone(),
-                        ready: readiness.ready,
-                        required_core_ready: readiness.required_core_ready,
-                        artifact_graph_revision: readiness.artifact_graph_revision,
-                        cas_available: readiness.cas_available,
-                        executor_abi: readiness.executor_abi.clone(),
-                    });
-                }
                 let mut dependencies = definition.dependencies.iter().collect::<Vec<_>>();
                 dependencies.sort_by(|left, right| left.slug.cmp(&right.slug));
                 facts.extend(dependencies.into_iter().map(|dependency| {
@@ -1065,31 +984,13 @@ struct EffectivePolicyRevisionInput<'a> {
     co_requisites: &'a [ModuleEffectivePolicyCoRequisite],
     channel: Option<&'a ModuleEffectivePolicyChannelInput>,
     maintenance: Option<&'a ModuleEffectivePolicyMaintenanceInput>,
-    node_readiness: Option<&'a ModuleEffectivePolicyNodeReadinessInput>,
 }
 
 fn effective_policy_revision(
-    catalog: &ModuleDefinitionCatalog,
-    default_enabled: &[String],
-    tenant_overrides: &[TenantModuleOverride],
-    runtime_inputs: &[ModuleEffectivePolicyRuntimeInput],
-    co_requisites: &[ModuleEffectivePolicyCoRequisite],
-    channel: Option<&ModuleEffectivePolicyChannelInput>,
-    maintenance: Option<&ModuleEffectivePolicyMaintenanceInput>,
-    node_readiness: Option<&ModuleEffectivePolicyNodeReadinessInput>,
+    input: &EffectivePolicyRevisionInput<'_>,
 ) -> Result<String, ModuleEffectivePolicyError> {
-    let digest = hash_manifest(&EffectivePolicyRevisionInput {
-        contract: "rustok.module_effective_policy.v2",
-        catalog,
-        default_enabled,
-        tenant_overrides,
-        runtime_inputs,
-        co_requisites,
-        channel,
-        maintenance,
-        node_readiness,
-    })
-    .map_err(|error| ModuleEffectivePolicyError::RevisionEncoding(error.to_string()))?;
+    let digest = hash_manifest(input)
+        .map_err(|error| ModuleEffectivePolicyError::RevisionEncoding(error.to_string()))?;
     Ok(format!("sha256:{digest}"))
 }
 
@@ -1262,78 +1163,6 @@ fn validate_maintenance_input(
     Ok(())
 }
 
-fn validate_node_readiness_input(
-    readiness: Option<&ModuleEffectivePolicyNodeReadinessInput>,
-    expected_base_policy_revision: Option<&str>,
-) -> Result<(), ModuleEffectivePolicyError> {
-    let Some(readiness) = readiness else {
-        return Ok(());
-    };
-    if readiness.node_id.is_nil() {
-        return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-            "node_id must be a non-nil UUID".to_string(),
-        ));
-    }
-    if !valid_digest(&readiness.readiness_revision) {
-        return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-            "readiness_revision must be a sha256 digest".to_string(),
-        ));
-    }
-    if !valid_digest(&readiness.observed_policy_revision) {
-        return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-            "observed_policy_revision must be a sha256 digest".to_string(),
-        ));
-    }
-    if let Some(expected) = expected_base_policy_revision
-        && readiness.observed_policy_revision != expected
-    {
-        return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-            "observed_policy_revision does not match the base policy revision".to_string(),
-        ));
-    }
-    if readiness
-        .artifact_graph_revision
-        .is_some_and(|revision| revision == 0)
-    {
-        return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-            "artifact_graph_revision must be positive when present".to_string(),
-        ));
-    }
-    if let Some(executor_abi) = &readiness.executor_abi
-        && !valid_text(executor_abi, 128)
-    {
-        return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-            "executor_abi must be non-empty and at most 128 characters".to_string(),
-        ));
-    }
-    if readiness.ready
-        && (!readiness.required_core_ready
-            || !readiness.cas_available
-            || readiness.executor_abi.is_none())
-    {
-        return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-            "ready snapshots must include core, CAS, and executor ABI evidence".to_string(),
-        ));
-    }
-    if let Some(affected_modules) = &readiness.affected_modules {
-        let mut seen = BTreeSet::new();
-        for module_slug in affected_modules {
-            if !valid_text(module_slug, 128) {
-                return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-                    "affected module slugs must be non-empty and at most 128 characters"
-                        .to_string(),
-                ));
-            }
-            if !seen.insert(module_slug.as_str()) {
-                return Err(ModuleEffectivePolicyError::InvalidNodeReadinessInput(
-                    "affected module slugs must not contain duplicates".to_string(),
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
 fn valid_text(value: &str, max_chars: usize) -> bool {
     !value.trim().is_empty() && value.chars().count() <= max_chars
 }
@@ -1344,10 +1173,10 @@ mod tests {
         ModuleEffectivePolicyChannelBinding, ModuleEffectivePolicyChannelInput,
         ModuleEffectivePolicyCoRequisite, ModuleEffectivePolicyDenialReason,
         ModuleEffectivePolicyFact, ModuleEffectivePolicyInstallationFact,
-        ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyNodeReadinessInput,
-        ModuleEffectivePolicyQuery, ModuleEffectivePolicyRuntimeInput,
-        ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionGate, ModulePolicyRevisionGateError,
-        ModulePolicyRevisionTransition, TenantModuleOverride,
+        ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyQuery,
+        ModuleEffectivePolicyRuntimeInput, ModulePolicyRevisionApplyOutcome,
+        ModulePolicyRevisionGate, ModulePolicyRevisionGateError, ModulePolicyRevisionTransition,
+        TenantModuleOverride,
     };
     use crate::{
         ArtifactPayloadKind, ArtifactReleaseRef, ModuleArtifactRegistryReleaseStatus,
@@ -1533,76 +1362,6 @@ mod tests {
         assert!(matches!(
             error,
             super::ModuleEffectivePolicyError::InvalidMaintenanceInput(_)
-        ));
-    }
-
-    #[test]
-    fn node_readiness_must_observe_base_revision_and_blocks_affected_modules() {
-        let catalog = ModuleDefinitionCatalog::from_static_registry(
-            &ModuleRegistry::new().register(ModulesModule),
-        )
-        .expect("catalog");
-        let base = ModuleEffectivePolicyQuery::new(&catalog, ["modules".to_string()], [], [])
-            .execute()
-            .expect("base policy");
-        let node_readiness = ModuleEffectivePolicyNodeReadinessInput {
-            node_id: Uuid::new_v4(),
-            readiness_revision: digest('b'),
-            observed_policy_revision: base.policy_revision().to_string(),
-            ready: false,
-            required_core_ready: false,
-            artifact_graph_revision: None,
-            cas_available: false,
-            executor_abi: None,
-            affected_modules: Some(vec!["modules".to_string()]),
-        };
-        let policy = ModuleEffectivePolicyQuery::new_with_context(
-            &catalog,
-            ["modules".to_string()],
-            [],
-            [],
-            None,
-            None,
-            Some(node_readiness),
-        )
-        .execute()
-        .expect("policy");
-
-        assert!(!policy.contains("modules"));
-        assert_eq!(
-            policy.decision("modules").denial_reasons,
-            vec![ModuleEffectivePolicyDenialReason::NodeReadinessUnavailable]
-        );
-        assert!(policy.decision("modules").facts.iter().any(|fact| matches!(
-            fact,
-            ModuleEffectivePolicyFact::NodeReadiness { ready: false, .. }
-        )));
-        assert_ne!(policy.policy_revision(), base.policy_revision());
-
-        let stale = ModuleEffectivePolicyQuery::new_with_context(
-            &catalog,
-            ["modules".to_string()],
-            [],
-            [],
-            None,
-            None,
-            Some(ModuleEffectivePolicyNodeReadinessInput {
-                node_id: Uuid::new_v4(),
-                readiness_revision: digest('b'),
-                observed_policy_revision: digest('c'),
-                ready: false,
-                required_core_ready: false,
-                artifact_graph_revision: None,
-                cas_available: false,
-                executor_abi: None,
-                affected_modules: None,
-            }),
-        )
-        .execute()
-        .expect_err("stale readiness must fail closed");
-        assert!(matches!(
-            stale,
-            super::ModuleEffectivePolicyError::InvalidNodeReadinessInput(_)
         ));
     }
 

@@ -14,6 +14,7 @@
 //! and interacting with RusToK modules, including Alloy scaffold assistance.
 
 pub mod access;
+pub mod alloy_authoring;
 pub mod alloy_import;
 mod alloy_scaffold;
 #[path = "alloy_tools.rs"]
@@ -40,6 +41,13 @@ pub mod tools;
 pub use access::{
     McpAccessContext, McpAccessPolicy, McpActorType, McpAuthorizationDecision, McpIdentity,
     McpToolRequirement, McpWhoAmIResponse, default_tool_requirement,
+};
+pub use alloy_authoring::{
+    REMOTE_ALLOY_AUTHORING_TOOL_NAMES, TOOL_ALLOY_CHANGE_SCRIPT_LIFECYCLE,
+    TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT, TOOL_ALLOY_GET_SCRIPT,
+    TOOL_ALLOY_LIST_SCRIPT_REVIEWS, TOOL_ALLOY_LIST_SCRIPT_REVISIONS, TOOL_ALLOY_LIST_SCRIPTS,
+    TOOL_ALLOY_REVIEW_SCRIPT, TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_RUN_WORKSPACE_TEST,
+    TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT, is_remote_alloy_authoring_tool,
 };
 pub use alloy_import::{
     AlloyPublishedReleaseImportRequest, AlloyPublishedReleaseImportResponse,

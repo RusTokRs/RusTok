@@ -112,10 +112,9 @@ fn generic_readiness_response(status: &str) -> Response {
 }
 
 fn readiness_http_status(status: &str) -> StatusCode {
-    if status == "unhealthy" {
-        StatusCode::SERVICE_UNAVAILABLE
-    } else {
-        StatusCode::OK
+    match status {
+        "ok" | "degraded" => StatusCode::OK,
+        _ => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
 

@@ -13,18 +13,18 @@ invoker. The server uses it for both remote transport and the admitted-artifact
 `platform.mcp` route, so tool authorization is not reimplemented by either
 host path.
 
-The authenticated remote MCP transport also composes the remote-only
-`alloy_import_published_release` tool. It derives tenant and actor identity
-from the persisted runtime binding, requires `scripts.manage` and
-`modules.manage`, constructs a tenant-scoped Alloy registry, and injects the
-same owner-backed published-Rhai source provider as HTTP and GraphQL. Source
-bytes are never returned; generic stdio MCP does not advertise this operation.
+The authenticated remote MCP transport also composes remote-only Alloy import
+and script-authoring tools. Every authoring call derives tenant and actor
+identity from the persisted runtime binding, requires `scripts.manage`, checks
+identity-to-binding tenant equality before audit, and creates the same tenant-scoped owner
+service used by HTTP and GraphQL. Responses and audit metadata are
+source-redacted; generic stdio MCP does not advertise those operations.
 
 Generic stdio and in-process MCP expose Alloy scaffold assistance only. They do
 not expose tenant-owned Alloy script reads, CRUD, validation, or execution,
 because the generic adapter cannot construct the owner-scoped Alloy runtime
-that binds a tenant and actor. Canonical script authoring remains on
-host-composed Alloy HTTP and GraphQL.
+that binds a tenant and actor. Canonical script authoring is composed only by
+the host over Alloy HTTP, GraphQL, and authenticated remote MCP.
 
 ## FFA/FBA status
 
@@ -62,11 +62,13 @@ host-composed Alloy HTTP and GraphQL.
    before invocation. An isolated sandbox worker must return capability calls
    to this host adapter; it must never receive an MCP endpoint, token,
    credential, database handle, or network client.
-5. **Compose remote Alloy authoring through the owner runtime.** Add script
-   reads, mutations, validation, or execution to remote MCP only after the
-   adapter reuses the same owner-scoped Alloy runtime as host HTTP and GraphQL,
-   verifies tenant match and `scripts.manage`, derives actor provenance, applies
-   source-redaction policy, and proves tenant isolation in an integration test.
+5. **Completed: compose remote Alloy authoring through the owner runtime.**
+   Authenticated remote JSON/SSE tool calls resolve a durable MCP binding,
+   require `scripts.manage`, verify identity-to-binding tenant equality, and
+   create the tenant-scoped Alloy owner service. Commands are typed and
+   source-bearing responses and audit metadata are redacted; owner SeaORM
+   integration evidence rejects a cross-tenant mutation. The remote-only tool
+   names are statically guarded from generic stdio/in-process MCP.
 
 ## Verification
 

@@ -59,6 +59,7 @@ pub use rest::{
 
 use async_trait::async_trait;
 use rustok_api::Permission;
+use rustok_core::MigrationDependencyDescriptor;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 
 /// Canonical auth-owned RBAC surface published by the module.
@@ -84,6 +85,10 @@ pub struct AuthModule;
 impl MigrationSource for AuthModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        migrations::migration_dependencies()
     }
 }
 

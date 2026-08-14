@@ -9,7 +9,7 @@ use axum::{
 };
 use rustok_cache::{CacheInvalidationMessage, VersionedCacheInvalidation};
 use rustok_channel::{ChannelService, CreateChannelInput, entities::channel};
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator as Migrator;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, Set};
 use tower::ServiceExt;
 use uuid::Uuid;

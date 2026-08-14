@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -22,6 +22,7 @@ struct ReleaseImportReceipt {
 #[derive(Clone)]
 pub struct InMemoryStorage {
     scripts: Arc<RwLock<HashMap<ScriptId, Script>>>,
+    retired_script_ids: Arc<RwLock<HashSet<ScriptId>>>,
     source_revisions: Arc<RwLock<HashMap<(ScriptId, u32), ScriptSourceRevision>>>,
     release_imports: Arc<RwLock<HashMap<(uuid::Uuid, uuid::Uuid), ReleaseImportReceipt>>>,
     reviews: Arc<RwLock<HashMap<(ScriptId, u32), Vec<ReviewDecision>>>>,
@@ -33,6 +34,7 @@ impl InMemoryStorage {
     pub fn new() -> Self {
         Self {
             scripts: Arc::new(RwLock::new(HashMap::new())),
+            retired_script_ids: Arc::new(RwLock::new(HashSet::new())),
             source_revisions: Arc::new(RwLock::new(HashMap::new())),
             release_imports: Arc::new(RwLock::new(HashMap::new())),
             reviews: Arc::new(RwLock::new(HashMap::new())),
@@ -53,6 +55,7 @@ impl InMemoryStorage {
                 .expect("saved workspace must have been validated"),
             workspace: script.workspace.clone(),
             author_id: script.author_id.clone(),
+            source_provenance: script.source_provenance.clone(),
             parent_release: script.parent_release.clone(),
             created_at: script.updated_at,
         }
@@ -154,16 +157,33 @@ impl ScriptRegistry for InMemoryStorage {
         id: ScriptId,
         revision: u32,
     ) -> ScriptResult<ScriptSourceRevision> {
+        // Keep the owning draft read lock while reading immutable evidence so
+        // deletion cannot make an orphaned snapshot observable mid-request.
+        let owner = self.scripts.read().await;
+        if !owner.contains_key(&id) {
+            return Err(ScriptError::NotFound {
+                name: id.to_string(),
+            });
+        }
         let guard = self.source_revisions.read().await;
-        guard
+        let source = guard
             .get(&(id, revision))
             .cloned()
             .ok_or_else(|| ScriptError::NotFound {
                 name: format!("{id}@{revision}"),
-            })
+            })?;
+        drop(guard);
+        drop(owner);
+        Ok(source)
     }
 
     async fn list_source_revisions(&self, id: ScriptId) -> ScriptResult<Vec<ScriptSourceRevision>> {
+        let owner = self.scripts.read().await;
+        if !owner.contains_key(&id) {
+            return Err(ScriptError::NotFound {
+                name: id.to_string(),
+            });
+        }
         let guard = self.source_revisions.read().await;
         let mut revisions = guard
             .values()
@@ -171,6 +191,8 @@ impl ScriptRegistry for InMemoryStorage {
             .cloned()
             .collect::<Vec<_>>();
         revisions.sort_by_key(|revision| revision.revision);
+        drop(guard);
+        drop(owner);
         Ok(revisions)
     }
 
@@ -178,18 +200,6 @@ impl ScriptRegistry for InMemoryStorage {
         command.validate()?;
         let request_digest = command.request_digest()?;
         let scripts = self.scripts.write().await;
-        let key = (command.script_id, command.expected_revision);
-        let mut reviews = self.reviews.write().await;
-        let history = reviews.entry(key).or_default();
-        if let Some(existing) = history
-            .iter()
-            .find(|decision| decision.idempotency_key == command.idempotency_key)
-        {
-            if existing.request_digest == request_digest {
-                return Ok(existing.clone());
-            }
-            return Err(crate::model::ReviewError::IdempotencyConflict.into());
-        }
         let script =
             scripts
                 .get(&command.script_id)
@@ -202,9 +212,31 @@ impl ScriptRegistry for InMemoryStorage {
                 expected: command.expected_revision,
             });
         }
+        // `scripts` is intentionally held with a write lock through the
+        // revision check above so a concurrent save cannot change the review
+        // subject. Do not call `get_source_revision` here: that public owner
+        // method re-checks the script with a read lock and would self-deadlock.
         let revision = self
-            .get_source_revision(command.script_id, command.expected_revision)
-            .await?;
+            .source_revisions
+            .read()
+            .await
+            .get(&(command.script_id, command.expected_revision))
+            .cloned()
+            .ok_or_else(|| ScriptError::NotFound {
+                name: format!("{}@{}", command.script_id, command.expected_revision),
+            })?;
+        let key = (command.script_id, command.expected_revision);
+        let mut reviews = self.reviews.write().await;
+        let history = reviews.entry(key).or_default();
+        if let Some(existing) = history
+            .iter()
+            .find(|decision| decision.idempotency_key == command.idempotency_key)
+        {
+            if existing.request_digest == request_digest {
+                return Ok(existing.clone());
+            }
+            return Err(crate::model::ReviewError::IdempotencyConflict.into());
+        }
         validate_transition(
             history.last().map(|decision| decision.status),
             command.status,
@@ -229,18 +261,39 @@ impl ScriptRegistry for InMemoryStorage {
     }
 
     async fn list_reviews(&self, id: ScriptId, revision: u32) -> ScriptResult<Vec<ReviewDecision>> {
-        Ok(self
+        let owner = self.scripts.read().await;
+        if !owner.contains_key(&id) {
+            return Err(ScriptError::NotFound {
+                name: id.to_string(),
+            });
+        }
+        let reviews = self
             .reviews
             .read()
             .await
             .get(&(id, revision))
             .cloned()
-            .unwrap_or_default())
+            .unwrap_or_default();
+        drop(owner);
+        Ok(reviews)
     }
 
     async fn claim_test_run(&self, command: TestCommand) -> ScriptResult<TestRunClaim> {
         command.validate()?;
         let request_digest = command.request_digest()?;
+        let scripts = self.scripts.read().await;
+        let script =
+            scripts
+                .get(&command.script_id)
+                .cloned()
+                .ok_or_else(|| ScriptError::NotFound {
+                    name: command.script_id.to_string(),
+                })?;
+        if script.version != command.expected_revision {
+            return Err(ScriptError::RevisionConflict {
+                expected: command.expected_revision,
+            });
+        }
         let key = (
             command.script_id,
             command.expected_revision,
@@ -288,20 +341,6 @@ impl ScriptRegistry for InMemoryStorage {
             }));
         }
 
-        let script = self
-            .scripts
-            .read()
-            .await
-            .get(&command.script_id)
-            .cloned()
-            .ok_or_else(|| ScriptError::NotFound {
-                name: command.script_id.to_string(),
-            })?;
-        if script.version != command.expected_revision {
-            return Err(ScriptError::RevisionConflict {
-                expected: command.expected_revision,
-            });
-        }
         let source = self
             .source_revisions
             .read()
@@ -358,7 +397,12 @@ impl ScriptRegistry for InMemoryStorage {
             })?;
         let run = runs.get_mut(&key).expect("test run key was found");
         if run.status.is_terminal() {
-            return Ok(run.clone());
+            let terminal = run.clone();
+            drop(runs);
+            // The durable row remains available to retention and GC, but a
+            // terminal idempotency completion cannot read it after deletion.
+            self.get(terminal.script_id).await?;
+            return Ok(terminal);
         }
         let mut leases = self.test_leases.write().await;
         let Some((stored_token, expires_at)) = leases.get(&run_id) else {
@@ -376,7 +420,13 @@ impl ScriptRegistry for InMemoryStorage {
         run.error = completion.error;
         run.completed_at = Some(now);
         leases.remove(&run_id);
-        Ok(run.clone())
+        let completed = run.clone();
+        drop(leases);
+        drop(runs);
+        // Keep the settled row for retention, but deny a completion response
+        // if the owner draft was deleted while the sandbox was executing.
+        self.get(completed.script_id).await?;
+        Ok(completed)
     }
 
     async fn get_by_name(&self, name: &str) -> ScriptResult<Script> {
@@ -429,6 +479,16 @@ impl ScriptRegistry for InMemoryStorage {
         }) {
             return Err(ScriptError::ImportDraftNameConflict);
         }
+        if self
+            .retired_script_ids
+            .read()
+            .await
+            .contains(&command.script.id)
+        {
+            return Err(ScriptError::InvalidLineage(
+                "a deleted draft ID cannot be reused while immutable evidence is retained".into(),
+            ));
+        }
 
         let now = chrono::Utc::now();
         command.script.version = 1;
@@ -454,6 +514,10 @@ impl ScriptRegistry for InMemoryStorage {
 
     async fn save(&self, mut script: Script) -> ScriptResult<Script> {
         script.workspace.validate().map_err(ScriptError::from)?;
+        script
+            .source_provenance
+            .validate()
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
         if let Some(parent_release) = &script.parent_release {
             parent_release
                 .validate()
@@ -477,6 +541,12 @@ impl ScriptRegistry for InMemoryStorage {
                 .ok_or_else(|| ScriptError::Storage("script version overflow".into()))?;
             script.updated_at = chrono::Utc::now();
         } else {
+            if self.retired_script_ids.read().await.contains(&script.id) {
+                return Err(ScriptError::InvalidLineage(
+                    "a deleted draft ID cannot be reused while immutable evidence is retained"
+                        .into(),
+                ));
+            }
             script.version = 1;
             script.created_at = chrono::Utc::now();
             script.updated_at = script.created_at;
@@ -503,6 +573,7 @@ impl ScriptRegistry for InMemoryStorage {
             });
         }
         guard.remove(&id);
+        self.retired_script_ids.write().await.insert(id);
         Ok(())
     }
 
@@ -536,8 +607,8 @@ impl ScriptRegistry for InMemoryStorage {
 mod tests {
     use super::*;
     use crate::model::{
-        RhaiWorkspace, RhaiWorkspaceFile, RhaiWorkspaceFileKind, TestCommand, TestRunClaim,
-        TestRunCompletion,
+        ReviewCommand, ReviewStatus, RhaiWorkspace, RhaiWorkspaceFile, RhaiWorkspaceFileKind,
+        TestCommand, TestRunClaim, TestRunCompletion,
     };
     use uuid::Uuid;
 
@@ -655,6 +726,19 @@ mod tests {
             storage.delete(saved.id, saved.version).await,
             Err(ScriptError::RevisionConflict { expected: 1 })
         ));
+        let review = ReviewCommand {
+            script_id: updated.id,
+            expected_revision: updated.version,
+            status: ReviewStatus::ChangesRequested,
+            policy_revision: "policy:current".into(),
+            actor_id: "operator:reviewer".into(),
+            reason: None,
+            idempotency_key: Uuid::new_v4(),
+        };
+        storage
+            .review(review.clone())
+            .await
+            .expect("review should be recorded before deletion");
         storage
             .delete(updated.id, updated.version)
             .await
@@ -662,6 +746,30 @@ mod tests {
         assert!(matches!(
             storage.get(updated.id).await,
             Err(ScriptError::NotFound { .. })
+        ));
+        assert!(matches!(
+            storage
+                .get_source_revision(updated.id, updated.version)
+                .await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        assert!(matches!(
+            storage.list_source_revisions(updated.id).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        assert!(matches!(
+            storage.list_reviews(updated.id, updated.version).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        assert!(matches!(
+            storage.review(review).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        let mut replacement = named_script("retired_id", ScriptStatus::Draft);
+        replacement.id = updated.id;
+        assert!(matches!(
+            storage.save(replacement).await,
+            Err(ScriptError::InvalidLineage(_))
         ));
     }
 
@@ -746,7 +854,7 @@ mod tests {
                 .expect("identical command should replay"),
             TestRunClaim::Replay(run) if run.id == completed.id
         ));
-        let mut conflicting = command;
+        let mut conflicting = command.clone();
         conflicting.actor_id = "operator:2".into();
         assert!(matches!(
             storage.claim_test_run(conflicting).await,
@@ -757,7 +865,7 @@ mod tests {
 
         let mut next = saved;
         next.workspace = RhaiWorkspace::single_source("43");
-        storage.save(next).await.expect("next revision should save");
+        let next = storage.save(next).await.expect("next revision should save");
         assert!(matches!(
             storage
                 .claim_test_run(TestCommand {
@@ -769,6 +877,20 @@ mod tests {
                 })
                 .await,
             Err(ScriptError::RevisionConflict { .. })
+        ));
+        storage
+            .delete(next.id, next.version)
+            .await
+            .expect("current script should delete");
+        assert!(matches!(
+            storage
+                .complete_test_run(lease.run.id, lease.lease_token, TestRunCompletion::passed())
+                .await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        assert!(matches!(
+            storage.claim_test_run(command).await,
+            Err(ScriptError::NotFound { .. })
         ));
     }
 }

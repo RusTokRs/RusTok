@@ -9,7 +9,6 @@ const USER_TRIGGER: &str = "flex_user_fd_cache_generation";
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        flex::cache_generation::create_field_definition_cache_generation_table(manager).await?;
         flex::cache_generation::create_field_definition_cache_generation_trigger(
             manager,
             USER_FIELD_DEFINITIONS_TABLE,

@@ -275,7 +275,7 @@ mod tests {
     use chrono::Utc;
     use rustok_core::field_schema::{FieldType, FlexError};
     use rustok_events::DomainEvent;
-    use rustok_migrations::Migrator;
+    use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
     use serde_json::json;

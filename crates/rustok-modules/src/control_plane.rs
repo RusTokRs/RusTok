@@ -12,10 +12,11 @@ use crate::{
     ArtifactMcpInvoker, ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError,
     ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer,
     ArtifactSecretValueConsumer, ArtifactSettingsRecoveryAuthorizer,
-    ArtifactSettingsRecoveryCipher, ControlPlaneInfrastructure, ModuleArtifactSecurityAuthorizer,
-    ModuleDefinitionCatalog, ModuleDefinitionError, ModuleEffectivePolicy,
-    ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyMaintenanceInput,
-    ModuleEffectivePolicyNodeReadinessInput, ModuleLifecycleDbWriter,
+    ArtifactSettingsRecoveryCipher, ControlPlaneInfrastructure,
+    ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeTopologyResolver,
+    ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog, ModuleDefinitionError,
+    ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
+    ModuleEffectivePolicyMaintenanceInput, ModuleLifecycleDbWriter,
     ModuleStaticDistributionAuthorizer, ModuleStaticDistributionReleaseAuthorizer,
     ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionRolloutAuthorizer,
     ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionWorkerAuthorizer,
@@ -25,10 +26,12 @@ use crate::{
     SeaOrmArtifactDataPurgeService, SeaOrmArtifactDataSnapshotCollectionService,
     SeaOrmArtifactDataSnapshotRetentionService, SeaOrmArtifactDataSnapshotService,
     SeaOrmArtifactEventSubscriptionProjector, SeaOrmArtifactExecutionObserver,
-    SeaOrmArtifactInstallationStore, SeaOrmArtifactSandboxPolicyResolver,
-    SeaOrmArtifactScheduleDeliveryQueue, SeaOrmArtifactSecretCapabilityBrokerResolver,
-    SeaOrmArtifactSecretHandlePolicy, SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
-    SeaOrmArtifactSettingsRecoveryService, SeaOrmModuleArtifactSecurityResolver,
+    SeaOrmArtifactInstallationStore, SeaOrmArtifactNodeReadiness,
+    SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactScheduleDeliveryQueue,
+    SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretHandlePolicy,
+    SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
+    SeaOrmArtifactSettingsRecoveryService, SeaOrmModuleArtifactNodeAgentService,
+    SeaOrmModuleArtifactNodeReconciliationService, SeaOrmModuleArtifactSecurityResolver,
     SeaOrmModuleArtifactSecurityService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
     SeaOrmModuleGovernanceService, SeaOrmModulePolicyRevisionConsumer,
     SeaOrmModulePromotionService, SeaOrmModuleStaticDistributionBootstrapService,
@@ -76,17 +79,16 @@ impl<'a> EffectivePolicyService<'a> {
             .await
     }
 
-    /// Resolves policy from channel and operational maintenance snapshots
-    /// supplied by their owning host services.
+    /// Resolves policy from channel and operational maintenance inputs supplied
+    /// by their owning host services.
     pub async fn resolve_for_context(
         &self,
         tenant_id: uuid::Uuid,
         channel: Option<ModuleEffectivePolicyChannelInput>,
         maintenance: Option<ModuleEffectivePolicyMaintenanceInput>,
-        node_readiness: Option<ModuleEffectivePolicyNodeReadinessInput>,
     ) -> Result<ModuleEffectivePolicy, crate::ModuleLifecycleDbWriterError> {
         self.lifecycle
-            .effective_policy_for_context(tenant_id, channel, maintenance, node_readiness)
+            .effective_policy_for_context(tenant_id, channel, maintenance)
             .await
     }
 
@@ -97,16 +99,6 @@ impl<'a> EffectivePolicyService<'a> {
     ) -> Result<ModuleEffectivePolicy, crate::ModuleLifecycleDbWriterError> {
         self.lifecycle
             .effective_policy_for_maintenance(tenant_id, maintenance)
-            .await
-    }
-
-    pub async fn resolve_for_node_readiness(
-        &self,
-        tenant_id: uuid::Uuid,
-        node_readiness: ModuleEffectivePolicyNodeReadinessInput,
-    ) -> Result<ModuleEffectivePolicy, crate::ModuleLifecycleDbWriterError> {
-        self.lifecycle
-            .effective_policy_for_node_readiness(tenant_id, node_readiness)
             .await
     }
 
@@ -279,6 +271,49 @@ impl ModuleControlPlane {
             topology,
             self.infrastructure.clone(),
         )
+    }
+
+    /// Returns the owner of dynamic artifact/sandbox node assignments. It is a
+    /// durable control-plane ledger: workers only claim and report one exact
+    /// admitted installation and cannot derive desired state from local cache,
+    /// sandbox state, or a product/AI subsystem.
+    pub fn artifact_node_reconciliation<A, T>(
+        &self,
+        authorizer: A,
+        topology: T,
+    ) -> SeaOrmModuleArtifactNodeReconciliationService<A, T>
+    where
+        A: ModuleArtifactNodeReconciliationAuthorizer,
+        T: ModuleArtifactNodeTopologyResolver,
+    {
+        SeaOrmModuleArtifactNodeReconciliationService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            topology,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the narrow owner port intended solely for authenticated node
+    /// agents. This process-facing projection cannot create desired topology or
+    /// read reconciliation state, so deployment transport composition never
+    /// acquires the control-plane authoring surface.
+    pub fn artifact_node_agent(&self) -> SeaOrmModuleArtifactNodeAgentService {
+        SeaOrmModuleArtifactNodeAgentService::with_infrastructure(
+            self.db.clone(),
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the read-only runtime gate for one configured server node. The
+    /// gate permits only the exact installation identity held by the durable
+    /// observed reconciliation head; it does not consult a sandbox cache or
+    /// derive deployment state from a product or AI subsystem.
+    pub fn artifact_node_readiness(
+        &self,
+        node_id: uuid::Uuid,
+    ) -> Result<SeaOrmArtifactNodeReadiness, crate::ModuleArtifactNodeReconciliationError> {
+        SeaOrmArtifactNodeReadiness::new(self.db.clone(), node_id)
     }
 
     pub fn installation(&self) -> SeaOrmArtifactInstallationStore {

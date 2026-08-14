@@ -394,6 +394,38 @@ mod tests {
         assert!(!openapi.paths.paths.contains_key("/api/v1/flex/schemas"));
     }
 
+    #[cfg(feature = "mod-blog")]
+    #[test]
+    fn blog_openapi_document_builds_independently() {
+        let openapi = rustok_blog::openapi::openapi_document();
+
+        assert!(openapi.paths.paths.contains_key("/api/blog/posts"));
+    }
+
+    #[cfg(feature = "mod-forum")]
+    #[test]
+    fn forum_openapi_document_builds_independently() {
+        let openapi = rustok_forum::openapi::openapi_document();
+
+        assert!(openapi.paths.paths.contains_key("/api/forum/categories"));
+    }
+
+    #[cfg(feature = "mod-pages")]
+    #[test]
+    fn pages_openapi_document_builds_independently() {
+        let openapi = rustok_pages::openapi::openapi_document();
+
+        assert!(openapi.paths.paths.contains_key("/api/pages"));
+    }
+
+    #[cfg(feature = "mod-commerce")]
+    #[test]
+    fn commerce_openapi_document_builds_independently() {
+        let openapi = rustok_commerce::openapi::openapi_document();
+
+        assert!(openapi.paths.paths.contains_key("/store/carts"));
+    }
+
     #[cfg(feature = "mod-commerce")]
     #[test]
     fn openapi_merges_commerce_surface_when_mod_commerce_enabled() {

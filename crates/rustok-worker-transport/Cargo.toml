@@ -7,6 +7,8 @@ license.workspace = true
 description = "Shared mutually authenticated listener and runtime policy for RusToK workers"
 
 [dependencies]
+hex.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 tonic = { workspace = true, features = ["tls-ring"] }
 tracing.workspace = true

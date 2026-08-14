@@ -26,6 +26,12 @@ Every caller-specific ceiling is still constrained by the shared absolute
 The crate owns no worker-specific protocol, policy, task execution, CAS,
 database, or secrets beyond the mounted listener identity and trust material.
 
+`peer_certificate_fingerprint` derives the canonical SHA-256 fingerprint of
+the verified mTLS leaf certificate attached to a tonic server request. It
+rejects a request without peer TLS evidence. Protocol-specific adapters must
+map this fingerprint through deployment-owned topology/agent authorization;
+they must not trust a node or agent identifier carried in a request payload.
+
 `MutualTlsClientConfig` uses the same prefix with `CLIENT_CERT_PEM`,
 `CLIENT_KEY_PEM`, `SERVER_CA_PEM`, and `SERVER_DOMAIN` to build a tonic mTLS
 client configuration for an external dispatcher or other deployment host.

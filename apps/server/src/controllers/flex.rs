@@ -386,13 +386,15 @@ mod tests {
     use rustok_api::Permission;
     use rustok_core::{
         UserRole, UserStatus,
+        events::{EventTransport, MemoryTransport},
         field_schema::{FieldDefinition, FieldType},
     };
-    use rustok_migrations::Migrator;
+    use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, EntityTrait, Set};
     use serde_json::json;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     fn test_runtime_context(db: sea_orm::DatabaseConnection) -> ServerRuntimeContext {
         ServerRuntimeContext::new(db, crate::common::settings::RustokSettings::default())
@@ -447,7 +449,7 @@ mod tests {
         }
     }
 
-    fn field_definition(field_key: &str, is_localized: bool) -> FieldDefinition {
+    fn field_definition(field_key: &str, is_localized: bool, position: i32) -> FieldDefinition {
         FieldDefinition {
             field_key: field_key.to_string(),
             field_type: FieldType::Text,
@@ -457,7 +459,7 @@ mod tests {
             is_required: false,
             default_value: None,
             validation: None,
-            position: 0,
+            position,
             is_active: true,
         }
     }
@@ -466,6 +468,7 @@ mod tests {
     async fn rest_handlers_roundtrip_standalone_schema_and_entry() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let ctx = test_runtime_context(db.clone());
+        ctx.shared_insert(Arc::new(MemoryTransport::new()) as Arc<dyn EventTransport>);
 
         let mut tenant = tenants::ActiveModel::new("Flex Tenant", "flex-rest");
         tenant.default_locale = Set("ru".to_string());
@@ -485,8 +488,8 @@ mod tests {
                 name: "Лендинг".to_string(),
                 description: Some("Описание".to_string()),
                 fields_config: serde_json::to_value(vec![
-                    field_definition("slug", false),
-                    field_definition("title", true),
+                    field_definition("slug", false, 0),
+                    field_definition("title", true, 1),
                 ])
                 .expect("fields config json"),
                 settings: Some(json!({"layout": "hero"})),

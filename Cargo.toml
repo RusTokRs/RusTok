@@ -294,6 +294,8 @@ rustok-installer-cli = { path = "crates/rustok-installer-cli" }
 rustok-build = { path = "crates/rustok-build" }
 rustok-build-publication = { path = "crates/rustok-build-publication" }
 rustok-build-source = { path = "crates/rustok-build-source" }
+rustok-artifact-node-transport = { path = "crates/rustok-artifact-node-transport" }
+rustok-artifact-node-agent = { path = "crates/rustok-artifact-node-agent" }
 rustok-module-build-transport = { path = "crates/rustok-module-build-transport" }
 rustok-module-build-worker = { path = "crates/rustok-module-build-worker" }
 rustok-module-sdk = { path = "crates/rustok-module-sdk" }

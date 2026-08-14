@@ -15,6 +15,7 @@ use std::thread;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use sha2::{Digest, Sha256};
 use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder};
 
@@ -168,6 +169,14 @@ pub struct WasmComponentExecutor {
     cache: Arc<SerializedComponentCache>,
 }
 
+/// Local preparation result for one immutable Wasmtime Component payload. It
+/// proves that the exact admitted bytes compile for this runtime target; it
+/// does not instantiate or execute the guest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WasmComponentPreparation {
+    pub runtime_fingerprint: String,
+}
+
 struct WasmStoreState {
     limits: WasmStoreLimits,
     host: SandboxHost,
@@ -297,6 +306,32 @@ impl WasmComponentExecutor {
         })
     }
 
+    /// Compiles the exact digest-verified Component and warms only this
+    /// executor's bounded private serialized cache. No store, host handle,
+    /// capability, input, or guest execution is created.
+    pub fn prepare_component(
+        &self,
+        payload_digest: &str,
+        runtime_abi: &str,
+        bytes: &[u8],
+    ) -> SandboxResult<WasmComponentPreparation> {
+        if !canonical_digest(payload_digest) || runtime_abi.trim().is_empty() {
+            return Err(SandboxError::InvalidRequest(
+                "Wasm Component preparation identity is invalid".to_string(),
+            ));
+        }
+        let actual = format!("sha256:{}", hex::encode(Sha256::digest(bytes)));
+        if actual != payload_digest {
+            return Err(SandboxError::InvalidRequest(
+                "Wasm Component payload digest does not match its bytes".to_string(),
+            ));
+        }
+        self.load_component_for_identity(payload_digest, runtime_abi, bytes)?;
+        Ok(WasmComponentPreparation {
+            runtime_fingerprint: wasm_component_runtime_fingerprint(runtime_abi),
+        })
+    }
+
     fn engine() -> SandboxResult<Engine> {
         let mut config = Config::new();
         config.wasm_component_model(true);
@@ -305,17 +340,30 @@ impl WasmComponentExecutor {
         Engine::new(&config).map_err(|error| SandboxError::Internal(error.to_string()))
     }
 
-    fn cache_key(request: &SandboxRequest) -> WasmComponentCacheKey {
+    fn cache_key_for_identity(runtime_abi: &str, digest: &str) -> WasmComponentCacheKey {
         WasmComponentCacheKey {
             engine_version: WASMTIME_ENGINE_VERSION,
             target: format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
-            runtime_abi: request.payload.runtime_abi.clone(),
-            digest: request.payload.digest.clone(),
+            runtime_abi: runtime_abi.to_string(),
+            digest: digest.to_string(),
         }
     }
 
     fn load_component(&self, request: &SandboxRequest) -> SandboxResult<(Engine, Component)> {
-        let key = Self::cache_key(request);
+        self.load_component_for_identity(
+            &request.payload.digest,
+            &request.payload.runtime_abi,
+            &request.payload.bytes,
+        )
+    }
+
+    fn load_component_for_identity(
+        &self,
+        digest: &str,
+        runtime_abi: &str,
+        bytes: &[u8],
+    ) -> SandboxResult<(Engine, Component)> {
+        let key = Self::cache_key_for_identity(runtime_abi, digest);
         let engine = Self::engine()?;
         if let Some(serialized) = self.cache.get(&key)? {
             // Safety: only `Component::serialize` output produced by this
@@ -326,7 +374,7 @@ impl WasmComponentExecutor {
                 Err(_) => self.cache.remove(&key)?,
             }
         }
-        let component = Component::new(&engine, &request.payload.bytes)
+        let component = Component::new(&engine, bytes)
             .map_err(|error| SandboxError::Compilation(error.to_string()))?;
         let serialized = component
             .serialize()
@@ -457,6 +505,26 @@ impl WasmComponentExecutor {
     }
 }
 
+/// Canonical host-runtime identity for a prepared Component cache entry.
+pub fn wasm_component_runtime_fingerprint(runtime_abi: &str) -> String {
+    format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(format!(
+            "rustok.wasm-component.preparation\\0{WASMTIME_ENGINE_VERSION}\\0{}-{}\\0{runtime_abi}",
+            std::env::consts::ARCH,
+            std::env::consts::OS,
+        )))
+    )
+}
+
+fn canonical_digest(value: &str) -> bool {
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value.as_bytes()[7..]
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
 #[async_trait]
 impl SandboxExecutor for WasmComponentExecutor {
     fn kind(&self) -> SandboxExecutorKind {
@@ -515,14 +583,29 @@ mod tests {
         let mut changed_digest = request.clone();
         changed_digest.payload.digest = "sha256:second".to_string();
 
-        let key = WasmComponentExecutor::cache_key(&request);
+        let key = WasmComponentExecutor::cache_key_for_identity(
+            &request.payload.runtime_abi,
+            &request.payload.digest,
+        );
         assert_eq!(key.engine_version, WASMTIME_ENGINE_VERSION);
         assert_eq!(
             key.target,
             format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS)
         );
-        assert_ne!(key, WasmComponentExecutor::cache_key(&changed_abi));
-        assert_ne!(key, WasmComponentExecutor::cache_key(&changed_digest));
+        assert_ne!(
+            key,
+            WasmComponentExecutor::cache_key_for_identity(
+                &changed_abi.payload.runtime_abi,
+                &changed_abi.payload.digest,
+            )
+        );
+        assert_ne!(
+            key,
+            WasmComponentExecutor::cache_key_for_identity(
+                &changed_digest.payload.runtime_abi,
+                &changed_digest.payload.digest,
+            )
+        );
     }
 
     #[test]
@@ -575,6 +658,18 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    #[test]
+    fn preparation_rejects_bytes_that_do_not_match_the_admitted_digest() {
+        let error = WasmComponentExecutor::new()
+            .prepare_component(
+                &format!("sha256:{}", "a".repeat(64)),
+                "rustok:module/runtime@1",
+                b"wrong component bytes",
+            )
+            .expect_err("digest mismatch");
+        assert!(matches!(error, SandboxError::InvalidRequest(_)));
     }
 
     #[test]

@@ -14,6 +14,7 @@ column identifies the current canonical decision.
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [2026-08-14](./2026-08-14-module-node-reconciliation-ledger.md) | Durable module node reconciliation ledger | Accepted |
 | [2026-08-06](./2026-08-06-module-release-rollback-safety.md) | Module release rollback safety | Accepted |
 | [2026-08-06](./2026-08-06-oci-registry-transport-boundary.md) | Platform-owned OCI registry transport boundary | Accepted |
 | [2026-08-03](./2026-08-03-owner-operation-receipts.md) | Shared owner-operation receipt ledger | Accepted |

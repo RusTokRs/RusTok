@@ -3,6 +3,7 @@
 mod artifact;
 mod artifact_capability_router;
 mod artifact_cas;
+mod artifact_node_reconciliation;
 mod artifact_schema;
 mod artifact_settings;
 mod artifact_settings_recovery;
@@ -45,6 +46,7 @@ mod policy_transition_event;
 mod promotion;
 mod publication_evidence;
 mod publish_validation;
+mod reconciliation;
 mod recovery;
 mod resolution;
 mod runtime;
@@ -82,6 +84,20 @@ pub use artifact_capability_router::{
     resolve_granted_artifact_capability,
 };
 pub use artifact_cas::StorageArtifactBlobStore;
+pub use artifact_node_reconciliation::{
+    MODULE_ARTIFACT_NODE_ASSIGNMENT_LEASE_SECONDS, ModuleArtifactNodeAgentPort,
+    ModuleArtifactNodeAssignment, ModuleArtifactNodeAssignmentClaimCommand,
+    ModuleArtifactNodeAssignmentHeartbeatCommand, ModuleArtifactNodeAssignmentHeartbeatReceipt,
+    ModuleArtifactNodeAssignmentReport, ModuleArtifactNodeAssignmentReportReceipt,
+    ModuleArtifactNodeAssignmentTarget, ModuleArtifactNodeAssignmentWorkItem,
+    ModuleArtifactNodeInstallationScope, ModuleArtifactNodeReconciliation,
+    ModuleArtifactNodeReconciliationAuthorizer, ModuleArtifactNodeReconciliationError,
+    ModuleArtifactNodeReconciliationReceipt, ModuleArtifactNodeReconciliationRequest,
+    ModuleArtifactNodeReconciliationStatus, ModuleArtifactNodeReconciliationWorkIdentity,
+    ModuleArtifactNodeTopologyResolver, ModuleArtifactNodeTopologySnapshot,
+    SeaOrmArtifactNodeReadiness, SeaOrmModuleArtifactNodeAgentService,
+    SeaOrmModuleArtifactNodeReconciliationService, module_artifact_node_topology_digest,
+};
 pub use artifact_settings_recovery::{
     ArtifactSettingsPurgeRequest, ArtifactSettingsPurgeResult,
     ArtifactSettingsRecoveryAuthorizationContext, ArtifactSettingsRecoveryAuthorizer,
@@ -226,18 +242,16 @@ pub use distribution_release::{
 };
 pub use distribution_rollout::{
     ModuleStaticDistributionAssignment, ModuleStaticDistributionAssignmentClaimCommand,
-    ModuleStaticDistributionAssignmentFailure, ModuleStaticDistributionAssignmentHeartbeatCommand,
-    ModuleStaticDistributionAssignmentHeartbeatReceipt, ModuleStaticDistributionAssignmentPhase,
-    ModuleStaticDistributionAssignmentReport, ModuleStaticDistributionAssignmentReportReceipt,
-    ModuleStaticDistributionAssignmentWorkItem, ModuleStaticDistributionHealthEvidence,
+    ModuleStaticDistributionAssignmentHeartbeatCommand,
+    ModuleStaticDistributionAssignmentHeartbeatReceipt, ModuleStaticDistributionAssignmentReport,
+    ModuleStaticDistributionAssignmentReportReceipt, ModuleStaticDistributionAssignmentWorkItem,
     ModuleStaticDistributionRecoveryRequest, ModuleStaticDistributionRollout,
     ModuleStaticDistributionRolloutAssignment, ModuleStaticDistributionRolloutAuthorizer,
     ModuleStaticDistributionRolloutError, ModuleStaticDistributionRolloutReceipt,
-    ModuleStaticDistributionRolloutRequest, ModuleStaticDistributionRolloutState,
-    ModuleStaticDistributionRolloutStatus, ModuleStaticDistributionRolloutWorkIdentity,
-    ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionTopologySnapshot,
-    ModuleStaticDistributionTransitionKind, SeaOrmModuleStaticDistributionRolloutService,
-    module_static_distribution_topology_digest,
+    ModuleStaticDistributionRolloutRequest, ModuleStaticDistributionRolloutStatus,
+    ModuleStaticDistributionRolloutWorkIdentity, ModuleStaticDistributionTopologyResolver,
+    ModuleStaticDistributionTopologySnapshot, ModuleStaticDistributionTransitionKind,
+    SeaOrmModuleStaticDistributionRolloutService, module_static_distribution_topology_digest,
 };
 pub use event_delivery::{
     ARTIFACT_EVENT_DELIVERY_WORKER, ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig,
@@ -350,10 +364,9 @@ pub use policy::{
     EffectivePolicyCacheIdentity, ModuleEffectivePolicy, ModuleEffectivePolicyChannelBinding,
     ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyDecision,
     ModuleEffectivePolicyDenialReason, ModuleEffectivePolicyError, ModuleEffectivePolicyFact,
-    ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyNodeReadinessInput,
-    ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionGate, ModulePolicyRevisionGateError,
-    ModulePolicyRevisionTransition, ModuleToggleValidationError, TenantModuleOverride,
-    validate_module_toggle,
+    ModuleEffectivePolicyMaintenanceInput, ModulePolicyRevisionApplyOutcome,
+    ModulePolicyRevisionGate, ModulePolicyRevisionGateError, ModulePolicyRevisionTransition,
+    ModuleToggleValidationError, TenantModuleOverride, validate_module_toggle,
 };
 pub use policy_revision_consumer::{
     ModulePolicyRevisionConsumerError, SeaOrmModulePolicyRevisionConsumer,
@@ -378,6 +391,10 @@ pub use publish_validation::{
     MODULE_PUBLISH_ARTIFACT_MAX_BYTES, MODULE_PUBLISH_BUNDLE_CONTENT_TYPE,
     MODULE_PUBLISH_BUNDLE_TYPE, ModulePublishBundleFiles, ModulePublishBundleValidation,
     build_module_publish_bundle, validate_module_publish_artifact, validate_module_publish_bundle,
+};
+pub use reconciliation::{
+    ModuleDesiredObservedState, ModuleReconciliationEvidence, ModuleReconciliationFailure,
+    ModuleReconciliationPhase,
 };
 pub use recovery::{
     ModuleOperationRecoveryError, ModuleOperationRecoveryPlan, ModulePostHookRetryRequest,

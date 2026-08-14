@@ -12,6 +12,13 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(OrderCheckoutIdentities::Table)
                     .add_column(ColumnDef::new(OrderCheckoutIdentities::PaymentCollectionId).uuid())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(OrderCheckoutIdentities::Table)
                     .add_column(ColumnDef::new(OrderCheckoutIdentities::ShippingOptionId).uuid())
                     .to_owned(),
             )
@@ -37,6 +44,13 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(OrderCheckoutIdentities::Table)
                     .drop_column(OrderCheckoutIdentities::ShippingOptionId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(OrderCheckoutIdentities::Table)
                     .drop_column(OrderCheckoutIdentities::PaymentCollectionId)
                     .to_owned(),
             )

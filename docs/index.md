@@ -60,6 +60,10 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [`rustok-module-template` Canonical Rust Component Template](../crates/rustok-module-template/docs/README.md)
 - [`rustok-module-build-dispatcher` Documentation](../crates/rustok-module-build-dispatcher/docs/README.md)
 - [`rustok-module-build-transport` Build-Worker gRPC Documentation](../crates/rustok-module-build-transport/docs/README.md)
+- [`rustok-artifact-node-transport` Node-Agent gRPC Documentation](../crates/rustok-artifact-node-transport/docs/README.md)
+- [`rustok-artifact-node-controller` Node-Agent Controller Documentation](../crates/rustok-artifact-node-controller/docs/README.md)
+- [`rustok-artifact-node-reconciler` Topology Reconciliation Documentation](../crates/rustok-artifact-node-reconciler/docs/README.md)
+- [`rustok-artifact-node-agent` Node Materialization Documentation](../crates/rustok-artifact-node-agent/docs/README.md)
 - [`rustok-verification-worker` Documentation](../crates/rustok-verification-worker/docs/README.md)
 - [`rustok-verification-transport` gRPC Documentation](../crates/rustok-verification-transport/docs/README.md)
 - [`rustok-static-distribution-worker` Documentation](../crates/rustok-static-distribution-worker/docs/README.md)
@@ -134,6 +138,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Architecture and Foundation
 
+- [ADR: Durable module node reconciliation ledger](../DECISIONS/2026-08-14-module-node-reconciliation-ledger.md) — owner-selected dynamic artifact/sandbox assignments, durable node observations, and fail-closed convergence.
 - [ADR: Module release rollback safety](../DECISIONS/2026-08-06-module-release-rollback-safety.md) — canonical artifact planes, complete static role bundles, dynamic installation recovery, safe automatic deployment recovery, and controlled data handling.
 - [ADR: Platform-owned OCI registry transport boundary](../DECISIONS/2026-08-06-oci-registry-transport-boundary.md) — client-enforced OCI egress policy for module publication and admission.
 - [ADR: Translation control plane and owner-owned localized data](../DECISIONS/2026-07-26-translation-control-plane-boundary.md)

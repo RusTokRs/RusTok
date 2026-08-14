@@ -97,7 +97,6 @@ impl SeaOrmModulePolicyRevisionConsumer {
             Vec::new(),
             None,
             None,
-            None,
         )
         .execute()
         .map_err(ModuleLifecycleDbWriterError::Policy)

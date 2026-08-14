@@ -65,6 +65,19 @@ revisioned module-scoped or global snapshot; active maintenance denies serving
 without changing tenant enablement rows.
 Node readiness is forwarded as the same owner context and must observe the
 base policy revision before the server accepts the final policy revision.
+For dynamic artifact execution, every serving server additionally requires a
+stable non-nil `RUSTOK_ARTIFACT_NODE_ID` UUID. The server passes the exact
+already-resolved installation to `rustok-modules`' durable observed-assignment
+gate before non-lifecycle CAS/sandbox execution. The gate compares payload
+kind and admitted media type as well as the digests and revisions. A missing,
+degraded, stale, or identity-mismatched assignment denies execution; the
+sandbox worker receives only the scoped execution request and does not gain
+database, module-policy, AI, or product access. The runtime uses a bounded
+digest-keyed verified CAS cache (`RUSTOK_ARTIFACT_NODE_CACHE_MAX_BYTES`, default
+64 MiB) and rehashes every hit before any sandbox request. The authenticated
+agent transport is deployed independently through
+`rustok-artifact-node-controller`; deployment topology and agent materialization
+remain separate unfinished control-plane work.
 
 ## Runtime surface
 
@@ -267,7 +280,7 @@ base policy revision before the server accepts the final policy revision.
   request context, and accept only an exact admitted installation, registered
   permission key, and idempotency key. The routes never write static
   `role_permissions` and do not auto-grant anything at installation time.
-- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`) and Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`) with the same persisted token binding, policy enforcement, and audit trail. Scaffold tools in remote transport use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime.
+- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`), Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`), and remote-only Alloy script authoring tools. Script authoring resolves the durable binding, requires `scripts.manage`, verifies identity-to-binding tenant equality, derives actor provenance, and constructs the same `SharedAlloyRuntime::scoped` owner service used by HTTP/GraphQL. It returns source-redacted script/revision/execution/review/test evidence, and generic stdio/in-process MCP cannot advertise those authoring names. Scaffold tools use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime.
 - The hybrid product installer is introduced through `rustok-installer` and
   `rustok-installer-persistence`. The latter owns the shared SeaORM database,
   durable-state, and bootstrap-writer adapter. `/api/install/*` delegates plan,

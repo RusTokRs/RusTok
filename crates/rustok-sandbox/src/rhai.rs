@@ -18,13 +18,15 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 use rhai::{CustomType, Dynamic, Engine, EvalAltResult, Map, Scope, TypeBuilder};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tracing::{error, info, warn};
 
 use crate::{
     CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionMetrics,
-    RHAI_WORKSPACE_MEDIA_TYPE, RhaiBindingInput, RhaiBindingOutput, RhaiRecordInput,
-    RhaiScopeOutput, RhaiWorkspace, SandboxError, SandboxExecutor, SandboxExecutorKind,
-    SandboxHost, SandboxOutcome, SandboxRequest, SandboxResult,
+    RHAI_SANDBOX_RUNTIME_ABI, RHAI_SOURCE_MEDIA_TYPE, RHAI_WORKSPACE_MEDIA_TYPE, RhaiBindingInput,
+    RhaiBindingOutput, RhaiRecordInput, RhaiScopeOutput, RhaiWorkspace, SandboxError,
+    SandboxExecutor, SandboxExecutorKind, SandboxHost, SandboxOutcome, SandboxRequest,
+    SandboxResult,
 };
 
 const TIMEOUT_MARKER: &str = "__RUSTOK_SANDBOX_TIMEOUT__";
@@ -37,6 +39,14 @@ const CANCELLATION_MARKER: &str = "__RUSTOK_SANDBOX_CANCELLED__";
 /// registering direct network, storage or secret access.
 pub struct RhaiExecutor {
     extensions: Vec<Arc<dyn RhaiHostExtension>>,
+}
+
+/// Local preparation result for an immutable Rhai artifact. It proves syntax
+/// and workspace resolution only; it never executes guest code or grants a
+/// capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RhaiArtifactPreparation {
+    pub runtime_fingerprint: String,
 }
 
 #[derive(Debug, Clone)]
@@ -473,6 +483,74 @@ impl RhaiExecutor {
         self
     }
 
+    /// Validates one immutable Rhai payload before a node reports it prepared.
+    /// The check uses no host capability bridge and never evaluates the source.
+    pub fn prepare_artifact_payload(
+        &self,
+        runtime_abi: &str,
+        media_type: &str,
+        payload_digest: &str,
+        payload: &[u8],
+    ) -> SandboxResult<RhaiArtifactPreparation> {
+        if runtime_abi != RHAI_SANDBOX_RUNTIME_ABI {
+            return Err(SandboxError::InvalidRequest(
+                "Rhai artifact runtime ABI is not supported by this sandbox".to_string(),
+            ));
+        }
+        if !canonical_digest(payload_digest) {
+            return Err(SandboxError::InvalidRequest(
+                "Rhai artifact payload digest is invalid".to_string(),
+            ));
+        }
+        let received = format!("sha256:{}", hex::encode(Sha256::digest(payload)));
+        if received != payload_digest {
+            return Err(SandboxError::InvalidRequest(
+                "Rhai artifact payload digest does not match its bytes".to_string(),
+            ));
+        }
+
+        let mut engine = Engine::new();
+        let source = match media_type {
+            RHAI_WORKSPACE_MEDIA_TYPE => {
+                let workspace: RhaiWorkspace =
+                    serde_json::from_slice(payload).map_err(|error| {
+                        SandboxError::InvalidRequest(format!("invalid Rhai workspace: {error}"))
+                    })?;
+                let workspace_digest = workspace
+                    .digest()
+                    .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+                if workspace_digest != payload_digest {
+                    return Err(SandboxError::InvalidRequest(
+                        "Rhai workspace digest does not match the artifact payload digest"
+                            .to_string(),
+                    ));
+                }
+                workspace
+                    .configure_rhai_engine(&mut engine)
+                    .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?;
+                workspace
+                    .entrypoint_source()
+                    .map_err(|error| SandboxError::InvalidRequest(error.to_string()))?
+                    .to_string()
+            }
+            RHAI_SOURCE_MEDIA_TYPE => std::str::from_utf8(payload)
+                .map_err(|error| SandboxError::Compilation(error.to_string()))?
+                .to_string(),
+            _ => {
+                return Err(SandboxError::InvalidRequest(
+                    "Rhai artifact media type is not supported by this sandbox".to_string(),
+                ));
+            }
+        };
+
+        engine
+            .compile(&source)
+            .map_err(|error| SandboxError::Compilation(error.to_string()))?;
+        Ok(RhaiArtifactPreparation {
+            runtime_fingerprint: rhai_runtime_fingerprint(media_type),
+        })
+    }
+
     fn build_engine(
         request: &SandboxRequest,
         operations: Arc<AtomicU64>,
@@ -625,6 +703,23 @@ impl RhaiExecutor {
     }
 }
 
+fn canonical_digest(value: &str) -> bool {
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value.as_bytes()[7..]
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
+fn rhai_runtime_fingerprint(media_type: &str) -> String {
+    format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(format!(
+            "rustok.rhai.artifact-preparation\\0{RHAI_SANDBOX_RUNTIME_ABI}\\0{media_type}"
+        )))
+    )
+}
+
 impl Default for RhaiExecutor {
     fn default() -> Self {
         Self::new()
@@ -740,5 +835,43 @@ fn dynamic_to_json(value: Dynamic) -> Value {
         )
     } else {
         Value::String(value.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RhaiExecutor;
+    use crate::{RHAI_SANDBOX_RUNTIME_ABI, RHAI_WORKSPACE_MEDIA_TYPE, RhaiWorkspace};
+
+    #[test]
+    fn preparation_accepts_the_canonical_workspace_without_evaluating_it() {
+        let workspace = RhaiWorkspace::single_source("40 + 2");
+        let bytes = workspace.canonical_bytes().expect("canonical workspace");
+        let digest = workspace.digest().expect("workspace digest");
+
+        let prepared = RhaiExecutor::new()
+            .prepare_artifact_payload(
+                RHAI_SANDBOX_RUNTIME_ABI,
+                RHAI_WORKSPACE_MEDIA_TYPE,
+                &digest,
+                &bytes,
+            )
+            .expect("prepared workspace");
+
+        assert!(prepared.runtime_fingerprint.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn preparation_rejects_bytes_that_do_not_match_the_admitted_digest() {
+        assert!(
+            RhaiExecutor::new()
+                .prepare_artifact_payload(
+                    RHAI_SANDBOX_RUNTIME_ABI,
+                    RHAI_WORKSPACE_MEDIA_TYPE,
+                    &format!("sha256:{}", "a".repeat(64)),
+                    b"wrong payload",
+                )
+                .is_err()
+        );
     }
 }

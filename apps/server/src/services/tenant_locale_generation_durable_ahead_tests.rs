@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{Router, body::Body, http::Request, middleware as axum_middleware, routing::get};
 use rustok_cache::{CacheService, VersionedCacheInvalidation};
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator as Migrator;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
 use tower::ServiceExt;
 use uuid::Uuid;

@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package rustok.artifact_node;
+
+// The owner crate keeps one current reconciliation model. Protobuf supplies
+// only the independently deployed agent framing, method identity, deadlines,
+// cancellation, and status semantics.
+service ArtifactNodeService {
+  rpc ClaimAssignment(ClaimAssignmentRequest) returns (ClaimAssignmentResponse);
+  rpc HeartbeatAssignment(HeartbeatAssignmentRequest) returns (HeartbeatAssignmentResponse);
+  rpc ReportAssignment(ReportAssignmentRequest) returns (ReportAssignmentResponse);
+}
+
+// This is deliberately a separate service from ArtifactNodeService. Its mTLS
+// peers are deployment operators, not node agents, and it is composed by the
+// independent reconciler process rather than the node-agent controller.
+service ArtifactNodeReconciliationService {
+  rpc ReconcileTopology(ReconcileTopologyRequest) returns (ReconcileTopologyResponse);
+}
+
+message ClaimAssignmentRequest {
+  uint32 protocol_revision = 1;
+}
+
+message ClaimAssignmentResponse {
+  uint32 protocol_revision = 1;
+  oneof result {
+    bytes work_item_json = 2;
+    NoAssignment no_assignment = 3;
+  }
+}
+
+message NoAssignment {}
+
+// `actor_id` is intentionally absent: the server derives it from the verified
+// mTLS leaf certificate. `topology_json` is a strict JSON encoding of the
+// Rust-owned topology snapshot; it contains only node and installation IDs,
+// never artifact, release, capability, or secret identity.
+message ReconcileTopologyRequest {
+  uint64 expected_reconciliation_state_revision = 1;
+  string policy_revision = 2;
+  string idempotency_key = 3;
+  bytes topology_json = 4;
+}
+
+message ReconcileTopologyResponse {
+  bytes receipt_json = 1;
+}
+
+message HeartbeatAssignmentRequest {
+  uint32 protocol_revision = 1;
+  string claim_id = 2;
+}
+
+message HeartbeatAssignmentResponse {
+  uint32 protocol_revision = 1;
+  bytes receipt_json = 2;
+}
+
+message ReportAssignmentRequest {
+  uint32 protocol_revision = 1;
+  bytes report_json = 2;
+}
+
+message ReportAssignmentResponse {
+  uint32 protocol_revision = 1;
+  bytes receipt_json = 2;
+}

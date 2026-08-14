@@ -679,7 +679,7 @@ fn create_managed_directories(layout: &InstanceLayout) -> Result<(), InstanceLay
     Ok(())
 }
 
-fn reject_managed_links(root: &Path, path: &Path) -> Result<(), InstanceLayoutError> {
+pub(crate) fn reject_managed_links(root: &Path, path: &Path) -> Result<(), InstanceLayoutError> {
     let relative =
         path.strip_prefix(root)
             .map_err(|_| InstanceLayoutError::InvalidRelativePath {

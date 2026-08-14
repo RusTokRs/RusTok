@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use rustok_modules::{ArtifactPayloadKind, ArtifactRelease, ArtifactReleaseRef};
 
-use super::{RhaiWorkspace, Script, ScriptTrigger};
+use super::{RhaiWorkspace, Script, ScriptTrigger, SourceProvenance};
 
 const MAX_IMPORT_NAME_BYTES: usize = 255;
 const MAX_IMPORT_ACTOR_BYTES: usize = 255;
@@ -89,6 +89,7 @@ impl AlloyImportedDraftCommand {
         );
         script.tenant_id = command.tenant_id;
         script.author_id = Some(command.actor_id.clone());
+        script.source_provenance = SourceProvenance::release_import();
         script.parent_release = Some(command.release.clone());
 
         let request_digest = import_request_digest(command, source_digest)?;
@@ -115,6 +116,7 @@ impl AlloyImportedDraftCommand {
                 .author_id
                 .as_deref()
                 .is_some_and(|actor| bounded_value(actor, MAX_IMPORT_ACTOR_BYTES))
+            || self.script.source_provenance != SourceProvenance::release_import()
             || !canonical_sha256(&self.request_digest)
         {
             return Err(AlloyImportError::InvalidCommand);

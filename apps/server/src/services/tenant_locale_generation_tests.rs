@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use axum::{Router, body::Body, http::Request, middleware as axum_middleware, routing::get};
 use rustok_cache::{CacheInvalidationMessage, CacheService, VersionedCacheInvalidation};
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator as Migrator;
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
 use sha2::{Digest, Sha256};
 use tokio::process::{Child, Command};

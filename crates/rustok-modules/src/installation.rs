@@ -4140,14 +4140,7 @@ fn expected_media_types_for(kind: ArtifactPayloadKind) -> &'static str {
 }
 
 fn valid_media_type_for(kind: ArtifactPayloadKind, media_type: &str) -> bool {
-    match kind {
-        ArtifactPayloadKind::Rhai => matches!(
-            media_type,
-            crate::MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE
-                | rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE
-        ),
-        _ => media_type == kind.oci_layer_media_type(),
-    }
+    kind.supports_media_type(media_type)
 }
 
 fn valid_repository_segment(value: &str) -> bool {

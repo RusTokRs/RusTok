@@ -56,6 +56,60 @@ mod rbac_system_role_repair_tests;
 
 pub struct Migrator;
 
+/// SQLite-only migrator for unit tests that exercise portable repository logic.
+///
+/// Production schema changes are PostgreSQL-native. The entries omitted here
+/// create PostgreSQL functions, triggers, enums, or constraint semantics and
+/// must be verified by PostgreSQL integration tests instead of being silently
+/// approximated by SQLite. The retained schema remains sufficient for portable
+/// service tests and keeps their database setup explicit about that boundary.
+pub struct SqliteTestMigrator;
+
+const SQLITE_INCOMPATIBLE_MIGRATIONS: &[&str] = &[
+    "m20260711_000001_product_status_enum",
+    "m20260711_000002_enforce_product_tenant_integrity",
+    "m20260711_000003_enforce_catalog_value_invariants",
+    "m20260711_000004_normalize_product_channel_visibility",
+    "m20260725_000001_remove_product_image_media_foreign_key",
+    "m20260725_000002_enforce_catalog_category_tree_invariants",
+    "m20260725_000003_remove_transitional_catalog_columns",
+    "m20260730_000001_add_product_index_revision",
+    "m20260730_000002_add_product_variant_index_revision",
+    "m20260730_000010_add_channel_index_revision",
+    "m20260731_000003_bump_product_index_revision_for_variant_membership",
+    "m20260731_000004_add_product_index_tombstones",
+    "m20260731_000011_add_channel_index_tombstones",
+    "m20260806_000005_add_product_index_locale_refresh_ledger",
+    "m20260806_000006_add_product_variant_index_refresh_ledger",
+    "m20260806_000007_add_product_index_refresh_relay_cursors",
+    "m20260807_000008_add_product_sales_channel_index_relation_snapshots",
+    "m20260807_000009_add_product_index_graph_v3_projection_snapshots",
+    "m20260807_000010_canonicalize_product_index_graph_projection",
+    "m20260807_000011_add_product_sales_channel_relation_freshness",
+    "m20260807_000012_add_channel_index_identity_generation",
+    "m20260807_000012_add_product_sales_channel_relation_convergence",
+    "m20260813_000014_canonicalize_product_metadata_tags",
+];
+
+/// Returns whether a named migration is part of the portable SQLite unit-test schema.
+///
+/// PostgreSQL-native migrations remain mandatory for production and PostgreSQL integration
+/// tests. SQLite-only component tests use this predicate when they intentionally compose a
+/// narrow subset of the platform schema.
+pub fn sqlite_test_migration_is_compatible(migration_name: &str) -> bool {
+    !SQLITE_INCOMPATIBLE_MIGRATIONS.contains(&migration_name)
+}
+
+#[async_trait::async_trait]
+impl MigratorTrait for SqliteTestMigrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        Migrator::migrations()
+            .into_iter()
+            .filter(|migration| sqlite_test_migration_is_compatible(migration.name()))
+            .collect()
+    }
+}
+
 struct InstallerOwnerMigrator;
 
 #[async_trait::async_trait]
@@ -128,6 +182,10 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
     ModuleMigrationSource {
         slug: "alloy",
         source: &alloy::AlloyModule,
+    },
+    ModuleMigrationSource {
+        slug: "flex",
+        source: &flex::FlexModule,
     },
     ModuleMigrationSource {
         slug: "auth",
@@ -385,6 +443,7 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_core::MigrationSource::migrations(
             &rustok_tenant::TenantModule,
         ));
+        all.extend(rustok_core::MigrationSource::migrations(&flex::FlexModule));
         all.extend(rustok_auth::migrations::migrations());
         all.extend(rustok_core::MigrationSource::migrations(
             &rustok_rbac::RbacModule,
@@ -463,6 +522,49 @@ impl MigratorTrait for Migrator {
         validate_migration_dependency_order(&all, &dependencies)
             .expect("migration ordering must preserve declared dependencies");
         all
+    }
+}
+
+#[cfg(test)]
+mod sqlite_test_migrator_tests {
+    use super::{Migrator, SQLITE_INCOMPATIBLE_MIGRATIONS, SqliteTestMigrator};
+    use sea_orm_migration::MigratorTrait;
+
+    #[test]
+    fn sqlite_test_migrator_omits_only_declared_production_migrations() {
+        let production_names = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_owned())
+            .collect::<std::collections::BTreeSet<_>>();
+        let sqlite_names = SqliteTestMigrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_owned())
+            .collect::<std::collections::BTreeSet<_>>();
+
+        for migration_name in SQLITE_INCOMPATIBLE_MIGRATIONS {
+            assert!(
+                production_names.contains(*migration_name),
+                "SQLite test migration exclusion must name an existing production migration: {migration_name}"
+            );
+            assert!(
+                !sqlite_names.contains(*migration_name),
+                "SQLite test migrator must exclude {migration_name}"
+            );
+        }
+        assert_eq!(
+            production_names.len() - sqlite_names.len(),
+            SQLITE_INCOMPATIBLE_MIGRATIONS.len(),
+            "SQLite test migrator must retain every migration not declared PostgreSQL-only"
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_test_migrator_applies_the_portable_schema() {
+        let db = rustok_test_utils::db::setup_test_db().await;
+
+        SqliteTestMigrator::up(&db, None)
+            .await
+            .expect("SQLite test migrator must apply its declared portable schema");
     }
 }
 
@@ -567,7 +669,7 @@ fn sort_migrations_by_dependencies(
 
 #[cfg(test)]
 mod tests {
-    use super::{sort_migrations_by_dependencies, MigrationDescriptor, Migrator};
+    use super::{MigrationDescriptor, Migrator, sort_migrations_by_dependencies};
     use rustok_test_utils::setup_test_db;
     use sea_orm_migration::MigratorTrait;
 
@@ -619,6 +721,7 @@ mod tests {
                 "modules",
                 "tenant",
                 "alloy",
+                "flex",
                 "auth",
                 "rbac",
                 "channel",
@@ -678,6 +781,34 @@ mod tests {
             translation_target < remove_term_status,
             "taxonomy translation-change storage must exist before term-status removal updates it"
         );
+    }
+
+    #[test]
+    fn migrator_places_flex_generation_before_every_owner_trigger() {
+        let names = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect::<Vec<_>>();
+        let generation = names
+            .iter()
+            .position(|name| name == "m20260716_000000_create_field_definition_cache_generation")
+            .expect("Flex-owned generation migration must exist");
+
+        for trigger in [
+            "m20260716_000001_create_flex_field_definition_cache_generation",
+            "m20260716_000002_add_product_field_cache_generation_trigger",
+            "m20260716_000003_add_order_field_cache_generation_trigger",
+            "m20260716_000004_add_topic_field_cache_generation_trigger",
+        ] {
+            let trigger_index = names
+                .iter()
+                .position(|name| name == trigger)
+                .unwrap_or_else(|| panic!("owner trigger migration {trigger} must exist"));
+            assert!(
+                generation < trigger_index,
+                "Flex generation must exist before owner trigger {trigger}"
+            );
+        }
     }
 
     #[test]

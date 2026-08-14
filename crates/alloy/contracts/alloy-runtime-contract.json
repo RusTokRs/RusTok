@@ -167,10 +167,14 @@
     "persistence": "durable_immutable_source_snapshots",
     "lookup": "owner_scoped_by_script_id_and_revision",
     "listing": "owner_tenant_scoped_revision_ascending",
+    "deleted_script_evidence": "owner_reads_and_review_test_replays_return_not_found",
+    "deleted_script_test_completion": "settles_retention_then_returns_not_found",
+    "deleted_script_identity": "non_reusable_until_retention_policy_purges_tombstone",
     "snapshot_fields": [
       "source_digest",
       "workspace",
       "author_id",
+      "source_provenance",
       "parent_revision"
     ]
   },
@@ -180,9 +184,13 @@
     "generic_mcp": "must_not_expose_tenant_owned_script_crud_or_execution",
     "permission": "scripts.manage",
     "author_identity": "derived_from_authenticated_principal",
+    "source_provenance": "owner_generated_origin_tool_and_optional_prompt_digest_only",
     "forbidden_client_fields": [
       "tenant_id",
-      "author_id"
+      "author_id",
+      "source_provenance",
+      "prompt",
+      "tool_arguments"
     ]
   },
   "review_contract": {

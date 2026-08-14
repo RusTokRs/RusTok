@@ -81,7 +81,7 @@ mod tests {
     use chrono::Utc;
     use rustok_api::Permission;
     use rustok_core::{UserRole, UserStatus};
-    use rustok_migrations::Migrator;
+    use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
 

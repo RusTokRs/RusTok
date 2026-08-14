@@ -1,4 +1,5 @@
 mod import;
+mod provenance;
 mod proxy;
 mod release;
 mod review;
@@ -9,6 +10,9 @@ mod trigger;
 pub use import::{
     AlloyImportError, AlloyImportedDraftCommand, AlloyImportedDraftResult,
     AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSource,
+};
+pub use provenance::{
+    AuthoringOrigin, MAX_PROVENANCE_TOOL_NAME_LENGTH, ProvenanceError, SourceProvenance,
 };
 pub use proxy::{EntityProxy, register_entity_proxy};
 pub use release::{

@@ -281,7 +281,7 @@ impl ModuleStaticDistributionBuildEvidence {
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum ModuleStaticDistributionCompletionOutcome {
     Succeeded {
-        evidence: ModuleStaticDistributionBuildEvidence,
+        evidence: Box<ModuleStaticDistributionBuildEvidence>,
     },
     Failed {
         failure_code: String,
@@ -2258,7 +2258,7 @@ mod tests {
             composition_revision: 2,
             composition_digest: digest('a'),
             outcome: ModuleStaticDistributionCompletionOutcome::Succeeded {
-                evidence: ModuleStaticDistributionBuildEvidence {
+                evidence: Box::new(ModuleStaticDistributionBuildEvidence {
                     bundle_reference: "oci://distribution".to_string(),
                     bundle_root_digest: digest('b'),
                     role_set_digest: ModuleStaticDistributionBuildEvidence::role_set_digest(&roles)
@@ -2272,7 +2272,7 @@ mod tests {
                     signature_digest: digest('e'),
                     test_evidence_reference: "evidence://distribution/tests".to_string(),
                     test_evidence_digest: digest('f'),
-                },
+                }),
             },
         };
         assert!(matches!(

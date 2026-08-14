@@ -5,6 +5,12 @@ use rustok_api::Permission;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::alloy_authoring::{
+    TOOL_ALLOY_CHANGE_SCRIPT_LIFECYCLE, TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT,
+    TOOL_ALLOY_GET_SCRIPT, TOOL_ALLOY_LIST_SCRIPT_REVIEWS, TOOL_ALLOY_LIST_SCRIPT_REVISIONS,
+    TOOL_ALLOY_LIST_SCRIPTS, TOOL_ALLOY_REVIEW_SCRIPT, TOOL_ALLOY_RUN_SCRIPT,
+    TOOL_ALLOY_RUN_WORKSPACE_TEST, TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
+};
 use crate::alloy_import::TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE;
 use crate::alloy_tools::{
     TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_LIST_ENTITY_TYPES,
@@ -255,6 +261,18 @@ pub fn default_tool_requirement(tool_name: &str) -> McpToolRequirement {
             Permission::SCRIPTS_MANAGE.to_string(),
             Permission::MODULES_MANAGE.to_string(),
         ],
+        TOOL_ALLOY_LIST_SCRIPTS
+        | TOOL_ALLOY_GET_SCRIPT
+        | TOOL_ALLOY_LIST_SCRIPT_REVISIONS
+        | TOOL_ALLOY_CREATE_SCRIPT
+        | TOOL_ALLOY_UPDATE_SCRIPT
+        | TOOL_ALLOY_DELETE_SCRIPT
+        | TOOL_ALLOY_VALIDATE_SCRIPT
+        | TOOL_ALLOY_RUN_SCRIPT
+        | TOOL_ALLOY_REVIEW_SCRIPT
+        | TOOL_ALLOY_LIST_SCRIPT_REVIEWS
+        | TOOL_ALLOY_RUN_WORKSPACE_TEST
+        | TOOL_ALLOY_CHANGE_SCRIPT_LIFECYCLE => vec![Permission::SCRIPTS_MANAGE.to_string()],
         TOOL_ALLOY_SCAFFOLD_MODULE
         | TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD
         | TOOL_ALLOY_APPLY_MODULE_SCAFFOLD => vec![Permission::MODULES_MANAGE.to_string()],
@@ -379,6 +397,16 @@ mod tests {
                 Permission::SCRIPTS_MANAGE.to_string(),
                 Permission::MODULES_MANAGE.to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn maps_remote_alloy_authoring_to_scripts_manage() {
+        let requirement = default_tool_requirement(crate::TOOL_ALLOY_CREATE_SCRIPT);
+
+        assert_eq!(
+            requirement.required_permissions,
+            vec![Permission::SCRIPTS_MANAGE.to_string()]
         );
     }
 

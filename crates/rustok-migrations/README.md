@@ -28,6 +28,20 @@ The crate does not depend on `apps/server`. The HTTP host owns request runtime
 only; operational schema changes are invoked through the platform CLI or the
 installer workflow.
 
+## SQLite unit-test schema
+
+`Migrator` is the only production schema composition path and always includes
+every selected migration. `SqliteTestMigrator` is restricted to repository unit
+tests that exercise portable service behavior on SQLite. It excludes the
+explicitly PostgreSQL-native migrations that depend on PostgreSQL functions,
+triggers, enum semantics, or constraints; those migrations remain covered by
+PostgreSQL integration tests.
+
+Narrow SQLite component fixtures must use
+`sqlite_test_migration_is_compatible` when selecting their own migration
+subset. This is a test-environment boundary, not a deployment fallback or a
+second production schema contract.
+
 ## Planned Module Release Safety Integration
 
 The

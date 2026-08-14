@@ -12320,6 +12320,74 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-artifact-node-agent"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "hex",
+ "rustok-artifact-node-transport",
+ "rustok-modules",
+ "rustok-runtime",
+ "rustok-sandbox",
+ "rustok-sandbox-transport",
+ "rustok-storage",
+ "rustok-worker-transport",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
+ "tokio",
+ "tonic",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-artifact-node-controller"
+version = "0.1.0"
+dependencies = [
+ "rustok-artifact-node-transport",
+ "rustok-modules",
+ "rustok-worker-transport",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-artifact-node-reconciler"
+version = "0.1.0"
+dependencies = [
+ "rustok-artifact-node-transport",
+ "rustok-worker-transport",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-artifact-node-transport"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "prost",
+ "protoc-bin-vendored",
+ "rustok-modules",
+ "rustok-worker-transport",
+ "sea-orm",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-auth"
 version = "0.1.0"
 dependencies = [
@@ -15560,6 +15628,7 @@ dependencies = [
 name = "rustok-storefront"
 version = "0.1.0"
 dependencies = [
+ "any_spawner",
  "axum",
  "console_error_panic_hook",
  "futures",
@@ -15570,6 +15639,7 @@ dependencies = [
  "leptos-shadcn-pagination",
  "leptos-table",
  "leptos-ui",
+ "leptos-ui-routing",
  "leptos-use 0.19.0",
  "leptos-zod",
  "leptos-zustand",
@@ -15900,6 +15970,8 @@ dependencies = [
 name = "rustok-worker-transport"
 version = "0.1.0"
 dependencies = [
+ "hex",
+ "sha2 0.11.0",
  "tokio",
  "tonic",
  "tracing",

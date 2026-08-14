@@ -16,6 +16,10 @@ modules, but remains a capability-only layer, not a tenant business domain.
 - Alloy context adaptation over the neutral `rustok-sandbox` Rhai kernel;
 - storage/migrations for scripts and execution log;
 - GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::axum_router`), including tenant-scoped execution history;
+- typed source-redacted script authoring through the authenticated remote MCP
+  transport, composed by `apps/server` from the same owner-scoped runtime as
+  HTTP and GraphQL; remote audit metadata is replaced with a fixed redaction
+  marker, while generic stdio MCP exposes no script-authoring tools;
 - integration contracts `ScriptableEntity` and `HookExecutor` for host modules;
 - staging and forking Rhai module artifacts through `rustok-modules` with immutable release lineage;
 - authenticated HTTP/GraphQL import of one exact published Rhai workspace through
@@ -24,6 +28,15 @@ modules, but remains a capability-only layer, not a tenant business domain.
   advertise an import operation;
 - durable imported-release drafts with exact-replay receipts and immutable
   parent-release identity on every source revision;
+- immutable source provenance on every revision: the authenticated author plus
+  owner-generated origin/tool identity and, when a separately governed AI
+  owner provides it, only a canonical prompt digest. Raw prompts, tool
+  arguments, completions, and results are never accepted into Alloy storage;
+  deleted scripts also hide their retained source, review, and test evidence
+  from every owner read path and review/test idempotency replay. A test lease
+  that races with deletion is settled for retention, then returns `NotFound`;
+  the durable tombstone keeps that script ID non-reusable until retention policy
+  purges it;
 - owner-resolved installed-parent sandbox policy for imported-draft previews
   and workspace tests, with no default-policy fallback;
 - no transformation of the script runtime into a separate tenant business domain.
@@ -181,5 +194,8 @@ Every script, source, review, test, execution-history, lifecycle, validation,
 and manual-run operation requires a `scripts.manage` principal whose tenant
 equals the host-resolved request tenant. HTTP and GraphQL derive the author of
 each new source revision from that authenticated principal; client payloads
-cannot select a tenant or author identity. The generic in-memory Axum router
-was removed because it could not enforce these production boundaries.
+cannot select a tenant, author, source-provenance, prompt, or tool-argument
+identity. The owner records the concrete HTTP, GraphQL, remote-MCP, release-
+import, or internal origin and an optional canonical prompt digest. The generic
+in-memory Axum router was removed because it could not enforce these production
+boundaries.

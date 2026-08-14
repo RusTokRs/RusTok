@@ -352,17 +352,19 @@ where
             .result
             .as_ref()
             .ok_or(ModuleStaticDistributionReleaseError::BuildNotSucceeded)?;
-        insert_release_from_parts(
+        insert_release(
             &transaction,
-            distribution_release_id,
-            release_state.active_release_id,
-            release_revision,
-            command.actor_id,
-            admitted_at.to_owned(),
-            current_build.distribution_build_id,
-            current_build.composition_revision,
-            &current_build.composition_digest,
-            current_evidence,
+            ModuleStaticDistributionReleaseInsert {
+                distribution_release_id,
+                predecessor_release_id: release_state.active_release_id,
+                release_revision,
+                actor_id: command.actor_id,
+                admitted_at: admitted_at.to_owned(),
+                distribution_build_id: current_build.distribution_build_id,
+                composition_revision: current_build.composition_revision,
+                composition_digest: &current_build.composition_digest,
+                evidence: current_evidence,
+            },
         )
         .await?;
         insert_admission(
@@ -786,7 +788,7 @@ fn ensure_build_ready(
             composition_revision: build.composition_revision,
             composition_digest: build.composition_digest.clone(),
             outcome: ModuleStaticDistributionCompletionOutcome::Succeeded {
-                evidence: evidence.clone(),
+                evidence: Box::new(evidence.clone()),
             },
         };
         let expected_completion_digest =
@@ -894,18 +896,33 @@ async fn lock_build_for_admission(
     Ok(())
 }
 
-pub(crate) async fn insert_release_from_parts(
+pub(crate) struct ModuleStaticDistributionReleaseInsert<'a> {
+    pub distribution_release_id: Uuid,
+    pub predecessor_release_id: Option<Uuid>,
+    pub release_revision: u64,
+    pub actor_id: Uuid,
+    pub admitted_at: chrono::DateTime<chrono::Utc>,
+    pub distribution_build_id: Uuid,
+    pub composition_revision: u64,
+    pub composition_digest: &'a str,
+    pub evidence: &'a ModuleStaticDistributionBuildEvidence,
+}
+
+pub(crate) async fn insert_release(
     transaction: &DatabaseTransaction,
-    distribution_release_id: Uuid,
-    predecessor_release_id: Option<Uuid>,
-    release_revision: u64,
-    actor_id: Uuid,
-    admitted_at: chrono::DateTime<chrono::Utc>,
-    distribution_build_id: Uuid,
-    composition_revision: u64,
-    composition_digest: &str,
-    evidence: &ModuleStaticDistributionBuildEvidence,
+    insert: ModuleStaticDistributionReleaseInsert<'_>,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
+    let ModuleStaticDistributionReleaseInsert {
+        distribution_release_id,
+        predecessor_release_id,
+        release_revision,
+        actor_id,
+        admitted_at,
+        distribution_build_id,
+        composition_revision,
+        composition_digest,
+        evidence,
+    } = insert;
     let role_artifacts_json = serde_json::to_string(&evidence.roles)
         .map_err(|error| ModuleStaticDistributionReleaseError::Store(error.to_string()))?;
     let backend = transaction.get_database_backend();

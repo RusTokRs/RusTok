@@ -56,13 +56,17 @@ sameArray(contract.lifecycle_command_contract?.graphql_delete, ['require_expecte
 if (contract.source_revision_ledger_contract?.persistence !== 'durable_immutable_source_snapshots') fail('source revision ledger persistence contract drift');
 if (contract.source_revision_ledger_contract?.lookup !== 'owner_scoped_by_script_id_and_revision') fail('source revision ledger lookup contract drift');
 if (contract.source_revision_ledger_contract?.listing !== 'owner_tenant_scoped_revision_ascending') fail('source revision ledger listing contract drift');
-sameArray(contract.source_revision_ledger_contract?.snapshot_fields, ['source_digest', 'workspace', 'author_id', 'parent_revision'], 'source revision ledger fields');
+if (contract.source_revision_ledger_contract?.deleted_script_evidence !== 'owner_reads_and_review_test_replays_return_not_found') fail('deleted source evidence policy drift');
+if (contract.source_revision_ledger_contract?.deleted_script_test_completion !== 'settles_retention_then_returns_not_found') fail('deleted test completion policy drift');
+if (contract.source_revision_ledger_contract?.deleted_script_identity !== 'non_reusable_until_retention_policy_purges_tombstone') fail('deleted script identity policy drift');
+sameArray(contract.source_revision_ledger_contract?.snapshot_fields, ['source_digest', 'workspace', 'author_id', 'source_provenance', 'parent_revision'], 'source revision ledger fields');
 if (contract.authoring_transport_contract?.http !== 'only_host_composed_tenant_bound_routes') fail('host HTTP authoring route contract drift');
 if (contract.authoring_transport_contract?.graphql !== 'authenticated_tenant_must_match_request_tenant') fail('GraphQL tenant binding contract drift');
 if (contract.authoring_transport_contract?.generic_mcp !== 'must_not_expose_tenant_owned_script_crud_or_execution') fail('generic MCP Alloy authority contract drift');
 if (contract.authoring_transport_contract?.permission !== 'scripts.manage') fail('authoring permission contract drift');
 if (contract.authoring_transport_contract?.author_identity !== 'derived_from_authenticated_principal') fail('author identity contract drift');
-sameArray(contract.authoring_transport_contract?.forbidden_client_fields, ['tenant_id', 'author_id'], 'forbidden client authoring fields');
+if (contract.authoring_transport_contract?.source_provenance !== 'owner_generated_origin_tool_and_optional_prompt_digest_only') fail('source provenance policy drift');
+sameArray(contract.authoring_transport_contract?.forbidden_client_fields, ['tenant_id', 'author_id', 'source_provenance', 'prompt', 'tool_arguments'], 'forbidden client authoring fields');
 if (contract.review_contract?.persistence !== 'durable_immutable_revision_decisions') fail('review persistence contract drift');
 if (contract.review_contract?.subject !== 'tenant_scoped_script_source_revision' || contract.review_contract?.precondition !== 'expected_current_revision') fail('review subject contract drift');
 if (contract.review_contract?.idempotency !== 'script_revision_idempotency_key_and_request_digest') fail('review idempotency contract drift');
@@ -147,7 +151,12 @@ hasAll(memory, [
   'ReviewError::IdempotencyConflict',
   'async fn claim_test_run',
   'async fn complete_test_run',
-  'TestRunError::IdempotencyConflict'
+  'TestRunError::IdempotencyConflict',
+  'delete_rejects_a_stale_script_revision',
+  'test_run_claim_replays_only_the_same_revision_pinned_command',
+  'self.get(terminal.script_id).await?',
+  'self.get(completed.script_id).await?',
+  'a deleted draft ID cannot be reused while immutable evidence is retained'
 ], 'in-memory storage');
 
 const sea = read('crates/alloy/src/storage/sea_orm.rs');
@@ -179,15 +188,63 @@ hasAll(sea, [
   'mod draft_test_run',
   'async fn claim_test_run',
   'async fn complete_test_run',
-  'alloy_script_test_runs'
+  'alloy_script_test_runs',
+  '.inner_join(Entity)',
+  'deleted_script_hides_retained_source_and_review_evidence',
+  'self.get(existing.script_id).await?',
+  'self.get(run.script_id).await?',
+  'a deleted draft ID cannot be reused while immutable evidence is retained',
+  'mod draft_tombstone',
+  'alloy_script_tombstones'
 ], 'sea orm storage');
 
 const revisionMigration = read('crates/alloy/src/migrations/m20260718_000003_create_script_revisions.rs');
 hasAll(revisionMigration, [
   'alloy_script_revisions',
+  'SourceProvenance',
   'uidx_alloy_script_revisions_script_revision',
   'idx_alloy_script_revisions_tenant_script_revision'
 ], 'Alloy revision ledger migration');
+const scriptsMigration = read('crates/alloy/src/migration.rs');
+hasAll(scriptsMigration, [
+  'alloy_script_tombstones',
+  'idx_alloy_script_tombstones_deleted_at',
+  'ScriptTombstones'
+], 'Alloy retired script identity migration');
+
+const provenance = read('crates/alloy/src/model/provenance.rs');
+hasAll(provenance, [
+  'pub enum AuthoringOrigin',
+  'pub struct SourceProvenance',
+  'pub prompt_digest: Option<String>',
+  'pub fn remote_mcp',
+  'pub fn validate',
+  'canonical_sha256_digest',
+  'provenance_keeps_raw_prompt_content_out_of_the_revision_contract'
+], 'Alloy source provenance contract');
+if (/pub\s+(?:prompt|tool_arguments|completion|tool_result)\s*:\s*String/.test(provenance)) {
+  fail('Alloy source provenance must not persist raw prompt or tool content');
+}
+const provenanceHttp = read('crates/alloy/src/controllers/mod.rs');
+const provenanceGraphql = read('crates/alloy/src/graphql/mutation.rs');
+const provenanceRemoteMcp = read('crates/alloy/src/authoring.rs');
+const provenanceImport = read('crates/alloy/src/model/import.rs');
+hasAll(provenanceHttp, [
+  'SourceProvenance::http("alloy_create_script")',
+  'SourceProvenance::http("alloy_update_script")'
+], 'HTTP source provenance composition');
+hasAll(provenanceGraphql, [
+  'SourceProvenance::graphql("create_script")',
+  'SourceProvenance::graphql("update_script")'
+], 'GraphQL source provenance composition');
+hasAll(provenanceRemoteMcp, [
+  'SourceProvenance::remote_mcp("alloy_create_script")',
+  'SourceProvenance::remote_mcp("alloy_update_script")'
+], 'remote MCP source provenance composition');
+hasAll(provenanceImport, [
+  'SourceProvenance::release_import()',
+  'self.script.source_provenance != SourceProvenance::release_import()'
+], 'release import source provenance composition');
 
 const review = read('crates/alloy/src/model/review.rs');
 hasAll(review, [

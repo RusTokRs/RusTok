@@ -568,7 +568,7 @@ mod tests {
             ..RustokSettings::default()
         };
 
-        let db = setup_test_db_with_migrations::<rustok_migrations::Migrator>().await;
+        let db = setup_test_db_with_migrations::<rustok_migrations::SqliteTestMigrator>().await;
         let runtime_ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
             db,
             settings.clone(),

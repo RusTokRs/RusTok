@@ -91,6 +91,24 @@ where
     }
 }
 
+#[async_trait]
+impl<B> ArtifactBlobStore for VerifiedArtifactNodeCache<B>
+where
+    B: ArtifactBlobStore,
+{
+    async fn put_verified(
+        &self,
+        digest: &str,
+        bytes: &[u8],
+    ) -> Result<(), ModuleInstallationError> {
+        self.durable.put_verified(digest, bytes).await
+    }
+
+    async fn get_verified(&self, digest: &str) -> Result<Vec<u8>, ModuleInstallationError> {
+        Self::get_verified(self, digest).await
+    }
+}
+
 /// Executes an installed immutable artifact without involving the server's
 /// source tree, Cargo dependency graph, or an external registry. The payload
 /// is read and verified by digest from platform CAS before it crosses the
@@ -269,14 +287,16 @@ pub trait ArtifactSandboxPolicyResolver: Send + Sync {
     ) -> Result<SandboxPolicy, String>;
 }
 
-/// Resolves the canonical effective module policy immediately before a
-/// non-lifecycle binding crosses the sandbox boundary.
+/// Resolves the canonical effective module policy and node-admission evidence
+/// immediately before a non-lifecycle binding crosses the sandbox boundary.
+/// The resolved installation is passed intact so an implementation can require
+/// the durable observed assignment for its exact immutable identity.
 #[async_trait]
 pub trait ArtifactEffectivePolicyResolver: Send + Sync {
     async fn resolve(
         &self,
         tenant_id: uuid::Uuid,
-        module_slug: &str,
+        artifact: &InstalledModuleArtifact,
     ) -> Result<ModuleEffectivePolicy, String>;
 }
 
@@ -357,12 +377,12 @@ where
         if dispatch.phase != ExecutionPhase::Lifecycle {
             let policy = self
                 .effective_policy
-                .resolve(dispatch.tenant_id, &dispatch.release.slug)
+                .resolve(dispatch.tenant_id, &artifact)
                 .await?;
-            if !policy.contains(&dispatch.release.slug) {
+            if !policy.contains(&artifact.release.slug) {
                 return Err(format!(
                     "module `{}` is denied by effective policy revision {}",
-                    dispatch.release.slug,
+                    artifact.release.slug,
                     policy.policy_revision()
                 ));
             }
@@ -494,6 +514,49 @@ mod tests {
                 rhai_scope: None,
                 metrics: ExecutionMetrics::default(),
             })
+        }
+    }
+
+    struct FixedInstallation(InstalledModuleArtifact);
+
+    #[async_trait]
+    impl ArtifactInstallationResolver for FixedInstallation {
+        async fn resolve(
+            &self,
+            release: &ArtifactReleaseRef,
+            _tenant_id: Uuid,
+        ) -> Result<InstalledModuleArtifact, String> {
+            if release != &self.0.release {
+                return Err("fixture installation release does not match dispatch".to_string());
+            }
+            Ok(self.0.clone())
+        }
+    }
+
+    struct DeniedSandboxPolicy;
+
+    #[async_trait]
+    impl ArtifactSandboxPolicyResolver for DeniedSandboxPolicy {
+        async fn resolve(
+            &self,
+            _artifact: &InstalledModuleArtifact,
+            _tenant_id: Uuid,
+        ) -> Result<SandboxPolicy, String> {
+            Err("sandbox policy must not resolve after a policy-gate denial".to_string())
+        }
+    }
+
+    struct RecordingEffectivePolicy(Arc<Mutex<Option<Uuid>>>);
+
+    #[async_trait]
+    impl ArtifactEffectivePolicyResolver for RecordingEffectivePolicy {
+        async fn resolve(
+            &self,
+            _tenant_id: Uuid,
+            artifact: &InstalledModuleArtifact,
+        ) -> Result<ModuleEffectivePolicy, String> {
+            *self.0.lock().expect("effective policy lock") = Some(artifact.installation_id);
+            Err("durable node assignment is unavailable".to_string())
         }
     }
 
@@ -632,6 +695,42 @@ mod tests {
         let effective = effective_binding_policy(&binding, ExecutionPhase::Http, stricter_policy)
             .expect("HTTP binding has a timeout");
         assert_eq!(effective.limits.wall_clock_ms, 100);
+    }
+
+    #[tokio::test]
+    async fn policy_gate_receives_the_exact_resolved_installation_before_execution() {
+        let package = package();
+        let installed = installed(&package);
+        let binding = installed.descriptor.bindings[0].clone();
+        let observed = Arc::new(Mutex::new(None));
+        let executor = ArtifactRuntimeLifecycleExecutor::new(
+            ArtifactRuntime::new(
+                InMemoryArtifactBlobStore::default(),
+                SandboxRuntime::new(ExecutorRegistry::new(), Arc::new(DenyBroker)),
+            ),
+            FixedInstallation(installed.clone()),
+            DeniedSandboxPolicy,
+            RecordingEffectivePolicy(Arc::clone(&observed)),
+        );
+
+        let error = executor
+            .dispatch_binding(ArtifactBindingDispatch {
+                release: &installed.release,
+                binding: &binding,
+                target: crate::ArtifactInstallationTarget::CurrentRelease,
+                tenant_id: Uuid::new_v4(),
+                input: json!({ "id": 1 }),
+                phase: ExecutionPhase::Event,
+                context: crate::ArtifactBindingExecutionContext::default(),
+            })
+            .await
+            .expect_err("durable policy gate must deny before sandbox execution");
+
+        assert_eq!(error, "durable node assignment is unavailable");
+        assert_eq!(
+            *observed.lock().expect("effective policy lock"),
+            Some(installed.installation_id)
+        );
     }
 
     #[tokio::test]
@@ -855,5 +954,36 @@ mod tests {
             })
         ));
         assert!(observed.lock().expect("request lock").is_some());
+    }
+
+    #[tokio::test]
+    async fn verified_node_cache_rehashes_and_replaces_a_corrupt_cache_hit() {
+        let payload = b"admitted node-cache payload";
+        let digest = format!("sha256:{}", hex::encode(Sha256::digest(payload)));
+        let durable = InMemoryArtifactBlobStore::default();
+        durable
+            .put_verified(&digest, payload)
+            .await
+            .expect("durable payload");
+        let cache =
+            VerifiedArtifactNodeCache::new(durable, payload.len() * 2).expect("cache capacity");
+
+        assert_eq!(
+            cache.get_verified(&digest).await.expect("first read"),
+            payload
+        );
+        let mut state = cache.state.lock().await;
+        state
+            .entries
+            .insert(digest.clone(), vec![0_u8; payload.len()]);
+        drop(state);
+
+        assert_eq!(
+            cache
+                .get_verified(&digest)
+                .await
+                .expect("rehash and reload"),
+            payload
+        );
     }
 }

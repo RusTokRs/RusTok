@@ -8,6 +8,7 @@ use tokio::sync::RwLock;
 
 mod deployment;
 mod layout;
+mod module_cache;
 
 pub use deployment::{
     RoleMaterializationError, RoleMaterializationReceipt, RoleMaterializationRequest,
@@ -18,6 +19,10 @@ pub use layout::{
     INSTANCE_LAYOUT_REVISION, InstanceLayout, InstanceLayoutError, InstanceLayoutMarker,
     InstanceLayoutPreparation, InstancePlacement, bind_instance_placement, inspect_instance_layout,
     prepare_instance_layout,
+};
+pub use module_cache::{
+    ModulePayloadCacheError, ModulePayloadMaterializationReceipt, PreparedModuleCacheReceipt,
+    materialize_module_payload, record_prepared_module,
 };
 pub use rustok_api::{
     HostRuntimeContext, ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome,

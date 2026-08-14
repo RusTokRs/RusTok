@@ -304,6 +304,56 @@ idempotency and all state transitions are transactional with outbox events;
 authenticated outside-candidate deployment transport, process supervision, and
 traffic wiring remain the uncomposed boundary.
 
+`ModuleDesiredObservedState`, `ModuleReconciliationPhase`,
+`ModuleReconciliationEvidence`, and `ModuleReconciliationFailure` now form the
+single reusable desired/observed vocabulary. The static rollout persists and
+uses that shared contract without flattening its native release, topology, or
+role identities. `ModuleControlPlane::artifact_node_reconciliation` now owns
+the durable dynamic artifact/sandbox assignment aggregate. It resolves a
+trusted sorted topology to current admitted installation identities inside the
+owner transaction; stores release/payload digests, payload kind, admitted
+payload media type, admission, dependency graph and capability revisions, ABI,
+policy, reports, claims, desired/observed heads,
+idempotency receipts, and transactional events; rejects stale lifecycle
+identity; and alone activates a fully healthy set. Node agents can claim and
+report only one exact assignment. `SeaOrmArtifactNodeReadiness` now gates the
+server's non-lifecycle artifact executor against the observed head, comparing
+the selected installation, current admission, current canonical policy
+revision, and both desired/observed identities exactly, including payload kind
+and media type. The neutral sandbox
+receives no owner database or policy
+access. `rustok-worker-transport` now exposes only the canonical SHA-256
+fingerprint of a verified mTLS leaf certificate. The current
+`rustok-artifact-node-transport` consumes it for mTLS claim/heartbeat/report
+framing and requires an injected fingerprint-to-node/agent map; it never
+accepts a principal from an RPC body. The independent
+`rustok-artifact-node-controller` composes only that narrow
+`ModuleControlPlane::artifact_node_agent()` port rather than reconciliation
+authoring or topology access. The separate
+`rustok-artifact-node-reconciler` now composes the authenticated topology
+service: a verified operator certificate supplies the sole audit actor and
+limits every target node, while the request carries only a bounded topology,
+expected durable-state revision, canonical policy revision, and idempotency
+key. The owner validates the topology and reloads all admitted installation
+identity in its transaction, so operator input cannot inject release, payload,
+capability, readiness, or policy facts. Its canonical topology digest is also
+part of the owner command's idempotency identity, preventing an otherwise
+matching replay from substituting a target set. The serving runtime now places a bounded
+digest-keyed `VerifiedArtifactNodeCache` in front of durable CAS and rehashes
+every cache hit. The separately deployed `rustok-artifact-node-agent` now
+claims only those mTLS-authenticated assignments, retrieves the exact admitted
+digest directly from CAS, atomically materializes and rehashes its canonical
+node-local payload cache, and records a runtime-fingerprint-bound preparation
+marker. It reports `prepared` only after non-executing local Rhai/Wasm
+preparation, and `healthy` only after authenticated remote Rhai-worker
+readiness or local Wasm Component compilation; it never executes guest code
+for readiness. Static-promotion and sidecar assignments fail closed, while
+CAS/filesystem/sandbox outages stay retryable. The process has no database,
+topology, release-selection, policy, capability, tenant, AI, Alloy, or
+application-server dependency. Authenticated target-topology input and the
+effective-policy replacement of the older ephemeral node-readiness input are
+complete. Deployment-supervisor evidence and traffic wiring remain open.
+
 The lifecycle entrypoints now use `ModuleExecutionDispatcher`, which resolves
 the active definition before invoking a static implementation. Artifact
 lifecycle bindings execute only through the admitted sandbox adapter supplied
@@ -319,11 +369,14 @@ transition is durable rather than failing as if a cursor row had been lost.
 
 `ArtifactRuntimeLifecycleExecutor` now requires a host-owned
 `ArtifactEffectivePolicyResolver` and re-resolves the canonical policy before
-every non-lifecycle binding. HTTP, command, event, and scheduled dispatches
-therefore fail closed after a policy change even if their transport-level check
-observed an older revision; lifecycle hooks remain governed by the owner
-toggle transaction. Durable event and schedule adapters use the same shared
-executor rather than a parallel runtime path.
+every non-lifecycle binding. Its resolved exact installation is part of that
+resolver contract, allowing server composition to require the durable observed
+node assignment before CAS/sandbox execution. HTTP, command, event, and
+scheduled dispatches therefore fail closed after a policy or node-reconciliation
+change even if their transport-level check observed an older revision;
+lifecycle hooks remain governed by the owner toggle transaction. Durable event
+and schedule adapters use the same shared executor rather than a parallel
+runtime path.
 
 The owner facade also exposes bounded `TenantModuleOverrideSnapshot` reads for
 operator transports. This is intentionally distinct from effective
@@ -570,18 +623,15 @@ disabled bindings, and inactive channels are explicit denial reasons and the
 channel snapshot participates in the policy revision. The policy owner now
 also accepts a revisioned maintenance snapshot with explicit global or
 module-scoped impact and a bounded reason code. Active maintenance produces a
-typed denial without rewriting tenant intent; generic durable node
-reconciliation remains open Phase 8 work before this decision becomes the
-universal runtime/routing gate.
-
-The node-readiness boundary is typed as
-`ModuleEffectivePolicyNodeReadinessInput`. A node reports immutable readiness
-and evidence revisions, required Core readiness, artifact graph revision, CAS
-availability, executor ABI, and optional affected module scope. The input must
-observe the deterministic base policy revision; the final policy revision then
-includes the validated readiness snapshot. An unready or stale node produces a
-typed denial/fail-closed error and cannot be treated as an in-memory health
-hint.
+typed denial without rewriting tenant intent. Dynamic node readiness is not a
+host-supplied effective-policy input: the stale snapshot family and its
+policy-revision contribution were removed. Instead, the server resolves the
+canonical base policy and then `SeaOrmArtifactNodeReadiness` requires the exact
+admitted installation identity from the converged durable observed head before
+any non-lifecycle artifact dispatch can read CAS or cross the sandbox boundary.
+No host-provided readiness value can alter artifact availability, routing, or
+the policy revision. Core process health remains a distinct host readiness
+concern and cannot substitute for an artifact assignment.
 
 The reusable `ModulePolicyRevisionTransition` and `ModulePolicyRevisionGate`
 contract is the common consumer primitive for existing transactional module

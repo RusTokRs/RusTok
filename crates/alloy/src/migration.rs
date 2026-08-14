@@ -50,6 +50,11 @@ impl MigrationTrait for ScriptsMigration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(Scripts::AuthorId).string_len(255))
+                    .col(
+                        ColumnDef::new(Scripts::SourceProvenance)
+                            .json_binary()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(Scripts::ParentReleaseSlug).string_len(128))
                     .col(ColumnDef::new(Scripts::ParentReleaseVersion).string_len(64))
                     .col(ColumnDef::new(Scripts::ParentReleaseDigest).string_len(71))
@@ -91,10 +96,49 @@ impl MigrationTrait for ScriptsMigration {
                     .col(Scripts::Status)
                     .to_owned(),
             )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ScriptTombstones::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ScriptTombstones::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(ScriptTombstones::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ScriptTombstones::DeletedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_alloy_script_tombstones_deleted_at")
+                    .table(ScriptTombstones::Table)
+                    .col(ScriptTombstones::DeletedAt)
+                    .to_owned(),
+            )
             .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ScriptTombstones::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
         manager
             .drop_table(Table::drop().table(Scripts::Table).to_owned())
             .await
@@ -116,6 +160,7 @@ enum Scripts {
     RunAsSystem,
     Permissions,
     AuthorId,
+    SourceProvenance,
     ParentReleaseSlug,
     ParentReleaseVersion,
     ParentReleaseDigest,
@@ -123,4 +168,13 @@ enum Scripts {
     LastErrorAt,
     CreatedAt,
     UpdatedAt,
+}
+
+#[derive(Iden)]
+enum ScriptTombstones {
+    #[iden = "alloy_script_tombstones"]
+    Table,
+    Id,
+    TenantId,
+    DeletedAt,
 }

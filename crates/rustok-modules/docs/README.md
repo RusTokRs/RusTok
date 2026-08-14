@@ -315,20 +315,58 @@ control-plane crate and available when candidate processes fail. Update,
 rollback, disable, revocation, finalization, and collection share one
 conflict-fenced operation namespace.
 
+`ModuleDesiredObservedState`, `ModuleReconciliationPhase`,
+`ModuleReconciliationEvidence`, and `ModuleReconciliationFailure` are the
+single reusable desired/observed vocabulary. The static rollout retains its
+native release, topology, role, and activation policy while using that shared
+contract. `ModuleControlPlane::artifact_node_reconciliation` is the dynamic
+artifact/sandbox consumer: it persists a complete owner-selected node and
+admitted-installation set, including release/payload digests, payload kind,
+admitted payload media type, admission, dependency-graph and capability
+revisions, executor ABI, policy revision,
+fenced claims, observations, and outbox events. The owner alone turns a fully
+healthy set active and advances the observed head. A changed installation
+lifecycle identity makes an old desired set stale rather than allowing a node
+cache or sandbox worker to continue it. `SeaOrmArtifactNodeReadiness` is the
+read-only runtime gate for a configured server node: it permits only an active
+assignment from the converged observed head whose desired, observed, and live
+installation/admission identities (including payload kind and media type) plus
+the current canonical policy revision still match exactly. It does not consult
+a node cache or add database, policy, or
+product/AI ownership to the sandbox.
+The server composes that gate before every non-lifecycle artifact dispatch.
+It also uses a bounded digest-keyed `VerifiedArtifactNodeCache` before durable
+CAS and rehashes every hit, so neither a corrupt cache entry nor a cache miss
+can supply readiness. `rustok-artifact-node-transport` consumes the narrow
+`ModuleControlPlane::artifact_node_agent()` port through certificate-bound
+claim/heartbeat/report framing. The independent
+`rustok-artifact-node-controller` owns deployment composition of the immutable
+certificate-to-agent/node map without receiving topology, reconciliation
+authoring, CAS, sandbox, or policy capabilities. The separate
+`rustok-artifact-node-reconciler` composes the other mTLS service: a verified
+operator certificate maps to one audit actor and an explicit allowed-node
+scope, while its bounded topology request has no caller-selected actor or
+artifact identity. The owner validates topology and reloads every selected
+admitted installation under its own transaction. The canonical topology digest
+is bound into the owner request idempotency identity and must match resolver
+output. Neither process is a second source of desired state. Node-local materialization is performed only by
+`rustok-artifact-node-agent` through the narrow agent port and durable CAS.
+
 `degraded` is a later health/incident projection on a terminal rollout result,
 not another lifecycle-operation state. It can trigger only a newly authorized
 containment or direct-predecessor operation. `quarantined` and `revoked` are
 separate global security projections for the same reason.
 
-The controller and node agent come from one separately signed, digest-pinned
-operations-tool release installed by the host provisioner/service supervisor,
-not from the application role bundle. Owner preflight binds their exact
-package/component/target digests and external protocol revision. Tool upgrades
-use the `operations_tool_maintenance` class in this same canonical operation
-ledger and fleet conflict fence, retain their exact predecessor, and prove
-owner/controller/agent protocol compatibility. The host supervisor applies
-only exact desired assignments as a narrow executor; this crate records and
-revalidates lifecycle facts but does not install or self-update the tools.
+The controller, reconciler, and node agent come from one separately signed,
+digest-pinned operations-tool release installed by the host provisioner/service
+supervisor, not from the application role bundle. Owner preflight binds their
+exact package/component/target digests and external protocol revision. Tool
+upgrades use the `operations_tool_maintenance` class in this same canonical
+operation ledger and fleet conflict fence, retain their exact predecessor, and
+prove owner/controller/reconciler/agent protocol compatibility. The host
+supervisor applies only exact desired assignments as a narrow executor; this
+crate records and revalidates lifecycle facts but does not install or
+self-update the tools.
 
 Artifact permission descriptors carry immutable localized labels and
 descriptions. The current installation command sends them through the shared

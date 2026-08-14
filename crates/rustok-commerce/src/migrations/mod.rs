@@ -177,6 +177,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             vec!["m20260713_000016_block_provider_execution_during_checkout_compensation"],
         ),
         MigrationDependencyDescriptor::new(
+            "m20260716_000003_add_order_field_cache_generation_trigger",
+            vec!["m20260716_000000_create_field_definition_cache_generation"],
+        ),
+        MigrationDependencyDescriptor::new(
             "m20260716_000004_create_return_completion_operations",
             vec![
                 "m20260530_000113_add_order_return_resolution_columns",

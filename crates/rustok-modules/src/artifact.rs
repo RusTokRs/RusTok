@@ -11,7 +11,7 @@ use rustok_api::{
     ArtifactPermissionLocalization, is_valid_locale_tag, is_valid_module_slug,
     manifest_hash::hash_manifest_snapshot,
 };
-use rustok_sandbox::{CapabilityName, SandboxExecutorKind};
+use rustok_sandbox::{CapabilityName, RHAI_SOURCE_MEDIA_TYPE, SandboxExecutorKind};
 
 use crate::build::ModuleBuildRequest;
 
@@ -30,7 +30,7 @@ const JSON_SCHEMA_DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/s
 const ARTIFACT_UI_CONTRIBUTION_SURFACES: &[&str] = &["admin_settings", "admin_actions"];
 
 /// Stable OCI layer media type for immutable Rhai source artifacts.
-pub const MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
+pub const MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE: &str = RHAI_SOURCE_MEDIA_TYPE;
 /// Stable OCI layer media type for immutable WebAssembly Component artifacts.
 pub const MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE: &str =
     "application/vnd.rustok.wasm.component.v1+wasm";
@@ -74,6 +74,18 @@ impl ArtifactPayloadKind {
             Self::WasmComponent => MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
             Self::StaticPromoted => MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE,
             Self::Sidecar => MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE,
+        }
+    }
+
+    /// Whether an admitted OCI layer media type is valid for this payload kind.
+    /// Rhai accepts either one source document or its canonical workspace form.
+    pub fn supports_media_type(self, media_type: &str) -> bool {
+        match self {
+            Self::Rhai => matches!(
+                media_type,
+                MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE | rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE
+            ),
+            _ => media_type == self.oci_layer_media_type(),
         }
     }
 

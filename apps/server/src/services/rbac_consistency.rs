@@ -19,7 +19,7 @@ mod tests {
     use crate::services::server_runtime_context::ServerRuntimeContext;
     use chrono::Utc;
     use rustok_core::UserStatus;
-    use rustok_migrations::Migrator;
+    use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{EntityTrait, Set};
 

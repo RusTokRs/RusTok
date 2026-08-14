@@ -4,6 +4,10 @@ use crate::services::event_bus::EventForwarderHandle;
 use crate::services::field_definition_cache::{
     FieldDefinitionCacheGenerationReconciliationHandle, FieldDefinitionCacheInvalidationHandle,
 };
+#[cfg(feature = "mod-product")]
+use crate::services::product_index_refresh_worker::{
+    ProductIndexRefreshWorkerHandle, product_index_refresh_consumer_enabled,
+};
 use crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle;
 use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle;
 #[cfg(feature = "mod-seo")]
@@ -58,6 +62,8 @@ pub async fn collect_runtime_guardrail_snapshot(
             .map(|handle| handle.is_ready()),
         RuntimeGuardrailStatus::Critical,
     );
+    #[cfg(feature = "mod-product")]
+    observe_product_index_refresh_worker(ctx, &mut snapshot);
     #[cfg(feature = "mod-social_graph")]
     observe_social_graph_index_worker(ctx, &mut snapshot);
     #[cfg(feature = "mod-seo")]
@@ -107,6 +113,29 @@ pub async fn collect_runtime_guardrail_snapshot(
     );
     apply_rollout_status(&mut snapshot);
     snapshot
+}
+
+#[cfg(feature = "mod-product")]
+fn observe_product_index_refresh_worker(
+    ctx: &ServerRuntimeContext,
+    snapshot: &mut RuntimeGuardrailSnapshot,
+) {
+    match product_index_refresh_consumer_enabled() {
+        Ok(false) => {}
+        Ok(true) => observe_worker(
+            snapshot,
+            "Product Index refresh durable consumer",
+            ctx.shared_map::<ProductIndexRefreshWorkerHandle, _>(
+                ProductIndexRefreshWorkerHandle::is_ready,
+            ),
+            RuntimeGuardrailStatus::Critical,
+        ),
+        Err(error) => escalate_snapshot(
+            snapshot,
+            RuntimeGuardrailStatus::Critical,
+            format!("Product Index refresh consumer enablement is invalid: {error}"),
+        ),
+    }
 }
 
 #[cfg(feature = "mod-social_graph")]

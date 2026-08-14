@@ -11,6 +11,7 @@ mod m20260716_000001_create_flex_field_definition_cache_generation;
 mod m20260720_000002_enforce_oauth_tenant_integrity;
 mod m20260721_000009_move_oauth_app_copy_to_translations;
 
+use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -26,4 +27,11 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260720_000002_enforce_oauth_tenant_integrity::Migration),
         Box::new(m20260721_000009_move_oauth_app_copy_to_translations::Migration),
     ]
+}
+
+pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
+    vec![MigrationDependencyDescriptor::new(
+        "m20260716_000001_create_flex_field_definition_cache_generation",
+        vec!["m20260716_000000_create_field_definition_cache_generation"],
+    )]
 }

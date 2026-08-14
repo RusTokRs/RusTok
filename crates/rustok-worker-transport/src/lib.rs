@@ -2,11 +2,78 @@
 
 use std::{fs, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
+use sha2::{Digest, Sha256};
 #[cfg(unix)]
 use tokio::signal::unix::SignalKind;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-use tonic::Status;
 use tonic::transport::{Certificate, ClientTlsConfig, Identity, Server, ServerTlsConfig};
+use tonic::{Request, Status};
+
+/// Stable SHA-256 identity of the verified leaf certificate presented by an
+/// mTLS peer. The fingerprint identifies a deployment principal, never a user
+/// or an application-level role.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PeerCertificateFingerprint(String);
+
+impl PeerCertificateFingerprint {
+    const PREFIX: &str = "sha256:";
+    const HEX_LENGTH: usize = 64;
+
+    /// Parses the canonical lowercase fingerprint representation used by
+    /// deployment-owned peer identity maps.
+    pub fn parse(value: impl Into<String>) -> Result<Self, String> {
+        let value = value.into();
+        let Some(hex) = value.strip_prefix(Self::PREFIX) else {
+            return Err("peer certificate fingerprint must use the sha256: prefix".to_string());
+        };
+        if hex.len() != Self::HEX_LENGTH
+            || hex
+                .chars()
+                .any(|character| !character.is_ascii_digit() && !('a'..='f').contains(&character))
+        {
+            return Err(
+                "peer certificate fingerprint must contain 64 lowercase hexadecimal characters"
+                    .to_string(),
+            );
+        }
+        Ok(Self(value))
+    }
+
+    /// Returns the canonical fingerprint suitable for a deployment-owned
+    /// identity resolver.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn from_leaf_certificate_der(certificate_der: &[u8]) -> Result<Self, String> {
+        if certificate_der.is_empty() {
+            return Err("peer certificate must not be empty".to_string());
+        }
+        Self::parse(format!(
+            "{}{}",
+            Self::PREFIX,
+            hex::encode(Sha256::digest(certificate_der))
+        ))
+    }
+}
+
+/// Extracts the leaf-certificate fingerprint from a request that was accepted
+/// by a mutual-TLS listener. The listener establishes the certificate chain;
+/// this helper only turns the verified peer certificate into a stable
+/// deployment identity. Missing or malformed TLS evidence is never inferred
+/// from request fields and fails closed.
+pub fn peer_certificate_fingerprint<T>(
+    request: &Request<T>,
+) -> Result<PeerCertificateFingerprint, Status> {
+    let certificates = request
+        .peer_certs()
+        .ok_or_else(|| Status::unauthenticated("mutual TLS peer certificate is required"))?;
+    let certificate = certificates
+        .first()
+        .ok_or_else(|| Status::unauthenticated("mutual TLS peer certificate is required"))?;
+    PeerCertificateFingerprint::from_leaf_certificate_der(certificate.as_ref())
+        .map_err(Status::unauthenticated)
+}
 
 /// Deployment-owned mutually authenticated listener configuration. A worker
 /// supplies its uppercase environment-variable prefix, such as
@@ -298,7 +365,12 @@ fn parse_duration_ms(prefix: &str, suffix: &str, default_ms: u64) -> Result<Dura
 mod tests {
     use std::{net::SocketAddr, time::Duration};
 
-    use super::{MutualTlsClientConfig, MutualTlsListenerConfig, WorkerAdmission};
+    use tonic::Request;
+
+    use super::{
+        MutualTlsClientConfig, MutualTlsListenerConfig, PeerCertificateFingerprint,
+        WorkerAdmission, peer_certificate_fingerprint,
+    };
 
     fn config() -> MutualTlsListenerConfig {
         MutualTlsListenerConfig {
@@ -352,6 +424,32 @@ mod tests {
             server_domain: "worker.internal".to_string(),
         };
         assert!(client.validate().is_err());
+    }
+
+    #[test]
+    fn peer_certificate_fingerprint_requires_canonical_lowercase_sha256() {
+        assert!(PeerCertificateFingerprint::parse(format!("sha256:{}", "a".repeat(64))).is_ok());
+        assert!(PeerCertificateFingerprint::parse(format!("sha256:{}", "A".repeat(64))).is_err());
+        assert!(PeerCertificateFingerprint::parse("sha256:abc").is_err());
+    }
+
+    #[test]
+    fn request_without_a_verified_peer_certificate_is_rejected() {
+        let error = peer_certificate_fingerprint(&Request::new(())).expect_err("peer certificate");
+        assert_eq!(error.code(), tonic::Code::Unauthenticated);
+    }
+
+    #[test]
+    fn certificate_fingerprint_is_stable_and_never_uses_raw_certificate_text() {
+        let first = PeerCertificateFingerprint::from_leaf_certificate_der(b"certificate-a")
+            .expect("first certificate fingerprint");
+        let repeated = PeerCertificateFingerprint::from_leaf_certificate_der(b"certificate-a")
+            .expect("repeated certificate fingerprint");
+        let second = PeerCertificateFingerprint::from_leaf_certificate_der(b"certificate-b")
+            .expect("second certificate fingerprint");
+        assert_eq!(first, repeated);
+        assert_ne!(first, second);
+        assert_ne!(first.as_str(), "certificate-a");
     }
 
     #[tokio::test]

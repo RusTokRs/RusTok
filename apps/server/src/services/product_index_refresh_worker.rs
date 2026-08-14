@@ -92,15 +92,10 @@ impl ProductIndexRefreshWorkerConfig {
 }
 
 pub struct ProductIndexRefreshWorkerHandle {
-    instance_id: u64,
     handle: JoinHandle<()>,
 }
 
 impl ProductIndexRefreshWorkerHandle {
-    pub fn instance_id(&self) -> u64 {
-        self.instance_id
-    }
-
     pub fn is_ready(&self) -> bool {
         !self.handle.is_finished()
     }
@@ -268,7 +263,6 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         "Starting Product Index refresh consumer worker"
     );
     ctx.shared_insert(ProductIndexRefreshWorkerHandle {
-        instance_id,
         handle: tokio::spawn(product_index_refresh_worker_loop(runtime, config, stop_rx)),
     });
     Ok(())
@@ -371,7 +365,7 @@ async fn process_consumed_delivery(
         }
     };
 
-    let Some(delivery) = delivery else {
+    let Some(mut delivery) = delivery else {
         return acknowledge_unrelated(runtime, config, stop_rx, &consumed).await;
     };
 
@@ -383,11 +377,7 @@ async fn process_consumed_delivery(
                 runtime.schemas.registry(),
                 &runtime.sources,
                 &runtime.events,
-                if attempt == 1 {
-                    delivery_from_consumed(&consumed).expect("validated Product refresh delivery")
-                } else {
-                    delivery_from_consumed(&consumed).expect("validated Product refresh redelivery")
-                },
+                delivery,
             )
             .await
         {
@@ -424,6 +414,8 @@ async fn process_consumed_delivery(
                     return false;
                 }
                 attempt += 1;
+                delivery = delivery_from_consumed(&consumed)
+                    .expect("validated Product refresh redelivery");
             }
             Err(error) => {
                 runtime_consumer_metrics::record_failure(

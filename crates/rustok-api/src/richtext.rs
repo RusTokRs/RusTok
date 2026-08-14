@@ -86,6 +86,7 @@ pub struct RichTextNode {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub attrs: BTreeMap<String, JsonValue>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schema(no_recursion)]
     pub content: Vec<RichTextNode>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub marks: Vec<RichTextMark>,

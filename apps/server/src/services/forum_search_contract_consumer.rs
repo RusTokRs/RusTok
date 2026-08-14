@@ -251,7 +251,7 @@ async fn forum_search_contract_consumer_loop(
                     poison_publisher_id,
                     &config,
                     &mut stop_rx,
-                    failure,
+                    *failure,
                 )
                 .await
             }

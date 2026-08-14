@@ -26,7 +26,7 @@ use crate::{
         ScriptRevisionRequest, StageReleaseRequest, StageReleaseResponse, TestRunResponse,
         UpdateScriptRequest,
     },
-    model::{EntityProxy, ReviewCommand, Script, ScriptStatus, ScriptTrigger},
+    model::{EntityProxy, ReviewCommand, Script, ScriptStatus, ScriptTrigger, SourceProvenance},
     runner::ExecutionOutcome,
     storage::ScriptRegistry,
     utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
@@ -337,6 +337,7 @@ pub async fn create_script(
     script.permissions = req.permissions;
     script.run_as_system = req.run_as_system;
     script.author_id = Some(actor_id);
+    script.source_provenance = SourceProvenance::http("alloy_create_script");
 
     let saved = runtime.storage.save(script).await.map_err(script_error)?;
     Ok((StatusCode::CREATED, Json(saved.into())))
@@ -395,6 +396,7 @@ pub async fn update_script(
         script.permissions = permissions;
     }
     script.author_id = Some(actor_id);
+    script.source_provenance = SourceProvenance::http("alloy_update_script");
 
     let saved = runtime.storage.save(script).await.map_err(script_error)?;
     Ok(Json(saved.into()))

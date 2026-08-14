@@ -11,14 +11,12 @@ use crate::services::app_runtime::bootstrap_app_runtime;
 use crate::services::cache_runtime::ensure_cache_service;
 use crate::services::channel_cache_invalidation::start_channel_cache_invalidation_listener;
 use crate::services::product_catalog_deployment::configure_product_catalog_deployment;
+#[cfg(feature = "mod-product")]
+use crate::services::product_index_refresh_worker;
 use crate::services::profile_media_public_image_deployment::configure_profile_media_public_image_deployment;
 use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::rbac_invalidation_generation::start_rbac_invalidation_generation_watchdog;
 use crate::services::server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext};
-
-#[cfg(feature = "mod-product")]
-#[path = "product_index_refresh_worker.rs"]
-mod product_index_refresh_worker;
 
 /// Runs host-independent startup validation and one-time initialization.
 pub async fn initialize_server_context(

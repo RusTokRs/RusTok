@@ -180,15 +180,25 @@ fn parse_entity_key(
     tenant_id: Uuid,
     input: IndexDriftDiagnosisInput,
 ) -> std::result::Result<rustok_index::EntityKey, IndexDriftDiagnosisTransportPreparationError> {
-    let module_name = bounded_text(
+    let module_name = rustok_index::ModuleName::new(bounded_text(
         "module_name",
         &input.module_name,
         MAX_SCHEMA_IDENTIFIER_BYTES,
+    )?)
+    .map_err(
+        |_| IndexDriftDiagnosisTransportPreparationError::InvalidInput {
+            field: "module_name",
+        },
     )?;
-    let entity_name = bounded_text(
+    let entity_name = rustok_index::EntityName::new(bounded_text(
         "entity_name",
         &input.entity_name,
         MAX_SCHEMA_IDENTIFIER_BYTES,
+    )?)
+    .map_err(
+        |_| IndexDriftDiagnosisTransportPreparationError::InvalidInput {
+            field: "entity_name",
+        },
     )?;
     let schema_version = bounded_text(
         "schema_version",
@@ -222,16 +232,8 @@ fn parse_entity_key(
     Ok(rustok_index::EntityKey {
         tenant_id,
         schema: rustok_index::SchemaRef {
-            module: rustok_index::ModuleName::new(module_name).map_err(|_| {
-                IndexDriftDiagnosisTransportPreparationError::InvalidInput {
-                    field: "module_name",
-                }
-            })?,
-            entity: rustok_index::EntityName::new(entity_name).map_err(|_| {
-                IndexDriftDiagnosisTransportPreparationError::InvalidInput {
-                    field: "entity_name",
-                }
-            })?,
+            module: module_name,
+            entity: entity_name,
             version: rustok_index::SchemaVersion::new(schema_version),
         },
         entity_id,

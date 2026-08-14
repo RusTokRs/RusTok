@@ -32,12 +32,18 @@ use rustok_mcp::{
     ScaffoldModuleRequest, StageMcpModuleScaffoldDraftRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
     TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
     TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_MCP_HEALTH, UpdateMcpPolicyRequest, default_tool_requirement,
-    invoke_registry_tool,
+    invoke_registry_tool, is_remote_alloy_authoring_tool,
 };
 use tokio_stream::once;
 
 #[cfg(feature = "mod-alloy")]
-use rustok_mcp::{AlloyPublishedReleaseImportRequest, import_published_release};
+use rustok_mcp::{
+    AlloyPublishedReleaseImportRequest, TOOL_ALLOY_CHANGE_SCRIPT_LIFECYCLE,
+    TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT, TOOL_ALLOY_GET_SCRIPT,
+    TOOL_ALLOY_LIST_SCRIPT_REVIEWS, TOOL_ALLOY_LIST_SCRIPT_REVISIONS, TOOL_ALLOY_LIST_SCRIPTS,
+    TOOL_ALLOY_REVIEW_SCRIPT, TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_RUN_WORKSPACE_TEST,
+    TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT, import_published_release,
+};
 
 async fn bootstrap_remote_session(
     State(ctx): State<ServerRuntimeContext>,
@@ -125,14 +131,25 @@ async fn execute_remote_tool_call(
         .shared_get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
         .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.db_clone()));
     let binding = bridge.resolve_binding_for_token(&plaintext_token).await?;
+    let audit_metadata = remote_tool_audit_metadata(&input.tool_name, input.metadata.clone());
 
-    let decision = if input.tool_name == TOOL_MCP_HEALTH {
+    let mut decision = if input.tool_name == TOOL_MCP_HEALTH {
         rustok_mcp::McpAuthorizationDecision::allow()
     } else {
         binding
             .access_context
             .authorize_tool(&default_tool_requirement(&input.tool_name))
     };
+    #[cfg(feature = "mod-alloy")]
+    if decision.allowed
+        && is_remote_alloy_authoring_tool(&input.tool_name)
+        && remote_alloy_authoring_identity(&binding).is_err()
+    {
+        decision = rustok_mcp::McpAuthorizationDecision::deny(
+            "access_denied",
+            "Remote Alloy authoring requires a matching tenant-bound MCP identity",
+        );
+    }
 
     if !decision.allowed {
         bridge
@@ -146,7 +163,7 @@ async fn execute_remote_tool_call(
                 outcome: McpToolCallOutcome::Denied,
                 reason: decision.message.clone().or_else(|| decision.code.clone()),
                 correlation_id: Some(correlation_id.clone()),
-                metadata: input.metadata.clone(),
+                metadata: audit_metadata.clone(),
             })
             .await
             .map_err(|error| crate::error::Error::Message(error.to_string()))?;
@@ -178,7 +195,7 @@ async fn execute_remote_tool_call(
             outcome: McpToolCallOutcome::Allowed,
             reason: None,
             correlation_id: Some(correlation_id.clone()),
-            metadata: input.metadata.clone(),
+            metadata: audit_metadata,
         })
         .await
         .map_err(|error| crate::error::Error::Message(error.to_string()))?;
@@ -194,6 +211,18 @@ async fn execute_remote_tool_call(
             input.metadata.clone(),
         )
         .await?
+    } else if is_remote_alloy_authoring_tool(&input.tool_name) {
+        #[cfg(feature = "mod-alloy")]
+        {
+            execute_remote_alloy_authoring(ctx, &binding, &input.tool_name, input.arguments).await?
+        }
+        #[cfg(not(feature = "mod-alloy"))]
+        {
+            envelope_value(McpToolResponse::<()>::error(
+                "tool_not_supported",
+                "Alloy script authoring is unavailable on this server",
+            ))?
+        }
     } else if input.tool_name == TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE {
         #[cfg(feature = "mod-alloy")]
         {
@@ -245,6 +274,172 @@ async fn execute_remote_tool_call(
         tool_name: input.tool_name,
         result,
     })
+}
+
+/// Source-bearing Alloy commands must not use caller-controlled audit metadata.
+/// The durable audit row confirms the operation and its binding without becoming
+/// a second persistence path for script source, tests, or diagnostics.
+fn remote_tool_audit_metadata(tool_name: &str, metadata: serde_json::Value) -> serde_json::Value {
+    if is_remote_alloy_authoring_tool(tool_name) {
+        serde_json::json!({
+            "redacted": true,
+            "reason": "source_bearing_alloy_authoring",
+        })
+    } else {
+        metadata
+    }
+}
+
+#[cfg(feature = "mod-alloy")]
+async fn execute_remote_alloy_authoring(
+    ctx: &ServerRuntimeContext,
+    binding: &McpRuntimeBinding,
+    tool_name: &str,
+    arguments: Option<serde_json::Value>,
+) -> Result<serde_json::Value> {
+    let (tenant_id, actor_id) = match remote_alloy_authoring_identity(binding) {
+        Ok(identity) => identity,
+        Err(()) => {
+            return envelope_value(McpToolResponse::<()>::error(
+                "access_denied",
+                "Remote Alloy authoring requires a matching tenant-bound MCP identity",
+            ));
+        }
+    };
+    let Some(runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() else {
+        return envelope_value(McpToolResponse::<()>::error(
+            "alloy_runtime_unavailable",
+            "Alloy script authoring is unavailable on this server",
+        ));
+    };
+    let service = alloy::AlloyAuthoringService::from_scoped(runtime.0.scoped(tenant_id));
+
+    match tool_name {
+        TOOL_ALLOY_LIST_SCRIPTS => remote_alloy_result(
+            service
+                .list_scripts(parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_GET_SCRIPT => remote_alloy_result(
+            service
+                .get_script(parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_LIST_SCRIPT_REVISIONS => remote_alloy_result(
+            service
+                .list_source_revisions(parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_CREATE_SCRIPT => remote_alloy_result(
+            service
+                .create_script(&actor_id, parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_UPDATE_SCRIPT => remote_alloy_result(
+            service
+                .update_script(&actor_id, parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_DELETE_SCRIPT => remote_alloy_result(
+            service
+                .delete_script(parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_VALIDATE_SCRIPT => {
+            remote_alloy_result(service.validate_script(parse_remote_alloy_args(arguments)?))
+        }
+        TOOL_ALLOY_RUN_SCRIPT => remote_alloy_result(
+            service
+                .run_script(&actor_id, parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_REVIEW_SCRIPT => remote_alloy_result(
+            service
+                .review_script(&actor_id, parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_LIST_SCRIPT_REVIEWS => remote_alloy_result(
+            service
+                .list_reviews(parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_RUN_WORKSPACE_TEST => remote_alloy_result(
+            service
+                .run_workspace_test(&actor_id, parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_CHANGE_SCRIPT_LIFECYCLE => remote_alloy_result(
+            service
+                .change_lifecycle(&actor_id, parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        _ => envelope_value(McpToolResponse::<()>::error(
+            "tool_not_supported",
+            "Remote Alloy authoring tool is not supported",
+        )),
+    }
+}
+
+#[cfg(feature = "mod-alloy")]
+fn remote_alloy_authoring_identity(
+    binding: &McpRuntimeBinding,
+) -> std::result::Result<(Uuid, String), ()> {
+    let Some(tenant_id) = binding
+        .tenant_id
+        .as_deref()
+        .and_then(|value| Uuid::parse_str(value).ok())
+    else {
+        return Err(());
+    };
+    let Some(identity) = binding.access_context.identity.as_ref() else {
+        return Err(());
+    };
+    if identity.actor_id.trim().is_empty()
+        || identity.tenant_id.as_deref() != binding.tenant_id.as_deref()
+    {
+        return Err(());
+    }
+    Ok((tenant_id, identity.actor_id.clone()))
+}
+
+#[cfg(feature = "mod-alloy")]
+fn parse_remote_alloy_args<T>(arguments: Option<serde_json::Value>) -> Result<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    serde_json::from_value(arguments.unwrap_or_else(|| serde_json::json!({}))).map_err(|_| {
+        crate::error::Error::BadRequest("Remote Alloy authoring arguments are invalid".to_string())
+    })
+}
+
+#[cfg(feature = "mod-alloy")]
+fn remote_alloy_result<T>(
+    result: std::result::Result<T, alloy::AlloyAuthoringError>,
+) -> Result<serde_json::Value>
+where
+    T: serde::Serialize,
+{
+    match result {
+        Ok(response) => envelope_value(McpToolResponse::success(response)),
+        Err(alloy::AlloyAuthoringError::NotFound) => envelope_value(McpToolResponse::<()>::error(
+            "alloy_script_not_found",
+            "Alloy script was not found",
+        )),
+        Err(alloy::AlloyAuthoringError::RevisionConflict { .. }) => {
+            envelope_value(McpToolResponse::<()>::error(
+                "alloy_script_revision_conflict",
+                "Alloy script revision conflict",
+            ))
+        }
+        Err(alloy::AlloyAuthoringError::Invalid) => envelope_value(McpToolResponse::<()>::error(
+            "invalid_alloy_authoring_command",
+            "Alloy authoring command is invalid",
+        )),
+        Err(alloy::AlloyAuthoringError::Failed) => envelope_value(McpToolResponse::<()>::error(
+            "alloy_authoring_failed",
+            "Alloy authoring operation failed",
+        )),
+    }
 }
 
 #[cfg(feature = "mod-alloy")]
@@ -775,5 +970,47 @@ fn map_audit_event(model: crate::models::mcp_audit_logs::Model) -> McpAuditEvent
         correlation_id: model.correlation_id,
         metadata: model.metadata,
         created_at: model.created_at.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_bearing_remote_authoring_audit_metadata_is_replaced() {
+        let metadata = serde_json::json!({
+            "workspace": { "files": { "main.rhai": "let credential = 'secret';" } },
+            "note": "must not persist",
+        });
+
+        let redacted = remote_tool_audit_metadata(rustok_mcp::TOOL_ALLOY_CREATE_SCRIPT, metadata);
+        assert_eq!(redacted["redacted"], true);
+        assert_eq!(redacted["reason"], "source_bearing_alloy_authoring");
+        assert!(!redacted.to_string().contains("credential"));
+    }
+
+    #[cfg(feature = "mod-alloy")]
+    #[test]
+    fn remote_authoring_rejects_identity_from_another_tenant() {
+        let bound_tenant = Uuid::new_v4();
+        let binding = McpRuntimeBinding {
+            access_context: rustok_mcp::McpAccessContext {
+                identity: Some(rustok_mcp::McpIdentity {
+                    actor_id: "operator-1".to_string(),
+                    actor_type: McpActorType::HumanUser,
+                    tenant_id: Some(Uuid::new_v4().to_string()),
+                    delegated_user_id: None,
+                    display_name: None,
+                    scopes: Vec::new(),
+                }),
+                ..Default::default()
+            },
+            tenant_id: Some(bound_tenant.to_string()),
+            client_id: Some("client-1".to_string()),
+            token_id: Some("token-1".to_string()),
+        };
+
+        assert!(remote_alloy_authoring_identity(&binding).is_err());
     }
 }

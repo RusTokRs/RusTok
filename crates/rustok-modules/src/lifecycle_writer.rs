@@ -11,8 +11,7 @@ use crate::operation_store::{
 use crate::policy::{
     ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyCoRequisite,
     ModuleEffectivePolicyInstallationFact, ModuleEffectivePolicyMaintenanceInput,
-    ModuleEffectivePolicyNodeReadinessInput, ModuleEffectivePolicyQuery,
-    ModuleEffectivePolicyRuntimeInput,
+    ModuleEffectivePolicyQuery, ModuleEffectivePolicyRuntimeInput,
 };
 use crate::recovery::{
     failed_module_operation_recovery_plans, module_operation_recovery_plan,
@@ -57,6 +56,16 @@ pub struct TenantModuleOverrideSnapshot {
     pub module_slug: String,
     pub enabled: bool,
     pub settings: serde_json::Value,
+}
+
+struct OverrideOperationRequest<'a> {
+    tenant_id: Uuid,
+    module_slug: &'a str,
+    enabled: bool,
+    requested_override_enabled: Option<bool>,
+    requested_by: Option<String>,
+    correlation_id: Option<String>,
+    idempotency_key: Option<Uuid>,
 }
 
 impl<'a> ModuleLifecycleDbWriter<'a> {
@@ -182,27 +191,21 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         enabled: bool,
         requested_by: Option<String>,
     ) -> Result<crate::ModuleLifecycleToggleResult, ModuleLifecycleDbWriterError> {
-        self.apply_override_with_operation_context(
+        self.apply_override_with_operation_context(OverrideOperationRequest {
             tenant_id,
             module_slug,
             enabled,
-            Some(enabled),
+            requested_override_enabled: Some(enabled),
             requested_by,
-            None,
-            None,
-        )
+            correlation_id: None,
+            idempotency_key: None,
+        })
         .await
     }
 
     async fn apply_override_with_operation_context(
         &self,
-        tenant_id: Uuid,
-        module_slug: &str,
-        enabled: bool,
-        requested_override_enabled: Option<bool>,
-        requested_by: Option<String>,
-        correlation_id: Option<String>,
-        idempotency_key: Option<Uuid>,
+        request: OverrideOperationRequest<'_>,
     ) -> Result<crate::ModuleLifecycleToggleResult, ModuleLifecycleDbWriterError> {
         let (
             catalog,
@@ -212,7 +215,11 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             current_settings,
             policy_transition,
         ) = self
-            .override_execution_context(tenant_id, module_slug, requested_override_enabled)
+            .override_execution_context(
+                request.tenant_id,
+                request.module_slug,
+                request.requested_override_enabled,
+            )
             .await?;
         let dispatcher = match (self.static_registry, self.artifact_executor) {
             (Some(registry), Some(executor)) => {
@@ -235,16 +242,16 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 SeaOrmModulePolicyRevisionConsumer::new(self.db.clone()),
             )),
             ModuleLifecycleToggleRequest {
-                tenant_id,
-                module_slug: module_slug.to_string(),
-                enabled,
-                requested_by,
-                correlation_id,
-                idempotency_key,
+                tenant_id: request.tenant_id,
+                module_slug: request.module_slug.to_string(),
+                enabled: request.enabled,
+                requested_by: request.requested_by,
+                correlation_id: request.correlation_id,
+                idempotency_key: request.idempotency_key,
                 effective_enabled_modules,
                 ordering_enabled_modules,
                 previous_override_enabled,
-                requested_override_enabled,
+                requested_override_enabled: request.requested_override_enabled,
                 current_settings,
                 policy_transition,
             },
@@ -377,15 +384,15 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             .is_some()
         {
             return self
-                .apply_override_with_operation_context(
-                    plan.tenant_id,
-                    &plan.module_slug,
-                    reverse_enabled,
-                    plan.previous_override_enabled,
+                .apply_override_with_operation_context(OverrideOperationRequest {
+                    tenant_id: plan.tenant_id,
+                    module_slug: &plan.module_slug,
+                    enabled: reverse_enabled,
+                    requested_override_enabled: plan.previous_override_enabled,
                     requested_by,
-                    Some(plan.operation_id.to_string()),
-                    Some(idempotency_key),
-                )
+                    correlation_id: Some(plan.operation_id.to_string()),
+                    idempotency_key: Some(idempotency_key),
+                })
                 .await;
         }
         if current_override_enabled != plan.requested_override_enabled {
@@ -396,15 +403,15 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 },
             ));
         }
-        self.apply_override_with_operation_context(
-            plan.tenant_id,
-            &plan.module_slug,
-            reverse_enabled,
-            plan.previous_override_enabled,
+        self.apply_override_with_operation_context(OverrideOperationRequest {
+            tenant_id: plan.tenant_id,
+            module_slug: &plan.module_slug,
+            enabled: reverse_enabled,
+            requested_override_enabled: plan.previous_override_enabled,
             requested_by,
-            Some(plan.operation_id.to_string()),
-            Some(idempotency_key),
-        )
+            correlation_id: Some(plan.operation_id.to_string()),
+            idempotency_key: Some(idempotency_key),
+        })
         .await
     }
 
@@ -619,7 +626,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         &self,
         tenant_id: Uuid,
     ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
-        self.effective_policy_with_context(tenant_id, None, None, None)
+        self.effective_policy_with_context(tenant_id, None, None)
             .await
     }
 
@@ -631,7 +638,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         tenant_id: Uuid,
         channel: ModuleEffectivePolicyChannelInput,
     ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
-        self.effective_policy_for_context(tenant_id, Some(channel), None, None)
+        self.effective_policy_for_context(tenant_id, Some(channel), None)
             .await
     }
 
@@ -642,29 +649,16 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         tenant_id: Uuid,
         maintenance: ModuleEffectivePolicyMaintenanceInput,
     ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
-        self.effective_policy_for_context(tenant_id, None, Some(maintenance), None)
+        self.effective_policy_for_context(tenant_id, None, Some(maintenance))
             .await
     }
 
-    /// Resolves availability from node-owned readiness evidence. The node must
-    /// have observed the base policy revision before the final policy revision
-    /// is materialized.
-    pub async fn effective_policy_for_node_readiness(
-        &self,
-        tenant_id: Uuid,
-        node_readiness: ModuleEffectivePolicyNodeReadinessInput,
-    ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
-        self.effective_policy_for_context(tenant_id, None, None, Some(node_readiness))
-            .await
-    }
-
-    /// Resolves availability from all host-owned policy context snapshots.
+    /// Resolves availability from the channel and maintenance owner inputs.
     pub async fn effective_policy_for_context(
         &self,
         tenant_id: Uuid,
         channel: Option<ModuleEffectivePolicyChannelInput>,
         maintenance: Option<ModuleEffectivePolicyMaintenanceInput>,
-        node_readiness: Option<ModuleEffectivePolicyNodeReadinessInput>,
     ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
         if channel
             .as_ref()
@@ -676,7 +670,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 ),
             ));
         }
-        self.effective_policy_with_context(tenant_id, channel, maintenance, node_readiness)
+        self.effective_policy_with_context(tenant_id, channel, maintenance)
             .await
     }
 
@@ -685,7 +679,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         tenant_id: Uuid,
         channel: Option<ModuleEffectivePolicyChannelInput>,
         maintenance: Option<ModuleEffectivePolicyMaintenanceInput>,
-        node_readiness: Option<ModuleEffectivePolicyNodeReadinessInput>,
     ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
         let catalog = self.definition_catalog()?;
         let runtime_inputs = self.runtime_policy_inputs(&catalog, tenant_id).await;
@@ -696,7 +689,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             runtime_inputs,
             channel,
             maintenance,
-            node_readiness,
         )
         .with_corequisites(self.co_requisites.iter().cloned())
         .execute()
@@ -717,7 +709,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             runtime_inputs,
             None,
             None,
-            None,
         )
         .with_corequisites(self.co_requisites.iter().cloned())
         .execute()
@@ -736,7 +727,6 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             self.default_enabled_modules.iter().cloned(),
             overrides,
             runtime_inputs,
-            None,
             None,
             None,
         )

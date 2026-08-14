@@ -36,7 +36,7 @@ below wherever they differ.
 ## Execution Checkpoint
 
 - Current phase: `sandbox_worker_and_build_closure`.
-- Last updated: 2026-08-02.
+- Last updated: 2026-08-14.
 - Completed foundation:
   - neutral sandbox request, policy, broker, executor, outcome, error, and audit
     contracts;
@@ -64,6 +64,18 @@ below wherever they differ.
   `rustok-admin --no-default-features --features ssr` all pass `cargo check`
   (warnings only). No workspace-wide compile or test claim is made.
 - Open architecture blockers: none.
+- Latest artifact-node materialization evidence: the separately deployable
+  `rustok-artifact-node-agent` authenticates only to the narrow mTLS controller
+  port, reads the owner-issued admitted digest directly from durable CAS, and
+  atomically rehashes the canonical node-local payload cache. It reports
+  `prepared` after non-executing Rhai/Wasm preparation and `healthy` only after
+  the corresponding isolated-worker or local component readiness check. The
+  agent has no owner database, topology, release-selection, policy, capability,
+  tenant, AI, Alloy, or application-server dependency. Targeted checks passed:
+  `cargo test --locked -p rustok-artifact-node-agent --all-targets` (8),
+  `cargo test --locked -p rustok-runtime --lib` (19), and
+  `cargo test --locked -p rustok-sandbox --features "rhai wasm-component" --lib`
+  (32). No workspace-wide compile or test claim is made.
 - Latest bounded artifact-data evidence: namespace quota tests cover projected
   structured/object usage, atomic batch rollback, capacity release through
   logical deletion, active upload-session/staging aggregation, and guarded
@@ -141,6 +153,39 @@ with `sha2` 0.11, and product/inventory status and projection boundaries use
 owner-neutral DTOs. The admin lifecycle mapper has explicit `ServerFnError`
 closure types for optional governance records. Existing warnings remain
 tracked separately; no workspace-wide compile or test claim is made.
+
+## Verification and Isolation Hardening Checkpoint (2026-08-14)
+
+The server and control-plane test boundary was rechecked after the artifact
+node, durable CAS, and lifecycle changes. PostgreSQL-native product and channel
+migrations are now explicitly excluded only from SQLite unit-test composition;
+the production `Migrator` remains complete and no production schema path falls
+back to SQLite. `SqliteTestMigrator` applies the declared portable schema, and
+narrow component fixtures use the same named-migration predicate rather than
+silently accepting unsupported database semantics.
+
+Two cross-database migrations were corrected to issue one SQLite-compatible
+`ALTER TABLE` operation per column. GraphQL mutation mapping now labels manifest
+validation and composition revision conflicts as `BAD_USER_INPUT`, while
+database and policy failures in module toggles return a generic internal error.
+Index drift diagnostics validate canonical module/entity identifiers in a stable
+field order after authorization, and the Flex REST round-trip fixture supplies
+the required event transport and unique field positions.
+
+Current targeted evidence:
+
+- `cargo test --locked -p rustok-migrations --lib
+  sqlite_test_migrator_tests::sqlite_test_migrator_applies_the_portable_schema
+  -- --exact` passed;
+- focused `rustok-server` tests passed for the auth lifecycle default-status
+  path, product field event path, RBAC cache path, independent Blog/Forum/Pages/
+  Commerce OpenAPI construction, GraphQL composition/toggle error mapping, and
+  Index drift authorization-before-parsing paths;
+- the broad `cargo test --locked -p rustok-server --lib -j 1` audit was started
+  but intentionally stopped after it exposed additional unrelated failures and
+  a hanging test. It is not counted as a passing server-wide run.
+
+No workspace-wide compile or test claim is made.
 
 ## Problem Statement
 
@@ -2158,9 +2203,17 @@ cache completed both owner request/policy tests passed. The expanded
 six-command CLI provider test again exceeded 60 seconds while compiling
 dependencies and was terminated, so the new CLI command still lacks direct
 crate compile evidence. `cargo test --locked -p rustok-module-build-worker` now
-passes all seven unit tests, including immutable `Cargo.lock` policy fixtures
+passes all eight unit tests, including immutable `Cargo.lock` policy fixtures
 parsed as TOML documents rather than scalar values; its isolation verifier also
 passes. No workspace-wide compile or test suite was run.
+
+Focused verification on 2026-08-14 repeated `cargo test --locked -p
+rustok-module-build-worker --lib`: all eight unit tests passed, including the
+strict OCI-job receipt, isolation-attestation, dependency-policy, provenance,
+and descriptor-finalization contracts. The build-worker isolation verifier also
+passed. This proves the repository-local worker contract only; the two Phase 4
+checkboxes remain open until deployment evidence proves that the pinned launcher
+creates the attested hardened OCI job.
 
 ## Phase 5 - OCI Publication, Signatures, SBOM, and Provenance
 
@@ -2528,9 +2581,11 @@ evolution while sharing the production sandbox and module release contracts.
   run without capability grants, reject entity changes, and return a boolean
   result. Test commands now reserve a durable revision-pinned source digest,
   test path, verified actor, and request fingerprint before sandbox execution;
-  exact replays return terminal evidence, concurrent callers see a bounded
-  pending lease, and only an expired lease can be reclaimed against the same
-  immutable source snapshot. Host HTTP and GraphQL derive `scripts.manage`
+  exact replays return terminal evidence only while the owning draft remains
+  current, concurrent callers see a bounded pending lease, and only an expired
+  lease can be reclaimed against the same immutable source snapshot. A test
+  completion racing with deletion settles the held lease for retention, then
+  returns `NotFound` instead of test evidence. Host HTTP and GraphQL derive `scripts.manage`
   authority from authentication. Canonical Alloy authoring now uses only
   host-composed HTTP routes and GraphQL: every operator source/history read,
   validation, manual run, lifecycle, review, and test operation requires a
@@ -2567,14 +2622,24 @@ evolution while sharing the production sandbox and module release contracts.
 - Generic MCP Alloy script CRUD, validation, and execution have been removed:
   the generic adapter cannot compose an owner-scoped Alloy runtime, so it must
   not simulate tenant or actor binding. Canonical authoring stays on
-  host-composed HTTP and GraphQL; no generic stdio or in-process MCP path can
-  bypass owner CAS or immutable snapshot checks.
-- [ ] Compose remote MCP script authoring from the same owner-scoped Alloy
-  runtime as HTTP and GraphQL. It must require an authenticated tenant match
-  and `scripts.manage`, derive actor identity, apply source-redaction policy,
-  and prove tenant isolation by integration evidence before any script tool is
-  advertised. This is the explicit A5 follow-up; generic MCP remains
-  scaffold-only.
+  host-composed HTTP, GraphQL, and authenticated remote MCP; no generic stdio
+  or in-process MCP path can bypass owner CAS or immutable snapshot checks.
+- [x] Compose remote MCP script authoring from the same owner-scoped Alloy
+  runtime as HTTP and GraphQL. The authenticated JSON/SSE remote transport
+  derives tenant and actor identity from its durable MCP binding, verifies that
+  the identity tenant equals the binding tenant before its audit decision, and requires
+  `scripts.manage` through the standard tool policy before it constructs
+  `AlloyAuthoringService` from `SharedAlloyRuntime::scoped`. The typed service
+  owns script read/create/update/delete, source-revision history, validation,
+  manual execution, review, workspace tests, and lifecycle CAS commands; it
+  returns source-redacted script, revision, execution, review, and test
+  evidence only. Its operation audit replaces caller metadata with a fixed
+  redaction marker, so source, tests, and diagnostics have no audit persistence
+  path. Its production SeaORM test proves a second tenant cannot update the
+  first tenant's script, and the control-plane verifier prevents these
+  remote-only tool names from entering generic stdio/in-process MCP. Generic
+  MCP remains a design-scaffold-only tool: it records requested transports in
+  documentation and never generates fake GraphQL or REST handlers.
 - [x] Reject execution/publish commands for stale revisions. Caller-driven
   manual, test, review, lifecycle, deletion, and release-stage commands use
   explicit revision CAS; hook and schedule dispatch execute the exact current
@@ -2609,7 +2674,18 @@ evolution while sharing the production sandbox and module release contracts.
   GraphQL staging adapters are complete; final marketplace promotion remains
   an owner governance operation.
 - [ ] Preserve author, prompt/tool provenance, tests, and review evidence under
-  explicit retention/redaction rules.
+  explicit retention/redaction rules. The first durable provenance slice now
+  records the authenticated author plus owner-generated HTTP, GraphQL, remote
+  MCP, release-import, or internal origin and normalized tool name on each
+  immutable source revision. It accepts only an optional canonical SHA-256
+  prompt digest from a separately governed owner; raw prompts, tool arguments,
+  model completions, and tool results have no Alloy persistence field. Remote
+  MCP and its audit metadata remain source-redacted, and deleted scripts hide
+  retained source/review/test evidence from owner reads and idempotency replay.
+  A racing test completion settles its retained lease and returns `NotFound`;
+  a durable tombstone makes the deleted script ID non-reusable until retention
+  policy purges it. Retention duration, legal hold, and post-expiry redaction/collection of review reasons and test
+  diagnostics remain open before this item can close.
 
 ### 6.3 Marketplace Fork and Continued Development
 
@@ -3060,7 +3136,86 @@ workers, transports, and UI.
   native distribution reconciler: durable desired/observed rollout pointers,
   per-assignment observation revisions, prepare/health/activate/converged/degraded
   transitions, exact replay, stale-report rejection, and transactional outbox
-  events. General artifact/sandbox node readiness still remains open.
+  events. `ModuleDesiredObservedState`, `ModuleReconciliationPhase`,
+  `ModuleReconciliationEvidence`, and `ModuleReconciliationFailure` now supply
+  its shared owner contract; every future artifact/sandbox reconciler must use
+  this vocabulary rather than introduce a parallel desired/observed model. The
+  accepted [module-node reconciliation ledger ADR](../../DECISIONS/2026-08-14-module-node-reconciliation-ledger.md)
+  fixes the target owner, assignment identity, fenced node-agent protocol, and
+  static-rollout separation for the implementation. The new
+  `SeaOrmModuleArtifactNodeReconciliationService` implements the dynamic owner
+  aggregate: trusted sorted topology resolution selects node/installation pairs,
+  the owner transaction reloads and freezes every admitted release/payload
+  digest, payload kind, admitted payload media type, admission/dependency/
+  capability revisions, ABI, and policy; agents
+  receive and report only their fenced exact assignment; lifecycle identity
+  changes make the previous set stale; and desired/observed heads, reports,
+  receipts, status changes, and outbox events commit atomically. The owner, not
+  an agent, converts an entirely healthy set to active and advances the
+  observed head; post-convergence failure clears that head into `degraded`.
+  The server's non-lifecycle artifact executor now consumes the read-only
+  `SeaOrmArtifactNodeReadiness` gate before CAS/sandbox execution. It requires
+  a configured stable node UUID and compares the selected installation, live
+  admission, and current canonical policy revision, including payload kind and
+  media type, with the converged observed assignment, so a cache hit or
+  sandbox readiness response cannot re-enable stale payloads. The neutral
+  sandbox remains free of owner database, policy, AI, and product dependencies.
+  `rustok-worker-transport` now derives a canonical SHA-256 fingerprint only
+  from the verified mTLS leaf certificate. The current
+  `rustok-artifact-node-transport` uses it for claim/heartbeat/report gRPC
+  framing, binds reports to an injected fingerprint-to-agent/node map, and
+  exposes no plaintext or in-process client constructor. It gives the agent no
+  topology, policy, database, CAS, sandbox, AI, or product ownership. The
+  separately deployed `rustok-artifact-node-controller` now owns only the
+  immutable deployment certificate map and the narrow
+  `ModuleControlPlane::artifact_node_agent()` owner port; it cannot author a
+  reconciliation or resolve topology. The separate
+  `rustok-artifact-node-reconciler` composes the other authenticated service:
+  a verified deployment-operator certificate maps to one audited actor and
+  explicit allowed-node set, while its bounded request contains only topology,
+  expected durable-state revision, canonical policy revision, and idempotency
+  key. It never accepts a caller-selected actor or artifact identity; the owner
+  validates the topology and reloads each selected admitted installation under
+  transaction before it persists a desired set. Its canonical topology digest
+  is bound to the owner idempotency identity and must match the resolver output,
+  so a replay cannot substitute a target set. Server composition now uses the bounded
+  `VerifiedArtifactNodeCache` read-through CAS adapter and rehashes every cache
+  hit before sandbox execution. The independently deployed
+  `rustok-artifact-node-agent` now claims only those mTLS-authenticated
+  assignments, reads the exact admitted payload from durable CAS, atomically
+  materializes and rehashes its canonical node-local cache entry, and records a
+  runtime-fingerprint-bound preparation marker. It validates Rhai
+  source/workspace bytes without executing guest code, requires authenticated
+  isolated Rhai-worker readiness before reporting `healthy`, and compiles Wasm
+  Components locally without instantiation or guest execution. Static-promotion
+  and sidecar assignments fail closed; CAS, filesystem, and sandbox outages
+  remain retryable. The agent has no owner database, topology,
+  release-selection, policy, capability, tenant, AI, Alloy, or application
+  server dependency. The old host-supplied effective-policy node-readiness
+  snapshot family was removed: the canonical base policy is followed by this
+  exact durable assignment gate before every non-lifecycle artifact dispatch,
+  so a host readiness value cannot affect artifact routing or availability.
+  Authenticated target-topology input is complete; deployment-supervisor
+  evidence and traffic wiring remain open.
+  Focused verification on 2026-08-14 passed `cargo test --locked -p
+  rustok-modules --lib` (218 tests), `cargo test --locked -p rustok-events
+  --lib` (63 tests), and `cargo clippy --locked -p rustok-modules --lib --tests
+  -- -D warnings`. `cargo check --locked -p rustok-server --no-default-features
+  --features mod-alloy` also passed with `CARGO_INCREMENTAL=0`; the default
+  incremental attempt hit a Rust compiler cache panic, while the successful
+  scoped retry emitted only 41 existing warnings in unrelated server/generated
+  files. No workspace-wide compile or test suite was run.
+  The mTLS transport foundation then passed 10 focused tests and the artifact
+  node transport passed ten focused tests, including unknown-fingerprint,
+  report-principal, operator-scope, and certificate-actor denial. The
+  independently composed `rustok-artifact-node-reconciler` passed two focused
+  configuration tests. The owner reconciliation test rejects a mismatched
+  topology digest before persistence and a changed topology digest on an
+  idempotency replay. The owner/agent/reconciler boundary still requires
+  deployment-supervisor evidence and traffic wiring before this checkbox can
+  close. `cargo clippy -p rustok-artifact-node-transport --lib --tests -- -D
+  warnings` and `cargo clippy -p rustok-artifact-node-reconciler --all-targets
+  -- -D warnings` pass for the current topology service.
 - [x] Implement the current topology-bound native distribution rollout slice
   with durable rollout/assignment/state/idempotency records, exact release and
   composition identity, full-topology convergence, stale-report rejection,

@@ -22,6 +22,10 @@ use crate::{
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
     distribution_release::{commit_recovery_release, load_release_record, load_release_state},
     promotion::{digest_json, valid_digest, valid_reference},
+    reconciliation::{
+        ModuleDesiredObservedState, ModuleReconciliationEvidence, ModuleReconciliationFailure,
+        ModuleReconciliationPhase,
+    },
 };
 
 const ROLLOUT_STATE_ID: &str = "current";
@@ -99,41 +103,6 @@ impl ModuleStaticDistributionRolloutStatus {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModuleStaticDistributionAssignmentPhase {
-    Pending,
-    Prepared,
-    Healthy,
-    Active,
-    Failed,
-}
-
-impl ModuleStaticDistributionAssignmentPhase {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Prepared => "prepared",
-            Self::Healthy => "healthy",
-            Self::Active => "active",
-            Self::Failed => "failed",
-        }
-    }
-
-    fn parse(value: &str) -> Result<Self, ModuleStaticDistributionRolloutError> {
-        match value {
-            "pending" => Ok(Self::Pending),
-            "prepared" => Ok(Self::Prepared),
-            "healthy" => Ok(Self::Healthy),
-            "active" => Ok(Self::Active),
-            "failed" => Ok(Self::Failed),
-            _ => Err(ModuleStaticDistributionRolloutError::Store(
-                "static distribution assignment phase is invalid".to_string(),
-            )),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModuleStaticDistributionTopologySnapshot {
@@ -185,20 +154,6 @@ pub struct ModuleStaticDistributionRecoveryRequest {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ModuleStaticDistributionHealthEvidence {
-    pub reference: String,
-    pub digest: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ModuleStaticDistributionAssignmentFailure {
-    pub code: String,
-    pub detail: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ModuleStaticDistributionAssignmentReport {
     pub claim_id: Uuid,
     pub rollout_id: Uuid,
@@ -206,7 +161,7 @@ pub struct ModuleStaticDistributionAssignmentReport {
     pub role: ModuleStaticDistributionRole,
     pub candidate_artifact_digest: String,
     pub expected_observation_revision: u64,
-    pub phase: ModuleStaticDistributionAssignmentPhase,
+    pub phase: ModuleReconciliationPhase,
     pub distribution_release_id: Uuid,
     pub distribution_release_revision: u64,
     pub composition_revision: u64,
@@ -215,8 +170,8 @@ pub struct ModuleStaticDistributionAssignmentReport {
     pub role_set_digest: String,
     pub policy_revision: String,
     pub executor_mode: ModuleStaticDistributionExecutorMode,
-    pub health_evidence: Option<ModuleStaticDistributionHealthEvidence>,
-    pub failure: Option<ModuleStaticDistributionAssignmentFailure>,
+    pub health_evidence: Option<ModuleReconciliationEvidence>,
+    pub failure: Option<ModuleReconciliationFailure>,
     pub agent_id: String,
     pub idempotency_key: Uuid,
 }
@@ -308,13 +263,6 @@ pub trait ModuleStaticDistributionRolloutAuthorizer: Send + Sync {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModuleStaticDistributionRolloutState {
-    pub revision: u64,
-    pub desired_rollout_id: Option<Uuid>,
-    pub observed_rollout_id: Option<Uuid>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleStaticDistributionRolloutAssignment {
     pub node_id: String,
     pub role: ModuleStaticDistributionRole,
@@ -322,9 +270,9 @@ pub struct ModuleStaticDistributionRolloutAssignment {
     pub predecessor_artifact_digest: Option<String>,
     pub ordinal: u16,
     pub observation_revision: u64,
-    pub phase: ModuleStaticDistributionAssignmentPhase,
-    pub health_evidence: Option<ModuleStaticDistributionHealthEvidence>,
-    pub failure: Option<ModuleStaticDistributionAssignmentFailure>,
+    pub phase: ModuleReconciliationPhase,
+    pub health_evidence: Option<ModuleReconciliationEvidence>,
+    pub failure: Option<ModuleReconciliationFailure>,
     pub reported_by: Option<String>,
     pub last_report_digest: Option<String>,
     pub active_claim_id: Option<Uuid>,
@@ -353,7 +301,7 @@ pub struct ModuleStaticDistributionRollout {
     pub target_assignment_count: u16,
     pub status: ModuleStaticDistributionRolloutStatus,
     pub requested_by: Uuid,
-    pub failure: Option<ModuleStaticDistributionAssignmentFailure>,
+    pub failure: Option<ModuleReconciliationFailure>,
     pub assignments: Vec<ModuleStaticDistributionRolloutAssignment>,
 }
 
@@ -375,7 +323,7 @@ pub struct ModuleStaticDistributionAssignmentReportReceipt {
     pub node_id: String,
     pub role: ModuleStaticDistributionRole,
     pub observation_revision: u64,
-    pub phase: ModuleStaticDistributionAssignmentPhase,
+    pub phase: ModuleReconciliationPhase,
     pub created: bool,
 }
 
@@ -476,7 +424,7 @@ where
                 current: state.revision,
             });
         }
-        let prior_desired = match state.desired_rollout_id {
+        let prior_desired = match state.desired_id {
             Some(rollout_id) => Some(load_rollout(&transaction, rollout_id, true).await?),
             None => None,
         };
@@ -489,7 +437,7 @@ where
         }) {
             return Err(ModuleStaticDistributionRolloutError::RolloutInProgress);
         }
-        let predecessor = match state.observed_rollout_id {
+        let predecessor = match state.observed_id {
             Some(rollout_id) => Some(load_rollout(&transaction, rollout_id, true).await?),
             None => None,
         };
@@ -514,13 +462,15 @@ where
         let rollout_id = self.infrastructure.new_id();
         insert_rollout(
             &transaction,
-            rollout_id,
-            predecessor.as_ref().map(|rollout| rollout.rollout_id),
-            rollout_revision,
-            &release,
-            &topology,
-            &command,
-            ModuleStaticDistributionTransitionKind::Update,
+            RolloutInsert {
+                rollout_id,
+                predecessor_rollout_id: predecessor.as_ref().map(|rollout| rollout.rollout_id),
+                rollout_revision,
+                release: &release,
+                topology: &topology,
+                command: &command,
+                transition_kind: ModuleStaticDistributionTransitionKind::Update,
+            },
         )
         .await?;
         insert_rollout_assignments(
@@ -535,7 +485,7 @@ where
             state.revision,
             rollout_state_revision,
             Some(rollout_id),
-            state.observed_rollout_id,
+            state.observed_id,
         )
         .await?;
         let receipt = ModuleStaticDistributionRolloutReceipt {
@@ -617,7 +567,7 @@ where
         }
         let state = load_rollout_state(&transaction, true).await?;
         if state.revision != command.expected_rollout_state_revision
-            || state.desired_rollout_id != Some(command.current_rollout_id)
+            || state.desired_id != Some(command.current_rollout_id)
         {
             return Err(ModuleStaticDistributionRolloutError::StaleRollout);
         }
@@ -639,13 +589,13 @@ where
                 .map_err(release_error)?;
         let accepted_regression = current.status
             == ModuleStaticDistributionRolloutStatus::Converged
-            && state.observed_rollout_id == Some(current.rollout_id)
+            && state.converged_id() == Some(current.rollout_id)
             && source_release.status == ModuleStaticDistributionReleaseStatus::Active
             && target_release.status == ModuleStaticDistributionReleaseStatus::Superseded
             && release_state.active_release_id == Some(source_release.distribution_release_id);
         let partial_rollout_failure = current.status
             == ModuleStaticDistributionRolloutStatus::Failed
-            && state.observed_rollout_id == Some(predecessor.rollout_id)
+            && state.observed_id == Some(predecessor.rollout_id)
             && source_release.status == ModuleStaticDistributionReleaseStatus::Admitted
             && target_release.status == ModuleStaticDistributionReleaseStatus::Active
             && release_state.active_release_id == Some(target_release.distribution_release_id);
@@ -705,13 +655,15 @@ where
         };
         insert_rollout(
             &transaction,
-            rollout_id,
-            Some(current.rollout_id),
-            rollout_revision,
-            &target_release,
-            &topology,
-            &request,
-            ModuleStaticDistributionTransitionKind::Recovery,
+            RolloutInsert {
+                rollout_id,
+                predecessor_rollout_id: Some(current.rollout_id),
+                rollout_revision,
+                release: &target_release,
+                topology: &topology,
+                command: &request,
+                transition_kind: ModuleStaticDistributionTransitionKind::Recovery,
+            },
         )
         .await?;
         insert_rollout_assignments(&transaction, rollout_id, &topology.assignments, None).await?;
@@ -720,7 +672,7 @@ where
             state.revision,
             rollout_state_revision,
             Some(rollout_id),
-            state.observed_rollout_id,
+            state.observed_id,
         )
         .await?;
         let receipt = ModuleStaticDistributionRolloutReceipt {
@@ -770,7 +722,7 @@ where
         self.authorizer.authorize_assignment_claim(&command).await?;
         let transaction = self.db.begin().await.map_err(store_error)?;
         let state = load_rollout_state(&transaction, true).await?;
-        let Some(rollout_id) = state.desired_rollout_id else {
+        let Some(rollout_id) = state.desired_id else {
             transaction.commit().await.map_err(store_error)?;
             return Ok(None);
         };
@@ -803,18 +755,17 @@ where
         if let (Some(claim_id), Some(claimed_by_agent), Some(lease_expires_at)) = (
             assignment.active_claim_id,
             assignment.claimed_by_agent.as_deref(),
-            assignment.claim_expires_at.clone(),
-        ) {
-            if claimed_by_agent == command.agent_id.as_str() {
-                transaction.commit().await.map_err(store_error)?;
-                return Ok(Some(ModuleStaticDistributionAssignmentWorkItem {
-                    claim_id,
-                    lease_expires_at,
-                    expected_observation_revision: assignment.observation_revision,
-                    rollout: rollout_work_identity(&rollout),
-                    assignment,
-                }));
-            }
+            assignment.claim_expires_at,
+        ) && claimed_by_agent == command.agent_id.as_str()
+        {
+            transaction.commit().await.map_err(store_error)?;
+            return Ok(Some(ModuleStaticDistributionAssignmentWorkItem {
+                claim_id,
+                lease_expires_at,
+                expected_observation_revision: assignment.observation_revision,
+                rollout: rollout_work_identity(&rollout),
+                assignment,
+            }));
         }
         let lease_expires_at = now
             .checked_add_signed(Duration::seconds(ASSIGNMENT_LEASE_SECONDS))
@@ -900,7 +851,7 @@ where
             return replay_report(&operation);
         }
         let state = load_rollout_state(&transaction, true).await?;
-        if state.desired_rollout_id != Some(command.rollout_id) {
+        if state.desired_id != Some(command.rollout_id) {
             return Err(ModuleStaticDistributionRolloutError::StaleRollout);
         }
         let rollout = load_rollout(&transaction, command.rollout_id, true).await?;
@@ -1007,10 +958,10 @@ where
         let target_assignments = usize::from(rollout.target_assignment_count);
         let mut next_status = rollout.status;
         let mut state_revision = state.revision;
-        let mut observed_rollout_id = state.observed_rollout_id;
+        let mut observed_rollout_id = state.observed_id;
         let mut status_failure = None;
         let mut release_convergence = None;
-        if command.phase == ModuleStaticDistributionAssignmentPhase::Failed {
+        if command.phase == ModuleReconciliationPhase::Failed {
             status_failure = command.failure.clone();
             next_status = if rollout.status == ModuleStaticDistributionRolloutStatus::Converged {
                 observed_rollout_id = None;
@@ -1077,7 +1028,7 @@ where
             .await?;
             if next_status == ModuleStaticDistributionRolloutStatus::Converged
                 && let Some(previous_observed) = state
-                    .observed_rollout_id
+                    .observed_id
                     .filter(|rollout_id| *rollout_id != rollout.rollout_id)
             {
                 supersede_rollout(&transaction, previous_observed).await?;
@@ -1086,7 +1037,7 @@ where
                 &transaction,
                 state.revision,
                 state_revision,
-                state.desired_rollout_id,
+                state.desired_id,
                 observed_rollout_id,
             )
             .await?;
@@ -1188,7 +1139,7 @@ where
 
     pub async fn state(
         &self,
-    ) -> Result<ModuleStaticDistributionRolloutState, ModuleStaticDistributionRolloutError> {
+    ) -> Result<ModuleDesiredObservedState, ModuleStaticDistributionRolloutError> {
         load_rollout_state(&self.db, false).await
     }
 
@@ -1214,17 +1165,14 @@ pub(crate) async fn revoke_rollouts_for_release(
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let state = load_rollout_state(transaction, true).await?;
     let mut rollout_ids = Vec::new();
-    for rollout_id in [state.desired_rollout_id, state.observed_rollout_id]
-        .into_iter()
-        .flatten()
-    {
+    for rollout_id in [state.desired_id, state.observed_id].into_iter().flatten() {
         if !rollout_ids.contains(&rollout_id) {
             rollout_ids.push(rollout_id);
         }
     }
     let mut next_state_revision = state.revision;
-    let mut desired_rollout_id = state.desired_rollout_id;
-    let mut observed_rollout_id = state.observed_rollout_id;
+    let mut desired_rollout_id = state.desired_id;
+    let mut observed_rollout_id = state.observed_id;
     let mut status_events = Vec::new();
     for rollout_id in rollout_ids {
         let rollout = load_rollout(transaction, rollout_id, true).await?;
@@ -1241,7 +1189,7 @@ pub(crate) async fn revoke_rollouts_for_release(
             }
             _ => continue,
         };
-        let failure = ModuleStaticDistributionAssignmentFailure {
+        let failure = ModuleReconciliationFailure {
             code: "release_revoked".to_string(),
             detail: format!("distribution release was revoked under policy `{policy_revision}`"),
         };
@@ -1310,7 +1258,7 @@ struct OperationRecord {
     node_id: Option<String>,
     role: Option<ModuleStaticDistributionRole>,
     observation_revision: Option<u64>,
-    assignment_phase: Option<ModuleStaticDistributionAssignmentPhase>,
+    assignment_phase: Option<ModuleReconciliationPhase>,
     completed: bool,
 }
 
@@ -1526,31 +1474,33 @@ fn parse_role(
     }
 }
 
+fn parse_reconciliation_phase(
+    value: &str,
+) -> Result<ModuleReconciliationPhase, ModuleStaticDistributionRolloutError> {
+    ModuleReconciliationPhase::parse(value).ok_or_else(|| {
+        ModuleStaticDistributionRolloutError::Store(
+            "module reconciliation assignment phase is invalid".to_string(),
+        )
+    })
+}
+
 fn validate_report(
     command: &ModuleStaticDistributionAssignmentReport,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let health_valid = command.health_evidence.as_ref().is_some_and(|evidence| {
+    let health_evidence_valid = command.health_evidence.as_ref().is_none_or(|evidence| {
         valid_reference(&evidence.reference)
             && evidence.reference.len() <= MAX_REFERENCE_BYTES
             && valid_digest(&evidence.digest)
     });
-    let failure_valid = command.failure.as_ref().is_some_and(|failure| {
+    let failure_valid = command.failure.as_ref().is_none_or(|failure| {
         valid_text(&failure.code, MAX_FAILURE_CODE_BYTES)
             && valid_text(&failure.detail, MAX_FAILURE_DETAIL_BYTES)
     });
-    let phase_payload_valid = match command.phase {
-        ModuleStaticDistributionAssignmentPhase::Prepared => {
-            command.health_evidence.is_none() && command.failure.is_none()
-        }
-        ModuleStaticDistributionAssignmentPhase::Healthy
-        | ModuleStaticDistributionAssignmentPhase::Active => {
-            health_valid && command.failure.is_none()
-        }
-        ModuleStaticDistributionAssignmentPhase::Failed => {
-            command.health_evidence.is_none() && failure_valid
-        }
-        ModuleStaticDistributionAssignmentPhase::Pending => false,
-    };
+    let phase_payload_valid = command
+        .phase
+        .permits_report_payload(command.health_evidence.is_some(), command.failure.is_some())
+        && health_evidence_valid
+        && failure_valid;
     if command.claim_id.is_nil()
         || command.rollout_id.is_nil()
         || !valid_text(&command.node_id, MAX_NODE_ID_BYTES)
@@ -1611,32 +1561,16 @@ fn validate_report_identity(
 }
 
 fn validate_transition(
-    current: ModuleStaticDistributionAssignmentPhase,
-    next: ModuleStaticDistributionAssignmentPhase,
+    current: ModuleReconciliationPhase,
+    next: ModuleReconciliationPhase,
     rollout_status: ModuleStaticDistributionRolloutStatus,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
-    let valid = matches!(
-        (current, next),
-        (
-            ModuleStaticDistributionAssignmentPhase::Pending,
-            ModuleStaticDistributionAssignmentPhase::Prepared
-                | ModuleStaticDistributionAssignmentPhase::Failed
-        ) | (
-            ModuleStaticDistributionAssignmentPhase::Prepared,
-            ModuleStaticDistributionAssignmentPhase::Healthy
-                | ModuleStaticDistributionAssignmentPhase::Failed
-        ) | (
-            ModuleStaticDistributionAssignmentPhase::Healthy,
-            ModuleStaticDistributionAssignmentPhase::Failed
-        ) | (
-            ModuleStaticDistributionAssignmentPhase::Active,
-            ModuleStaticDistributionAssignmentPhase::Failed
-        )
-    ) || (current == ModuleStaticDistributionAssignmentPhase::Healthy
-        && next == ModuleStaticDistributionAssignmentPhase::Active
-        && rollout_status == ModuleStaticDistributionRolloutStatus::Activating)
-        || (current == ModuleStaticDistributionAssignmentPhase::Failed
-            && next == ModuleStaticDistributionAssignmentPhase::Prepared
+    let valid = current.allows_standard_transition_to(next)
+        || (current == ModuleReconciliationPhase::Healthy
+            && next == ModuleReconciliationPhase::Active
+            && rollout_status == ModuleStaticDistributionRolloutStatus::Activating)
+        || (current == ModuleReconciliationPhase::Failed
+            && next == ModuleReconciliationPhase::Prepared
             && rollout_status == ModuleStaticDistributionRolloutStatus::Degraded);
     if !valid {
         return Err(ModuleStaticDistributionRolloutError::InvalidTransition);
@@ -1644,15 +1578,19 @@ fn validate_transition(
     Ok(())
 }
 
-async fn insert_rollout(
-    transaction: &DatabaseTransaction,
+struct RolloutInsert<'a> {
     rollout_id: Uuid,
     predecessor_rollout_id: Option<Uuid>,
     rollout_revision: u64,
-    release: &ModuleStaticDistributionRelease,
-    topology: &ModuleStaticDistributionTopologySnapshot,
-    command: &ModuleStaticDistributionRolloutRequest,
+    release: &'a ModuleStaticDistributionRelease,
+    topology: &'a ModuleStaticDistributionTopologySnapshot,
+    command: &'a ModuleStaticDistributionRolloutRequest,
     transition_kind: ModuleStaticDistributionTransitionKind,
+}
+
+async fn insert_rollout(
+    transaction: &DatabaseTransaction,
+    insert: RolloutInsert<'_>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     transaction
@@ -1689,25 +1627,25 @@ async fn insert_rollout(
                 now_expression(backend),
             ),
             vec![
-                uuid_value(rollout_id, backend),
-                optional_uuid_value(predecessor_rollout_id, backend),
-                uuid_value(release.distribution_release_id, backend),
-                transition_kind.as_str().into(),
-                revision_value(rollout_revision)?,
-                revision_value(release.release_revision)?,
-                revision_value(command.expected_release_state_revision)?,
-                revision_value(release.composition_revision)?,
-                release.composition_digest.clone().into(),
-                release.evidence.bundle_reference.clone().into(),
-                release.evidence.bundle_root_digest.clone().into(),
-                release.evidence.role_set_digest.clone().into(),
-                topology.topology_reference.clone().into(),
-                topology.topology_digest.clone().into(),
-                command.policy_revision.clone().into(),
-                i64::try_from(topology.assignments.len())
+                uuid_value(insert.rollout_id, backend),
+                optional_uuid_value(insert.predecessor_rollout_id, backend),
+                uuid_value(insert.release.distribution_release_id, backend),
+                insert.transition_kind.as_str().into(),
+                revision_value(insert.rollout_revision)?,
+                revision_value(insert.release.release_revision)?,
+                revision_value(insert.command.expected_release_state_revision)?,
+                revision_value(insert.release.composition_revision)?,
+                insert.release.composition_digest.clone().into(),
+                insert.release.evidence.bundle_reference.clone().into(),
+                insert.release.evidence.bundle_root_digest.clone().into(),
+                insert.release.evidence.role_set_digest.clone().into(),
+                insert.topology.topology_reference.clone().into(),
+                insert.topology.topology_digest.clone().into(),
+                insert.command.policy_revision.clone().into(),
+                i64::try_from(insert.topology.assignments.len())
                     .map_err(|_| ModuleStaticDistributionRolloutError::InvalidTopology)?
                     .into(),
-                uuid_value(command.actor_id, backend),
+                uuid_value(insert.command.actor_id, backend),
             ],
         ))
         .await
@@ -1935,7 +1873,7 @@ async fn update_rollout_status(
     rollout_id: Uuid,
     expected_status: ModuleStaticDistributionRolloutStatus,
     next_status: ModuleStaticDistributionRolloutStatus,
-    failure: Option<&ModuleStaticDistributionAssignmentFailure>,
+    failure: Option<&ModuleReconciliationFailure>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let (converged_at, failed_at) = match next_status {
@@ -2031,12 +1969,12 @@ async fn load_phase_counts(
                 "static distribution assignment count is invalid".to_string(),
             )
         })?;
-        match ModuleStaticDistributionAssignmentPhase::parse(&phase)? {
-            ModuleStaticDistributionAssignmentPhase::Pending => counts.pending = count,
-            ModuleStaticDistributionAssignmentPhase::Prepared => counts.prepared = count,
-            ModuleStaticDistributionAssignmentPhase::Healthy => counts.healthy = count,
-            ModuleStaticDistributionAssignmentPhase::Active => counts.active = count,
-            ModuleStaticDistributionAssignmentPhase::Failed => counts.failed = count,
+        match parse_reconciliation_phase(&phase)? {
+            ModuleReconciliationPhase::Pending => counts.pending = count,
+            ModuleReconciliationPhase::Prepared => counts.prepared = count,
+            ModuleReconciliationPhase::Healthy => counts.healthy = count,
+            ModuleReconciliationPhase::Active => counts.active = count,
+            ModuleReconciliationPhase::Failed => counts.failed = count,
         }
     }
     Ok(counts)
@@ -2045,7 +1983,7 @@ async fn load_phase_counts(
 async fn load_rollout_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
-) -> Result<ModuleStaticDistributionRolloutState, ModuleStaticDistributionRolloutError> {
+) -> Result<ModuleDesiredObservedState, ModuleStaticDistributionRolloutError> {
     let backend = connection.get_database_backend();
     let lock = if lock_row && backend == DbBackend::Postgres {
         " FOR UPDATE"
@@ -2070,10 +2008,10 @@ async fn load_rollout_state<C: ConnectionTrait>(
                 "static distribution rollout state is unavailable".to_string(),
             )
         })?;
-    Ok(ModuleStaticDistributionRolloutState {
+    Ok(ModuleDesiredObservedState {
         revision: revision_from_row(&row, "revision", true)?,
-        desired_rollout_id: optional_uuid_from_row(&row, "desired_rollout_id", backend)?,
-        observed_rollout_id: optional_uuid_from_row(&row, "observed_rollout_id", backend)?,
+        desired_id: optional_uuid_from_row(&row, "desired_rollout_id", backend)?,
+        observed_id: optional_uuid_from_row(&row, "observed_rollout_id", backend)?,
     })
 }
 
@@ -2193,9 +2131,7 @@ async fn load_rollout<C: ConnectionTrait>(
     let failure_code: Option<String> = row.try_get("", "failure_code").map_err(store_error)?;
     let failure_detail: Option<String> = row.try_get("", "failure_detail").map_err(store_error)?;
     let failure = match (failure_code, failure_detail) {
-        (Some(code), Some(detail)) => {
-            Some(ModuleStaticDistributionAssignmentFailure { code, detail })
-        }
+        (Some(code), Some(detail)) => Some(ModuleReconciliationFailure { code, detail }),
         (None, None) => None,
         _ => {
             return Err(ModuleStaticDistributionRolloutError::Store(
@@ -2440,9 +2376,7 @@ fn assignment_from_row(
         .try_get("", "health_evidence_digest")
         .map_err(store_error)?;
     let health_evidence = match (health_reference, health_digest) {
-        (Some(reference), Some(digest)) => {
-            Some(ModuleStaticDistributionHealthEvidence { reference, digest })
-        }
+        (Some(reference), Some(digest)) => Some(ModuleReconciliationEvidence { reference, digest }),
         (None, None) => None,
         _ => {
             return Err(ModuleStaticDistributionRolloutError::Store(
@@ -2453,9 +2387,7 @@ fn assignment_from_row(
     let failure_code: Option<String> = row.try_get("", "failure_code").map_err(store_error)?;
     let failure_detail: Option<String> = row.try_get("", "failure_detail").map_err(store_error)?;
     let failure = match (failure_code, failure_detail) {
-        (Some(code), Some(detail)) => {
-            Some(ModuleStaticDistributionAssignmentFailure { code, detail })
-        }
+        (Some(code), Some(detail)) => Some(ModuleReconciliationFailure { code, detail }),
         (None, None) => None,
         _ => {
             return Err(ModuleStaticDistributionRolloutError::Store(
@@ -2478,7 +2410,7 @@ fn assignment_from_row(
             )
         })?,
         observation_revision: revision_from_row(row, "observation_revision", true)?,
-        phase: ModuleStaticDistributionAssignmentPhase::parse(
+        phase: parse_reconciliation_phase(
             &row.try_get::<String>("", "phase").map_err(store_error)?,
         )?,
         health_evidence,
@@ -2588,7 +2520,7 @@ async fn load_operation<C: ConnectionTrait>(
             .try_get::<Option<String>>("", "assignment_phase")
             .map_err(store_error)?
             .as_deref()
-            .map(ModuleStaticDistributionAssignmentPhase::parse)
+            .map(parse_reconciliation_phase)
             .transpose()?,
         completed: row.try_get::<i64>("", "completed").map_err(store_error)? == 1,
     };
@@ -2652,7 +2584,7 @@ async fn complete_operation(
     node_id: Option<&str>,
     role: Option<ModuleStaticDistributionRole>,
     observation_revision: Option<u64>,
-    assignment_phase: Option<ModuleStaticDistributionAssignmentPhase>,
+    assignment_phase: Option<ModuleReconciliationPhase>,
 ) -> Result<(), ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let updated = transaction
@@ -2862,11 +2794,12 @@ fn store_error(error: impl std::fmt::Display) -> ModuleStaticDistributionRollout
 #[cfg(test)]
 mod tests {
     use super::{
-        ModuleStaticDistributionAssignment, ModuleStaticDistributionAssignmentClaimCommand,
+        ModuleReconciliationPhase, ModuleStaticDistributionAssignment,
+        ModuleStaticDistributionAssignmentClaimCommand,
         ModuleStaticDistributionAssignmentHeartbeatCommand,
-        ModuleStaticDistributionAssignmentPhase, ModuleStaticDistributionAssignmentReport,
-        ModuleStaticDistributionRolloutError, module_static_distribution_topology_digest,
-        validate_assignment_claim, validate_assignment_heartbeat, validate_report,
+        ModuleStaticDistributionAssignmentReport, ModuleStaticDistributionRolloutError,
+        module_static_distribution_topology_digest, validate_assignment_claim,
+        validate_assignment_heartbeat, validate_report,
     };
     use crate::ModuleStaticDistributionRole;
     use uuid::Uuid;
@@ -2921,7 +2854,7 @@ mod tests {
             role: ModuleStaticDistributionRole::Api,
             candidate_artifact_digest: digest('a'),
             expected_observation_revision: 0,
-            phase: ModuleStaticDistributionAssignmentPhase::Prepared,
+            phase: ModuleReconciliationPhase::Prepared,
             distribution_release_id: Uuid::new_v4(),
             distribution_release_revision: 1,
             composition_revision: 1,

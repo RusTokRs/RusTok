@@ -6104,9 +6104,11 @@ mod tests {
         }
     }
 
+    type UpgradeBindingCall = (String, String, ExecutionPhase, Value);
+
     #[derive(Clone)]
     struct RecordingUpgradeBindingExecutor {
-        calls: Arc<Mutex<Vec<(String, String, ExecutionPhase, Value)>>>,
+        calls: Arc<Mutex<Vec<UpgradeBindingCall>>>,
     }
 
     #[async_trait]
@@ -6122,7 +6124,7 @@ mod tests {
             self.calls.lock().expect("calls lock").push((
                 dispatch.release.slug.clone(),
                 dispatch.binding.id.clone(),
-                dispatch.phase.clone(),
+                dispatch.phase,
                 dispatch.input,
             ));
             Ok(json!({ "version": 2 }))

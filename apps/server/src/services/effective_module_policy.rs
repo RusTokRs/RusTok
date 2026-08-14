@@ -4,8 +4,7 @@ use rustok_core::ModuleRegistry;
 use rustok_modules::{
     EffectivePolicyCacheIdentity, ModuleControlPlane, ModuleEffectivePolicy,
     ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyMaintenanceInput,
-    ModuleEffectivePolicyNodeReadinessInput, ModuleLifecycleDbWriterError,
-    TenantModuleOverrideSnapshot,
+    ModuleLifecycleDbWriterError, TenantModuleOverrideSnapshot,
 };
 use sea_orm::{DatabaseConnection, DbErr};
 
@@ -82,7 +81,7 @@ impl EffectiveModulePolicyService {
             .map_err(map_effective_policy_error)
     }
 
-    /// Forwards all host-owned policy snapshots and the active package
+    /// Forwards channel and maintenance owner inputs plus the active package
     /// co-requisite contract into one canonical modules-owner decision.
     pub async fn resolve_for_context(
         db: &DatabaseConnection,
@@ -90,30 +89,13 @@ impl EffectiveModulePolicyService {
         tenant_id: uuid::Uuid,
         channel: Option<ModuleEffectivePolicyChannelInput>,
         maintenance: Option<ModuleEffectivePolicyMaintenanceInput>,
-        node_readiness: Option<ModuleEffectivePolicyNodeReadinessInput>,
     ) -> Result<ModuleEffectivePolicy, PlatformCompositionError> {
         let manifest = PlatformCompositionService::active_manifest(db).await?;
         let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
         ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites)
-            .effective_policy_for_context(tenant_id, channel, maintenance, node_readiness)
-            .await
-            .map_err(map_effective_policy_error)
-    }
-
-    pub async fn resolve_for_node_readiness(
-        db: &DatabaseConnection,
-        registry: &ModuleRegistry,
-        tenant_id: uuid::Uuid,
-        node_readiness: ModuleEffectivePolicyNodeReadinessInput,
-    ) -> Result<ModuleEffectivePolicy, PlatformCompositionError> {
-        let manifest = PlatformCompositionService::active_manifest(db).await?;
-        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
-        ModuleControlPlane::new(db.clone())
-            .lifecycle(registry, manifest.settings.default_enabled)
-            .with_corequisites(co_requisites)
-            .effective_policy_for_node_readiness(tenant_id, node_readiness)
+            .effective_policy_for_context(tenant_id, channel, maintenance)
             .await
             .map_err(map_effective_policy_error)
     }

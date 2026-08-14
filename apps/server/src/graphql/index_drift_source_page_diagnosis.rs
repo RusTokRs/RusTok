@@ -203,8 +203,26 @@ fn parse_schema(
     entity_name: String,
     schema_version: String,
 ) -> std::result::Result<rustok_index::SchemaRef, IndexDriftSourcePageTransportPreparationError> {
-    let module_name = bounded_text("module_name", &module_name, MAX_SCHEMA_IDENTIFIER_BYTES)?;
-    let entity_name = bounded_text("entity_name", &entity_name, MAX_SCHEMA_IDENTIFIER_BYTES)?;
+    let module_name = rustok_index::ModuleName::new(bounded_text(
+        "module_name",
+        &module_name,
+        MAX_SCHEMA_IDENTIFIER_BYTES,
+    )?)
+    .map_err(
+        |_| IndexDriftSourcePageTransportPreparationError::InvalidInput {
+            field: "module_name",
+        },
+    )?;
+    let entity_name = rustok_index::EntityName::new(bounded_text(
+        "entity_name",
+        &entity_name,
+        MAX_SCHEMA_IDENTIFIER_BYTES,
+    )?)
+    .map_err(
+        |_| IndexDriftSourcePageTransportPreparationError::InvalidInput {
+            field: "entity_name",
+        },
+    )?;
     let schema_version = bounded_text("schema_version", &schema_version, MAX_SCHEMA_VERSION_BYTES)?
         .parse::<u32>()
         .ok()
@@ -216,16 +234,8 @@ fn parse_schema(
         )?;
 
     Ok(rustok_index::SchemaRef {
-        module: rustok_index::ModuleName::new(module_name).map_err(|_| {
-            IndexDriftSourcePageTransportPreparationError::InvalidInput {
-                field: "module_name",
-            }
-        })?,
-        entity: rustok_index::EntityName::new(entity_name).map_err(|_| {
-            IndexDriftSourcePageTransportPreparationError::InvalidInput {
-                field: "entity_name",
-            }
-        })?,
+        module: module_name,
+        entity: entity_name,
         version: rustok_index::SchemaVersion::new(schema_version),
     })
 }

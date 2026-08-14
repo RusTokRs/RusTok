@@ -423,7 +423,7 @@ mod tests {
     use axum::http::{HeaderMap, header};
     use rustok_api::{Permission, Resource};
     use rustok_cache::CacheService;
-    use rustok_migrations::Migrator;
+    use rustok_migrations::SqliteTestMigrator as Migrator;
     use sea_orm::{ActiveModelTrait, Set};
     use serial_test::serial;
 

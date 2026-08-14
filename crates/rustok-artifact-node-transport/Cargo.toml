@@ -1,0 +1,23 @@
+[package]
+name = "rustok-artifact-node-transport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Typed mTLS transport for RusToK artifact-node reconciliation"
+
+[dependencies]
+async-trait.workspace = true
+prost.workspace = true
+rustok-modules.workspace = true
+rustok-worker-transport.workspace = true
+sea-orm.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tonic = { workspace = true, features = ["tls-ring"] }
+tonic-prost.workspace = true
+uuid.workspace = true
+
+[build-dependencies]
+protoc-bin-vendored.workspace = true
+tonic-prost-build.workspace = true

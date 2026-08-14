@@ -127,6 +127,10 @@ function relative(filePath) {
   return path.relative(root, filePath).replaceAll(path.sep, '/');
 }
 
+function read(relativePath) {
+  return fs.readFileSync(path.join(root, relativePath), 'utf8');
+}
+
 function writesControlPlane(source) {
   return (
     writePattern.test(source) ||
@@ -246,6 +250,7 @@ try {
   const alloyMcpImport = fs.readFileSync(alloyMcpImportPath, 'utf8');
   const alloyMcpAccess = fs.readFileSync(alloyMcpAccessPath, 'utf8');
   const alloyMcpStdioServer = fs.readFileSync(alloyMcpStdioServerPath, 'utf8');
+  const alloyMcpScaffold = read('crates/rustok-mcp/src/alloy_scaffold.rs');
   const serverMcpController = fs.readFileSync(serverMcpControllerPath, 'utf8');
   const alloySandboxRuntime = fs.readFileSync(alloySandboxRuntimePath, 'utf8');
   const alloyTestRunner = fs.readFileSync(alloyTestRunnerPath, 'utf8');
@@ -387,6 +392,43 @@ try {
   }
   if (alloyMcpStdioServer.includes('alloy_import_published_release')) {
     fail('generic stdio MCP must not advertise the tenant-bound published Alloy release import');
+  }
+  const alloyMcpAuthoring = read('crates/rustok-mcp/src/alloy_authoring.rs');
+  const alloyAuthoringService = read('crates/alloy/src/authoring.rs');
+  if (
+    !alloyMcpAuthoring.includes('REMOTE_ALLOY_AUTHORING_TOOL_NAMES') ||
+    !alloyMcpAuthoring.includes('TOOL_ALLOY_CREATE_SCRIPT') ||
+    !alloyMcpAuthoring.includes('TOOL_ALLOY_RUN_SCRIPT') ||
+    !alloyAuthoringService.includes('pub struct AlloyAuthoringService') ||
+    !alloyAuthoringService.includes('pub fn from_scoped(runtime: ScopedAlloyRuntime)') ||
+    !alloyAuthoringService.includes('pub struct RedactedAlloyScript') ||
+    !alloyAuthoringService.includes('source-redacted') ||
+    !alloyAuthoringService.includes('production_scoped_storage_rejects_cross_tenant_authoring') ||
+    !serverMcpController.includes('is_remote_alloy_authoring_tool(&input.tool_name)') ||
+    !serverMcpController.includes('execute_remote_alloy_authoring') ||
+    !serverMcpController.includes('AlloyAuthoringService::from_scoped(runtime.0.scoped(tenant_id))') ||
+    !serverMcpController.includes('remote_alloy_authoring_identity') ||
+    !serverMcpController.includes('identity.tenant_id.as_deref() != binding.tenant_id.as_deref()') ||
+    !serverMcpController.includes('remote_alloy_authoring_identity(&binding).is_err()') ||
+    !serverMcpController.includes('fn remote_tool_audit_metadata') ||
+    !serverMcpController.includes('"source_bearing_alloy_authoring"')
+  ) {
+    fail('remote MCP Alloy authoring must use the owner-scoped runtime, redact source responses and audit metadata, and prove tenant isolation');
+  }
+  if (
+    alloyMcpStdioServer.includes('REMOTE_ALLOY_AUTHORING_TOOL_NAMES') ||
+    alloyMcpStdioServer.includes('TOOL_ALLOY_CREATE_SCRIPT') ||
+    alloyMcpStdioServer.includes('TOOL_ALLOY_RUN_SCRIPT')
+  ) {
+    fail('generic stdio MCP must not advertise remote-only Alloy authoring tools');
+  }
+  if (
+    alloyMcpScaffold.includes('#[allow(') ||
+    alloyMcpScaffold.includes('fn render_graphql_') ||
+    alloyMcpScaffold.includes('fn render_controllers_') ||
+    /[\u0400-\u04FF]/.test(alloyMcpScaffold)
+  ) {
+    fail('generic MCP module scaffolding must be English-only, lint-clean, and must not create fake transport handlers');
   }
   if (
     !alloySandboxRuntime.includes('pub trait AlloyImportedDraftPolicyProvider') ||

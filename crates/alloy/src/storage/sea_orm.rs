@@ -32,6 +32,7 @@ pub struct Model {
     pub run_as_system: bool,
     pub permissions: Json,
     pub author_id: Option<String>,
+    pub source_provenance: Json,
     pub parent_release_slug: Option<String>,
     pub parent_release_version: Option<String>,
     pub parent_release_digest: Option<String>,
@@ -62,10 +63,43 @@ mod draft_revision {
         pub source_digest: String,
         pub workspace: Json,
         pub author_id: Option<String>,
+        pub source_provenance: Json,
         pub parent_release_slug: Option<String>,
         pub parent_release_version: Option<String>,
         pub parent_release_digest: Option<String>,
         pub created_at: DateTime<Utc>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {
+        #[sea_orm(
+            belongs_to = "super::Entity",
+            from = "Column::ScriptId",
+            to = "super::Column::Id"
+        )]
+        Script,
+    }
+
+    impl Related<super::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Script.def()
+        }
+    }
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod draft_tombstone {
+    use chrono::{DateTime, Utc};
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "alloy_script_tombstones")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub deleted_at: DateTime<Utc>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -97,7 +131,20 @@ mod draft_review {
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
+    pub enum Relation {
+        #[sea_orm(
+            belongs_to = "super::Entity",
+            from = "Column::ScriptId",
+            to = "super::Column::Id"
+        )]
+        Script,
+    }
+
+    impl Related<super::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Script.def()
+        }
+    }
 
     impl ActiveModelBehavior for ActiveModel {}
 }
@@ -307,6 +354,7 @@ impl SeaOrmStorage {
                 ScriptError::InvalidWorkspace(format!("stored workspace is invalid: {error}"))
             })?;
         workspace.validate().map_err(ScriptError::from)?;
+        let source_provenance = Self::source_provenance_from_json(model.source_provenance)?;
 
         Ok(Script {
             id: model.id,
@@ -320,6 +368,7 @@ impl SeaOrmStorage {
             run_as_system: model.run_as_system,
             permissions,
             author_id: model.author_id,
+            source_provenance,
             parent_release: release_ref_from_parts(
                 model.parent_release_slug,
                 model.parent_release_version,
@@ -347,6 +396,28 @@ impl SeaOrmStorage {
             .map_err(|error| ScriptError::InvalidWorkspace(error.to_string()))
     }
 
+    fn source_provenance_to_json(
+        provenance: &crate::SourceProvenance,
+    ) -> ScriptResult<serde_json::Value> {
+        provenance
+            .validate()
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        serde_json::to_value(provenance).map_err(|error| ScriptError::Storage(error.to_string()))
+    }
+
+    fn source_provenance_from_json(
+        value: serde_json::Value,
+    ) -> ScriptResult<crate::SourceProvenance> {
+        let provenance: crate::SourceProvenance =
+            serde_json::from_value(value).map_err(|error| {
+                ScriptError::Storage(format!("stored source provenance is invalid: {error}"))
+            })?;
+        provenance
+            .validate()
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        Ok(provenance)
+    }
+
     fn new_script_active_model(script: &Script) -> ScriptResult<ActiveModel> {
         let (trigger_type, trigger_config) = Self::trigger_to_parts(&script.trigger);
         Ok(ActiveModel {
@@ -362,6 +433,9 @@ impl SeaOrmStorage {
             run_as_system: ActiveValue::Set(script.run_as_system),
             permissions: ActiveValue::Set(Self::permissions_to_json(&script.permissions)),
             author_id: ActiveValue::Set(script.author_id.clone()),
+            source_provenance: ActiveValue::Set(Self::source_provenance_to_json(
+                &script.source_provenance,
+            )?),
             parent_release_slug: ActiveValue::Set(
                 script
                     .parent_release
@@ -424,6 +498,7 @@ impl SeaOrmStorage {
                 ))
             })?;
         workspace.validate().map_err(ScriptError::from)?;
+        let source_provenance = Self::source_provenance_from_json(model.source_provenance)?;
 
         Ok(ScriptSourceRevision {
             script_id: model.script_id,
@@ -433,6 +508,7 @@ impl SeaOrmStorage {
             source_digest: model.source_digest,
             workspace,
             author_id: model.author_id,
+            source_provenance,
             parent_release: release_ref_from_parts(
                 model.parent_release_slug,
                 model.parent_release_version,
@@ -569,6 +645,9 @@ impl SeaOrmStorage {
             source_digest: ActiveValue::Set(Self::source_digest(&script.workspace)?),
             workspace: ActiveValue::Set(Self::workspace_to_json(&script.workspace)?),
             author_id: ActiveValue::Set(script.author_id.clone()),
+            source_provenance: ActiveValue::Set(Self::source_provenance_to_json(
+                &script.source_provenance,
+            )?),
             parent_release_slug: ActiveValue::Set(
                 script
                     .parent_release
@@ -753,14 +832,20 @@ impl ScriptRegistry for SeaOrmStorage {
         id: ScriptId,
         revision: u32,
     ) -> ScriptResult<ScriptSourceRevision> {
+        // Source snapshots are retained as durable evidence, but the owner
+        // join makes draft existence and evidence visibility one read.
         let revision = i32::try_from(revision).map_err(|_| {
             ScriptError::Storage("requested source revision is outside the durable range".into())
         })?;
         let mut query = draft_revision::Entity::find()
+            .inner_join(Entity)
             .filter(draft_revision::Column::ScriptId.eq(id))
+            .filter(Column::Id.eq(id))
             .filter(draft_revision::Column::Revision.eq(revision));
         if let Some(tenant_id) = self.tenant_id {
-            query = query.filter(draft_revision::Column::TenantId.eq(tenant_id));
+            query = query
+                .filter(draft_revision::Column::TenantId.eq(tenant_id))
+                .filter(Column::TenantId.eq(tenant_id));
         }
         let model = query
             .one(&self.db)
@@ -774,16 +859,28 @@ impl ScriptRegistry for SeaOrmStorage {
     }
 
     async fn list_source_revisions(&self, id: ScriptId) -> ScriptResult<Vec<ScriptSourceRevision>> {
-        let mut query =
-            draft_revision::Entity::find().filter(draft_revision::Column::ScriptId.eq(id));
+        // The owner join prevents an orphaned immutable ledger row from
+        // exposing a deleted workspace through an otherwise valid tenant scope.
+        let mut query = draft_revision::Entity::find()
+            .inner_join(Entity)
+            .filter(draft_revision::Column::ScriptId.eq(id))
+            .filter(Column::Id.eq(id));
         if let Some(tenant_id) = self.tenant_id {
-            query = query.filter(draft_revision::Column::TenantId.eq(tenant_id));
+            query = query
+                .filter(draft_revision::Column::TenantId.eq(tenant_id))
+                .filter(Column::TenantId.eq(tenant_id));
         }
         let models = query
             .order_by_asc(draft_revision::Column::Revision)
             .all(&self.db)
             .await
             .map_err(|error| ScriptError::Storage(error.to_string()))?;
+
+        // An existing draft with no revisions is represented as an empty list;
+        // a deleted draft remains NotFound, never an empty evidence ledger.
+        if models.is_empty() {
+            self.get(id).await?;
+        }
 
         models
             .into_iter()
@@ -804,29 +901,6 @@ impl ScriptRegistry for SeaOrmStorage {
             .begin()
             .await
             .map_err(|error| ScriptError::Storage(error.to_string()))?;
-
-        let mut existing_query = draft_review::Entity::find()
-            .filter(draft_review::Column::ScriptId.eq(command.script_id))
-            .filter(draft_review::Column::Revision.eq(revision))
-            .filter(draft_review::Column::IdempotencyKey.eq(command.idempotency_key));
-        if let Some(tenant_id) = self.tenant_id {
-            existing_query = existing_query.filter(draft_review::Column::TenantId.eq(tenant_id));
-        }
-        if let Some(existing) = existing_query
-            .one(&transaction)
-            .await
-            .map_err(|error| ScriptError::Storage(error.to_string()))?
-        {
-            let existing = Self::model_to_review_decision(existing)?;
-            if existing.request_digest == request_digest {
-                transaction
-                    .commit()
-                    .await
-                    .map_err(|error| ScriptError::Storage(error.to_string()))?;
-                return Ok(existing);
-            }
-            return Err(crate::model::ReviewError::IdempotencyConflict.into());
-        }
 
         let mut script_query = Entity::find_by_id(command.script_id);
         if let Some(tenant_id) = self.tenant_id {
@@ -952,17 +1026,25 @@ impl ScriptRegistry for SeaOrmStorage {
             ScriptError::Storage("requested review revision is outside the durable range".into())
         })?;
         let mut query = draft_review::Entity::find()
+            .inner_join(Entity)
             .filter(draft_review::Column::ScriptId.eq(id))
+            .filter(Column::Id.eq(id))
             .filter(draft_review::Column::Revision.eq(revision));
         if let Some(tenant_id) = self.tenant_id {
-            query = query.filter(draft_review::Column::TenantId.eq(tenant_id));
+            query = query
+                .filter(draft_review::Column::TenantId.eq(tenant_id))
+                .filter(Column::TenantId.eq(tenant_id));
         }
-        query
+        let models = query
             .order_by_asc(draft_review::Column::CreatedAt)
             .order_by_asc(draft_review::Column::Id)
             .all(&self.db)
             .await
-            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        if models.is_empty() {
+            self.get(id).await?;
+        }
+        models
             .into_iter()
             .map(Self::model_to_review_decision)
             .collect()
@@ -982,6 +1064,43 @@ impl ScriptRegistry for SeaOrmStorage {
             .begin()
             .await
             .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let mut script_query = Entity::find_by_id(command.script_id);
+        if let Some(tenant_id) = self.tenant_id {
+            script_query = script_query.filter(Column::TenantId.eq(tenant_id));
+        }
+        let script = script_query
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .ok_or_else(|| ScriptError::NotFound {
+                name: command.script_id.to_string(),
+            })?;
+        if script.version != revision {
+            return Err(ScriptError::RevisionConflict {
+                expected: command.expected_revision,
+            });
+        }
+
+        // Serialize an idempotent replay with deletion and source saves before
+        // any stored test evidence is read back to the caller.
+        let mut assert_current = Entity::update_many()
+            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())
+            .filter(Column::Id.eq(command.script_id))
+            .filter(Column::Version.eq(revision));
+        if let Some(tenant_id) = self.tenant_id {
+            assert_current = assert_current.filter(Column::TenantId.eq(tenant_id));
+        }
+        if assert_current
+            .exec(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .rows_affected
+            != 1
+        {
+            return Err(ScriptError::RevisionConflict {
+                expected: command.expected_revision,
+            });
+        }
         let mut existing_query = draft_test_run::Entity::find()
             .filter(draft_test_run::Column::ScriptId.eq(command.script_id))
             .filter(draft_test_run::Column::Revision.eq(revision))
@@ -1058,22 +1177,6 @@ impl ScriptRegistry for SeaOrmStorage {
             }));
         }
 
-        let mut script_query = Entity::find_by_id(command.script_id);
-        if let Some(tenant_id) = self.tenant_id {
-            script_query = script_query.filter(Column::TenantId.eq(tenant_id));
-        }
-        let script = script_query
-            .one(&transaction)
-            .await
-            .map_err(|error| ScriptError::Storage(error.to_string()))?
-            .ok_or_else(|| ScriptError::NotFound {
-                name: command.script_id.to_string(),
-            })?;
-        if script.version != revision {
-            return Err(ScriptError::RevisionConflict {
-                expected: command.expected_revision,
-            });
-        }
         let source = Self::source_for_test_run(
             &transaction,
             command.script_id,
@@ -1083,26 +1186,6 @@ impl ScriptRegistry for SeaOrmStorage {
         )
         .await?;
 
-        // Serialize a new test claim with source saves through the same current
-        // revision predicate, then recheck idempotency before inserting.
-        let mut assert_current = Entity::update_many()
-            .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())
-            .filter(Column::Id.eq(command.script_id))
-            .filter(Column::Version.eq(revision));
-        if let Some(tenant_id) = self.tenant_id {
-            assert_current = assert_current.filter(Column::TenantId.eq(tenant_id));
-        }
-        if assert_current
-            .exec(&transaction)
-            .await
-            .map_err(|error| ScriptError::Storage(error.to_string()))?
-            .rows_affected
-            != 1
-        {
-            return Err(ScriptError::RevisionConflict {
-                expected: command.expected_revision,
-            });
-        }
         let existing = draft_test_run::Entity::find()
             .filter(draft_test_run::Column::ScriptId.eq(command.script_id))
             .filter(draft_test_run::Column::TenantId.eq(script.tenant_id))
@@ -1194,6 +1277,10 @@ impl ScriptRegistry for SeaOrmStorage {
                 .commit()
                 .await
                 .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            // Completion is a cleanup operation and may observe a retained
+            // terminal row. It must not turn that retained row into a read
+            // path once the owning script no longer exists.
+            self.get(existing.script_id).await?;
             return Ok(existing);
         }
         if model.lease_token != Some(lease_token)
@@ -1248,6 +1335,9 @@ impl ScriptRegistry for SeaOrmStorage {
             .commit()
             .await
             .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        // Settle the held lease for retention/GC even if deletion raced with
+        // execution, then fail closed rather than exposing the test evidence.
+        self.get(run.script_id).await?;
         Ok(run)
     }
 
@@ -1290,6 +1380,16 @@ impl ScriptRegistry for SeaOrmStorage {
             .begin()
             .await
             .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        if draft_tombstone::Entity::find_by_id(command.script.id)
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .is_some()
+        {
+            return Err(ScriptError::InvalidLineage(
+                "a deleted draft ID cannot be reused while immutable evidence is retained".into(),
+            ));
+        }
         let receipt_id = Uuid::new_v4();
         release_import::Entity::insert(release_import::ActiveModel {
             id: ActiveValue::Set(receipt_id),
@@ -1394,6 +1494,10 @@ impl ScriptRegistry for SeaOrmStorage {
     async fn save(&self, mut script: Script) -> ScriptResult<Script> {
         self.ensure_script_scope(&script)?;
         script.workspace.validate().map_err(ScriptError::from)?;
+        script
+            .source_provenance
+            .validate()
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
         validate_parent_release(&script.parent_release)?;
         let now = Utc::now();
         let (trigger_type, trigger_config) = Self::trigger_to_parts(&script.trigger);
@@ -1445,6 +1549,10 @@ impl ScriptRegistry for SeaOrmStorage {
                 .col_expr(Column::RunAsSystem, Expr::value(script.run_as_system))
                 .col_expr(Column::Permissions, Expr::value(permissions_json))
                 .col_expr(Column::AuthorId, Expr::value(script.author_id.clone()))
+                .col_expr(
+                    Column::SourceProvenance,
+                    Expr::value(Self::source_provenance_to_json(&script.source_provenance)?),
+                )
                 .col_expr(Column::ErrorCount, Expr::value(script.error_count as i32))
                 .col_expr(Column::LastErrorAt, Expr::value(script.last_error_at))
                 .col_expr(Column::UpdatedAt, Expr::value(script.updated_at))
@@ -1469,6 +1577,17 @@ impl ScriptRegistry for SeaOrmStorage {
                 .await
                 .map_err(|error| ScriptError::Storage(error.to_string()))?;
             return self.get(script.id).await;
+        }
+
+        if draft_tombstone::Entity::find_by_id(script.id)
+            .one(&self.db)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .is_some()
+        {
+            return Err(ScriptError::InvalidLineage(
+                "a deleted draft ID cannot be reused while immutable evidence is retained".into(),
+            ));
         }
 
         script.version = 1;
@@ -1503,6 +1622,11 @@ impl ScriptRegistry for SeaOrmStorage {
             });
         }
 
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
         let mut delete = Entity::delete_many().filter(Column::Id.eq(id));
         if let Some(tenant_id) = self.tenant_id {
             delete = delete.filter(Column::TenantId.eq(tenant_id));
@@ -1513,11 +1637,15 @@ impl ScriptRegistry for SeaOrmStorage {
             },
         )?));
         let result = delete
-            .exec(&self.db)
+            .exec(&transaction)
             .await
             .map_err(|err| ScriptError::Storage(err.to_string()))?;
 
         if result.rows_affected == 0 {
+            transaction
+                .rollback()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
             return match self.get(id).await {
                 Ok(_current) => Err(ScriptError::RevisionConflict {
                     expected: expected_version,
@@ -1528,6 +1656,19 @@ impl ScriptRegistry for SeaOrmStorage {
                 Err(error) => Err(error),
             };
         }
+
+        draft_tombstone::Entity::insert(draft_tombstone::ActiveModel {
+            id: ActiveValue::Set(id),
+            tenant_id: ActiveValue::Set(current.tenant_id),
+            deleted_at: ActiveValue::Set(Utc::now()),
+        })
+        .exec_without_returning(&transaction)
+        .await
+        .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
 
         Ok(())
     }
@@ -1677,6 +1818,7 @@ mod tests {
             .expect("current script should load");
         next.workspace = RhaiWorkspace::single_source("41 + 2");
         next.author_id = Some("author:next".into());
+        next.source_provenance = crate::SourceProvenance::remote_mcp("alloy_update_script");
         let saved = owner.save(next).await.expect("next revision should save");
 
         let revisions = owner
@@ -1706,6 +1848,10 @@ mod tests {
         );
         assert_eq!(revisions[1].author_id.as_deref(), Some("author:next"));
         assert_eq!(
+            revisions[1].source_provenance,
+            crate::SourceProvenance::remote_mcp("alloy_update_script")
+        );
+        assert_eq!(
             revisions[1].source_digest,
             SeaOrmStorage::source_digest(&RhaiWorkspace::single_source("41 + 2"))
                 .expect("workspace digest")
@@ -1732,12 +1878,95 @@ mod tests {
             other.get_source_revision(script.id, 1).await,
             Err(ScriptError::NotFound { .. })
         ));
-        assert!(
-            other
-                .list_source_revisions(script.id)
-                .await
-                .expect("other tenant revision list should be empty")
-                .is_empty()
+        assert!(matches!(
+            other.list_source_revisions(script.id).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn deleted_script_hides_retained_source_and_review_evidence() {
+        let (storage, owner_tenant, _, script) = storage_with_script().await;
+        let owner = storage.for_tenant(owner_tenant);
+        let mut script = owner
+            .get(script.id)
+            .await
+            .expect("current script should load");
+        script.workspace.files.push(crate::RhaiWorkspaceFile {
+            path: "tests/smoke.rhai".into(),
+            kind: crate::RhaiWorkspaceFileKind::Test,
+            contents: "true".into(),
+        });
+        let script = owner.save(script).await.expect("test revision should save");
+        let review = ReviewCommand {
+            script_id: script.id,
+            expected_revision: script.version,
+            status: ReviewStatus::ChangesRequested,
+            policy_revision: "policy:current".into(),
+            actor_id: "operator:reviewer".into(),
+            reason: None,
+            idempotency_key: Uuid::new_v4(),
+        };
+        owner
+            .review(review.clone())
+            .await
+            .expect("review should be recorded before deletion");
+        let test = TestCommand {
+            script_id: script.id,
+            expected_revision: script.version,
+            test_path: "tests/smoke.rhai".into(),
+            actor_id: "operator:tester".into(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let TestRunClaim::Claimed(lease) = owner
+            .claim_test_run(test.clone())
+            .await
+            .expect("test claim should be recorded before deletion")
+        else {
+            panic!("new test command must claim a lease");
+        };
+
+        owner
+            .delete(script.id, script.version)
+            .await
+            .expect("current script should delete");
+
+        assert!(matches!(
+            owner.get_source_revision(script.id, script.version).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        assert!(matches!(
+            owner.list_source_revisions(script.id).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        assert!(matches!(
+            owner.list_reviews(script.id, script.version).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        assert!(matches!(
+            owner.review(review).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        assert!(matches!(
+            owner.claim_test_run(test).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        assert!(matches!(
+            owner
+                .complete_test_run(lease.run.id, lease.lease_token, TestRunCompletion::passed())
+                .await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        let mut replacement = Script::new(
+            "retired_id",
+            RhaiWorkspace::single_source("41 + 2"),
+            ScriptTrigger::Manual,
         );
+        replacement.id = script.id;
+        replacement.tenant_id = owner_tenant;
+        assert!(matches!(
+            owner.save(replacement).await,
+            Err(ScriptError::InvalidLineage(_))
+        ));
     }
 }

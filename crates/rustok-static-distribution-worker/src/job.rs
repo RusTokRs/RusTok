@@ -423,7 +423,7 @@ pub async fn run_static_distribution_job(
         &request,
         &job_request_digest,
         rustok_modules::ModuleStaticDistributionCompletionOutcome::Succeeded {
-            evidence: publication.evidence,
+            evidence: Box::new(publication.evidence),
         },
     )
 }

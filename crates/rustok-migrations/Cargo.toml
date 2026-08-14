@@ -2,7 +2,7 @@
 
 name = "rustok-migrations"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 license = "BUSL-1.1"
 description.workspace = true
 
@@ -22,6 +22,7 @@ rustok-modules.workspace = true
 rustok-tenant.workspace = true
 # Module crates — each owns its own migration files
 alloy.workspace = true
+flex.workspace = true
 rustok-auth.workspace = true
 rustok-rbac.workspace = true
 rustok-channel.workspace = true
@@ -63,7 +64,6 @@ rustok-iggy-connector = { workspace = true, features = ["migrations"] }
 [dev-dependencies]
 async-trait.workspace = true
 chrono.workspace = true
-flex.workspace = true
 rust_decimal.workspace = true
 rustok-test-utils.workspace = true
 sea-orm.workspace = true

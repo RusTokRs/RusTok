@@ -44,6 +44,11 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(AlloyScriptRevisions::AuthorId).string_len(255))
+                    .col(
+                        ColumnDef::new(AlloyScriptRevisions::SourceProvenance)
+                            .json_binary()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(AlloyScriptRevisions::ParentReleaseSlug).string_len(128))
                     .col(ColumnDef::new(AlloyScriptRevisions::ParentReleaseVersion).string_len(64))
                     .col(ColumnDef::new(AlloyScriptRevisions::ParentReleaseDigest).string_len(71))
@@ -94,6 +99,7 @@ enum AlloyScriptRevisions {
     SourceDigest,
     Workspace,
     AuthorId,
+    SourceProvenance,
     ParentReleaseSlug,
     ParentReleaseVersion,
     ParentReleaseDigest,

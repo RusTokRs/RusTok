@@ -322,6 +322,8 @@ pub mod payment_provider_event_worker;
 pub mod payment_provider_runtime;
 pub mod platform_composition;
 pub mod product_catalog_deployment;
+#[cfg(feature = "mod-product")]
+pub mod product_index_refresh_worker;
 pub mod profile_media_public_image_deployment;
 pub mod profile_media_public_image_runtime;
 

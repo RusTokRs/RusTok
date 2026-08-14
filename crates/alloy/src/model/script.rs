@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use rustok_modules::ArtifactReleaseRef;
 
-use super::RhaiWorkspace;
 use super::trigger::ScriptTrigger;
+use super::{RhaiWorkspace, SourceProvenance};
 
 pub type ScriptId = Uuid;
 
@@ -34,6 +34,7 @@ pub struct Script {
     pub run_as_system: bool,
     pub permissions: Vec<String>,
     pub author_id: Option<String>,
+    pub source_provenance: SourceProvenance,
     #[serde(default)]
     pub parent_release: Option<ArtifactReleaseRef>,
     pub created_at: DateTime<Utc>,
@@ -52,6 +53,7 @@ pub struct ScriptSourceRevision {
     pub source_digest: String,
     pub workspace: RhaiWorkspace,
     pub author_id: Option<String>,
+    pub source_provenance: SourceProvenance,
     #[serde(default)]
     pub parent_release: Option<ArtifactReleaseRef>,
     pub created_at: DateTime<Utc>,
@@ -72,6 +74,7 @@ impl Script {
             run_as_system: false,
             permissions: Vec::new(),
             author_id: None,
+            source_provenance: SourceProvenance::owner_runtime(),
             parent_release: None,
             created_at: now,
             updated_at: now,

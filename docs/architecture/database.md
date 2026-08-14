@@ -287,12 +287,15 @@ The current live baseline includes:
 - `flex_schema_translations`
 - `flex_entries`
 - `flex_attached_localized_values`
+- `flex_field_definition_cache_generation`
 
 Current-state conclusion:
 
 - schema-level language-agnostic state lives in base tables
 - localized schema copy lives in translations tables
 - attached localized values are moved to dedicated locale-aware storage
+- Flex owns the singleton field-definition cache-generation table; donor modules own only the
+  triggers on their own field-definition tables and declare the Flex migration as a dependency
 - cleanup/backfill of legacy inline localized payloads must happen through migrations,
   not through constant runtime fallback to base-row JSON
 

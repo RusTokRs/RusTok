@@ -78,6 +78,79 @@ class DependabotDirectoryCheckTests(unittest.TestCase):
             self.assertIn("Dependabot directories do not exist:", result.stderr)
             self.assertIn("/apps/mcp", result.stderr)
 
+    def test_accepts_recursive_directory_patterns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "apps" / "server").mkdir(parents=True)
+            (root / "crates" / "rustok-core").mkdir(parents=True)
+            (root / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
+            (root / "apps" / "server" / "Cargo.toml").write_text(
+                "[package]\nname = \"server\"\nversion = \"0.1.0\"\n",
+                encoding="utf-8",
+            )
+            (root / "crates" / "rustok-core" / "Cargo.toml").write_text(
+                "[package]\nname = \"rustok-core\"\nversion = \"0.1.0\"\n",
+                encoding="utf-8",
+            )
+
+            config = root / ".github" / "dependabot.yml"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                textwrap.dedent(
+                    """
+                    version: 2
+                    updates:
+                      - package-ecosystem: "cargo"
+                        directories:
+                          - "/"
+                          - "**/*"
+                    """
+                ).strip()
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_script(root, config)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("All Dependabot update directories exist.", result.stdout)
+
+    def test_fails_when_cargo_manifest_is_not_covered(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "apps" / "server").mkdir(parents=True)
+            (root / "crates" / "rustok-core").mkdir(parents=True)
+            (root / "apps" / "server" / "Cargo.toml").write_text(
+                "[package]\nname = \"server\"\nversion = \"0.1.0\"\n",
+                encoding="utf-8",
+            )
+            (root / "crates" / "rustok-core" / "Cargo.toml").write_text(
+                "[package]\nname = \"rustok-core\"\nversion = \"0.1.0\"\n",
+                encoding="utf-8",
+            )
+
+            config = root / ".github" / "dependabot.yml"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                textwrap.dedent(
+                    """
+                    version: 2
+                    updates:
+                      - package-ecosystem: "cargo"
+                        directory: "/apps/server"
+                    """
+                ).strip()
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_script(root, config)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(
+                "Dependabot Cargo configuration does not cover Cargo manifests:",
+                result.stderr,
+            )
+            self.assertIn("/crates/rustok-core", result.stderr)
+
     def test_fails_when_directory_entries_are_duplicated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)

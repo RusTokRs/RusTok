@@ -635,6 +635,7 @@ async fn provide_leptos_request_context(
 
 #[cfg(feature = "ssr")]
 pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
+    let _ = any_spawner::Executor::init_tokio();
     Router::new()
         .route(
             "/",

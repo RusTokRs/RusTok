@@ -11,8 +11,9 @@ use async_trait::async_trait;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
     ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolver, ArtifactRuntime,
-    ArtifactRuntimeLifecycleExecutor, ModuleControlPlane, ModuleEffectivePolicy,
-    ResolvingArtifactCapabilityBroker, SharedArtifactBindingExecutor,
+    ArtifactRuntimeLifecycleExecutor, InstalledModuleArtifact, ModuleControlPlane,
+    ModuleEffectivePolicy, ResolvingArtifactCapabilityBroker, SeaOrmArtifactNodeReadiness,
+    SharedArtifactBindingExecutor, VerifiedArtifactNodeCache,
 };
 use rustok_sandbox::{CapabilityName, ExecutorRegistry, SandboxRuntime};
 use rustok_sandbox_transport::GrpcRhaiExecutor;
@@ -23,6 +24,9 @@ use sea_orm::DatabaseConnection;
 use crate::error::{Error, Result};
 
 use super::server_runtime_context::ServerRuntimeContext;
+
+const DEFAULT_ARTIFACT_NODE_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
+const MAX_ARTIFACT_NODE_CACHE_MAX_BYTES: usize = 1024 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct SharedSandboxRhaiExecutor(pub GrpcRhaiExecutor);
@@ -54,6 +58,7 @@ pub async fn sandbox_rhai_executor(ctx: &ServerRuntimeContext) -> Result<GrpcRha
 struct ServerArtifactEffectivePolicyResolver {
     db: DatabaseConnection,
     registry: ModuleRegistry,
+    node_readiness: SeaOrmArtifactNodeReadiness,
 }
 
 #[async_trait]
@@ -61,16 +66,57 @@ impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
     async fn resolve(
         &self,
         tenant_id: uuid::Uuid,
-        _module_slug: &str,
+        artifact: &InstalledModuleArtifact,
     ) -> Result<ModuleEffectivePolicy, String> {
-        crate::services::effective_module_policy::EffectiveModulePolicyService::resolve(
-            &self.db,
-            &self.registry,
-            tenant_id,
-        )
-        .await
-        .map_err(|error| error.to_string())
+        let policy =
+            crate::services::effective_module_policy::EffectiveModulePolicyService::resolve(
+                &self.db,
+                &self.registry,
+                tenant_id,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        self.node_readiness
+            .require_active(artifact, policy.policy_revision())
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(policy)
     }
+}
+
+fn configured_artifact_node_id() -> Result<uuid::Uuid> {
+    let value = std::env::var("RUSTOK_ARTIFACT_NODE_ID")
+        .map_err(|_| Error::Message("RUSTOK_ARTIFACT_NODE_ID must be configured".to_string()))?;
+    let node_id = uuid::Uuid::parse_str(&value)
+        .map_err(|_| Error::Message("RUSTOK_ARTIFACT_NODE_ID must be a UUID".to_string()))?;
+    if node_id.is_nil() {
+        return Err(Error::Message(
+            "RUSTOK_ARTIFACT_NODE_ID must not be nil".to_string(),
+        ));
+    }
+    Ok(node_id)
+}
+
+fn configured_artifact_node_cache_max_bytes() -> Result<usize> {
+    match std::env::var("RUSTOK_ARTIFACT_NODE_CACHE_MAX_BYTES") {
+        Ok(value) => parse_artifact_node_cache_max_bytes(&value),
+        Err(std::env::VarError::NotPresent) => Ok(DEFAULT_ARTIFACT_NODE_CACHE_MAX_BYTES),
+        Err(std::env::VarError::NotUnicode(_)) => Err(Error::Message(
+            "RUSTOK_ARTIFACT_NODE_CACHE_MAX_BYTES must be valid UTF-8".to_string(),
+        )),
+    }
+}
+
+fn parse_artifact_node_cache_max_bytes(value: &str) -> Result<usize> {
+    let capacity = value.parse::<usize>().map_err(|_| {
+        Error::Message("RUSTOK_ARTIFACT_NODE_CACHE_MAX_BYTES must be a byte count".to_string())
+    })?;
+    if !(1..=MAX_ARTIFACT_NODE_CACHE_MAX_BYTES).contains(&capacity) {
+        return Err(Error::Message(format!(
+            "RUSTOK_ARTIFACT_NODE_CACHE_MAX_BYTES must be between 1 and {MAX_ARTIFACT_NODE_CACHE_MAX_BYTES}"
+        )));
+    }
+    Ok(capacity)
 }
 
 /// Builds the one server-owned executor used for all admitted artifact
@@ -104,6 +150,9 @@ pub async fn compose_artifact_binding_executor(
         mcp_audit,
     );
     let control_plane = ModuleControlPlane::new(ctx.db_clone());
+    let node_readiness = control_plane
+        .artifact_node_readiness(configured_artifact_node_id()?)
+        .map_err(|error| Error::Message(format!("artifact node identity is invalid: {error}")))?;
     let secret_policy = control_plane.artifact_secret_handle_policy();
     let resolver = ArtifactCapabilityBrokerResolverRouter::new()
         .route(
@@ -143,7 +192,12 @@ pub async fn compose_artifact_binding_executor(
         Arc::new(ResolvingArtifactCapabilityBroker::new(resolver)),
     )
     .with_observer(Arc::new(control_plane.artifact_execution_audit()));
-    let runtime = ArtifactRuntime::new(control_plane.artifact_blob_store(storage), sandbox);
+    let artifact_cache = VerifiedArtifactNodeCache::new(
+        control_plane.artifact_blob_store(storage),
+        configured_artifact_node_cache_max_bytes()?,
+    )
+    .map_err(|error| Error::Message(format!("artifact node cache is invalid: {error}")))?;
+    let runtime = ArtifactRuntime::new(artifact_cache, sandbox);
     Ok(Arc::new(ArtifactRuntimeLifecycleExecutor::new(
         runtime,
         control_plane.installation(),
@@ -151,6 +205,32 @@ pub async fn compose_artifact_binding_executor(
         ServerArtifactEffectivePolicyResolver {
             db: ctx.db_clone(),
             registry,
+            node_readiness,
         },
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        DEFAULT_ARTIFACT_NODE_CACHE_MAX_BYTES, MAX_ARTIFACT_NODE_CACHE_MAX_BYTES,
+        parse_artifact_node_cache_max_bytes,
+    };
+
+    #[test]
+    fn artifact_node_cache_capacity_is_bounded() {
+        assert_eq!(
+            parse_artifact_node_cache_max_bytes(&DEFAULT_ARTIFACT_NODE_CACHE_MAX_BYTES.to_string())
+                .expect("default capacity"),
+            DEFAULT_ARTIFACT_NODE_CACHE_MAX_BYTES
+        );
+        assert!(parse_artifact_node_cache_max_bytes("0").is_err());
+        assert!(parse_artifact_node_cache_max_bytes("not-a-number").is_err());
+        assert!(
+            parse_artifact_node_cache_max_bytes(
+                &(MAX_ARTIFACT_NODE_CACHE_MAX_BYTES + 1).to_string()
+            )
+            .is_err()
+        );
+    }
 }

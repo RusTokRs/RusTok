@@ -36,6 +36,17 @@ a rewrite goal.
 - Publish stable query, source, rebuild, replay-runtime, and operator contracts.
 - Keep product-facing relevance and ranking in `rustok-search`.
 
+## Interactions
+
+- Source modules register generic schemas, mutations, links, and bounded replay
+  sources without exposing their tables to Index.
+- `rustok-distribution` assembles the selected source registrations into the
+  immutable schema and replay-source catalogs.
+- `apps/server` composes the guarded query, replay, and drift-diagnosis runtimes
+  with its database and request-bound authorization context.
+- `rustok-search` consumes Index-owned records and query contracts for search
+  projection, while retaining ranking and search-specific behavior.
+
 ## Boundaries
 
 - Index core must not depend on Product, Content, Flex, Pricing, Inventory, or

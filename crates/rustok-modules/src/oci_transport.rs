@@ -189,6 +189,28 @@ enum Authorization {
     Bearer(String),
 }
 
+struct OciRequest<'a> {
+    reference: &'a RegistryReference,
+    method: Method,
+    url: Url,
+    auth: &'a RegistryAuth,
+    operation: Operation,
+    content_type: Option<&'a str>,
+    accept: Option<&'a str>,
+    body: Option<Bytes>,
+    retryable: bool,
+}
+
+struct OciSendRequest<'a> {
+    method: Method,
+    url: Url,
+    authorization: Authorization,
+    content_type: Option<&'a str>,
+    accept: Option<&'a str>,
+    body: Option<Bytes>,
+    retryable: bool,
+}
+
 impl Authorization {
     fn from_registry_auth(auth: &RegistryAuth) -> Self {
         match auth {
@@ -248,17 +270,17 @@ impl OciRegistryTransport {
         auth: &RegistryAuth,
     ) -> Result<(Vec<u8>, String), String> {
         let response = self
-            .request(
+            .request(OciRequest {
                 reference,
-                Method::GET,
-                reference.manifest_url()?,
+                method: Method::GET,
+                url: reference.manifest_url()?,
                 auth,
-                Operation::Pull,
-                None,
-                Some(OCI_MANIFEST_ACCEPT),
-                None,
-                true,
-            )
+                operation: Operation::Pull,
+                content_type: None,
+                accept: Some(OCI_MANIFEST_ACCEPT),
+                body: None,
+                retryable: true,
+            })
             .await?;
         let response = expect_status(response, &[StatusCode::OK], "read an OCI manifest")?;
         let declared_digest = response
@@ -302,17 +324,17 @@ impl OciRegistryTransport {
         auth: &RegistryAuth,
     ) -> Result<futures_util::stream::BoxStream<'static, Result<Bytes, String>>, String> {
         let response = self
-            .request(
+            .request(OciRequest {
                 reference,
-                Method::GET,
-                reference.blob_url(digest)?,
+                method: Method::GET,
+                url: reference.blob_url(digest)?,
                 auth,
-                Operation::Pull,
-                None,
-                Some(OCI_BLOB_MEDIA_TYPE),
-                None,
-                true,
-            )
+                operation: Operation::Pull,
+                content_type: None,
+                accept: Some(OCI_BLOB_MEDIA_TYPE),
+                body: None,
+                retryable: true,
+            })
             .await?;
         let response = expect_status(response, &[StatusCode::OK], "read an OCI blob")?;
         self.ensure_transfer_headers(&response, self.response_limit())?;
@@ -323,7 +345,7 @@ impl OciRegistryTransport {
             .scan((_permit, 0_u64), move |state, next| {
                 future::ready(Some(match next {
                     Ok(chunk) => {
-                        state.1 = state.1.checked_add(chunk.len() as u64).unwrap_or(u64::MAX);
+                        state.1 = state.1.saturating_add(chunk.len() as u64);
                         if state.1 > maximum {
                             Err("OCI registry response exceeds the transfer limit".to_string())
                         } else {
@@ -391,17 +413,17 @@ impl OciRegistryTransport {
             return Err("OCI blob publication exceeds the transfer limit".to_string());
         }
         let response = self
-            .request(
+            .request(OciRequest {
                 reference,
-                Method::HEAD,
-                reference.blob_url(digest)?,
+                method: Method::HEAD,
+                url: reference.blob_url(digest)?,
                 auth,
-                Operation::Push,
-                None,
-                None,
-                None,
-                true,
-            )
+                operation: Operation::Push,
+                content_type: None,
+                accept: None,
+                body: None,
+                retryable: true,
+            })
             .await?;
         match response.response.status() {
             StatusCode::OK => return Ok(()),
@@ -409,17 +431,17 @@ impl OciRegistryTransport {
             _ => return Err(status_error(response, "check an OCI blob")),
         }
         let response = self
-            .request(
+            .request(OciRequest {
                 reference,
-                Method::POST,
-                reference.upload_url()?,
+                method: Method::POST,
+                url: reference.upload_url()?,
                 auth,
-                Operation::Push,
-                None,
-                None,
-                Some(Bytes::new()),
-                false,
-            )
+                operation: Operation::Push,
+                content_type: None,
+                accept: None,
+                body: Some(Bytes::new()),
+                retryable: false,
+            })
             .await?;
         let response = expect_status(
             response,
@@ -438,17 +460,17 @@ impl OciRegistryTransport {
         let mut upload_url = upload_url;
         upload_url.query_pairs_mut().append_pair("digest", digest);
         let response = self
-            .request(
+            .request(OciRequest {
                 reference,
-                Method::PUT,
-                upload_url,
+                method: Method::PUT,
+                url: upload_url,
                 auth,
-                Operation::Push,
-                Some(OCI_BLOB_MEDIA_TYPE),
-                None,
-                Some(Bytes::copy_from_slice(bytes)),
-                true,
-            )
+                operation: Operation::Push,
+                content_type: Some(OCI_BLOB_MEDIA_TYPE),
+                accept: None,
+                body: Some(Bytes::copy_from_slice(bytes)),
+                retryable: true,
+            })
             .await?;
         expect_status(
             response,
@@ -472,34 +494,34 @@ impl OciRegistryTransport {
             return Err("OCI manifest publication input is invalid".to_string());
         }
         let response = self
-            .request(
+            .request(OciRequest {
                 reference,
-                Method::PUT,
-                reference.manifest_url()?,
+                method: Method::PUT,
+                url: reference.manifest_url()?,
                 auth,
-                Operation::Push,
-                Some(media_type),
-                None,
-                Some(Bytes::from(body)),
-                true,
-            )
+                operation: Operation::Push,
+                content_type: Some(media_type),
+                accept: None,
+                body: Some(Bytes::from(body)),
+                retryable: true,
+            })
             .await?;
         expect_status(response, &[StatusCode::CREATED], "publish an OCI manifest")?;
         Ok(())
     }
 
-    async fn request(
-        &self,
-        reference: &RegistryReference,
-        method: Method,
-        url: Url,
-        auth: &RegistryAuth,
-        operation: Operation,
-        content_type: Option<&str>,
-        accept: Option<&str>,
-        body: Option<Bytes>,
-        retryable: bool,
-    ) -> Result<OciResponse, String> {
+    async fn request(&self, request: OciRequest<'_>) -> Result<OciResponse, String> {
+        let OciRequest {
+            reference,
+            method,
+            url,
+            auth,
+            operation,
+            content_type,
+            accept,
+            body,
+            retryable,
+        } = request;
         let token_key = TokenKey {
             registry: reference.registry.clone(),
             repository: reference.repository.clone(),
@@ -511,15 +533,15 @@ impl OciRegistryTransport {
             .map(Authorization::Bearer)
             .unwrap_or_else(|| Authorization::from_registry_auth(auth));
         let response = self
-            .send_with_retries(
-                method.clone(),
-                url.clone(),
+            .send_with_retries(OciSendRequest {
+                method: method.clone(),
+                url: url.clone(),
                 authorization,
                 content_type,
                 accept,
-                body.clone(),
+                body: body.clone(),
                 retryable,
-            )
+            })
             .await?;
         if response.response.status() != StatusCode::UNAUTHORIZED {
             return Ok(response);
@@ -539,15 +561,15 @@ impl OciRegistryTransport {
             .await?;
         self.store_token(token_key, &token).await;
         let response = self
-            .send_with_retries(
+            .send_with_retries(OciSendRequest {
                 method,
                 url,
-                Authorization::Bearer(token.value),
+                authorization: Authorization::Bearer(token.value),
                 content_type,
                 accept,
                 body,
                 retryable,
-            )
+            })
             .await?;
         if response.response.status() == StatusCode::UNAUTHORIZED {
             return Err("OCI registry rejected the bearer credential".to_string());
@@ -555,16 +577,16 @@ impl OciRegistryTransport {
         Ok(response)
     }
 
-    async fn send_with_retries(
-        &self,
-        method: Method,
-        url: Url,
-        authorization: Authorization,
-        content_type: Option<&str>,
-        accept: Option<&str>,
-        body: Option<Bytes>,
-        retryable: bool,
-    ) -> Result<OciResponse, String> {
+    async fn send_with_retries(&self, request: OciSendRequest<'_>) -> Result<OciResponse, String> {
+        let OciSendRequest {
+            method,
+            url,
+            authorization,
+            content_type,
+            accept,
+            body,
+            retryable,
+        } = request;
         let maximum_attempts = if retryable {
             u32::from(self.policy.max_retries) + 1
         } else {
@@ -676,15 +698,15 @@ impl OciRegistryTransport {
             query.append_pair("scope", &operation.scope(reference));
         }
         let response = self
-            .send_with_retries(
-                Method::GET,
-                realm,
+            .send_with_retries(OciSendRequest {
+                method: Method::GET,
+                url: realm,
                 authorization,
-                None,
-                Some("application/json"),
-                None,
-                true,
-            )
+                content_type: None,
+                accept: Some("application/json"),
+                body: None,
+                retryable: true,
+            })
             .await?;
         let response = expect_status(
             response,

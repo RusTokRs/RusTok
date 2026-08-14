@@ -39,6 +39,11 @@ Current entry points:
   receipt. PostgreSQL rollout state remains authoritative; this helper has no
   registry, process, migration, release-selection, or traffic-switching
   authority.
+- `materialize_module_payload` and `record_prepared_module` provide the
+  node-local dynamic-artifact cache: caller-supplied CAS bytes are rehashed,
+  atomically written below `cache/module-runtime`, and bound to a runtime
+  fingerprint preparation marker. The helpers do not contact CAS, a registry,
+  the database, or a sandbox, select a release, or report owner readiness.
 - `db_clone` for explicit DB handle cloning from host runtime context.
 - `require_shared` and `RuntimeHandleError` for typed shared-handle lookup.
 

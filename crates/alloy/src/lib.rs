@@ -7,6 +7,7 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod api;
 pub mod artifact;
+pub mod authoring;
 pub mod bridge;
 pub mod context;
 pub mod controllers;
@@ -29,6 +30,16 @@ pub use artifact::{
     AlloyArtifactError, fork_rhai_module_release, observed_rhai_capabilities,
     package_rhai_module_release, stage_rhai_module_release, validate_rhai_capabilities,
 };
+pub use authoring::{
+    AlloyAuthoringError, AlloyAuthoringService, AlloyExecutionOutcome, AlloyScriptLifecycleAction,
+    AlloyScriptValidation, AuthoringEntityInput, ChangeAlloyScriptLifecycleCommand,
+    CreateAlloyScriptCommand, DeleteAlloyScriptCommand, DeletedAlloyScript, GetAlloyScriptCommand,
+    ListAlloyScriptReviewsCommand, ListAlloyScriptRevisionsCommand, ListAlloyScriptsCommand,
+    RedactedAlloyExecution, RedactedAlloyReview, RedactedAlloyScript, RedactedAlloyScriptPage,
+    RedactedAlloySourceRevision, RedactedAlloyTestRun, ReviewAlloyScriptCommand,
+    RunAlloyScriptCommand, RunAlloyWorkspaceTestCommand, UpdateAlloyScriptCommand,
+    ValidateAlloyScriptCommand,
+};
 pub use bridge::{Bridge, PhaseCapabilities};
 pub use context::{ExecutionContext, ExecutionPhase};
 pub use controllers::{EXECUTION_HISTORY_ROUTES, axum_router};
@@ -43,11 +54,12 @@ pub use migration::ScriptsMigration;
 pub use model::{
     AlloyImportError, AlloyImportedDraftCommand, AlloyImportedDraftResult,
     AlloyPublicationSmokeEvidence, AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSource,
-    AlloyReleaseError, AlloyReleaseStageCommand, EntityProxy, EventType, HttpMethod, ReviewCommand,
-    ReviewDecision, ReviewError, ReviewStatus, RhaiWorkspace, RhaiWorkspaceError,
-    RhaiWorkspaceFile, RhaiWorkspaceFileKind, Script, ScriptId, ScriptSourceRevision, ScriptStatus,
-    ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunError,
-    TestRunLease, TestRunStatus, register_entity_proxy,
+    AlloyReleaseError, AlloyReleaseStageCommand, AuthoringOrigin, EntityProxy, EventType,
+    HttpMethod, ProvenanceError, ReviewCommand, ReviewDecision, ReviewError, ReviewStatus,
+    RhaiWorkspace, RhaiWorkspaceError, RhaiWorkspaceFile, RhaiWorkspaceFileKind, Script, ScriptId,
+    ScriptSourceRevision, ScriptStatus, ScriptTrigger, SourceProvenance, TestCommand, TestRun,
+    TestRunClaim, TestRunCompletion, TestRunError, TestRunLease, TestRunStatus,
+    register_entity_proxy,
 };
 pub use runner::{
     AlloyPublishedRhaiSourceProvider, AlloyPublishedRhaiSourceProviderHandle,

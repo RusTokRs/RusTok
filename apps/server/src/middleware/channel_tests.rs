@@ -59,7 +59,9 @@ async fn setup_channel_db() -> DatabaseConnection {
     .await
     .expect("o_auth_apps table should exist for channel foreign keys");
     let manager = SchemaManager::new(&db);
-    for migration in migrations::migrations() {
+    for migration in migrations::migrations().into_iter().filter(|migration| {
+        rustok_migrations::sqlite_test_migration_is_compatible(migration.name())
+    }) {
         migration
             .up(&manager)
             .await

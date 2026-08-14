@@ -9,13 +9,21 @@ updates:
       all-updates:
         update-types: ["major", "minor", "patch"]
   - package-ecosystem: "cargo"
-    directory: "/"
+    directories:
+      - "/"
+      - "**/*"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
+      interval: "daily"
+      time: "04:00"
+      timezone: "Europe/Minsk"
+    open-pull-requests-limit: 50
     groups:
-      all-updates:
+      patch-updates:
         patterns: ["*"]
+        update-types: ["patch"]
+      minor-updates:
+        patterns: ["*"]
+        update-types: ["minor"]
   - package-ecosystem: "npm"
     directory: "/apps/next-frontend"
     schedule:

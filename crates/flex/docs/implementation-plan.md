@@ -23,8 +23,9 @@ exact-invalidation path. Durable convergence is source-complete:
 - transaction-local database triggers advance it for every INSERT/UPDATE/DELETE on
   `user_field_definitions`, `product_field_definitions`, `order_field_definitions` and
   `topic_field_definitions`, including reorder and soft-delete updates;
-- migrations are ordered `000001` through `000004`, so the shared generation exists before owner
-  triggers and reverse rollback removes triggers before the singleton table/function;
+- Flex owns `m20260716_000000_create_field_definition_cache_generation`; every owner trigger
+  migration explicitly depends on it, so the shared generation exists before owner triggers and
+  reverse rollback removes triggers before the singleton table/function;
 - every serving runtime reads the durable generation, clears the complete cache before marking the
   generation applied, polls every five seconds and repeats the clear on advancement;
 - database read failure or generation regression clears the process cache, leaves readiness failed,

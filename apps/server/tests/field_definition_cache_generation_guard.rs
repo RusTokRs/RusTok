@@ -137,6 +137,9 @@ fn field_definition_cache_uses_one_transactional_generation_and_fail_closed_reco
 
 #[test]
 fn field_definition_generation_triggers_follow_table_creation_order() {
+    let flex = include_str!(
+        "../../../crates/flex/src/migrations/m20260716_000000_create_field_definition_cache_generation.rs"
+    );
     let auth = include_str!(
         "../../../crates/rustok-auth/src/migrations/m20260716_000001_create_flex_field_definition_cache_generation.rs"
     );
@@ -150,7 +153,8 @@ fn field_definition_generation_triggers_follow_table_creation_order() {
         "../../../crates/rustok-forum/src/migrations/m20260716_000004_add_topic_field_cache_generation_trigger.rs"
     );
 
-    assert!(auth.contains("create_field_definition_cache_generation_table"));
+    assert!(flex.contains("create_field_definition_cache_generation_table"));
+    assert!(!auth.contains("create_field_definition_cache_generation_table"));
     assert!(auth.contains("user_field_definitions"));
     assert!(product.contains("product_field_definitions"));
     assert!(order.contains("order_field_definitions"));
@@ -161,9 +165,13 @@ fn field_definition_generation_triggers_follow_table_creation_order() {
     let commerce_mod = include_str!("../../../crates/rustok-commerce/src/migrations/mod.rs");
     let forum_mod = include_str!("../../../crates/rustok-forum/src/migrations/mod.rs");
     assert!(auth_mod.contains("m20260716_000001_create_flex_field_definition_cache_generation"));
+    assert!(auth_mod.contains("m20260716_000000_create_field_definition_cache_generation"));
     assert!(product_mod.contains("m20260716_000002_add_product_field_cache_generation_trigger"));
+    assert!(product_mod.contains("m20260716_000000_create_field_definition_cache_generation"));
     assert!(commerce_mod.contains("m20260716_000003_add_order_field_cache_generation_trigger"));
+    assert!(commerce_mod.contains("m20260716_000000_create_field_definition_cache_generation"));
     assert!(forum_mod.contains("m20260716_000004_add_topic_field_cache_generation_trigger"));
+    assert!(forum_mod.contains("m20260716_000000_create_field_definition_cache_generation"));
 }
 
 #[test]

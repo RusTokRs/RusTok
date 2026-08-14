@@ -98,7 +98,7 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         ),
         MigrationDependencyDescriptor::new(
             "m20260716_000002_add_product_field_cache_generation_trigger",
-            vec!["m20260716_000001_create_flex_field_definition_cache_generation"],
+            vec!["m20260716_000000_create_field_definition_cache_generation"],
         ),
         MigrationDependencyDescriptor::new(
             "m20260813_000014_canonicalize_product_metadata_tags",

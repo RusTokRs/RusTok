@@ -23,8 +23,9 @@ use crate::{
         module_static_distribution_composition_digest,
     },
     distribution_release::{
-        ModuleStaticDistributionReleaseError, advance_release_state_optional, insert_admission,
-        insert_release_from_parts, load_release_state, validate_admission,
+        ModuleStaticDistributionReleaseError, ModuleStaticDistributionReleaseInsert,
+        advance_release_state_optional, insert_admission, insert_release, load_release_state,
+        validate_admission,
     },
     promotion::{
         normalize_native_entry_type, valid_cargo_package, valid_cas_source_reference, valid_digest,
@@ -338,17 +339,19 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
             self.infrastructure.now(),
         )
         .await?;
-        insert_release_from_parts(
+        insert_release(
             &transaction,
-            payload.distribution_release_id,
-            None,
-            1,
-            command.actor_id,
-            self.infrastructure.now(),
-            payload.preparation_id,
-            payload.preparation.composition_revision,
-            &payload.preparation.composition_digest,
-            &payload.preparation.evidence,
+            ModuleStaticDistributionReleaseInsert {
+                distribution_release_id: payload.distribution_release_id,
+                predecessor_release_id: None,
+                release_revision: 1,
+                actor_id: command.actor_id,
+                admitted_at: self.infrastructure.now(),
+                distribution_build_id: payload.preparation_id,
+                composition_revision: payload.preparation.composition_revision,
+                composition_digest: &payload.preparation.composition_digest,
+                evidence: &payload.preparation.evidence,
+            },
         )
         .await?;
         insert_admission(

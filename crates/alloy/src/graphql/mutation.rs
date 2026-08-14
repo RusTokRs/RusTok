@@ -8,7 +8,7 @@ use crate::{
     AlloyImportError, AlloyPublishedReleaseImportCommand, AlloyReleaseImporter,
     AlloyReleaseStageCommand, RevisionedReleaseStager, RevisionedTestRunner, ScriptRegistry,
     TestCommand,
-    model::{ReviewCommand, Script, ScriptStatus},
+    model::{ReviewCommand, Script, ScriptStatus, SourceProvenance},
     runner::ExecutionOutcome,
     utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
 };
@@ -92,6 +92,7 @@ impl AlloyMutation {
         script.run_as_system = input.run_as_system;
         script.permissions = input.permissions;
         script.author_id = Some(auth.user_id.to_string());
+        script.source_provenance = SourceProvenance::graphql("create_script");
         if let Some(status) = input.status {
             script.status = status.into();
         }
@@ -166,6 +167,7 @@ impl AlloyMutation {
             script.permissions = permissions;
         }
         script.author_id = Some(auth.user_id.to_string());
+        script.source_provenance = SourceProvenance::graphql("update_script");
 
         let saved = runtime
             .storage

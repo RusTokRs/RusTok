@@ -73,12 +73,15 @@ Available when `AlloyScaffoldState` is configured:
 Generic stdio and in-process MCP do not expose tenant-owned Alloy script reads,
 CRUD, validation, or execution. The generic adapter has no owner-scoped Alloy
 runtime, so exposing those operations would make tenant binding and actor audit
-ambiguous. Canonical script authoring remains on Alloy's host-composed HTTP and
-GraphQL surfaces. A future remote MCP authoring surface must be composed from
-that owner-scoped runtime before it can be added.
+ambiguous. Authenticated server remote JSON/SSE transport composes the
+remote-only `alloy_*_script` authoring tools from the same tenant-scoped Alloy
+runtime as HTTP and GraphQL. It requires `scripts.manage`, derives actor and
+tenant from the durable MCP binding, checks identity-to-binding tenant equality,
+and returns source-redacted results. Those names are guarded from generic MCP.
 
-`alloy_scaffold_module` is the first real `AI -> MCP -> Alloy -> Platform` slice in RusToK. It now
-stages a draft `crates/rustok-<slug>` module skeleton for review, and the actual workspace write is
+`alloy_scaffold_module` stages a reviewed design scaffold for
+`crates/rustok-<slug>`; it records requested transport surfaces in documentation
+but never creates fake GraphQL or REST handlers. The actual workspace write is
 separated into `alloy_apply_module_scaffold` with explicit confirmation.
 
 ### What is implemented today

@@ -3,6 +3,8 @@
 /// Stable runtime ABI used by Rhai module artifacts and Alloy publication
 /// smoke executions. The sandbox owns this cross-boundary identity.
 pub const RHAI_SANDBOX_RUNTIME_ABI: &str = "rustok:module/runtime@1";
+/// Stable OCI layer media type for immutable Rhai source artifacts.
+pub const RHAI_SOURCE_MEDIA_TYPE: &str = "application/vnd.rustok.rhai.source.v1";
 
 mod admission;
 mod capability;

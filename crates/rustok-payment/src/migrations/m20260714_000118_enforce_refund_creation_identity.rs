@@ -12,6 +12,13 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Refunds::Table)
                     .add_column(ColumnDef::new(Refunds::CreationKey).string_len(191))
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Refunds::Table)
                     .add_column(ColumnDef::new(Refunds::CreationRequestHash).string_len(64))
                     .to_owned(),
             )
@@ -88,6 +95,13 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Refunds::Table)
                     .drop_column(Refunds::CreationRequestHash)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Refunds::Table)
                     .drop_column(Refunds::CreationKey)
                     .to_owned(),
             )

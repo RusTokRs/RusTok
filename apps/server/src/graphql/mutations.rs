@@ -253,7 +253,9 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::InvalidModuleSettingValue { .. }
         | ManifestError::InvalidModuleMarketplaceMetadata { .. }
         | ManifestError::InvalidModuleUiWiring { .. }
-        | ManifestError::InvalidModuleHttpWiring { .. } => FieldError::new(err.to_string()),
+        | ManifestError::InvalidModuleHttpWiring { .. } => {
+            <FieldError as GraphQLError>::bad_user_input(&err.to_string())
+        }
         ManifestError::Read { .. }
         | ManifestError::Parse { .. }
         | ManifestError::Write { .. }
@@ -343,8 +345,8 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
         ToggleModuleError::HasDependents(dependents) => {
             <FieldError as GraphQLError>::bad_user_input(&toggle_err_has_dependents(&dependents))
         }
-        ToggleModuleError::Database(err) => {
-            <FieldError as GraphQLError>::internal_error(&err.to_string())
+        ToggleModuleError::Database(_) => {
+            <FieldError as GraphQLError>::internal_error("Internal server error")
         }
         ToggleModuleError::PreHookFailed(err) => FieldError::new(toggle_err_hook_failed(&err))
             .extend_with(|_, ext| {
@@ -358,7 +360,9 @@ fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
                 ext.set("retryable_issue", true);
                 ext.set("operation_issue", "post_hook_failed");
             }),
-        ToggleModuleError::Policy(err) => <FieldError as GraphQLError>::internal_error(&err),
+        ToggleModuleError::Policy(_) => {
+            <FieldError as GraphQLError>::internal_error("Internal server error")
+        }
     }
 }
 
@@ -420,7 +424,7 @@ fn map_platform_composition_error(error: PlatformCompositionError) -> FieldError
         | PlatformCompositionError::Owner(ModuleCompositionError::RevisionConflict {
             expected,
             current,
-        }) => FieldError::new(format!(
+        }) => <FieldError as GraphQLError>::bad_user_input(&format!(
             "Platform composition revision conflict: expected {expected}, current {current}"
         )),
         PlatformCompositionError::Manifest(error) => map_manifest_error(error),
@@ -779,7 +783,7 @@ mod tests {
     };
     use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
     use async_graphql::ErrorExtensions;
-    use rustok_migrations::Migrator;
+    use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         ActiveModelTrait, DatabaseConnection, Set, entity::prelude::DateTimeWithTimeZone,

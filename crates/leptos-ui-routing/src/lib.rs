@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use leptos::prelude::*;
+#[cfg(not(feature = "ssr"))]
 use leptos_router::NavigateOptions;
+#[cfg(not(feature = "ssr"))]
 use leptos_router::hooks::{use_location, use_navigate, use_query_map};
 use rustok_ui_core::{UiRouteContext, UiRouteQueryIntent, UiRouteQueryUpdate, UiRouteQueryWrite};
 
@@ -87,6 +89,33 @@ pub fn read_route_query_value(route_context: &UiRouteContext, key: &str) -> Opti
 }
 
 pub fn use_route_query_value(key: &'static str) -> Signal<Option<String>> {
+    #[cfg(feature = "ssr")]
+    {
+        return use_route_query_value_ssr(key);
+    }
+
+    #[cfg(not(feature = "ssr"))]
+    use_route_query_value_browser(key)
+}
+
+#[cfg(feature = "ssr")]
+fn use_route_query_value_ssr(key: &'static str) -> Signal<Option<String>> {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let policy = use_context::<RouteQueryPolicy>();
+    let route_segment = route_context.route_segment.clone();
+    let subpath = route_context.subpath.clone();
+    let query = sanitize_route_query(
+        policy.as_ref(),
+        route_segment.as_deref(),
+        subpath.as_deref(),
+        &route_context.query,
+    );
+    let value = query.get(key).cloned();
+    Signal::derive(move || value.clone())
+}
+
+#[cfg(not(feature = "ssr"))]
+fn use_route_query_value_browser(key: &'static str) -> Signal<Option<String>> {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let policy = use_context::<RouteQueryPolicy>();
     let raw_query = use_query_map();
@@ -111,6 +140,19 @@ pub fn use_route_query_value(key: &'static str) -> Signal<Option<String>> {
 }
 
 pub fn use_route_query_writer() -> RouteQueryWriter {
+    #[cfg(feature = "ssr")]
+    {
+        return RouteQueryWriter {
+            apply: Arc::new(|_, _| {}),
+        };
+    }
+
+    #[cfg(not(feature = "ssr"))]
+    use_route_query_writer_browser()
+}
+
+#[cfg(not(feature = "ssr"))]
+fn use_route_query_writer_browser() -> RouteQueryWriter {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let policy = use_context::<RouteQueryPolicy>();
     let raw_query = use_query_map();
