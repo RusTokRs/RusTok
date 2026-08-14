@@ -13,6 +13,12 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const requireNormalizedText = (source, value, label) => {
+  if (!normalizeWhitespace(source).includes(normalizeWhitespace(value))) {
+    failures.push(`${label}: missing ${value}`);
+  }
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -50,6 +56,7 @@ for (const marker of [
   "barrier.wait().await",
   "RbacService::replace_user_role_committed",
   "RbacRoleAssignmentDbWriter::new(db_a.clone())",
+  'slug: Set(format!("rbac-pg-{tenant_id}"))',
   "assignments.len() != 1",
   "generation_before + 2",
   "cannot demote the last active super administrator",
@@ -70,6 +77,7 @@ for (const forbidden of [
   "connect_for_assertions",
   "RUSTOK_RBAC_ACTIVE_TEST_DATABASE",
   "tokio::time::sleep",
+  'rbac-postgres-{suffix}-{tenant_id}',
 ]) forbidText(sources.harness, forbidden, `${files.harness}: shortcut`);
 
 for (const marker of [
@@ -132,22 +140,25 @@ for (const marker of [
   "Last-active-super-admin serialization",
   "Unique monotonic generation allocation",
   "There is no SQLite fallback.",
+  "top-level harness cases must run serially at the libtest layer",
+  "internal synchronized concurrency of two, two and eight operations",
+  "--test-threads=1",
   "source_ready_unvalidated",
   "does not prove Redis delivery",
-]) requireText(sources.docs, marker, `${files.docs}: evidence contract`);
+]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence contract`);
 
 for (const marker of [
-  "### P0. Database concurrency and multi-replica recovery evidence",
-  "PostgreSQL integration evidence",
-  "multi-replica",
+  "### P0 — runtime evidence",
+  "Execute #2849 PostgreSQL concurrency.",
+  "Execute #2853 independent-process watchdog recovery.",
   "Status: `in_progress`",
-]) requireText(sources.plan, marker, `${files.plan}: owner gate`);
+]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "PostgreSQL concurrency",
-]) requireText(sources.master, marker, `${files.master}: active cursor`);
+  "PostgreSQL concurrency/watchdog runs",
+]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
   console.error("RBAC PostgreSQL concurrency source verification failed:");
