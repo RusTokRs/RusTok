@@ -1,7 +1,7 @@
 use async_graphql::{InputObject, Json, SimpleObject};
 use uuid::Uuid;
 
-use crate::{
+use crate::dto::{
     CategoryPlacementResponse, CategoryResponse, CategoryTreeNode, CategoryTreeResponse,
     CreateCategoryInput as DomainCreateCategoryInput, MoveCategoryInput as DomainMoveCategoryInput,
     MoveCategoryResponse, UpdateCategoryInput as DomainUpdateCategoryInput,
