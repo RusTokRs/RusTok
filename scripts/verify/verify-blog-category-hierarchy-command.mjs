@@ -29,7 +29,6 @@ requireMarkers("crates/rustok-blog/src/dto/category_command.rs", [
   "pub struct CategoryPlacementResponse",
   "pub depth: i32",
   "MAX_BLOG_CATEGORY_TREE_NODES",
-  "MAX_BLOG_CATEGORY_TREE_DEPTH",
 ]);
 
 requireMarkers("crates/rustok-blog/src/services/category_command.rs", [
@@ -37,15 +36,23 @@ requireMarkers("crates/rustok-blog/src/services/category_command.rs", [
   "Resource::BlogCategories, Action::Manage",
   "lock_category_tree_in_tx(&txn, tenant_id).await?",
   "pg_advisory_xact_lock",
+  'format!("blog-category-tree:{tenant_id}")',
   "validate_and_compute_depths(&parent_by_id)?",
   "parent_by_id.insert(category_id, input.parent_id)",
   "persist_sibling_order",
   "persist_descendant_depth_changes",
   "Blog category hierarchy cycle",
-  "MAX_BLOG_CATEGORY_TREE_DEPTH",
+  "MAX_BLOG_CATEGORY_TREE_NODES",
   "DomainEvent::ReindexRequested",
   'target_type: "blog".to_string()',
   "txn.commit().await?",
+]);
+
+requireMarkers("crates/rustok-blog/src/entities/blog_category.rs", [
+  "lock_category_tree_for_insert(db, tenant_id).await?",
+  "pg_advisory_xact_lock",
+  'format!("blog-category-tree:{tenant_id}")',
+  "child_depth(parent.depth, parent_id)?",
 ]);
 
 requireMarkers("crates/rustok-blog/src/controllers/categories.rs", [
@@ -82,6 +89,14 @@ requireMarkers("crates/rustok-blog/tests/category_hierarchy.rs", [
   "a category cannot become its own parent",
   "a category cannot move beneath its own descendant",
   "cross-tenant parent must be rejected",
+]);
+
+requireMarkers("crates/rustok-blog/docs/category-hierarchy-contract.md", [
+  "Blog owns its category hierarchy",
+  "POST /api/blog/categories/{id}/move",
+  "maximum 512 nodes",
+  "recomputes materialized `depth`",
+  "does not rewrite localized category rows",
 ]);
 
 if (failures.length > 0) {
