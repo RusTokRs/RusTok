@@ -14,7 +14,7 @@ with `MoveCategoryInput { parent_id, position }`.
 
 Category creation also treats `CreateCategoryInput.position` as a zero-based insertion index, not an arbitrary persisted scalar. Under the same tenant tree lock it validates the parent, rejects an index beyond the destination sibling count, canonicalizes existing sibling positions, and inserts the new category at the requested position. Creation refuses a 513th tenant category so every admitted tree remains operable by the bounded runtime hierarchy command.
 
-Category deletion is leaf-only. The retained production hierarchy foreign key already uses `ON DELETE RESTRICT`; the owner service enforces the same rule explicitly on every backend before deleting a row, so SQLite cannot leave dangling children when its existing table cannot be retrofitted with that foreign key. After a leaf deletion, the service compacts remaining sibling positions before commit. A parent becomes deletable only after its children have been moved or deleted.
+Category deletion is leaf-only. The retained production hierarchy foreign key already uses `ON DELETE RESTRICT`; the owner service enforces the same rule explicitly before deleting a row, so SQLite cannot leave dangling children when its existing table cannot be retrofitted with that foreign key. After a leaf deletion, the service compacts remaining sibling positions before commit. A parent becomes deletable only after its children have been moved or deleted.
 
 ## Invariants
 
@@ -25,7 +25,9 @@ Structural create, move, and delete operations execute inside one database trans
 - reject a missing/cross-tenant parent, self-parenting, descendant-parent cycles, an already-invalid hierarchy, out-of-range insertion/destination positions, and deletion of a non-leaf category;
 - canonicalize affected sibling positions after create, move, and leaf delete;
 - recompute materialized `depth` from the complete post-move parent map and persist every descendant whose depth changes;
-- publish the existing Blog-wide `ReindexRequested` event before a move or delete commits so search cannot observe a committed structural mutation without the corresponding reindex request.
+- retain the existing Blog-wide `ReindexRequested` event for category delete, where removing category name/slug changes Blog search projection inputs.
+
+Hierarchy move is deliberately projection-neutral: the Blog search projector consumes localized category name/slug, not parent/position/depth, so a move does not emit a full-tenant reindex event. This avoids turning structural reordering into unnecessary search rebuild work.
 
 The 512-node bound is an execution-safety limit, not a newly invented category-depth policy. The retained hierarchy migration remains the storage/bootstrap authority for tenant-parent foreign-key integrity and legacy cycle/depth validation. Runtime create/move/delete semantics are owner-service policy rather than Taxonomy policy.
 
