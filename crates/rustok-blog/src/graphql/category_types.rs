@@ -93,7 +93,7 @@ pub struct GqlUpdateBlogCategoryInput {
 #[graphql(name = "MoveBlogCategoryInput")]
 pub struct GqlMoveBlogCategoryInput {
     pub parent_id: Option<Uuid>,
-    pub position: u32,
+    pub position: i32,
 }
 
 impl From<CategoryResponse> for GqlBlogCategory {
@@ -196,12 +196,16 @@ impl From<GqlUpdateBlogCategoryInput> for DomainUpdateCategoryInput {
     }
 }
 
-impl From<GqlMoveBlogCategoryInput> for DomainMoveCategoryInput {
-    fn from(input: GqlMoveBlogCategoryInput) -> Self {
-        Self {
+impl TryFrom<GqlMoveBlogCategoryInput> for DomainMoveCategoryInput {
+    type Error = &'static str;
+
+    fn try_from(input: GqlMoveBlogCategoryInput) -> Result<Self, Self::Error> {
+        let position = u32::try_from(input.position)
+            .map_err(|_| "Category position must be a non-negative integer")?;
+        Ok(Self {
             parent_id: input.parent_id,
-            position: input.position,
-        }
+            position,
+        })
     }
 }
 
@@ -238,13 +242,21 @@ mod tests {
     }
 
     #[test]
-    fn move_input_keeps_move_to_root_unambiguous() {
-        let domain: DomainMoveCategoryInput = GqlMoveBlogCategoryInput {
+    fn move_input_keeps_move_to_root_unambiguous_and_rejects_negative_position() {
+        let domain = DomainMoveCategoryInput::try_from(GqlMoveBlogCategoryInput {
             parent_id: None,
             position: 2,
-        }
-        .into();
+        })
+        .expect("non-negative GraphQL position should map to owner input");
         assert_eq!(domain.parent_id, None);
         assert_eq!(domain.position, 2);
+
+        assert!(
+            DomainMoveCategoryInput::try_from(GqlMoveBlogCategoryInput {
+                parent_id: None,
+                position: -1,
+            })
+            .is_err()
+        );
     }
 }
