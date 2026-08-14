@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CategoryTreeNode {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -16,11 +15,10 @@ pub struct CategoryTreeNode {
     pub position: i32,
     pub depth: i32,
     pub settings: serde_json::Value,
-    #[schema(no_recursion)]
     pub children: Vec<CategoryTreeNode>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CategoryTreeResponse {
     pub roots: Vec<CategoryTreeNode>,
     pub total_nodes: u32,
