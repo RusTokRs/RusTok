@@ -138,6 +138,9 @@ for (const marker of [
   "Last-active-super-admin serialization",
   "Unique monotonic generation allocation",
   "There is no SQLite fallback.",
+  "top-level harness cases must run serially at the libtest layer",
+  "internal synchronized concurrency of two, two and eight operations",
+  "--test-threads=1",
   "source_ready_unvalidated",
   "does not prove Redis delivery",
 ]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence contract`);
