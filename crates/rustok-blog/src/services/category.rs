@@ -159,6 +159,11 @@ impl CategoryService {
         input: UpdateCategoryInput,
     ) -> BlogResult<CategoryResponse> {
         enforce_scope(&security, Resource::BlogCategories, Action::Update)?;
+        if input.position.is_some() {
+            return Err(BlogError::validation(
+                "Category position is structural; use the category move command",
+            ));
+        }
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
@@ -168,13 +173,11 @@ impl CategoryService {
         let locale = normalize_locale(&input.locale)?;
         let next_resource_revision = next_category_revision(&category)?;
         let now = Utc::now().fixed_offset();
-        let position = input.position.unwrap_or(category.position);
         let settings = input
             .settings
             .clone()
             .unwrap_or_else(|| category.settings.clone());
         let resource_updated = blog_category::Entity::update_many()
-            .col_expr(blog_category::Column::Position, Expr::value(position))
             .col_expr(
                 blog_category::Column::Settings,
                 Expr::value(settings.clone()),
@@ -195,7 +198,6 @@ impl CategoryService {
             ));
         }
         let category = blog_category::Model {
-            position,
             settings,
             revision: next_resource_revision,
             updated_at: now,
