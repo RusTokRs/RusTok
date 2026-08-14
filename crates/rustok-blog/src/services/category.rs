@@ -78,7 +78,7 @@ impl CategoryService {
         let now = Utc::now();
         let id = Uuid::new_v4();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
-        lock_category_tree_for_create_in_tx(&txn, tenant_id).await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         ensure_category_tree_capacity_in_tx(&txn, tenant_id).await?;
 
         if let Some(parent_id) = input.parent_id {
@@ -360,11 +360,13 @@ impl CategoryService {
     ) -> BlogResult<()> {
         enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
+        ensure_category_is_leaf_in_tx(&txn, tenant_id, category_id).await?;
 
         let translations = blog_category_translation::Entity::find()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))
@@ -406,6 +408,7 @@ impl CategoryService {
                 "blog category changed before deletion could commit",
             ));
         }
+        canonicalize_siblings_in_tx(&txn, tenant_id, category.parent_id, Utc::now()).await?;
 
         self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
             .await?;
@@ -707,7 +710,7 @@ impl CategoryService {
     }
 }
 
-async fn lock_category_tree_for_create_in_tx(
+async fn lock_category_tree_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
 ) -> BlogResult<()> {
@@ -723,7 +726,7 @@ async fn lock_category_tree_for_create_in_tx(
         }
         DatabaseBackend::Sqlite => Ok(()),
         backend => Err(BlogError::validation(format!(
-            "Blog category creation does not support {backend:?}"
+            "Blog category hierarchy writes do not support {backend:?}"
         ))),
     }
 }
@@ -744,6 +747,42 @@ async fn ensure_category_tree_capacity_in_tx(
     Ok(())
 }
 
+async fn ensure_category_is_leaf_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> BlogResult<()> {
+    let child = blog_category::Entity::find()
+        .filter(blog_category::Column::TenantId.eq(tenant_id))
+        .filter(blog_category::Column::ParentId.eq(category_id))
+        .one(txn)
+        .await?;
+    if child.is_some() {
+        return Err(BlogError::validation(
+            "Category must be a leaf before deletion; move or delete its children first",
+        ));
+    }
+    Ok(())
+}
+
+async fn load_siblings_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    parent_id: Option<Uuid>,
+) -> BlogResult<Vec<blog_category::Model>> {
+    let mut query = blog_category::Entity::find()
+        .filter(blog_category::Column::TenantId.eq(tenant_id));
+    query = match parent_id {
+        Some(parent_id) => query.filter(blog_category::Column::ParentId.eq(parent_id)),
+        None => query.filter(blog_category::Column::ParentId.is_null()),
+    };
+    Ok(query
+        .order_by_asc(blog_category::Column::Position)
+        .order_by_asc(blog_category::Column::Id)
+        .all(txn)
+        .await?)
+}
+
 async fn canonicalize_siblings_for_insert_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -751,18 +790,7 @@ async fn canonicalize_siblings_for_insert_in_tx(
     requested_position: i32,
     now: chrono::DateTime<Utc>,
 ) -> BlogResult<()> {
-    let mut query = blog_category::Entity::find()
-        .filter(blog_category::Column::TenantId.eq(tenant_id));
-    query = match parent_id {
-        Some(parent_id) => query.filter(blog_category::Column::ParentId.eq(parent_id)),
-        None => query.filter(blog_category::Column::ParentId.is_null()),
-    };
-    let siblings = query
-        .order_by_asc(blog_category::Column::Position)
-        .order_by_asc(blog_category::Column::Id)
-        .all(txn)
-        .await?;
-
+    let siblings = load_siblings_in_tx(txn, tenant_id, parent_id).await?;
     let insertion_index = usize::try_from(requested_position)
         .map_err(|_| BlogError::validation("Category position cannot be negative"))?;
     if insertion_index > siblings.len() {
@@ -782,14 +810,39 @@ async fn canonicalize_siblings_for_insert_in_tx(
         };
         let desired_position = i32::try_from(desired_index)
             .map_err(|_| BlogError::validation("Category sibling position exceeds i32 range"))?;
-        if sibling.position == desired_position {
-            continue;
-        }
-        let mut active: blog_category::ActiveModel = sibling.into();
-        active.position = Set(desired_position);
-        active.updated_at = Set(now.into());
-        active.update(txn).await?;
+        update_sibling_position_in_tx(txn, sibling, desired_position, now).await?;
     }
+    Ok(())
+}
+
+async fn canonicalize_siblings_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    parent_id: Option<Uuid>,
+    now: chrono::DateTime<Utc>,
+) -> BlogResult<()> {
+    let siblings = load_siblings_in_tx(txn, tenant_id, parent_id).await?;
+    for (index, sibling) in siblings.into_iter().enumerate() {
+        let desired_position = i32::try_from(index)
+            .map_err(|_| BlogError::validation("Category sibling position exceeds i32 range"))?;
+        update_sibling_position_in_tx(txn, sibling, desired_position, now).await?;
+    }
+    Ok(())
+}
+
+async fn update_sibling_position_in_tx(
+    txn: &DatabaseTransaction,
+    sibling: blog_category::Model,
+    desired_position: i32,
+    now: chrono::DateTime<Utc>,
+) -> BlogResult<()> {
+    if sibling.position == desired_position {
+        return Ok(());
+    }
+    let mut active: blog_category::ActiveModel = sibling.into();
+    active.position = Set(desired_position);
+    active.updated_at = Set(now.into());
+    active.update(txn).await?;
     Ok(())
 }
 
