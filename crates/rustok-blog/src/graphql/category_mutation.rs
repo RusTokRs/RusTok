@@ -160,7 +160,7 @@ mod tests {
             user_id: Uuid::new_v4(),
             session_id: Uuid::new_v4(),
             tenant_id: Uuid::new_v4(),
-            permissions: vec![Permission::BLOG_CATEGORIES_MANAGE.to_string()],
+            permissions: vec![Permission::BLOG_CATEGORIES_MANAGE],
             client_id: None,
             scopes: Vec::new(),
             grant_type: "direct".to_string(),
