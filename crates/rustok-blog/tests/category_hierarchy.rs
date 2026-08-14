@@ -248,3 +248,53 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
     assert_eq!(unchanged_grandchild.parent_id, Some(child));
     assert_eq!(unchanged_grandchild.depth, 1);
 }
+
+#[tokio::test]
+async fn delete_rejects_non_leaf_and_compacts_remaining_siblings() {
+    let db = setup().await;
+    let (category_service, _) = services(&db);
+    let tenant_id = Uuid::new_v4();
+
+    let parent = create_category(&category_service, tenant_id, "Parent", None, 0).await;
+    let child_a = create_category(&category_service, tenant_id, "Child A", Some(parent), 0).await;
+    let child_b = create_category(&category_service, tenant_id, "Child B", Some(parent), 1).await;
+    let child_c = create_category(&category_service, tenant_id, "Child C", Some(parent), 2).await;
+
+    let non_leaf_delete = category_service
+        .delete(tenant_id, parent, admin())
+        .await
+        .expect_err("a category with children must not be deleted");
+    assert!(matches!(non_leaf_delete, BlogError::Validation(_)));
+    assert_eq!(load_category(&db, tenant_id, parent).await.depth, 0);
+    assert_eq!(load_category(&db, tenant_id, child_a).await.position, 0);
+    assert_eq!(load_category(&db, tenant_id, child_b).await.position, 1);
+    assert_eq!(load_category(&db, tenant_id, child_c).await.position, 2);
+
+    category_service
+        .delete(tenant_id, child_b, admin())
+        .await
+        .expect("leaf deletion should succeed");
+    assert!(
+        blog_category::Entity::find_by_id(child_b)
+            .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .one(&db)
+            .await
+            .expect("deleted category read should succeed")
+            .is_none()
+    );
+    assert_eq!(load_category(&db, tenant_id, child_a).await.position, 0);
+    assert_eq!(load_category(&db, tenant_id, child_c).await.position, 1);
+
+    category_service
+        .delete(tenant_id, child_c, admin())
+        .await
+        .expect("second leaf deletion should succeed");
+    category_service
+        .delete(tenant_id, child_a, admin())
+        .await
+        .expect("last child deletion should succeed");
+    category_service
+        .delete(tenant_id, parent, admin())
+        .await
+        .expect("parent should become deletable after all children are removed");
+}
