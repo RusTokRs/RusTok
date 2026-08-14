@@ -36,8 +36,9 @@ requireMarkers("crates/rustok-blog/src/dto/category_command.rs", [
   "MAX_BLOG_CATEGORY_TREE_NODES",
 ]);
 
+const categoryService = read("crates/rustok-blog/src/services/category.rs");
 requireMarkers("crates/rustok-blog/src/services/category.rs", [
-  "lock_category_tree_for_create_in_tx(&txn, tenant_id).await?",
+  "lock_category_tree_in_tx(&txn, tenant_id).await?",
   "ensure_category_tree_capacity_in_tx(&txn, tenant_id).await?",
   "canonicalize_siblings_for_insert_in_tx",
   "Category position cannot be negative",
@@ -45,18 +46,48 @@ requireMarkers("crates/rustok-blog/src/services/category.rs", [
   "Blog category tree cannot exceed",
   "if input.position.is_some()",
   "Category position is structural; use the category move command",
+  "ensure_category_is_leaf_in_tx(&txn, tenant_id, category_id).await?",
+  "Category must be a leaf before deletion; move or delete its children first",
+  "canonicalize_siblings_in_tx",
   'format!("blog-category-tree:{tenant_id}")',
 ]);
-const localizedUpdate = read("crates/rustok-blog/src/services/category.rs");
-const updateStart = localizedUpdate.indexOf("pub async fn update(");
-const updateEnd = localizedUpdate.indexOf("pub async fn delete(", updateStart);
+
+const updateStart = categoryService.indexOf("pub async fn update(");
+const updateEnd = categoryService.indexOf("pub async fn delete(", updateStart);
 const updateBody =
   updateStart >= 0 && updateEnd > updateStart
-    ? localizedUpdate.slice(updateStart, updateEnd)
+    ? categoryService.slice(updateStart, updateEnd)
     : "";
 if (updateBody.includes("Column::Position")) {
   failures.push(
     "crates/rustok-blog/src/services/category.rs: localized update must not write hierarchy position",
+  );
+}
+
+const deleteStart = categoryService.indexOf("pub async fn delete(");
+const deleteEnd = categoryService.indexOf("pub async fn list(", deleteStart);
+const deleteBody =
+  deleteStart >= 0 && deleteEnd > deleteStart
+    ? categoryService.slice(deleteStart, deleteEnd)
+    : "";
+for (const marker of [
+  "lock_category_tree_in_tx(&txn, tenant_id).await?",
+  "ensure_category_is_leaf_in_tx(&txn, tenant_id, category_id).await?",
+  "canonicalize_siblings_in_tx",
+  "publish_blog_reindex_in_tx",
+  "txn.commit().await",
+]) {
+  if (!deleteBody.includes(marker)) {
+    failures.push(
+      `crates/rustok-blog/src/services/category.rs: delete path missing ${marker}`,
+    );
+  }
+}
+const leafCheck = deleteBody.indexOf("ensure_category_is_leaf_in_tx");
+const deleteExec = deleteBody.indexOf("blog_category::Entity::delete_many()");
+if (leafCheck < 0 || deleteExec < 0 || leafCheck > deleteExec) {
+  failures.push(
+    "crates/rustok-blog/src/services/category.rs: leaf validation must happen before category deletion",
   );
 }
 
@@ -106,6 +137,7 @@ requireMarkers("crates/rustok-blog/src/openapi.rs", [
 
 requireMarkers("crates/rustok-blog/src/migrations/m20260812_000017_enforce_blog_category_hierarchy.rs", [
   "fk_blog_categories_tenant_parent",
+  "ForeignKeyAction::Restrict",
   "validate_and_compute_depths",
   "rejects_cross_tenant_parent",
   "rejects_cycle",
@@ -121,6 +153,10 @@ requireMarkers("crates/rustok-blog/tests/category_hierarchy.rs", [
   "a category cannot become its own parent",
   "a category cannot move beneath its own descendant",
   "cross-tenant parent must be rejected",
+  "delete_rejects_non_leaf_and_compacts_remaining_siblings",
+  "a category with children must not be deleted",
+  "leaf deletion should succeed",
+  "parent should become deletable after all children are removed",
 ]);
 
 requireMarkers("crates/rustok-blog/src/translation_target_tests.rs", [
@@ -134,6 +170,9 @@ requireMarkers("crates/rustok-blog/docs/category-hierarchy-contract.md", [
   "POST /api/blog/categories/{id}/move",
   "zero-based insertion index",
   "maximum 512 nodes",
+  "leaf-only",
+  "ON DELETE RESTRICT",
+  "compacts remaining sibling positions",
   "one owner-side write path",
   "recomputes materialized `depth`",
   "does not rewrite localized category rows",
