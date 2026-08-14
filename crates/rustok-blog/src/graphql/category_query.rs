@@ -1,7 +1,8 @@
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{
-    AuthContext, TenantContext,
-    graphql::{require_module_enabled, resolve_graphql_locale},
+    AuthContext, Permission, TenantContext,
+    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
+    has_any_effective_permission,
 };
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
@@ -27,6 +28,11 @@ impl BlogCategoryQuery {
         locale: Option<String>,
     ) -> Result<Option<GqlBlogCategory>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        let auth = require_category_permission(
+            ctx,
+            Permission::BLOG_CATEGORIES_READ,
+            "Permission denied: blog_categories:read required",
+        )?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -34,7 +40,7 @@ impl BlogCategoryQuery {
         let service = CategoryService::new(db.clone(), event_bus.clone());
 
         match service
-            .get(tenant.id, request_security_context(ctx), id, &locale)
+            .get(tenant.id, security_context(&auth), id, &locale)
             .await
         {
             Ok(category) => Ok(Some(category.into())),
@@ -49,25 +55,37 @@ impl BlogCategoryQuery {
         locale: Option<String>,
     ) -> Result<GqlBlogCategoryTree> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
+        let auth = require_category_permission(
+            ctx,
+            Permission::BLOG_CATEGORIES_LIST,
+            "Permission denied: blog_categories:list required",
+        )?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let tree = CategoryTreeService::new(db.clone())
-            .read(
-                tenant.id,
-                request_security_context(ctx),
-                Some(locale.as_str()),
-            )
+            .read(tenant.id, security_context(&auth), Some(locale.as_str()))
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
         Ok(tree.into())
     }
 }
 
-fn request_security_context(ctx: &Context<'_>) -> SecurityContext {
-    ctx.data_opt::<AuthContext>()
-        .map(|auth| {
-            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
-        })
-        .unwrap_or_else(SecurityContext::public_read)
+fn require_category_permission(
+    ctx: &Context<'_>,
+    permission: Permission,
+    message: &str,
+) -> Result<AuthContext> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
+        .clone();
+    if !has_any_effective_permission(&auth.permissions, &[permission]) {
+        return Err(<FieldError as GraphQLError>::permission_denied(message));
+    }
+    Ok(auth)
+}
+
+fn security_context(auth: &AuthContext) -> SecurityContext {
+    SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
 }
