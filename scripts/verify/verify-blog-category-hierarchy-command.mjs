@@ -22,6 +22,13 @@ function requireMarkers(relative, markers) {
   }
 }
 
+function rejectMarkers(relative, markers) {
+  const source = read(relative);
+  for (const marker of markers) {
+    if (source.includes(marker)) failures.push(`${relative}: forbidden ${marker}`);
+  }
+}
+
 requireMarkers("crates/rustok-blog/src/dto/category.rs", [
   "Compatibility field retained for decoding only",
   "use `MoveCategoryInput` instead",
@@ -93,6 +100,7 @@ if (leafCheck < 0 || deleteExec < 0 || leafCheck > deleteExec) {
 
 requireMarkers("crates/rustok-blog/src/services/category_command.rs", [
   "pub struct CategoryCommandService",
+  "pub fn new(db: DatabaseConnection) -> Self",
   "Resource::BlogCategories, Action::Manage",
   "lock_category_tree_in_tx(&txn, tenant_id).await?",
   "pg_advisory_xact_lock",
@@ -103,9 +111,12 @@ requireMarkers("crates/rustok-blog/src/services/category_command.rs", [
   "persist_descendant_depth_changes",
   "Blog category hierarchy cycle",
   "MAX_BLOG_CATEGORY_TREE_NODES",
-  "DomainEvent::ReindexRequested",
-  'target_type: "blog".to_string()',
   "txn.commit().await?",
+]);
+rejectMarkers("crates/rustok-blog/src/services/category_command.rs", [
+  "TransactionalEventBus",
+  "DomainEvent::ReindexRequested",
+  "publish_in_tx",
 ]);
 
 requireMarkers("crates/rustok-blog/src/entities/blog_category.rs", [
@@ -116,7 +127,7 @@ requireMarkers("crates/rustok-blog/src/entities/blog_category.rs", [
 ]);
 
 requireMarkers("crates/rustok-blog/src/controllers/categories.rs", [
-  "CategoryCommandService::new(runtime.db_clone(), runtime.event_bus())",
+  "CategoryCommandService::new(runtime.db_clone())",
   'path = "/api/blog/categories/{id}/move"',
   "request_body = MoveCategoryInput",
   "ensure_category_permission(&auth, Action::Manage)?",
@@ -144,6 +155,7 @@ requireMarkers("crates/rustok-blog/src/migrations/m20260812_000017_enforce_blog_
 ]);
 
 requireMarkers("crates/rustok-blog/tests/category_hierarchy.rs", [
+  "CategoryCommandService::new(db.clone())",
   "create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position",
   "create position must be an insertion index inside the sibling list",
   "move_reparents_subtree_and_failed_moves_leave_tree_unchanged",
@@ -172,6 +184,7 @@ requireMarkers("crates/rustok-blog/docs/category-hierarchy-contract.md", [
   "maximum 512 nodes",
   "leaf-only",
   "ON DELETE RESTRICT",
+  "projection-neutral",
   "compacts remaining sibling positions",
   "one owner-side write path",
   "recomputes materialized `depth`",
