@@ -175,7 +175,10 @@ impl From<GqlCreateBlogCategoryInput> for DomainCreateCategoryInput {
             description: input.description,
             parent_id: input.parent_id,
             position: input.position,
-            settings: input.settings.map(|value| value.0).unwrap_or_default(),
+            settings: input
+                .settings
+                .map(|value| value.0)
+                .unwrap_or_else(|| serde_json::json!({})),
         }
     }
 }
@@ -205,6 +208,21 @@ impl From<GqlMoveBlogCategoryInput> for DomainMoveCategoryInput {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn create_defaults_settings_to_empty_object() {
+        let domain: DomainCreateCategoryInput = GqlCreateBlogCategoryInput {
+            locale: "en".to_string(),
+            name: "Systems".to_string(),
+            slug: None,
+            description: None,
+            parent_id: None,
+            position: Some(0),
+            settings: None,
+        }
+        .into();
+        assert_eq!(domain.settings, serde_json::json!({}));
+    }
 
     #[test]
     fn localized_update_cannot_encode_structural_position() {
