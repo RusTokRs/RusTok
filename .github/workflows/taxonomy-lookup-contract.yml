@@ -3,6 +3,7 @@ name: Taxonomy Lookup Contract
 on:
   pull_request:
     paths:
+      - "crates/rustok-taxonomy/src/dto.rs"
       - "crates/rustok-taxonomy/src/services.rs"
       - "crates/rustok-taxonomy/src/module_term_lookup.rs"
       - "crates/rustok-taxonomy/src/normalization.rs"
@@ -22,6 +23,7 @@ on:
     branches:
       - main
     paths:
+      - "crates/rustok-taxonomy/src/dto.rs"
       - "crates/rustok-taxonomy/src/services.rs"
       - "crates/rustok-taxonomy/src/module_term_lookup.rs"
       - "crates/rustok-taxonomy/src/normalization.rs"
