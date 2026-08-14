@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
-    CreateTaxonomyTermInput, ResolveTaxonomyTermInput, TaxonomyError, TaxonomyModule,
+    CreateTaxonomyTermInput, ListTaxonomyTermsFilter, ResolveTaxonomyTermInput, TaxonomyModule,
     TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, entities::taxonomy_term_alias,
 };
 use rustok_test_utils::db::setup_test_db;
@@ -26,9 +26,12 @@ fn admin() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
 }
 
-async fn create_module_term(
+async fn create_term(
     service: &TaxonomyService,
     tenant_id: Uuid,
+    scope_type: TaxonomyScopeType,
+    scope_value: Option<&str>,
+    locale: &str,
     name: &str,
     slug: &str,
 ) -> Uuid {
@@ -38,9 +41,9 @@ async fn create_module_term(
             admin(),
             CreateTaxonomyTermInput {
                 kind: TaxonomyTermKind::Tag,
-                scope_type: TaxonomyScopeType::Module,
-                scope_value: Some("blog".to_string()),
-                locale: "en".to_string(),
+                scope_type,
+                scope_value: scope_value.map(str::to_string),
+                locale: locale.to_string(),
                 name: name.to_string(),
                 slug: Some(slug.to_string()),
                 canonical_key: Some(slug.to_string()),
@@ -49,10 +52,33 @@ async fn create_module_term(
             },
         )
         .await
-        .expect("module term should be created")
+        .expect("term should be created")
 }
 
-async fn inject_legacy_alias(db: &DatabaseConnection, tenant_id: Uuid, term_id: Uuid, slug: &str) {
+async fn create_module_term(
+    service: &TaxonomyService,
+    tenant_id: Uuid,
+    name: &str,
+    slug: &str,
+) -> Uuid {
+    create_term(
+        service,
+        tenant_id,
+        TaxonomyScopeType::Module,
+        Some("blog"),
+        "en",
+        name,
+        slug,
+    )
+    .await
+}
+
+async fn inject_unregistered_legacy_alias(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    term_id: Uuid,
+    slug: &str,
+) {
     taxonomy_term_alias::ActiveModel {
         id: Set(Uuid::new_v4()),
         term_id: Set(term_id),
@@ -64,18 +90,18 @@ async fn inject_legacy_alias(db: &DatabaseConnection, tenant_id: Uuid, term_id: 
     }
     .insert(db)
     .await
-    .expect("legacy alias fixture should bypass service admission checks");
+    .expect("legacy alias fixture should bypass route-registry admission");
 }
 
 #[tokio::test]
-async fn public_route_lookup_fails_closed_on_cross_table_ambiguity() {
+async fn public_route_lookup_uses_registry_authority_over_unregistered_legacy_alias() {
     let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
-    let _translation_owner = create_module_term(&service, tenant_id, "Systems", "systems").await;
+    let translation_owner = create_module_term(&service, tenant_id, "Systems", "systems").await;
     let alias_owner = create_module_term(&service, tenant_id, "Zig", "zig").await;
-    inject_legacy_alias(&db, tenant_id, alias_owner, "systems").await;
+    inject_unregistered_legacy_alias(&db, tenant_id, alias_owner, "systems").await;
 
-    let error = service
+    let resolved = service
         .resolve_term_for_module(
             tenant_id,
             admin(),
@@ -88,23 +114,23 @@ async fn public_route_lookup_fails_closed_on_cross_table_ambiguity() {
             },
         )
         .await
-        .expect_err("ambiguous localized route key must fail closed");
+        .expect("registry-authority lookup should remain resolvable")
+        .expect("registered route owner should resolve");
 
-    assert!(
-        matches!(error, TaxonomyError::Conflict(message) if message.contains("ambiguous localized taxonomy route key"))
-    );
+    assert_eq!(resolved.id, translation_owner);
+    assert_ne!(resolved.id, alias_owner);
 }
 
 #[tokio::test]
-async fn owner_transaction_lookup_fails_closed_on_cross_table_ambiguity() {
+async fn owner_transaction_lookup_uses_registry_authority_over_unregistered_legacy_alias() {
     let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
-    let _translation_owner = create_module_term(&service, tenant_id, "Systems", "systems").await;
+    let translation_owner = create_module_term(&service, tenant_id, "Systems", "systems").await;
     let alias_owner = create_module_term(&service, tenant_id, "Zig", "zig").await;
-    inject_legacy_alias(&db, tenant_id, alias_owner, "systems").await;
+    inject_unregistered_legacy_alias(&db, tenant_id, alias_owner, "systems").await;
 
     let txn = db.begin().await.expect("transaction should start");
-    let error = service
+    let term_ids = service
         .ensure_terms_for_module_in_tx(
             &txn,
             tenant_id,
@@ -114,11 +140,154 @@ async fn owner_transaction_lookup_fails_closed_on_cross_table_ambiguity() {
             &["systems".to_string()],
         )
         .await
-        .expect_err("ambiguous owner route key must fail closed");
-    txn.rollback().await.expect("transaction should roll back");
+        .expect("owner lookup should use the registered route owner");
+    txn.commit().await.expect("transaction should commit");
 
-    assert!(
-        matches!(error, TaxonomyError::Conflict(message) if message.contains("ambiguous localized taxonomy route key"))
+    assert_eq!(term_ids, vec![translation_owner]);
+    assert_ne!(term_ids[0], alias_owner);
+}
+
+#[tokio::test]
+async fn owner_batch_collapses_equivalent_labels_and_normalizes_scope_and_locale() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let txn = db.begin().await.expect("transaction should start");
+
+    let term_ids = service
+        .ensure_terms_for_module_in_tx(
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            " Blog ",
+            "en_us",
+            &[
+                " Rust ".to_string(),
+                "rust".to_string(),
+                "RUST".to_string(),
+                "   ".to_string(),
+            ],
+        )
+        .await
+        .expect("equivalent owner labels should resolve in one transaction");
+    txn.commit().await.expect("transaction should commit");
+
+    assert_eq!(term_ids.len(), 1, "one route identity must yield one term id");
+    let term = service
+        .get_term(tenant_id, admin(), term_ids[0], "en-US", None)
+        .await
+        .expect("created term should load through the canonical locale");
+    assert_eq!(term.scope_type, TaxonomyScopeType::Module);
+    assert_eq!(term.scope_value.as_deref(), Some("blog"));
+    assert_eq!(term.requested_locale, "en-US");
+    assert_eq!(term.effective_locale, "en-US");
+    assert_eq!(term.canonical_key, "rust");
+    assert_eq!(term.name, "Rust");
+
+    let (terms, total) = service
+        .list_terms(
+            tenant_id,
+            admin(),
+            ListTaxonomyTermsFilter {
+                kind: Some(TaxonomyTermKind::Tag),
+                scope_type: Some(TaxonomyScopeType::Module),
+                scope_value: Some(" BLOG ".to_string()),
+                locale: Some("en_us".to_string()),
+                page: Some(1),
+                per_page: Some(10),
+            },
+            None,
+        )
+        .await
+        .expect("normalized module term list should load");
+    assert_eq!(total, 1);
+    assert_eq!(terms.len(), 1);
+    assert_eq!(terms[0].id, term_ids[0]);
+}
+
+#[tokio::test]
+async fn owner_batch_prefers_module_term_before_global_across_locale_fallback() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let global_term_id = create_term(
+        &service,
+        tenant_id,
+        TaxonomyScopeType::Global,
+        None,
+        "en",
+        "Rust",
+        "rust",
+    )
+    .await;
+    let module_term_id = create_module_term(&service, tenant_id, "Rust", "rust").await;
+
+    let txn = db.begin().await.expect("transaction should start");
+    let term_ids = service
+        .ensure_terms_for_module_in_tx(
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            "blog",
+            "fr-FR",
+            &["RUST".to_string()],
+        )
+        .await
+        .expect("owner lookup should resolve through the platform fallback locale");
+    txn.commit().await.expect("transaction should commit");
+
+    assert_eq!(term_ids, vec![module_term_id]);
+    assert_ne!(term_ids[0], global_term_id);
+}
+
+#[tokio::test]
+async fn owner_batch_reuses_global_term_when_module_term_is_absent() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let global_term_id = create_term(
+        &service,
+        tenant_id,
+        TaxonomyScopeType::Global,
+        None,
+        "en",
+        "Rust",
+        "rust",
+    )
+    .await;
+
+    let txn = db.begin().await.expect("transaction should start");
+    let term_ids = service
+        .ensure_terms_for_module_in_tx(
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            "blog",
+            "fr-FR",
+            &[" rust ".to_string()],
+        )
+        .await
+        .expect("global route should satisfy owner lookup when no module route exists");
+    txn.commit().await.expect("transaction should commit");
+
+    assert_eq!(term_ids, vec![global_term_id]);
+
+    let (_, module_total) = service
+        .list_terms(
+            tenant_id,
+            admin(),
+            ListTaxonomyTermsFilter {
+                kind: Some(TaxonomyTermKind::Tag),
+                scope_type: Some(TaxonomyScopeType::Module),
+                scope_value: Some("blog".to_string()),
+                locale: Some("fr-FR".to_string()),
+                page: Some(1),
+                per_page: Some(10),
+            },
+            None,
+        )
+        .await
+        .expect("module term list should load");
+    assert_eq!(
+        module_total, 0,
+        "global reuse must not create a shadow module term"
     );
 }
 

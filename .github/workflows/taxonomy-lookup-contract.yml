@@ -1,0 +1,76 @@
+name: Taxonomy Lookup Contract
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-taxonomy/src/services.rs"
+      - "crates/rustok-taxonomy/src/module_term_lookup.rs"
+      - "crates/rustok-taxonomy/src/normalization.rs"
+      - "crates/rustok-taxonomy/src/route_key_registry.rs"
+      - "crates/rustok-taxonomy/src/migrations/**"
+      - "crates/rustok-taxonomy/tests/localized_route_lookup.rs"
+      - "crates/rustok-taxonomy/Cargo.toml"
+      - "crates/rustok-content/src/locale.rs"
+      - "crates/rustok-api/src/locale.rs"
+      - "Cargo.lock"
+      - ".github/workflows/taxonomy-lookup-contract.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-taxonomy/src/services.rs"
+      - "crates/rustok-taxonomy/src/module_term_lookup.rs"
+      - "crates/rustok-taxonomy/src/normalization.rs"
+      - "crates/rustok-taxonomy/src/route_key_registry.rs"
+      - "crates/rustok-taxonomy/src/migrations/**"
+      - "crates/rustok-taxonomy/tests/localized_route_lookup.rs"
+      - "crates/rustok-taxonomy/Cargo.toml"
+      - "crates/rustok-content/src/locale.rs"
+      - "crates/rustok-api/src/locale.rs"
+      - "Cargo.lock"
+      - ".github/workflows/taxonomy-lookup-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  lookup-contract:
+    name: Taxonomy lookup contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run localized route and owner-write contract
+        shell: bash
+        run: |
+          set -o pipefail
+          status=0
+          cargo test --locked -p rustok-taxonomy --test localized_route_lookup -- --nocapture 2>&1 \
+            | tee taxonomy-lookup-contract.log || status=$?
+          if [[ "$status" -ne 0 ]]; then
+            diagnostic="$(tail -n 40 taxonomy-lookup-contract.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/::/%3A%3A/g')"
+            echo "::error title=Taxonomy lookup contract failed::${diagnostic}"
+            exit "$status"
+          fi
+      - name: Upload lookup contract log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: taxonomy-lookup-contract-log
+          path: taxonomy-lookup-contract.log
+          if-no-files-found: error
