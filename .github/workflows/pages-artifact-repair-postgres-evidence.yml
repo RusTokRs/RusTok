@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - test/pages-artifact-repair-exact-main-evidence-20260814
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
