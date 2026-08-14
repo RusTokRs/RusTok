@@ -79,9 +79,7 @@ use rustok_outbox::TransactionalEventBus;
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-use rustok_taxonomy::{
-    TaxonomyError, TaxonomyOwnerReader, TaxonomyService, TaxonomyTermKind,
-};
+use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerReader, TaxonomyService, TaxonomyTermKind};
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -1448,7 +1446,11 @@ async fn load_blog_tag_names_for_post_in_tx(
 
     Ok(relations
         .into_iter()
-        .filter_map(|relation| terms_by_id.get(&relation.tag_id).map(|term| term.name.clone()))
+        .filter_map(|relation| {
+            terms_by_id
+                .get(&relation.tag_id)
+                .map(|term| term.name.clone())
+        })
         .collect())
 }
 
@@ -1496,7 +1498,11 @@ async fn load_forum_tag_names_for_topic_in_tx(
 
     Ok(relations
         .into_iter()
-        .filter_map(|relation| terms_by_id.get(&relation.term_id).map(|term| term.name.clone()))
+        .filter_map(|relation| {
+            terms_by_id
+                .get(&relation.term_id)
+                .map(|term| term.name.clone())
+        })
         .collect())
 }
 

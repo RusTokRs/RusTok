@@ -194,7 +194,11 @@ async fn owner_batch_collapses_equivalent_labels_and_normalizes_scope_and_locale
         .expect("equivalent owner labels should resolve in one transaction");
     txn.commit().await.expect("transaction should commit");
 
-    assert_eq!(term_ids.len(), 1, "one route identity must yield one term id");
+    assert_eq!(
+        term_ids.len(),
+        1,
+        "one route identity must yield one term id"
+    );
     let term = service
         .get_term(tenant_id, admin(), term_ids[0], "en-US", None)
         .await

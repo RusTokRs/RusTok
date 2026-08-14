@@ -73,12 +73,12 @@ mod forum_category_route;
 mod forum_topic_route;
 
 #[cfg(feature = "ssr")]
+use axum::extract::{Request, State};
+#[cfg(feature = "ssr")]
 use axum::http::{
     HeaderMap, HeaderValue, StatusCode,
     header::{CACHE_CONTROL, ETAG, IF_NONE_MATCH, LOCATION},
 };
-#[cfg(feature = "ssr")]
-use axum::extract::{Request, State};
 #[cfg(feature = "ssr")]
 use axum::middleware::{Next, from_fn_with_state};
 #[cfg(feature = "ssr")]

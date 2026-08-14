@@ -8,7 +8,7 @@ status: verified
 ---
 # RusToK Main Platform Verification Plan
 
-- **Structure update date:** 2026-08-04
+- **Structure update date:** 2026-08-14
 - **Status:** Cycle active
 - **Mode:** Cyclic, resumable pre-release defect-removal sweep
 - **Goal:** Repeatedly inspect and repair the platform before release, prioritizing critical defects and cross-module contract failures
@@ -33,19 +33,31 @@ that component's local `docs/implementation-plan.md`.
 - Current item: `core/rbac`
 - Next item: `core/rbac`
 - Started at (UTC): `2026-07-20`
-- Last handoff at (UTC): `2026-08-04`
+- Last handoff at (UTC): `2026-08-14`
 - Release readiness: `not_assessed`
-- Current RBAC revision: merged PR #2980 at
+- Current RBAC source revision: merged PR #2980 at
   `f4d89c26f1a30079918660280150016930c837a4`
-- Current RBAC state: `P0=0, P1=11, P2=1, P3=2`; findings are source-fixed but
-  execution-unverified, so `core/rbac` remains `in_progress`.
-- RBAC evidence still required: generated event digest; exact-head format, compile,
-  tests, verifiers, module gates, and Migration Compatibility; PostgreSQL clean apply,
-  N-1 upgrade, integrity, concurrency and rollback; Redis/watchdog/CLI/incident packets;
-  live negative transports; native operator parity; FFA/FBA promotion evidence.
-- Environment classification: connector-only work did not execute local Rust, Node,
-  PostgreSQL, Redis, workflows, or CI. Issue #2740 remains a known Rust-host fixture
-  blocker unless a current exact-head run proves otherwise.
+- Current RBAC verification increment: draft PR #3546, rebased over
+  `main@5f95e475dd0dcb56534419e081fe2c6eba1745e9`; it preserves the current-main Index
+  guard merge and carries the workspace formatter repairs plus the shared-manifest
+  formatter-stability repair and current verification handoff.
+- Current RBAC state: `P0=0, P1=11, P2=1, P3=2`; known findings are source-fixed but
+  execution remains incomplete, so `core/rbac` remains `in_progress`.
+- Retained targeted evidence from run `31787534422`: RBAC compilation, SQLite/contracts,
+  and RBAC module validate/test passed on its historical exact head. Both `rustok-api`
+  checks passed; `rustok-server --lib` failed with exit 101 and no retained compiler
+  diagnostic. Formatter job `94726772608` retained an exact Rust 1.97.1 two-assert diff,
+  now repaired in PR #3546 with semantics-preserving local bindings. No final-head pass
+  is claimed until the retargeted evidence workflow completes on the final PR SHA.
+- Current resolver/runtime static review still finds the expected read-only owner marker
+  and no active `RoleAssignmentStore` mutation path. Architecture execution remains open.
+- RBAC evidence still required: generated event digest; final-head format, server compile,
+  architecture/verifier and module gates; Migration Compatibility; PostgreSQL clean apply,
+  N-1 upgrade, integrity, locale, concurrency and rollback; Redis/watchdog/CLI/incident
+  packets; live negative transports; native operator parity; FFA/FBA promotion evidence.
+- Environment classification: local repository execution is unavailable in the connector
+  environment; GitHub Actions is the execution source of truth. Environment-only DNS,
+  runner, lock, OOM, or fixture failures must not be classified as product defects.
 
 ## Carried release blockers
 
@@ -68,8 +80,10 @@ command and owner plan.
   consumer receipt, DLQ and replay ownership remain incomplete.
 - `core/tenant`: merged host authority corrections still lack same-SHA source/runtime,
   rotation/revocation, WebSocket, Iggy and multi-replica evidence.
-- `core/rbac`: PR #2980 merged the source corrections, but every execution gate listed
-  in the cursor remains open.
+- `core/rbac`: PR #2980 merged the source corrections and targeted historical evidence
+  now covers RBAC compilation, SQLite/contracts, and module gates, but final-head server,
+  architecture, event-digest, PostgreSQL, recovery, transport, operator-parity, and
+  promotion evidence remains open.
 - Infrastructure issue #2740: the Rust-host PostgreSQL fixture can report a missing
   `rustok_browser` role after a nominally successful setup step.
 
