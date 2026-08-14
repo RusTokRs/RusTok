@@ -14,8 +14,8 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
-    CategoryPlacementResponse, MAX_BLOG_CATEGORY_TREE_DEPTH, MAX_BLOG_CATEGORY_TREE_NODES,
-    MoveCategoryInput, MoveCategoryResponse,
+    CategoryPlacementResponse, MAX_BLOG_CATEGORY_TREE_NODES, MoveCategoryInput,
+    MoveCategoryResponse,
 };
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
@@ -144,9 +144,7 @@ impl CategoryCommandService {
             .iter()
             .find(|placement| placement.id == category_id)
             .cloned()
-            .ok_or_else(|| {
-                BlogError::validation("Moved category placement was not persisted")
-            })?;
+            .ok_or_else(|| BlogError::validation("Moved category placement was not persisted"))?;
 
         self.event_bus
             .publish_in_tx(
@@ -360,16 +358,11 @@ fn compute_depth(
                     "Blog category tree references missing or foreign parent {parent_id}"
                 )));
             }
-            let parent_depth = compute_depth(parent_id, parent_by_id, depths, active_path)?;
-            let depth = parent_depth.checked_add(1).ok_or_else(|| {
-                BlogError::validation("Blog category hierarchy depth is exhausted")
-            })?;
-            if depth as usize > MAX_BLOG_CATEGORY_TREE_DEPTH {
-                return Err(BlogError::validation(format!(
-                    "Blog category tree exceeds the maximum depth of {MAX_BLOG_CATEGORY_TREE_DEPTH}"
-                )));
-            }
-            depth
+            compute_depth(parent_id, parent_by_id, depths, active_path)?
+                .checked_add(1)
+                .ok_or_else(|| {
+                    BlogError::validation("Blog category hierarchy depth is exhausted")
+                })?
         }
     };
 
@@ -402,18 +395,14 @@ mod tests {
     }
 
     #[test]
-    fn rejects_missing_parent_and_excessive_depth() {
+    fn rejects_missing_parent_and_unbounded_tree() {
         let root = Uuid::from_u128(1);
         let missing = Uuid::from_u128(99);
         assert!(validate_and_compute_depths(&HashMap::from([(root, Some(missing))])).is_err());
 
-        let mut tree = HashMap::new();
-        let mut parent = None;
-        for index in 0..=MAX_BLOG_CATEGORY_TREE_DEPTH + 1 {
-            let id = Uuid::from_u128(index as u128 + 1);
-            tree.insert(id, parent);
-            parent = Some(id);
-        }
-        assert!(validate_and_compute_depths(&tree).is_err());
+        let oversized = (0..=MAX_BLOG_CATEGORY_TREE_NODES)
+            .map(|index| (Uuid::from_u128(index as u128 + 1), None))
+            .collect::<HashMap<_, _>>();
+        assert!(validate_and_compute_depths(&oversized).is_err());
     }
 }
