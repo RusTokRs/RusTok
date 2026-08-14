@@ -13,10 +13,8 @@ on:
       - "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-repair-postgres-source.json"
       - "crates/rustok-pages/contracts/evidence/pages-artifact-repair-postgres-execution.json"
       - "crates/rustok-outbox/src/**"
-      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
       - "docs/modules/pages-page-builder-repair-postgres-continuation-2026-08-07.md"
       - "docs/modules/pages-artifact-repair-postgres-evidence-actualization-2026-08-14.md"
-      - ".github/workflows/pages-artifact-repair-postgres-evidence.yml"
   pull_request:
     paths:
       - "Cargo.toml"
