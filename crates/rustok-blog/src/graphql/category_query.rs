@@ -1,11 +1,15 @@
 use async_graphql::{Context, Object, Result};
-use rustok_api::{AuthContext, TenantContext, graphql::{require_module_enabled, resolve_graphql_locale}};
+use rustok_api::{
+    AuthContext, TenantContext,
+    graphql::{require_module_enabled, resolve_graphql_locale},
+};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{BlogError, CategoryService, CategoryTreeService};
+use crate::error::BlogError;
+use crate::services::{CategoryService, CategoryTreeService};
 
 use super::category_types::{GqlBlogCategory, GqlBlogCategoryTree};
 
