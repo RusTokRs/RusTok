@@ -59,6 +59,9 @@ const categoryQuery = requireMarkers("crates/rustok-blog/src/graphql/category_qu
   "pub struct BlogCategoryQuery",
   "async fn blog_category(",
   "async fn blog_category_tree(",
+  "Permission::BLOG_CATEGORIES_READ",
+  "Permission::BLOG_CATEGORIES_LIST",
+  "require_category_permission",
   "CategoryService::new",
   "CategoryTreeService::new",
   "tenant.id",
@@ -68,6 +71,7 @@ for (const forbidden of [
   "blog_category::Entity",
   "blog_category_translation::Entity",
   "tenant_id: Option<Uuid>",
+  "SecurityContext::public_read",
 ]) {
   if (categoryQuery.includes(forbidden)) {
     failures.push(`crates/rustok-blog/src/graphql/category_query.rs: forbidden ${forbidden}`);
@@ -159,6 +163,8 @@ requireMarkers("crates/rustok-blog/docs/category-graphql-contract.md", [
   "512 tenant-local categories",
   "materialized `depth`",
   "current authenticated tenant",
+  "authenticated `blog_categories:read`",
+  "authenticated `blog_categories:list`",
   "UpdateBlogCategoryInput",
   "MoveBlogCategoryInput",
   "does not write owner persistence directly",
