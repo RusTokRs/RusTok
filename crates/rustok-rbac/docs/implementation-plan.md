@@ -34,10 +34,11 @@ role-assignment authority.
 
 `cycle-001/core-rbac` remains `in_progress`.
 
-Active verification task (2026-08-14): `[in_progress]` fix the RBAC mutation API
-architecture guard so production call-site counting excludes only `#[cfg(test)]` test
-modules, then classify PostgreSQL evidence from workflow run `31808510809` without
-moving the verification cursor.
+Active verification task (2026-08-14): `[in_progress]` validate PR #3563, which fixes the
+RBAC mutation API architecture guard so production call-site counting excludes only the
+`#[cfg(test)] mod tests` tail in `auth_lifecycle.rs`; obtain fresh current-revision
+`CARGO_PROFILE_TEST_DEBUG=0` PostgreSQL concurrency/watchdog evidence before moving the
+verification cursor.
 
 PR #2980 reconstructed the useful product changes from superseded draft #2870 on current
 `main`. The task-specific workflow and obsolete migration-tail repair path were excluded.
@@ -84,6 +85,39 @@ Merged source provides:
 - `P3=2`: compatibility wording and obsolete broad lint handling.
 
 All findings above are source-fixed in `main`; none is execution-verified.
+
+## 2026-08-14 verification delta
+
+- Scope: `apps/server` RBAC role-replacement architecture guard and retained PostgreSQL
+  concurrency/watchdog evidence; no RBAC runtime mutation semantics were changed.
+- Priority classification: `P0=0` new product defects confirmed; `P1=2` current evidence
+  blockers remain (PostgreSQL concurrency and independent-process watchdog recovery);
+  no new `P2` or `P3` product finding was introduced by this guard correction.
+- Fix: PR #3563 keeps the production role-replacement contract at exactly one call site
+  while excluding only the directly `#[cfg(test)]`-gated `mod tests` tail of
+  `auth_lifecycle.rs` from the raw-source scan. A regression proves the exclusion does
+  not hide calls in other files or earlier content in the same file.
+- Historical evidence: workflow run `31808510809` targeted an older revision with
+  `CARGO_PROFILE_TEST_DEBUG=1`. PostgreSQL service/setup steps completed, and both the
+  concurrency and watchdog jobs failed in their Rust test step. The available GitHub
+  connector surfaces no longer expose the raw compiler/linker diagnostic, so the root
+  cause cannot be honestly classified as either linker/debug overflow or a PostgreSQL
+  product defect from that run alone.
+- CI evidence: an exact-head push CI for `6c185f29cc1b007accb4bb7fa50ef100388917d2`
+  reached broad workspace checks; formatting failed on unrelated
+  `apps/server/src/main.rs`, Cargo Check failed without a recoverable compiler diagnostic,
+  and Nextest did not execute. PR #3563 CI is the current merge-context evidence source.
+  No local Cargo pass is claimed because the available execution environment has no Rust
+  toolchain.
+- Risks/blockers: current-revision `CARGO_PROFILE_TEST_DEBUG=0` architecture and
+  PostgreSQL concurrency/watchdog execution remain absent. Broad workspace CI uses
+  `CARGO_PROFILE_TEST_DEBUG=1` and cannot substitute for targeted runtime evidence.
+- Next action: obtain the PR #3563 merge-context result, resolve only failures caused by
+  this diff, then run/retain current-revision debug-disabled architecture, PostgreSQL
+  concurrency, and watchdog evidence. Keep `cycle-001/core-rbac` `in_progress` until the
+  mandatory evidence gates close.
+- Resume command:
+  `CARGO_PROFILE_TEST_DEBUG=0 cargo test -p rustok-server --test rbac_mutation_api_architecture_guard -- --nocapture`
 
 ## FFA/FBA boundary
 
