@@ -115,12 +115,6 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
         .expect("child should move under the second root");
     assert_eq!(moved.moved.parent_id, Some(root_b));
     assert_eq!(moved.moved.depth, 1);
-    assert!(
-        moved
-            .updated
-            .iter()
-            .any(|placement| placement.id == grandchild && placement.depth == 2)
-    );
 
     let child_after_reparent = load_category(&db, tenant_id, child).await;
     let grandchild_after_reparent = load_category(&db, tenant_id, grandchild).await;
@@ -143,6 +137,12 @@ async fn move_reparents_subtree_and_failed_moves_leave_tree_unchanged() {
         .expect("child should move to the root level");
     assert_eq!(moved_to_root.moved.parent_id, None);
     assert_eq!(moved_to_root.moved.depth, 0);
+    assert!(
+        moved_to_root
+            .updated
+            .iter()
+            .any(|placement| placement.id == grandchild && placement.depth == 1)
+    );
     assert_eq!(load_category(&db, tenant_id, grandchild).await.depth, 1);
 
     let self_parent = command_service
