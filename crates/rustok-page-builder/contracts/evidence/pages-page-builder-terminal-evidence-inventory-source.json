@@ -40,7 +40,7 @@
     "maximum_blocker_paths": 256,
     "all_recursive_blocker_paths_must_be_zero_for_completion": true,
     "current_source_expected_to_have_blockers": true,
-    "current_source_rechecked_blocker_count": 9,
+    "current_source_rechecked_blocker_count": 8,
     "pending_blockers_prevent_transport_verified": true
   },
   "pages_ffa_inventory": {
@@ -115,7 +115,7 @@
     "crates/rustok-pages/docs/implementation-plan.md",
     "crates/rustok-page-builder/docs/implementation-plan.md",
     "docs/modules/registry.md",
-    "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-13.md"
+    "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-14.md"
   ],
   "non_claims": {
     "predecessor_executed_by_this_slice": false,

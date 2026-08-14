@@ -67,7 +67,7 @@ const runnerPath = "scripts/evidence/inventory-pages-page-builder-terminal-readi
 const testsPath = "scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs";
 const verifierPath = "scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs";
 const actualizationPath =
-  "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-13.md";
+  "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-14.md";
 const predecessorSourcePath =
   "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-readiness-admission-source.json";
 const predecessorVerifierPath =
@@ -125,7 +125,6 @@ const expectedCurrentPaths = [
   "/consumers/0/artifact_repair/rollback_continuity/physical_loss_activation_prefix/executed_evidence",
   "/consumers/0/artifact_repair/rollback_continuity/rollback_activated_repair_to_rollback/executed_evidence",
   "/consumers/0/artifact_repair/rollback_continuity/executed_evidence",
-  "/consumers/0/artifact_repair/executed_evidence",
   "/consumers/0/cache_consumer/executed_evidence",
 ].sort();
 requireValue(
@@ -142,7 +141,7 @@ requireValue(
     source.page_builder_fba_inventory?.all_recursive_blocker_paths_must_be_zero_for_completion ===
       true &&
     source.page_builder_fba_inventory?.current_source_expected_to_have_blockers === true &&
-    source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 9 &&
+    source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 8 &&
     source.page_builder_fba_inventory?.pending_blockers_prevent_transport_verified === true,
   `${sourcePath}: Page Builder FBA inventory contract drifted`,
 );
@@ -267,8 +266,9 @@ for (const marker of [
 
 for (const marker of [
   "terminal-evidence-inventory-source-ready",
-  "9",
+  "8",
   "/provider/consumer_properties_contract/executed_evidence",
+  "/consumers/0/artifact_repair/executed_evidence",
   "/consumers/0/cache_consumer/executed_evidence",
   "execution-rollout-pending",
   "terminal_evidence_inventory_incomplete",
@@ -276,7 +276,7 @@ for (const marker of [
   "review-ready only",
   "retained source hashes",
   "owner_platform_review_ready=false",
-  "No tests, Node verifiers, Cargo commands, GraphQL/HTTP calls, live mutations, browser runs, workflows or CI were executed",
+  "No live evidence execution or readiness promotion is claimed by this recomputation.",
 ]) {
   requireText(actualization, marker, actualizationPath);
 }
