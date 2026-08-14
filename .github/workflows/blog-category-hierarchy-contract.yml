@@ -14,6 +14,7 @@ on:
       - "crates/rustok-blog/src/openapi.rs"
       - "crates/rustok-blog/src/entities/blog_category.rs"
       - "crates/rustok-blog/src/migrations/m20260812_000017_enforce_blog_category_hierarchy.rs"
+      - "crates/rustok-blog/src/translation_target_tests.rs"
       - "crates/rustok-blog/tests/category_hierarchy.rs"
       - "crates/rustok-blog/docs/category-hierarchy-contract.md"
       - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
@@ -35,6 +36,7 @@ on:
       - "crates/rustok-blog/src/openapi.rs"
       - "crates/rustok-blog/src/entities/blog_category.rs"
       - "crates/rustok-blog/src/migrations/m20260812_000017_enforce_blog_category_hierarchy.rs"
+      - "crates/rustok-blog/src/translation_target_tests.rs"
       - "crates/rustok-blog/tests/category_hierarchy.rs"
       - "crates/rustok-blog/docs/category-hierarchy-contract.md"
       - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
@@ -76,3 +78,7 @@ jobs:
         run: cargo test --locked -p rustok-blog --lib category_command::tests -- --nocapture
       - name: Run Blog category hierarchy integration contract
         run: cargo test --locked -p rustok-blog --test category_hierarchy -- --nocapture
+      - name: Run Blog translation/hierarchy separation regression
+        run: >-
+          cargo test --locked -p rustok-blog --lib
+          category_update_advances_exact_locale_and_owner_change_revisions -- --nocapture
