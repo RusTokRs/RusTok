@@ -154,7 +154,7 @@ for (const marker of [
   "envelope.validate_registered_schema()?",
   "assert_eq!(envelope.correlation_id, event_id)",
   "PageCacheInvalidationEventHandler::new",
-  "handler.handle(envelope).await?",
+  "input.handler.handle(input.envelope).await?",
   "put_json(new_storefront_key.clone(), &refilled_storefront)",
   "put_json(new_artifact_key.clone(), &refilled_artifact)",
   "assert_event_absent(&db, rolled_back_event_id).await?",
@@ -225,9 +225,9 @@ const cacheCycle = sliceBetween(
 requireOrder(
   cacheCycle,
   [
-    "let before = reads.generation_snapshot(tenant_id).await?;",
-    "handler.handle(envelope).await?;",
-    "let after = reads.generation_snapshot(tenant_id).await?;",
+    "let before = input.reads.generation_snapshot(input.tenant_id).await?;",
+    "input.handler.handle(input.envelope).await?;",
+    "let after = input.reads.generation_snapshot(input.tenant_id).await?;",
     "get_json::<Value>(&new_storefront_key)",
     "get_json::<Value>(&new_artifact_key)",
     "put_json(new_storefront_key.clone(), &refilled_storefront)",

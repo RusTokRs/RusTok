@@ -136,7 +136,8 @@ requireMarker(
 for (const marker of [
   "impl ActiveModelBehavior for ActiveModel",
   "async fn after_save<C>(model: Model, db: &C, insert: bool)",
-  "persist_publish_manifest_after_save(db, &model)",
+  "crate::services::page::publish_manifest::persist_publish_manifest_after_save(",
+  "db, &model,",
   "crate::error::PUBLISH_MANIFEST_DB_ERROR_PREFIX",
 ]) {
   requireMarker(publishEntity, marker, "publish receipt manifest invariant");
