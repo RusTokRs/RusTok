@@ -98,6 +98,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Activate exact Rust evidence toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup override set "${RUST_TOOLCHAIN}"
+          rustup show active-toolchain
+          rustc --version
+          cargo --version
+          test "$(rustc --version | awk '{print $2}')" = "${RUST_TOOLCHAIN}"
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: taxonomy-postgres-evidence
