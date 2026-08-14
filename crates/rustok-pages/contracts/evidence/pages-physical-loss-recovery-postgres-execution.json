@@ -1,0 +1,99 @@
+{
+  "format": "pages_physical_loss_recovery_postgres_execution_source_v1",
+  "status": "source_ready_main_execution_pending",
+  "scope": "page_builder_fba_consumer_artifact_repair_physical_loss_recovery_parent",
+  "purpose": "Retain exact-main PostgreSQL execution evidence for the physical-loss recovery parent by executing its direct single-locale and multi-locale recovery packets while requiring both already-admitted nested recovery evidence nodes to remain verified, without inferring or mutating rollback-continuity, cache-consumer, provider-consumer-properties, terminal-readiness, FFA or FBA state.",
+  "workflow": ".github/workflows/pages-physical-loss-recovery-postgres-evidence.yml",
+  "source_contract": "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json",
+  "registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  "required_source_files": [
+    "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs",
+    "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json",
+    "crates/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs",
+    "crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs",
+    "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs",
+    "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs",
+    "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
+    "crates/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
+    "crates/rustok-pages/src/entities/page_artifact_binding_replacement_operation.rs",
+    "crates/rustok-pages/src/dto/artifact_binding_replacement.rs",
+    "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+    "crates/rustok-pages/src/services/page/rollback.rs",
+    "crates/rustok-pages/src/services/page_builder_artifact.rs",
+    "crates/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md",
+    "docs/modules/pages-page-builder-multilocale-activation-recovery-actualization-2026-08-07.md",
+    "docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md",
+    "crates/rustok-pages/docs/implementation-plan.md",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "crates/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json",
+    "docs/modules/pages-physical-loss-recovery-postgres-evidence-actualization-2026-08-15.md",
+    ".github/workflows/pages-physical-loss-recovery-postgres-evidence.yml"
+  ],
+  "execution": {
+    "pull_request_preflight": true,
+    "exact_main_event": "push",
+    "exact_main_branch": "main",
+    "postgres": "16",
+    "rust_toolchain": "1.96.0",
+    "source_verifiers": [
+      "node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs"
+    ],
+    "integration_tests": [
+      "cargo test --locked -p rustok-pages --test artifact_loss_activation_recovery_postgres -- --nocapture",
+      "cargo test --locked -p rustok-pages --test artifact_loss_multilocale_activation_recovery_postgres -- --nocapture"
+    ],
+    "cargo_check": "cargo check --locked -p rustok-pages --all-targets",
+    "exact_checkout_required": true,
+    "contents_write_permission": false,
+    "registry_mutation": false
+  },
+  "output": {
+    "format": "pages_physical_loss_recovery_postgres_execution_v1",
+    "success_status": "postgres_execution_passed_physical_loss_recovery_parent_admission_pending",
+    "default_path": "evidence/pages-physical-loss-recovery-postgres/receipt.json",
+    "artifact_retention_days": 90,
+    "source_commit_retained": true,
+    "workflow_run_identity_retained": true,
+    "required_source_sha256_retained": true,
+    "registry_pre_state_retained": true,
+    "parent_scope_retained": true,
+    "nested_admission_preconditions_retained": true,
+    "sibling_non_claims_retained": true
+  },
+  "admission_boundary": {
+    "target_json_pointer": "/consumers/0/artifact_repair/physical_loss_recovery/executed_evidence",
+    "target_pre_state": "pending",
+    "target_post_state_not_performed_by_workflow": "verified",
+    "rollback_activated_current_set_recovery_required_pre_state": "verified",
+    "repeated_loss_recovery_required_pre_state": "verified",
+    "artifact_repair_parent_required_pre_state": "verified",
+    "rollback_continuity_must_not_be_inferred": true,
+    "cache_consumer_must_not_be_inferred": true,
+    "provider_consumer_properties_must_not_be_inferred": true,
+    "separate_registry_admission_required": true,
+    "separate_terminal_inventory_recompute_required_after_admission": true
+  },
+  "privacy": {
+    "database_url_retained": false,
+    "tenant_identity_retained": false,
+    "raw_database_rows_retained": false,
+    "event_payload_retained": false,
+    "credentials_retained": false,
+    "logs_uploaded_by_evidence_artifact": false
+  },
+  "non_claims": {
+    "target_registry_verified": false,
+    "nested_recovery_registry_mutated": false,
+    "rollback_activated_current_set_recovery_reexecuted": false,
+    "repeated_loss_recovery_reexecuted": false,
+    "rollback_continuity_verified": false,
+    "cache_consumer_verified": false,
+    "provider_consumer_properties_verified": false,
+    "terminal_inventory_complete": false,
+    "owner_platform_review_ready": false,
+    "page_builder_fba_promoted": false,
+    "pages_ffa_promoted": false
+  }
+}

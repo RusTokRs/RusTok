@@ -1,0 +1,315 @@
+name: Pages Physical Loss Recovery PostgreSQL Evidence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-pages/src/**"
+      - "crates/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs"
+      - "crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs"
+      - "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs"
+      - "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
+      - "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs"
+      - "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json"
+      - "crates/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md"
+      - "crates/rustok-pages/docs/implementation-plan.md"
+      - "crates/rustok-page-builder/src/**"
+      - "crates/rustok-outbox/src/**"
+      - "docs/modules/pages-page-builder-multilocale-activation-recovery-actualization-2026-08-07.md"
+      - "docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md"
+      - "docs/modules/pages-physical-loss-recovery-postgres-evidence-actualization-2026-08-15.md"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-pages/src/**"
+      - "crates/rustok-pages/tests/explicit_artifact_binding_replacement_sqlite.rs"
+      - "crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs"
+      - "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs"
+      - "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs"
+      - "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs"
+      - "crates/rustok-pages/contracts/evidence/pages-explicit-artifact-binding-replacement-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json"
+      - "crates/rustok-pages/docs/explicit-immutable-artifact-loss-activation-recovery.md"
+      - "crates/rustok-pages/docs/implementation-plan.md"
+      - "crates/rustok-page-builder/src/**"
+      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "crates/rustok-outbox/src/**"
+      - "docs/modules/pages-page-builder-multilocale-activation-recovery-actualization-2026-08-07.md"
+      - "docs/modules/pages-page-builder-repeated-artifact-loss-recovery-actualization-2026-08-07.md"
+      - "docs/modules/pages-physical-loss-recovery-postgres-evidence-actualization-2026-08-15.md"
+      - ".github/workflows/pages-physical-loss-recovery-postgres-evidence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-physical-loss-recovery-postgres-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_pages_physical_loss_evidence
+  RUSTOK_PAGES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_pages_physical_loss_evidence
+
+jobs:
+  preflight:
+    name: Physical-loss recovery PostgreSQL preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_pages_physical_loss_evidence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_pages_physical_loss_evidence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-physical-loss-recovery-postgres-evidence
+      - name: Require exact event checkout
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Verify explicit binding-replacement source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-binding-replacement.mjs
+      - name: Verify multi-locale physical-loss source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs
+      - name: Validate execution contract
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'crates/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json';
+          const contract = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const fail = (message) => { console.error(message); process.exit(1); };
+          if (contract.format !== 'pages_physical_loss_recovery_postgres_execution_source_v1') fail('execution contract format drifted');
+          if (contract.status !== 'source_ready_main_execution_pending') fail('execution contract status drifted');
+          if (contract.workflow !== '.github/workflows/pages-physical-loss-recovery-postgres-evidence.yml') fail('workflow binding drifted');
+          if (contract.output?.format !== 'pages_physical_loss_recovery_postgres_execution_v1') fail('output format drifted');
+          if (contract.output?.success_status !== 'postgres_execution_passed_physical_loss_recovery_parent_admission_pending') fail('success status drifted');
+          if (contract.admission_boundary?.target_json_pointer !== '/consumers/0/artifact_repair/physical_loss_recovery/executed_evidence') fail('admission target drifted');
+          if (contract.admission_boundary?.rollback_activated_current_set_recovery_required_pre_state !== 'verified') fail('rollback-activated child pre-state drifted');
+          if (contract.admission_boundary?.repeated_loss_recovery_required_pre_state !== 'verified') fail('repeated-loss child pre-state drifted');
+          if (contract.admission_boundary?.artifact_repair_parent_required_pre_state !== 'verified') fail('artifact-repair parent pre-state drifted');
+          if (contract.admission_boundary?.separate_registry_admission_required !== true) fail('registry admission must stay separate');
+          if (contract.non_claims?.rollback_continuity_verified !== false) fail('rollback-continuity evidence must remain a non-claim');
+          if (contract.non_claims?.cache_consumer_verified !== false) fail('cache evidence must remain a non-claim');
+          if (contract.non_claims?.provider_consumer_properties_verified !== false) fail('provider evidence must remain a non-claim');
+          NODE
+      - name: Execute single-locale physical-loss PostgreSQL evidence
+        run: cargo test --locked -p rustok-pages --test artifact_loss_activation_recovery_postgres -- --nocapture
+      - name: Execute multi-locale physical-loss PostgreSQL evidence
+        run: cargo test --locked -p rustok-pages --test artifact_loss_multilocale_activation_recovery_postgres -- --nocapture
+      - name: Check Pages targets
+        run: cargo check --locked -p rustok-pages --all-targets
+
+  exact-main-receipt:
+    name: Physical-loss recovery exact-main receipt
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require exact main checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "push"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Record bounded exact-main receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/pages-physical-loss-recovery-postgres
+          node <<'NODE'
+          const crypto = require('node:crypto');
+          const fs = require('node:fs');
+          const contractPath = 'crates/rustok-pages/contracts/evidence/pages-physical-loss-recovery-postgres-execution.json';
+          const registryPath = 'crates/rustok-page-builder/contracts/page-builder-fba-registry.json';
+          const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
+          const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+          const consumer = registry.consumers?.[0];
+          const repair = consumer?.artifact_repair;
+          const physical = repair?.physical_loss_recovery;
+          const target = physical?.executed_evidence;
+          const rollbackActivated = physical?.rollback_activated_current_set_recovery?.executed_evidence;
+          const repeatedLoss = physical?.repeated_loss_recovery?.executed_evidence;
+          const artifactRepairParent = repair?.executed_evidence;
+          if (target !== 'pending') {
+            console.error(`physical-loss recovery registry pre-state must be pending, got ${String(target)}`);
+            process.exit(1);
+          }
+          if (rollbackActivated !== 'verified') {
+            console.error(`rollback-activated recovery pre-state must be verified, got ${String(rollbackActivated)}`);
+            process.exit(1);
+          }
+          if (repeatedLoss !== 'verified') {
+            console.error(`repeated-loss recovery pre-state must be verified, got ${String(repeatedLoss)}`);
+            process.exit(1);
+          }
+          if (artifactRepairParent !== 'verified') {
+            console.error(`artifact-repair parent pre-state must be verified, got ${String(artifactRepairParent)}`);
+            process.exit(1);
+          }
+          if (process.env.GITHUB_ACTIONS !== 'true' || process.env.GITHUB_EVENT_NAME !== 'push' || process.env.GITHUB_REF !== 'refs/heads/main') {
+            console.error('receipt recorder requires GitHub Actions push on main');
+            process.exit(1);
+          }
+          const hash = (content) => crypto.createHash('sha256').update(content).digest('hex');
+          const sourceSha256 = {};
+          for (const sourcePath of contract.required_source_files ?? []) {
+            const stat = fs.lstatSync(sourcePath);
+            if (!stat.isFile() || stat.isSymbolicLink()) {
+              console.error(`${sourcePath}: required source must be a regular non-symlink file`);
+              process.exit(1);
+            }
+            sourceSha256[sourcePath] = hash(fs.readFileSync(sourcePath));
+          }
+          const receipt = {
+            format: contract.output.format,
+            status: contract.output.success_status,
+            generated_at: new Date().toISOString(),
+            source_commit: process.env.GITHUB_SHA,
+            provenance: {
+              repository: process.env.GITHUB_REPOSITORY,
+              workflow: process.env.GITHUB_WORKFLOW,
+              run_id: process.env.GITHUB_RUN_ID,
+              run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+              event: process.env.GITHUB_EVENT_NAME,
+              ref: process.env.GITHUB_REF
+            },
+            execution: {
+              explicit_binding_replacement_source_verifier_passed: true,
+              multilocale_physical_loss_source_verifier_passed: true,
+              postgres_16_used: true,
+              single_locale_integration_test_passed: true,
+              multilocale_integration_test_passed: true,
+              cargo_check_all_targets_passed: true
+            },
+            registry_pre_state: {
+              target_physical_loss_recovery_executed_evidence: target,
+              rollback_activated_current_set_recovery_executed_evidence: rollbackActivated,
+              repeated_loss_recovery_executed_evidence: repeatedLoss,
+              artifact_repair_parent_executed_evidence: artifactRepairParent,
+              rollback_continuity_executed_evidence: repair?.rollback_continuity?.executed_evidence ?? null,
+              cache_consumer_executed_evidence: consumer?.cache_consumer?.executed_evidence ?? null,
+              provider_consumer_properties_executed_evidence: registry.provider?.consumer_properties_contract?.executed_evidence ?? null
+            },
+            scope: {
+              physical_loss_recovery_parent_only: true,
+              single_locale_direct_recovery_executed: true,
+              multilocale_sequential_recovery_executed: true,
+              nested_admitted_recovery_evidence_required: true,
+              rollback_activated_current_set_recovery_reexecuted: false,
+              repeated_loss_recovery_reexecuted: false,
+              rollback_continuity_claimed: false,
+              cache_consumer_claimed: false,
+              provider_consumer_properties_claimed: false
+            },
+            governance: {
+              registry_mutated: false,
+              target_registry_verified: false,
+              nested_recovery_registry_mutated: false,
+              terminal_inventory_complete: false,
+              owner_platform_review_ready: false,
+              page_builder_fba_promoted: false,
+              pages_ffa_promoted: false,
+              separate_registry_admission_required: true
+            },
+            privacy: {
+              database_url_retained: false,
+              tenant_identity_retained: false,
+              raw_database_rows_retained: false,
+              event_payload_retained: false,
+              credentials_retained: false
+            },
+            source_sha256: sourceSha256
+          };
+          fs.writeFileSync(
+            'evidence/pages-physical-loss-recovery-postgres/receipt.json',
+            `${JSON.stringify(receipt, null, 2)}\n`,
+            { mode: 0o600 }
+          );
+          NODE
+      - name: Validate bounded receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f evidence/pages-physical-loss-recovery-postgres/receipt.json
+          test "$(stat -c %s evidence/pages-physical-loss-recovery-postgres/receipt.json)" -le 1048576
+          node -e 'const r=require("./evidence/pages-physical-loss-recovery-postgres/receipt.json"); if(r.format!=="pages_physical_loss_recovery_postgres_execution_v1"||r.status!=="postgres_execution_passed_physical_loss_recovery_parent_admission_pending"||r.source_commit!==process.env.GITHUB_SHA||r.scope?.physical_loss_recovery_parent_only!==true||r.scope?.single_locale_direct_recovery_executed!==true||r.scope?.multilocale_sequential_recovery_executed!==true||r.scope?.rollback_activated_current_set_recovery_reexecuted!==false||r.scope?.repeated_loss_recovery_reexecuted!==false||r.scope?.rollback_continuity_claimed!==false||r.governance?.registry_mutated!==false) process.exit(1)'
+      - name: Archive bounded physical-loss recovery evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: pages-physical-loss-recovery-postgres-${{ github.run_id }}-${{ github.sha }}
+          path: evidence/pages-physical-loss-recovery-postgres/receipt.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  gate:
+    name: Physical Loss Recovery PostgreSQL Evidence Gate
+    if: always()
+    needs:
+      - preflight
+      - exact-main-receipt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require event-appropriate success
+        shell: bash
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          RECEIPT_RESULT: ${{ needs.exact-main-receipt.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$PREFLIGHT_RESULT" != "success" ]]; then
+            echo "::error::Physical-loss recovery PostgreSQL preflight failed."
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" = "push" && "$GITHUB_REF" = "refs/heads/main" ]]; then
+            if [[ "$RECEIPT_RESULT" != "success" ]]; then
+              echo "::error::Exact-main physical-loss recovery evidence receipt was not retained."
+              exit 1
+            fi
+          elif [[ "$RECEIPT_RESULT" != "skipped" ]]; then
+            echo "::error::Exact-main receipt must stay skipped outside push/main."
+            exit 1
+          fi
