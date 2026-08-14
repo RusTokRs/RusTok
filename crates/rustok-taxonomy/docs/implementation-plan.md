@@ -145,6 +145,25 @@ claim a global `translation.target.changed` event contract.
    **Done when:** operators can reconcile terms, aliases, registry reservations,
    and owner attachments without inventing shared relation ownership.
 
+   `docs/route-registry-recovery.md` is the retained recovery procedure for the
+   concrete registry-drift incident class exposed by registry-authority lookup.
+   Operators diagnose the complete
+   `tenant + kind + scope_type + scope_value + locale + route_key` tuple with
+   read-only queries, then repair missing/stale reservations through the normal
+   Taxonomy owner/service mutation path. Direct production writes to
+   `taxonomy_term_route_keys` are explicitly forbidden: localized mutation
+   finalization reconciles desired reservations before durable change evidence
+   commits, and a conflicting registry owner must make the repair fail closed.
+
+   The runbook also keeps attachment repair with Blog (`blog_post_tags`), Forum
+   (`forum_topic_tags`), Product (`product_tags`), and Profiles (`profile_tags`),
+   and keeps Blog/Forum/Product category hierarchy in those owner modules.
+   `tests/route_key_registry.rs` proves both operational outcomes: a normal
+   owner-service update restores a deliberately missing reservation, while a
+   cross-term collision rejects the losing repair and preserves the existing
+   registry owner. No generic Taxonomy relation table or `parent_id` is part of
+   recovery.
+
 4. **Collect production target and route-registry evidence. — COMPLETE.** Run
    the canonical server migration graph, including the owner-operation receipt
    dependency and retained Taxonomy migrations, plus PostgreSQL concurrent
@@ -216,7 +235,7 @@ claim a global `translation.target.changed` event contract.
 - Targeted term CRUD, cross slug/alias collision, scope restriction, locale
   fallback, owner-write batch identity, canonical-key tenant isolation,
   registry-authority lookup, hard-delete route lookup/reuse, route-registry
-  reservation/release/cascade, status-removal migration, and
+  reservation/release/cascade/recovery, status-removal migration, and
   consumer-integration tests.
 - `cargo test -p rustok-taxonomy --lib`
 - `DATABASE_URL=postgresql://... cargo run --locked -p rustok-migrations --bin rustok-migrate -- up`
