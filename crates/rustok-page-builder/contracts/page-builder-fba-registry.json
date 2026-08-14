@@ -267,7 +267,7 @@
             "rollback_activated_recovery_test": "crates/rustok-pages/tests/artifact_loss_after_rollback_activation_recovery_postgres.rs",
             "verifier": "crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-artifact-loss-recovery.mjs",
             "evidence": "crates/rustok-pages/contracts/evidence/pages-rollback-activated-artifact-loss-recovery-source.json",
-            "executed_evidence": "pending"
+            "executed_evidence": "verified"
           },
           "repeated_loss_recovery": {
             "state": "source_ready_execution_pending",
