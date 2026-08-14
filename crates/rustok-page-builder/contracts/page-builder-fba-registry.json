@@ -134,7 +134,7 @@
         "fly_document_write": false,
         "owner_persistence": "pages",
         "legacy_form": "PageMetadataEditor_removed",
-        "executed_evidence": "pending"
+        "executed_evidence": "verified"
       },
       "materialization_persistence": {
         "state": "integrated",
