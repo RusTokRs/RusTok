@@ -1,18 +1,17 @@
 {
   "schema_version": 1,
   "module": "taxonomy",
-  "surface": "route_registry_postgres_contention",
+  "surface": "translation_target_postgres",
   "status": "runtime_recorded",
-  "compile_policy": "ci_runtime_workflow",
   "runtime_status": "passed",
   "environment": {
     "primary": "RUSTOK_TAXONOMY_TEST_DATABASE_URL",
     "fallback": "DATABASE_URL",
     "required_backend": "postgresql",
-    "isolation": "canonical ephemeral PostgreSQL runtime plus a unique schema with independent single-connection route writers"
+    "isolation": "ephemeral PostgreSQL service database migrated by the canonical server Migrator; translation cases use unique tenants and independent single-session connections"
   },
-  "test_target": "crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs",
-  "source_guardrail": "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs",
+  "test_target": "crates/rustok-taxonomy/tests/translation_target_postgres.rs",
+  "source_guardrail": "scripts/verify/verify-taxonomy-translation-target-postgres.mjs",
   "runtime_workflow": ".github/workflows/taxonomy-postgres-evidence.yml",
   "runtime_evidence": {
     "workflow": "Taxonomy PostgreSQL Evidence",
@@ -62,24 +61,26 @@
     }
   },
   "production_contract": {
-    "mutation_path": "update_module_term_in_tx",
-    "route_registry_table": "taxonomy_term_route_keys",
-    "two_independent_writer_connections": true,
-    "both_writers_complete_route_preflight_before_release": true,
-    "contention_is_forced_after_translation_row_prelock": true,
-    "route_registry_primary_key_is_storage_authority": true,
-    "exactly_one_writer_commits": true,
-    "losing_writer_reports_concurrent_route_claim": true,
-    "losing_translation_update_rolls_back": true,
-    "winner_translation_and_route_reservation_commit_together": true,
-    "exactly_one_durable_route_owner": true
-  },
-  "scope": {
-    "tenant_isolated": true,
-    "kind": "tag",
-    "scope_type": "module",
-    "scope_value": "blog",
-    "locale": "en"
+    "provider": "taxonomy/term",
+    "mutation_path": "TranslationTargetProvider::apply_patch",
+    "canonical_server_migrations": true,
+    "owner_operation_receipts_from_server_migrator": true,
+    "retained_taxonomy_migrations": true,
+    "canonical_schema_required_by_test_target": true,
+    "same_exact_snapshot_for_concurrent_candidates": true,
+    "same_resource_source_target_revisions_for_concurrent_candidates": true,
+    "independent_database_connections": true,
+    "distinct_idempotency_keys": true,
+    "exactly_one_same_revision_apply_commits": true,
+    "stale_competitor_closes_as_conflict": true,
+    "resource_revision_advances_once": true,
+    "target_revision_advances_once": true,
+    "exactly_one_winning_change_fact_is_durable": true,
+    "cursor_resumes_after_provider_reconstruction": true,
+    "hard_delete_emits_deleted_lifecycle_change": true,
+    "cursor_drains_after_latest_change": true,
+    "progress_cursor_matches_latest_durable_change": true,
+    "concurrent_commit_order_is_not_claimed": true
   },
   "remaining_open_result_4_evidence": []
 }

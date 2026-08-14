@@ -7,10 +7,14 @@ import path from 'node:path';
 const repoRoot = path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT || '.');
 const failures = [];
 const files = {
-  test: 'crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs',
+  test: 'crates/rustok-taxonomy/tests/translation_target_postgres.rs',
   evidence:
-    'crates/rustok-taxonomy/contracts/evidence/taxonomy-route-registry-postgres-contention.json',
+    'crates/rustok-taxonomy/contracts/evidence/taxonomy-translation-target-postgres.json',
   workflow: '.github/workflows/taxonomy-postgres-evidence.yml',
+  serverMigrator: 'crates/rustok-migrations/src/lib.rs',
+  provider: 'crates/rustok-taxonomy/src/translation_target.rs',
+  owner: 'crates/rustok-taxonomy/src/services.rs',
+  changeWriter: 'crates/rustok-taxonomy/src/translation_evidence.rs',
   plan: 'crates/rustok-taxonomy/docs/implementation-plan.md',
 };
 const runtimeInputPaths = [
@@ -59,6 +63,10 @@ function forbidMarkers(source, markers, label) {
   for (const marker of markers) {
     if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
   }
+}
+
+function normalizeWhitespace(source) {
+  return source.replace(/\s+/g, ' ').trim();
 }
 
 function gitObjectId(relativePath) {
@@ -150,52 +158,71 @@ function verifyRecordedRuntimeEvidence(evidence, label) {
 const test = read(files.test);
 const evidence = readJson(files.evidence);
 const workflow = read(files.workflow);
-const plan = read(files.plan);
+const serverMigrator = read(files.serverMigrator);
+const provider = read(files.provider);
+const owner = read(files.owner);
+const changeWriter = read(files.changeWriter);
+const normalizedPlan = normalizeWhitespace(read(files.plan));
 
 requireMarkers(
   test,
   [
     'RUSTOK_TAXONOMY_TEST_DATABASE_URL',
-    'PostgresTaxonomyRouteContentionDb',
-    'TaxonomyModule.migrations()',
-    'CREATE SCHEMA',
-    'SET search_path TO',
+    'REQUIRED_CANONICAL_TABLES',
+    'owner_operation_receipts',
+    'taxonomy_terms',
+    'taxonomy_term_translations',
+    'taxonomy_translation_changes',
+    'taxonomy_term_route_keys',
+    'ensure_canonical_schema',
+    'SELECT to_regclass($1) IS NOT NULL AS present',
+    '.max_connections(1)',
     'isolated_connection',
-    'WORKER_A_APPLICATION_NAME',
-    'WORKER_B_APPLICATION_NAME',
-    'Arc::new(Barrier::new(2))',
-    'SELECT id FROM taxonomy_term_translations',
-    'FOR UPDATE',
-    'wait_event_type = \'Lock\'',
-    'update_module_term_in_tx(',
-    'CONTESTED_ROUTE_KEY',
-    'success_count, 1',
-    'claimed concurrently',
-    'the contested route key must have one durable owner',
-    'winner translation and route reservation must commit together',
-    'loser translation update must roll back',
-    'one localized route identity must have exactly one owner',
-    'DROP SCHEMA IF EXISTS',
+    'concurrent_same_revision_translation_applies_commit_once',
+    'Arc::new(Barrier::new(candidates.len()))',
+    'candidate_provider.apply_patch(context, patch)',
+    'exactly one same-revision Taxonomy apply must commit',
+    'PortErrorKind::Conflict',
+    'final_snapshot.summary.resource_revision.as_str(), "3"',
+    'resource_revision.as_str() == "3"',
+    'change_cursor_resumes_after_provider_reconstruction_and_delete',
+    'after: Some(first_cursor.clone())',
+    'after: Some(second_cursor.clone())',
+    'delete_term(tenant_id, term_id, admin())',
+    'TranslationResourceLifecycle::Deleted',
+    'assert!(drained.changes.is_empty())',
+    'progress.owner_change_cursor, Some(deleted_cursor)',
+    'tokio::time::sleep(Duration::from_millis(2))',
+    'does not claim arbitrary concurrent transaction commit ordering',
   ],
   files.test,
 );
 forbidMarkers(
   test,
   [
-    'INSERT INTO taxonomy_term_route_keys',
-    'taxonomy_term_route_key::ActiveModel',
-    'reconcile_route_keys_for_locale_in_tx',
+    'OutboxModule.migrations()',
+    'TaxonomyModule.migrations()',
+    'CREATE SCHEMA',
+    'SET search_path TO',
+    'apply_exact_translation_in_tx(',
+    'translation_change::ActiveModel',
   ],
   files.test,
 );
+
+const rawStatementCount = (test.match(/Statement::from_sql_and_values\(/g) ?? []).length;
+if (rawStatementCount !== 1) {
+  failures.push(
+    `${files.test}: expected exactly one raw SQL statement for the canonical schema probe, found ${rawStatementCount}`,
+  );
+}
 
 if (evidence) {
   if (
     evidence.schema_version !== 1 ||
     evidence.module !== 'taxonomy' ||
-    evidence.surface !== 'route_registry_postgres_contention' ||
+    evidence.surface !== 'translation_target_postgres' ||
     evidence.status !== 'runtime_recorded' ||
-    evidence.compile_policy !== 'ci_runtime_workflow' ||
     evidence.runtime_status !== 'passed'
   ) {
     failures.push(`${files.evidence}: identity/status drift`);
@@ -205,27 +232,33 @@ if (evidence) {
     evidence.environment?.required_backend !== 'postgresql' ||
     evidence.test_target !== files.test ||
     evidence.source_guardrail !==
-      'scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs' ||
+      'scripts/verify/verify-taxonomy-translation-target-postgres.mjs' ||
     evidence.runtime_workflow !== files.workflow
   ) {
     failures.push(`${files.evidence}: environment/source/runtime contract drift`);
   }
   const contract = evidence.production_contract ?? {};
   for (const key of [
-    'two_independent_writer_connections',
-    'both_writers_complete_route_preflight_before_release',
-    'contention_is_forced_after_translation_row_prelock',
-    'route_registry_primary_key_is_storage_authority',
-    'exactly_one_writer_commits',
-    'losing_writer_reports_concurrent_route_claim',
-    'losing_translation_update_rolls_back',
-    'winner_translation_and_route_reservation_commit_together',
-    'exactly_one_durable_route_owner',
+    'canonical_server_migrations',
+    'owner_operation_receipts_from_server_migrator',
+    'retained_taxonomy_migrations',
+    'canonical_schema_required_by_test_target',
+    'same_exact_snapshot_for_concurrent_candidates',
+    'same_resource_source_target_revisions_for_concurrent_candidates',
+    'independent_database_connections',
+    'distinct_idempotency_keys',
+    'exactly_one_same_revision_apply_commits',
+    'stale_competitor_closes_as_conflict',
+    'resource_revision_advances_once',
+    'target_revision_advances_once',
+    'exactly_one_winning_change_fact_is_durable',
+    'cursor_resumes_after_provider_reconstruction',
+    'hard_delete_emits_deleted_lifecycle_change',
+    'cursor_drains_after_latest_change',
+    'progress_cursor_matches_latest_durable_change',
+    'concurrent_commit_order_is_not_claimed',
   ]) {
     if (contract[key] !== true) failures.push(`${files.evidence}: ${key} drift`);
-  }
-  if (contract.mutation_path !== 'update_module_term_in_tx') {
-    failures.push(`${files.evidence}: mutation_path drift`);
   }
   if (
     !Array.isArray(evidence.remaining_open_result_4_evidence) ||
@@ -240,27 +273,70 @@ requireMarkers(
   workflow,
   [
     'name: Taxonomy PostgreSQL Evidence',
-    'DATABASE_URL:',
-    'RUSTOK_TAXONOMY_TEST_DATABASE_URL:',
+    'RUST_TOOLCHAIN: "1.96.0"',
     'image: postgres:16',
+    'persist-credentials: false',
+    'Verify route-registry PostgreSQL contention source',
+    'Verify translation-target PostgreSQL source',
     'Apply canonical server migrations',
     'cargo run --locked -p rustok-migrations --bin rustok-migrate -- up',
     'cargo test --locked -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture',
     'cargo test --locked -p rustok-taxonomy --test translation_target_postgres -- --nocapture',
+    'Archive Taxonomy PostgreSQL evidence',
     'Taxonomy PostgreSQL Evidence Gate',
   ],
   files.workflow,
 );
 
 requireMarkers(
-  plan,
+  serverMigrator,
   [
-    'route_registry_contention_postgres.rs',
+    'm20260803_000001_create_owner_operation_receipts',
+    'Box::new(m20260803_000001_create_owner_operation_receipts::Migration)',
+    'all.extend(rustok_taxonomy::migrations::migrations())',
+    'sort_migrations_by_dependencies',
+    'validate_migration_dependency_order',
+  ],
+  files.serverMigrator,
+);
+requireMarkers(
+  provider,
+  [
+    'idempotency::admit(',
+    'apply_exact_translation_in_tx(',
+    'async fn read_changes(',
+    'order_by_asc(ChangeColumn::Id)',
+    'filter(ChangeColumn::Id.gt(after))',
+    'PROGRESS_STABILITY_ATTEMPTS',
+    'owner_change_cursor',
+  ],
+  files.provider,
+);
+requireMarkers(
+  owner,
+  [
+    'pub(crate) async fn apply_exact_translation_in_tx(',
+    'target locale revision does not match the translation proposal',
+    '.filter(taxonomy_term_translation::Column::Revision.eq(target.revision))',
+    '.filter(taxonomy_term::Column::Revision.eq(term.revision))',
+    'taxonomy term changed before the localized update could commit',
+  ],
+  files.owner,
+);
+requireMarkers(
+  changeWriter,
+  ['id: Set(generate_id())', 'operation == "delete"', '"deleted"'],
+  files.changeWriter,
+);
+requireMarkers(
+  normalizedPlan,
+  [
+    'translation_target_postgres.rs',
     'RUSTOK_TAXONOMY_TEST_DATABASE_URL',
     'canonical server Migrator',
-    'two-writer route-key contention',
-    'translation apply CAS',
-    'change-cursor',
+    'Exactly one stale-revision candidate may commit',
+    'hard deletion',
+    'runtime evidence',
     'Result 4 is complete',
     'runtime input fingerprints',
   ],
@@ -268,11 +344,11 @@ requireMarkers(
 );
 
 if (failures.length > 0) {
-  console.error('[verify-taxonomy-route-registry-postgres-contention] FAIL');
+  console.error('[verify-taxonomy-translation-target-postgres] FAIL');
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '[verify-taxonomy-route-registry-postgres-contention] PASS source=canonical-migrator+harness+evidence+workflow runtime=recorded+fingerprinted',
+  '[verify-taxonomy-translation-target-postgres] PASS source=canonical-migrator+harness+owner+provider+workflow runtime=recorded+fingerprinted',
 );

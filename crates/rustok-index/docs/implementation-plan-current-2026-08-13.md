@@ -6,9 +6,11 @@ This document supersedes `implementation-plan-current-2026-08-12.md` as the acti
 
 ## 1. Rechecked baseline
 
-The current repository baseline for this cursor is `main@1e2846126dc9a79d39c46fde1011c6db2776f4f5` on 2026-08-13.
+The current repository baseline for this cursor is `main@00080aa368846acb5d71e103ea5a69ae5aa683fe` on 2026-08-14.
 
 The latest mainline change touching the Index implementation is #3518, squash-merged as `1e2846126dc9a79d39c46fde1011c6db2776f4f5`. #3518 rebuilt the reviewed six-file Product current-schema promotion repair directly on fresh main, corrected PostgreSQL `INT4` schema-version decoding in registration/readiness, aligned the retained key4 promotion packet with real Channel migrations and canonical prerequisites, and kept the promotion/parity source verifiers formatting-tolerant without weakening fail-closed boundaries.
+
+The 2026-08-14 recheck inspected intervening mainline changes through `00080aa368846acb5d71e103ea5a69ae5aa683fe`. No later semantic Index implementation change supersedes #3518; the intervening repository changes are outside the Index runtime boundary, so they do not open a new source-only Index slice.
 
 The exact final source head `4e42513937220123937a13473e709815092b8a8c` passed terminal, non-cancelled focused evidence:
 
@@ -29,7 +31,7 @@ The canonical Product/ProductVariant refresh source, typed delivery, host consum
 .github/workflows/index-product-refresh-redelivery-evidence.yml
 ```
 
-At this cursor recheck, the workflow still has zero retained executions. The remaining M5 boundary is operational:
+The 2026-08-14 workflow-history recheck still reports zero retained executions across all branches. The remaining M5 boundary is operational:
 
 1. configure operator-approved evidence-scoped PostgreSQL and Iggy GitHub secrets;
 2. dispatch `Index Product Refresh Redelivery Evidence` with confirmation `execute` against a reviewed source SHA;
@@ -109,7 +111,7 @@ A failed retained run may justify a focused source repair PR. A missing run does
 
 ## 7. Agent capability boundary at this recheck
 
-The available GitHub integration can read workflow history and repository state but still does not expose `workflow_dispatch` or Actions-secret configuration. A direct capability recheck returned no dispatch operation.
+The available GitHub integration can read workflow history and repository state but still does not expose `workflow_dispatch` or Actions-secret configuration. A direct 2026-08-14 capability recheck returned no dispatch operation.
 
 The correct continuation for an implementation agent is:
 

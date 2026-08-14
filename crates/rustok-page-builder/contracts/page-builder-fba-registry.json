@@ -134,7 +134,7 @@
         "fly_document_write": false,
         "owner_persistence": "pages",
         "legacy_form": "PageMetadataEditor_removed",
-        "executed_evidence": "pending"
+        "executed_evidence": "verified"
       },
       "materialization_persistence": {
         "state": "integrated",
@@ -219,7 +219,7 @@
           "network_or_5xx": "retain_same_command_identity",
           "typed_graphql_or_4xx": "clear_pending_identity"
         },
-        "executed_evidence": "pending"
+        "executed_evidence": "verified"
       },
       "artifact_repair": {
         "state": "service_transport_recovery_and_rollback_continuity_source_ready_execution_pending",
@@ -338,7 +338,7 @@
         "automatic_audit_to_rebuild": false,
         "automatic_rebuild_to_activation": false,
         "automatic_activation_to_rollback": false,
-        "executed_evidence": "pending"
+        "executed_evidence": "verified"
       },
       "cache_consumer": {
         "state": "source_connected_execution_pending",
