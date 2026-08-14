@@ -4,38 +4,60 @@ on:
   pull_request:
     paths:
       - "crates/rustok-taxonomy/**"
+      - "crates/rustok-blog/rustok-module.toml"
+      - "crates/rustok-blog/CRATE_API.md"
       - "crates/rustok-blog/src/entities/blog_post_tag.rs"
       - "crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs"
+      - "crates/rustok-forum/rustok-module.toml"
+      - "crates/rustok-forum/docs/README.md"
       - "crates/rustok-forum/src/entities/forum_topic_tag.rs"
       - "crates/rustok-forum/src/migrations/m20260328_000001_create_forum_tables.rs"
       - "crates/rustok-forum/src/migrations/m20260329_000005_create_forum_topic_tags.rs"
+      - "crates/rustok-product/rustok-module.toml"
+      - "crates/rustok-product/README.md"
       - "crates/rustok-product/src/entities/product_tag.rs"
       - "crates/rustok-product/src/migrations/m20260329_000001_create_product_tags.rs"
       - "crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs"
       - "crates/rustok-product/docs/category-locale-contract.md"
+      - "crates/rustok-profiles/rustok-module.toml"
+      - "crates/rustok-profiles/README.md"
       - "crates/rustok-profiles/src/entities/profile_tag.rs"
       - "crates/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs"
+      - "scripts/verify/verify-taxonomy-contract-matrix.mjs"
+      - "scripts/verify/verify-taxonomy-contract-matrix.test.mjs"
       - "scripts/verify/verify-taxonomy-ownership-boundary.mjs"
       - "scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs"
+      - ".github/workflows/taxonomy-lookup-contract.yml"
       - ".github/workflows/taxonomy-ownership-boundary.yml"
   push:
     branches:
       - main
     paths:
       - "crates/rustok-taxonomy/**"
+      - "crates/rustok-blog/rustok-module.toml"
+      - "crates/rustok-blog/CRATE_API.md"
       - "crates/rustok-blog/src/entities/blog_post_tag.rs"
       - "crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs"
+      - "crates/rustok-forum/rustok-module.toml"
+      - "crates/rustok-forum/docs/README.md"
       - "crates/rustok-forum/src/entities/forum_topic_tag.rs"
       - "crates/rustok-forum/src/migrations/m20260328_000001_create_forum_tables.rs"
       - "crates/rustok-forum/src/migrations/m20260329_000005_create_forum_topic_tags.rs"
+      - "crates/rustok-product/rustok-module.toml"
+      - "crates/rustok-product/README.md"
       - "crates/rustok-product/src/entities/product_tag.rs"
       - "crates/rustok-product/src/migrations/m20260329_000001_create_product_tags.rs"
       - "crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs"
       - "crates/rustok-product/docs/category-locale-contract.md"
+      - "crates/rustok-profiles/rustok-module.toml"
+      - "crates/rustok-profiles/README.md"
       - "crates/rustok-profiles/src/entities/profile_tag.rs"
       - "crates/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs"
+      - "scripts/verify/verify-taxonomy-contract-matrix.mjs"
+      - "scripts/verify/verify-taxonomy-contract-matrix.test.mjs"
       - "scripts/verify/verify-taxonomy-ownership-boundary.mjs"
       - "scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs"
+      - ".github/workflows/taxonomy-lookup-contract.yml"
       - ".github/workflows/taxonomy-ownership-boundary.yml"
   workflow_dispatch:
 
@@ -62,3 +84,7 @@ jobs:
         run: node scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs
       - name: Verify Taxonomy and consumer ownership boundary
         run: node scripts/verify/verify-taxonomy-ownership-boundary.mjs
+      - name: Self-test Taxonomy consumer/kind contract matrix
+        run: node scripts/verify/verify-taxonomy-contract-matrix.test.mjs
+      - name: Verify Taxonomy consumer/kind contract matrix
+        run: node scripts/verify/verify-taxonomy-contract-matrix.mjs
