@@ -48,7 +48,11 @@ for (const marker of [
   "std::env::current_exe()",
   'child_command("observer"',
   'child_command("mutator"',
-  "wait_for_redis_subscribers(redis_url.as_str(), 1).await?",
+  "wait_for_redis_subscribers(&redis_url, 1, \"parent initial observer subscription\")",
+  '"observer child initial subscription"',
+  '"observer resubscription after Redis restart"',
+  "async fn wait_for_redis_subscribers(url: &str, expected: usize, stage: &str)",
+  '"Redis did not expose {expected} RBAC subscribers during {stage}"',
   'redis::cmd("PUBSUB")',
   '.arg("NUMSUB")',
   "RBAC_PERMISSION_INVALIDATION_CHANNEL",
@@ -166,5 +170,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready RBAC two-process Redis harness proves the fast path without a watchdog and durable resubscribe recovery after a real Redis restart while excluding the periodic poll and retaining all runtime gates",
+  "✔ source-ready RBAC two-process Redis harness proves the fast path without a watchdog, labels initial vs restart subscription waits, and retains the Redis/CLI runtime gates",
 );
