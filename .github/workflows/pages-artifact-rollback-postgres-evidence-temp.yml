@@ -1,0 +1,68 @@
+name: Pages Artifact Rollback PostgreSQL Evidence Temp
+
+on:
+  push:
+    branches:
+      - pages-artifact-rollback-postgres-evidence-20260814
+    paths:
+      - ".github/workflows/pages-artifact-rollback-postgres-evidence-temp.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-pages/**"
+      - "crates/rustok-outbox/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-artifact-rollback-postgres-evidence-temp-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_pages_rollback_evidence
+  RUSTOK_PAGES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_pages_rollback_evidence
+
+jobs:
+  rollback-evidence:
+    name: Pages artifact rollback PostgreSQL evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_pages_rollback_evidence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_pages_rollback_evidence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-artifact-rollback-postgres-evidence
+      - name: Verify rollback source boundary
+        run: node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs
+      - name: Verify PostgreSQL rollback/outbox/cache harness source
+        run: node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
+      - name: Execute PostgreSQL rollback/outbox/cache evidence
+        run: cargo test --locked -p rustok-pages --test publish_rollback_outbox_cache_postgres -- --nocapture
+      - name: Check Pages targets
+        run: cargo check --locked -p rustok-pages --all-targets
