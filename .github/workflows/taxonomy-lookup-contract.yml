@@ -9,6 +9,7 @@ on:
       - "crates/rustok-taxonomy/src/route_key_registry.rs"
       - "crates/rustok-taxonomy/src/migrations/**"
       - "crates/rustok-taxonomy/tests/localized_route_lookup.rs"
+      - "crates/rustok-taxonomy/tests/route_key_registry.rs"
       - "crates/rustok-taxonomy/Cargo.toml"
       - "crates/rustok-content/src/locale.rs"
       - "crates/rustok-api/src/locale.rs"
@@ -24,6 +25,7 @@ on:
       - "crates/rustok-taxonomy/src/route_key_registry.rs"
       - "crates/rustok-taxonomy/src/migrations/**"
       - "crates/rustok-taxonomy/tests/localized_route_lookup.rs"
+      - "crates/rustok-taxonomy/tests/route_key_registry.rs"
       - "crates/rustok-taxonomy/Cargo.toml"
       - "crates/rustok-content/src/locale.rs"
       - "crates/rustok-api/src/locale.rs"
@@ -55,12 +57,15 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Run localized route and owner-write contract
+      - name: Run localized route and registry contract
         shell: bash
         run: |
           set -o pipefail
           status=0
-          cargo test --locked -p rustok-taxonomy --test localized_route_lookup -- --nocapture 2>&1 \
+          cargo test --locked -p rustok-taxonomy \
+            --test localized_route_lookup \
+            --test route_key_registry \
+            -- --nocapture 2>&1 \
             | tee taxonomy-lookup-contract.log || status=$?
           if [[ "$status" -ne 0 ]]; then
             diagnostic="$(tail -n 40 taxonomy-lookup-contract.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/::/%3A%3A/g')"
