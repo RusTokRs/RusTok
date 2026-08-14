@@ -70,6 +70,21 @@ async fn route_keys(db: &DatabaseConnection, tenant_id: Uuid, term_id: Uuid) -> 
     keys
 }
 
+async fn remove_route_key_fixture(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    term_id: Uuid,
+    route_key: &str,
+) {
+    taxonomy_term_route_key::Entity::delete_many()
+        .filter(taxonomy_term_route_key::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term_route_key::Column::TermId.eq(term_id))
+        .filter(taxonomy_term_route_key::Column::RouteKey.eq(route_key))
+        .exec(db)
+        .await
+        .expect("test fixture should remove one route reservation");
+}
+
 #[tokio::test]
 async fn same_term_translation_and_alias_share_one_route_reservation() {
     let (db, service) = setup().await;
@@ -281,4 +296,123 @@ async fn hard_delete_removes_lookup_and_allows_route_identity_reuse() {
         .expect("replacement route lookup should succeed")
         .expect("replacement route should resolve");
     assert_eq!(replacement.id, replacement_term_id);
+}
+
+#[tokio::test]
+async fn owner_service_update_repairs_missing_route_reservation() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let term_id = create_module_term(
+        &service,
+        tenant_id,
+        "Rust",
+        "rust",
+        vec!["systems".to_string()],
+    )
+    .await;
+
+    remove_route_key_fixture(&db, tenant_id, term_id, "systems").await;
+    assert_eq!(route_keys(&db, tenant_id, term_id).await, vec!["rust"]);
+
+    service
+        .update_term(
+            tenant_id,
+            term_id,
+            admin(),
+            UpdateTaxonomyTermInput {
+                locale: "en".to_string(),
+                name: None,
+                slug: Some("rust".to_string()),
+                description: None,
+                aliases: Some(vec!["systems".to_string()]),
+            },
+        )
+        .await
+        .expect("owner service mutation should reconcile the missing reservation");
+
+    assert_eq!(
+        route_keys(&db, tenant_id, term_id).await,
+        vec!["rust".to_string(), "systems".to_string()]
+    );
+
+    let resolved_alias = service
+        .resolve_term_for_module(
+            tenant_id,
+            admin(),
+            ResolveTaxonomyTermInput {
+                kind: TaxonomyTermKind::Tag,
+                module_slug: "blog".to_string(),
+                locale: "en".to_string(),
+                slug_or_alias: "systems".to_string(),
+                fallback_locale: None,
+            },
+        )
+        .await
+        .expect("repaired alias lookup should succeed")
+        .expect("repaired alias should resolve");
+    assert_eq!(resolved_alias.id, term_id);
+}
+
+#[tokio::test]
+async fn owner_service_repair_refuses_cross_term_route_collision() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let drifted_term_id = create_module_term(
+        &service,
+        tenant_id,
+        "Rust",
+        "rust",
+        vec!["systems".to_string()],
+    )
+    .await;
+
+    remove_route_key_fixture(&db, tenant_id, drifted_term_id, "systems").await;
+    let registry_owner_id =
+        create_module_term(&service, tenant_id, "Systems", "systems", vec![]).await;
+
+    let error = service
+        .update_term(
+            tenant_id,
+            drifted_term_id,
+            admin(),
+            UpdateTaxonomyTermInput {
+                locale: "en".to_string(),
+                name: None,
+                slug: Some("rust".to_string()),
+                description: None,
+                aliases: Some(vec!["systems".to_string()]),
+            },
+        )
+        .await
+        .expect_err("repair must not steal a route key from another term");
+    assert!(matches!(
+        error,
+        TaxonomyError::DuplicateAlias(alias) if alias == "systems"
+    ));
+
+    assert_eq!(
+        route_keys(&db, tenant_id, drifted_term_id).await,
+        vec!["rust"]
+    );
+    assert_eq!(
+        route_keys(&db, tenant_id, registry_owner_id).await,
+        vec!["systems"]
+    );
+
+    let resolved = service
+        .resolve_term_for_module(
+            tenant_id,
+            admin(),
+            ResolveTaxonomyTermInput {
+                kind: TaxonomyTermKind::Tag,
+                module_slug: "blog".to_string(),
+                locale: "en".to_string(),
+                slug_or_alias: "systems".to_string(),
+                fallback_locale: None,
+            },
+        )
+        .await
+        .expect("registry owner lookup should remain readable")
+        .expect("registry owner should remain authoritative");
+    assert_eq!(resolved.id, registry_owner_id);
 }
