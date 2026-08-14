@@ -45,61 +45,35 @@ before releasing stale reservations in the same transaction.
 ## Read-only diagnosis
 
 Run diagnostics against the same database/tenant that serves the affected
-request. The following PostgreSQL query compares every translation and alias
-route with its current registry owner for one tenant (`$1`):
+request. The retained psql script is:
 
-```sql
-WITH localized_routes AS (
-    SELECT
-        t.tenant_id,
-        t.id AS term_id,
-        t.kind,
-        t.scope_type,
-        t.scope_value,
-        tr.locale,
-        tr.slug AS route_key,
-        'translation'::text AS source
-    FROM taxonomy_terms AS t
-    JOIN taxonomy_term_translations AS tr
-      ON tr.term_id = t.id
-     AND tr.tenant_id = t.tenant_id
-    WHERE t.tenant_id = $1
+`crates/rustok-taxonomy/docs/sql/route-registry-drift.sql`
 
-    UNION ALL
+Invoke it with an explicit tenant UUID:
 
-    SELECT
-        t.tenant_id,
-        t.id AS term_id,
-        t.kind,
-        t.scope_type,
-        t.scope_value,
-        a.locale,
-        a.slug AS route_key,
-        'alias'::text AS source
-    FROM taxonomy_terms AS t
-    JOIN taxonomy_term_aliases AS a
-      ON a.term_id = t.id
-     AND a.tenant_id = t.tenant_id
-    WHERE t.tenant_id = $1
-)
-SELECT
-    lr.*,
-    rk.term_id AS registry_owner_term_id,
-    CASE
-        WHEN rk.term_id IS NULL THEN 'missing_reservation'
-        WHEN rk.term_id <> lr.term_id THEN 'cross_term_collision'
-        ELSE 'consistent'
-    END AS registry_state
-FROM localized_routes AS lr
-LEFT JOIN taxonomy_term_route_keys AS rk
-  ON rk.tenant_id = lr.tenant_id
- AND rk.kind = lr.kind
- AND rk.scope_type = lr.scope_type
- AND rk.scope_value = lr.scope_value
- AND rk.locale = lr.locale
- AND rk.route_key = lr.route_key
-ORDER BY lr.kind, lr.scope_type, lr.scope_value, lr.locale, lr.route_key, lr.term_id;
+```bash
+psql "$DATABASE_URL" --set=ON_ERROR_STOP=1 \
+  --set=tenant_id='00000000-0000-0000-0000-000000000000' \
+  --file=crates/rustok-taxonomy/docs/sql/route-registry-drift.sql
 ```
+
+The diagnostic is one read-only `WITH ... SELECT` statement. It normalizes
+same-term translation/alias representations into one desired route before
+comparing them with the registry, then separately scans registry rows that have
+no matching localized route for their recorded owner. Every returned row is
+classified as one of:
+
+- `missing_reservation` — localized content wants the tuple but no registry row
+  exists;
+- `cross_term_collision` — the tuple exists but belongs to another term;
+- `stale_reservation` — a registry-only tuple is no longer represented by the
+  recorded owner's localized translation or aliases;
+- `consistent` — localized content and registry owner agree.
+
+This second, registry-driven pass is required: a diagnostic that starts only
+from translation/alias rows cannot see a stale registry-only reservation.
+`scripts/verify/verify-taxonomy-route-registry-recovery.mjs` pins that property,
+requires tenant scoping, and rejects mutation SQL in the retained diagnostic.
 
 For one reported route, also resolve it through the normal Taxonomy service.
 The service result is the user-visible authority; raw translation/alias rows do
@@ -118,11 +92,14 @@ not override a different registry owner.
 4. The service transaction calls localized route reconciliation before durable
    change evidence is committed. Missing reservations are inserted and stale
    reservations are released atomically with the localized mutation.
-5. Re-run the read-only query and the normal route lookup. The registry owner
-   must now be the intended `term_id` and the public route must resolve to it.
+5. Re-run the read-only diagnostic and the normal route lookup. The registry
+   owner must now be the intended `term_id` and the public route must resolve to
+   it.
 
 `tests/route_key_registry.rs::owner_service_update_repairs_missing_route_reservation`
-keeps this recovery path executable.
+keeps the missing-reservation recovery path executable. For a stale reservation,
+re-save the authoritative current translation/alias set for that locale; route
+reconciliation releases registry keys absent from that desired set.
 
 ## Repair a cross-term collision
 
@@ -175,13 +152,14 @@ their owning module.
 For repository changes that affect this procedure, run:
 
 ```text
+node scripts/verify/verify-taxonomy-route-registry-recovery.mjs
 cargo test -p rustok-taxonomy --test route_key_registry
 cargo test -p rustok-taxonomy --test localized_route_lookup
 node scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs
 node scripts/verify/verify-taxonomy-ownership-boundary.mjs
 ```
 
-The path-filtered `Taxonomy Lookup Contract` workflow executes both Rust test
-binaries independently of unrelated workspace CI failures. PostgreSQL route
-contention and translation-target evidence remain covered by
-`Taxonomy PostgreSQL Evidence`.
+The path-filtered `Taxonomy Lookup Contract` workflow runs the read-only
+recovery source guard before both Rust integration binaries, independently of
+unrelated workspace CI failures. PostgreSQL route contention and
+translation-target evidence remain covered by `Taxonomy PostgreSQL Evidence`.
