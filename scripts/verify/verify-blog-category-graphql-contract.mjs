@@ -93,6 +93,7 @@ const categoryMutation = requireMarkers(
     "Permission::BLOG_CATEGORIES_DELETE",
     "CategoryService::new",
     "CategoryCommandService::new",
+    "DomainMoveCategoryInput::try_from(input)",
     "current_authenticated_tenant",
     "tenant.id != auth.tenant_id",
   ],
@@ -122,8 +123,11 @@ const categoryTypes = requireMarkers("crates/rustok-blog/src/graphql/category_ty
   '#[graphql(name = "UpdateBlogCategoryInput")]',
   '#[graphql(name = "MoveBlogCategoryInput")]',
   "pub parent_id: Option<Uuid>",
-  "pub position: u32",
+  "pub position: i32",
   "position: None",
+  "impl TryFrom<GqlMoveBlogCategoryInput> for DomainMoveCategoryInput",
+  "u32::try_from(input.position)",
+  "Category position must be a non-negative integer",
   "unwrap_or_else(|| serde_json::json!({}))",
 ]);
 const updateStart = categoryTypes.indexOf("pub struct GqlUpdateBlogCategoryInput");
@@ -165,6 +169,7 @@ requireMarkers("crates/rustok-blog/docs/category-graphql-contract.md", [
   "current authenticated tenant",
   "authenticated `blog_categories:read`",
   "authenticated `blog_categories:list`",
+  "non-negative GraphQL integer",
   "UpdateBlogCategoryInput",
   "MoveBlogCategoryInput",
   "does not write owner persistence directly",
