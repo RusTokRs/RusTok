@@ -1,0 +1,82 @@
+{
+  "format": "pages_artifact_rollback_postgres_execution_source_v1",
+  "status": "source_ready_main_execution_pending",
+  "scope": "page_builder_fba_consumer_artifact_rollback",
+  "purpose": "Retain exact-main PostgreSQL execution evidence for the parent Pages artifact rollback obligation without inferring or mutating any nested artifact-repair evidence state.",
+  "workflow": ".github/workflows/pages-artifact-rollback-postgres-evidence.yml",
+  "source_contract": "crates/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json",
+  "registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+  "required_source_files": [
+    "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs",
+    "crates/rustok-pages/contracts/evidence/pages-publish-rollback-outbox-cache-postgres-source.json",
+    "crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs",
+    "crates/rustok-pages/src/entities/page_publish_operation.rs",
+    "crates/rustok-pages/src/services/page/rollback.rs",
+    "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+    "crates/rustok-pages/src/cache_invalidation.rs",
+    "crates/rustok-outbox/src/transactional.rs",
+    "crates/rustok-outbox/src/transport.rs",
+    "crates/rustok-outbox/src/entity.rs",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "crates/rustok-pages/contracts/evidence/pages-artifact-rollback-postgres-execution.json",
+    ".github/workflows/pages-artifact-rollback-postgres-evidence.yml"
+  ],
+  "execution": {
+    "event": "push",
+    "branch": "main",
+    "postgres": "16",
+    "rust_toolchain": "1.96.0",
+    "source_verifiers": [
+      "node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs"
+    ],
+    "integration_test": "cargo test --locked -p rustok-pages --test publish_rollback_outbox_cache_postgres -- --nocapture",
+    "cargo_check": "cargo check --locked -p rustok-pages --all-targets",
+    "exact_checkout_required": true,
+    "contents_write_permission": false,
+    "registry_mutation": false
+  },
+  "output": {
+    "format": "pages_artifact_rollback_postgres_execution_v1",
+    "success_status": "postgres_execution_passed_artifact_rollback_admission_pending",
+    "default_path": "evidence/pages-artifact-rollback-postgres/receipt.json",
+    "artifact_retention_days": 90,
+    "source_commit_retained": true,
+    "workflow_run_identity_retained": true,
+    "required_source_sha256_retained": true,
+    "registry_pre_state_retained": true,
+    "parent_artifact_rollback_scope_retained": true,
+    "nested_artifact_repair_non_claim_retained": true
+  },
+  "admission_boundary": {
+    "target_json_pointer": "/consumers/0/artifact_rollback/executed_evidence",
+    "target_pre_state": "pending",
+    "target_post_state_not_performed_by_workflow": "verified",
+    "provider_consumer_properties_must_not_be_inferred": true,
+    "nested_artifact_repair_must_not_be_inferred": true,
+    "separate_registry_admission_required": true,
+    "separate_terminal_inventory_recompute_required_after_admission": true
+  },
+  "privacy": {
+    "database_url_retained": false,
+    "tenant_identity_retained": false,
+    "raw_database_rows_retained": false,
+    "event_payload_retained": false,
+    "cache_values_retained": false,
+    "credentials_retained": false,
+    "logs_uploaded_by_evidence_artifact": false
+  },
+  "non_claims": {
+    "artifact_rollback_registry_verified": false,
+    "artifact_repair_registry_verified": false,
+    "physical_loss_recovery_verified": false,
+    "rollback_continuity_verified": false,
+    "cache_consumer_verified": false,
+    "provider_consumer_properties_verified": false,
+    "terminal_inventory_complete": false,
+    "owner_platform_review_ready": false,
+    "page_builder_fba_promoted": false,
+    "pages_ffa_promoted": false
+  }
+}
