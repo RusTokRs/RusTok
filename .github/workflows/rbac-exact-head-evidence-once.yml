@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  TARGET_SHA: e5e3df29ed157f0f14cafb2354477a1209831116
+  TARGET_SHA: 41e35805294a0af33432a8d78cbe470532ecd78e
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
   CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
@@ -64,7 +64,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check -p rustok-api
       - run: cargo check -p rustok-api --features server
-      - run: cargo check -p rustok-server --lib
+      - name: Check rustok-server library (compact diagnostics)
+        shell: bash
+        run: |
+          set +e
+          cargo check -p rustok-server --lib > /tmp/rustok-server-check.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::group::rustok-server compiler diagnostics"
+            grep -n -E '(^error(\[[^]]+\])?:|could not compile|^[[:space:]]+-->)' /tmp/rustok-server-check.log | head -n 120 || true
+            echo "--- tail ---"
+            tail -n 120 /tmp/rustok-server-check.log || true
+            echo "::endgroup::"
+          fi
+          exit "$status"
 
   sqlite-and-contract-tests:
     name: SQLite and contract tests
@@ -90,9 +103,48 @@ jobs:
           ref: ${{ env.TARGET_SHA }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard
-      - run: cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard
-      - run: cargo test -p rustok-server --test rbac_mutation_api_architecture_guard
+      - name: Guard resolver read-only (compact diagnostics)
+        shell: bash
+        run: |
+          set +e
+          cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard > /tmp/rbac-resolver-guard.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::group::rbac_permission_resolver_read_only_guard diagnostics"
+            grep -n -E '(^error(\[[^]]+\])?:|panicked at|FAILED|could not compile|^[[:space:]]+-->)' /tmp/rbac-resolver-guard.log | head -n 120 || true
+            echo "--- tail ---"
+            tail -n 120 /tmp/rbac-resolver-guard.log || true
+            echo "::endgroup::"
+          fi
+          exit "$status"
+      - name: Guard auth admin effective no-op (compact diagnostics)
+        shell: bash
+        run: |
+          set +e
+          cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard > /tmp/rbac-auth-admin-guard.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::group::rbac_auth_admin_effective_noop_guard diagnostics"
+            grep -n -E '(^error(\[[^]]+\])?:|panicked at|FAILED|could not compile|^[[:space:]]+-->)' /tmp/rbac-auth-admin-guard.log | head -n 120 || true
+            echo "--- tail ---"
+            tail -n 120 /tmp/rbac-auth-admin-guard.log || true
+            echo "::endgroup::"
+          fi
+          exit "$status"
+      - name: Guard mutation API architecture (compact diagnostics)
+        shell: bash
+        run: |
+          set +e
+          cargo test -p rustok-server --test rbac_mutation_api_architecture_guard > /tmp/rbac-mutation-api-guard.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::group::rbac_mutation_api_architecture_guard diagnostics"
+            grep -n -E '(^error(\[[^]]+\])?:|panicked at|FAILED|could not compile|^[[:space:]]+-->)' /tmp/rbac-mutation-api-guard.log | head -n 120 || true
+            echo "--- tail ---"
+            tail -n 120 /tmp/rbac-mutation-api-guard.log || true
+            echo "::endgroup::"
+          fi
+          exit "$status"
       - run: node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs
       - run: node scripts/verify/verify-rbac-artifact-permission-outbox.mjs
       - run: node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs
