@@ -7,6 +7,7 @@ const root = path.resolve(
 const failures = [];
 const sqlPath = "crates/rustok-taxonomy/docs/sql/route-registry-drift.sql";
 const runbookPath = "crates/rustok-taxonomy/docs/route-registry-recovery.md";
+const testPath = "crates/rustok-taxonomy/tests/route_key_registry.rs";
 
 function read(relative) {
   const absolute = path.join(root, relative);
@@ -27,6 +28,7 @@ function requireMarkers(label, source, markers) {
 
 const sql = read(sqlPath);
 const runbook = read(runbookPath);
+const tests = read(testPath);
 
 requireMarkers(sqlPath, sql, [
   "taxonomy_term_translations",
@@ -71,10 +73,23 @@ requireMarkers(runbookPath, runbook, [
   "cross_term_collision",
   "TaxonomyService::update_term",
   "Do **not** insert, update, or delete",
+  "owner_service_update_repairs_missing_route_reservation",
+  "owner_service_update_releases_stale_route_reservation",
+  "owner_service_repair_refuses_cross_term_route_collision",
   "blog_post_tags",
   "forum_topic_tags",
   "product_tags",
   "profile_tags",
+]);
+
+requireMarkers(testPath, tests, [
+  "async fn owner_service_update_repairs_missing_route_reservation()",
+  "async fn owner_service_update_releases_stale_route_reservation()",
+  "async fn owner_service_repair_refuses_cross_term_route_collision()",
+  "route_key: Set(\"legacy-rust\".to_string())",
+  "resolve_term_id_for_module",
+  "reconciliation must stop the stale route from resolving",
+  "reconciliation must preserve desired route ownership",
 ]);
 
 if (!runbook.includes("--set=tenant_id")) {
@@ -88,5 +103,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Taxonomy route-registry recovery contract passed: read-only tenant-scoped diagnostic covers missing, cross-term, stale, and consistent route states.",
+  "Taxonomy route-registry recovery contract passed: read-only tenant-scoped diagnosis and executable missing/stale/cross-term recovery coverage are retained.",
 );

@@ -354,6 +354,108 @@ async fn owner_service_update_repairs_missing_route_reservation() {
 }
 
 #[tokio::test]
+async fn owner_service_update_releases_stale_route_reservation() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let term_id = create_module_term(
+        &service,
+        tenant_id,
+        "Rust",
+        "rust",
+        vec!["systems".to_string()],
+    )
+    .await;
+
+    taxonomy_term_route_key::ActiveModel {
+        tenant_id: Set(tenant_id),
+        kind: Set(TaxonomyTermKind::Tag),
+        scope_type: Set(TaxonomyScopeType::Module),
+        scope_value: Set("blog".to_string()),
+        locale: Set("en".to_string()),
+        route_key: Set("legacy-rust".to_string()),
+        term_id: Set(term_id),
+    }
+    .insert(&db)
+    .await
+    .expect("test fixture should add one stale route reservation");
+
+    assert_eq!(
+        route_keys(&db, tenant_id, term_id).await,
+        vec![
+            "legacy-rust".to_string(),
+            "rust".to_string(),
+            "systems".to_string(),
+        ]
+    );
+    assert_eq!(
+        service
+            .resolve_term_id_for_module(
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                "blog",
+                "en",
+                None,
+                "legacy-rust",
+            )
+            .await
+            .expect("stale route lookup should be readable before repair"),
+        Some(term_id),
+        "registry authority makes a stale reservation observable until reconciliation",
+    );
+
+    service
+        .update_term(
+            tenant_id,
+            term_id,
+            admin(),
+            UpdateTaxonomyTermInput {
+                locale: "en".to_string(),
+                name: None,
+                slug: Some("rust".to_string()),
+                description: None,
+                aliases: Some(vec!["systems".to_string()]),
+            },
+        )
+        .await
+        .expect("owner service mutation should release the stale reservation");
+
+    assert_eq!(
+        route_keys(&db, tenant_id, term_id).await,
+        vec!["rust".to_string(), "systems".to_string()]
+    );
+    assert_eq!(
+        service
+            .resolve_term_id_for_module(
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                "blog",
+                "en",
+                None,
+                "legacy-rust",
+            )
+            .await
+            .expect("stale route lookup should be readable after repair"),
+        None,
+        "reconciliation must stop the stale route from resolving",
+    );
+    assert_eq!(
+        service
+            .resolve_term_id_for_module(
+                tenant_id,
+                TaxonomyTermKind::Tag,
+                "blog",
+                "en",
+                None,
+                "systems",
+            )
+            .await
+            .expect("desired alias lookup should remain readable after repair"),
+        Some(term_id),
+        "reconciliation must preserve desired route ownership",
+    );
+}
+
+#[tokio::test]
 async fn owner_service_repair_refuses_cross_term_route_collision() {
     let (db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
