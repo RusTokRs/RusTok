@@ -120,6 +120,12 @@ claim a global `translation.target.changed` event contract.
    owner modules may preserve their own input ordering/display casing without
    becoming a second identity authority.
 
+   `.github/workflows/taxonomy-lookup-contract.yml` is the path-filtered Rust
+   gate for these lookup and owner-write semantics. It runs the integration
+   suite whenever Taxonomy lookup, route-key, locale-normalization, migration,
+   dependency-lock, or test inputs change, independently of unrelated workspace
+   build jobs.
+
 3. **Maintain dictionary operational guidance.** Add documentation and runbooks
    when a changed vocabulary contract introduces drift or integration recovery
    risk. Route-registry migration failures must be repaired by resolving the
