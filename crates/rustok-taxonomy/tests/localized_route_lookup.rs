@@ -26,7 +26,7 @@ fn admin() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
 }
 
-async fn create_term(
+async fn create_term_with_canonical_key(
     service: &TaxonomyService,
     tenant_id: Uuid,
     scope_type: TaxonomyScopeType,
@@ -34,6 +34,7 @@ async fn create_term(
     locale: &str,
     name: &str,
     slug: &str,
+    canonical_key: &str,
 ) -> Uuid {
     service
         .create_term(
@@ -46,13 +47,35 @@ async fn create_term(
                 locale: locale.to_string(),
                 name: name.to_string(),
                 slug: Some(slug.to_string()),
-                canonical_key: Some(slug.to_string()),
+                canonical_key: Some(canonical_key.to_string()),
                 description: None,
                 aliases: vec![],
             },
         )
         .await
         .expect("term should be created")
+}
+
+async fn create_term(
+    service: &TaxonomyService,
+    tenant_id: Uuid,
+    scope_type: TaxonomyScopeType,
+    scope_value: Option<&str>,
+    locale: &str,
+    name: &str,
+    slug: &str,
+) -> Uuid {
+    create_term_with_canonical_key(
+        service,
+        tenant_id,
+        scope_type,
+        scope_value,
+        locale,
+        name,
+        slug,
+        slug,
+    )
+    .await
 }
 
 async fn create_module_term(
@@ -289,6 +312,172 @@ async fn owner_batch_reuses_global_term_when_module_term_is_absent() {
         module_total, 0,
         "global reuse must not create a shadow module term"
     );
+}
+
+#[tokio::test]
+async fn owner_batch_prefers_module_canonical_key_before_global_route() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let global_term_id = create_term_with_canonical_key(
+        &service,
+        tenant_id,
+        TaxonomyScopeType::Global,
+        None,
+        "en",
+        "Global Rust",
+        "rust",
+        "global-rust",
+    )
+    .await;
+    let module_term_id = create_term_with_canonical_key(
+        &service,
+        tenant_id,
+        TaxonomyScopeType::Module,
+        Some("blog"),
+        "en",
+        "Ferris",
+        "ferris",
+        "rust",
+    )
+    .await;
+
+    let txn = db.begin().await.expect("transaction should start");
+    let term_ids = service
+        .ensure_terms_for_module_in_tx(
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            "blog",
+            "en",
+            &["RUST".to_string()],
+        )
+        .await
+        .expect("module canonical key should resolve before global route lookup");
+    txn.commit().await.expect("transaction should commit");
+
+    assert_eq!(term_ids, vec![module_term_id]);
+    assert_ne!(term_ids[0], global_term_id);
+}
+
+#[tokio::test]
+async fn owner_batch_reuses_global_canonical_key_without_shadow_module_term() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let global_term_id = create_term_with_canonical_key(
+        &service,
+        tenant_id,
+        TaxonomyScopeType::Global,
+        None,
+        "en",
+        "Ferris",
+        "ferris",
+        "rust",
+    )
+    .await;
+
+    let txn = db.begin().await.expect("transaction should start");
+    let term_ids = service
+        .ensure_terms_for_module_in_tx(
+            &txn,
+            tenant_id,
+            TaxonomyTermKind::Tag,
+            "blog",
+            "en",
+            &["rust".to_string()],
+        )
+        .await
+        .expect("global canonical key should satisfy owner lookup");
+    txn.commit().await.expect("transaction should commit");
+
+    assert_eq!(term_ids, vec![global_term_id]);
+
+    let (_, module_total) = service
+        .list_terms(
+            tenant_id,
+            admin(),
+            ListTaxonomyTermsFilter {
+                kind: Some(TaxonomyTermKind::Tag),
+                scope_type: Some(TaxonomyScopeType::Module),
+                scope_value: Some("blog".to_string()),
+                locale: Some("en".to_string()),
+                page: Some(1),
+                per_page: Some(10),
+            },
+            None,
+        )
+        .await
+        .expect("module term list should load");
+    assert_eq!(
+        module_total, 0,
+        "global canonical reuse must not create a shadow module term"
+    );
+}
+
+#[tokio::test]
+async fn owner_batch_canonical_key_lookup_is_tenant_isolated() {
+    let (db, service) = setup().await;
+    let first_tenant_id = Uuid::new_v4();
+    let second_tenant_id = Uuid::new_v4();
+    let first_term_id = create_term_with_canonical_key(
+        &service,
+        first_tenant_id,
+        TaxonomyScopeType::Module,
+        Some("blog"),
+        "en",
+        "First Ferris",
+        "ferris-first",
+        "rust",
+    )
+    .await;
+    let second_term_id = create_term_with_canonical_key(
+        &service,
+        second_tenant_id,
+        TaxonomyScopeType::Module,
+        Some("blog"),
+        "en",
+        "Second Ferris",
+        "ferris-second",
+        "rust",
+    )
+    .await;
+
+    let first_txn = db.begin().await.expect("first transaction should start");
+    let first_ids = service
+        .ensure_terms_for_module_in_tx(
+            &first_txn,
+            first_tenant_id,
+            TaxonomyTermKind::Tag,
+            "blog",
+            "en",
+            &["rust".to_string()],
+        )
+        .await
+        .expect("first tenant canonical lookup should succeed");
+    first_txn
+        .commit()
+        .await
+        .expect("first transaction should commit");
+
+    let second_txn = db.begin().await.expect("second transaction should start");
+    let second_ids = service
+        .ensure_terms_for_module_in_tx(
+            &second_txn,
+            second_tenant_id,
+            TaxonomyTermKind::Tag,
+            "blog",
+            "en",
+            &["rust".to_string()],
+        )
+        .await
+        .expect("second tenant canonical lookup should succeed");
+    second_txn
+        .commit()
+        .await
+        .expect("second transaction should commit");
+
+    assert_eq!(first_ids, vec![first_term_id]);
+    assert_eq!(second_ids, vec![second_term_id]);
+    assert_ne!(first_ids[0], second_ids[0]);
 }
 
 #[tokio::test]
