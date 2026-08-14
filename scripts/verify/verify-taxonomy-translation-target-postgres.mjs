@@ -350,7 +350,7 @@ requireMarkers(
     'canonical server Migrator',
     'Exactly one stale-revision candidate may commit',
     'hard deletion',
-    'runtime evidence',
+    'Fresh exact-head refresh run',
     'Result 4 refresh is pending post-merge main evidence.',
     'runtime input fingerprints',
   ],
