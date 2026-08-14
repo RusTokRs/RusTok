@@ -79,6 +79,7 @@ const categoryMutation = requireMarkers(
   [
     "pub struct BlogCategoryMutation",
     "async fn create_blog_category(",
+    ") -> Result<Uuid>",
     "async fn update_blog_category(",
     "async fn move_blog_category(",
     "async fn delete_blog_category(",
@@ -100,6 +101,17 @@ for (const forbidden of [
   if (categoryMutation.includes(forbidden)) {
     failures.push(`crates/rustok-blog/src/graphql/category_mutation.rs: forbidden ${forbidden}`);
   }
+}
+const createStart = categoryMutation.indexOf("async fn create_blog_category(");
+const createEnd = categoryMutation.indexOf("async fn update_blog_category(", createStart);
+const createBlock =
+  createStart >= 0 && createEnd > createStart
+    ? categoryMutation.slice(createStart, createEnd)
+    : "";
+if (createBlock.includes(".get(")) {
+  failures.push(
+    "crates/rustok-blog/src/graphql/category_mutation.rs: create mutation must not cross a post-commit read permission boundary",
+  );
 }
 
 const categoryTypes = requireMarkers("crates/rustok-blog/src/graphql/category_types.rs", [
