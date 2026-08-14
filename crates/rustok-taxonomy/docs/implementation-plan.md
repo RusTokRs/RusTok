@@ -73,10 +73,16 @@ claim a global `translation.target.changed` event contract.
   target SPI is an embedded capability boundary; no Taxonomy-specific UI or
   external transport is implied.
 
-## Open results
+## Tracked results
 
-1. **Keep dictionary and consumer contracts synchronized.** Update taxonomy
-   terms, scope rules, consumer integrations, and manifest metadata atomically.
+All currently demonstrated Taxonomy roadmap results below are complete. Future
+consumer pressure, a genuinely new vocabulary kind, or a new operational
+incident class must extend the tracked contract with explicit ownership and
+evidence rather than weakening these established baselines.
+
+1. **Keep dictionary and consumer contracts synchronized. — COMPLETE.** Update
+   taxonomy terms, scope rules, consumer integrations, and manifest metadata
+   atomically.
    **Depends on:** the change-owning consumer module.
    **Done when:** an owning module, rather than taxonomy, owns each attachment
    table and public relation contract.
@@ -100,7 +106,30 @@ claim a global `translation.target.changed` event contract.
    before the real repository scan, and both checks are available through
    `scripts/verify/verify-all.sh` for local parity.
 
-2. **Expand kinds and lookup semantics only for demonstrated domain pressure.**
+   `scripts/verify/verify-taxonomy-contract-matrix.mjs` closes the consumer
+   metadata/public-contract side of the same ownership result. It requires Blog,
+   Forum, Product, and Profiles to declare `taxonomy >=0.1.0` in their module
+   manifests and to retain public documentation that names the module-owned
+   relation (`blog_post_tags`, `forum_topic_tags`, `product_tags`, or
+   `profile_tags`) while Taxonomy remains the shared vocabulary owner. The
+   matrix also source-locks its own focused workflow triggers so a manifest or
+   public relation-contract change cannot silently bypass the ownership gate.
+   `verify-taxonomy-contract-matrix.test.mjs` proves manifest dependency drift,
+   public relation-contract drift, and workflow-trigger drift fail closed.
+
+   Production consumers are separately kept off Taxonomy SeaORM persistence by
+   `scripts/verify/verify-taxonomy-persistence-boundary.mjs` and its negative
+   fixture suite in the repository-wide `Hardening Gates` workflow. Owner-side
+   relation reads/writes therefore remain with the consumer module while shared
+   vocabulary access stays behind Taxonomy owner/service boundaries.
+
+   Result 1 is complete for the current Blog/Forum/Product/Profiles consumer
+   set after PR #3565. Exact-head run `31826897482` (`Taxonomy Ownership
+   Boundary`), job `94853039929`, succeeded on
+   `1a8d2b0fd5ac4183438e5890427b8238f0180853`, including the legacy ownership
+   self-test/scan and the new contract-matrix self-test/real-repository scan.
+
+2. **Expand kinds and lookup semantics only for demonstrated domain pressure. — COMPLETE.**
    Do not add speculative vocabulary kinds or polymorphic attachment storage.
    The current tag lookup baseline requires locale-aware route ownership,
    module-before-global precedence, shared locale fallback, registry-authority
@@ -135,7 +164,26 @@ claim a global `translation.target.changed` event contract.
    gate for these lookup, owner-write, and route-registry semantics. It runs
    both the localized lookup and route-registry integration suites whenever
    Taxonomy lookup, route-key, locale-normalization, migration, dependency-lock,
-   or test inputs change, independently of unrelated workspace build jobs.
+   kind DTO, or test inputs change, independently of unrelated workspace build
+   jobs. `crates/rustok-taxonomy/src/dto.rs` is an explicit trigger, so adding a
+   new `TaxonomyTermKind` cannot bypass the focused lookup suite.
+
+   The contract matrix pins the currently demonstrated kind surface to exactly
+   `Tag` and requires the established registry-authority, normalization,
+   module/global precedence, locale fallback, canonical-key, tenant isolation,
+   database route-ownership, and hard-delete-reuse regression cases to remain
+   present. Its negative fixtures prove an unreviewed `Category` addition or
+   removal of the `dto.rs` workflow trigger fails closed. This is not a claim
+   that Taxonomy can never gain another kind: a future kind must arrive with a
+   concrete domain requirement, explicit ownership decision, lookup/lifecycle
+   semantics, migrations where required, and dedicated executable evidence.
+
+   Result 2 is complete for the demonstrated Tag baseline after PR #3565.
+   Exact-head run `31826897506` (`Taxonomy Lookup Contract`), job
+   `94853039807`, succeeded on
+   `1a8d2b0fd5ac4183438e5890427b8238f0180853`: the route-registry recovery
+   diagnostic passed and both `localized_route_lookup` and
+   `route_key_registry` integration binaries completed successfully.
 
 3. **Maintain dictionary operational guidance. — COMPLETE.** Add documentation
    and runbooks when a changed vocabulary contract introduces drift or
@@ -242,6 +290,10 @@ claim a global `translation.target.changed` event contract.
 - `cargo xtask module test taxonomy`
 - `node scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs`
 - `node scripts/verify/verify-taxonomy-ownership-boundary.mjs`
+- `node scripts/verify/verify-taxonomy-contract-matrix.test.mjs`
+- `node scripts/verify/verify-taxonomy-contract-matrix.mjs`
+- `node scripts/verify/verify-taxonomy-persistence-boundary.test.mjs`
+- `node scripts/verify/verify-taxonomy-persistence-boundary.mjs`
 - `cargo test -p rustok-taxonomy --test localized_route_lookup`
 - `cargo test -p rustok-taxonomy --test route_key_registry`
 - Targeted term CRUD, cross slug/alias collision, scope restriction, locale
