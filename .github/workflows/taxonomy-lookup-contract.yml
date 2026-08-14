@@ -10,6 +10,9 @@ on:
       - "crates/rustok-taxonomy/src/migrations/**"
       - "crates/rustok-taxonomy/tests/localized_route_lookup.rs"
       - "crates/rustok-taxonomy/tests/route_key_registry.rs"
+      - "crates/rustok-taxonomy/docs/route-registry-recovery.md"
+      - "crates/rustok-taxonomy/docs/sql/route-registry-drift.sql"
+      - "scripts/verify/verify-taxonomy-route-registry-recovery.mjs"
       - "crates/rustok-taxonomy/Cargo.toml"
       - "crates/rustok-content/src/locale.rs"
       - "crates/rustok-api/src/locale.rs"
@@ -26,6 +29,9 @@ on:
       - "crates/rustok-taxonomy/src/migrations/**"
       - "crates/rustok-taxonomy/tests/localized_route_lookup.rs"
       - "crates/rustok-taxonomy/tests/route_key_registry.rs"
+      - "crates/rustok-taxonomy/docs/route-registry-recovery.md"
+      - "crates/rustok-taxonomy/docs/sql/route-registry-drift.sql"
+      - "scripts/verify/verify-taxonomy-route-registry-recovery.mjs"
       - "crates/rustok-taxonomy/Cargo.toml"
       - "crates/rustok-content/src/locale.rs"
       - "crates/rustok-api/src/locale.rs"
@@ -55,6 +61,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v7
+      - name: Verify route-registry recovery diagnostic
+        run: node scripts/verify/verify-taxonomy-route-registry-recovery.mjs
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run localized route and registry contract
