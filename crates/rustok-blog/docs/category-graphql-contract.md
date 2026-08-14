@@ -30,10 +30,12 @@ Queries use the current `TenantContext`; they do not expose a category `tenantId
 
 The merged Blog mutation root exposes:
 
-- `createBlogCategory(input)` requiring `blog_categories:create`;
+- `createBlogCategory(input)` requiring `blog_categories:create` and returning the created category UUID;
 - `updateBlogCategory(id, input)` requiring `blog_categories:update`;
 - `moveBlogCategory(id, input)` requiring `blog_categories:manage`;
 - `deleteBlogCategory(id)` requiring `blog_categories:delete`.
+
+Create deliberately returns the domain-created UUID instead of performing a second `CategoryService::get` after commit. A principal that is allowed to create but not read therefore cannot receive a misleading mutation failure after the category has already been committed.
 
 All category mutations require the authenticated actor tenant to equal the current request tenant. There is no category mutation `tenantId` override.
 
