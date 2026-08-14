@@ -277,7 +277,7 @@
             "test": "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
             "verifier": "crates/rustok-pages/scripts/verify/verify-pages-repeated-artifact-loss-recovery.mjs",
             "evidence": "crates/rustok-pages/contracts/evidence/pages-repeated-artifact-loss-recovery-source.json",
-            "executed_evidence": "pending"
+            "executed_evidence": "verified"
           },
           "single_locale_test": "crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs",
           "multilocale_test": "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs",
