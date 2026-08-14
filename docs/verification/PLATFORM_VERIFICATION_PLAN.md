@@ -33,19 +33,26 @@ that component's local `docs/implementation-plan.md`.
 - Current item: `core/rbac`
 - Next item: `core/rbac`
 - Started at (UTC): `2026-07-20`
-- Last handoff at (UTC): `2026-08-04`
+- Last handoff at (UTC): `2026-08-14`
 - Release readiness: `not_assessed`
 - Current RBAC revision: merged PR #2980 at
-  `f4d89c26f1a30079918660280150016930c837a4`
+  `f4d89c26f1a30079918660280150016930c837a4`; active verification fix PR #3563.
 - Current RBAC state: `P0=0, P1=11, P2=1, P3=2`; findings are source-fixed but
   execution-unverified, so `core/rbac` remains `in_progress`.
+- Current RBAC verification delta: PR #3563 corrects the mutation architecture guard
+  without changing runtime RBAC semantics. Historical workflow run `31808510809`
+  completed PostgreSQL setup but failed in its Rust test steps on an older revision with
+  `CARGO_PROFILE_TEST_DEBUG=1`; the retained GitHub surfaces do not expose the raw
+  compiler/linker diagnostic, so that run cannot be classified as a PostgreSQL product
+  defect or used as current closing evidence.
 - RBAC evidence still required: generated event digest; exact-head format, compile,
-  tests, verifiers, module gates, and Migration Compatibility; PostgreSQL clean apply,
-  N-1 upgrade, integrity, concurrency and rollback; Redis/watchdog/CLI/incident packets;
-  live negative transports; native operator parity; FFA/FBA promotion evidence.
-- Environment classification: connector-only work did not execute local Rust, Node,
-  PostgreSQL, Redis, workflows, or CI. Issue #2740 remains a known Rust-host fixture
-  blocker unless a current exact-head run proves otherwise.
+  tests, verifiers, module gates, and Migration Compatibility; current-revision
+  `CARGO_PROFILE_TEST_DEBUG=0` architecture and PostgreSQL concurrency/watchdog runs;
+  PostgreSQL clean apply, N-1 upgrade, integrity and rollback; Redis/CLI/incident
+  packets; live negative transports; native operator parity; FFA/FBA promotion evidence.
+- Environment classification: no local Rust execution is available in the current agent
+  environment. GitHub CI is the executable evidence surface; broad CI failures are not
+  product findings until their diagnostics are attributable to the RBAC diff.
 
 ## Carried release blockers
 
@@ -68,8 +75,9 @@ command and owner plan.
   consumer receipt, DLQ and replay ownership remain incomplete.
 - `core/tenant`: merged host authority corrections still lack same-SHA source/runtime,
   rotation/revocation, WebSocket, Iggy and multi-replica evidence.
-- `core/rbac`: PR #2980 merged the source corrections, but every execution gate listed
-  in the cursor remains open.
+- `core/rbac`: PR #2980 merged the source corrections and PR #3563 corrects the stale
+  mutation architecture guard, but mandatory current-revision runtime evidence remains
+  open.
 - Infrastructure issue #2740: the Rust-host PostgreSQL fixture can report a missing
   `rustok_browser` role after a nominally successful setup step.
 
