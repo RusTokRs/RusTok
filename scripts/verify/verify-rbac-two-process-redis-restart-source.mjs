@@ -13,6 +13,12 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const requireNormalizedText = (source, value, label) => {
+  if (!normalizeWhitespace(source).includes(normalizeWhitespace(value))) {
+    failures.push(`${label}: missing ${value}`);
+  }
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -137,20 +143,21 @@ for (const marker of [
   "source_ready_unvalidated",
   "live CLI system-role repair propagation",
   "full multi-replica P0 gate remains open",
-]) requireText(sources.docs, marker, `${files.docs}: evidence boundary`);
+]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence boundary`);
 
 for (const marker of [
-  "### P0. Database concurrency and multi-replica recovery evidence",
-  "Exercise at least two server replicas with Redis available, unavailable",
-  "Exercise CLI system-role repair while live replicas are running",
+  "### P0 — runtime evidence",
+  "Execute #2856 Redis available/outage/restart recovery.",
+  "Execute #2862 registered-CLI repair propagation.",
   "Status: `in_progress`",
-]) requireText(sources.plan, marker, `${files.plan}: owner gate`);
+]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "multi-replica Redis recovery remain absent",
-]) requireText(sources.master, marker, `${files.master}: active cursor`);
+  "Redis available/outage/restart packet #2856",
+  "CLI repair propagation #2862",
+]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
   console.error("RBAC two-process Redis restart source verification failed:");
