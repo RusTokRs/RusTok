@@ -16,14 +16,14 @@ with `MoveCategoryInput { parent_id, position }`.
 
 The owner command executes in one database transaction and:
 
-- loads a bounded tenant-local tree (maximum 512 nodes, maximum depth 16);
-- serializes PostgreSQL tree moves with a tenant-scoped transaction advisory lock; SQLite relies on its transaction writer serialization;
-- rejects a missing/cross-tenant parent, self-parenting, descendant-parent cycles, excessive depth, and out-of-range destination positions;
+- loads a bounded tenant-local tree (maximum 512 nodes) before mutating placement;
+- serializes PostgreSQL tree moves with a tenant-scoped transaction advisory lock; PostgreSQL category inserts take the same lock before deriving child depth, while SQLite relies on its transaction writer serialization;
+- rejects a missing/cross-tenant parent, self-parenting, descendant-parent cycles, an already-invalid hierarchy, and out-of-range destination positions;
 - canonicalizes source and destination sibling positions;
 - recomputes materialized `depth` from the complete post-move parent map and persists every descendant whose depth changes;
 - publishes the existing Blog-wide `ReindexRequested` event before commit so search cannot observe a committed hierarchy move without the corresponding reindex request.
 
-The retained hierarchy migration remains the storage/bootstrap authority for tenant-parent foreign-key integrity and legacy cycle/depth validation. Runtime reparent semantics are owner-service policy rather than Taxonomy policy.
+The 512-node bound is an execution-safety limit, not a newly invented category-depth policy. The retained hierarchy migration remains the storage/bootstrap authority for tenant-parent foreign-key integrity and legacy cycle/depth validation. Runtime reparent semantics are owner-service policy rather than Taxonomy policy.
 
 ## Translation boundary
 
