@@ -82,14 +82,26 @@ jobs:
               "The canonical cursor remains `core/rbac` and the full multi-replica P0 gate remains\nopen until",
               "The canonical cursor remains `core/rbac` and the full multi-replica P0 gate remains open until",
           )
+
+          cli_doc = "crates/rustok-rbac/docs/cli-live-repair-propagation-evidence.md"
+          replace_once(
+              cli_doc,
+              "context, cache listener and durable-generation watchdog. Redis configuration is\nexplicitly removed from every child process.",
+              "context, cache listener and durable-generation watchdog. Redis configuration is explicitly removed from every child process.",
+          )
+          replace_once(
+              cli_doc,
+              "the registered `rustok-rbac-cli` command provider. The runtime contains only the\nPostgreSQL connection and settings object. It does not receive a server cache\nservice, process-local invalidation bus or Redis handle.",
+              "the registered `rustok-rbac-cli` command provider. The runtime contains only the PostgreSQL connection and settings object. It does not receive a server cache service, process-local invalidation bus or Redis handle.",
+          )
           PY
           cargo fmt --all -- --check
           node scripts/verify/verify-rbac-two-process-redis-restart-source.mjs
           node scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs
           git diff --check
-          git diff -- apps/server/src/services/product_index_refresh_worker.rs crates/rustok-rbac/docs/implementation-plan.md crates/rustok-rbac/docs/two-process-redis-restart-evidence.md docs/verification/PLATFORM_VERIFICATION_PLAN.md
+          git diff -- apps/server/src/services/product_index_refresh_worker.rs crates/rustok-rbac/docs/implementation-plan.md crates/rustok-rbac/docs/two-process-redis-restart-evidence.md crates/rustok-rbac/docs/cli-live-repair-propagation-evidence.md docs/verification/PLATFORM_VERIFICATION_PLAN.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/server/src/services/product_index_refresh_worker.rs crates/rustok-rbac/docs/implementation-plan.md crates/rustok-rbac/docs/two-process-redis-restart-evidence.md docs/verification/PLATFORM_VERIFICATION_PLAN.md
+          git add apps/server/src/services/product_index_refresh_worker.rs crates/rustok-rbac/docs/implementation-plan.md crates/rustok-rbac/docs/two-process-redis-restart-evidence.md crates/rustok-rbac/docs/cli-live-repair-propagation-evidence.md docs/verification/PLATFORM_VERIFICATION_PLAN.md
           git commit -m "fix(rbac): unblock exact-head recovery evidence"
           git push origin HEAD:agent/rbac-exact-head-verification-cycle-001
