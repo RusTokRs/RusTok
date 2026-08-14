@@ -166,7 +166,7 @@ requireMarkers("crates/rustok-blog/docs/category-graphql-contract.md", [
   "CategoryTreeService",
   "512 tenant-local categories",
   "materialized `depth`",
-  "current authenticated tenant",
+  "current request tenant",
   "authenticated `blog_categories:read`",
   "authenticated `blog_categories:list`",
   "non-negative GraphQL integer",
