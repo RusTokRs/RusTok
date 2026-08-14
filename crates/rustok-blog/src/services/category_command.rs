@@ -10,8 +10,6 @@ use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
-use rustok_events::DomainEvent;
-use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
     CategoryPlacementResponse, MAX_BLOG_CATEGORY_TREE_NODES, MoveCategoryInput,
@@ -28,12 +26,11 @@ use crate::services::rbac::enforce_scope;
 /// cannot be confused with locale updates.
 pub struct CategoryCommandService {
     db: DatabaseConnection,
-    event_bus: TransactionalEventBus,
 }
 
 impl CategoryCommandService {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
     }
 
     pub async fn move_category(
@@ -145,19 +142,6 @@ impl CategoryCommandService {
             .find(|placement| placement.id == category_id)
             .cloned()
             .ok_or_else(|| BlogError::validation("Moved category placement was not persisted"))?;
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                security.user_id,
-                DomainEvent::ReindexRequested {
-                    target_type: "blog".to_string(),
-                    target_id: None,
-                },
-            )
-            .await
-            .map_err(BlogError::from)?;
 
         txn.commit().await?;
         Ok(MoveCategoryResponse { moved, updated })
