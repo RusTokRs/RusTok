@@ -25,8 +25,7 @@ the first mutation.
 
 ## Redis fast path
 
-The observer starts the canonical RBAC cache invalidation listener but does not
-start the durable-generation watchdog. It primes an allowed `settings:manage`
+The observer starts the canonical RBAC cache invalidation listener but does not start the durable-generation watchdog. It primes an allowed `settings:manage`
 decision for an Admin user. A separate mutator commits `Admin -> Customer`
 through `RbacService::replace_user_role_committed`.
 
@@ -37,8 +36,7 @@ is the canonical Redis PubSub delivery.
 
 ## Redis outage and restart
 
-A second Admin user is primed in the same observer. The parent stops the isolated
-Redis process and a separate mutator commits `Admin -> Customer` while Redis is
+A second Admin user is primed in the same observer. The parent stops the isolated Redis process and a separate mutator commits `Admin -> Customer` while Redis is
 unavailable. The committed database generation advances even though fast fan-out
 cannot reach the observer.
 
@@ -47,8 +45,7 @@ Before restart, the observer records:
 - an allowed cached decision;
 - an authoritative denied decision.
 
-The parent then restarts `redis-server` on the same loopback port. The existing
-observer process must reconnect. The production Redis subscription ready callback
+The parent then restarts `redis-server` on the same loopback port. The existing observer process must reconnect. The production Redis subscription ready callback
 reads the durable database generation and clears permission snapshots. The
 observer must then converge to the authoritative deny within eight seconds.
 
@@ -89,8 +86,7 @@ The source packet does not close:
 - same-revision compile, lint, module validate or module test gates;
 - the complete `core/rbac` verification item.
 
-The canonical cursor remains `core/rbac` and the full multi-replica P0 gate remains
-open until the harness is executed and retained together with the other required
+The canonical cursor remains `core/rbac` and the full multi-replica P0 gate remains open until the harness is executed and retained together with the other required
 gates.
 
 ## Targeted execution

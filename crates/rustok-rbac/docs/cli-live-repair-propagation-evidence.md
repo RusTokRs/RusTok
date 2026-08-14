@@ -16,8 +16,7 @@ The ignored integration test creates:
 - one independent short-lived CLI process.
 
 Each observer owns a separate process-local permission cache, server runtime
-context, cache listener and durable-generation watchdog. Redis configuration is
-explicitly removed from every child process. The previously added Redis harness
+context, cache listener and durable-generation watchdog. Redis configuration is explicitly removed from every child process. The previously added Redis harness
 covers transport delivery and restart; this packet isolates CLI propagation so
 the database generation watchdog is the only cross-process recovery path.
 
@@ -43,9 +42,7 @@ rustok-cli rbac repair-system-roles --apply --tenant-id <tenant UUID>
 ```
 
 It uses `rustok_cli::run_with_runtime`, the selected distribution registry and
-the registered `rustok-rbac-cli` command provider. The runtime contains only the
-PostgreSQL connection and settings object. It does not receive a server cache
-service, process-local invalidation bus or Redis handle.
+the registered `rustok-rbac-cli` command provider. The runtime contains only the PostgreSQL connection and settings object. It does not receive a server cache service, process-local invalidation bus or Redis handle.
 
 The command result must report:
 

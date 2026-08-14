@@ -192,7 +192,12 @@ the component.
   explicit-scope, concurrency, and rollback scenarios.
 - [ ] Resolve every product failure before claiming verification.
 
-### P0 — runtime evidence
+### P0. Database concurrency and multi-replica recovery evidence
+
+Status: `in_progress`
+
+- [ ] Exercise at least two server replicas with Redis available, unavailable, and restarted while retaining bounded convergence evidence.
+- [ ] Exercise CLI system-role repair while live replicas are running and prove durable-generation recovery without process restart.
 
 - [ ] Execute #2849 PostgreSQL concurrency.
 - [ ] Execute #2853 independent-process watchdog recovery.

@@ -55,6 +55,8 @@ that component's local `docs/implementation-plan.md`.
   architecture/verifier and module gates; Migration Compatibility; PostgreSQL clean apply,
   N-1 upgrade, integrity, locale, concurrency and rollback; Redis/watchdog/CLI/incident
   packets; live negative transports; native operator parity; FFA/FBA promotion evidence.
+- Retained packets for multi-replica Redis recovery remain absent; watchdog, CLI repair,
+  incident, and final same-revision runtime evidence therefore remain mandatory.
 - Environment classification: local repository execution is unavailable in the connector
   environment; GitHub Actions is the execution source of truth. Environment-only DNS,
   runner, lock, OOM, or fixture failures must not be classified as product defects.

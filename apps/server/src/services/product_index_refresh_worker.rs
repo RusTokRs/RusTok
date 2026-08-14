@@ -21,7 +21,6 @@ use rustok_index::{
     SharedIndexMutationEventRegistry, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
 };
 use rustok_telemetry::runtime_consumer_metrics;
-use tokio::task::JoinHandle;
 
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
@@ -91,20 +90,7 @@ impl ProductIndexRefreshWorkerConfig {
     }
 }
 
-pub struct ProductIndexRefreshWorkerHandle {
-    instance_id: u64,
-    handle: JoinHandle<()>,
-}
-
-impl ProductIndexRefreshWorkerHandle {
-    pub fn instance_id(&self) -> u64 {
-        self.instance_id
-    }
-
-    pub fn is_ready(&self) -> bool {
-        !self.handle.is_finished()
-    }
-}
+pub struct ProductIndexRefreshWorkerHandle;
 
 #[derive(Clone)]
 struct ProductIndexRefreshAcknowledger {
@@ -267,10 +253,8 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         max_attempts = config.max_attempts,
         "Starting Product Index refresh consumer worker"
     );
-    ctx.shared_insert(ProductIndexRefreshWorkerHandle {
-        instance_id,
-        handle: tokio::spawn(product_index_refresh_worker_loop(runtime, config, stop_rx)),
-    });
+    tokio::spawn(product_index_refresh_worker_loop(runtime, config, stop_rx));
+    ctx.shared_insert(ProductIndexRefreshWorkerHandle);
     Ok(())
 }
 
