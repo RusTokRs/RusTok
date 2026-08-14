@@ -1,0 +1,34 @@
+name: Pages Terminal Inventory Recompute Temp
+
+on:
+  push:
+    branches:
+      - pages-terminal-inventory-recompute-9-20260814
+    paths:
+      - ".github/workflows/pages-terminal-inventory-recompute-temp.yml"
+      - "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json"
+      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs"
+      - "scripts/evidence/inventory-pages-page-builder-terminal-readiness.mjs"
+      - "scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs"
+      - "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-13.md"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate terminal inventory snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify terminal inventory source
+        run: node scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs
+      - name: Test terminal inventory evaluator
+        run: node scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs
