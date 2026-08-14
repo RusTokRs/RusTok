@@ -116,6 +116,10 @@ claim a global `translation.target.changed` event contract.
    to one normalized route identity, module scope wins before global even when
    the requested locale must use the platform fallback, and a global term is
    reused without creating a shadow module term when no module owner exists.
+   Canonical-key fallback preserves the same module-before-global and tenant
+   boundaries: a module canonical key wins before a global route, a global
+   canonical key is reused without creating a shadow module term, and identical
+   canonical keys in different tenants resolve only inside their own tenant.
    Module scope labels and locale tags are normalized at the Taxonomy boundary;
    owner modules may preserve their own input ordering/display casing without
    becoming a second identity authority.
@@ -202,9 +206,9 @@ claim a global `translation.target.changed` event contract.
 - `node scripts/verify/verify-taxonomy-ownership-boundary.mjs`
 - `cargo test -p rustok-taxonomy --test localized_route_lookup`
 - Targeted term CRUD, cross slug/alias collision, scope restriction, locale
-  fallback, owner-write batch identity, registry-authority lookup,
-  route-registry reservation/release/cascade, status-removal migration, and
-  consumer-integration tests.
+  fallback, owner-write batch identity, canonical-key tenant isolation,
+  registry-authority lookup, route-registry reservation/release/cascade,
+  status-removal migration, and consumer-integration tests.
 - `cargo test -p rustok-taxonomy --lib`
 - `DATABASE_URL=postgresql://... cargo run --locked -p rustok-migrations --bin rustok-migrate -- up`
 - `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture`
