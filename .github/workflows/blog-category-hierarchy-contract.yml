@@ -5,10 +5,16 @@ on:
     paths:
       - "crates/rustok-blog/src/dto/category.rs"
       - "crates/rustok-blog/src/dto/category_command.rs"
+      - "crates/rustok-blog/src/dto/category_tree.rs"
       - "crates/rustok-blog/src/dto/mod.rs"
       - "crates/rustok-blog/src/services/category.rs"
       - "crates/rustok-blog/src/services/category_command.rs"
+      - "crates/rustok-blog/src/services/category_tree.rs"
       - "crates/rustok-blog/src/services/mod.rs"
+      - "crates/rustok-blog/src/graphql/category_types.rs"
+      - "crates/rustok-blog/src/graphql/category_query.rs"
+      - "crates/rustok-blog/src/graphql/category_mutation.rs"
+      - "crates/rustok-blog/src/graphql/mod.rs"
       - "crates/rustok-blog/src/controllers/categories.rs"
       - "crates/rustok-blog/src/controllers/mod.rs"
       - "crates/rustok-blog/src/openapi.rs"
@@ -16,8 +22,11 @@ on:
       - "crates/rustok-blog/src/migrations/m20260812_000017_enforce_blog_category_hierarchy.rs"
       - "crates/rustok-blog/src/translation_target_tests.rs"
       - "crates/rustok-blog/tests/category_hierarchy.rs"
+      - "crates/rustok-blog/tests/category_tree.rs"
       - "crates/rustok-blog/docs/category-hierarchy-contract.md"
+      - "crates/rustok-blog/docs/category-graphql-contract.md"
       - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
+      - "scripts/verify/verify-blog-category-graphql-contract.mjs"
       - "crates/rustok-blog/Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/blog-category-hierarchy-contract.yml"
@@ -27,10 +36,16 @@ on:
     paths:
       - "crates/rustok-blog/src/dto/category.rs"
       - "crates/rustok-blog/src/dto/category_command.rs"
+      - "crates/rustok-blog/src/dto/category_tree.rs"
       - "crates/rustok-blog/src/dto/mod.rs"
       - "crates/rustok-blog/src/services/category.rs"
       - "crates/rustok-blog/src/services/category_command.rs"
+      - "crates/rustok-blog/src/services/category_tree.rs"
       - "crates/rustok-blog/src/services/mod.rs"
+      - "crates/rustok-blog/src/graphql/category_types.rs"
+      - "crates/rustok-blog/src/graphql/category_query.rs"
+      - "crates/rustok-blog/src/graphql/category_mutation.rs"
+      - "crates/rustok-blog/src/graphql/mod.rs"
       - "crates/rustok-blog/src/controllers/categories.rs"
       - "crates/rustok-blog/src/controllers/mod.rs"
       - "crates/rustok-blog/src/openapi.rs"
@@ -38,8 +53,11 @@ on:
       - "crates/rustok-blog/src/migrations/m20260812_000017_enforce_blog_category_hierarchy.rs"
       - "crates/rustok-blog/src/translation_target_tests.rs"
       - "crates/rustok-blog/tests/category_hierarchy.rs"
+      - "crates/rustok-blog/tests/category_tree.rs"
       - "crates/rustok-blog/docs/category-hierarchy-contract.md"
+      - "crates/rustok-blog/docs/category-graphql-contract.md"
       - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
+      - "scripts/verify/verify-blog-category-graphql-contract.mjs"
       - "crates/rustok-blog/Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/blog-category-hierarchy-contract.yml"
@@ -62,7 +80,7 @@ jobs:
   category-hierarchy-contract:
     name: Blog category hierarchy contract
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
@@ -72,12 +90,24 @@ jobs:
           node-version: 22
       - name: Verify Blog category hierarchy source contract
         run: node scripts/verify/verify-blog-category-hierarchy-command.mjs
+      - name: Verify Blog category GraphQL source contract
+        run: node scripts/verify/verify-blog-category-graphql-contract.mjs
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run Blog category hierarchy unit contract
         run: cargo test --locked -p rustok-blog --lib category_command::tests -- --nocapture
+      - name: Run Blog category tree unit contract
+        run: cargo test --locked -p rustok-blog --lib category_tree::tests -- --nocapture
+      - name: Run Blog category GraphQL type contract
+        run: cargo test --locked -p rustok-blog --lib category_types::tests -- --nocapture
+      - name: Run Blog category GraphQL schema contract
+        run: >-
+          cargo test --locked -p rustok-blog --lib
+          category_schema_keeps_localized_and_structural_commands_separate -- --nocapture
       - name: Run Blog category hierarchy integration contract
         run: cargo test --locked -p rustok-blog --test category_hierarchy -- --nocapture
+      - name: Run Blog category tree integration contract
+        run: cargo test --locked -p rustok-blog --test category_tree -- --nocapture
       - name: Run Blog translation/hierarchy separation regression
         run: >-
           cargo test --locked -p rustok-blog --lib
