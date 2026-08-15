@@ -161,8 +161,8 @@ for (const marker of [
 ]) need(packet, marker, "packet");
 for (const marker of [
   "production-relay-native-route-source-ready",
-  "Production relay gate to registered native route: source-ready",
-  "new-key miss/refill/hit",
+  "relay continuity, production gate, native route, PostgreSQL retry and profile parity",
+  "Historical dated packets remain evidence for the source slices that produced the current state",
   "execution remains pending"
 ]) need(plan, marker, "shared plan");
 
