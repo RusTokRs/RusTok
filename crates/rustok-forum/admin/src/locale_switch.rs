@@ -62,6 +62,24 @@ pub fn topic_detail_for_editor(mut detail: TopicDetail) -> TopicDetail {
     detail
 }
 
+pub fn topic_tags_for_update(
+    current: &TopicDetail,
+    candidate_tags: Vec<String>,
+) -> Option<Vec<String>> {
+    let candidate_tags = normalize_tag_labels(candidate_tags);
+    let current_tags = normalize_tag_labels(current.tags.clone());
+    if candidate_tags == current_tags
+        || (detail_is_fallback(
+            current.requested_locale.as_str(),
+            current.effective_locale.as_str(),
+        ) && candidate_tags.is_empty())
+    {
+        None
+    } else {
+        Some(candidate_tags)
+    }
+}
+
 pub fn category_target_form(detail: &CategoryDetail) -> CategoryFormSnapshot {
     CategoryFormSnapshot::from_detail(&category_detail_for_editor(detail.clone()))
 }
@@ -76,6 +94,13 @@ pub fn locale_candidate_matches_active(candidate: &str, active: &str) -> bool {
 
 fn detail_is_fallback(requested_locale: &str, effective_locale: &str) -> bool {
     !effective_locale.eq_ignore_ascii_case(requested_locale)
+}
+
+fn normalize_tag_labels(tags: Vec<String>) -> Vec<String> {
+    tags.into_iter()
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty())
+        .collect()
 }
 
 fn locale_switch_decision(
@@ -167,6 +192,32 @@ mod tests {
             slug: "welcome".to_string(),
             body: RichTextDocument::single_paragraph("Hello"),
             tags_raw: "intro".to_string(),
+        }
+    }
+
+    fn topic_detail(requested_locale: &str, effective_locale: &str) -> TopicDetail {
+        TopicDetail {
+            id: "topic-1".to_string(),
+            requested_locale: requested_locale.to_string(),
+            locale: requested_locale.to_string(),
+            effective_locale: effective_locale.to_string(),
+            available_locales: vec![effective_locale.to_string()],
+            category_id: "category-1".to_string(),
+            author_id: None,
+            title: "Welcome".to_string(),
+            slug: "welcome".to_string(),
+            body: RichTextView {
+                document: RichTextDocument::single_paragraph("Hello"),
+                html: "<p>Hello</p>".to_string(),
+            },
+            body_plain_text: "Hello".to_string(),
+            status: "published".to_string(),
+            tags: vec!["intro".to_string(), "news".to_string()],
+            is_pinned: false,
+            is_locked: false,
+            reply_count: 0,
+            created_at: String::new(),
+            updated_at: String::new(),
         }
     }
 
@@ -297,29 +348,7 @@ mod tests {
 
     #[test]
     fn fallback_topic_detail_clears_all_locale_labels_before_any_editor_write() {
-        let detail = TopicDetail {
-            id: "topic-1".to_string(),
-            requested_locale: "ar".to_string(),
-            locale: "ar".to_string(),
-            effective_locale: "en".to_string(),
-            available_locales: vec!["en".to_string()],
-            category_id: "category-1".to_string(),
-            author_id: None,
-            title: "Welcome".to_string(),
-            slug: "welcome".to_string(),
-            body: RichTextView {
-                document: RichTextDocument::single_paragraph("Hello"),
-                html: "<p>Hello</p>".to_string(),
-            },
-            body_plain_text: "Hello".to_string(),
-            status: "published".to_string(),
-            tags: vec!["intro".to_string()],
-            is_pinned: false,
-            is_locked: false,
-            reply_count: 0,
-            created_at: String::new(),
-            updated_at: String::new(),
-        };
+        let detail = topic_detail("ar", "en");
         let detail = topic_detail_for_editor(detail);
         assert_eq!(detail.locale, "ar");
         assert_eq!(detail.category_id, "category-1");
@@ -351,5 +380,36 @@ mod tests {
             moderated: false,
         };
         assert_eq!(category_detail_for_editor(detail.clone()).name, detail.name);
+    }
+
+    #[test]
+    fn unchanged_exact_locale_tags_do_not_trigger_attachment_resync() {
+        let detail = topic_detail("en", "en");
+        assert_eq!(
+            topic_tags_for_update(
+                &detail,
+                vec![" intro ".to_string(), "news".to_string()]
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn scrubbed_fallback_tags_preserve_existing_attachment_identity() {
+        let detail = topic_detail("ar", "en");
+        assert_eq!(topic_tags_for_update(&detail, Vec::new()), None);
+    }
+
+    #[test]
+    fn explicit_tag_change_is_forwarded_for_owner_sync() {
+        let detail = topic_detail("en", "en");
+        assert_eq!(
+            topic_tags_for_update(&detail, vec!["arabic".to_string()]),
+            Some(vec!["arabic".to_string()])
+        );
+        assert_eq!(
+            topic_tags_for_update(&detail, Vec::new()),
+            Some(Vec::new())
+        );
     }
 }
