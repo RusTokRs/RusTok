@@ -5,7 +5,9 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use rustok_ui_core::normalize_ui_text;
 use serde::{Deserialize, Serialize};
 
-use crate::locale_switch::{category_detail_for_editor, topic_detail_for_editor};
+use crate::locale_switch::{
+    category_detail_for_editor, topic_detail_for_editor, topic_tags_for_update,
+};
 use crate::model::{
     CategoryDetail, CategoryDraft, ReplyDraft, ReplyListItem, TopicDetail, TopicDraft,
     TopicListItem,
@@ -455,11 +457,19 @@ pub async fn update_topic(
     id: String,
     draft: TopicDraft,
 ) -> Result<TopicDetail, ApiError> {
+    let current = fetch_topic(
+        token.clone(),
+        tenant_slug.clone(),
+        id.clone(),
+        draft.locale.clone(),
+    )
+    .await?;
+    let tags = topic_tags_for_update(&current, draft.tags.clone());
     let response: UpdateTopicResponse = request(
         UPDATE_TOPIC_MUTATION,
         TopicUpdateVariables {
             id,
-            input: update_topic_input(draft),
+            input: update_topic_input(draft, tags),
         },
         token,
         tenant_slug,
@@ -572,13 +582,13 @@ fn create_topic_input(draft: TopicDraft) -> CreateTopicInput {
     }
 }
 
-fn update_topic_input(draft: TopicDraft) -> UpdateTopicInput {
+fn update_topic_input(draft: TopicDraft, tags: Option<Vec<String>>) -> UpdateTopicInput {
     UpdateTopicInput {
         locale: draft.locale,
         title: Some(draft.title),
         body: Some(draft.body),
         metadata: None,
-        tags: Some(draft.tags),
+        tags,
         channel_slugs: None,
     }
 }
