@@ -62,7 +62,7 @@ jobs:
           echo "expected_sha=$expected"
           echo "actual_sha=$actual"
           test "$actual" = "$expected"
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
       - name: Verify route-registry PostgreSQL contention source
