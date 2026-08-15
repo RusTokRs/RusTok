@@ -161,9 +161,9 @@ for (const marker of [
 ]) need(packet, marker, "packet");
 for (const marker of [
   "production-relay-native-route-source-ready",
-  "Production relay gate to registered native route: source-ready",
-  "new-key miss/refill/hit",
-  "execution remains pending"
+  "gate-to-native-route composition source-ready",
+  "production-relay-generation-gate-source-ready",
+  "synchronous generation gate source-ready"
 ]) need(plan, marker, "shared plan");
 
 if (failures.length) {

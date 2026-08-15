@@ -239,10 +239,9 @@ for (const marker of [
 ]) need(gatePacket, marker, "production gate packet");
 for (const marker of [
   "production-relay-generation-gate-source-ready",
-  "Production relay-to-Pages generation gate: source-ready",
-  "custom synchronous relay target",
-  "test-target packet and does not replace production-gate execution evidence",
-  "process-bounded dedupe"
+  "synchronous generation gate source-ready",
+  "production-relay-native-route-source-ready",
+  "gate-to-native-route composition source-ready"
 ]) need(plan, marker, "current parity plan");
 
 if (failures.length) {
