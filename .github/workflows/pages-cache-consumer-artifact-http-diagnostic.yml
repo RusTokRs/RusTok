@@ -1,11 +1,12 @@
-name: Pages Cache Consumer Artifact HTTP Diagnostic
+name: Pages Cache Consumer Native Relay Diagnostic
 
 on:
   pull_request:
     paths:
-      - "crates/rustok-pages/tests/artifact_http_cache_sqlite.rs"
-      - "crates/rustok-pages/src/controllers/**"
-      - "crates/rustok-pages/src/services/page_builder_artifact.rs"
+      - "crates/rustok-pages/storefront/tests/native_storefront_relay_continuity_sqlite.rs"
+      - "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs"
+      - "apps/server/src/services/tenant_generation_delivery_gate.rs"
+      - "apps/server/src/services/pages_cache_invalidation.rs"
       - "crates/rustok-pages/src/cache_invalidation.rs"
       - ".github/workflows/pages-cache-consumer-artifact-http-diagnostic.yml"
   workflow_dispatch:
@@ -14,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-cache-consumer-artifact-http-diagnostic-${{ github.event.pull_request.number || github.ref }}
+  group: pages-cache-consumer-native-relay-diagnostic-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -37,21 +38,21 @@ jobs:
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-      - name: Capture artifact HTTP cache test
+      - name: Capture native storefront relay continuity test
         id: test
         shell: bash
         run: |
           set +e
           mkdir -p target/pages-cache-consumer-diagnostic
-          RUST_BACKTRACE=full cargo test --locked -p rustok-pages --test artifact_http_cache_sqlite -- --nocapture 2>&1 | tee target/pages-cache-consumer-diagnostic/artifact_http_cache_sqlite.log
+          RUST_BACKTRACE=full cargo test --locked -p rustok-pages-storefront --features ssr --test native_storefront_relay_continuity_sqlite -- --nocapture 2>&1 | tee target/pages-cache-consumer-diagnostic/native_storefront_relay_continuity_sqlite.log
           status=${PIPESTATUS[0]}
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
       - name: Archive diagnostic log
         uses: actions/upload-artifact@v7
         with:
-          name: pages-cache-consumer-artifact-http-diagnostic-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
-          path: target/pages-cache-consumer-diagnostic/artifact_http_cache_sqlite.log
+          name: pages-cache-consumer-native-relay-diagnostic-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: target/pages-cache-consumer-diagnostic/native_storefront_relay_continuity_sqlite.log
           if-no-files-found: error
           retention-days: 7
           compression-level: 9
