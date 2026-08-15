@@ -300,7 +300,10 @@ mod tests {
             author_id: None,
             title: "Welcome".to_string(),
             slug: "welcome".to_string(),
-            body: RichTextView::from_document(RichTextDocument::single_paragraph("Hello")),
+            body: RichTextView {
+                document: RichTextDocument::single_paragraph("Hello"),
+                html: "<p>Hello</p>".to_string(),
+            },
             body_plain_text: "Hello".to_string(),
             status: "published".to_string(),
             tags: vec!["intro".to_string()],
