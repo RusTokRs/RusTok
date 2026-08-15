@@ -1,0 +1,337 @@
+name: Pages Cache Consumer Exact-Main Evidence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/server/src/services/pages_cache_invalidation.rs"
+      - "apps/server/src/services/tenant_generation_delivery_gate.rs"
+      - "apps/server/src/services/module_event_dispatcher.rs"
+      - "apps/server/tests/pages_production_relay_native_route_sqlite.rs"
+      - "crates/rustok-cache/src/**"
+      - "crates/rustok-outbox/src/**"
+      - "crates/rustok-pages/src/**"
+      - "crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs"
+      - "crates/rustok-pages/tests/outbox_relay_restart_postgres.rs"
+      - "crates/rustok-pages/tests/artifact_http_cache_sqlite.rs"
+      - "crates/rustok-pages/tests/native_storefront_cache_contract.rs"
+      - "crates/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs"
+      - "crates/rustok-pages/storefront/src/**"
+      - "crates/rustok-pages/storefront/tests/native_storefront_relay_continuity_sqlite.rs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.mjs"
+      - "crates/rustok-pages/contracts/evidence/pages-cache-consumer-execution.json"
+      - "docs/modules/pages-cache-consumer-exact-main-evidence-actualization-2026-08-15.md"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/server/src/services/pages_cache_invalidation.rs"
+      - "apps/server/src/services/tenant_generation_delivery_gate.rs"
+      - "apps/server/src/services/module_event_dispatcher.rs"
+      - "apps/server/tests/pages_production_relay_native_route_sqlite.rs"
+      - "crates/rustok-cache/src/**"
+      - "crates/rustok-outbox/src/**"
+      - "crates/rustok-pages/src/**"
+      - "crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs"
+      - "crates/rustok-pages/tests/outbox_relay_restart_postgres.rs"
+      - "crates/rustok-pages/tests/artifact_http_cache_sqlite.rs"
+      - "crates/rustok-pages/tests/native_storefront_cache_contract.rs"
+      - "crates/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs"
+      - "crates/rustok-pages/storefront/src/**"
+      - "crates/rustok-pages/storefront/tests/native_storefront_relay_continuity_sqlite.rs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.mjs"
+      - "crates/rustok-pages/contracts/evidence/pages-cache-consumer-execution.json"
+      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "docs/modules/pages-cache-consumer-exact-main-evidence-actualization-2026-08-15.md"
+      - ".github/workflows/pages-cache-consumer-exact-main-evidence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-cache-consumer-exact-main-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_pages_cache_consumer_evidence
+  RUSTOK_PAGES_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_pages_cache_consumer_evidence
+
+jobs:
+  preflight:
+    name: Pages cache-consumer execution preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_pages_cache_consumer_evidence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_pages_cache_consumer_evidence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-cache-consumer-exact-main-evidence
+      - name: Require exact event checkout
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Verify cache-consumer source boundaries
+        run: |
+          set -euo pipefail
+          node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs
+          node crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.mjs
+      - name: Validate execution contract
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'crates/rustok-pages/contracts/evidence/pages-cache-consumer-execution.json';
+          const c = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const fail = (m) => { console.error(m); process.exit(1); };
+          if (c.format !== 'pages_cache_consumer_execution_source_v1') fail('execution contract format drifted');
+          if (c.status !== 'source_ready_main_execution_pending') fail('execution contract status drifted');
+          if (c.workflow !== '.github/workflows/pages-cache-consumer-exact-main-evidence.yml') fail('workflow binding drifted');
+          if (c.output?.format !== 'pages_cache_consumer_execution_v1') fail('output format drifted');
+          if (c.output?.success_status !== 'cache_consumer_execution_passed_admission_pending') fail('success status drifted');
+          if (c.admission_boundary?.target_json_pointer !== '/consumers/0/cache_consumer/executed_evidence') fail('admission target drifted');
+          if (c.admission_boundary?.target_pre_state !== 'pending') fail('target pre-state drifted');
+          if (c.admission_boundary?.provider_consumer_properties_required_pre_state !== 'pending') fail('provider pre-state drifted');
+          if (c.admission_boundary?.separate_registry_admission_required !== true) fail('registry admission must stay separate');
+          if (c.execution_packet?.production_relay_native_route !== true) fail('production native route execution is required');
+          if (c.execution_packet?.artifact_http_cache !== true) fail('artifact HTTP cache execution is required');
+          if (c.execution_packet?.postgres_publish_rollback !== true || c.execution_packet?.postgres_relay_restart !== true) fail('PostgreSQL cache packets are required');
+          if (c.non_claims?.registry_mutated !== false || c.non_claims?.target_registry_verified !== false) fail('registry admission must remain a non-claim');
+          if (c.non_claims?.provider_consumer_properties_verified !== false) fail('provider evidence must remain a non-claim');
+          NODE
+      - name: Execute PostgreSQL publish/rollback cache packet
+        run: cargo test --locked -p rustok-pages --test publish_rollback_outbox_cache_postgres -- --nocapture
+      - name: Execute PostgreSQL relay restart packet
+        run: cargo test --locked -p rustok-pages --test outbox_relay_restart_postgres -- --nocapture
+      - name: Execute artifact HTTP cache packet
+        run: cargo test --locked -p rustok-pages --test artifact_http_cache_sqlite -- --nocapture
+      - name: Execute native storefront cache contract
+        run: cargo test --locked -p rustok-pages --test native_storefront_cache_contract -- --nocapture
+      - name: Execute explicit repair cache regression
+        run: cargo test --locked -p rustok-pages --test explicit_artifact_repair_cache_postgres -- --nocapture
+      - name: Execute native storefront relay continuity
+        run: cargo test --locked -p rustok-pages-storefront --features ssr --test native_storefront_relay_continuity_sqlite -- --nocapture
+      - name: Execute production relay to native route
+        run: cargo test --locked -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture
+      - name: Execute production cache provider unit packet
+        run: cargo test --locked -p rustok-server --features mod-pages services::pages_cache_invalidation -- --nocapture
+      - name: Execute production generation gate unit packet
+        run: cargo test --locked -p rustok-server --features mod-pages services::tenant_generation_delivery_gate -- --nocapture
+      - name: Check cache-consumer targets
+        run: |
+          set -euo pipefail
+          cargo check --locked -p rustok-pages --all-targets
+          cargo check --locked -p rustok-pages-storefront --features ssr --all-targets
+          cargo check --locked -p rustok-server --features mod-pages --all-targets
+
+  exact-main-receipt:
+    name: Pages cache-consumer exact-main receipt
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require exact main checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "push"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Record bounded exact-main receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/pages-cache-consumer
+          node <<'NODE'
+          const crypto = require('node:crypto');
+          const fs = require('node:fs');
+          const contractPath = 'crates/rustok-pages/contracts/evidence/pages-cache-consumer-execution.json';
+          const registryPath = 'crates/rustok-page-builder/contracts/page-builder-fba-registry.json';
+          const contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
+          const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+          const consumer = registry.consumers?.find((candidate) => candidate.module_slug === 'pages');
+          const target = consumer?.cache_consumer?.executed_evidence;
+          const provider = registry.provider?.consumer_properties_contract?.executed_evidence;
+          const requireState = (label, actual, expected) => {
+            if (actual !== expected) {
+              console.error(`${label} registry pre-state must be ${expected}, got ${String(actual)}`);
+              process.exit(1);
+            }
+          };
+          requireState('cache-consumer target', target, 'pending');
+          requireState('provider consumer-properties sibling', provider, 'pending');
+          if (process.env.GITHUB_ACTIONS !== 'true' || process.env.GITHUB_EVENT_NAME !== 'push' || process.env.GITHUB_REF !== 'refs/heads/main') {
+            console.error('receipt recorder requires GitHub Actions push on main');
+            process.exit(1);
+          }
+          const hash = (content) => crypto.createHash('sha256').update(content).digest('hex');
+          const sourceSha256 = {};
+          for (const sourcePath of contract.required_source_files ?? []) {
+            const stat = fs.lstatSync(sourcePath);
+            if (!stat.isFile() || stat.isSymbolicLink()) {
+              console.error(`${sourcePath}: required source must be a regular non-symlink file`);
+              process.exit(1);
+            }
+            sourceSha256[sourcePath] = hash(fs.readFileSync(sourcePath));
+          }
+          const receipt = {
+            format: contract.output.format,
+            status: contract.output.success_status,
+            generated_at: new Date().toISOString(),
+            source_commit: process.env.GITHUB_SHA,
+            provenance: {
+              repository: process.env.GITHUB_REPOSITORY,
+              workflow: process.env.GITHUB_WORKFLOW,
+              run_id: process.env.GITHUB_RUN_ID,
+              run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+              event: process.env.GITHUB_EVENT_NAME,
+              ref: process.env.GITHUB_REF
+            },
+            execution: {
+              source_verifiers_passed: true,
+              postgres_16_used: true,
+              publish_rollback_outbox_cache_postgres_passed: true,
+              outbox_relay_restart_postgres_passed: true,
+              artifact_http_cache_sqlite_passed: true,
+              native_storefront_cache_contract_passed: true,
+              explicit_artifact_repair_cache_postgres_passed: true,
+              native_storefront_relay_continuity_sqlite_passed: true,
+              production_relay_native_route_sqlite_passed: true,
+              production_cache_provider_unit_packet_passed: true,
+              production_generation_gate_unit_packet_passed: true,
+              cargo_checks_passed: true
+            },
+            registry_pre_state: {
+              target_cache_consumer_executed_evidence: target,
+              provider_consumer_properties_executed_evidence: provider
+            },
+            scope: {
+              cache_consumer_only: true,
+              provider_consumer_properties_claimed: false,
+              pages_rollout_claimed: false
+            },
+            governance: {
+              registry_mutated: false,
+              target_registry_verified: false,
+              terminal_inventory_complete: false,
+              owner_platform_review_ready: false,
+              page_builder_fba_promoted: false,
+              pages_ffa_promoted: false,
+              separate_registry_admission_required: true
+            },
+            privacy: {
+              database_url_retained: false,
+              tenant_identity_retained: false,
+              raw_database_rows_retained: false,
+              raw_event_payload_retained: false,
+              raw_http_body_retained: false,
+              credentials_retained: false
+            },
+            source_sha256: sourceSha256
+          };
+          fs.writeFileSync(contract.output.receipt_path, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
+          NODE
+      - name: Validate bounded receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f evidence/pages-cache-consumer/receipt.json
+          test "$(stat -c %s evidence/pages-cache-consumer/receipt.json)" -le 1048576
+          node -e 'const r=require("./evidence/pages-cache-consumer/receipt.json"); if(r.format!=="pages_cache_consumer_execution_v1"||r.status!=="cache_consumer_execution_passed_admission_pending"||r.source_commit!==process.env.GITHUB_SHA||r.scope?.cache_consumer_only!==true||r.governance?.registry_mutated!==false||r.governance?.target_registry_verified!==false||r.governance?.separate_registry_admission_required!==true) process.exit(1)'
+      - name: Archive bounded Pages cache-consumer evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: pages-cache-consumer-${{ github.run_id }}-${{ github.sha }}
+          path: evidence/pages-cache-consumer/receipt.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  gate:
+    name: Pages Cache Consumer Evidence Gate
+    if: always()
+    needs:
+      - preflight
+      - exact-main-receipt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require event-appropriate success
+        shell: bash
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          RECEIPT_RESULT: ${{ needs.exact-main-receipt.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$PREFLIGHT_RESULT" != "success" ]]; then
+            echo "::error::Pages cache-consumer preflight failed."
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" = "push" && "$GITHUB_REF" = "refs/heads/main" ]]; then
+            if [[ "$RECEIPT_RESULT" != "success" ]]; then
+              echo "::error::Exact-main Pages cache-consumer receipt failed."
+              exit 1
+            fi
+          elif [[ "$RECEIPT_RESULT" != "skipped" ]]; then
+            echo "::error::Exact-main receipt must be skipped outside push/main."
+            exit 1
+          fi
