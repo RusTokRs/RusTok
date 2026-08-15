@@ -123,7 +123,7 @@ for (const key of [
 }
 
 need(cargo, "rustok-events.workspace = true", "Cargo");
-need(cargo, "rustok-page-builder.workspace = true", "Cargo");
+need(cargo, 'rustok-page-builder = { path = "../../rustok-page-builder", default-features = false }', "Cargo");
 for (const marker of [
   "PageBuilderReviewedPublishRuntime",
   "OutboxModule",
@@ -228,7 +228,7 @@ for (const marker of [
 for (const marker of [
   "Topology correction",
   "test-target acknowledgement",
-  "production listener acknowledgement gap",
+  "production-listener-acknowledgement-gap-open",
   "no production behavior change"
 ]) need(correction, marker, "topology correction packet");
 for (const marker of [
