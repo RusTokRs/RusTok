@@ -316,7 +316,7 @@
             "repeated_loss_test": "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
             "verifier": "crates/rustok-pages/scripts/verify/verify-pages-multilocale-repair-rollback-evidence.mjs",
             "evidence": "crates/rustok-pages/contracts/evidence/pages-multilocale-repair-rollback-evidence-source.json",
-            "executed_evidence": "pending"
+            "executed_evidence": "verified"
           },
           "rollback_activated_repair_to_rollback": {
             "state": "source_ready_execution_pending",
