@@ -1,0 +1,79 @@
+{
+  "format": "pages_artifact_repair_rollback_continuity_postgres_execution_source_v1",
+  "status": "source_ready_main_execution_pending",
+  "scope": "artifact-repair rollback-continuity parent PostgreSQL evidence",
+  "workflow": ".github/workflows/pages-artifact-repair-rollback-continuity-postgres-evidence.yml",
+  "source_packet": {
+    "historical_source_contract": "crates/rustok-pages/contracts/evidence/pages-artifact-repair-rollback-continuity-source.json",
+    "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs",
+    "postgres_test": "crates/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs",
+    "source_actualization": "docs/modules/pages-page-builder-repair-rollback-continuity-actualization-2026-08-07.md"
+  },
+  "execution": {
+    "postgres_version": "16",
+    "rust_toolchain": "1.96.0",
+    "source_verifier_required": true,
+    "parent_postgres_packet_required": true,
+    "cargo_check_all_targets_required": true,
+    "exact_main_receipt_required": true,
+    "artifact_retention_days": 90
+  },
+  "admission_boundary": {
+    "target_json_pointer": "/consumers/0/artifact_repair/rollback_continuity/executed_evidence",
+    "target_pre_state": "pending",
+    "artifact_repair_parent_required_pre_state": "verified",
+    "physical_loss_recovery_parent_required_pre_state": "verified",
+    "physical_loss_activation_prefix_required_pre_state": "verified",
+    "rollback_activated_repair_to_rollback_required_pre_state": "verified",
+    "repeated_loss_recovery_required_pre_state": "verified",
+    "separate_registry_admission_required": true
+  },
+  "retained_child_evidence": {
+    "physical_loss_activation_prefix": {
+      "merge_commit": "3fb9ffbf3f66c9832a6b58ca8f135882fe1053c0",
+      "run_id": "31867845157",
+      "artifact_id": "9242726793",
+      "artifact_sha256": "201900cba75d789d57a95cb99bba3fc0890945b0a525bfcdb54e4db347d5661e"
+    },
+    "rollback_activated_repair_to_rollback": {
+      "merge_commit": "4c02c5594de7ab30eff44cb62cc9d453ddba74b4",
+      "run_id": "31885669589",
+      "artifact_id": "9247281979",
+      "artifact_sha256": "53b99de5d56c9a631001a6b2f00719c5b2736ab6b937f1684cad5bdbc474427b"
+    },
+    "current_main_drift_since_latest_child_evidence_is_source_disjoint": true
+  },
+  "output": {
+    "format": "pages_artifact_repair_rollback_continuity_postgres_execution_v1",
+    "success_status": "postgres_execution_passed_rollback_continuity_parent_admission_pending",
+    "receipt_path": "evidence/pages-artifact-repair-rollback-continuity-postgres/receipt.json",
+    "maximum_receipt_bytes": 1048576
+  },
+  "required_source_files": [
+    ".github/workflows/pages-artifact-repair-rollback-continuity-postgres-evidence.yml",
+    "crates/rustok-pages/contracts/evidence/pages-artifact-repair-rollback-continuity-postgres-execution.json",
+    "crates/rustok-pages/contracts/evidence/pages-artifact-repair-rollback-continuity-source.json",
+    "crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs",
+    "crates/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs",
+    "crates/rustok-pages/src/services/page/artifact_set.rs",
+    "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+    "crates/rustok-pages/src/services/page/rollback.rs",
+    "crates/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs",
+    "crates/rustok-pages/docs/implementation-plan.md",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "docs/modules/pages-page-builder-repair-rollback-continuity-actualization-2026-08-07.md",
+    "docs/modules/pages-artifact-repair-rollback-continuity-postgres-evidence-actualization-2026-08-15.md"
+  ],
+  "non_claims": {
+    "historical_source_contract_mutated": false,
+    "registry_mutated": false,
+    "target_registry_verified": false,
+    "child_registry_reverified_or_mutated": false,
+    "cache_consumer_verified": false,
+    "provider_consumer_properties_verified": false,
+    "terminal_inventory_complete": false,
+    "owner_platform_review_ready": false,
+    "pages_ffa_promoted": false,
+    "page_builder_fba_promoted": false
+  }
+}
