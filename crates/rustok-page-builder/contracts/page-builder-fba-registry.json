@@ -282,7 +282,7 @@
           "single_locale_test": "crates/rustok-pages/tests/artifact_loss_activation_recovery_postgres.rs",
           "multilocale_test": "crates/rustok-pages/tests/artifact_loss_multilocale_activation_recovery_postgres.rs",
           "multilocale_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-loss-multilocale-activation-recovery-postgres.mjs",
-          "executed_evidence": "pending"
+          "executed_evidence": "verified"
         },
         "rollback_continuity": {
           "state": "source_ready_execution_pending",
