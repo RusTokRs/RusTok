@@ -28,7 +28,9 @@ A target read may resolve through fallback. Fallback content is read evidence, n
 
 Tag attachment identity is not rewritten by the read. Clearing fallback tag labels is necessary because Forum's update path resolves/ensures Taxonomy tag terms using the submitted content locale; carrying an English fallback label into an Arabic or Russian save could otherwise create or bind the wrong locale term identity.
 
-The normal required-field validation then requires deliberate target-language content before a missing translation can be persisted. Existing Forum/Taxonomy attachment rows remain unchanged unless the operator explicitly saves new target-locale tag labels.
+Topic update therefore performs a fresh editor read before mutation and omits `tags` (`None`) when the normalized tag labels are unchanged. A scrubbed fallback editor with no newly entered tag labels also omits `tags`, which preserves the existing Forum attachment rows. A deliberate tag change is still sent as `Some(...)`, including an explicit clear on an exact-locale editor.
+
+The normal required-field validation then requires deliberate target-language content before a missing translation can be persisted. Existing Forum/Taxonomy attachment rows remain unchanged unless the operator explicitly supplies a tag change that the editor can safely distinguish from fallback state.
 
 ## Topic reply draft
 
