@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::{PortError, PortErrorKind};
 use rustok_forum::{
-    ForumError, ForumEventService,
-    ForumProjectionOwnerRevisionImpact as ForumOwnerRevisionImpact,
+    ForumError, ForumEventService, ForumProjectionOwnerRevisionImpact as ForumOwnerRevisionImpact,
 };
 use rustok_search::{
     ForumProjectionOwnerRevisionImpact, ForumProjectionOwnerRevisionRecord,

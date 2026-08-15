@@ -43,14 +43,14 @@ fn bypass_toggle_api_is_not_used_in_production_paths() {
             continue;
         }
 
-        if let Ok(content) = fs::read_to_string(&file) {
-            if content.contains(&forbidden_pattern) {
-                let rel = file
-                    .strip_prefix(repo_root)
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|_| file.display().to_string());
-                offenders.push(rel);
-            }
+        if let Ok(content) = fs::read_to_string(&file)
+            && content.contains(&forbidden_pattern)
+        {
+            let rel = file
+                .strip_prefix(repo_root)
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|_| file.display().to_string());
+            offenders.push(rel);
         }
     }
 

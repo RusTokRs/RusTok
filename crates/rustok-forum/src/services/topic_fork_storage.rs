@@ -459,8 +459,7 @@ async fn validate_cloned_topic_shape_in_tx(
         load_topic_reply_create_audience_policy_for_topic(txn, tenant_id, target).await?;
     if source_reply_create.inherited_category_layers
         != target_reply_create.inherited_category_layers
-        || source_reply_create.configured_constraints
-            != target_reply_create.configured_constraints
+        || source_reply_create.configured_constraints != target_reply_create.configured_constraints
     {
         return Err(ForumError::Validation(
             "Forum topic fork reply-create policy clone is inconsistent".to_string(),
@@ -572,9 +571,7 @@ async fn increment_category_counters_in_tx(
     active.reply_count = Set(expected_reply_count);
     active.updated_at = Set(now.into());
     let updated = active.update(txn).await?;
-    if updated.topic_count != expected_topic_count
-        || updated.reply_count != expected_reply_count
-    {
+    if updated.topic_count != expected_topic_count || updated.reply_count != expected_reply_count {
         return Err(ForumError::Validation(
             "Forum topic fork category counter reconciliation failed".to_string(),
         ));

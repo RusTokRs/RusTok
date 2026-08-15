@@ -90,22 +90,22 @@ pub fn router() -> crate::routes::ServerRouter {
 }
 
 async fn sync_rate_limit_metrics(ctx: &ServerRuntimeContext) {
-    if let Some(shared) = ctx.shared_get::<SharedApiRateLimiter>() {
-        if let Err(error) = shared.0.sync_runtime_metrics().await {
-            warn!(error = %error, "failed to sync API rate-limit metrics");
-        }
+    if let Some(shared) = ctx.shared_get::<SharedApiRateLimiter>()
+        && let Err(error) = shared.0.sync_runtime_metrics().await
+    {
+        warn!(error = %error, "failed to sync API rate-limit metrics");
     }
 
-    if let Some(shared) = ctx.shared_get::<SharedAuthRateLimiter>() {
-        if let Err(error) = shared.0.sync_runtime_metrics().await {
-            warn!(error = %error, "failed to sync auth rate-limit metrics");
-        }
+    if let Some(shared) = ctx.shared_get::<SharedAuthRateLimiter>()
+        && let Err(error) = shared.0.sync_runtime_metrics().await
+    {
+        warn!(error = %error, "failed to sync auth rate-limit metrics");
     }
 
-    if let Some(shared) = ctx.shared_get::<SharedOAuthRateLimiter>() {
-        if let Err(error) = shared.0.sync_runtime_metrics().await {
-            warn!(error = %error, "failed to sync oauth rate-limit metrics");
-        }
+    if let Some(shared) = ctx.shared_get::<SharedOAuthRateLimiter>()
+        && let Err(error) = shared.0.sync_runtime_metrics().await
+    {
+        warn!(error = %error, "failed to sync oauth rate-limit metrics");
     }
 }
 

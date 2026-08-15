@@ -153,8 +153,9 @@ mod tests {
     use chrono::Utc;
     use rustok_api::{PortActor, PortErrorKind};
     use rustok_groups::{
-        GroupMembershipEffectiveState, GroupMembershipEffectiveStatus, GroupMembershipStatus,
-        GroupRole,
+        GroupMembershipEffectiveState, GroupMembershipEffectiveStatus,
+        GroupMembershipEnforcementReadPort, GroupMembershipStatus, GroupRole,
+        ReadGroupMembershipEnforcementRequest,
     };
 
     use super::*;

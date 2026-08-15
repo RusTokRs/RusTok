@@ -13,7 +13,7 @@ use athanor_domain::{
 };
 use rustok_ai::{
     RagAtom, RagCandidate, RagChunk, RagError, RagExpandRequest, RagIngestRequest, RagIngestResult,
-    RagIngestionPort, RagResult, RagRetrievalPort, RagSearchRequest, RagSourceRef, chunk_document,
+    RagIngestionPort, RagResult, RagRetrievalPort, RagSearchRequest, RagSourceRef,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -426,6 +426,7 @@ mod tests {
 
     use rustok_ai::{
         RagChunkingPolicy, RagDocument, RagIngestionCoordinator, RagRetrievalStrategy,
+        chunk_document,
     };
 
     #[tokio::test]

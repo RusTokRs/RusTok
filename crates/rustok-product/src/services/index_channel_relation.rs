@@ -285,12 +285,13 @@ impl ProductSalesChannelIndexRelationStore {
         require_live_product(transaction, tenant_id, product_id).await?;
         lock_relation(transaction, tenant_id, product_id).await?;
         let previous = load_latest(transaction, tenant_id, product_id).await?;
-        if let Some(previous) = previous.as_ref() {
-            if previous.channel_ids == channel_ids {
-                return Ok(ProductSalesChannelIndexRelationWriteOutcome::Unchanged(
-                    previous.clone(),
-                ));
-            }
+        if let Some(previous) = previous
+            .as_ref()
+            .filter(|previous| previous.channel_ids == channel_ids)
+        {
+            return Ok(ProductSalesChannelIndexRelationWriteOutcome::Unchanged(
+                previous.clone(),
+            ));
         }
 
         let relation_epoch = match previous.as_ref() {

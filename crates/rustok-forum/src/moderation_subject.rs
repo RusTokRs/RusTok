@@ -123,7 +123,8 @@ impl ModerationSubjectCommandPort for ForumModerationSubjectAdapter {
             // reclaimable instead of freezing a transient failure into the
             // decision's immutable replay result.
             if !error.retryable {
-                if let Err(receipt_error) = idempotency::fail(&self.db, lease, error).await {
+                let fail_res = idempotency::fail(&self.db, lease, error).await;
+                if let Err(receipt_error) = fail_res {
                     tracing::error!(
                         operation_id = %lease.operation_id,
                         error = %receipt_error.message,

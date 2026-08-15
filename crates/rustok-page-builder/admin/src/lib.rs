@@ -18,7 +18,6 @@ pub mod editor;
 mod i18n;
 mod model {
     include!("model.rs");
-    include!("model_registry_extension.rs");
 }
 mod palette_access;
 pub mod provider_status;

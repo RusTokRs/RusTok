@@ -92,29 +92,29 @@ fn normalize_details_backward(details: Value) -> Value {
         object.insert("stage".to_string(), stage);
     }
 
-    if let Some(owner_transition) = object.remove("owner_transition") {
-        if let Some(transition) = owner_transition.as_object() {
-            if let Some(previous_owner) = transition.get("previous_owner") {
-                if let Some(label) = principal_label_value(previous_owner) {
-                    object.insert(
-                        "previous_owner_actor".to_string(),
-                        Value::String(label.to_string()),
-                    );
-                }
-            }
-            if let Some(new_owner) = transition.get("new_owner") {
-                if let Some(label) = principal_label_value(new_owner) {
-                    object.insert(
-                        "new_owner_actor".to_string(),
-                        Value::String(label.to_string()),
-                    );
-                }
-            }
-            if let Some(bound_by) = transition.get("bound_by") {
-                if let Some(label) = principal_label_value(bound_by) {
-                    object.insert("bound_by".to_string(), Value::String(label.to_string()));
-                }
-            }
+    if let Some(owner_transition) = object.remove("owner_transition")
+        && let Some(transition) = owner_transition.as_object()
+    {
+        if let Some(previous_owner) = transition.get("previous_owner")
+            && let Some(label) = principal_label_value(previous_owner)
+        {
+            object.insert(
+                "previous_owner_actor".to_string(),
+                Value::String(label.to_string()),
+            );
+        }
+        if let Some(new_owner) = transition.get("new_owner")
+            && let Some(label) = principal_label_value(new_owner)
+        {
+            object.insert(
+                "new_owner_actor".to_string(),
+                Value::String(label.to_string()),
+            );
+        }
+        if let Some(bound_by) = transition.get("bound_by")
+            && let Some(label) = principal_label_value(bound_by)
+        {
+            object.insert("bound_by".to_string(), Value::String(label.to_string()));
         }
     }
 
@@ -185,15 +185,15 @@ fn principal_label_value(value: &Value) -> Option<&str> {
 
 fn principal_json_from_label(label: &str) -> Value {
     let normalized = label.trim();
-    if let Some(raw_user_id) = normalized.strip_prefix("user:") {
-        if let Ok(user_id) = Uuid::parse_str(raw_user_id) {
-            return serde_json::json!({
-                "kind": "user",
-                "user_id": user_id,
-                "subject": normalized,
-                "display_label": normalized,
-            });
-        }
+    if let Some(raw_user_id) = normalized.strip_prefix("user:")
+        && let Ok(user_id) = Uuid::parse_str(raw_user_id)
+    {
+        return serde_json::json!({
+            "kind": "user",
+            "user_id": user_id,
+            "subject": normalized,
+            "display_label": normalized,
+        });
     }
     if let Some(runner_id) = normalized.strip_prefix("remote-runner:") {
         return serde_json::json!({

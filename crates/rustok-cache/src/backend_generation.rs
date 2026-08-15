@@ -121,7 +121,10 @@ impl std::fmt::Display for CacheBackendGenerationError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptyPrefix => {
-                write!(formatter, "cache backend generation prefix must not be empty")
+                write!(
+                    formatter,
+                    "cache backend generation prefix must not be empty"
+                )
             }
             Self::PrefixTooLarge { length, maximum } => write!(
                 formatter,
@@ -147,7 +150,10 @@ impl std::fmt::Display for CacheBackendGenerationError {
                 "cache backend generation alias {alias:?} is already bound to another state"
             ),
             Self::SharedGeneration(message) => {
-                write!(formatter, "shared cache backend generation failed: {message}")
+                write!(
+                    formatter,
+                    "shared cache backend generation failed: {message}"
+                )
             }
         }
     }

@@ -157,19 +157,19 @@ pub fn SeoSchemaPreviewCard(
         }
 
         match schema_type {
-            "BreadcrumbList" | "ItemList" => {
-                if let Some(value) = object.get("itemListElement") {
-                    if !value.is_array() {
-                        issues.push("itemListElement must be an array.".to_string());
-                    }
-                }
+            "BreadcrumbList" | "ItemList"
+                if object
+                    .get("itemListElement")
+                    .is_some_and(|value| !value.is_array()) =>
+            {
+                issues.push("itemListElement must be an array.".to_string());
             }
-            "FAQPage" => {
-                if let Some(value) = object.get("mainEntity") {
-                    if !value.is_array() {
-                        issues.push("mainEntity must be an array.".to_string());
-                    }
-                }
+            "FAQPage"
+                if object
+                    .get("mainEntity")
+                    .is_some_and(|value| !value.is_array()) =>
+            {
+                issues.push("mainEntity must be an array.".to_string());
             }
             _ => {}
         }

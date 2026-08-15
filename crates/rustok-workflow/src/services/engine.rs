@@ -63,7 +63,8 @@ impl WorkflowEngine {
         initial_context: Value,
     ) -> WorkflowResult<Uuid> {
         if let Some(event_id) = trigger_event_id {
-            if let Some(existing_id) = self.event_execution_id(workflow_id, event_id).await? {
+            let existing = self.event_execution_id(workflow_id, event_id).await?;
+            if let Some(existing_id) = existing {
                 info!(
                     execution_id = %existing_id,
                     trigger_event_id = %event_id,
@@ -90,7 +91,8 @@ impl WorkflowEngine {
         };
         if let Err(error) = execution.insert(&self.db).await {
             if let Some(event_id) = trigger_event_id {
-                if let Some(existing_id) = self.event_execution_id(workflow_id, event_id).await? {
+                let existing = self.event_execution_id(workflow_id, event_id).await?;
+                if let Some(existing_id) = existing {
                     info!(
                         execution_id = %existing_id,
                         trigger_event_id = %event_id,

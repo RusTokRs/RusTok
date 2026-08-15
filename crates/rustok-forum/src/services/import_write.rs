@@ -69,7 +69,8 @@ impl ForumImportWriteService {
             super::topic::TopicService::new(self.db.clone(), self.event_bus.clone());
         let reply_service =
             super::reply_owner::ReplyService::new(self.db.clone(), self.event_bus.clone());
-        let relation_service = super::mention_relation::MentionRelationService::new(self.db.clone());
+        let relation_service =
+            super::mention_relation::MentionRelationService::new(self.db.clone());
 
         // Re-run owner content admission before opening the transaction. These
         // preparations read current owner schemas but do not mutate Forum state.
@@ -83,9 +84,8 @@ impl ForumImportWriteService {
         }
         let mut prepared_replies = Vec::with_capacity(batch.writes.replies.len());
         for record in &batch.writes.replies {
-            prepared_replies.push(
-                reply_service.prepare_import_reply(batch.writes.tenant_id, record)?,
-            );
+            prepared_replies
+                .push(reply_service.prepare_import_reply(batch.writes.tenant_id, record)?);
         }
 
         let txn = self.db.begin().await?;
@@ -157,9 +157,19 @@ impl ForumImportWriteService {
 
         Ok(ForumImportWriteResult {
             tenant_id: batch.writes.tenant_id,
-            category_ids: batch.writes.categories.iter().map(|record| record.id).collect(),
+            category_ids: batch
+                .writes
+                .categories
+                .iter()
+                .map(|record| record.id)
+                .collect(),
             topic_ids: batch.writes.topics.iter().map(|record| record.id).collect(),
-            reply_ids: batch.writes.replies.iter().map(|record| record.id).collect(),
+            reply_ids: batch
+                .writes
+                .replies
+                .iter()
+                .map(|record| record.id)
+                .collect(),
         })
     }
 }
@@ -260,12 +270,13 @@ fn validate_batch_shape(
                 "Forum import reply topic must be inside the bounded batch".to_string(),
             ));
         }
-        if let Some(parent_reply_id) = reply.parent_reply_id {
-            if !reply_ids.contains(&parent_reply_id) {
-                return Err(ForumError::Validation(
-                    "Forum import reply parent must be inside the bounded batch".to_string(),
-                ));
-            }
+        if reply
+            .parent_reply_id
+            .is_some_and(|parent_reply_id| !reply_ids.contains(&parent_reply_id))
+        {
+            return Err(ForumError::Validation(
+                "Forum import reply parent must be inside the bounded batch".to_string(),
+            ));
         }
     }
 
@@ -288,7 +299,8 @@ fn validate_relation_alignment(batch: &ForumPreparedImportRelationBatch) -> Foru
             || relation.locale != record.locale
         {
             return Err(ForumError::Validation(
-                "Forum import topic relation facts are not aligned with prepared writes".to_string(),
+                "Forum import topic relation facts are not aligned with prepared writes"
+                    .to_string(),
             ));
         }
     }
@@ -298,7 +310,8 @@ fn validate_relation_alignment(batch: &ForumPreparedImportRelationBatch) -> Foru
             || relation.locale != record.locale
         {
             return Err(ForumError::Validation(
-                "Forum import reply relation facts are not aligned with prepared writes".to_string(),
+                "Forum import reply relation facts are not aligned with prepared writes"
+                    .to_string(),
             ));
         }
     }

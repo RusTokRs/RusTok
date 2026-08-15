@@ -12,7 +12,7 @@ use rustok_groups::{
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
 };
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use tokio::sync::Barrier;
 use uuid::Uuid;
 

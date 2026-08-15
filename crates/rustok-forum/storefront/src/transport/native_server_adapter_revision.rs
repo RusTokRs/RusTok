@@ -16,7 +16,10 @@ pub async fn fetch_storefront_reply_current_revision_server(
         .map_err(|error| ApiError::ServerFn(error.to_string()))
 }
 
-#[server(prefix = "/api/fn", endpoint = "forum/storefront-topic-current-revision")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "forum/storefront-topic-current-revision"
+)]
 async fn storefront_topic_current_revision_native(
     topic_id: String,
     locale: Option<String>,
@@ -58,11 +61,9 @@ async fn storefront_topic_current_revision_native(
         let db = runtime_ctx.db_clone();
         let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
         let topic_audience_service = match audience_facts {
-            Some(facts) => ForumTopicAudienceReadService::with_audience_facts(
-                db.clone(),
-                event_bus,
-                facts,
-            ),
+            Some(facts) => {
+                ForumTopicAudienceReadService::with_audience_facts(db.clone(), event_bus, facts)
+            }
             None => ForumTopicAudienceReadService::new(db.clone(), event_bus),
         };
         let topic = load_audience_visible_topic(
@@ -93,7 +94,10 @@ async fn storefront_topic_current_revision_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "forum/storefront-reply-current-revision")]
+#[server(
+    prefix = "/api/fn",
+    endpoint = "forum/storefront-reply-current-revision"
+)]
 async fn storefront_reply_current_revision_native(
     reply_id: String,
     locale: Option<String>,
@@ -138,11 +142,9 @@ async fn storefront_reply_current_revision_native(
         let db = runtime_ctx.db_clone();
         let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
         let reply_audience_service = match audience_facts {
-            Some(facts) => ForumReplyAudienceReadService::with_audience_facts(
-                db.clone(),
-                event_bus,
-                facts,
-            ),
+            Some(facts) => {
+                ForumReplyAudienceReadService::with_audience_facts(db.clone(), event_bus, facts)
+            }
             None => ForumReplyAudienceReadService::new(db.clone(), event_bus),
         };
         let approved_statuses = [ReplyStatus::Approved];

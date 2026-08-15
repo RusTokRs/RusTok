@@ -161,18 +161,18 @@ pub fn UserDetails() -> impl IntoView {
                     <Show when=move || !is_editing.get()>
                         <Button
                             on_click=move |_| {
-                                if let Some(Ok(ref resp)) = user_resource.get() {
-                                    if let Some(ref user) = resp.user {
-                                        let user = graphql_user_view(user.clone(), String::new());
-                                        let (_, set_n) = edit_name;
-                                        let (_, set_r) = edit_role;
-                                        let (_, set_s) = edit_status;
-                                        set_n.set(user.edit_form.name);
-                                        set_r.set(user.edit_form.role);
-                                        set_s.set(user.edit_form.status);
-                                        set_form_state.set(FormState::idle());
-                                        set_is_editing.set(true);
-                                    }
+                                if let Some(Ok(ref resp)) = user_resource.get()
+                                    && let Some(ref user) = resp.user
+                                {
+                                    let user = graphql_user_view(user.clone(), String::new());
+                                    let (_, set_n) = edit_name;
+                                    let (_, set_r) = edit_role;
+                                    let (_, set_s) = edit_status;
+                                    set_n.set(user.edit_form.name);
+                                    set_r.set(user.edit_form.role);
+                                    set_s.set(user.edit_form.status);
+                                    set_form_state.set(FormState::idle());
+                                    set_is_editing.set(true);
                                 }
                             }
                             class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"

@@ -239,13 +239,15 @@ fn validate_revision(
     if !is_mutating_intent(envelope) {
         return Ok(());
     }
-    if let Some(revision) = envelope.revision.as_deref() {
-        if revision != controller.revision_id() {
-            return Err(BrowserIntentDispatchError::RevisionConflict {
-                expected: controller.revision_id().to_string(),
-                actual: revision.to_string(),
-            });
-        }
+    if let Some(revision) = envelope
+        .revision
+        .as_deref()
+        .filter(|&revision| revision != controller.revision_id())
+    {
+        return Err(BrowserIntentDispatchError::RevisionConflict {
+            expected: controller.revision_id().to_string(),
+            actual: revision.to_string(),
+        });
     }
     if let Some(project_hash) = envelope.project_hash.as_deref() {
         let expected = controller.editor().revision().project_hash.hex();

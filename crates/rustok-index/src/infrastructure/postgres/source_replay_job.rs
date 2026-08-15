@@ -340,7 +340,7 @@ impl PostgresIndexReplayJobStore {
             .map_err(storage_error)?;
 
         let mut claimable = None;
-        for row in rows {
+        if let Some(row) = rows.into_iter().next() {
             let stored = stored_job(&row, backend)?;
             if stored.source_name != request.source_name {
                 return Err(IndexReplayJobError::InvalidStoredJob(
@@ -366,7 +366,6 @@ impl PostgresIndexReplayJobStore {
                 }
                 "pending" | "running" => {
                     claimable = Some(stored);
-                    break;
                 }
                 "failed" => {
                     return Err(IndexReplayJobError::DeadLettered {

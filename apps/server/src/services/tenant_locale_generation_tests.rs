@@ -294,7 +294,11 @@ async fn restore_shared_generation(url: &str, generation: u64) {
 async fn align_shared_generation(url: &str) -> u64 {
     let snapshot = cache_backend_generation_snapshot(TENANT_CACHE_BACKEND_PREFIX)
         .expect("process tenant generation snapshot should be readable");
-    let process_generation = snapshot.trusted.then_some(snapshot.generation).unwrap_or(0);
+    let process_generation = if snapshot.trusted {
+        snapshot.generation
+    } else {
+        0
+    };
     let mut connection = redis_generation_connection(url).await;
     let shared_generation = redis::cmd("GET")
         .arg(shared_generation_key())

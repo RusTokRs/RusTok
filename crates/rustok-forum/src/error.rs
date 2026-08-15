@@ -177,7 +177,7 @@ impl ForumError {
 
     pub const fn stable_code(&self) -> &'static str {
         match self {
-            Self::CapabilityUnavailable { code, .. } => *code,
+            Self::CapabilityUnavailable { code, .. } => code,
             Self::CapabilityFailure { .. } => "FORUM_CAPABILITY_FAILURE",
             Self::MentionTargetUnavailable => "FORUM_MENTION_TARGET_UNAVAILABLE",
             Self::QuoteTargetUnavailable => "FORUM_QUOTE_TARGET_UNAVAILABLE",

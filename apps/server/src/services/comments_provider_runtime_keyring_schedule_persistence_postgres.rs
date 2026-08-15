@@ -8,15 +8,10 @@ use std::{
     time::Duration,
 };
 
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use tokio::runtime::{Builder, Runtime};
 
-use super::{
-    keyring,
-    keyring_schedule_persistence as persistence,
-};
+use super::{keyring, keyring_schedule_persistence as persistence};
 
 pub const COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY: &str =
     "comments_tcp_delegation_schedule";
@@ -27,10 +22,8 @@ const POSTGRES_STORE_QUEUE_CAPACITY: usize = 1;
 const COMMIT_RECONCILIATION_ATTEMPTS: usize = 20;
 const COMMIT_RECONCILIATION_DELAY_MS: u64 = 100;
 
-type StoreResult = std::result::Result<
-    (),
-    persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
->;
+type StoreResult =
+    std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>;
 
 #[derive(Clone)]
 pub struct PostgresCommentsTcpDelegationSchedulePersistenceStore {
@@ -81,10 +74,8 @@ impl StoredScheduleRecord {
     }
 }
 
-type StoreResultWith<T> = std::result::Result<
-    T,
-    persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
->;
+type StoreResultWith<T> =
+    std::result::Result<T, persistence::CommentsTcpDelegationSchedulePersistenceStoreError>;
 
 impl PostgresCommentsTcpDelegationSchedulePersistenceStore {
     pub fn new(database: DatabaseConnection) -> std::result::Result<Self, String> {
@@ -95,8 +86,7 @@ impl PostgresCommentsTcpDelegationSchedulePersistenceStore {
             );
         }
 
-        let (commands, receiver) =
-            mpsc::sync_channel(POSTGRES_STORE_QUEUE_CAPACITY);
+        let (commands, receiver) = mpsc::sync_channel(POSTGRES_STORE_QUEUE_CAPACITY);
         let (startup_sender, startup_receiver) = mpsc::sync_channel(1);
         thread::Builder::new()
             .name("comments-delegation-schedule-postgres".to_string())
@@ -127,9 +117,7 @@ impl PostgresCommentsTcpDelegationSchedulePersistenceStore {
         }
     }
 
-    pub fn into_shared(
-        self,
-    ) -> persistence::SharedCommentsTcpDelegationSchedulePersistenceStore {
+    pub fn into_shared(self) -> persistence::SharedCommentsTcpDelegationSchedulePersistenceStore {
         Arc::new(self)
     }
 
@@ -138,11 +126,9 @@ impl PostgresCommentsTcpDelegationSchedulePersistenceStore {
         build: impl FnOnce(SyncSender<StoreResult>) -> PostgresStoreCommand,
     ) -> StoreResult {
         let (response_sender, response_receiver) = mpsc::sync_channel(1);
-        self.commands
-            .send(build(response_sender))
-            .map_err(|_| {
-                persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
-            })?;
+        self.commands.send(build(response_sender)).map_err(|_| {
+            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
+        })?;
         response_receiver.recv().unwrap_or(Err(
             persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
         ))
@@ -178,11 +164,12 @@ impl persistence::CommentsTcpDelegationSchedulePersistenceStore
 impl fmt::Debug for PostgresCommentsTcpDelegationSchedulePersistenceStore {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct(
-                "PostgresCommentsTcpDelegationSchedulePersistenceStore",
-            )
+            .debug_struct("PostgresCommentsTcpDelegationSchedulePersistenceStore")
             .field("database", &"[CONFIGURED]")
-            .field("state_key", &COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY)
+            .field(
+                "state_key",
+                &COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY,
+            )
             .finish()
     }
 }
@@ -195,8 +182,7 @@ fn run_postgres_store_worker(
     while let Ok(command) = receiver.recv() {
         match command {
             PostgresStoreCommand::VerifyCurrent { expected, response } => {
-                let result =
-                    runtime.block_on(verify_current_on_postgres(&database, &expected));
+                let result = runtime.block_on(verify_current_on_postgres(&database, &expected));
                 let _ = response.send(result);
             }
             PostgresStoreCommand::CompareAndStore {
@@ -222,15 +208,11 @@ async fn verify_current_on_postgres(
     let expected = StoredScheduleRecord::from_public(expected)?;
     match read_current_record(database).await {
         Ok(Some(current)) if current == expected => Ok(()),
-        Ok(_) => Err(
-            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict,
-        ),
-        Err(sea_orm::DbErr::Type(_)) => Err(
-            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict,
-        ),
-        Err(_) => Err(
-            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
-        ),
+        Ok(_) => Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict),
+        Err(sea_orm::DbErr::Type(_)) => {
+            Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict)
+        }
+        Err(_) => Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable),
     }
 }
 
@@ -267,16 +249,12 @@ async fn compare_and_store_on_postgres(
     };
     if rows_affected != 1 {
         let _ = transaction.rollback().await;
-        return Err(
-            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict,
-        );
+        return Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict);
     }
 
     match transaction.commit().await {
         Ok(()) => Ok(()),
-        Err(_) => {
-            reconcile_ambiguous_commit(database, expected.as_ref(), &candidate).await
-        }
+        Err(_) => reconcile_ambiguous_commit(database, expected.as_ref(), &candidate).await,
     }
 }
 
@@ -295,10 +273,7 @@ async fn reconcile_ambiguous_commit(
             }
             Ok(_) => abort_on_indeterminate_postgres_commit(),
             Err(_) if attempt + 1 < COMMIT_RECONCILIATION_ATTEMPTS => {
-                tokio::time::sleep(Duration::from_millis(
-                    COMMIT_RECONCILIATION_DELAY_MS,
-                ))
-                .await;
+                tokio::time::sleep(Duration::from_millis(COMMIT_RECONCILIATION_DELAY_MS)).await;
             }
             Err(_) => abort_on_indeterminate_postgres_commit(),
         }
@@ -327,8 +302,7 @@ async fn read_current_record(
     let schema_version: i16 = row.try_get("", "schema_version")?;
     let source: String = row.try_get("", "source")?;
     let generation: i64 = row.try_get("", "generation")?;
-    let schedule_digest_hex: String =
-        row.try_get("", "schedule_digest_hex")?;
+    let schedule_digest_hex: String = row.try_get("", "schedule_digest_hex")?;
     let source = match source.as_str() {
         "host_provided" => keyring::CommentsTcpDelegationKeyringSource::HostProvided,
         "file" => keyring::CommentsTcpDelegationKeyringSource::File,

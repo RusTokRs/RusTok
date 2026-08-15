@@ -59,10 +59,11 @@ pub async fn resolve(
     let tenant_id = req.extensions().tenant_context().map(|tenant| tenant.id);
 
     let response = base::resolve(State(ctx.clone()), req, next).await?;
-    if should_invalidate && response.status().is_success() {
-        if let Some(tenant_id) = tenant_id {
-            invalidate_tenant_channel_cache(&ctx, tenant_id).await;
-        }
+    if should_invalidate
+        && response.status().is_success()
+        && let Some(tenant_id) = tenant_id
+    {
+        invalidate_tenant_channel_cache(&ctx, tenant_id).await;
     }
 
     Ok(response)

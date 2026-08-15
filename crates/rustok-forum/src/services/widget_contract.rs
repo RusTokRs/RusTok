@@ -407,7 +407,7 @@ fn validate_optional_locale(
         ));
     }
     let length = trimmed.chars().count();
-    if length < FORUM_WIDGET_LOCALE_MIN_LENGTH || length > FORUM_WIDGET_LOCALE_MAX_LENGTH {
+    if !(FORUM_WIDGET_LOCALE_MIN_LENGTH..=FORUM_WIDGET_LOCALE_MAX_LENGTH).contains(&length) {
         issues.push(validation_issue(
             field,
             "invalid_length",

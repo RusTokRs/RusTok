@@ -99,8 +99,8 @@ fn pages_authoring_surface() -> AnyView {
                 <span class="text-xs text-muted-foreground">"Authenticated draft editing · changes save through Pages"</span>
             </nav>
             <rustok_pages_storefront::PagesAuthenticatedInlineEditSurface
-                pages_page_id=page_id
-                locale=locale
+                pages_page_id=page_id.clone()
+                locale=locale.clone()
                 class="min-h-[28rem] rounded-2xl border border-border bg-card p-4 shadow-sm".to_string()
             />
             <script

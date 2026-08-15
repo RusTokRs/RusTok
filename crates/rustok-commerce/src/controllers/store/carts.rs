@@ -402,18 +402,17 @@ pub async fn update_cart_line_item(
         })?;
     super::ensure_store_cart_access(&existing, customer_id)?;
     let event_bus = runtime.event_bus();
-    if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id) {
-        if let Some(variant_id) = existing_line_item.variant_id {
-            line_item_resolution::validate_store_line_item_quantity(
-                runtime.db(),
-                tenant.id,
-                variant_id,
-                input.quantity,
-                super::storefront_public_channel_slug_for_cart(&existing, &request_context)
-                    .as_deref(),
-            )
-            .await?;
-        }
+    if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id)
+        && let Some(variant_id) = existing_line_item.variant_id
+    {
+        line_item_resolution::validate_store_line_item_quantity(
+            runtime.db(),
+            tenant.id,
+            variant_id,
+            input.quantity,
+            super::storefront_public_channel_slug_for_cart(&existing, &request_context).as_deref(),
+        )
+        .await?;
     }
 
     let cart = if let Some(variant_id) = existing

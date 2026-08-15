@@ -10,17 +10,17 @@
 
 #![recursion_limit = "256"]
 
-#[cfg(not(feature = "blog-comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
 pub mod app;
-#[cfg(not(feature = "blog-comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
 pub mod entities;
-#[cfg(not(feature = "blog-comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
 pub mod modules;
-#[cfg(not(feature = "blog-comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
 pub mod pages;
-#[cfg(not(feature = "blog-comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
 pub mod shared;
-#[cfg(not(feature = "blog-comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "blog-comment-island")))]
 pub mod widgets;
 
 #[cfg(all(feature = "blog-comment-island", target_arch = "wasm32"))]

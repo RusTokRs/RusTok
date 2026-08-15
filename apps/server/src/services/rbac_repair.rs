@@ -54,18 +54,18 @@ impl RbacService {
         for affected in &effective_affected_users {
             Self::invalidate_user_rbac_caches(&affected.tenant_id, &affected.user_id).await;
         }
-        if let Some(durable_generation) = durable_generation {
-            if let Err(error) = publish_all_rbac_invalidation(durable_generation).await {
-                tracing::warn!(
-                    %error,
-                    durable_generation,
-                    "System-role repair fast RBAC invalidation fan-out failed; durable generation reconciliation will recover"
-                );
-                rustok_telemetry::metrics::record_event_error(
-                    "rbac.permissions.durable_generation.v1",
-                    "post_commit_fanout",
-                );
-            }
+        if let Some(durable_generation) = durable_generation
+            && let Err(error) = publish_all_rbac_invalidation(durable_generation).await
+        {
+            tracing::warn!(
+                %error,
+                durable_generation,
+                "System-role repair fast RBAC invalidation fan-out failed; durable generation reconciliation will recover"
+            );
+            rustok_telemetry::metrics::record_event_error(
+                "rbac.permissions.durable_generation.v1",
+                "post_commit_fanout",
+            );
         }
         report.affected_users = effective_affected_users;
         report.runtime_restart_required = false;

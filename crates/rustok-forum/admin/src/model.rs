@@ -220,12 +220,13 @@ pub fn category_drop_move_request(
         {
             return Err("A category cannot be moved into its own subtree".to_string());
         }
-        if let Some(parent) = by_id.get(destination_parent_id).copied() {
-            if parent.is_archived && !dragged.is_archived {
-                return Err(
-                    "An active category cannot be moved beneath an archived category".to_string(),
-                );
-            }
+        if let Some(parent) = by_id.get(destination_parent_id).copied()
+            && parent.is_archived
+            && !dragged.is_archived
+        {
+            return Err(
+                "An active category cannot be moved beneath an archived category".to_string(),
+            );
         }
     }
 

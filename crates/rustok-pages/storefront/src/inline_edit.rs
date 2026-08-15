@@ -75,7 +75,11 @@ pub async fn commit_pages_inline_edit(
     pages_inline_edit_commit(request).await
 }
 
-#[server(prefix = "/api/fn", endpoint = "pages/inline-edit/bootstrap")]
+#[server(
+    PagesInlineEditBootstrapServerFn,
+    prefix = "/api/fn",
+    endpoint = "pages/inline-edit/bootstrap"
+)]
 async fn pages_inline_edit_bootstrap(
     pages_page_id: String,
     locale: String,
@@ -105,7 +109,11 @@ async fn pages_inline_edit_bootstrap(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "pages/inline-edit/commit")]
+#[server(
+    PagesInlineEditCommitServerFn,
+    prefix = "/api/fn",
+    endpoint = "pages/inline-edit/commit"
+)]
 async fn pages_inline_edit_commit(
     request: InlineEditRequest,
 ) -> Result<PagesInlineEditBootstrap, ServerFnError> {

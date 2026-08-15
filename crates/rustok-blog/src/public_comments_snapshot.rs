@@ -103,7 +103,8 @@ pub async fn list_public_comments_with_snapshot(
             };
 
             if let Some(store) = snapshot_store {
-                if let Some(snapshot) = load_snapshot_best_effort(store.as_ref(), &identity).await {
+                let snapshot = load_snapshot_best_effort(store.as_ref(), &identity).await;
+                if let Some(snapshot) = snapshot {
                     return Ok(PublicCommentsRead {
                         availability,
                         cached_snapshot: true,

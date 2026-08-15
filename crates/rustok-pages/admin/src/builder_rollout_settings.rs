@@ -89,18 +89,14 @@ mod tests {
     #[test]
     fn rollout_profiles_only_narrow_browser_capabilities() {
         let full = CapabilityState::full();
-        let publish_off = pages_editor_capabilities_for_rollout(
-            full.clone(),
-            &BuilderToggleProfile::PublishOff.flags(),
-        );
+        let publish_off =
+            pages_editor_capabilities_for_rollout(full, &BuilderToggleProfile::PublishOff.flags());
         assert!(publish_off.edit);
         assert!(publish_off.properties);
         assert!(!publish_off.publish);
 
-        let preview_off = pages_editor_capabilities_for_rollout(
-            full.clone(),
-            &BuilderToggleProfile::PreviewOff.flags(),
-        );
+        let preview_off =
+            pages_editor_capabilities_for_rollout(full, &BuilderToggleProfile::PreviewOff.flags());
         assert!(preview_off.edit);
         assert!(preview_off.properties);
         assert!(!preview_off.publish);

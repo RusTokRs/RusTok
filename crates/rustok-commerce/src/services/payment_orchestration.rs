@@ -501,14 +501,13 @@ impl PaymentOrchestrationService {
             .provider_operation_journal
             .find_by_key(tenant_id, provider_id, idempotency_key)
             .await?
-        {
-            if matches!(
+            && matches!(
                 existing.status.as_str(),
                 PROVIDER_OPERATION_SUCCEEDED | PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-            ) {
-                mark_journal_committed(&self.provider_operation_journal, existing.id, operation)
-                    .await?;
-            }
+            )
+        {
+            mark_journal_committed(&self.provider_operation_journal, existing.id, operation)
+                .await?;
         }
         Ok(())
     }

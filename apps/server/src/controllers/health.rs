@@ -549,12 +549,11 @@ async fn check_event_transport(ctx: &ServerRuntimeContext) -> std::result::Resul
 
     if let Some(runtime) =
         ctx.shared_get::<Arc<crate::services::event_transport_factory::EventRuntime>>()
+        && runtime.relay_fallback_active
     {
-        if runtime.relay_fallback_active {
-            return Err(
-                "event relay target is degraded: fallback-to-memory mode is active".to_string(),
-            );
-        }
+        return Err(
+            "event relay target is degraded: fallback-to-memory mode is active".to_string(),
+        );
     }
 
     ctx.shared_get::<Arc<dyn EventTransport>>()
@@ -936,15 +935,15 @@ async fn circuit_open_for(name: &str) -> Option<u128> {
     let mut state = CIRCUITS.lock().await;
     let now = Instant::now();
 
-    if let Some(circuit) = state.get_mut(name) {
-        if let Some(open_until) = circuit.open_until {
-            if open_until > now {
-                return Some(open_until.duration_since(now).as_millis());
-            }
-
-            circuit.open_until = None;
-            circuit.consecutive_failures = 0;
+    if let Some(circuit) = state.get_mut(name)
+        && let Some(open_until) = circuit.open_until
+    {
+        if open_until > now {
+            return Some(open_until.duration_since(now).as_millis());
         }
+
+        circuit.open_until = None;
+        circuit.consecutive_failures = 0;
     }
 
     None

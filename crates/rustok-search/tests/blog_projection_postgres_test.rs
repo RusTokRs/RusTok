@@ -719,7 +719,7 @@ async fn count_blog_documents(
         ))
         .await?
         .expect("count query should return one row");
-    Ok(row.try_get("", "count")?)
+    row.try_get("", "count")
 }
 
 fn postgres_database_url() -> Option<String> {

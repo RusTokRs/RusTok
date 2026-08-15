@@ -686,9 +686,9 @@ fn replace_generated_file(
     }
     match fs::symlink_metadata(&path) {
         Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            return Err(StaticDistributionJobError::InvalidInput(
+            Err(StaticDistributionJobError::InvalidInput(
                 "generated output target is not a regular file".to_string(),
-            ));
+            ))
         }
         Ok(_) => overwrite_regular_file(&path, bytes),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound && create_parent => {

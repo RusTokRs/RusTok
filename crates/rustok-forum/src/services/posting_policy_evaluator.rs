@@ -269,36 +269,39 @@ impl ForumPostingPolicyEvaluator {
         match input.action {
             ForumPostingAction::CreateTopic => {
                 if let Some(limit) = rules.topic_create_limit {
-                    if let Some(decision) = evaluate_window(
+                    let decision = evaluate_window(
                         input.facts.topic_creates_window,
                         limit,
                         ForumPostingPolicyFactKind::TopicCreatesWindow,
                         ForumPostingPolicyDecisionReason::TopicRateLimit,
-                    )? {
+                    )?;
+                    if let Some(decision) = decision {
                         return Ok(decision);
                     }
                 }
             }
             ForumPostingAction::CreateReply => {
                 if let Some(limit) = rules.reply_create_limit {
-                    if let Some(decision) = evaluate_window(
+                    let decision = evaluate_window(
                         input.facts.reply_creates_window,
                         limit,
                         ForumPostingPolicyFactKind::ReplyCreatesWindow,
                         ForumPostingPolicyDecisionReason::ReplyRateLimit,
-                    )? {
+                    )?;
+                    if let Some(decision) = decision {
                         return Ok(decision);
                     }
                 }
             }
             ForumPostingAction::EditTopic | ForumPostingAction::EditReply => {
                 if let Some(limit) = rules.edit_limit {
-                    if let Some(decision) = evaluate_window(
+                    let decision = evaluate_window(
                         input.facts.edits_window,
                         limit,
                         ForumPostingPolicyFactKind::EditsWindow,
                         ForumPostingPolicyDecisionReason::EditRateLimit,
-                    )? {
+                    )?;
+                    if let Some(decision) = decision {
                         return Ok(decision);
                     }
                 }
@@ -322,35 +325,38 @@ impl ForumPostingPolicyEvaluator {
             }
         }
 
-        if let Some(maximum) = rules.maximum_links {
-            if input.candidate.link_count > maximum {
-                return count_denial(
-                    ForumPostingPolicyDecisionReason::LinkLimit,
-                    u32::from(input.candidate.link_count),
-                    u32::from(maximum),
-                    None,
-                );
-            }
+        if let Some(maximum) = rules
+            .maximum_links
+            .filter(|&max| input.candidate.link_count > max)
+        {
+            return count_denial(
+                ForumPostingPolicyDecisionReason::LinkLimit,
+                u32::from(input.candidate.link_count),
+                u32::from(maximum),
+                None,
+            );
         }
-        if let Some(maximum) = rules.maximum_mentions {
-            if input.candidate.mention_count > maximum {
-                return count_denial(
-                    ForumPostingPolicyDecisionReason::MentionLimit,
-                    u32::from(input.candidate.mention_count),
-                    u32::from(maximum),
-                    None,
-                );
-            }
+        if let Some(maximum) = rules
+            .maximum_mentions
+            .filter(|&max| input.candidate.mention_count > max)
+        {
+            return count_denial(
+                ForumPostingPolicyDecisionReason::MentionLimit,
+                u32::from(input.candidate.mention_count),
+                u32::from(maximum),
+                None,
+            );
         }
-        if let Some(maximum) = rules.maximum_attachments {
-            if input.candidate.attachment_count > maximum {
-                return count_denial(
-                    ForumPostingPolicyDecisionReason::AttachmentLimit,
-                    u32::from(input.candidate.attachment_count),
-                    u32::from(maximum),
-                    None,
-                );
-            }
+        if let Some(maximum) = rules
+            .maximum_attachments
+            .filter(|&max| input.candidate.attachment_count > max)
+        {
+            return count_denial(
+                ForumPostingPolicyDecisionReason::AttachmentLimit,
+                u32::from(input.candidate.attachment_count),
+                u32::from(maximum),
+                None,
+            );
         }
 
         Ok(ForumPostingPolicyDecision::allowed())

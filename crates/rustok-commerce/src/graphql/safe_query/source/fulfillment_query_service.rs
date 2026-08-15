@@ -10,12 +10,13 @@ impl FulfillmentService {
             crate::graphql_runtime::shipping_option_read_runtime_for_current_graphql_scope(
                 db.clone(),
             );
-        let fulfillment_lifecycle_runtime = crate::graphql_runtime::
-            fulfillment_lifecycle_read_runtime_for_current_graphql_scope(db);
+        let fulfillment_lifecycle_runtime =
+            crate::graphql_runtime::fulfillment_lifecycle_read_runtime_for_current_graphql_scope(
+                db,
+            );
         Self {
             shipping_option_reads: shipping_option_runtime.shipping_option_read_port(),
-            shipping_option_admin_reads: shipping_option_runtime
-                .shipping_option_admin_read_port(),
+            shipping_option_admin_reads: shipping_option_runtime.shipping_option_admin_read_port(),
             fulfillment_reads: fulfillment_lifecycle_runtime.fulfillment_read_port(),
         }
     }

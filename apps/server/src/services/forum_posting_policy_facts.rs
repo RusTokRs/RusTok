@@ -222,7 +222,7 @@ mod tests {
     }
 
     fn fixed_clock(now: DateTime<Utc>) -> AccountAgeClock {
-        Arc::new(move || now.clone())
+        Arc::new(move || now)
     }
 
     async fn insert_user(

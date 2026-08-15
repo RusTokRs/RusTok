@@ -385,7 +385,7 @@ mod tests {
     }
 
     fn test_graphql_error(error: async_graphql::Error) -> std::io::Error {
-        std::io::Error::new(std::io::ErrorKind::Other, format!("{error:?}"))
+        std::io::Error::other(format!("{error:?}"))
     }
 
     #[tokio::test]

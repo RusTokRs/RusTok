@@ -217,8 +217,8 @@ pub fn order_analytics_task_payload(
         "order_ids": order_ids,
         "date_from": date_from,
         "date_to": date_to,
-        "focus": focus.and_then(|value| optional_text(value)),
-        "assistant_prompt": assistant_prompt.and_then(|value| optional_text(value)),
+        "focus": focus.and_then(optional_text),
+        "assistant_prompt": assistant_prompt.and_then(optional_text),
     });
     serde_json::to_string(&payload)
 }
@@ -242,9 +242,9 @@ pub fn order_ops_assistant_task_payload(
     let order_id = uuid::Uuid::parse_str(order_id.trim()).map_err(invalid_input_error)?;
     let payload = serde_json::json!({
         "order_id": order_id,
-        "recommended_action": recommended_action.and_then(|value| optional_text(value)),
-        "context": context.and_then(|value| optional_text(value)),
-        "assistant_prompt": assistant_prompt.and_then(|value| optional_text(value)),
+        "recommended_action": recommended_action.and_then(optional_text),
+        "context": context.and_then(optional_text),
+        "assistant_prompt": assistant_prompt.and_then(optional_text),
     });
     serde_json::to_string(&payload)
 }
@@ -253,7 +253,7 @@ fn parse_optional_rfc3339(
     value: Option<String>,
 ) -> Result<Option<DateTime<Utc>>, serde_json::Error> {
     value
-        .and_then(|value| optional_text(value))
+        .and_then(optional_text)
         .map(|value| {
             DateTime::parse_from_rfc3339(value.as_str())
                 .map(|value| value.with_timezone(&Utc))

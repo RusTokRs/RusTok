@@ -151,15 +151,16 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
     }
 
     async fn record_execution(&self, result: &ExecutionResult, ctx: &ExecutionContext) {
-        if let Some(execution_log) = &self.execution_log {
-            if let Err(error) = execution_log.record_result(result, ctx).await {
-                warn!(
-                    script.id = %result.script_id,
-                    execution.id = %result.execution_id,
-                    error = %error,
-                    "Failed to persist Alloy execution log"
-                );
-            }
+        let Some(execution_log) = &self.execution_log else {
+            return;
+        };
+        if let Err(error) = execution_log.record_result(result, ctx).await {
+            warn!(
+                script.id = %result.script_id,
+                execution.id = %result.execution_id,
+                error = %error,
+                "Failed to persist Alloy execution log"
+            );
         }
     }
 }

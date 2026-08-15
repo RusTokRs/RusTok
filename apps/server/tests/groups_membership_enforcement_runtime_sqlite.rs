@@ -4,13 +4,13 @@ use std::time::Duration;
 
 use rustok_api::{PortActor, PortContext, PortErrorKind};
 use rustok_groups::{
-    GroupMembershipEnforcementCommandPort, GroupMembershipEnforcementCommandService, GroupRole,
+    GroupMembershipEnforcementCommandPort, GroupMembershipEnforcementCommandService,
     RevokeGroupMembershipSuspensionRequest, SuspendGroupMembershipRequest,
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
 };
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use tempfile::TempDir;
 use uuid::Uuid;
 

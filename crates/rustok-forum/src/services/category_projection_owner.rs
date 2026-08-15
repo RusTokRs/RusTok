@@ -1,8 +1,6 @@
 use std::ops::Deref;
 
-use super::category_route::{
-    FORUM_CATEGORY_RENAMED_ROUTE_REASON, ForumCategoryRouteService,
-};
+use super::category_route::{FORUM_CATEGORY_RENAMED_ROUTE_REASON, ForumCategoryRouteService};
 
 /// Transactional owner facade for category content mutations.
 ///
@@ -70,11 +68,7 @@ impl CategoryProjectionOwnerService {
         .await?;
 
         ForumCategoryRouteService::ensure_current_route_key_available_in_tx(
-            &txn,
-            tenant_id,
-            id,
-            &locale,
-            &slug,
+            &txn, tenant_id, id, &locale, &slug,
         )
         .await?;
         forum_category_translation::ActiveModel {

@@ -81,13 +81,12 @@ pub async fn enforce(
             next.run(request).await
         }
         RegistryOperation::ArtifactDownload => {
-            if !runner_token_is_valid(&ctx, &request) {
-                if let Err(response) =
+            if !runner_token_is_valid(&ctx, &request)
+                && let Err(response) =
                     authorize_user_access(&ctx, auth.as_ref(), request_id, PublishAccess::Manage)
                         .await
-                {
-                    return response;
-                }
+            {
+                return response;
             }
             next.run(request).await
         }

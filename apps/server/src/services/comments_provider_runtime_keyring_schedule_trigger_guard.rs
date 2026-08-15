@@ -4,11 +4,8 @@ use crate::error::Result;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 use super::{
-    keyring_schedule,
-    keyring_schedule_guard,
-    keyring_schedule_persisted_trigger,
-    keyring_schedule_postgres_audited_trigger,
-    keyring_schedule_trigger,
+    keyring_schedule, keyring_schedule_guard, keyring_schedule_persisted_trigger,
+    keyring_schedule_postgres_audited_trigger, keyring_schedule_trigger,
 };
 
 pub(super) fn register_comments_provider_runtime(

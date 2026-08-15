@@ -460,6 +460,9 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
     let editable_ids = inline_editable_component_ids(&project_data, &selection).unwrap_or_default();
     let rendered = render_authenticated_inline_page(project_data, selection, policy, context);
 
+    #[cfg(not(all(target_arch = "wasm32", feature = "hydrate")))]
+    let _ = (&on_request, &on_error, &editable_ids);
+
     #[cfg(all(target_arch = "wasm32", feature = "hydrate"))]
     {
         let subscription =
@@ -622,6 +625,14 @@ mod tests {
         .expect("grant")
     }
 
+    fn allow_auth(_: &AuthenticatedInlineEditRequest) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn deny_auth(_: &AuthenticatedInlineEditRequest) -> Result<(), String> {
+        Err("denied".to_string())
+    }
+
     #[test]
     fn only_noninteractive_static_leaf_text_outside_runtime_subtrees_is_editable() {
         let ids =
@@ -677,7 +688,7 @@ mod tests {
             .bind_request(1_000, 1, "heading", "Hello")
             .expect("request");
         assert!(matches!(
-            session.apply_authorized(unchanged, 1_000, &|_| Ok(())),
+            session.apply_authorized(unchanged, 1_000, &allow_auth),
             Err(InlineEditError::NoContentChange(_))
         ));
         assert_eq!(session.last_sequence, 0);
@@ -702,7 +713,7 @@ mod tests {
             .bind_request(1_000, 1, "heading", "Updated")
             .expect("request");
         assert!(matches!(
-            session.apply_authorized(rejected, 1_000, &|_| Err("denied".to_string())),
+            session.apply_authorized(rejected, 1_000, &deny_auth),
             Err(InlineEditError::AuthorizationRejected(_))
         ));
 
@@ -711,7 +722,7 @@ mod tests {
                 .bind_request(1_000, 1, component_id, "Changed")
                 .expect("request");
             assert!(matches!(
-                session.apply_authorized(request, 1_000, &|_| Ok(())),
+                session.apply_authorized(request, 1_000, &allow_auth),
                 Err(InlineEditError::ComponentNotInlineEditable(_))
             ));
         }
@@ -720,10 +731,10 @@ mod tests {
             .bind_request(1_000, 1, "heading", "Updated")
             .expect("request");
         session
-            .apply_authorized(first.clone(), 1_000, &|_| Ok(()))
+            .apply_authorized(first.clone(), 1_000, &allow_auth)
             .expect("first apply");
         assert!(matches!(
-            session.apply_authorized(first, 1_000, &|_| Ok(())),
+            session.apply_authorized(first, 1_000, &allow_auth),
             Err(InlineEditError::SequenceReplay { .. })
                 | Err(InlineEditError::StaleProjectHash { .. })
         ));

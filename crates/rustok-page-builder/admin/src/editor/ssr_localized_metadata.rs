@@ -89,12 +89,13 @@ impl AdminCanvasController {
                 continue;
             }
             let values = normalize_localized_metadata_values(&field, value)?;
-            if let Some(fallback_locale) = fallback_locale.as_deref() {
-                if !values.contains_key(fallback_locale) {
-                    return Err(format!(
-                        "localized metadata field `{field}` has no value for fallback locale `{fallback_locale}`"
-                    ));
-                }
+            if let Some(fallback_locale) = fallback_locale
+                .as_deref()
+                .filter(|fallback| !values.contains_key(*fallback))
+            {
+                return Err(format!(
+                    "localized metadata field `{field}` has no value for fallback locale `{fallback_locale}`"
+                ));
             }
             let mut wrapper = Map::new();
             wrapper.insert(LOCALIZED_VALUES_FIELD.to_string(), Value::Object(values));
@@ -317,7 +318,7 @@ fn page_label(page: &ProjectPage, index: usize, fallback: &str) -> String {
     page.extensions
         .get("name")
         .and_then(Value::as_str)
-        .or_else(|| page.id.as_deref())
+        .or(page.id.as_deref())
         .map(ToString::to_string)
         .unwrap_or_else(|| format!("{fallback} {}", index + 1))
 }

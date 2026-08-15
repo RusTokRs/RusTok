@@ -61,7 +61,7 @@ pub async fn configure_profile_media_public_image_deployment(
             insecure_loopback = remote.allow_insecure_loopback,
             "profile Media public-image deployment provider initialized"
         );
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(all(feature = "mod-profiles", feature = "mod-media")))]

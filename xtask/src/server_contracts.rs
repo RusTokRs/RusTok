@@ -115,25 +115,6 @@ fn optional_dependency_features(
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn optional_dependency_features_excludes_always_linked_modules() {
-        let server_features = HashMap::from([
-            ("mod-blog".to_string(), HashSet::new()),
-            ("mod-content".to_string(), HashSet::new()),
-        ]);
-        let dependencies = vec!["content".to_string(), "outbox".to_string()];
-
-        assert_eq!(
-            optional_dependency_features(&dependencies, &server_features),
-            HashSet::from(["mod-content".to_string()])
-        );
-    }
-}
-
 fn server_modules_registers_direct_entry(
     content: &str,
     slug: &str,
@@ -194,4 +175,23 @@ fn infer_server_registry_module_expr(
         spec.crate_name.replace('-', "_"),
         to_pascal_case(slug)
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn optional_dependency_features_excludes_always_linked_modules() {
+        let server_features = HashMap::from([
+            ("mod-blog".to_string(), HashSet::new()),
+            ("mod-content".to_string(), HashSet::new()),
+        ]);
+        let dependencies = vec!["content".to_string(), "outbox".to_string()];
+
+        assert_eq!(
+            optional_dependency_features(&dependencies, &server_features),
+            HashSet::from(["mod-content".to_string()])
+        );
+    }
 }

@@ -79,9 +79,7 @@ impl CommentsTcpDelegationScheduleAuditSourceDeadLetterInspection {
         self.attempt_count
     }
 
-    pub fn last_failure_code(
-        &self,
-    ) -> Option<CommentsTcpDelegationScheduleAuditSourceFailureCode> {
+    pub fn last_failure_code(&self) -> Option<CommentsTcpDelegationScheduleAuditSourceFailureCode> {
         self.last_failure_code
     }
 
@@ -242,13 +240,8 @@ impl fmt::Debug for PostgresCommentsTcpDelegationScheduleAuditSourceRetryPolicy 
 fn validate_claim(
     claim: CommentsTcpDelegationScheduleAuditHandoffClaim,
 ) -> std::result::Result<(), CommentsTcpDelegationScheduleAuditSourceRetryPolicyError> {
-    if claim.request_id().is_nil()
-        || claim.claim_token().is_nil()
-        || claim.attempt_count() <= 0
-    {
-        return Err(
-            CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState,
-        );
+    if claim.request_id().is_nil() || claim.claim_token().is_nil() || claim.attempt_count() <= 0 {
+        return Err(CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState);
     }
     Ok(())
 }
@@ -269,20 +262,22 @@ fn decode_failure_transition(
         CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState
     })?;
     if request_id.is_nil() || attempt_count <= 0 {
-        return Err(
-            CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState,
-        );
+        return Err(CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState);
     }
     if dead_lettered {
-        Ok(CommentsTcpDelegationScheduleAuditSourceFailureTransition::DeadLettered {
-            request_id,
-            attempt_count,
-        })
+        Ok(
+            CommentsTcpDelegationScheduleAuditSourceFailureTransition::DeadLettered {
+                request_id,
+                attempt_count,
+            },
+        )
     } else {
-        Ok(CommentsTcpDelegationScheduleAuditSourceFailureTransition::RetryScheduled {
-            request_id,
-            attempt_count,
-        })
+        Ok(
+            CommentsTcpDelegationScheduleAuditSourceFailureTransition::RetryScheduled {
+                request_id,
+                attempt_count,
+            },
+        )
     }
 }
 
@@ -298,23 +293,18 @@ fn decode_dead_letter(
     let attempt_count: i64 = row.try_get("", "handoff_attempt_count").map_err(|_| {
         CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState
     })?;
-    let last_failure_code: Option<String> = row
-        .try_get("", "handoff_last_failure_code")
-        .map_err(|_| {
+    let last_failure_code: Option<String> =
+        row.try_get("", "handoff_last_failure_code").map_err(|_| {
             CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState
         })?;
-    let reason: String = row
-        .try_get("", "handoff_dead_letter_reason")
-        .map_err(|_| {
-            CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState
-        })?;
+    let reason: String = row.try_get("", "handoff_dead_letter_reason").map_err(|_| {
+        CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState
+    })?;
     if request_id.is_nil()
         || attempt_count <= 0
         || reason != DEAD_LETTER_REASON_ATTEMPT_BUDGET_EXHAUSTED
     {
-        return Err(
-            CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState,
-        );
+        return Err(CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState);
     }
     let last_failure_code = last_failure_code
         .as_deref()
@@ -322,11 +312,13 @@ fn decode_dead_letter(
         .transpose_option()
         .ok_or(CommentsTcpDelegationScheduleAuditSourceRetryPolicyError::InvalidStoredState)?;
 
-    Ok(CommentsTcpDelegationScheduleAuditSourceDeadLetterInspection {
-        request_id,
-        attempt_count,
-        last_failure_code,
-    })
+    Ok(
+        CommentsTcpDelegationScheduleAuditSourceDeadLetterInspection {
+            request_id,
+            attempt_count,
+            last_failure_code,
+        },
+    )
 }
 
 trait TransposeOption<T> {

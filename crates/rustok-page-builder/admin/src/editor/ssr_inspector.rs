@@ -387,7 +387,7 @@ fn page_label(page: &ProjectPage, index: usize, page_fallback: &str) -> String {
     page.extensions
         .get("name")
         .and_then(serde_json::Value::as_str)
-        .or_else(|| page.id.as_deref())
+        .or(page.id.as_deref())
         .map(ToString::to_string)
         .unwrap_or_else(|| format!("{page_fallback} {}", index + 1))
 }

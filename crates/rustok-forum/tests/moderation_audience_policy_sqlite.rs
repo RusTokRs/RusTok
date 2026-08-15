@@ -409,14 +409,15 @@ async fn moderation_audience_gates_topic_reply_and_solution_owner_paths() {
         .await
         .expect("matching exact group facts should allow moderation");
     assert!(topic_model(&db, tenant_id, group_topic).await.is_locked);
-    let recorded = requests
-        .lock()
-        .expect("moderation facts requests should lock");
-    assert_eq!(recorded.len(), 1);
-    assert_eq!(recorded[0].tenant_id, tenant_id);
-    assert_eq!(recorded[0].user_id, allowed_admin_id);
-    assert_eq!(recorded[0].group_ids, vec![required_group_id]);
-    drop(recorded);
+    {
+        let recorded = requests
+            .lock()
+            .expect("moderation facts requests should lock");
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].tenant_id, tenant_id);
+        assert_eq!(recorded[0].user_id, allowed_admin_id);
+        assert_eq!(recorded[0].group_ids, vec![required_group_id]);
+    }
 
     let solution_category = create_category(
         &db,

@@ -594,7 +594,7 @@ async fn acquire_in_transaction(
         .await
         .map_err(storage_error)?;
     let mut claimable = None;
-    for row in rows {
+    if let Some(row) = rows.into_iter().next() {
         let stored = stored_job(&row, backend)?;
         validate_stored_request(&stored, request)?;
         match stored.state.as_str() {
@@ -616,7 +616,6 @@ async fn acquire_in_transaction(
             }
             "running" | "pending" => {
                 claimable = Some(stored);
-                break;
             }
             "failed" => {
                 return Err(IndexReconciliationRunError::DeadLettered {

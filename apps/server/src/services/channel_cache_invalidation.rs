@@ -502,10 +502,10 @@ pub async fn start_channel_cache_invalidation_listener(
     let initial_local = cache
         .invalidations()
         .subscribe_local_channel(CHANNEL_RESOLUTION_INVALIDATION_CHANNEL);
-    if let Err(error) = listener.reconcile_generation().await {
-        if !is_missing_generation_state(&error) {
-            tracing::warn!(%error, "Initial channel cache generation recovery deferred");
-        }
+    if let Err(error) = listener.reconcile_generation().await
+        && !is_missing_generation_state(&error)
+    {
+        tracing::warn!(%error, "Initial channel cache generation recovery deferred");
     }
 
     let first_local = Arc::new(Mutex::new(Some(initial_local)));

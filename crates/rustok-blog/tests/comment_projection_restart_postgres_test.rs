@@ -226,10 +226,9 @@ fn run_projection_worker(
     if status.success() {
         Ok(())
     } else {
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("Blog projection restart worker exited with status {status}"),
-        )
+        Err(io::Error::other(format!(
+            "Blog projection restart worker exited with status {status}"
+        ))
         .into())
     }
 }

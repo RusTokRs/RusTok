@@ -528,15 +528,13 @@ fn build_cyclonedx_sbom(
             "version": version,
             "properties": [{ "name": "rustok:cargo:source", "value": source }]
         });
-        if let Some(checksum) = package.get("checksum").and_then(toml::Value::as_str) {
-            if checksum.len() == 64
-                && checksum
-                    .bytes()
-                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-            {
-                component["hashes"] =
-                    serde_json::json!([{ "alg": "SHA-256", "content": checksum }]);
-            }
+        if let Some(checksum) = package.get("checksum").and_then(toml::Value::as_str)
+            && checksum.len() == 64
+            && checksum
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            component["hashes"] = serde_json::json!([{ "alg": "SHA-256", "content": checksum }]);
         }
         components.push(component);
     }

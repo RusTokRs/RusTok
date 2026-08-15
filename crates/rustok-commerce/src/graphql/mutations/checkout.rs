@@ -1,7 +1,7 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    AuthContext, PortActor, PortContext, RequestContext, PortError, PortErrorKind,
+    AuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
     graphql::require_module_enabled,
 };
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
@@ -40,10 +40,12 @@ fn shipping_option_command_context(
     )
     .with_idempotency_key(Uuid::new_v4().to_string())
     .with_deadline(std::time::Duration::from_secs(2));
-    Ok(match request.and_then(|request| request.channel_slug.as_deref()) {
-        Some(channel) => context.with_channel(channel),
-        None => context,
-    })
+    Ok(
+        match request.and_then(|request| request.channel_slug.as_deref()) {
+            Some(channel) => context.with_channel(channel),
+            None => context,
+        },
+    )
 }
 
 fn storefront_payment_collection_actor(auth: Option<&AuthContext>) -> PortActor {
@@ -174,11 +176,12 @@ impl CommerceCheckoutMutation {
                 operation = "resolve_store_context",
                 "storefront payment collection context resolution failed"
             );
-            async_graphql::Error::new("Store context is temporarily unavailable")
-                .extend_with(|_, extensions| {
+            async_graphql::Error::new("Store context is temporarily unavailable").extend_with(
+                |_, extensions| {
                     extensions.set("code", "store_context_unavailable");
                     extensions.set("retryable", true);
-                })
+                },
+            )
         })?;
 
         let read_context = storefront_payment_collection_read_context(
@@ -187,23 +190,23 @@ impl CommerceCheckoutMutation {
             request_context,
             ctx.data_opt::<AuthContext>(),
         );
-        if let Some(existing) = crate::graphql_runtime::payment_read_runtime_for_current_graphql_scope(
-            db.clone(),
-        )
-        .cart_read_port()
-        .find_reusable_collection_by_cart(
-            read_context.clone(),
-            ReusablePaymentCollectionByCartRequest { cart_id: cart.id },
-        )
-        .await
-        .map_err(|error| {
-            payment_collection_owner_graphql_error(
-                &read_context,
-                cart.id,
-                "find_reusable_collection_by_cart",
-                error,
-            )
-        })? {
+        if let Some(existing) =
+            crate::graphql_runtime::payment_read_runtime_for_current_graphql_scope(db.clone())
+                .cart_read_port()
+                .find_reusable_collection_by_cart(
+                    read_context.clone(),
+                    ReusablePaymentCollectionByCartRequest { cart_id: cart.id },
+                )
+                .await
+                .map_err(|error| {
+                    payment_collection_owner_graphql_error(
+                        &read_context,
+                        cart.id,
+                        "find_reusable_collection_by_cart",
+                        error,
+                    )
+                })?
+        {
             return Ok(existing.into());
         }
 
@@ -213,34 +216,32 @@ impl CommerceCheckoutMutation {
             request_context,
             ctx.data_opt::<AuthContext>(),
         );
-        let collection = crate::graphql_runtime::payment_command_runtime_from_context(
-            ctx,
-            db.clone(),
-        )
-        .collection_create_or_reuse_port()
-        .create_or_reuse_collection(
-            command_context.clone(),
-            PaymentCollectionCreateOrReuseRequest {
-                cart_id: Some(cart.id),
-                order_id: None,
-                customer_id: cart.customer_id,
-                currency_code: cart.currency_code.clone(),
-                amount: cart.total_amount,
-                metadata: merge_graphql_metadata(
-                    parse_optional_metadata(input.metadata.as_deref())?,
-                    cart_context_metadata(&cart, &store_context),
-                ),
-            },
-        )
-        .await
-        .map_err(|error| {
-            payment_collection_owner_graphql_error(
-                &command_context,
-                cart.id,
-                "create_or_reuse_collection",
-                error,
-            )
-        })?;
+        let collection =
+            crate::graphql_runtime::payment_command_runtime_from_context(ctx, db.clone())
+                .collection_create_or_reuse_port()
+                .create_or_reuse_collection(
+                    command_context.clone(),
+                    PaymentCollectionCreateOrReuseRequest {
+                        cart_id: Some(cart.id),
+                        order_id: None,
+                        customer_id: cart.customer_id,
+                        currency_code: cart.currency_code.clone(),
+                        amount: cart.total_amount,
+                        metadata: merge_graphql_metadata(
+                            parse_optional_metadata(input.metadata.as_deref())?,
+                            cart_context_metadata(&cart, &store_context),
+                        ),
+                    },
+                )
+                .await
+                .map_err(|error| {
+                    payment_collection_owner_graphql_error(
+                        &command_context,
+                        cart.id,
+                        "create_or_reuse_collection",
+                        error,
+                    )
+                })?;
 
         Ok(collection.into())
     }
@@ -398,9 +399,8 @@ impl CommerceCheckoutMutation {
                     .metadata
                     .as_deref()
                     .map(|value| {
-                        serde_json::from_str(value).map_err(|_| {
-                            async_graphql::Error::new("Invalid JSON metadata payload")
-                        })
+                        serde_json::from_str(value)
+                            .map_err(|_| async_graphql::Error::new("Invalid JSON metadata payload"))
                     })
                     .transpose()?,
             },

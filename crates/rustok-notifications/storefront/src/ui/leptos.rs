@@ -215,10 +215,10 @@ fn NotificationInboxWorkspace(
             {
                 match result {
                     Ok(page) => set_group_items.update(|state| {
-                        if let Some(state) = state.as_mut() {
-                            if state.group_key == group_key {
-                                state.append_page(page);
-                            }
+                        if let Some(state) =
+                            state.as_mut().filter(|state| state.group_key == group_key)
+                        {
+                            state.append_page(page);
                         }
                     }),
                     Err(error) => set_items_error.set(Some(error.to_string())),

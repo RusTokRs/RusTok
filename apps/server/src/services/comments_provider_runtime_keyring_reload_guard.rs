@@ -23,8 +23,7 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
         return keyring_reload::start_comments_tcp_listener_if_enabled(runtime_ctx).await;
     }
 
-    let Some(_) = base::CommentsTcpListenerConfig::from_environment()
-        .map_err(Error::BadRequest)?
+    let Some(_) = base::CommentsTcpListenerConfig::from_environment().map_err(Error::BadRequest)?
     else {
         return Ok(());
     };

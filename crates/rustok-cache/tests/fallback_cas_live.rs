@@ -59,14 +59,15 @@ async fn stop_redis(child: &mut Child) {
 }
 
 fn fast_recovery_options() -> CacheBackendOptions {
-    let mut options = CacheBackendOptions::default();
-    options.redis_circuit_breaker = CircuitBreakerConfig {
-        failure_threshold: 1,
-        success_threshold: 1,
-        timeout: Duration::from_millis(200),
-        half_open_max_requests: Some(1),
-    };
-    options
+    CacheBackendOptions {
+        redis_circuit_breaker: CircuitBreakerConfig {
+            failure_threshold: 1,
+            success_threshold: 1,
+            timeout: Duration::from_millis(200),
+            half_open_max_requests: Some(1),
+        },
+        ..Default::default()
+    }
 }
 
 async fn wait_for_backend_health(backend: &dyn rustok_core::CacheBackend) {

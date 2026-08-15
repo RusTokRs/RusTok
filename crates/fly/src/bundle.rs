@@ -1,6 +1,6 @@
 use crate::{
-    audit_page, validate_project, FlyError, FlyResult, GrapesJsCodec, PageLocator,
-    ProjectDocument, ProjectHash, RegistrySet, ValidationLimits, ValidationReport,
+    FlyError, FlyResult, GrapesJsCodec, PageLocator, ProjectDocument, ProjectHash, RegistrySet,
+    ValidationLimits, ValidationReport, audit_page, validate_project,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -114,7 +114,7 @@ pub fn decode_project_bundle_value(
         }
         let document = GrapesJsCodec::decode_value(value.clone())?;
         ProjectBundle {
-                    project_hash: document.hash().hex(),
+            project_hash: document.hash().hex(),
             project_data: value,
             metadata: BundleMetadata::default(),
             extensions: Map::new(),
@@ -123,7 +123,6 @@ pub fn decode_project_bundle_value(
         serde_json::from_value::<ProjectBundle>(value)
             .map_err(|error| FlyError::InvalidProjectBundle(error.to_string()))?
     };
-
 
     let document = GrapesJsCodec::decode_value(bundle.project_data.clone())?;
     let actual_hash = document.hash().hex();
@@ -225,14 +224,14 @@ mod tests {
         )
         .expect("export");
         let bytes = encode_project_bundle(&bundle, true).expect("encode");
-        let decoded = decode_project_bundle(&bytes, &BundleDecodePolicy::default())
-            .expect("decode");
+        let decoded =
+            decode_project_bundle(&bytes, &BundleDecodePolicy::default()).expect("decode");
         assert!(decoded.hash_matches);
         assert_eq!(decoded.bundle.metadata.name.as_deref(), Some("Landing"));
         assert_eq!(decoded.bundle.metadata.extensions["futureMeta"], true);
         assert_eq!(
-            GrapesJsCodec::encode_value(&decoded.document)
-                .expect("encode project")["futureProjectField"]["keep"],
+            GrapesJsCodec::encode_value(&decoded.document).expect("encode project")["futureProjectField"]
+                ["keep"],
             true
         );
     }
@@ -240,16 +239,16 @@ mod tests {
     #[test]
     fn raw_project_fallback_wraps_grapesjs_data() {
         let raw = GrapesJsCodec::encode_value(&document()).expect("raw project");
-        let decoded = decode_project_bundle_value(raw, &BundleDecodePolicy::default())
-            .expect("raw import");
+        let decoded =
+            decode_project_bundle_value(raw, &BundleDecodePolicy::default()).expect("raw import");
         assert!(decoded.imported_from_raw_project);
         assert!(decoded.hash_matches);
     }
 
     #[test]
     fn tampered_bundle_is_rejected_unless_policy_allows_it() {
-        let mut bundle = export_project_bundle(&document(), BundleMetadata::default())
-            .expect("export");
+        let mut bundle =
+            export_project_bundle(&document(), BundleMetadata::default()).expect("export");
         bundle.project_data["pages"][0]["id"] = json!("tampered");
         let value = serde_json::to_value(bundle).expect("bundle value");
         assert!(matches!(
@@ -269,8 +268,7 @@ mod tests {
 
     #[test]
     fn inspection_aggregates_validation_and_audit() {
-        let bundle = export_project_bundle(&document(), BundleMetadata::default())
-            .expect("export");
+        let bundle = export_project_bundle(&document(), BundleMetadata::default()).expect("export");
         let decoded = decode_project_bundle_value(
             serde_json::to_value(bundle).expect("bundle value"),
             &BundleDecodePolicy::default(),

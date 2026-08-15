@@ -6,13 +6,15 @@ pub fn render_head_html(context: &SeoPageContext) -> String {
     let route = &context.route;
     let document = &context.document;
 
-    if let Some(description) = document.description.as_deref() {
-        if !description.trim().is_empty() {
-            head.push_str(&format!(
-                r#"<meta name="description" content="{}" />"#,
-                html_escape(description)
-            ));
-        }
+    if let Some(description) = document
+        .description
+        .as_deref()
+        .filter(|d| !d.trim().is_empty())
+    {
+        head.push_str(&format!(
+            r#"<meta name="description" content="{}" />"#,
+            html_escape(description)
+        ));
     }
 
     if !route.canonical_url.trim().is_empty() {

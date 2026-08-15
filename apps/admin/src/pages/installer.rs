@@ -771,18 +771,18 @@ fn spawn_refresh_job(
 ) {
     spawn_local(async move {
         let result = transport::fetch_job(job_id, setup_token.clone()).await;
-        if let Ok(status) = &result {
-            if let Some(session_id) = status.session_id.filter(|_| {
+        if let Ok(status) = &result
+            && let Some(session_id) = status.session_id.filter(|_| {
                 matches!(
                     status.status,
                     transport::InstallJobState::Succeeded | transport::InstallJobState::Failed
                 )
-            }) {
-                set_receipts.set(Some(
-                    transport::fetch_receipts(session_id, setup_token).await,
-                ));
-                set_status_refresh.update(|value| *value += 1);
-            }
+            })
+        {
+            set_receipts.set(Some(
+                transport::fetch_receipts(session_id, setup_token).await,
+            ));
+            set_status_refresh.update(|value| *value += 1);
         }
         set_job_status.set(Some(result));
     });

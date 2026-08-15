@@ -363,9 +363,7 @@ fn text_like_matches(value: &str, pattern: &str) -> bool {
                 }
             }
             TextLikeToken::AnyOne => {
-                for index in 1..=value.len() {
-                    current[index] = previous[index - 1];
-                }
+                current[1..=value.len()].copy_from_slice(&previous[..value.len()]);
             }
             TextLikeToken::Literal(expected) => {
                 for index in 1..=value.len() {

@@ -191,7 +191,7 @@ mod cart_storefront_owner_boundary {
     fn optional_text_shape(value: Option<&str>) -> &'static str {
         match value {
             None => "absent",
-            Some(value) if value.is_empty() => "empty",
+            Some("") => "empty",
             Some(_) => "present",
         }
     }
@@ -201,7 +201,7 @@ mod cart_storefront_owner_boundary {
         operation: &'static str,
         result: Result<T, PortError>,
     ) -> Result<T, PortError> {
-        result.map_err(|error| {
+        result.inspect_err(|error| {
             let diagnostic_context = CartOwnerDiagnosticContext::from(context);
             let owner_code = error.code.clone();
             let owner_kind = error.kind.clone();
@@ -234,7 +234,6 @@ mod cart_storefront_owner_boundary {
                 boundary = CART_GRAPHQL_OWNER_BOUNDARY,
                 "commerce GraphQL storefront cart owner call failed"
             );
-            error
         })
     }
 
@@ -437,7 +436,7 @@ mod pricing_read_owner_boundary {
     fn optional_text_shape(value: Option<&str>) -> &'static str {
         match value {
             None => "absent",
-            Some(value) if value.is_empty() => "empty",
+            Some("") => "empty",
             Some(_) => "present",
         }
     }
@@ -447,7 +446,7 @@ mod pricing_read_owner_boundary {
         operation: &'static str,
         result: Result<T, PortError>,
     ) -> Result<T, PortError> {
-        result.map_err(|error| {
+        result.inspect_err(|error| {
             let diagnostic_context = PricingOwnerDiagnosticContext::from(context);
             let owner_code = error.code.clone();
             let owner_kind = error.kind.clone();
@@ -480,7 +479,6 @@ mod pricing_read_owner_boundary {
                 boundary = PRICING_GRAPHQL_OWNER_BOUNDARY,
                 "commerce GraphQL storefront cart pricing owner call failed"
             );
-            error
         })
     }
 

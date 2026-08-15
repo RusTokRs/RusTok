@@ -20,9 +20,8 @@ impl CategoryService {
                     .not_in_subquery(archived_category_ids_subquery(tenant_id)),
             );
         if !hidden_category_ids.is_empty() {
-            query = query.filter(
-                forum_category::Column::Id.is_not_in(hidden_category_ids.to_vec()),
-            );
+            query =
+                query.filter(forum_category::Column::Id.is_not_in(hidden_category_ids.to_vec()));
         }
         let paginator = query
             .order_by_asc(forum_category::Column::Position)

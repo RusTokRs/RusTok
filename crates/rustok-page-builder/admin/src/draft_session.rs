@@ -78,6 +78,10 @@ impl InMemorySsrDraftSessionStore {
             .map_err(|_| SsrDraftSessionError::Poisoned)
     }
 
+    pub fn is_empty(&self) -> Result<bool, SsrDraftSessionError> {
+        self.len().map(|len| len == 0)
+    }
+
     fn fresh_token(entries: &HashMap<String, DraftEntry>) -> String {
         loop {
             let token = Uuid::new_v4().simple().to_string();
@@ -124,8 +128,10 @@ impl InMemorySsrDraftSessionStore {
         let now = Instant::now();
         Self::prune_locked(&mut entries, now);
 
-        if let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) {
-            if let Some(entry) = entries.get_mut(token) {
+        let trimmed_token = token.map(str::trim).filter(|token| !token.is_empty());
+        if let Some(token) = trimmed_token {
+            let entry = entries.get_mut(token);
+            if let Some(entry) = entry {
                 if entry.controller.page_id() != controller.page_id() {
                     return Err(SsrDraftSessionError::PageMismatch {
                         expected: entry.controller.page_id().to_string(),

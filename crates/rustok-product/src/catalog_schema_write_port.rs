@@ -409,10 +409,10 @@ async fn finish_receipted_schema_write<T>(
         Err(error) => {
             let port_error = schema_write_error(context, operation, error);
             if !port_error.retryable {
-                if let Err(receipt_error) = service
+                let receipt_result = service
                     .fail_schema_operation_receipt(lease, &port_error)
-                    .await
-                {
+                    .await;
+                if let Err(receipt_error) = receipt_result {
                     tracing::error!(
                         correlation_id = %context.correlation_id,
                         tenant_id = %context.tenant_id,

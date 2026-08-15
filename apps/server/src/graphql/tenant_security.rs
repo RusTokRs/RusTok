@@ -146,17 +146,17 @@ fn collect_selection_set_tenant_arguments(
             }
             Selection::FragmentSpread(fragment) => {
                 let fragment_name = fragment.node.fragment_name.node.clone();
-                if visited_fragments.insert(fragment_name.clone()) {
-                    if let Some(definition) = document.fragments.get(&fragment_name) {
-                        collect_selection_set_tenant_arguments(
-                            &definition.node.selection_set.node,
-                            document,
-                            variables,
-                            defaults,
-                            visited_fragments,
-                            policy,
-                        );
-                    }
+                if visited_fragments.insert(fragment_name.clone())
+                    && let Some(definition) = document.fragments.get(&fragment_name)
+                {
+                    collect_selection_set_tenant_arguments(
+                        &definition.node.selection_set.node,
+                        document,
+                        variables,
+                        defaults,
+                        visited_fragments,
+                        policy,
+                    );
                 }
             }
             Selection::InlineFragment(fragment) => collect_selection_set_tenant_arguments(

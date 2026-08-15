@@ -39,27 +39,23 @@ pub async fn block_rest_auth_for_admin(
     let headers = req.headers();
 
     // Check User-Agent
-    if let Some(user_agent) = headers.get(header::USER_AGENT) {
-        if let Ok(ua_str) = user_agent.to_str() {
-            if ADMIN_USER_AGENTS
-                .iter()
-                .any(|&admin_ua| ua_str.contains(admin_ua))
-            {
-                // Admin panel trying to use REST auth - block it!
-                return Err(StatusCode::FORBIDDEN);
-            }
-        }
+    if let Some(user_agent) = headers.get(header::USER_AGENT)
+        && let Ok(ua_str) = user_agent.to_str()
+        && ADMIN_USER_AGENTS
+            .iter()
+            .any(|&admin_ua| ua_str.contains(admin_ua))
+    {
+        // Admin panel trying to use REST auth - block it!
+        return Err(StatusCode::FORBIDDEN);
     }
 
     // Check Referer (if coming from admin panel domain)
-    if let Some(referer) = headers.get(header::REFERER) {
-        if let Ok(referer_str) = referer.to_str() {
-            // Check if referer contains admin port or path
-            if referer_str.contains(":3001") || referer_str.contains("/admin") {
-                // Admin panel trying to use REST auth - block it!
-                return Err(StatusCode::FORBIDDEN);
-            }
-        }
+    if let Some(referer) = headers.get(header::REFERER)
+        && let Ok(referer_str) = referer.to_str()
+        && (referer_str.contains(":3001") || referer_str.contains("/admin"))
+    {
+        // Admin panel trying to use REST auth - block it!
+        return Err(StatusCode::FORBIDDEN);
     }
 
     // Not from admin panel, allow

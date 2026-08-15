@@ -590,12 +590,12 @@ fn validate_completion_shape(
     } else {
         None
     };
-    if let (Some(expected), Some(actual)) = (expected, input.resolution_type.as_deref()) {
-        if !actual.trim().eq_ignore_ascii_case(expected) {
-            return Err(PostOrderOrchestrationError::Validation(format!(
-                "{expected} helper requires resolution_type to be omitted or `{expected}`"
-            )));
-        }
+    if let (Some(expected), Some(actual)) = (expected, input.resolution_type.as_deref())
+        && !actual.trim().eq_ignore_ascii_case(expected)
+    {
+        return Err(PostOrderOrchestrationError::Validation(format!(
+            "{expected} helper requires resolution_type to be omitted or `{expected}`"
+        )));
     }
     Ok(())
 }

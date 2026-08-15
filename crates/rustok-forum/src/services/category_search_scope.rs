@@ -1,8 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -91,10 +89,7 @@ impl ForumSearchCategoryScopeService {
             .collect::<Vec<_>>();
         let archived_category_ids = forum_category_lifecycle::Entity::find()
             .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
-            .filter(
-                forum_category_lifecycle::Column::CategoryId
-                    .is_in(tenant_category_ids),
-            )
+            .filter(forum_category_lifecycle::Column::CategoryId.is_in(tenant_category_ids))
             .all(&self.db)
             .await?
             .into_iter()
@@ -111,10 +106,8 @@ impl ForumSearchCategoryScopeService {
             .copied()
             .collect::<HashSet<_>>();
 
-        let expanded_category_ids = hierarchy.expand_visible_subtrees(
-            &requested_category_ids,
-            &excluded_category_ids,
-        )?;
+        let expanded_category_ids =
+            hierarchy.expand_visible_subtrees(&requested_category_ids, &excluded_category_ids)?;
 
         Ok(ForumSearchCategoryScope {
             requested_category_ids,
@@ -275,12 +268,7 @@ impl CategoryHierarchy {
         expanded.push(category_id);
         if let Some(children) = self.children_by_parent.get(&category_id) {
             for child_id in children {
-                self.append_visible_preorder(
-                    *child_id,
-                    excluded_category_ids,
-                    visited,
-                    expanded,
-                )?;
+                self.append_visible_preorder(*child_id, excluded_category_ids, visited, expanded)?;
             }
         }
         Ok(())
@@ -336,11 +324,9 @@ mod tests {
 
     #[test]
     fn selected_descendant_of_excluded_ancestor_is_non_oracular() {
-        let hierarchy = CategoryHierarchy::from_ordered_nodes([
-            (id(1), None),
-            (id(2), Some(id(1))),
-        ])
-        .expect("valid hierarchy");
+        let hierarchy =
+            CategoryHierarchy::from_ordered_nodes([(id(1), None), (id(2), Some(id(1)))])
+                .expect("valid hierarchy");
 
         let error = hierarchy
             .expand_visible_subtrees(&[id(2)], &HashSet::from([id(1)]))
@@ -352,20 +338,18 @@ mod tests {
     #[test]
     fn raw_root_bound_is_checked_before_deduplication() {
         let repeated = vec![id(1); MAX_FORUM_SEARCH_CATEGORY_ROOTS + 1];
-        let error = normalize_requested_category_ids(&repeated)
-            .expect_err("raw roots must remain bounded");
+        let error =
+            normalize_requested_category_ids(&repeated).expect_err("raw roots must remain bounded");
 
         assert!(matches!(error, ForumError::Validation(message) if message.contains("at most")));
     }
 
     #[test]
     fn hierarchy_cycle_fails_closed() {
-        let error = CategoryHierarchy::from_ordered_nodes([
-            (id(1), Some(id(2))),
-            (id(2), Some(id(1))),
-        ])
-        .err()
-        .expect("cycle must fail");
+        let error =
+            CategoryHierarchy::from_ordered_nodes([(id(1), Some(id(2))), (id(2), Some(id(1)))])
+                .err()
+                .expect("cycle must fail");
 
         assert!(matches!(error, ForumError::Validation(message) if message.contains("cycle")));
     }

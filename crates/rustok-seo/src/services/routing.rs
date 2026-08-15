@@ -509,6 +509,57 @@ fn field_state(source: SeoFieldSource, present: bool) -> SeoFieldState {
     SeoFieldState { source, present }
 }
 
+pub(super) fn locale_prefixed_path(locale: &str, path: &str) -> String {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return path.to_string();
+    }
+    let path = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{path}")
+    };
+    if locale.trim().is_empty() {
+        path
+    } else if path == "/" {
+        format!("/{locale}")
+    } else {
+        format!("/{locale}{path}")
+    }
+}
+
+pub(super) fn canonical_url_for_locale(locale: &str, canonical_url: &str) -> String {
+    if canonical_url.starts_with("http://") || canonical_url.starts_with("https://") {
+        canonical_url.to_string()
+    } else {
+        locale_prefixed_path(locale, canonical_url)
+    }
+}
+
+pub(super) fn with_x_default(
+    mut alternates: Vec<SeoAlternateLink>,
+    x_default_locale: Option<&str>,
+    tenant_default_locale: &str,
+) -> Vec<SeoAlternateLink> {
+    let x_default_locale = x_default_locale
+        .and_then(rustok_api::normalize_locale_tag)
+        .unwrap_or_else(|| tenant_default_locale.to_string());
+    for alternate in &mut alternates {
+        alternate.x_default = alternate.locale == x_default_locale;
+    }
+    if let Some(href) = alternates
+        .iter()
+        .find(|item| item.locale == x_default_locale)
+        .map(|item| item.href.clone())
+    {
+        alternates.push(SeoAlternateLink {
+            locale: "x-default".to_string(),
+            href,
+            x_default: true,
+        });
+    }
+    alternates
+}
+
 #[cfg(test)]
 mod tests {
     use crate::migrations as seo_migrations;
@@ -913,55 +964,4 @@ mod tests {
         );
         assert_eq!(with_channel.document.title, "Mobile release notes");
     }
-}
-
-pub(super) fn locale_prefixed_path(locale: &str, path: &str) -> String {
-    if path.starts_with("http://") || path.starts_with("https://") {
-        return path.to_string();
-    }
-    let path = if path.starts_with('/') {
-        path.to_string()
-    } else {
-        format!("/{path}")
-    };
-    if locale.trim().is_empty() {
-        path
-    } else if path == "/" {
-        format!("/{locale}")
-    } else {
-        format!("/{locale}{path}")
-    }
-}
-
-pub(super) fn canonical_url_for_locale(locale: &str, canonical_url: &str) -> String {
-    if canonical_url.starts_with("http://") || canonical_url.starts_with("https://") {
-        canonical_url.to_string()
-    } else {
-        locale_prefixed_path(locale, canonical_url)
-    }
-}
-
-pub(super) fn with_x_default(
-    mut alternates: Vec<SeoAlternateLink>,
-    x_default_locale: Option<&str>,
-    tenant_default_locale: &str,
-) -> Vec<SeoAlternateLink> {
-    let x_default_locale = x_default_locale
-        .and_then(rustok_api::normalize_locale_tag)
-        .unwrap_or_else(|| tenant_default_locale.to_string());
-    for alternate in &mut alternates {
-        alternate.x_default = alternate.locale == x_default_locale;
-    }
-    if let Some(href) = alternates
-        .iter()
-        .find(|item| item.locale == x_default_locale)
-        .map(|item| item.href.clone())
-    {
-        alternates.push(SeoAlternateLink {
-            locale: "x-default".to_string(),
-            href,
-            x_default: true,
-        });
-    }
-    alternates
 }

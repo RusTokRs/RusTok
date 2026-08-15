@@ -89,10 +89,11 @@ impl ForumVisibilityScopedReadStateService {
         validate_visibility_bulk_context(tenant_id, &context)?;
         let limit = validated_bulk_read_limit(input.limit)?;
 
-        let route_scope = super::topic_visibility::ForumTopicVisibilityScope::storefront_for_viewer(
-            context.channel.as_deref(),
-            true,
-        )?;
+        let route_scope =
+            super::topic_visibility::ForumTopicVisibilityScope::storefront_for_viewer(
+                context.channel.as_deref(),
+                true,
+            )?;
         let channel_slug = route_scope.channel_slug().map(str::to_string);
         let channel_scope_token = visibility_channel_scope_token(channel_slug.as_deref());
         let cursor = input
@@ -110,7 +111,7 @@ impl ForumVisibilityScopedReadStateService {
             .transpose()?;
         let snapshot_at = cursor
             .as_ref()
-            .map(|cursor| cursor.snapshot_at.clone())
+            .map(|cursor| cursor.snapshot_at)
             .unwrap_or_else(|| Utc::now().into());
 
         let topic_viewer =
@@ -147,17 +148,17 @@ impl ForumVisibilityScopedReadStateService {
         let mut select = forum_topic::Entity::find()
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .filter(forum_topic::Column::Status.ne(TopicStatus::Archived))
-            .filter(forum_topic::Column::CreatedAt.lte(snapshot_at.clone()));
+            .filter(forum_topic::Column::CreatedAt.lte(snapshot_at));
         if let Some(category_ids) = category_ids {
             select = select.filter(forum_topic::Column::CategoryId.is_in(category_ids));
         }
         if let Some(cursor) = cursor.as_ref() {
             select = select.filter(
                 Condition::any()
-                    .add(forum_topic::Column::CreatedAt.gt(cursor.created_at.clone()))
+                    .add(forum_topic::Column::CreatedAt.gt(cursor.created_at))
                     .add(
                         Condition::all()
-                            .add(forum_topic::Column::CreatedAt.eq(cursor.created_at.clone()))
+                            .add(forum_topic::Column::CreatedAt.eq(cursor.created_at))
                             .add(forum_topic::Column::Id.gt(cursor.topic_id)),
                     ),
             );
@@ -174,20 +175,14 @@ impl ForumVisibilityScopedReadStateService {
         let has_more = candidates.len() > limit as usize;
         candidates.truncate(limit as usize);
 
-        let visibility =
-            super::topic_audience_visibility::ForumTopicAudienceVisibilityService::new(
-                self.db.clone(),
-                self.audience_facts.clone(),
-            );
+        let visibility = super::topic_audience_visibility::ForumTopicAudienceVisibilityService::new(
+            self.db.clone(),
+            self.audience_facts.clone(),
+        );
         let mut visible_topic_ids = Vec::with_capacity(candidates.len());
         for topic in &candidates {
             if visibility
-                .is_topic_visible(
-                    tenant_id,
-                    topic.id,
-                    channel_slug.as_deref(),
-                    &topic_viewer,
-                )
+                .is_topic_visible(tenant_id, topic.id, channel_slug.as_deref(), &topic_viewer)
                 .await?
             {
                 visible_topic_ids.push(topic.id);
@@ -196,14 +191,9 @@ impl ForumVisibilityScopedReadStateService {
 
         if !visible_topic_ids.is_empty() {
             let write_txn = self.db.begin().await?;
-            lock_active_topic_read_state_writes_in_tx(
-                &write_txn,
-                tenant_id,
-                &visible_topic_ids,
-            )
-            .await?;
-            lock_topic_read_state_scopes_in_tx(&write_txn, tenant_id, &visible_topic_ids)
+            lock_active_topic_read_state_writes_in_tx(&write_txn, tenant_id, &visible_topic_ids)
                 .await?;
+            lock_topic_read_state_scopes_in_tx(&write_txn, tenant_id, &visible_topic_ids).await?;
             let public_positions =
                 latest_public_positions_in_tx(&write_txn, tenant_id, &visible_topic_ids).await?;
             let topic_revisions =

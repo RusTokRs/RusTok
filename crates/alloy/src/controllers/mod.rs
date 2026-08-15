@@ -974,7 +974,7 @@ mod tests {
             scripts_manage_actor(
                 Some(Extension(AuthContextExtension(auth(
                     Uuid::new_v4(),
-                    vec![manage.clone()]
+                    vec![manage]
                 )))),
                 &context,
                 "test operation",

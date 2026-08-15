@@ -1,19 +1,10 @@
-use std::{
-    collections::HashSet,
-    fmt,
-    fs::File,
-    io::Read,
-    path::Path,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashSet, fmt, fs::File, io::Read, path::Path, sync::Arc, time::Duration};
 
 use rustok_comments::{
     CommentsTcpDelegationKeyId, CommentsTcpDelegationKeyringProvider,
-    CommentsTcpDelegationSchedule, CommentsTcpDelegationScheduledKey,
-    CommentsTcpDelegationSecret, DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS,
-    MAX_COMMENTS_TCP_DELEGATION_KEYS, MAX_COMMENTS_TCP_DELEGATION_PROPAGATION_BUDGET_MS,
-    MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
+    CommentsTcpDelegationSchedule, CommentsTcpDelegationScheduledKey, CommentsTcpDelegationSecret,
+    DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS, MAX_COMMENTS_TCP_DELEGATION_KEYS,
+    MAX_COMMENTS_TCP_DELEGATION_PROPAGATION_BUDGET_MS, MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -196,8 +187,7 @@ impl CommentsTcpDelegationSchedulePersistenceDocument {
     ) -> std::result::Result<Self, String> {
         if generation == 0 {
             return Err(
-                "Comments TCP persisted schedule generation must be greater than zero"
-                    .to_string(),
+                "Comments TCP persisted schedule generation must be greater than zero".to_string(),
             );
         }
         if keys.is_empty() || keys.len() > MAX_COMMENTS_TCP_DELEGATION_KEYS {
@@ -210,8 +200,7 @@ impl CommentsTcpDelegationSchedulePersistenceDocument {
                 "Comments TCP persisted schedule propagation budget is invalid".to_string()
             })?;
         if propagation_budget_ms == 0
-            || propagation_budget_ms
-                > MAX_COMMENTS_TCP_DELEGATION_PROPAGATION_BUDGET_MS
+            || propagation_budget_ms > MAX_COMMENTS_TCP_DELEGATION_PROPAGATION_BUDGET_MS
         {
             return Err(format!(
                 "Comments TCP persisted schedule propagation budget must be within 1..={MAX_COMMENTS_TCP_DELEGATION_PROPAGATION_BUDGET_MS} milliseconds"
@@ -222,9 +211,7 @@ impl CommentsTcpDelegationSchedulePersistenceDocument {
         let mut activations = HashSet::with_capacity(keys.len());
         for key in &keys {
             if !ids.insert(key.key_id.as_str()) {
-                return Err(
-                    "Comments TCP persisted schedule key IDs must be unique".to_string(),
-                );
+                return Err("Comments TCP persisted schedule key IDs must be unique".to_string());
             }
             if !activations.insert(key.activates_at_unix_ms) {
                 return Err(
@@ -239,8 +226,7 @@ impl CommentsTcpDelegationSchedulePersistenceDocument {
             })?;
             if !ids.contains(legacy_key_id) {
                 return Err(
-                    "Comments TCP persisted legacy key ID must exist in the schedule"
-                        .to_string(),
+                    "Comments TCP persisted legacy key ID must exist in the schedule".to_string(),
                 );
             }
         }
@@ -304,9 +290,7 @@ impl CommentsTcpDelegationSchedulePersistenceDocument {
                     key.retires_at_unix_ms,
                 )
                 .map_err(|error| {
-                    format!(
-                        "Comments TCP persisted schedule key lifecycle is invalid: {error}"
-                    )
+                    format!("Comments TCP persisted schedule key lifecycle is invalid: {error}")
                 })?,
             );
         }
@@ -424,10 +408,7 @@ pub(super) fn load_prepared_schedule_from_file(
         keys,
         document.legacy_unkeyed_key_id,
     )?
-    .prepare(
-        keyring::CommentsTcpDelegationKeyringSource::File,
-        max_ttl,
-    )
+    .prepare(keyring::CommentsTcpDelegationKeyringSource::File, max_ttl)
 }
 
 fn read_bounded_schedule_file(file_path: &Path) -> std::result::Result<Vec<u8>, String> {
@@ -475,9 +456,7 @@ fn read_bounded_schedule_file(file_path: &Path) -> std::result::Result<Vec<u8>, 
                 keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV
             )
         })?;
-    if bytes.is_empty()
-        || bytes.len() > keyring::MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES
-    {
+    if bytes.is_empty() || bytes.len() > keyring::MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES {
         return Err(format!(
             "{} file size must be within 1..={} bytes",
             keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV,

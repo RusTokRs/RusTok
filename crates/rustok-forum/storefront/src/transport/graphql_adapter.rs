@@ -342,51 +342,44 @@ pub async fn fetch_storefront_forum_graphql(
     let resolved_topic_id =
         selected_topic_id.or_else(|| topics.items.first().map(|item| item.id.clone()));
 
-    if selected_topic.is_none() {
-        if let Some(topic_id) = resolved_topic_id.clone() {
-            let response: StorefrontForumTopicResponse = request(
-                STOREFRONT_FORUM_TOPIC_QUERY,
-                TopicVariables {
-                    tenant_id: None,
-                    id: topic_id,
-                    locale: locale.clone(),
-                },
-            )
-            .await?;
-            selected_topic = response.forum_storefront_topic;
-        }
+    if selected_topic.is_none()
+        && let Some(topic_id) = resolved_topic_id.clone()
+    {
+        let response: StorefrontForumTopicResponse = request(
+            STOREFRONT_FORUM_TOPIC_QUERY,
+            TopicVariables {
+                tenant_id: None,
+                id: topic_id,
+                locale: locale.clone(),
+            },
+        )
+        .await?;
+        selected_topic = response.forum_storefront_topic;
     }
 
-    let replies = if selected_topic.is_some() {
-        if let Some(topic_id) = resolved_topic_id.clone() {
-            let response: StorefrontForumRepliesResponse = request(
-                STOREFRONT_FORUM_REPLIES_QUERY,
-                RepliesVariables {
-                    tenant_id: None,
-                    topic_id,
-                    locale: locale.clone(),
-                    pagination: PaginationInput {
-                        offset: 0,
-                        limit: 20,
-                    },
+    let replies = if selected_topic.is_some()
+        && let Some(topic_id) = resolved_topic_id.clone()
+    {
+        let response: StorefrontForumRepliesResponse = request(
+            STOREFRONT_FORUM_REPLIES_QUERY,
+            RepliesVariables {
+                tenant_id: None,
+                topic_id,
+                locale: locale.clone(),
+                pagination: PaginationInput {
+                    offset: 0,
+                    limit: 20,
                 },
-            )
-            .await?;
-            response.forum_storefront_replies
-        } else {
-            empty_replies()
-        }
+            },
+        )
+        .await?;
+        response.forum_storefront_replies
     } else {
         empty_replies()
     };
 
-    let member_cards = load_storefront_member_cards(
-        &topics,
-        selected_topic.as_ref(),
-        &replies,
-        locale,
-    )
-    .await?;
+    let member_cards =
+        load_storefront_member_cards(&topics, selected_topic.as_ref(), &replies, locale).await?;
 
     Ok(StorefrontForumData {
         categories: categories_response.forum_storefront_categories,
@@ -436,7 +429,12 @@ fn storefront_author_ids(
         .iter()
         .filter_map(|topic| topic.author_id.as_ref())
         .chain(selected_topic.and_then(|topic| topic.author_id.as_ref()))
-        .chain(replies.items.iter().filter_map(|reply| reply.author_id.as_ref()))
+        .chain(
+            replies
+                .items
+                .iter()
+                .filter_map(|reply| reply.author_id.as_ref()),
+        )
     {
         if seen.insert(author_id.clone()) {
             user_ids.push(author_id.clone());

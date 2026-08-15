@@ -65,10 +65,10 @@ impl RegistryPrincipalRef {
 
     pub fn from_legacy_value(value: &str) -> Self {
         let normalized = value.trim();
-        if let Some(raw) = normalized.strip_prefix("user:") {
-            if let Ok(user_id) = Uuid::parse_str(raw) {
-                return Self::user(user_id);
-            }
+        if let Some(raw) = normalized.strip_prefix("user:")
+            && let Ok(user_id) = Uuid::parse_str(raw)
+        {
+            return Self::user(user_id);
         }
         if let Some(runner_id) = normalized.strip_prefix("remote-runner:") {
             return Self::runner(runner_id);

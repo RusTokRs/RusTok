@@ -153,13 +153,7 @@ impl ForumCategoryAudienceReadService {
             return Err(ForumError::CategoryNotFound(category_id));
         }
         self.category_service
-            .get_with_locale_fallback(
-                tenant_id,
-                security,
-                category_id,
-                locale,
-                fallback_locale,
-            )
+            .get_with_locale_fallback(tenant_id, security, category_id, locale, fallback_locale)
             .await
     }
 
@@ -306,9 +300,7 @@ impl ForumCategoryAudienceReadService {
                 }
             }
 
-            let scanned = candidate_page
-                .checked_mul(FORUM_CATEGORY_AUDIENCE_SCAN_PAGE_SIZE)
-                .unwrap_or(u64::MAX);
+            let scanned = candidate_page.saturating_mul(FORUM_CATEGORY_AUDIENCE_SCAN_PAGE_SIZE);
             if scanned >= candidate_total {
                 break;
             }
@@ -333,7 +325,10 @@ impl ForumCategoryAudienceReadService {
         let viewer = ForumCategoryAudienceViewer::authenticated(security.clone(), context)?;
         query.locale = Some(locale);
 
-        let mut tree = self.category_service.tree(tenant_id, security, query).await?;
+        let mut tree = self
+            .category_service
+            .tree(tenant_id, security, query)
+            .await?;
         let mut category_ids = Vec::with_capacity(tree.total_nodes as usize);
         collect_category_ids(&tree.roots, &mut category_ids);
         if category_ids.len() > MAX_FORUM_CATEGORY_TREE_NODES as usize {

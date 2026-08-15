@@ -66,7 +66,7 @@ pub fn AdminCanvas(
     let consumer_properties = facade
         .as_ref()
         .and_then(|facade| facade.consumer_properties())
-        .or_else(|| use_context::<Arc<ConsumerPropertyEditorRuntime>>());
+        .or_else(use_context::<Arc<ConsumerPropertyEditorRuntime>>);
     let consumer_property_assembly = contribution_assembly.clone();
     let contribution_property_assembly = contribution_assembly.clone();
     let contribution_preview_assembly = contribution_assembly.clone();

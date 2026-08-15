@@ -799,7 +799,7 @@ impl CommerceQuery {
             .find_reusable_collection_by_cart(tenant.id, cart.id)
             .await
             .map(|collection| collection.map(Into::into))
-            .map_err(|err| err.to_string().into())
+            .map_err(|err| async_graphql::Error::new(err.to_string()))
     }
 
     async fn order(
@@ -831,7 +831,7 @@ impl CommerceQuery {
         {
             Ok(order) => order,
             Err(rustok_order::error::OrderError::OrderNotFound(_)) => return Ok(None),
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let payment_collection = PaymentService::new(db.clone())
             .find_latest_collection_by_order(tenant_id, id)
@@ -919,7 +919,7 @@ impl CommerceQuery {
         {
             Ok(item) => item,
             Err(rustok_order::error::OrderError::OrderChangeNotFound(_)) => return Ok(None),
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
 
         Ok(Some(item.into()))
@@ -993,7 +993,7 @@ impl CommerceQuery {
         {
             Ok(item) => item,
             Err(rustok_order::error::OrderError::OrderReturnNotFound(_)) => return Ok(None),
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
 
         Ok(Some(item.into()))
@@ -1066,7 +1066,7 @@ impl CommerceQuery {
             Err(rustok_payment::error::PaymentError::PaymentCollectionNotFound(_)) => {
                 return Ok(None);
             }
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
 
         Ok(Some(collection.into()))
@@ -1140,7 +1140,7 @@ impl CommerceQuery {
         {
             Ok(refund) => refund,
             Err(rustok_payment::error::PaymentError::RefundNotFound(_)) => return Ok(None),
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
 
         Ok(Some(refund.into()))
@@ -1221,7 +1221,7 @@ impl CommerceQuery {
             Err(rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_)) => {
                 return Ok(None);
             }
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
 
         Ok(Some(option.into()))
@@ -1254,7 +1254,7 @@ impl CommerceQuery {
         {
             Ok(profile) => profile,
             Err(CommerceError::ShippingProfileNotFound(_)) => return Ok(None),
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
 
         Ok(Some(profile.into()))
@@ -1398,7 +1398,7 @@ impl CommerceQuery {
             Err(rustok_fulfillment::error::FulfillmentError::FulfillmentNotFound(_)) => {
                 return Ok(None);
             }
-            Err(err) => return Err(err.to_string().into()),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
 
         Ok(Some(fulfillment.into()))
@@ -1483,7 +1483,8 @@ impl CommerceQuery {
             format!("commerce-graphql-product:legacy-product:{id}"),
         )
         .with_deadline(std::time::Duration::from_secs(2));
-        let port_context = match request_context.and_then(|context| context.channel_slug.as_deref()) {
+        let port_context = match request_context.and_then(|context| context.channel_slug.as_deref())
+        {
             Some(channel) => port_context.with_channel(channel),
             None => port_context,
         };
@@ -1560,7 +1561,8 @@ impl CommerceQuery {
             format!("commerce-graphql-product:legacy-products:{page}:{per_page}"),
         )
         .with_deadline(std::time::Duration::from_secs(2));
-        let port_context = match request_context.and_then(|context| context.channel_slug.as_deref()) {
+        let port_context = match request_context.and_then(|context| context.channel_slug.as_deref())
+        {
             Some(channel) => port_context.with_channel(channel),
             None => port_context,
         };
@@ -1747,12 +1749,8 @@ impl CommerceQuery {
             locale,
             "product_attribute_schemas",
         );
-        let schema_read_port = product_schema_read_port(
-            db,
-            event_bus,
-            &port_context,
-            "product_attribute_schemas",
-        )?;
+        let schema_read_port =
+            product_schema_read_port(db, event_bus, &port_context, "product_attribute_schemas")?;
         let items = schema_read_port
             .list_schemas(port_context.clone())
             .await
@@ -1891,12 +1889,8 @@ impl CommerceQuery {
             locale,
             "product_attribute_values",
         );
-        let schema_read_port = product_schema_read_port(
-            db,
-            event_bus,
-            &port_context,
-            "product_attribute_values",
-        )?;
+        let schema_read_port =
+            product_schema_read_port(db, event_bus, &port_context, "product_attribute_values")?;
         schema_read_port
             .read_product_attribute_values(
                 port_context.clone(),
@@ -2216,7 +2210,7 @@ async fn load_storefront_customer_order(
     {
         Ok(order) => order,
         Err(rustok_order::error::OrderError::OrderNotFound(_)) => return Ok(None),
-        Err(err) => return Err(err.to_string().into()),
+        Err(err) => return Err(async_graphql::Error::new(err.to_string())),
     };
 
     if order.customer_id != Some(customer.id) {

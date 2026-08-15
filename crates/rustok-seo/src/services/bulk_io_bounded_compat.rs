@@ -6,9 +6,7 @@ impl SeoService {
         // but let every poll advance at most one bounded job from each durable SEO queue.
         let bulk_result = self.execute_next_bulk_job_only_with_bounded_io().await;
         let sitemap_result = self.execute_next_sitemap_job_background().await;
-        let index_result = self
-            .execute_next_index_repair_replay_job_background()
-            .await;
+        let index_result = self.execute_next_index_repair_replay_job_background().await;
 
         if let Ok(Some(job)) = &sitemap_result {
             tracing::info!(
@@ -92,10 +90,7 @@ impl SeoService {
         self.bulk_job(running.tenant_id, running.id).await
     }
 
-    async fn execute_export_job_chunk_compat(
-        &self,
-        job: &seo_bulk_job::Model,
-    ) -> SeoResult<()> {
+    async fn execute_export_job_chunk_compat(&self, job: &seo_bulk_job::Model) -> SeoResult<()> {
         let tenant = self.load_tenant_context(job.tenant_id).await?;
         let payload = self.decode_bounded_export_payload(&tenant, job).await?;
         if !payload.target_ids.is_empty() {
@@ -104,17 +99,13 @@ impl SeoService {
 
         let progress = self.load_bulk_job_progress(job.id).await?;
         if progress.artifacts == 0 {
-            let filter = normalize_bulk_list_input(
-                payload.input.filter,
-                tenant.default_locale.as_str(),
-            )?;
+            let filter =
+                normalize_bulk_list_input(payload.input.filter, tenant.default_locale.as_str())?;
             let mut writer = WriterBuilder::new()
                 .has_headers(false)
                 .from_writer(Vec::<u8>::new());
             writer.write_record(CSV_HEADERS).map_err(|error| {
-                SeoError::validation(format!(
-                    "failed to write empty export CSV header: {error}"
-                ))
+                SeoError::validation(format!("failed to write empty export CSV header: {error}"))
             })?;
             let bytes = writer.into_inner().map_err(|error| {
                 SeoError::validation(format!(
@@ -122,9 +113,7 @@ impl SeoService {
                 ))
             })?;
             let content = String::from_utf8(bytes).map_err(|error| {
-                SeoError::validation(format!(
-                    "empty export CSV is not valid UTF-8: {error}"
-                ))
+                SeoError::validation(format!("empty export CSV is not valid UTF-8: {error}"))
             })?;
             self.insert_bulk_job_artifact(
                 job,

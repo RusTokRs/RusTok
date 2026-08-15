@@ -244,17 +244,12 @@ impl Default for DlqSettings {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum EventDeliveryProfile {
+    #[default]
     Outbox,
     OutboxIggy,
-}
-
-impl Default for EventDeliveryProfile {
-    fn default() -> Self {
-        Self::Outbox
-    }
 }
 
 impl EventDeliveryProfile {
@@ -394,7 +389,7 @@ pub struct SearchReindexSettings {
     pub yield_every: u64,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct BuildRuntimeSettings {
     /// Enables the trusted static deployment adapter used by installer flows.
     /// It does not start a server-local build worker.
@@ -634,12 +629,6 @@ impl Default for SearchSettings {
             index_prefix: default_index_prefix(),
             reindex: SearchReindexSettings::default(),
         }
-    }
-}
-
-impl Default for BuildRuntimeSettings {
-    fn default() -> Self {
-        Self { enabled: false }
     }
 }
 

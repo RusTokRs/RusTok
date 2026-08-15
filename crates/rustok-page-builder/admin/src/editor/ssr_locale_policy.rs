@@ -8,7 +8,6 @@ use leptos::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
 use serde::{Deserialize, Serialize};
-use serde_json::Map;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SsrLocalePolicyRequest {
@@ -41,7 +40,7 @@ impl AdminCanvasController {
             enforce_required_locales: request.enforce_required_locales,
             extensions: ProjectLocalePolicy::from_document(self.editor().document())
                 .map(|policy| policy.extensions)
-                .unwrap_or_else(Map::new),
+                .unwrap_or_default(),
         };
         policy.normalized()?;
         Ok(UiIntent::execute(EditorCommand::Translation {

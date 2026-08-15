@@ -4,7 +4,7 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
 };
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use thiserror::Error;
 use tokio::time::{Instant, sleep_until};
 use uuid::Uuid;
@@ -108,7 +108,9 @@ impl IndexReplayRunRequest {
             });
         }
         let page_request = match locale {
-            Some(locale) => IndexReplayPageRequest::for_locale(tenant_id, schema, locale, page_limit),
+            Some(locale) => {
+                IndexReplayPageRequest::for_locale(tenant_id, schema, locale, page_limit)
+            }
             None => IndexReplayPageRequest::new(tenant_id, schema, page_limit),
         }
         .map_err(IndexReplayRunError::InvalidPageRequest)?;
@@ -274,9 +276,7 @@ impl PostgresIndexReplayRunner {
             .sources
             .source_for_schema(request.page_request().schema())
             .ok_or_else(|| {
-                IndexReplayRunError::UnknownSchemaSource(
-                    request.page_request().schema().clone(),
-                )
+                IndexReplayRunError::UnknownSchemaSource(request.page_request().schema().clone())
             })?
             .source_name()
             .to_owned();
@@ -860,8 +860,8 @@ mod locale_scope_tests {
         .unwrap();
 
         assert_eq!(request.locale().map(LocaleKey::as_str), Some("en-US"));
-        let lease_request = lease_request_for_run(&request, "product-postgres-primary".to_owned())
-            .unwrap();
+        let lease_request =
+            lease_request_for_run(&request, "product-postgres-primary".to_owned()).unwrap();
         assert_eq!(lease_request.locale().map(LocaleKey::as_str), Some("en-US"));
 
         let postgres = finish_success_sql(DbBackend::Postgres);
@@ -885,8 +885,8 @@ mod locale_scope_tests {
         )
         .unwrap();
         assert!(request.locale().is_none());
-        let lease_request = lease_request_for_run(&request, "product-postgres-primary".to_owned())
-            .unwrap();
+        let lease_request =
+            lease_request_for_run(&request, "product-postgres-primary".to_owned()).unwrap();
         assert!(lease_request.locale().is_none());
     }
 

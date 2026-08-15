@@ -26,7 +26,8 @@ impl ForumImportWriteService {
             super::topic::TopicService::new(self.db.clone(), self.event_bus.clone());
         let reply_service =
             super::reply_owner::ReplyService::new(self.db.clone(), self.event_bus.clone());
-        let relation_service = super::mention_relation::MentionRelationService::new(self.db.clone());
+        let relation_service =
+            super::mention_relation::MentionRelationService::new(self.db.clone());
 
         let mut prepared_topics = Vec::with_capacity(relations.writes.topics.len());
         for record in &relations.writes.topics {
@@ -260,12 +261,13 @@ fn validate_tombstone_apply_shape(
                 "Forum import reply topic must be inside the bounded batch".to_string(),
             ));
         }
-        if let Some(parent_reply_id) = reply.parent_reply_id {
-            if !reply_ids.contains(&parent_reply_id) {
-                return Err(ForumError::Validation(
-                    "Forum import reply parent must be inside the bounded batch".to_string(),
-                ));
-            }
+        if reply
+            .parent_reply_id
+            .is_some_and(|parent_reply_id| !reply_ids.contains(&parent_reply_id))
+        {
+            return Err(ForumError::Validation(
+                "Forum import reply parent must be inside the bounded batch".to_string(),
+            ));
         }
     }
 

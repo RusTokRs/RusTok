@@ -569,8 +569,10 @@ mod tests {
         std::fs::write(&path, valid_attestation(&digest, 134_217_728)).expect("write attestation");
         let policy = IsolationPolicy::load(HardenedRuntime::Gvisor, digest, path.clone())
             .expect("valid policy");
-        let mut limits = rustok_sandbox::SandboxLimits::default();
-        limits.max_memory_bytes = 256 * 1024 * 1024;
+        let limits = rustok_sandbox::SandboxLimits {
+            max_memory_bytes: 256 * 1024 * 1024,
+            ..Default::default()
+        };
         assert!(policy.admit_limits(&limits).await.is_err());
         std::fs::remove_file(path).expect("remove attestation");
         assert!(policy.check_readiness().await.is_err());

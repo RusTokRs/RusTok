@@ -186,14 +186,7 @@ impl ForumTopicForkService {
         if let Some(existing) =
             load_fork_operation_in_tx(&txn, tenant_id, prepared.operation_id).await?
         {
-            validate_replay_in_tx(
-                &txn,
-                &existing,
-                source_topic_id,
-                actor_id,
-                &prepared,
-            )
-            .await?;
+            validate_replay_in_tx(&txn, &existing, source_topic_id, actor_id, &prepared).await?;
             txn.commit().await?;
             return Ok(operation_to_result(existing));
         }
@@ -232,21 +225,13 @@ impl ForumTopicForkService {
         lock_topic_solution_scopes_in_tx(&txn, tenant_id, &topic_pair).await?;
         lock_topic_tag_scopes_in_tx(&txn, tenant_id, &topic_pair).await?;
 
-        let first_branch_ids = load_reply_branch_ids_in_tx(
-            &txn,
-            tenant_id,
-            source_topic_id,
-            prepared.root_reply_id,
-        )
-        .await?;
+        let first_branch_ids =
+            load_reply_branch_ids_in_tx(&txn, tenant_id, source_topic_id, prepared.root_reply_id)
+                .await?;
         lock_reply_rows_in_tx(&txn, tenant_id, &first_branch_ids).await?;
-        let branch_ids = load_reply_branch_ids_in_tx(
-            &txn,
-            tenant_id,
-            source_topic_id,
-            prepared.root_reply_id,
-        )
-        .await?;
+        let branch_ids =
+            load_reply_branch_ids_in_tx(&txn, tenant_id, source_topic_id, prepared.root_reply_id)
+                .await?;
         if first_branch_ids != branch_ids {
             return Err(ForumError::Validation(
                 "Forum topic fork reply branch changed concurrently".to_string(),
@@ -290,22 +275,10 @@ impl ForumTopicForkService {
         let copied_quote_count = checked_i32(snapshot.quotes.len(), "copied quote")?;
 
         let now = Utc::now();
-        let target = create_target_topic_in_tx(
-            &txn,
-            tenant_id,
-            &source,
-            actor_id,
-            &prepared,
-            now,
-        )
-        .await?;
-        clone_topic_access_in_tx(
-            &txn,
-            tenant_id,
-            source_topic_id,
-            prepared.target_topic_id,
-        )
-        .await?;
+        let target =
+            create_target_topic_in_tx(&txn, tenant_id, &source, actor_id, &prepared, now).await?;
+        clone_topic_access_in_tx(&txn, tenant_id, source_topic_id, prepared.target_topic_id)
+            .await?;
         clone_topic_tags_in_tx(
             &txn,
             tenant_id,
@@ -326,13 +299,9 @@ impl ForumTopicForkService {
         )
         .await?;
         copy_reply_bodies_in_tx(&txn, tenant_id, &snapshot.bodies, &reply_id_map).await?;
-        let mut revision_audit = copy_reply_revisions_in_tx(
-            &txn,
-            tenant_id,
-            &snapshot.reply_revisions,
-            &reply_id_map,
-        )
-        .await?;
+        let mut revision_audit =
+            copy_reply_revisions_in_tx(&txn, tenant_id, &snapshot.reply_revisions, &reply_id_map)
+                .await?;
         let (relation_revision_map, relation_audit) = copy_relation_revisions_in_tx(
             &txn,
             tenant_id,
@@ -374,13 +343,7 @@ impl ForumTopicForkService {
         .await?;
         UserStatsService::adjust_topic_count_in_tx(&txn, tenant_id, Some(actor_id), 1).await?;
         adjust_copied_reply_author_stats_in_tx(&txn, tenant_id, &snapshot.replies).await?;
-        validate_source_unchanged_in_tx(
-            &txn,
-            tenant_id,
-            &source,
-            source_solution.as_ref(),
-        )
-        .await?;
+        validate_source_unchanged_in_tx(&txn, tenant_id, &source, source_solution.as_ref()).await?;
         validate_target_solution_absent_in_tx(&txn, tenant_id, prepared.target_topic_id).await?;
 
         let payload = topic_fork_payload(
@@ -436,14 +399,8 @@ impl ForumTopicForkService {
             now,
         )
         .await?;
-        insert_fork_reply_audit_in_tx(
-            &txn,
-            tenant_id,
-            prepared.operation_id,
-            &reply_audit,
-            now,
-        )
-        .await?;
+        insert_fork_reply_audit_in_tx(&txn, tenant_id, prepared.operation_id, &reply_audit, now)
+            .await?;
         insert_fork_revision_audit_in_tx(
             &txn,
             tenant_id,
@@ -519,11 +476,7 @@ fn prepare_fork_input(
     let locale = normalize_locale_code(&input.locale)
         .ok_or_else(|| ForumError::Validation("Forum topic fork locale is invalid".to_string()))?;
     let title = input.title.trim().to_string();
-    validate_bounded_text(
-        &title,
-        MAX_FORUM_TOPIC_FORK_TITLE_LEN,
-        "title",
-    )?;
+    validate_bounded_text(&title, MAX_FORUM_TOPIC_FORK_TITLE_LEN, "title")?;
     let slug = input
         .slug
         .as_deref()
@@ -538,11 +491,7 @@ fn prepare_fork_input(
         )));
     }
     let reason = input.reason.trim().to_string();
-    validate_bounded_text(
-        &reason,
-        MAX_FORUM_TOPIC_FORK_REASON_LEN,
-        "reason",
-    )?;
+    validate_bounded_text(&reason, MAX_FORUM_TOPIC_FORK_REASON_LEN, "reason")?;
     let stored_body = serialize_discussion(RichTextDocument::single_paragraph(title.clone()))?;
     let command_fingerprint = fingerprint_command(
         source_topic_id,
@@ -606,9 +555,11 @@ fn fingerprint_command(
         "quote_identity_policy": "preserve_original_targets",
         "solution_policy": "source_only_not_copied",
     }))
-    .map_err(|error| ForumError::Validation(format!(
-        "Forum topic fork command cannot be canonicalized: {error}"
-    )))?;
+    .map_err(|error| {
+        ForumError::Validation(format!(
+            "Forum topic fork command cannot be canonicalized: {error}"
+        ))
+    })?;
     Ok(hex::encode(Sha256::digest(canonical)))
 }
 
@@ -693,7 +644,10 @@ async fn load_reply_branch_ids_in_tx(
             SELECT id FROM branch ORDER BY id LIMIT $4
             "#,
             vec![
-                tenant_id.into(), source_topic_id.into(), root_reply_id.into(), limit.into(),
+                tenant_id.into(),
+                source_topic_id.into(),
+                root_reply_id.into(),
+                limit.into(),
             ],
         ),
         DatabaseBackend::Sqlite => (
@@ -710,8 +664,12 @@ async fn load_reply_branch_ids_in_tx(
             SELECT id FROM branch ORDER BY id LIMIT ?
             "#,
             vec![
-                tenant_id.into(), source_topic_id.into(), root_reply_id.into(),
-                tenant_id.into(), source_topic_id.into(), limit.into(),
+                tenant_id.into(),
+                source_topic_id.into(),
+                root_reply_id.into(),
+                tenant_id.into(),
+                source_topic_id.into(),
+                limit.into(),
             ],
         ),
         backend => {
@@ -778,9 +736,7 @@ async fn load_fork_snapshot_in_tx(
             ));
         }
         let parent_position = positions.get(&parent_id).copied().ok_or_else(|| {
-            ForumError::Validation(
-                "Forum topic fork parent position is unavailable".to_string(),
-            )
+            ForumError::Validation("Forum topic fork parent position is unavailable".to_string())
         })?;
         if parent_position >= reply.position {
             return Err(ForumError::Validation(
@@ -795,8 +751,15 @@ async fn load_fork_snapshot_in_tx(
         .limit((MAX_FORUM_TOPIC_FORK_BODY_ROWS + 1) as u64)
         .all(txn)
         .await?;
-    ensure_bound(bodies.len(), MAX_FORUM_TOPIC_FORK_BODY_ROWS, "localized body rows")?;
-    let body_reply_ids = bodies.iter().map(|body| body.reply_id).collect::<HashSet<_>>();
+    ensure_bound(
+        bodies.len(),
+        MAX_FORUM_TOPIC_FORK_BODY_ROWS,
+        "localized body rows",
+    )?;
+    let body_reply_ids = bodies
+        .iter()
+        .map(|body| body.reply_id)
+        .collect::<HashSet<_>>();
     if body_reply_ids.len() != replies.len() {
         return Err(ForumError::Validation(
             "Forum topic fork requires a current body for every copied reply".to_string(),
@@ -859,7 +822,11 @@ async fn load_fork_snapshot_in_tx(
             .limit((MAX_FORUM_TOPIC_FORK_QUOTES + 1) as u64)
             .all(txn)
             .await?;
-        ensure_bound(quotes.len(), MAX_FORUM_TOPIC_FORK_QUOTES, "quote projections")?;
+        ensure_bound(
+            quotes.len(),
+            MAX_FORUM_TOPIC_FORK_QUOTES,
+            "quote projections",
+        )?;
         (user_mentions, audience_mentions, quotes)
     };
 
@@ -888,9 +855,7 @@ async fn ensure_target_reply_ids_absent_in_tx(
     reply_id_map: &HashMap<Uuid, Uuid>,
 ) -> ForumResult<()> {
     let existing = forum_reply::Entity::find()
-        .filter(forum_reply::Column::Id.is_in(
-            reply_id_map.values().copied().collect::<Vec<_>>(),
-        ))
+        .filter(forum_reply::Column::Id.is_in(reply_id_map.values().copied().collect::<Vec<_>>()))
         .count(txn)
         .await?;
     if existing != 0 {
@@ -1105,10 +1070,7 @@ async fn copy_relation_children_in_tx(
             source_kind: Set("reply".to_string()),
             source_id: Set(mapped_reply_id(reply_id_map, quote.source_id)?),
             source_locale: Set(quote.source_locale.clone()),
-            source_revision_id: Set(mapped_revision_id(
-                revision_map,
-                quote.source_revision_id,
-            )?),
+            source_revision_id: Set(mapped_revision_id(revision_map, quote.source_revision_id)?),
             quoted_kind: Set(quote.quoted_kind.clone()),
             quoted_id: Set(quote.quoted_id),
             quoted_revision_id: Set(quote.quoted_revision_id),
@@ -1120,14 +1082,9 @@ async fn copy_relation_children_in_tx(
     Ok(())
 }
 
-fn mapped_reply_id(
-    reply_id_map: &HashMap<Uuid, Uuid>,
-    source_reply_id: Uuid,
-) -> ForumResult<Uuid> {
+fn mapped_reply_id(reply_id_map: &HashMap<Uuid, Uuid>, source_reply_id: Uuid) -> ForumResult<Uuid> {
     reply_id_map.get(&source_reply_id).copied().ok_or_else(|| {
-        ForumError::Validation(
-            "Forum topic fork copied reply mapping is incomplete".to_string(),
-        )
+        ForumError::Validation("Forum topic fork copied reply mapping is incomplete".to_string())
     })
 }
 
@@ -1135,11 +1092,14 @@ fn mapped_revision_id(
     revision_map: &HashMap<i64, i64>,
     source_revision_id: i64,
 ) -> ForumResult<i64> {
-    revision_map.get(&source_revision_id).copied().ok_or_else(|| {
-        ForumError::Validation(
-            "Forum topic fork copied relation revision mapping is incomplete".to_string(),
-        )
-    })
+    revision_map
+        .get(&source_revision_id)
+        .copied()
+        .ok_or_else(|| {
+            ForumError::Validation(
+                "Forum topic fork copied relation revision mapping is incomplete".to_string(),
+            )
+        })
 }
 
 async fn adjust_copied_reply_author_stats_in_tx(
@@ -1155,9 +1115,7 @@ async fn adjust_copied_reply_author_stats_in_tx(
         if let Some(author_id) = reply.author_id {
             let entry = deltas.entry(author_id).or_insert(0);
             *entry = entry.checked_add(1).ok_or_else(|| {
-                ForumError::Validation(
-                    "Forum topic fork author reply counter overflow".to_string(),
-                )
+                ForumError::Validation("Forum topic fork author reply counter overflow".to_string())
             })?;
         }
     }

@@ -95,13 +95,9 @@ impl TopicService {
         )?;
 
         let txn = self.db.begin().await?;
-        let result = ForumTopicRouteService::rename_topic_slug_in_tx(
-            &txn,
-            tenant_id,
-            topic_id,
-            &input,
-        )
-        .await?;
+        let result =
+            ForumTopicRouteService::rename_topic_slug_in_tx(&txn, tenant_id, topic_id, &input)
+                .await?;
         if result.changed {
             let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
             let mut active: forum_topic::ActiveModel = topic.into();
@@ -140,9 +136,7 @@ impl TopicService {
             .await?;
         claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?;
         ForumTopicRouteTombstoneVisibilityService::lock_topic_audience_scope_in_tx(
-            &txn,
-            tenant_id,
-            topic_id,
+            &txn, tenant_id, topic_id,
         )
         .await?;
         let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
@@ -174,9 +168,7 @@ impl TopicService {
         };
 
         ForumTopicRouteTombstoneVisibilityService::record_locked_delete_snapshot_in_tx(
-            &txn,
-            tenant_id,
-            &topic,
+            &txn, tenant_id, &topic,
         )
         .await?;
         ForumTopicRouteService::record_delete_tombstones_in_tx(

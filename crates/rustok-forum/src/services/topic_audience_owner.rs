@@ -38,17 +38,11 @@ impl ForumTopicAudiencePolicyOwnerService {
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;
         let topic = super::topic_audience_lock::lock_active_topic_audience_write_in_tx(
-            &txn,
-            tenant_id,
-            topic_id,
+            &txn, tenant_id, topic_id,
         )
         .await?;
-        super::topic_audience_lock::lock_topic_audience_scopes_in_tx(
-            &txn,
-            tenant_id,
-            &[topic_id],
-        )
-        .await?;
+        super::topic_audience_lock::lock_topic_audience_scopes_in_tx(&txn, tenant_id, &[topic_id])
+            .await?;
         load_category_audience_policy(&txn, tenant_id, topic.category_id).await?;
 
         forum_topic_audience_policy::Entity::delete_many()

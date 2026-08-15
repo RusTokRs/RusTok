@@ -48,11 +48,9 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(
-                            PageBuilderScenarioBaselineRevisions::PreviousBaselineHash,
-                        )
-                        .string_len(128)
-                        .null(),
+                        ColumnDef::new(PageBuilderScenarioBaselineRevisions::PreviousBaselineHash)
+                            .string_len(128)
+                            .null(),
                     )
                     .col(
                         ColumnDef::new(PageBuilderScenarioBaselineRevisions::Baseline)

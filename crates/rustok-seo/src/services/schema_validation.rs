@@ -128,9 +128,11 @@ mod tests {
             SeoSchemaBlockKind::Product,
             json!({"@type": "Product", "description": "Demo"}),
         ));
-        assert!(issues
-            .iter()
-            .any(|i| i.code == "missing_required_schema_field"));
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.code == "missing_required_schema_field")
+        );
         assert_eq!(issues.len(), 1);
     }
 
@@ -154,9 +156,11 @@ mod tests {
             source: SeoFieldSource::Explicit,
             payload: Json(json!({"name": "No type"})),
         });
-        assert!(issues
-            .iter()
-            .any(|i| i.code == "unsupported_schema_source_payload"));
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.code == "unsupported_schema_source_payload")
+        );
         assert_eq!(issues.len(), 1);
     }
 
@@ -175,9 +179,11 @@ mod tests {
             SeoSchemaBlockKind::FAQPage,
             json!({"@type": "FAQPage"}),
         ));
-        assert!(issues
-            .iter()
-            .any(|i| i.code == "missing_required_schema_field"));
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.code == "missing_required_schema_field")
+        );
     }
 
     #[test]

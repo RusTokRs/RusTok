@@ -57,10 +57,9 @@ impl RecoveringStagedCheckoutService {
             .operation_journal()
             .find_latest_by_cart(tenant_id, cart_id)
             .await?
+            && current.status == RECONCILIATION_REQUIRED_STATUS
         {
-            if current.status == RECONCILIATION_REQUIRED_STATUS {
-                return Err(reconciliation_required_error(current.id));
-            }
+            return Err(reconciliation_required_error(current.id));
         }
 
         match self

@@ -13,7 +13,7 @@ use rustok_groups::{
     UpsertGroupTranslationRequest,
 };
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use tokio::sync::Barrier;
 use uuid::Uuid;
 

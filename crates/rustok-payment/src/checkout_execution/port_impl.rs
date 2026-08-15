@@ -20,13 +20,11 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
             request.identity.checkout_operation_id,
         )?;
         let diagnostic_context = context.clone();
-        let diagnostic_facts = checkout_payment_execution_diagnostic_facts(
-            &request.identity,
-            None,
-            None,
-            None,
-        );
-        let result = self.prepare(&context, owner_operation, tenant_id, request).await;
+        let diagnostic_facts =
+            checkout_payment_execution_diagnostic_facts(&request.identity, None, None, None);
+        let result = self
+            .prepare(&context, owner_operation, tenant_id, request)
+            .await;
         result.map_err(|error| {
             map_checkout_payment_execution_local_port_error(
                 &diagnostic_context,
@@ -90,7 +88,9 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
             None,
             None,
         );
-        let result = self.capture(&context, owner_operation, tenant_id, request).await;
+        let result = self
+            .capture(&context, owner_operation, tenant_id, request)
+            .await;
         result.map_err(|error| {
             map_checkout_payment_execution_local_port_error(
                 &diagnostic_context,
@@ -121,7 +121,9 @@ impl CheckoutPaymentExecutionPort for InProcessCheckoutPaymentExecutionPort {
             None,
             None,
         );
-        let result = self.read(&context, owner_operation, tenant_id, request).await;
+        let result = self
+            .read(&context, owner_operation, tenant_id, request)
+            .await;
         result.map_err(|error| {
             map_checkout_payment_execution_local_port_error(
                 &diagnostic_context,

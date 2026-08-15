@@ -255,7 +255,9 @@ impl SeoSitemapService {
         &self,
         tenant: &TenantContext,
     ) -> SeoResult<SeoSitemapStatusRecord> {
-        self.runtime.queue_sitemap_generation_background(tenant).await
+        self.runtime
+            .queue_sitemap_generation_background(tenant)
+            .await
     }
 
     pub async fn execute_next_sitemap_job(
@@ -448,12 +450,7 @@ impl SeoOperationsService {
         replay_historical: bool,
     ) -> SeoResult<SeoIndexRepairReplayResultRecord> {
         self.runtime
-            .queue_index_repair_replay_background(
-                tenant_id,
-                target_type,
-                limit,
-                replay_historical,
-            )
+            .queue_index_repair_replay_background(tenant_id, target_type, limit, replay_historical)
             .await
     }
 

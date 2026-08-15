@@ -91,7 +91,7 @@ pub fn read_route_query_value(route_context: &UiRouteContext, key: &str) -> Opti
 pub fn use_route_query_value(key: &'static str) -> Signal<Option<String>> {
     #[cfg(feature = "ssr")]
     {
-        return use_route_query_value_ssr(key);
+        use_route_query_value_ssr(key)
     }
 
     #[cfg(not(feature = "ssr"))]
@@ -142,9 +142,9 @@ fn use_route_query_value_browser(key: &'static str) -> Signal<Option<String>> {
 pub fn use_route_query_writer() -> RouteQueryWriter {
     #[cfg(feature = "ssr")]
     {
-        return RouteQueryWriter {
+        RouteQueryWriter {
             apply: Arc::new(|_, _| {}),
-        };
+        }
     }
 
     #[cfg(not(feature = "ssr"))]

@@ -278,13 +278,14 @@ impl SeoEntityForm {
         };
 
         if schema_type.is_empty() {
-            if let Some(value) = payload_value.as_ref() {
-                if !has_non_empty_json_ld_type(value) {
-                    return Err(
-                        "Structured data payload must contain at least one non-empty @type when schema type is empty."
-                            .to_string(),
-                    );
-                }
+            if payload_value
+                .as_ref()
+                .is_some_and(|value| !has_non_empty_json_ld_type(value))
+            {
+                return Err(
+                    "Structured data payload must contain at least one non-empty @type when schema type is empty."
+                        .to_string(),
+                );
             }
             return Ok(payload_value);
         }

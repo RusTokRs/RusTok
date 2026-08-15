@@ -95,7 +95,9 @@ mod retry_ready_tests {
         let sql = statement.sql.as_str();
         assert!(sql.contains("handoff_dead_lettered_at IS NULL"));
         assert!(sql.contains("handoff_attempt_count < $3"));
-        assert!(sql.contains("handoff_next_attempt_at IS NULL OR handoff_next_attempt_at <= NOW()"));
+        assert!(
+            sql.contains("handoff_next_attempt_at IS NULL OR handoff_next_attempt_at <= NOW()")
+        );
         assert!(sql.contains("handoff_next_attempt_at = NULL"));
         assert!(sql.contains("FOR UPDATE SKIP LOCKED"));
         assert!(sql.contains("LIMIT 1"));

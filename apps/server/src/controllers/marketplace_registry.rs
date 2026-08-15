@@ -2248,17 +2248,16 @@ fn validate_yank_request(request: &RegistryYankRequest) -> Result<Vec<String>, E
                 REGISTRY_YANK_REASON_CODES.join(", ")
             ),
         );
-    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
-        if !REGISTRY_YANK_REASON_CODES
+    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim)
+        && !REGISTRY_YANK_REASON_CODES
             .iter()
             .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
-        {
-            return Err(Error::BadRequest(format!(
-                "Registry yank reason_code '{}' is not supported; expected one of {}",
-                reason_code,
-                REGISTRY_YANK_REASON_CODES.join(", ")
-            )));
-        }
+    {
+        return Err(Error::BadRequest(format!(
+            "Registry yank reason_code '{}' is not supported; expected one of {}",
+            reason_code,
+            REGISTRY_YANK_REASON_CODES.join(", ")
+        )));
     }
 
     Ok(warnings)
@@ -2289,17 +2288,16 @@ fn validate_publish_reject_request(
             "No reject reason_code supplied; live reject requires one of {} for the policy audit trail.",
             REGISTRY_REJECT_REASON_CODES.join(", ")
         ));
-    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
-        if !REGISTRY_REJECT_REASON_CODES
+    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim)
+        && !REGISTRY_REJECT_REASON_CODES
             .iter()
             .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
-        {
-            return Err(Error::BadRequest(format!(
-                "Registry publish reject reason_code '{}' is not supported; expected one of {}",
-                reason_code,
-                REGISTRY_REJECT_REASON_CODES.join(", ")
-            )));
-        }
+    {
+        return Err(Error::BadRequest(format!(
+            "Registry publish reject reason_code '{}' is not supported; expected one of {}",
+            reason_code,
+            REGISTRY_REJECT_REASON_CODES.join(", ")
+        )));
     }
 
     Ok(warnings)
@@ -2328,18 +2326,17 @@ fn validate_publish_resume_request(
 }
 
 fn validate_publish_approve_request(request: &RegistryPublishDecisionRequest) -> Result<(), Error> {
-    if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
-        if !reason_code.is_empty()
-            && !REGISTRY_APPROVE_OVERRIDE_REASON_CODES
-                .iter()
-                .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
-        {
-            return Err(Error::BadRequest(format!(
-                "Registry publish approval override reason_code '{}' is not supported; expected one of {}",
-                reason_code,
-                REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
-            )));
-        }
+    if let Some(reason_code) = request.reason_code.as_deref().map(str::trim)
+        && !reason_code.is_empty()
+        && !REGISTRY_APPROVE_OVERRIDE_REASON_CODES
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+    {
+        return Err(Error::BadRequest(format!(
+            "Registry publish approval override reason_code '{}' is not supported; expected one of {}",
+            reason_code,
+            REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
+        )));
     }
 
     Ok(())
@@ -2371,17 +2368,16 @@ fn validate_registry_publish_reason_code_request(
             "No {action} reason_code supplied; live {action} requires one of {} for the policy audit trail.",
             allowed_reason_codes.join(", ")
         ));
-    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
-        if !allowed_reason_codes
+    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim)
+        && !allowed_reason_codes
             .iter()
             .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
-        {
-            return Err(Error::BadRequest(format!(
-                "Registry publish {action} reason_code '{}' is not supported; expected one of {}",
-                reason_code,
-                allowed_reason_codes.join(", ")
-            )));
-        }
+    {
+        return Err(Error::BadRequest(format!(
+            "Registry publish {action} reason_code '{}' is not supported; expected one of {}",
+            reason_code,
+            allowed_reason_codes.join(", ")
+        )));
     }
 
     Ok(warnings)
@@ -2426,18 +2422,17 @@ fn validate_validation_stage_report_request(
             REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
         )));
     }
-    if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
-        if !reason_code.is_empty()
-            && !REGISTRY_VALIDATION_STAGE_REASON_CODES
-                .iter()
-                .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
-        {
-            return Err(Error::BadRequest(format!(
-                "Registry validation stage reason_code '{}' is not supported; expected one of {}",
-                reason_code,
-                REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
-            )));
-        }
+    if let Some(reason_code) = request.reason_code.as_deref().map(str::trim)
+        && !reason_code.is_empty()
+        && !REGISTRY_VALIDATION_STAGE_REASON_CODES
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+    {
+        return Err(Error::BadRequest(format!(
+            "Registry validation stage reason_code '{}' is not supported; expected one of {}",
+            reason_code,
+            REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
+        )));
     }
 
     Ok(())
@@ -2470,17 +2465,16 @@ fn validate_owner_transfer_request(
             "No transfer reason_code supplied; live owner transfer requires one of {} for the policy audit trail.",
             REGISTRY_OWNER_TRANSFER_REASON_CODES.join(", ")
         ));
-    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
-        if !REGISTRY_OWNER_TRANSFER_REASON_CODES
+    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim)
+        && !REGISTRY_OWNER_TRANSFER_REASON_CODES
             .iter()
             .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
-        {
-            return Err(Error::BadRequest(format!(
-                "Registry owner transfer reason_code '{}' is not supported; expected one of {}",
-                reason_code,
-                REGISTRY_OWNER_TRANSFER_REASON_CODES.join(", ")
-            )));
-        }
+    {
+        return Err(Error::BadRequest(format!(
+            "Registry owner transfer reason_code '{}' is not supported; expected one of {}",
+            reason_code,
+            REGISTRY_OWNER_TRANSFER_REASON_CODES.join(", ")
+        )));
     }
 
     Ok(warnings)

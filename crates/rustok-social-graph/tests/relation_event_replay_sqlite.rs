@@ -359,7 +359,7 @@ async fn insert_relation(
         relation_kind: Set(relation_kind),
         active: Set(active),
         revision: Set(revision),
-        created_at: Set(now.clone()),
+        created_at: Set(now),
         updated_at: Set(now),
     }
     .insert(db)

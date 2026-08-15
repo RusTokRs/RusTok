@@ -44,8 +44,7 @@ fn validate_schedule_runtime_policy(
     let selection = handle.current_selection()?;
     let runtime_ttl_ms = read_runtime_ttl_ms()?;
     if selection.max_ttl_ms != runtime_ttl_ms
-        || selection.clock_skew_ms
-            != rustok_comments::DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS
+        || selection.clock_skew_ms != rustok_comments::DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS
     {
         return Err(
             "Comments TCP delegation schedule TTL and clock-skew policy must match the built-in signer and resolver runtime policy"
@@ -58,9 +57,7 @@ fn validate_schedule_runtime_policy(
 fn read_runtime_ttl_ms() -> std::result::Result<u64, String> {
     let ttl_ms = match env::var(base::COMMENTS_TCP_DELEGATION_TTL_MS_ENV) {
         Ok(value) => parse_positive_u64(base::COMMENTS_TCP_DELEGATION_TTL_MS_ENV, &value)?,
-        Err(env::VarError::NotPresent) => {
-            rustok_comments::DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS
-        }
+        Err(env::VarError::NotPresent) => rustok_comments::DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS,
         Err(env::VarError::NotUnicode(_)) => {
             return Err(format!(
                 "{} must contain valid UTF-8",

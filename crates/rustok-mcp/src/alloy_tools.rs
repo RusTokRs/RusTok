@@ -40,6 +40,12 @@ impl Clone for AlloyScaffoldState {
     }
 }
 
+impl Default for AlloyScaffoldState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AlloyScaffoldState {
     pub fn new() -> Self {
         Self {

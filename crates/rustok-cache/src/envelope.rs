@@ -366,33 +366,30 @@ fn validate_expirations(
         return Err(CacheEnvelopeError::SoftExpiryRequiresHardExpiry);
     }
 
-    if let Some(soft) = soft_expires_at_unix_ms {
-        if soft < generated_at_unix_ms {
-            return Err(CacheEnvelopeError::ExpiryBeforeGeneration {
-                boundary: "soft",
-                generated_at_unix_ms,
-                expires_at_unix_ms: soft,
-            });
-        }
+    if let Some(soft) = soft_expires_at_unix_ms.filter(|&soft| soft < generated_at_unix_ms) {
+        return Err(CacheEnvelopeError::ExpiryBeforeGeneration {
+            boundary: "soft",
+            generated_at_unix_ms,
+            expires_at_unix_ms: soft,
+        });
     }
 
-    if let Some(hard) = hard_expires_at_unix_ms {
-        if hard < generated_at_unix_ms {
-            return Err(CacheEnvelopeError::ExpiryBeforeGeneration {
-                boundary: "hard",
-                generated_at_unix_ms,
-                expires_at_unix_ms: hard,
-            });
-        }
+    if let Some(hard) = hard_expires_at_unix_ms.filter(|&hard| hard < generated_at_unix_ms) {
+        return Err(CacheEnvelopeError::ExpiryBeforeGeneration {
+            boundary: "hard",
+            generated_at_unix_ms,
+            expires_at_unix_ms: hard,
+        });
     }
 
-    if let (Some(soft), Some(hard)) = (soft_expires_at_unix_ms, hard_expires_at_unix_ms) {
-        if soft > hard {
-            return Err(CacheEnvelopeError::SoftExpiryAfterHardExpiry {
-                soft_unix_ms: soft,
-                hard_unix_ms: hard,
-            });
-        }
+    if let Some((soft, hard)) = soft_expires_at_unix_ms
+        .zip(hard_expires_at_unix_ms)
+        .filter(|&(soft, hard)| soft > hard)
+    {
+        return Err(CacheEnvelopeError::SoftExpiryAfterHardExpiry {
+            soft_unix_ms: soft,
+            hard_unix_ms: hard,
+        });
     }
 
     Ok(())

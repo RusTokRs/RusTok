@@ -26,15 +26,12 @@ mod retained_restart_ambiguity_evidence {
         },
     };
 
-    const POSTGRES_DATABASE_ENV: &str =
-        "RUSTOK_BLOG_COMMENTS_AUDIT_TEST_DATABASE_URL";
-    const SOURCE_TABLE: &str =
-        "blog_comments_tcp_delegation_schedule_audit_outbox";
+    const POSTGRES_DATABASE_ENV: &str = "RUSTOK_BLOG_COMMENTS_AUDIT_TEST_DATABASE_URL";
+    const SOURCE_TABLE: &str = "blog_comments_tcp_delegation_schedule_audit_outbox";
     const RECOVERY_AUDIT_TABLE: &str =
         "blog_comments_tcp_delegation_schedule_audit_recovery_audits";
     const STATE_KEY: &str = "comments_tcp_delegation_schedule";
-    const CANONICAL_EVENT_TYPE: &str =
-        "blog.comments_delegation_schedule.replacement_succeeded";
+    const CANONICAL_EVENT_TYPE: &str = "blog.comments_delegation_schedule.replacement_succeeded";
     const SELECTED_MIGRATIONS: [&str; 5] = [
         "m20260801_000007_create_blog_comments_delegation_schedule_state",
         "m20260801_000008_create_blog_comments_delegation_schedule_audit_outbox",
@@ -389,7 +386,9 @@ mod retained_restart_ambiguity_evidence {
                 .reconcile_requeue_for_test(audit_id, &mismatched, recovery_epoch)
                 .await
                 .expect_err("mismatched immutable audit facts must fail reconciliation");
-            ensure!(mismatch == CommentsTcpDelegationScheduleAuditRecoveryError::InvalidStoredState);
+            ensure!(
+                mismatch == CommentsTcpDelegationScheduleAuditRecoveryError::InvalidStoredState
+            );
 
             let stored = source_state(&context.db, request_id).await?;
             ensure!(stored.attempt_count == 0);
@@ -431,8 +430,7 @@ mod retained_restart_ambiguity_evidence {
     fn recovery(
         db: DatabaseConnection,
     ) -> Result<PostgresCommentsTcpDelegationScheduleAuditRecoveryStore> {
-        PostgresCommentsTcpDelegationScheduleAuditRecoveryStore::new(db)
-            .map_err(anyhow::Error::msg)
+        PostgresCommentsTcpDelegationScheduleAuditRecoveryStore::new(db).map_err(anyhow::Error::msg)
     }
 
     async fn seed_schedule_state(db: &DatabaseConnection) -> Result<()> {
@@ -503,10 +501,7 @@ mod retained_restart_ambiguity_evidence {
         published: bool,
     }
 
-    async fn source_state(
-        db: &DatabaseConnection,
-        request_id: Uuid,
-    ) -> Result<StoredSourceState> {
+    async fn source_state(db: &DatabaseConnection, request_id: Uuid) -> Result<StoredSourceState> {
         let row = query_one(
             db,
             format!(
@@ -558,15 +553,10 @@ mod retained_restart_ambiguity_evidence {
         })
     }
 
-    async fn canonical_event_count(
-        db: &DatabaseConnection,
-        request_id: Uuid,
-    ) -> Result<i64> {
+    async fn canonical_event_count(db: &DatabaseConnection, request_id: Uuid) -> Result<i64> {
         scalar_i64(
             db,
-            format!(
-                "SELECT COUNT(*)::bigint AS value FROM sys_events WHERE id = '{request_id}'"
-            ),
+            format!("SELECT COUNT(*)::bigint AS value FROM sys_events WHERE id = '{request_id}'"),
         )
         .await
     }
@@ -604,10 +594,7 @@ mod retained_restart_ambiguity_evidence {
         })
     }
 
-    async fn recovery_audit_count(
-        db: &DatabaseConnection,
-        request_id: Uuid,
-    ) -> Result<i64> {
+    async fn recovery_audit_count(db: &DatabaseConnection, request_id: Uuid) -> Result<i64> {
         scalar_i64(
             db,
             format!(
@@ -622,26 +609,17 @@ mod retained_restart_ambiguity_evidence {
         Ok(row.try_get("", "value")?)
     }
 
-    async fn query_one(
-        db: &DatabaseConnection,
-        sql: String,
-    ) -> Result<QueryResult> {
-        db.query_one(Statement::from_string(
-            DatabaseBackend::Postgres,
-            sql,
-        ))
-        .await?
-        .context("expected PostgreSQL evidence row")
+    async fn query_one(db: &DatabaseConnection, sql: String) -> Result<QueryResult> {
+        db.query_one(Statement::from_string(DatabaseBackend::Postgres, sql))
+            .await?
+            .context("expected PostgreSQL evidence row")
     }
 
     fn postgres_database_url() -> Option<String> {
         std::env::var(POSTGRES_DATABASE_ENV)
             .or_else(|_| std::env::var("DATABASE_URL"))
             .ok()
-            .filter(|url| {
-                url.starts_with("postgres://")
-                    || url.starts_with("postgresql://")
-            })
+            .filter(|url| url.starts_with("postgres://") || url.starts_with("postgresql://"))
     }
 
     async fn connect(database_url: &str) -> Result<DatabaseConnection> {
@@ -653,25 +631,15 @@ mod retained_restart_ambiguity_evidence {
         Ok(Database::connect(options).await?)
     }
 
-    async fn set_search_path(
-        db: &DatabaseConnection,
-        schema_name: &str,
-    ) -> Result<()> {
-        db.execute_unprepared(&format!(
-            r#"SET search_path TO "{schema_name}""#
-        ))
-        .await?;
+    async fn set_search_path(db: &DatabaseConnection, schema_name: &str) -> Result<()> {
+        db.execute_unprepared(&format!(r#"SET search_path TO "{schema_name}""#))
+            .await?;
         Ok(())
     }
 
-    async fn drop_schema(
-        control: &DatabaseConnection,
-        schema_name: &str,
-    ) -> Result<()> {
+    async fn drop_schema(control: &DatabaseConnection, schema_name: &str) -> Result<()> {
         control
-            .execute_unprepared(&format!(
-                r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#
-            ))
+            .execute_unprepared(&format!(r#"DROP SCHEMA IF EXISTS "{schema_name}" CASCADE"#))
             .await?;
         Ok(())
     }
@@ -695,9 +663,7 @@ mod retained_restart_ambiguity_evidence {
         }
     }
 
-    fn map_handoff_error(
-        error: CommentsTcpDelegationScheduleAuditHandoffError,
-    ) -> anyhow::Error {
+    fn map_handoff_error(error: CommentsTcpDelegationScheduleAuditHandoffError) -> anyhow::Error {
         anyhow!("canonical handoff failed: {error:?}")
     }
 }

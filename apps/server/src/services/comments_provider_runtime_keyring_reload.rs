@@ -15,13 +15,11 @@ use std::{
 use rustok_api::{PortActor, PortError};
 use rustok_comments::{
     CommentsTcpAuthorityResolver, CommentsTcpBearerToken, CommentsTcpChannelProtection,
-    CommentsTcpClientChannelConnector, CommentsTcpDelegationKeyId,
-    CommentsTcpDelegationKeyring, CommentsTcpDelegationKeyringProvider,
-    CommentsTcpDelegationSecret, CommentsThreadPort, CommentsThreadTransport,
-    MAX_COMMENTS_TCP_DELEGATION_KEYS, PlaintextLoopbackCommentsTcpChannel,
-    ReloadableCommentsTcpDelegatingAuthorityResolver,
-    ReloadableCommentsTcpDelegationSigner, ReloadableTcpJsonCommentsTransport,
-    remote_comments_thread_port,
+    CommentsTcpClientChannelConnector, CommentsTcpDelegationKeyId, CommentsTcpDelegationKeyring,
+    CommentsTcpDelegationKeyringProvider, CommentsTcpDelegationSecret, CommentsThreadPort,
+    CommentsThreadTransport, MAX_COMMENTS_TCP_DELEGATION_KEYS, PlaintextLoopbackCommentsTcpChannel,
+    ReloadableCommentsTcpDelegatingAuthorityResolver, ReloadableCommentsTcpDelegationSigner,
+    ReloadableTcpJsonCommentsTransport, remote_comments_thread_port,
 };
 use rustok_core::ModuleRuntimeExtensions;
 use serde::Deserialize;
@@ -85,19 +83,13 @@ impl SharedCommentsTcpDelegationKeyringReloadHandle {
             revoked_key_count,
             keyring::CommentsTcpDelegationKeyringSource::HostProvided,
         )?;
-        Ok(Self::new(
-            DelegationReloadSource::HostProvided,
-            snapshot,
-        ))
+        Ok(Self::new(DelegationReloadSource::HostProvided, snapshot))
     }
 
     pub fn from_file(file_path: impl AsRef<Path>) -> std::result::Result<Self, String> {
         let file_path = file_path.as_ref().to_path_buf();
         let snapshot = load_reload_snapshot_from_file(&file_path)?;
-        Ok(Self::new(
-            DelegationReloadSource::File(file_path),
-            snapshot,
-        ))
+        Ok(Self::new(DelegationReloadSource::File(file_path), snapshot))
     }
 
     pub fn current_status(
@@ -125,10 +117,7 @@ impl SharedCommentsTcpDelegationKeyringReloadHandle {
         generation: u64,
         revoked_key_count: usize,
     ) -> std::result::Result<CommentsTcpDelegationKeyringReloadOutcome, String> {
-        if !matches!(
-            &self.0.source,
-            DelegationReloadSource::HostProvided
-        ) {
+        if !matches!(&self.0.source, DelegationReloadSource::HostProvided) {
             return self.reject(
                 "Comments TCP file-backed delegation keyring must be reloaded from its configured file"
                     .to_string(),
@@ -189,8 +178,7 @@ impl SharedCommentsTcpDelegationKeyringReloadHandle {
         if candidate.selection.source != current.selection.source {
             drop(current);
             return self.reject(
-                "Comments TCP delegation keyring reload cannot change source category"
-                    .to_string(),
+                "Comments TCP delegation keyring reload cannot change source category".to_string(),
             );
         }
         if candidate.selection.generation <= current.selection.generation {
@@ -284,12 +272,11 @@ struct DelegationReloadFileEntry {
 pub(super) fn register_comments_provider_runtime(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> std::result::Result<(), String> {
-    let reload_enabled = match read_optional_environment(
-        COMMENTS_TCP_DELEGATION_RELOAD_ENABLED_ENV,
-    )? {
-        Some(value) => parse_bool_value(COMMENTS_TCP_DELEGATION_RELOAD_ENABLED_ENV, &value)?,
-        None => false,
-    };
+    let reload_enabled =
+        match read_optional_environment(COMMENTS_TCP_DELEGATION_RELOAD_ENABLED_ENV)? {
+            Some(value) => parse_bool_value(COMMENTS_TCP_DELEGATION_RELOAD_ENABLED_ENV, &value)?,
+            None => false,
+        };
     let host_handle = extensions
         .get::<SharedCommentsTcpDelegationKeyringReloadHandle>()
         .cloned();
@@ -365,10 +352,7 @@ pub(super) fn register_comments_provider_runtime(
                 },
             ),
             Some("tcp") => {
-                let (port, selection) = prepare_reloadable_tcp_client(
-                    extensions,
-                    &reload_handle,
-                )?;
+                let (port, selection) = prepare_reloadable_tcp_client(extensions, &reload_handle)?;
                 (Some(port), selection)
             }
             _ => {
@@ -396,8 +380,7 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
     let Some(reload_handle) = reload_handle_from_context(runtime_ctx) else {
         return keyring::start_comments_tcp_listener_if_enabled(runtime_ctx).await;
     };
-    let Some(_) = base::CommentsTcpListenerConfig::from_environment()
-        .map_err(Error::BadRequest)?
+    let Some(_) = base::CommentsTcpListenerConfig::from_environment().map_err(Error::BadRequest)?
     else {
         return Ok(());
     };
@@ -412,8 +395,8 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
                 .is_some()
         });
     if !authority_already_configured {
-        let authority = comments_tcp_authority_from_reload_handle(&reload_handle)
-            .map_err(Error::BadRequest)?;
+        let authority =
+            comments_tcp_authority_from_reload_handle(&reload_handle).map_err(Error::BadRequest)?;
         runtime_ctx.shared_insert(base::SharedCommentsTcpAuthorityResolver(authority));
     }
 
@@ -428,8 +411,7 @@ fn build_reload_snapshot(
 ) -> std::result::Result<DelegationReloadSnapshot, String> {
     if generation == 0 {
         return Err(
-            "Comments TCP delegation keyring generation must be greater than zero"
-                .to_string(),
+            "Comments TCP delegation keyring generation must be greater than zero".to_string(),
         );
     }
     if revoked_key_count > MAX_COMMENTS_TCP_DELEGATION_KEYS {
@@ -456,9 +438,7 @@ fn load_reload_snapshot_from_file(
     parse_reload_document(&bytes)
 }
 
-fn parse_reload_document(
-    bytes: &[u8],
-) -> std::result::Result<DelegationReloadSnapshot, String> {
+fn parse_reload_document(bytes: &[u8]) -> std::result::Result<DelegationReloadSnapshot, String> {
     let document = serde_json::from_slice::<DelegationReloadFileDocument>(bytes).map_err(|_| {
         format!(
             "{} must contain one valid version-1 Comments TCP delegation keyring JSON object",
@@ -530,22 +510,23 @@ fn parse_reload_document(
         }
     }
 
-    let active_key_id = CommentsTcpDelegationKeyId::new(document.active_key_id).map_err(|error| {
-        format!(
-            "{} active_key_id is invalid: {error}",
-            keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV
-        )
-    })?;
-    let mut delegation_keyring = CommentsTcpDelegationKeyring::new(active_key_id, keys)
-        .map_err(|error| {
+    let active_key_id =
+        CommentsTcpDelegationKeyId::new(document.active_key_id).map_err(|error| {
+            format!(
+                "{} active_key_id is invalid: {error}",
+                keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV
+            )
+        })?;
+    let mut delegation_keyring =
+        CommentsTcpDelegationKeyring::new(active_key_id, keys).map_err(|error| {
             format!(
                 "{} keyring is invalid: {error}",
                 keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV
             )
         })?;
     if let Some(raw_legacy_key_id) = document.legacy_unkeyed_key_id {
-        let legacy_key_id = CommentsTcpDelegationKeyId::new(raw_legacy_key_id)
-            .map_err(|error| {
+        let legacy_key_id =
+            CommentsTcpDelegationKeyId::new(raw_legacy_key_id).map_err(|error| {
                 format!(
                     "{} legacy_unkeyed_key_id is invalid: {error}",
                     keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV
@@ -614,9 +595,7 @@ fn read_bounded_reload_file(file_path: &Path) -> std::result::Result<Vec<u8>, St
                 keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV
             )
         })?;
-    if bytes.is_empty()
-        || bytes.len() > keyring::MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES
-    {
+    if bytes.is_empty() || bytes.len() > keyring::MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES {
         return Err(format!(
             "{} file size must be within 1..={} bytes",
             keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV,
@@ -665,12 +644,13 @@ fn prepare_reloadable_tcp_client(
         Duration::from_millis(ttl_ms),
     )
     .map_err(|error| format!("Comments TCP delegation signer configuration failed: {error}"))?;
-    let transport = ReloadableTcpJsonCommentsTransport::with_channel_connector_bearer_and_delegation(
-        endpoint,
-        channel_connector,
-        bearer_token,
-        signer,
-    );
+    let transport =
+        ReloadableTcpJsonCommentsTransport::with_channel_connector_bearer_and_delegation(
+            endpoint,
+            channel_connector,
+            bearer_token,
+            signer,
+        );
     let transport: Arc<dyn CommentsThreadTransport> = Arc::new(transport);
     let port = remote_comments_thread_port(transport);
     let selection = base::CommentsProviderRuntimeSelection {
@@ -757,8 +737,8 @@ fn require_loopback_endpoint(
     }
 }
 
-fn comments_tcp_bearer_token_from_environment(
-) -> std::result::Result<CommentsTcpBearerToken, String> {
+fn comments_tcp_bearer_token_from_environment()
+-> std::result::Result<CommentsTcpBearerToken, String> {
     let secret = read_required_environment(
         base::COMMENTS_TCP_BEARER_TOKEN_ENV,
         format!(
@@ -820,9 +800,7 @@ fn read_required_environment(
     match env::var(key) {
         Ok(value) => Ok(value),
         Err(env::VarError::NotPresent) => Err(missing_message),
-        Err(env::VarError::NotUnicode(_)) => {
-            Err(format!("{key} must contain valid UTF-8"))
-        }
+        Err(env::VarError::NotUnicode(_)) => Err(format!("{key} must contain valid UTF-8")),
     }
 }
 
@@ -878,10 +856,7 @@ fn parse_positive_usize_value(
     Ok(parsed)
 }
 
-fn parse_positive_u64_value(
-    key: &'static str,
-    value: &str,
-) -> std::result::Result<u64, String> {
+fn parse_positive_u64_value(key: &'static str, value: &str) -> std::result::Result<u64, String> {
     let parsed = value
         .trim()
         .parse::<u64>()

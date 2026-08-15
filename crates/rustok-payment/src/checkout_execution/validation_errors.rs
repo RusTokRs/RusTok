@@ -371,14 +371,7 @@ fn checkout_payment_execution_payment_error_facts(
         uuid_non_nil_count,
         opaque_payload_present,
     ) = match error {
-        PaymentError::Validation(value) => (
-            "validation",
-            1,
-            value.chars().count(),
-            0,
-            0,
-            false,
-        ),
+        PaymentError::Validation(value) => ("validation", 1, value.chars().count(), 0, 0, false),
         PaymentError::PaymentCollectionNotFound(id) => (
             "payment_collection_not_found",
             0,

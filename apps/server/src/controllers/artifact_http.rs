@@ -157,7 +157,7 @@ async fn dispatch_operation(
             "The module is not enabled by the effective module policy",
         )));
     }
-    authorize_binding(ctx, tenant_id, actor_id, &installation, binding).await?;
+    authorize_binding(ctx, tenant_id, actor_id, installation, binding).await?;
     let executor = ctx
         .shared_get::<SharedArtifactBindingExecutor>()
         .ok_or_else(|| Error::Message("artifact binding runtime is not initialized".to_string()))?;
@@ -188,7 +188,7 @@ async fn dispatch_operation(
                 ArtifactBindingIdempotencyClaim::Execute { operation_id } => {
                     let result = execute_operation(
                         executor.as_ref(),
-                        &installation,
+                        installation,
                         tenant_id,
                         operation,
                         context,
@@ -213,7 +213,7 @@ async fn dispatch_operation(
         None => {
             execute_operation(
                 executor.as_ref(),
-                &installation,
+                installation,
                 tenant_id,
                 operation,
                 context,

@@ -488,15 +488,15 @@ fn validate_relations(
     let mut parent_by_category = BTreeMap::new();
     for category in &batch.categories {
         validate_source_ref(&category.source, ForumImportEntityKind::Category)?;
-        if let Some(parent_id) = category.parent_id {
-            if !category_ids.contains(&parent_id) {
-                return Err(
-                    ForumImportWritePreparationError::CategoryParentOutsideBatch {
-                        source: category.source.clone(),
-                        parent_id,
-                    },
-                );
-            }
+        if let Some(parent_id) = category.parent_id
+            && !category_ids.contains(&parent_id)
+        {
+            return Err(
+                ForumImportWritePreparationError::CategoryParentOutsideBatch {
+                    source: category.source.clone(),
+                    parent_id,
+                },
+            );
         }
         parent_by_category.insert(category.id, category.parent_id);
     }
@@ -702,15 +702,15 @@ fn validate_timestamp(
             timestamp_ms: decision_timestamp_ms,
         });
     }
-    if let Some(source_timestamp_ms) = source_timestamp_ms {
-        if source_timestamp_ms != decision_timestamp_ms {
-            return Err(ForumImportWritePreparationError::TimestampChanged {
-                kind,
-                source: source.clone(),
-                source_timestamp_ms,
-                decision_timestamp_ms,
-            });
-        }
+    if let Some(source_timestamp_ms) = source_timestamp_ms
+        && source_timestamp_ms != decision_timestamp_ms
+    {
+        return Err(ForumImportWritePreparationError::TimestampChanged {
+            kind,
+            source: source.clone(),
+            source_timestamp_ms,
+            decision_timestamp_ms,
+        });
     }
     Ok(())
 }

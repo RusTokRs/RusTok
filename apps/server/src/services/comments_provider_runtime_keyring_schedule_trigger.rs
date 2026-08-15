@@ -51,14 +51,12 @@ impl CommentsTcpDelegationScheduleTriggerContext {
     ) -> std::result::Result<Self, String> {
         if request_id.is_nil() {
             return Err(
-                "Comments TCP delegation schedule trigger request ID must be non-nil"
-                    .to_string(),
+                "Comments TCP delegation schedule trigger request ID must be non-nil".to_string(),
             );
         }
         if actor_id.is_nil() {
             return Err(
-                "Comments TCP delegation schedule trigger actor ID must be non-nil"
-                    .to_string(),
+                "Comments TCP delegation schedule trigger actor ID must be non-nil".to_string(),
             );
         }
         Ok(Self {
@@ -160,10 +158,8 @@ impl SharedCommentsTcpDelegationScheduleTrigger {
 
     pub fn current_selection(
         &self,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleRuntimeSelection,
-        String,
-    > {
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleRuntimeSelection, String>
+    {
         self.0.schedule_handle.current_selection()
     }
 
@@ -174,9 +170,7 @@ impl SharedCommentsTcpDelegationScheduleTrigger {
             .audit
             .lock()
             .map(|audit| audit.records.iter().copied().collect())
-            .map_err(|_| {
-                "Comments TCP delegation schedule audit state is unavailable".to_string()
-            })
+            .map_err(|_| "Comments TCP delegation schedule audit state is unavailable".to_string())
     }
 
     pub fn audit_capacity(&self) -> std::result::Result<usize, String> {
@@ -184,18 +178,14 @@ impl SharedCommentsTcpDelegationScheduleTrigger {
             .audit
             .lock()
             .map(|audit| audit.capacity)
-            .map_err(|_| {
-                "Comments TCP delegation schedule audit state is unavailable".to_string()
-            })
+            .map_err(|_| "Comments TCP delegation schedule audit state is unavailable".to_string())
     }
 
     pub fn reload_file(
         &self,
         context: CommentsTcpDelegationScheduleTriggerContext,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome,
-        String,
-    > {
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome, String>
+    {
         self.execute(
             context,
             CommentsTcpDelegationScheduleTriggerOperation::ReloadFile,
@@ -209,10 +199,8 @@ impl SharedCommentsTcpDelegationScheduleTrigger {
         context: CommentsTcpDelegationScheduleTriggerContext,
         schedule: CommentsTcpDelegationSchedule,
         generation: u64,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome,
-        String,
-    > {
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome, String>
+    {
         self.execute(
             context,
             CommentsTcpDelegationScheduleTriggerOperation::ReplaceHostSchedule,
@@ -233,10 +221,7 @@ impl SharedCommentsTcpDelegationScheduleTrigger {
         operation: CommentsTcpDelegationScheduleTriggerOperation,
         requested_generation: Option<u64>,
         mutation: F,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome,
-        String,
-    >
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome, String>
     where
         F: FnOnce(
             &keyring_schedule::SharedCommentsTcpDelegationScheduleHandle,
@@ -268,8 +253,9 @@ impl SharedCommentsTcpDelegationScheduleTrigger {
         let authorization = if context.principal_kind == AuthPrincipalKind::DelegatedUser {
             Err(CommentsTcpDelegationScheduleTriggerAuthorizationError::Denied)
         } else {
-            self.0.authorizer.authorize(
-                &CommentsTcpDelegationScheduleTriggerAuthorizationRequest {
+            self.0
+                .authorizer
+                .authorize(&CommentsTcpDelegationScheduleTriggerAuthorizationRequest {
                     request_id: context.request_id,
                     actor_id: context.actor_id,
                     principal_kind: context.principal_kind,
@@ -277,8 +263,7 @@ impl SharedCommentsTcpDelegationScheduleTrigger {
                     source: selection.source,
                     current_generation: selection.generation,
                     requested_generation,
-                },
-            )
+                })
         };
 
         let mut audit = self.0.audit.lock().map_err(|_| {
@@ -307,8 +292,7 @@ impl SharedCommentsTcpDelegationScheduleTrigger {
                     current_generation: Some(selection.generation),
                 });
                 return Err(
-                    "Comments TCP delegation schedule trigger authorization was denied"
-                        .to_string(),
+                    "Comments TCP delegation schedule trigger authorization was denied".to_string(),
                 );
             }
             Err(CommentsTcpDelegationScheduleTriggerAuthorizationError::Unavailable) => {
@@ -319,7 +303,8 @@ impl SharedCommentsTcpDelegationScheduleTrigger {
                     actor_id: context.actor_id,
                     principal_kind: context.principal_kind,
                     operation,
-                    outcome: CommentsTcpDelegationScheduleTriggerAuditOutcome::AuthorizationUnavailable,
+                    outcome:
+                        CommentsTcpDelegationScheduleTriggerAuditOutcome::AuthorizationUnavailable,
                     source: Some(selection.source),
                     previous_generation: Some(selection.generation),
                     requested_generation,
@@ -435,10 +420,9 @@ impl fmt::Debug for SharedCommentsTcpDelegationScheduleTrigger {
 }
 
 fn current_unix_ms() -> std::result::Result<u64, String> {
-    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| {
-        "Comments TCP delegation schedule audit clock is not available".to_string()
-    })?;
-    u64::try_from(elapsed.as_millis()).map_err(|_| {
-        "Comments TCP delegation schedule audit clock is not available".to_string()
-    })
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "Comments TCP delegation schedule audit clock is not available".to_string())?;
+    u64::try_from(elapsed.as_millis())
+        .map_err(|_| "Comments TCP delegation schedule audit clock is not available".to_string())
 }

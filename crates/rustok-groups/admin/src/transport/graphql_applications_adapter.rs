@@ -219,7 +219,7 @@ pub async fn load_group_application_policy(
     let response: PolicyResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
-            &policy_query(),
+            policy_query(),
             Some(PolicyVariables {
                 group_id: query.group_id,
             }),
@@ -241,7 +241,7 @@ pub async fn upsert_group_application_policy(
     let response: UpsertPolicyResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
-            &upsert_policy_mutation(),
+            upsert_policy_mutation(),
             Some(UpsertPolicyVariables {
                 idempotency_key: command.idempotency_key,
                 group_id: command.group_id,
@@ -294,7 +294,7 @@ pub async fn load_group_membership_applications(
     let response: ListApplicationsResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
-            &list_applications_query(),
+            list_applications_query(),
             Some(ListApplicationsVariables {
                 group_id: query.group_id,
                 status: query.status.map(|status| status.to_ascii_uppercase()),
@@ -329,7 +329,7 @@ pub async fn review_group_membership_application(
     let response: ReviewApplicationResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
-            &review_application_mutation(),
+            review_application_mutation(),
             Some(ReviewApplicationVariables {
                 idempotency_key: command.idempotency_key,
                 application_id: command.application_id,

@@ -127,7 +127,7 @@ mod redirect_cache_cursor_tests {
             .single()
             .unwrap();
         let first = SeoRedirectCacheCursor {
-            created_at: at.clone(),
+            created_at: at,
             id: Uuid::from_u128(1),
         };
         let second = SeoRedirectCacheCursor {

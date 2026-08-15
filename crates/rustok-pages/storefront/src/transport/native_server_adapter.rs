@@ -83,18 +83,19 @@ async fn storefront_pages_native(
             )
         };
 
-        if let Some(request_context) = request_context.as_ref() {
-            if let Some(channel_id) = request_context.channel_id {
-                let enabled = ChannelService::new(runtime_ctx.db_clone())
-                    .is_module_enabled(channel_id, MODULE_SLUG)
-                    .await
-                    .map_err(ServerFnError::new)?;
-                if !enabled {
-                    return Err(ServerFnError::new(format!(
-                        "Module '{MODULE_SLUG}' is not enabled for channel '{}'",
-                        request_context.channel_slug.as_deref().unwrap_or("current"),
-                    )));
-                }
+        if let Some(channel_id) = request_context.as_ref().and_then(|ctx| ctx.channel_id) {
+            let enabled = ChannelService::new(runtime_ctx.db_clone())
+                .is_module_enabled(channel_id, MODULE_SLUG)
+                .await
+                .map_err(ServerFnError::new)?;
+            if !enabled {
+                return Err(ServerFnError::new(format!(
+                    "Module '{MODULE_SLUG}' is not enabled for channel '{}'",
+                    request_context
+                        .as_ref()
+                        .and_then(|ctx| ctx.channel_slug.as_deref())
+                        .unwrap_or("current"),
+                )));
             }
         }
 
@@ -232,7 +233,8 @@ async fn storefront_pages_native(
             },
         };
         if let (Some(cache_runtime), Some(cache_key)) = (cache_runtime.as_ref(), cache_key) {
-            if let Err(error) = cache_runtime.put_json(cache_key, &data).await {
+            let put_result = cache_runtime.put_json(cache_key, &data).await;
+            if let Err(error) = put_result {
                 tracing::warn!(%error, %tenant_id, "Pages storefront cache fill failed");
             }
         }

@@ -464,7 +464,7 @@ fn decode_entity_scope(
     let locale = row
         .try_get::<Option<String>>("", "locale_key")
         .map_err(|_| permanent_failure(STORED_CONTRACT_INVALID))?
-        .map(|value| LocaleKey::new(value))
+        .map(LocaleKey::new)
         .transpose()
         .map_err(|_| permanent_failure(STORED_CONTRACT_INVALID))?;
     Ok(EntityKey {

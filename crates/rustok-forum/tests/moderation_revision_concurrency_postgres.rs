@@ -91,7 +91,7 @@ async fn topic_translation_edit_fences_permanent_lock(
         topic_revision(&database.db, seed).await?,
         reviewed_revision + 1
     );
-    assert_eq!(topic_locked(&database.db, seed).await?, false);
+    assert!(!topic_locked(&database.db, seed).await?);
     assert_eq!(
         topic_title(&database.db, seed).await?,
         "Concurrent topic edit"
@@ -110,7 +110,7 @@ async fn topic_translation_edit_fences_permanent_lock(
         .await
         .expect_err("stale topic decision must not lock edited content");
     assert_revision_conflict(&stale_error)?;
-    assert_eq!(topic_locked(&database.db, seed).await?, false);
+    assert!(!topic_locked(&database.db, seed).await?);
     assert_eq!(
         topic_revision(&database.db, seed).await?,
         reviewed_revision + 1

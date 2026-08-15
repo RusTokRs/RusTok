@@ -48,15 +48,16 @@ fn apply_string_placeholder(
 ) -> Result<(), ProductStorefrontIndexPublicProjectionError> {
     let mut position = None;
     for (candidate, projected) in item.fields.iter().enumerate() {
-        if projected.path.links().is_empty() && projected.path.field().as_str() == field {
-            if position.replace(candidate).is_some() {
-                return Err(
-                    ProductStorefrontIndexPublicProjectionError::DuplicateField {
-                        entity_id: item.entity_id,
-                        field,
-                    },
-                );
-            }
+        if projected.path.links().is_empty()
+            && projected.path.field().as_str() == field
+            && position.replace(candidate).is_some()
+        {
+            return Err(
+                ProductStorefrontIndexPublicProjectionError::DuplicateField {
+                    entity_id: item.entity_id,
+                    field,
+                },
+            );
         }
     }
     let position = position.ok_or(ProductStorefrontIndexPublicProjectionError::MissingField {

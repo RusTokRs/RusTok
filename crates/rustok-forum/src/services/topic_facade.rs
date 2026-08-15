@@ -18,9 +18,9 @@ use super::rbac::enforce_scope;
 use super::topic_canonical_resolution::{
     ForumTopicCanonicalResolution, ForumTopicCanonicalResolutionService,
 };
-use super::topic_route::{ForumTopicSlugRenameResult, RenameForumTopicSlugInput};
 use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_owner;
+use super::topic_route::{ForumTopicSlugRenameResult, RenameForumTopicSlugInput};
 use super::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
 
 /// Public topic owner facade.

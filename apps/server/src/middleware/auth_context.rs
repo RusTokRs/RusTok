@@ -108,14 +108,14 @@ pub async fn resolve_optional(
                     );
                 }
             }
-            if current_user.actor_kind == SecurityActorKind::Service {
-                if let Some(message) = service_forum_boundary_violation(
+            if current_user.actor_kind == SecurityActorKind::Service
+                && let Some(message) = service_forum_boundary_violation(
                     &request_method,
                     request_path.as_str(),
                     &current_user.permissions,
-                ) {
-                    return (StatusCode::FORBIDDEN, message).into_response();
-                }
+                )
+            {
+                return (StatusCode::FORBIDDEN, message).into_response();
             }
 
             rbac_scope = Some(RbacRequestScope::new(

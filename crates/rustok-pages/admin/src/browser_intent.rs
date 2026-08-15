@@ -80,15 +80,15 @@ pub async fn dispatch_pages_browser_intent_with_store(
         Some(token) => draft_store.load(token, &snapshot.page_id)?,
         None => None,
     };
-    if let (Some(expected), Some(session)) = (envelope.draft_generation, loaded_session.as_ref()) {
-        if expected != session.generation {
-            return Err(PagesBrowserIntentError::Draft(
-                SsrDraftSessionError::GenerationConflict {
-                    expected: session.generation,
-                    actual: expected,
-                },
-            ));
-        }
+    if let (Some(expected), Some(session)) = (envelope.draft_generation, loaded_session.as_ref())
+        && expected != session.generation
+    {
+        return Err(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::GenerationConflict {
+                expected: session.generation,
+                actual: expected,
+            },
+        ));
     }
 
     let (mut controller, mut runtime_context, session_token, session_generation) =

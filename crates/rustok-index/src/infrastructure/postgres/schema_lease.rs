@@ -236,7 +236,7 @@ impl PostgresSchemaLeaseStore {
             .map_err(storage_error)?;
 
         let mut claimable = None;
-        for row in rows {
+        if let Some(row) = rows.into_iter().next() {
             let stored = stored_job(&row, backend)?;
             if stored.schema_fingerprint != request.schema_fingerprint.to_string() {
                 return Err(SchemaLeaseError::InvalidStoredJob(
@@ -257,7 +257,6 @@ impl PostgresSchemaLeaseStore {
                 }
                 "pending" | "running" => {
                     claimable = Some(stored);
-                    break;
                 }
                 state => {
                     return Err(SchemaLeaseError::InvalidStoredJob(format!(

@@ -77,10 +77,10 @@ fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> FieldE
             ))
             .extend_with(|_, ext| {
                 ext.set("code", "CUSTOM_FIELD_VALIDATION_FAILED");
-                if let Ok(v) = serde_json::to_value(&errors) {
-                    if let Ok(gql_value) = async_graphql::Value::from_json(v) {
-                        ext.set("fields", gql_value);
-                    }
+                if let Ok(v) = serde_json::to_value(&errors)
+                    && let Ok(gql_value) = async_graphql::Value::from_json(v)
+                {
+                    ext.set("fields", gql_value);
                 }
             })
         }

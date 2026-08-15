@@ -560,10 +560,7 @@ fn transactional_event_error(context: &str, error: rustok_core::Error) -> SeoErr
 pub(super) fn normalize_hosts(hosts: &[String]) -> Vec<String> {
     let mut normalized = Vec::new();
     for value in hosts {
-        let host = value
-            .trim()
-            .trim_end_matches('.')
-            .to_ascii_lowercase();
+        let host = value.trim().trim_end_matches('.').to_ascii_lowercase();
         if host.is_empty() || normalized.iter().any(|item| item == &host) {
             continue;
         }
@@ -660,9 +657,7 @@ mod tests {
     use chrono::{Duration as ChronoDuration, Utc};
     use uuid::Uuid;
 
-    use super::{
-        RedirectLookup, build_seo_event_key, normalize_hosts, validate_target_url,
-    };
+    use super::{RedirectLookup, build_seo_event_key, normalize_hosts, validate_target_url};
     use crate::entities::seo_redirect;
 
     fn redirect(
@@ -727,12 +722,8 @@ mod tests {
         let allowed_hosts = normalize_hosts(&["Allowed.Example.".to_string()]);
 
         assert!(
-            validate_target_url(
-                "https://allowed.example/path",
-                &allowed_hosts,
-                "target_url"
-            )
-            .is_ok()
+            validate_target_url("https://allowed.example/path", &allowed_hosts, "target_url")
+                .is_ok()
         );
         assert!(
             validate_target_url(
@@ -792,13 +783,7 @@ mod tests {
                 true,
                 Some(now - ChronoDuration::seconds(1)),
             ),
-            redirect(
-                "wildcard",
-                "/docs/guides/*/start",
-                "/active",
-                true,
-                None,
-            ),
+            redirect("wildcard", "/docs/guides/*/start", "/active", true, None),
         ]));
 
         let matched = lookup
@@ -811,11 +796,7 @@ mod tests {
     #[test]
     fn wildcard_without_token_remains_literal() {
         let lookup = RedirectLookup::from_source(Arc::new(vec![redirect(
-            "wildcard",
-            "/literal",
-            "/target",
-            true,
-            None,
+            "wildcard", "/literal", "/target", true, None,
         )]));
         let now = Utc::now().fixed_offset();
 

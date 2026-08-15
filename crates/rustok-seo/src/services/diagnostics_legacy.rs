@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use rustok_api::TenantContext;
-use rustok_seo_targets::{builtin_slug, SeoTargetBulkListRequest, SeoTargetCapabilityKind};
+use rustok_seo_targets::{SeoTargetBulkListRequest, SeoTargetCapabilityKind, builtin_slug};
 use url::Url;
 
 use crate::dto::{
@@ -11,8 +11,8 @@ use crate::dto::{
 };
 use crate::{SeoError, SeoResult};
 
-use super::robots::schema_blocks_from_value;
 use super::SeoService;
+use super::robots::schema_blocks_from_value;
 
 const MAX_EXPOSED_ISSUES: usize = 50;
 const CROSS_LINK_GAP_REMEDIATION_MESSAGE: &str = "No cross-link suggestions were generated for this target. Use seoCrossLinkSuggestions or GET /api/seo/cross-link-suggestions to review remediation candidates.";
@@ -649,8 +649,8 @@ fn count_by_key<'a>(keys: impl Iterator<Item = &'a str>) -> Vec<SeoDiagnosticCou
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_missing_image_descriptor_counts, is_image_seo_critical_target,
-        redirect_lookup_route, trace_redirects, RedirectTrace, CROSS_LINK_GAP_REMEDIATION_MESSAGE,
+        CROSS_LINK_GAP_REMEDIATION_MESSAGE, RedirectTrace, collect_missing_image_descriptor_counts,
+        is_image_seo_critical_target, redirect_lookup_route, trace_redirects,
     };
     use crate::dto::{SeoDocument, SeoImageAsset, SeoOpenGraph, SeoPageContext, SeoTwitterCard};
     use std::collections::HashMap;

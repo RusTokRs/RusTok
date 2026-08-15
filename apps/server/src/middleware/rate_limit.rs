@@ -45,12 +45,11 @@ pub async fn rate_limit_for_paths(
         &headers,
         peer_ip_from_extensions(request.extensions()),
         &state.request_trust,
-    ) {
-        if let Ok(value) = HeaderValue::from_str(&client_ip.to_string()) {
-            request
-                .headers_mut()
-                .insert(TRUSTED_CLIENT_IP_HEADER, value);
-        }
+    ) && let Ok(value) = HeaderValue::from_str(&client_ip.to_string())
+    {
+        request
+            .headers_mut()
+            .insert(TRUSTED_CLIENT_IP_HEADER, value);
     }
 
     base::rate_limit_for_paths(State(state), headers, request, next).await

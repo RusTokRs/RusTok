@@ -704,16 +704,16 @@ async fn drop_columns(
 
 fn principal_json_string(value: &str) -> serde_json::Value {
     let normalized = value.trim();
-    if let Some(raw) = normalized.strip_prefix("user:") {
-        if let Ok(user_id) = Uuid::parse_str(raw) {
-            return json!({
-                "kind": "user",
-                "user_id": user_id,
-                "subject": format!("user:{user_id}"),
-                "display_label": format!("user:{user_id}"),
-                "legacy_label": serde_json::Value::Null,
-            });
-        }
+    if let Some(raw) = normalized.strip_prefix("user:")
+        && let Ok(user_id) = Uuid::parse_str(raw)
+    {
+        return json!({
+            "kind": "user",
+            "user_id": user_id,
+            "subject": format!("user:{user_id}"),
+            "display_label": format!("user:{user_id}"),
+            "legacy_label": serde_json::Value::Null,
+        });
     }
     if let Some(runner_id) = normalized.strip_prefix("remote-runner:") {
         return json!({

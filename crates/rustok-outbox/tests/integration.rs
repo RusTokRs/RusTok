@@ -51,11 +51,11 @@ impl MockTransport {
 impl EventTransport for MockTransport {
     async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
         let mut remaining_failures = self.remaining_failures.lock().await;
-        if let Some(remaining) = remaining_failures.get_mut(&envelope.id) {
-            if *remaining > 0 {
-                *remaining -= 1;
-                return Err(Error::External("temporary transport error".to_string()));
-            }
+        if let Some(remaining) = remaining_failures.get_mut(&envelope.id)
+            && *remaining > 0
+        {
+            *remaining -= 1;
+            return Err(Error::External("temporary transport error".to_string()));
         }
 
         self.delivered.lock().await.push(envelope.id);

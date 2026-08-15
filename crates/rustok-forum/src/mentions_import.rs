@@ -24,12 +24,14 @@ impl ForumResolvedMentions {
             }
             if by_handle.insert(normalized.clone(), user_id).is_some() {
                 return Err(ForumError::Validation(
-                    "Forum import mention admission repeats a normalized profile handle".to_string(),
+                    "Forum import mention admission repeats a normalized profile handle"
+                        .to_string(),
                 ));
             }
             if !user_ids.insert(user_id) {
                 return Err(ForumError::Validation(
-                    "Forum import mention admission maps multiple handles onto one user".to_string(),
+                    "Forum import mention admission maps multiple handles onto one user"
+                        .to_string(),
                 ));
             }
         }

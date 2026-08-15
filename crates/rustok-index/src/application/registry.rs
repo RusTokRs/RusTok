@@ -196,14 +196,13 @@ impl SchemaRegistry {
                 .schemas
                 .get(&reference.identity())
                 .and_then(BTreeMap::last_key_value)
+                .filter(|(latest, _)| reference.version <= **latest)
             {
-                if reference.version <= *latest {
-                    return Err(SchemaRegistryError::NonMonotonicVersion {
-                        identity: reference.identity(),
-                        latest: *latest,
-                        attempted: reference.version,
-                    });
-                }
+                return Err(SchemaRegistryError::NonMonotonicVersion {
+                    identity: reference.identity(),
+                    latest: *latest,
+                    attempted: reference.version,
+                });
             }
         }
 

@@ -868,22 +868,23 @@ async fn validate_parent_boundary_in_tx(
     selected_ids: &HashSet<Uuid>,
 ) -> ForumResult<()> {
     for reply in selected {
-        if let Some(parent_id) = reply.parent_reply_id {
-            if selected_ids.contains(&parent_id) {
-                let parent = selected
-                    .iter()
-                    .find(|candidate| candidate.id == parent_id)
-                    .ok_or_else(|| {
-                        ForumError::Validation(
-                            "Forum reply range move internal parent is unavailable".to_string(),
-                        )
-                    })?;
-                if parent.position >= reply.position {
-                    return Err(ForumError::Validation(
-                        "Forum reply range move requires parent-before-child source positions"
-                            .to_string(),
-                    ));
-                }
+        if let Some(parent_id) = reply
+            .parent_reply_id
+            .filter(|parent_id| selected_ids.contains(parent_id))
+        {
+            let parent = selected
+                .iter()
+                .find(|candidate| candidate.id == parent_id)
+                .ok_or_else(|| {
+                    ForumError::Validation(
+                        "Forum reply range move internal parent is unavailable".to_string(),
+                    )
+                })?;
+            if parent.position >= reply.position {
+                return Err(ForumError::Validation(
+                    "Forum reply range move requires parent-before-child source positions"
+                        .to_string(),
+                ));
             }
         }
     }

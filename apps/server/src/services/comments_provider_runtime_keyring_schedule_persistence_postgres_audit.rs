@@ -6,17 +6,13 @@ use std::{
 };
 
 use rustok_api::AuthPrincipalKind;
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use tokio::runtime::{Builder, Runtime};
 use uuid::Uuid;
 
 use super::{
-    keyring,
-    keyring_schedule_persistence as persistence,
-    keyring_schedule_persistence_postgres as postgres,
-    keyring_schedule_trigger as trigger,
+    keyring, keyring_schedule_persistence as persistence,
+    keyring_schedule_persistence_postgres as postgres, keyring_schedule_trigger as trigger,
 };
 
 pub const COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_OUTBOX_TABLE: &str =
@@ -30,14 +26,10 @@ const COMMIT_RECONCILIATION_ATTEMPTS: usize = 20;
 const COMMIT_RECONCILIATION_DELAY_MS: u64 = 100;
 const REPLACEMENT_SUCCEEDED_OUTCOME: &str = "replacement_succeeded";
 
-type StoreResult = std::result::Result<
-    (),
-    persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
->;
-type StoreResultWith<T> = std::result::Result<
-    T,
-    persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
->;
+type StoreResult =
+    std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>;
+type StoreResultWith<T> =
+    std::result::Result<T, persistence::CommentsTcpDelegationSchedulePersistenceStoreError>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct CommentsTcpDelegationSchedulePostgresAuditContext {
@@ -56,8 +48,7 @@ impl CommentsTcpDelegationSchedulePostgresAuditContext {
     ) -> std::result::Result<Self, String> {
         if context.request_id().is_nil() || context.actor_id().is_nil() {
             return Err(
-                "Comments TCP delegation schedule durable audit identity is invalid"
-                    .to_string(),
+                "Comments TCP delegation schedule durable audit identity is invalid".to_string(),
             );
         }
         Ok(Self {
@@ -146,36 +137,25 @@ impl StoredAuditRecord {
         expected: &StoredScheduleRecord,
         candidate: &StoredScheduleRecord,
     ) -> StoreResultWith<Self> {
-        if expected.source != candidate.source
-            || candidate.generation <= expected.generation
-        {
-            return Err(
-                persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict,
-            );
+        if expected.source != candidate.source || candidate.generation <= expected.generation {
+            return Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict);
         }
-        let audit_schema_version = i16::try_from(
-            COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_SCHEMA_VERSION,
-        )
-        .map_err(|_| {
+        let audit_schema_version =
+            i16::try_from(COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_SCHEMA_VERSION).map_err(
+                |_| persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
+            )?;
+        let occurred_at_unix_ms = i64::try_from(context.occurred_at_unix_ms).map_err(|_| {
             persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
         })?;
-        let occurred_at_unix_ms = i64::try_from(context.occurred_at_unix_ms)
-            .map_err(|_| {
-                persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
-            })?;
         Ok(Self {
             audit_schema_version,
             request_id: context.request_id,
-            state_key: postgres::COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY
-                .to_string(),
-            event_type:
-                COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_EVENT_TYPE.to_string(),
+            state_key: postgres::COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY.to_string(),
+            event_type: COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_EVENT_TYPE.to_string(),
             occurred_at_unix_ms,
             actor_id: context.actor_id,
             principal_kind: principal_kind_text(context.principal_kind)
-                .ok_or(
-                    persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict,
-                )?
+                .ok_or(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict)?
                 .to_string(),
             operation: operation_text(context.operation).to_string(),
             source: candidate.source.clone(),
@@ -195,8 +175,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore {
             );
         }
 
-        let (commands, receiver) =
-            mpsc::sync_channel(POSTGRES_AUDIT_STORE_QUEUE_CAPACITY);
+        let (commands, receiver) = mpsc::sync_channel(POSTGRES_AUDIT_STORE_QUEUE_CAPACITY);
         let (startup_sender, startup_receiver) = mpsc::sync_channel(1);
         thread::Builder::new()
             .name("comments-delegation-schedule-postgres-audit".to_string())
@@ -204,8 +183,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore {
                 let runtime = match Builder::new_current_thread().enable_all().build() {
                     Ok(runtime) => runtime,
                     Err(_) => {
-                        let _ = startup_sender
-                            .send(PostgresAuditWorkerStartup::Failed);
+                        let _ = startup_sender.send(PostgresAuditWorkerStartup::Failed);
                         return;
                     }
                 };
@@ -257,14 +235,14 @@ impl PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore {
         candidate: &persistence::CommentsTcpDelegationSchedulePersistenceRecord,
         audit: &CommentsTcpDelegationSchedulePostgresAuditContext,
     ) -> StoreResult {
-        self.request(|response| {
-            PostgresAuditStoreCommand::CompareAndStoreWithAudit {
+        self.request(
+            |response| PostgresAuditStoreCommand::CompareAndStoreWithAudit {
                 expected: *expected,
                 candidate: *candidate,
                 audit: *audit,
                 response,
-            }
-        })
+            },
+        )
     }
 
     fn request(
@@ -272,25 +250,19 @@ impl PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore {
         build: impl FnOnce(SyncSender<StoreResult>) -> PostgresAuditStoreCommand,
     ) -> StoreResult {
         let (response_sender, response_receiver) = mpsc::sync_channel(1);
-        self.commands
-            .send(build(response_sender))
-            .map_err(|_| {
-                persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
-            })?;
+        self.commands.send(build(response_sender)).map_err(|_| {
+            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
+        })?;
         response_receiver.recv().unwrap_or(Err(
             persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
         ))
     }
 }
 
-impl fmt::Debug
-    for PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore
-{
+impl fmt::Debug for PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct(
-                "PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore",
-            )
+            .debug_struct("PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore")
             .field("database", &"[CONFIGURED]")
             .field(
                 "state_key",
@@ -309,16 +281,14 @@ fn run_postgres_audit_store_worker(
     while let Ok(command) = receiver.recv() {
         match command {
             PostgresAuditStoreCommand::VerifyCurrent { expected, response } => {
-                let result =
-                    runtime.block_on(verify_current_on_postgres(&database, &expected));
+                let result = runtime.block_on(verify_current_on_postgres(&database, &expected));
                 let _ = response.send(result);
             }
             PostgresAuditStoreCommand::BootstrapEmpty {
                 candidate,
                 response,
             } => {
-                let result = runtime
-                    .block_on(bootstrap_empty_on_postgres(&database, &candidate));
+                let result = runtime.block_on(bootstrap_empty_on_postgres(&database, &candidate));
                 let _ = response.send(result);
             }
             PostgresAuditStoreCommand::CompareAndStoreWithAudit {
@@ -328,10 +298,7 @@ fn run_postgres_audit_store_worker(
                 response,
             } => {
                 let result = runtime.block_on(compare_and_store_with_audit_on_postgres(
-                    &database,
-                    &expected,
-                    &candidate,
-                    &audit,
+                    &database, &expected, &candidate, &audit,
                 ));
                 let _ = response.send(result);
             }
@@ -346,12 +313,10 @@ async fn verify_current_on_postgres(
     let expected = StoredScheduleRecord::from_public(expected)?;
     match read_current_record(database).await {
         Ok(Some(current)) if current == expected => Ok(()),
-        Ok(_) | Err(sea_orm::DbErr::Type(_)) => Err(
-            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict,
-        ),
-        Err(_) => Err(
-            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
-        ),
+        Ok(_) | Err(sea_orm::DbErr::Type(_)) => {
+            Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict)
+        }
+        Err(_) => Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable),
     }
 }
 
@@ -363,7 +328,9 @@ async fn bootstrap_empty_on_postgres(
     let transaction = database.begin().await.map_err(|_| {
         persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
     })?;
-    let execution = transaction.execute(insert_state_statement(&candidate)).await;
+    let execution = transaction
+        .execute(insert_state_statement(&candidate))
+        .await;
     let rows_affected = match execution {
         Ok(result) => result.rows_affected(),
         Err(_) => {
@@ -375,9 +342,7 @@ async fn bootstrap_empty_on_postgres(
     };
     if rows_affected != 1 {
         let _ = transaction.rollback().await;
-        return Err(
-            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict,
-        );
+        return Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict);
     }
     match transaction.commit().await {
         Ok(()) => Ok(()),
@@ -412,14 +377,10 @@ async fn compare_and_store_with_audit_on_postgres(
     };
     if state_rows != 1 {
         let _ = transaction.rollback().await;
-        return Err(
-            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict,
-        );
+        return Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict);
     }
 
-    let audit_execution = transaction
-        .execute(insert_audit_statement(&audit))
-        .await;
+    let audit_execution = transaction.execute(insert_audit_statement(&audit)).await;
     let audit_rows = match audit_execution {
         Ok(result) => result.rows_affected(),
         Err(_) => {
@@ -431,16 +392,12 @@ async fn compare_and_store_with_audit_on_postgres(
     };
     if audit_rows != 1 {
         let _ = transaction.rollback().await;
-        return Err(
-            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict,
-        );
+        return Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict);
     }
 
     match transaction.commit().await {
         Ok(()) => Ok(()),
-        Err(_) => {
-            reconcile_ambiguous_audited_commit(database, &candidate, &audit).await
-        }
+        Err(_) => reconcile_ambiguous_audited_commit(database, &candidate, &audit).await,
     }
 }
 
@@ -452,10 +409,7 @@ async fn reconcile_ambiguous_bootstrap(
         match read_current_record(database).await {
             Ok(Some(current)) if &current == candidate => return Ok(()),
             Err(_) if attempt + 1 < COMMIT_RECONCILIATION_ATTEMPTS => {
-                tokio::time::sleep(Duration::from_millis(
-                    COMMIT_RECONCILIATION_DELAY_MS,
-                ))
-                .await;
+                tokio::time::sleep(Duration::from_millis(COMMIT_RECONCILIATION_DELAY_MS)).await;
             }
             _ => abort_on_indeterminate_postgres_audit_commit(),
         }
@@ -477,13 +431,8 @@ async fn reconcile_ambiguous_audited_commit(
             {
                 return Ok(());
             }
-            (Err(_), _) | (_, Err(_))
-                if attempt + 1 < COMMIT_RECONCILIATION_ATTEMPTS =>
-            {
-                tokio::time::sleep(Duration::from_millis(
-                    COMMIT_RECONCILIATION_DELAY_MS,
-                ))
-                .await;
+            (Err(_), _) | (_, Err(_)) if attempt + 1 < COMMIT_RECONCILIATION_ATTEMPTS => {
+                tokio::time::sleep(Duration::from_millis(COMMIT_RECONCILIATION_DELAY_MS)).await;
             }
             _ => abort_on_indeterminate_postgres_audit_commit(),
         }
@@ -567,10 +516,8 @@ async fn read_audit_record(
     if record.audit_schema_version != 1
         || record.request_id.is_nil()
         || record.actor_id.is_nil()
-        || record.state_key
-            != postgres::COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY
-        || record.event_type
-            != COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_EVENT_TYPE
+        || record.state_key != postgres::COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_STATE_KEY
+        || record.event_type != COMMENTS_TCP_DELEGATION_SCHEDULE_POSTGRES_AUDIT_EVENT_TYPE
         || record.occurred_at_unix_ms <= 0
         || !matches!(record.principal_kind.as_str(), "direct_user" | "service")
         || !matches!(
@@ -683,9 +630,7 @@ fn operation_text(
     operation: trigger::CommentsTcpDelegationScheduleTriggerOperation,
 ) -> &'static str {
     match operation {
-        trigger::CommentsTcpDelegationScheduleTriggerOperation::ReloadFile => {
-            "reload_file"
-        }
+        trigger::CommentsTcpDelegationScheduleTriggerOperation::ReloadFile => "reload_file",
         trigger::CommentsTcpDelegationScheduleTriggerOperation::ReplaceHostSchedule => {
             "replace_host_schedule"
         }

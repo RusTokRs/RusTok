@@ -598,7 +598,7 @@ fn decode_nested_relation(
             .identity_paths
             .iter()
             .cloned()
-            .zip(wire.entity_ids.into_iter())
+            .zip(wire.entity_ids)
             .map(|(path, entity_id)| IndexRelationIdentity {
                 path,
                 entity_id: Some(entity_id),

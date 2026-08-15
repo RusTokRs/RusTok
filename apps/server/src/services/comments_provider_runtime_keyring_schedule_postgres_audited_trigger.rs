@@ -11,8 +11,7 @@ use std::{
 };
 
 use super::{
-    keyring_schedule,
-    keyring_schedule_persisted_trigger as persisted_trigger,
+    keyring_schedule, keyring_schedule_persisted_trigger as persisted_trigger,
     keyring_schedule_persistence as persistence,
     keyring_schedule_persistence_postgres_audit as postgres_audit,
     keyring_schedule_trigger as trigger,
@@ -31,15 +30,11 @@ struct PostgresAuditedScheduleTriggerState {
 
 struct PostgresAuditedPersistenceBridge {
     store: PostgresAuditedPersistenceStore,
-    pending: Mutex<
-        Option<postgres_audit::CommentsTcpDelegationSchedulePostgresAuditContext>,
-    >,
+    pending: Mutex<Option<postgres_audit::CommentsTcpDelegationSchedulePostgresAuditContext>>,
 }
 
 enum PostgresAuditedPersistenceStore {
-    Production(
-        postgres_audit::PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore,
-    ),
+    Production(postgres_audit::PostgresCommentsTcpDelegationScheduleAuditedPersistenceStore),
     #[cfg(test)]
     ResponseDisconnect(AuditedStoreResponseDisconnectHarness),
 }
@@ -180,19 +175,15 @@ impl SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger {
 
     pub fn current_selection(
         &self,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleRuntimeSelection,
-        String,
-    > {
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleRuntimeSelection, String>
+    {
         self.0.inner.current_selection()
     }
 
     pub fn current_persistence_record(
         &self,
-    ) -> std::result::Result<
-        persistence::CommentsTcpDelegationSchedulePersistenceRecord,
-        String,
-    > {
+    ) -> std::result::Result<persistence::CommentsTcpDelegationSchedulePersistenceRecord, String>
+    {
         self.0.inner.current_persistence_record()
     }
 
@@ -212,10 +203,8 @@ impl SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger {
     pub fn reload_file(
         &self,
         context: trigger::CommentsTcpDelegationScheduleTriggerContext,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome,
-        String,
-    > {
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome, String>
+    {
         self.execute_with_audit_context(
             context,
             trigger::CommentsTcpDelegationScheduleTriggerOperation::ReloadFile,
@@ -227,10 +216,8 @@ impl SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger {
         &self,
         context: trigger::CommentsTcpDelegationScheduleTriggerContext,
         document: persistence::CommentsTcpDelegationSchedulePersistenceDocument,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome,
-        String,
-    > {
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome, String>
+    {
         self.execute_with_audit_context(
             context,
             trigger::CommentsTcpDelegationScheduleTriggerOperation::ReplaceHostSchedule,
@@ -253,15 +240,13 @@ impl SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger {
         ) -> std::result::Result<T, String>,
     ) -> std::result::Result<T, String> {
         let _operation = self.0.operation.lock().map_err(|_| {
-            "Comments TCP delegation schedule audited trigger state is unavailable"
-                .to_string()
+            "Comments TCP delegation schedule audited trigger state is unavailable".to_string()
         })?;
-        let audit_context =
-            postgres_audit::CommentsTcpDelegationSchedulePostgresAuditContext::new(
-                context,
-                operation,
-                current_unix_ms()?,
-            )?;
+        let audit_context = postgres_audit::CommentsTcpDelegationSchedulePostgresAuditContext::new(
+            context,
+            operation,
+            current_unix_ms()?,
+        )?;
         let _pending = self.0.bridge.install(audit_context)?;
         let mut completion = AuditedExecutionCompletionGuard { completed: false };
         let result = execute(&self.0.inner);
@@ -274,10 +259,8 @@ impl PostgresAuditedPersistenceStore {
     fn verify_current(
         &self,
         expected: &persistence::CommentsTcpDelegationSchedulePersistenceRecord,
-    ) -> std::result::Result<
-        (),
-        persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
-    > {
+    ) -> std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>
+    {
         match self {
             Self::Production(store) => store.verify_current(expected),
             #[cfg(test)]
@@ -288,10 +271,8 @@ impl PostgresAuditedPersistenceStore {
     fn bootstrap_empty(
         &self,
         candidate: &persistence::CommentsTcpDelegationSchedulePersistenceRecord,
-    ) -> std::result::Result<
-        (),
-        persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
-    > {
+    ) -> std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>
+    {
         match self {
             Self::Production(store) => store.bootstrap_empty(candidate),
             #[cfg(test)]
@@ -304,18 +285,14 @@ impl PostgresAuditedPersistenceStore {
         expected: &persistence::CommentsTcpDelegationSchedulePersistenceRecord,
         candidate: &persistence::CommentsTcpDelegationSchedulePersistenceRecord,
         audit: &postgres_audit::CommentsTcpDelegationSchedulePostgresAuditContext,
-    ) -> std::result::Result<
-        (),
-        persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
-    > {
+    ) -> std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>
+    {
         match self {
             Self::Production(store) => {
                 store.compare_and_store_with_audit(expected, candidate, audit)
             }
             #[cfg(test)]
-            Self::ResponseDisconnect(store) => {
-                store.compare_and_store_with_audit()
-            }
+            Self::ResponseDisconnect(store) => store.compare_and_store_with_audit(),
         }
     }
 }
@@ -326,8 +303,7 @@ impl PostgresAuditedPersistenceBridge {
         context: postgres_audit::CommentsTcpDelegationSchedulePostgresAuditContext,
     ) -> std::result::Result<PendingAuditGuard<'_>, String> {
         let mut pending = self.pending.lock().map_err(|_| {
-            "Comments TCP delegation schedule durable audit context is unavailable"
-                .to_string()
+            "Comments TCP delegation schedule durable audit context is unavailable".to_string()
         })?;
         if pending.is_some() {
             return Err(
@@ -352,9 +328,7 @@ impl PostgresAuditedPersistenceBridge {
             })?
             .as_ref()
             .copied()
-            .ok_or(
-                persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
-            )
+            .ok_or(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable)
     }
 }
 
@@ -364,10 +338,8 @@ impl persistence::CommentsTcpDelegationSchedulePersistenceStore
     fn verify_current(
         &self,
         expected: &persistence::CommentsTcpDelegationSchedulePersistenceRecord,
-    ) -> std::result::Result<
-        (),
-        persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
-    > {
+    ) -> std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>
+    {
         self.store.verify_current(expected)
     }
 
@@ -375,10 +347,8 @@ impl persistence::CommentsTcpDelegationSchedulePersistenceStore
         &self,
         expected: Option<&persistence::CommentsTcpDelegationSchedulePersistenceRecord>,
         candidate: &persistence::CommentsTcpDelegationSchedulePersistenceRecord,
-    ) -> std::result::Result<
-        (),
-        persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
-    > {
+    ) -> std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>
+    {
         let result = match expected {
             None => self.store.bootstrap_empty(candidate),
             Some(expected) => {
@@ -388,9 +358,9 @@ impl persistence::CommentsTcpDelegationSchedulePersistenceStore
             }
         };
         match result {
-            Err(
-                persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
-            ) => abort_on_indeterminate_audited_store_response(),
+            Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable) => {
+                abort_on_indeterminate_audited_store_response()
+            }
             other => other,
         }
     }
@@ -401,19 +371,12 @@ impl AuditedStoreResponseDisconnectHarness {
     fn new() -> std::result::Result<Self, String> {
         let (commands, receiver) = mpsc::sync_channel(1);
         thread::Builder::new()
-            .name(
-                "comments-delegation-schedule-audit-response-disconnect"
-                    .to_string(),
-            )
+            .name("comments-delegation-schedule-audit-response-disconnect".to_string())
             .spawn(move || {
                 while let Ok(command) = receiver.recv() {
                     match command {
-                        AuditedStoreResponseDisconnectCommand::VerifyCurrent {
-                            response,
-                        }
-                        | AuditedStoreResponseDisconnectCommand::BootstrapEmpty {
-                            response,
-                        } => {
+                        AuditedStoreResponseDisconnectCommand::VerifyCurrent { response }
+                        | AuditedStoreResponseDisconnectCommand::BootstrapEmpty { response } => {
                             let _ = response.send(Ok(()));
                         }
                         AuditedStoreResponseDisconnectCommand::CompareAndStoreWithAudit {
@@ -434,37 +397,25 @@ impl AuditedStoreResponseDisconnectHarness {
 
     fn verify_current(
         &self,
-    ) -> std::result::Result<
-        (),
-        persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
-    > {
-        self.request(|response| {
-            AuditedStoreResponseDisconnectCommand::VerifyCurrent { response }
-        })
+    ) -> std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>
+    {
+        self.request(|response| AuditedStoreResponseDisconnectCommand::VerifyCurrent { response })
     }
 
     fn bootstrap_empty(
         &self,
-    ) -> std::result::Result<
-        (),
-        persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
-    > {
-        self.request(|response| {
-            AuditedStoreResponseDisconnectCommand::BootstrapEmpty { response }
-        })
+    ) -> std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>
+    {
+        self.request(|response| AuditedStoreResponseDisconnectCommand::BootstrapEmpty { response })
     }
 
     fn compare_and_store_with_audit(
         &self,
-    ) -> std::result::Result<
-        (),
-        persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
-    > {
-        self.request(|response| {
-            AuditedStoreResponseDisconnectCommand::CompareAndStoreWithAudit {
-                response,
-            }
-        })
+    ) -> std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>
+    {
+        self.request(
+            |response| AuditedStoreResponseDisconnectCommand::CompareAndStoreWithAudit { response },
+        )
     }
 
     fn request(
@@ -477,16 +428,12 @@ impl AuditedStoreResponseDisconnectHarness {
                 >,
             >,
         ) -> AuditedStoreResponseDisconnectCommand,
-    ) -> std::result::Result<
-        (),
-        persistence::CommentsTcpDelegationSchedulePersistenceStoreError,
-    > {
+    ) -> std::result::Result<(), persistence::CommentsTcpDelegationSchedulePersistenceStoreError>
+    {
         let (response_sender, response_receiver) = mpsc::sync_channel(1);
-        self.commands
-            .send(build(response_sender))
-            .map_err(|_| {
-                persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
-            })?;
+        self.commands.send(build(response_sender)).map_err(|_| {
+            persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable
+        })?;
         response_receiver.recv().unwrap_or(Err(
             persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
         ))
@@ -512,9 +459,7 @@ impl Drop for AuditedExecutionCompletionGuard {
 impl fmt::Debug for SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct(
-                "SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger",
-            )
+            .debug_struct("SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger")
             .field("persisted_trigger", &self.0.inner)
             .field("postgres_audit_outbox", &"[CONFIGURED]")
             .field("pending_context", &"[REDACTED]")
@@ -524,12 +469,10 @@ impl fmt::Debug for SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger {
 
 fn current_unix_ms() -> std::result::Result<u64, String> {
     let elapsed = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| {
-        "Comments TCP delegation schedule durable audit clock is not available"
-            .to_string()
+        "Comments TCP delegation schedule durable audit clock is not available".to_string()
     })?;
     u64::try_from(elapsed.as_millis()).map_err(|_| {
-        "Comments TCP delegation schedule durable audit clock is not available"
-            .to_string()
+        "Comments TCP delegation schedule durable audit clock is not available".to_string()
     })
 }
 
@@ -555,32 +498,24 @@ mod tests {
 
     use super::*;
 
-    const CHILD_ENV: &str =
-        "RUSTOK_BLOG_AUDITED_WORKER_RESPONSE_DISCONNECT_CHILD";
+    const CHILD_ENV: &str = "RUSTOK_BLOG_AUDITED_WORKER_RESPONSE_DISCONNECT_CHILD";
     const CHILD_FILTER: &str = "audited_worker_response_disconnect_child";
-    const CHILD_READY_MARKER: &str =
-        "rustok-blog-audited-worker-response-disconnect-ready";
+    const CHILD_READY_MARKER: &str = "rustok-blog-audited-worker-response-disconnect-ready";
     const CHILD_TIMEOUT: Duration = Duration::from_secs(10);
     const PROPAGATION_BUDGET_MS: u64 = 1_000;
     const MAX_TTL_MS: u64 = 5_000;
     const SUCCESSOR_DELAY_MS: u64 = 120_000;
-    const SECRET_A: &str =
-        "comments-worker-disconnect-secret-a-000000000001";
-    const SECRET_B: &str =
-        "comments-worker-disconnect-secret-b-000000000002";
+    const SECRET_A: &str = "comments-worker-disconnect-secret-a-000000000001";
+    const SECRET_B: &str = "comments-worker-disconnect-secret-b-000000000002";
 
     struct AllowAuthorizer;
 
-    impl trigger::CommentsTcpDelegationScheduleTriggerAuthorizer
-        for AllowAuthorizer
-    {
+    impl trigger::CommentsTcpDelegationScheduleTriggerAuthorizer for AllowAuthorizer {
         fn authorize(
             &self,
             _request: &trigger::CommentsTcpDelegationScheduleTriggerAuthorizationRequest,
-        ) -> std::result::Result<
-            (),
-            trigger::CommentsTcpDelegationScheduleTriggerAuthorizationError,
-        > {
+        ) -> std::result::Result<(), trigger::CommentsTcpDelegationScheduleTriggerAuthorizationError>
+        {
             Ok(())
         }
     }
@@ -589,8 +524,7 @@ mod tests {
     #[ignore = "requires subprocess abort and signal observation"]
     fn audited_worker_response_disconnect_aborts() {
         let mut child = Command::new(
-            std::env::current_exe()
-                .expect("resolve the current rustok-server test binary"),
+            std::env::current_exe().expect("resolve the current rustok-server test binary"),
         )
         .arg(CHILD_FILTER)
         .arg("--ignored")
@@ -613,9 +547,7 @@ mod tests {
             if Instant::now() >= deadline {
                 let _ = child.kill();
                 let _ = child.wait();
-                panic!(
-                    "audited worker-response disconnect child exceeded {CHILD_TIMEOUT:?}"
-                );
+                panic!("audited worker-response disconnect child exceeded {CHILD_TIMEOUT:?}");
             }
             thread::sleep(Duration::from_millis(10));
         };
@@ -669,9 +601,7 @@ mod tests {
             .checked_add(PROPAGATION_BUDGET_MS)
             .and_then(|value| value.checked_add(MAX_TTL_MS))
             .and_then(|value| {
-                value.checked_add(
-                    rustok_comments::DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS,
-                )
+                value.checked_add(rustok_comments::DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS)
             })
             .and_then(|value| value.checked_add(1_000))
             .expect("primary retirement overflow");
@@ -691,8 +621,7 @@ mod tests {
             primary_retirement_ms,
             true,
         );
-        let authorizer:
-            trigger::SharedCommentsTcpDelegationScheduleTriggerAuthorizer =
+        let authorizer: trigger::SharedCommentsTcpDelegationScheduleTriggerAuthorizer =
             Arc::new(AllowAuthorizer);
         let audited =
             SharedCommentsTcpDelegationPostgresAuditedScheduleTrigger::from_response_disconnect_harness(
@@ -713,9 +642,7 @@ mod tests {
             .expect("construct the audited trigger context"),
             replacement,
         );
-        panic!(
-            "audited worker-response disconnect returned instead of aborting: {result:?}"
-        );
+        panic!("audited worker-response disconnect returned instead of aborting: {result:?}");
     }
 
     fn schedule_document(
@@ -725,14 +652,13 @@ mod tests {
         primary_retirement_ms: u64,
         include_successor: bool,
     ) -> persistence::CommentsTcpDelegationSchedulePersistenceDocument {
-        let primary =
-            persistence::CommentsTcpDelegationSchedulePersistenceKey::new(
-                "worker-disconnect-key-a",
-                SECRET_A,
-                primary_activation_ms,
-                include_successor.then_some(primary_retirement_ms),
-            )
-            .expect("construct the primary audited schedule key");
+        let primary = persistence::CommentsTcpDelegationSchedulePersistenceKey::new(
+            "worker-disconnect-key-a",
+            SECRET_A,
+            primary_activation_ms,
+            include_successor.then_some(primary_retirement_ms),
+        )
+        .expect("construct the primary audited schedule key");
         let mut keys = vec![primary];
         if include_successor {
             keys.push(

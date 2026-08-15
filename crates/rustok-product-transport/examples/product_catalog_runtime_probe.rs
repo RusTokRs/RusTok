@@ -152,10 +152,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn port_error(operation: &'static str, error: PortError) -> io::Error {
-    io::Error::new(
-        io::ErrorKind::Other,
-        format!("{operation} failed with Product port code {}", error.code),
-    )
+    io::Error::other(format!(
+        "{operation} failed with Product port code {}",
+        error.code
+    ))
 }
 
 fn required_env(name: &str) -> Result<String, io::Error> {

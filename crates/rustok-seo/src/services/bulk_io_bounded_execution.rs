@@ -1,6 +1,6 @@
-use rustok_content::resolve_by_locale_with_fallback;
 use crate::dto::SeoModuleSettings;
 use crate::entities::{self as seo_meta, meta_translation};
+use rustok_content::resolve_by_locale_with_fallback;
 
 use super::robots::first_open_graph_image_url;
 use super::templates::render_generated_record;
@@ -41,7 +41,10 @@ impl SeoService {
         let filter =
             normalize_bulk_list_input(input.filter.clone(), tenant.default_locale.as_str())?;
         let rows = self.collect_bulk_rows_for_filter(tenant, &filter).await?;
-        let target_ids = rows.into_iter().map(|row| row.target_id).collect::<Vec<_>>();
+        let target_ids = rows
+            .into_iter()
+            .map(|row| row.target_id)
+            .collect::<Vec<_>>();
         let payload = QueuedBulkExportPayload {
             input: input.clone(),
             target_ids: target_ids.clone(),
@@ -558,11 +561,7 @@ impl SeoService {
             .map(|summary| summary.target_id)
             .collect::<HashSet<_>>();
         let mut explicit_by_target = self
-            .load_bulk_io_explicit_meta_batches(
-                tenant.id,
-                filter.target_kind.as_str(),
-                target_ids,
-            )
+            .load_bulk_io_explicit_meta_batches(tenant.id, filter.target_kind.as_str(), target_ids)
             .await?;
         let settings = self.load_settings(tenant.id).await?;
         let mut projections = HashMap::new();
@@ -621,8 +620,7 @@ impl SeoService {
                 .order_by_asc(meta_translation::Column::Locale)
                 .all(&self.db)
                 .await?;
-            let mut translations_by_meta =
-                HashMap::<Uuid, Vec<meta_translation::Model>>::new();
+            let mut translations_by_meta = HashMap::<Uuid, Vec<meta_translation::Model>>::new();
             for translation in translations {
                 translations_by_meta
                     .entry(translation.meta_id)
@@ -694,9 +692,7 @@ fn read_bulk_import_chunk(payload: &QueuedBulkImportPayload) -> SeoResult<BulkIm
                 break;
             };
             let record = result.map_err(|error| {
-                SeoError::validation(format!(
-                    "failed to read CSV row {next_row_number}: {error}"
-                ))
+                SeoError::validation(format!("failed to read CSV row {next_row_number}: {error}"))
             })?;
             rows.push(parse_bulk_csv_record(
                 &record,

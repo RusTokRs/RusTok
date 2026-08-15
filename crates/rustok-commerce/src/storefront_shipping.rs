@@ -27,7 +27,7 @@ fn uuid_shape(value: Uuid) -> &'static str {
 fn optional_text_shape(value: Option<&str>) -> &'static str {
     match value {
         None => "absent",
-        Some(value) if value.is_empty() => "empty",
+        Some("") => "empty",
         Some(_) => "present",
     }
 }
@@ -159,16 +159,14 @@ pub fn enrich_cart_delivery_groups_from_options(
             })
             .map(map_shipping_option_summary)
             .collect();
-        if delivery_group.selected_shipping_option_id.is_none() {
-            if let Some(selected_id) = cart.selected_shipping_option_id {
-                if delivery_group
-                    .available_shipping_options
-                    .iter()
-                    .any(|opt| opt.id == selected_id)
-                {
-                    delivery_group.selected_shipping_option_id = Some(selected_id);
-                }
-            }
+        if delivery_group.selected_shipping_option_id.is_none()
+            && let Some(selected_id) = cart.selected_shipping_option_id
+            && delivery_group
+                .available_shipping_options
+                .iter()
+                .any(|opt| opt.id == selected_id)
+        {
+            delivery_group.selected_shipping_option_id = Some(selected_id);
         }
     }
     cart.selected_shipping_option_id = if cart.delivery_groups.len() == 1 {

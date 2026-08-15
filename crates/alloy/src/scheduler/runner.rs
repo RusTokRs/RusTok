@@ -189,10 +189,11 @@ impl<S: ScriptRegistry + 'static> Scheduler<S> {
             job.running = false;
             job.last_run = Some(Utc::now());
 
-            if let Ok(schedule) = Schedule::from_str(&job.cron_expression) {
-                if let Some(next) = schedule.upcoming(Utc).next() {
-                    job.next_run = next;
-                }
+            if let Some(next) = Schedule::from_str(&job.cron_expression)
+                .ok()
+                .and_then(|schedule| schedule.upcoming(Utc).next())
+            {
+                job.next_run = next;
             }
         }
     }

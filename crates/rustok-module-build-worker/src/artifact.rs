@@ -953,6 +953,61 @@ fn inspect_component_interface(
     })
 }
 
+fn component_name(
+    name: wasmparser::ComponentExternName<'_>,
+) -> Result<String, ComponentArtifactError> {
+    if name.implements.is_some() || name.version_suffix.is_some() || name.external_id.is_some() {
+        return Err(ComponentArtifactError::InspectionFailed);
+    }
+    valid_interface_name(name.name)
+        .then(|| name.name.to_owned())
+        .ok_or(ComponentArtifactError::InspectionFailed)
+}
+
+fn normalized_interface(
+    interface: &ModuleBuildComponentInterface,
+) -> Result<ModuleBuildComponentInterface, ComponentArtifactError> {
+    let exports = normalize_names(&interface.exports)?;
+    let imports = normalize_names(&interface.imports)?;
+    if exports.is_empty() {
+        return Err(ComponentArtifactError::InspectionFailed);
+    }
+    Ok(ModuleBuildComponentInterface { exports, imports })
+}
+
+fn normalize_interface_for_wit(
+    interface: &ModuleBuildComponentInterface,
+) -> Result<ModuleBuildComponentInterface, WitContractError> {
+    let exports = normalize_names(&interface.exports).map_err(|_| WitContractError::Mismatch)?;
+    let imports = normalize_names(&interface.imports).map_err(|_| WitContractError::Mismatch)?;
+    if exports.is_empty() {
+        return Err(WitContractError::Mismatch);
+    }
+    Ok(ModuleBuildComponentInterface { exports, imports })
+}
+
+fn normalize_names(values: &[String]) -> Result<Vec<String>, ComponentArtifactError> {
+    let names = values.iter().collect::<BTreeSet<_>>();
+    if names.len() != values.len() || names.iter().any(|name| !valid_interface_name(name)) {
+        return Err(ComponentArtifactError::InspectionFailed);
+    }
+    Ok(names.into_iter().cloned().collect())
+}
+
+fn valid_interface_name(value: &str) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= MAX_INTERFACE_NAME_BYTES
+        && !value.contains(char::is_control)
+}
+
+fn valid_wit_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_INTERFACE_NAME_BYTES
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -1100,59 +1155,4 @@ mod tests {
             Err(ArtifactDescriptorError::Invalid)
         ));
     }
-}
-
-fn component_name(
-    name: wasmparser::ComponentExternName<'_>,
-) -> Result<String, ComponentArtifactError> {
-    if name.implements.is_some() || name.version_suffix.is_some() || name.external_id.is_some() {
-        return Err(ComponentArtifactError::InspectionFailed);
-    }
-    valid_interface_name(name.name)
-        .then(|| name.name.to_owned())
-        .ok_or(ComponentArtifactError::InspectionFailed)
-}
-
-fn normalized_interface(
-    interface: &ModuleBuildComponentInterface,
-) -> Result<ModuleBuildComponentInterface, ComponentArtifactError> {
-    let exports = normalize_names(&interface.exports)?;
-    let imports = normalize_names(&interface.imports)?;
-    if exports.is_empty() {
-        return Err(ComponentArtifactError::InspectionFailed);
-    }
-    Ok(ModuleBuildComponentInterface { exports, imports })
-}
-
-fn normalize_interface_for_wit(
-    interface: &ModuleBuildComponentInterface,
-) -> Result<ModuleBuildComponentInterface, WitContractError> {
-    let exports = normalize_names(&interface.exports).map_err(|_| WitContractError::Mismatch)?;
-    let imports = normalize_names(&interface.imports).map_err(|_| WitContractError::Mismatch)?;
-    if exports.is_empty() {
-        return Err(WitContractError::Mismatch);
-    }
-    Ok(ModuleBuildComponentInterface { exports, imports })
-}
-
-fn normalize_names(values: &[String]) -> Result<Vec<String>, ComponentArtifactError> {
-    let names = values.iter().collect::<BTreeSet<_>>();
-    if names.len() != values.len() || names.iter().any(|name| !valid_interface_name(name)) {
-        return Err(ComponentArtifactError::InspectionFailed);
-    }
-    Ok(names.into_iter().cloned().collect())
-}
-
-fn valid_interface_name(value: &str) -> bool {
-    !value.trim().is_empty()
-        && value.len() <= MAX_INTERFACE_NAME_BYTES
-        && !value.contains(char::is_control)
-}
-
-fn valid_wit_identifier(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= MAX_INTERFACE_NAME_BYTES
-        && value.chars().all(|character| {
-            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
-        })
 }

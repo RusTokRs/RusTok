@@ -104,7 +104,10 @@ impl SourceRetryHandoffWorkerCycleOutcome {
             || self.swept_dead_letters > 0
     }
 
-    fn next_delay(self, config: CommentsTcpDelegationScheduleAuditSourceRetryWorkerConfig) -> Duration {
+    fn next_delay(
+        self,
+        config: CommentsTcpDelegationScheduleAuditSourceRetryWorkerConfig,
+    ) -> Duration {
         if self.had_error() {
             config.handoff.retry_delay
         } else if !self.reached_empty && self.calls >= config.handoff.max_claims_per_cycle {
@@ -117,9 +120,7 @@ impl SourceRetryHandoffWorkerCycleOutcome {
     fn count_handoff_error(&mut self, error: CommentsTcpDelegationScheduleAuditHandoffError) {
         match error {
             CommentsTcpDelegationScheduleAuditHandoffError::Conflict => self.conflicts += 1,
-            CommentsTcpDelegationScheduleAuditHandoffError::Unavailable => {
-                self.unavailable += 1
-            }
+            CommentsTcpDelegationScheduleAuditHandoffError::Unavailable => self.unavailable += 1,
         }
     }
 
@@ -175,9 +176,8 @@ fn start_source_retry_handoff_worker(
     runtime_ctx: &ServerRuntimeContext,
     config: CommentsTcpDelegationScheduleAuditSourceRetryWorkerConfig,
 ) -> Result<()> {
-    let writer: SharedCommentsTcpDelegationScheduleAuditCanonicalWriter = Arc::new(
-        RustokOutboxCommentsTcpDelegationScheduleAuditCanonicalWriter,
-    );
+    let writer: SharedCommentsTcpDelegationScheduleAuditCanonicalWriter =
+        Arc::new(RustokOutboxCommentsTcpDelegationScheduleAuditCanonicalWriter);
     let database = runtime_ctx.db_clone();
     let handoff = PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff::new(
         database.clone(),
@@ -204,10 +204,7 @@ fn start_source_retry_handoff_worker(
         instance_id,
     ));
     runtime_ctx.shared_insert(CommentsTcpDelegationScheduleAuditHandoffWorkerHandle(
-        Arc::new(CommentsTcpDelegationScheduleAuditHandoffWorkerRuntime {
-            instance_id,
-            task,
-        }),
+        Arc::new(CommentsTcpDelegationScheduleAuditHandoffWorkerRuntime { instance_id, task }),
     ));
 
     tracing::info!(
@@ -313,10 +310,7 @@ async fn run_source_retry_handoff_cycle(
 
     while outcome.calls < max_claims_per_cycle {
         outcome.calls += 1;
-        let claim = match handoff
-            .claim_next_retry_ready(source_max_attempts)
-            .await
-        {
+        let claim = match handoff.claim_next_retry_ready(source_max_attempts).await {
             Ok(Some(claim)) => {
                 outcome.claimed += 1;
                 claim
@@ -336,12 +330,16 @@ async fn run_source_retry_handoff_cycle(
             Err(error) => {
                 outcome.count_handoff_error(error);
                 match retry_policy.record_active_failure(claim, error).await {
-                    Ok(CommentsTcpDelegationScheduleAuditSourceFailureTransition::RetryScheduled {
-                        ..
-                    }) => outcome.retries_scheduled += 1,
-                    Ok(CommentsTcpDelegationScheduleAuditSourceFailureTransition::DeadLettered {
-                        ..
-                    }) => outcome.dead_lettered += 1,
+                    Ok(
+                        CommentsTcpDelegationScheduleAuditSourceFailureTransition::RetryScheduled {
+                            ..
+                        },
+                    ) => outcome.retries_scheduled += 1,
+                    Ok(
+                        CommentsTcpDelegationScheduleAuditSourceFailureTransition::DeadLettered {
+                            ..
+                        },
+                    ) => outcome.dead_lettered += 1,
                     Ok(CommentsTcpDelegationScheduleAuditSourceFailureTransition::StaleClaim) => {
                         outcome.stale_claims += 1;
                         break;
@@ -378,15 +376,9 @@ mod source_retry_worker_tests {
 
     #[test]
     fn source_policy_bounds_are_strict() {
-        assert!(
-            parse_optional_bounded_u64("attempts", Some("0"), 8, 100).is_err()
-        );
-        assert!(
-            parse_optional_bounded_u64("attempts", Some("101"), 8, 100).is_err()
-        );
-        assert!(
-            parse_optional_bounded_u64("delay", Some("86401"), 30, 86_400).is_err()
-        );
+        assert!(parse_optional_bounded_u64("attempts", Some("0"), 8, 100).is_err());
+        assert!(parse_optional_bounded_u64("attempts", Some("101"), 8, 100).is_err());
+        assert!(parse_optional_bounded_u64("delay", Some("86401"), 30, 86_400).is_err());
     }
 
     #[test]

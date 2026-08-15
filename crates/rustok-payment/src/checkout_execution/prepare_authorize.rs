@@ -39,9 +39,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                         metadata,
                     )
                     .await
-                    .map_err(|error| {
-                        payment_error_to_port_error(context, owner_operation, error)
-                    })?
+                    .map_err(|error| payment_error_to_port_error(context, owner_operation, error))?
             }
             None => self
                 .payment_service

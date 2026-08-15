@@ -394,7 +394,7 @@ async fn capture_transactional_rehearsal(
         .await
         .context("failed to acquire ACCESS EXCLUSIVE cutover rehearsal locks")?;
     let elapsed_micros = started.elapsed().as_micros();
-    let lock_ms = u64::try_from((elapsed_micros + 999) / 1000)
+    let lock_ms = u64::try_from(elapsed_micros.div_ceil(1000))
         .context("cutover lock duration does not fit into u64 milliseconds")?;
 
     apply_clone_cutover_choreography(transaction, layout).await?;

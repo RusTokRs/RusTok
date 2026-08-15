@@ -233,7 +233,10 @@ async fn storefront_forum_native(
                 .map_err(server_error)?;
             let first_topic_id = page.items.first().map(|item| item.topic.id);
             (
-                page.items.into_iter().map(map_unread_topic).collect::<Vec<_>>(),
+                page.items
+                    .into_iter()
+                    .map(map_unread_topic)
+                    .collect::<Vec<_>>(),
                 page.total,
                 first_topic_id,
                 true,
@@ -250,7 +253,10 @@ async fn storefront_forum_native(
                 .map_err(server_error)?;
             let first_topic_id = page.items.first().map(|topic| topic.id);
             (
-                page.items.into_iter().map(map_topic_list_item).collect::<Vec<_>>(),
+                page.items
+                    .into_iter()
+                    .map(map_topic_list_item)
+                    .collect::<Vec<_>>(),
                 page.total,
                 first_topic_id,
                 false,
@@ -258,82 +264,77 @@ async fn storefront_forum_native(
         };
 
         let resolved_topic_id = requested_topic_id.or(first_topic_id);
-        if selected_topic.is_none() {
-            if let Some(topic_id) = resolved_topic_id {
-                selected_topic = load_audience_visible_topic(
-                    &topic_audience_service,
-                    tenant.id,
-                    auth.as_ref(),
-                    &request,
-                    topic_id,
-                    effective_locale.as_str(),
-                    tenant.default_locale.as_str(),
-                )
-                .await?;
-            }
+        if selected_topic.is_none()
+            && let Some(topic_id) = resolved_topic_id
+        {
+            selected_topic = load_audience_visible_topic(
+                &topic_audience_service,
+                tenant.id,
+                auth.as_ref(),
+                &request,
+                topic_id,
+                effective_locale.as_str(),
+                tenant.default_locale.as_str(),
+            )
+            .await?;
         }
 
-        let replies = if let Some(topic_id) = resolved_topic_id {
-            if selected_topic.is_some() {
-                let approved_statuses = [ReplyStatus::Approved];
-                let (items, total) = if let Some(auth) = auth.as_ref().filter(|auth| {
-                    has_any_effective_permission(
-                        &auth.permissions,
-                        &[Permission::FORUM_REPLIES_LIST],
-                    )
-                }) {
-                    let security = SecurityContext::from_permission_snapshot(
-                        Some(auth.user_id),
-                        &auth.permissions,
-                    );
-                    let audience_context = reply_read_audience_port_context(
-                        ForumReplyReadTransport::NativeServer,
-                        ForumReplyReadOperation::ReplyList,
+        let replies = if let Some(topic_id) = resolved_topic_id
+            && selected_topic.is_some()
+        {
+            let approved_statuses = [ReplyStatus::Approved];
+            let (items, total) = if let Some(auth) = auth.as_ref().filter(|auth| {
+                has_any_effective_permission(&auth.permissions, &[Permission::FORUM_REPLIES_LIST])
+            }) {
+                let security = SecurityContext::from_permission_snapshot(
+                    Some(auth.user_id),
+                    &auth.permissions,
+                );
+                let audience_context = reply_read_audience_port_context(
+                    ForumReplyReadTransport::NativeServer,
+                    ForumReplyReadOperation::ReplyList,
+                    tenant.id,
+                    auth,
+                    Some(&request),
+                    effective_locale.as_str(),
+                )
+                .map_err(server_error)?;
+                reply_audience_service
+                    .list_authenticated_storefront_visible_with_audience_context(
                         tenant.id,
-                        auth,
-                        Some(&request),
-                        effective_locale.as_str(),
+                        security,
+                        audience_context,
+                        topic_id,
+                        ListRepliesFilter {
+                            locale: Some(effective_locale.clone()),
+                            page: 1,
+                            per_page: 20,
+                        },
+                        Some(tenant.default_locale.as_str()),
+                        Some(&approved_statuses),
                     )
-                    .map_err(server_error)?;
-                    reply_audience_service
-                        .list_authenticated_storefront_visible_with_audience_context(
-                            tenant.id,
-                            security,
-                            audience_context,
-                            topic_id,
-                            ListRepliesFilter {
-                                locale: Some(effective_locale.clone()),
-                                page: 1,
-                                per_page: 20,
-                            },
-                            Some(tenant.default_locale.as_str()),
-                            Some(&approved_statuses),
-                        )
-                        .await
-                        .map_err(server_error)?
-                } else {
-                    reply_audience_service
-                        .list_public_storefront_visible_with_locale_fallback(
-                            tenant.id,
-                            topic_id,
-                            ListRepliesFilter {
-                                locale: Some(effective_locale.clone()),
-                                page: 1,
-                                per_page: 20,
-                            },
-                            Some(tenant.default_locale.as_str()),
-                            channel_slug,
-                            Some(&approved_statuses),
-                        )
-                        .await
-                        .map_err(server_error)?
-                };
-                ForumReplyConnection {
-                    items: items.into_iter().map(map_reply).collect(),
-                    total,
-                }
+                    .await
+                    .map_err(server_error)?
             } else {
-                empty_replies()
+                reply_audience_service
+                    .list_public_storefront_visible_with_locale_fallback(
+                        tenant.id,
+                        topic_id,
+                        ListRepliesFilter {
+                            locale: Some(effective_locale.clone()),
+                            page: 1,
+                            per_page: 20,
+                        },
+                        Some(tenant.default_locale.as_str()),
+                        channel_slug,
+                        Some(&approved_statuses),
+                    )
+                    .await
+                    .map_err(server_error)?
+            };
+            ForumReplyConnection {
+                items: items.into_iter().map(map_reply).collect(),
+                total,
             }
         } else {
             empty_replies()
@@ -639,7 +640,12 @@ fn storefront_author_ids(
         .iter()
         .filter_map(|topic| topic.author_id.as_deref())
         .chain(selected_topic.and_then(|topic| topic.author_id.as_deref()))
-        .chain(replies.items.iter().filter_map(|reply| reply.author_id.as_deref()))
+        .chain(
+            replies
+                .items
+                .iter()
+                .filter_map(|reply| reply.author_id.as_deref()),
+        )
     {
         let user_id = uuid::Uuid::parse_str(author_id)
             .map_err(|_| ServerFnError::new("Forum storefront author ID is invalid"))?;
@@ -651,9 +657,7 @@ fn storefront_author_ids(
 }
 
 #[cfg(feature = "ssr")]
-fn map_member_card(
-    value: rustok_forum::services::user_stats::ForumMemberCard,
-) -> ForumMemberCard {
+fn map_member_card(value: rustok_forum::services::user_stats::ForumMemberCard) -> ForumMemberCard {
     ForumMemberCard {
         user_id: value.user_id.to_string(),
         profile: ForumMemberProfileSummary {

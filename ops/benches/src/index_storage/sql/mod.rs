@@ -171,7 +171,7 @@ pub(super) struct WorkloadContext {
 impl WorkloadContext {
     fn new(config: &DatasetConfig) -> Self {
         let anchor_no = (config.products_per_tenant / 2).max(1);
-        let mutation_batch = config.products_per_tenant.min(1_000).max(1);
+        let mutation_batch = config.products_per_tenant.clamp(1, 1_000);
         Self {
             tenant: "md5('tenant:1')::uuid",
             locale: sql_literal(&config.locales[0]),

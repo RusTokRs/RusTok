@@ -64,7 +64,7 @@ impl FlexStandaloneSeaOrmService {
         })?;
 
         normalize_locale_tag(&tenant.default_locale)
-            .ok_or_else(|| FlexError::InvalidLocale(tenant.default_locale))
+            .ok_or(FlexError::InvalidLocale(tenant.default_locale))
     }
 
     fn select_schema_translation<'a>(

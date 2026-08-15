@@ -161,19 +161,23 @@ impl McpAccessContext {
             );
         }
 
-        if let Some(allowed_tools) = &self.policy.allowed_tools {
-            if !allowed_tools
-                .iter()
-                .any(|tool| tool == &requirement.tool_name)
-            {
-                return McpAuthorizationDecision::deny(
-                    "tool_not_allowed",
-                    format!(
-                        "Tool '{}' is not allowed for this MCP actor",
-                        requirement.tool_name
-                    ),
-                );
-            }
+        if self
+            .policy
+            .allowed_tools
+            .as_ref()
+            .is_some_and(|allowed_tools| {
+                !allowed_tools
+                    .iter()
+                    .any(|tool| tool == &requirement.tool_name)
+            })
+        {
+            return McpAuthorizationDecision::deny(
+                "tool_not_allowed",
+                format!(
+                    "Tool '{}' is not allowed for this MCP actor",
+                    requirement.tool_name
+                ),
+            );
         }
 
         let granted_permissions = dedupe_sorted(self.granted_permissions.iter().cloned());

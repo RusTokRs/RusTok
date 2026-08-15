@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use rustok_core::security::{SsrfProtection, ValidationResult};
-use rustok_core::{simple_hash, DomainEvent};
+use rustok_core::{DomainEvent, simple_hash};
 use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetSitemapRequest};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
@@ -20,7 +20,7 @@ use crate::entities::{seo_event_delivery, seo_sitemap_file, seo_sitemap_job};
 use crate::{SeoError, SeoResult};
 
 use super::routing::locale_prefixed_path;
-use super::{normalize_effective_locale, SeoService, SITEMAP_CHUNK_SIZE};
+use super::{SITEMAP_CHUNK_SIZE, SeoService, normalize_effective_locale};
 pub(super) mod index_generation;
 pub(super) mod submission_adapters;
 pub(super) mod submission_aggregation;
@@ -30,8 +30,8 @@ use submission_adapters::{
     SitemapSubmissionAdapter, SitemapSubmissionRuntime, SitemapSubmitEndpoint,
 };
 use submission_aggregation::{
-    record_invalid_endpoint, record_submission_failure, record_submission_success,
-    SitemapSubmissionSummary,
+    SitemapSubmissionSummary, record_invalid_endpoint, record_submission_failure,
+    record_submission_success,
 };
 
 #[allow(dead_code)]

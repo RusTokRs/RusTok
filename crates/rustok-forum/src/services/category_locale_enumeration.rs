@@ -61,9 +61,8 @@ impl CategoryService {
             let translations = translations_by_category
                 .remove(category_id)
                 .unwrap_or_default();
-            let locales = available_locales_from(&translations, |translation| {
-                translation.locale.as_str()
-            });
+            let locales =
+                available_locales_from(&translations, |translation| translation.locale.as_str());
             if locales.is_empty() {
                 return Err(ForumError::Validation(format!(
                     "Forum category {category_id} has no stored locale translation"

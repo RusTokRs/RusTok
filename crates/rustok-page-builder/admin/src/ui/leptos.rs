@@ -240,12 +240,13 @@ pub fn PageBuilderAdminWithController(
         "Full Fly authoring surface. Persistence remains owned by the consumer module facade.",
     );
 
-    if let Some(extension_host) = use_context::<PageBuilderContributionHostContext>() {
-        if !extension_host.is_empty() {
-            if let Err(error) = controller.install_contribution_registries(|registries| {
-                extension_host.install_registries(registries)
-            }) {
-                return view! {
+    if let Some(extension_host) =
+        use_context::<PageBuilderContributionHostContext>().filter(|host| !host.is_empty())
+    {
+        if let Err(error) = controller.install_contribution_registries(|registries| {
+            extension_host.install_registries(registries)
+        }) {
+            return view! {
                     <AdminShell title=title.clone() subtitle=subtitle.clone()>
                         <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
                             {format!("Page Builder contribution registry installation failed: {error}")}
@@ -253,27 +254,26 @@ pub fn PageBuilderAdminWithController(
                     </AdminShell>
                 }
                 .into_any();
-            }
-
-            let host_effective = editor_capability_evaluation
-                .as_ref()
-                .map(|evaluation| evaluation.effective)
-                .or(editor_capabilities)
-                .unwrap_or_else(CapabilityState::full);
-            let provider_status = facade.as_ref().and_then(|facade| facade.provider_status());
-            let effective = provider_status
-                .as_ref()
-                .map(|status| status.limit_capabilities(host_effective))
-                .unwrap_or(host_effective);
-            let preview_enabled = provider_status
-                .as_ref()
-                .map(|status| status.preview_enabled())
-                .unwrap_or(true);
-            contribution_assembly = Some(extension_host.merge_admin_assembly(
-                contribution_assembly,
-                contribution_capabilities(effective, preview_enabled),
-            ));
         }
+
+        let host_effective = editor_capability_evaluation
+            .as_ref()
+            .map(|evaluation| evaluation.effective)
+            .or(editor_capabilities)
+            .unwrap_or_else(CapabilityState::full);
+        let provider_status = facade.as_ref().and_then(|facade| facade.provider_status());
+        let effective = provider_status
+            .as_ref()
+            .map(|status| status.limit_capabilities(host_effective))
+            .unwrap_or(host_effective);
+        let preview_enabled = provider_status
+            .as_ref()
+            .map(|status| status.preview_enabled())
+            .unwrap_or(true);
+        contribution_assembly = Some(extension_host.merge_admin_assembly(
+            contribution_assembly,
+            contribution_capabilities(effective, preview_enabled),
+        ));
     }
 
     view! {

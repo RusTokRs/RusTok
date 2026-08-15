@@ -18,7 +18,7 @@ fn entity_key(tenant_id: Uuid) -> EntityKey {
 }
 
 fn digest(byte: char) -> String {
-    std::iter::repeat(byte).take(64).collect()
+    std::iter::repeat_n(byte, 64).collect()
 }
 
 #[test]

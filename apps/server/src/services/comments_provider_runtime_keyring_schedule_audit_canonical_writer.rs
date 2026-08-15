@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use rustok_events::{
-    BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION,
-    BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY,
+    BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION, BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY,
     BlogCommentsDelegationScheduleAuditEvent,
 };
 use rustok_outbox::{ContractEventWriteOnceError, TransactionalEventBus};
@@ -31,10 +30,7 @@ impl CommentsTcpDelegationScheduleAuditCanonicalWriter
         &self,
         transaction: &DatabaseTransaction,
         publication: &CommentsTcpDelegationScheduleAuditCanonicalPublication,
-    ) -> std::result::Result<
-        Uuid,
-        CommentsTcpDelegationScheduleAuditCanonicalWriteError,
-    > {
+    ) -> std::result::Result<Uuid, CommentsTcpDelegationScheduleAuditCanonicalWriteError> {
         let event = event_from_publication(publication)?;
         TransactionalEventBus::publish_contract_once_direct_in_tx_with_envelope_id(
             transaction,
@@ -61,17 +57,19 @@ fn event_from_publication(
     let candidate_generation = i64::try_from(publication.candidate_generation())
         .map_err(|_| CommentsTcpDelegationScheduleAuditCanonicalWriteError::Unavailable)?;
 
-    Ok(BlogCommentsDelegationScheduleAuditEvent::ReplacementSucceeded {
-        audit_schema_version: BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION,
-        request_id: publication.request_id(),
-        state_key: BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY.to_string(),
-        occurred_at_unix_ms,
-        principal_kind: publication.principal_kind_text().to_string(),
-        operation: publication.operation_text().to_string(),
-        source: publication.source_text().to_string(),
-        previous_generation,
-        candidate_generation,
-    })
+    Ok(
+        BlogCommentsDelegationScheduleAuditEvent::ReplacementSucceeded {
+            audit_schema_version: BLOG_COMMENTS_SCHEDULE_AUDIT_SCHEMA_VERSION,
+            request_id: publication.request_id(),
+            state_key: BLOG_COMMENTS_SCHEDULE_AUDIT_STATE_KEY.to_string(),
+            occurred_at_unix_ms,
+            principal_kind: publication.principal_kind_text().to_string(),
+            operation: publication.operation_text().to_string(),
+            source: publication.source_text().to_string(),
+            previous_generation,
+            candidate_generation,
+        },
+    )
 }
 
 const fn map_write_once_error(
@@ -94,8 +92,7 @@ mod tests {
 
     use super::*;
     use crate::services::comments_provider_runtime::{
-        CommentsTcpDelegationKeyringSource,
-        CommentsTcpDelegationScheduleTriggerOperation,
+        CommentsTcpDelegationKeyringSource, CommentsTcpDelegationScheduleTriggerOperation,
     };
 
     fn publication() -> CommentsTcpDelegationScheduleAuditCanonicalPublication {

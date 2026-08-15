@@ -239,7 +239,7 @@ fn optional_uuid_shape(value: Option<Uuid>) -> &'static str {
 fn optional_text_shape(value: Option<&str>) -> &'static str {
     match value {
         None => "absent",
-        Some(value) if value.is_empty() => "empty",
+        Some("") => "empty",
         Some(_) => "present",
     }
 }

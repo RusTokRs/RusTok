@@ -179,9 +179,7 @@ impl ForumTopicAudienceListService {
                 }
             }
 
-            let scanned = candidate_page
-                .checked_mul(FORUM_TOPIC_AUDIENCE_SCAN_PAGE_SIZE)
-                .unwrap_or(u64::MAX);
+            let scanned = candidate_page.saturating_mul(FORUM_TOPIC_AUDIENCE_SCAN_PAGE_SIZE);
             if scanned >= candidate_total {
                 break;
             }

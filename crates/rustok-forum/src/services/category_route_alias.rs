@@ -1,6 +1,4 @@
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseTransaction, QueryResult, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, QueryResult, Statement};
 
 pub const MAX_FORUM_CATEGORY_ROUTE_ALIAS_REASON_LEN: usize = 500;
 pub const FORUM_CATEGORY_RENAMED_ROUTE_REASON: &str = "Category slug changed";
@@ -312,9 +310,7 @@ where
         .collect()
 }
 
-fn stored_category_route_alias_from_row(
-    row: QueryResult,
-) -> ForumResult<StoredCategoryRouteAlias> {
+fn stored_category_route_alias_from_row(row: QueryResult) -> ForumResult<StoredCategoryRouteAlias> {
     let alias_id: Uuid = row.try_get("", "alias_id")?;
     let category_id: Uuid = row.try_get("", "category_id")?;
     let locale: String = row.try_get("", "locale")?;

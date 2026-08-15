@@ -307,10 +307,10 @@ impl GroupApplicationService {
         })?;
         let acknowledged_value = serde_json::to_value(&request.submission.acknowledged_rule_keys)
             .map_err(|error| {
-                GroupsError::Invariant(format!(
-                    "application acknowledgements are not serializable: {error}"
-                ))
-            })?;
+            GroupsError::Invariant(format!(
+                "application acknowledgements are not serializable: {error}"
+            ))
+        })?;
         let application_model = if let Some(existing) = existing_application {
             let mut active: membership_application::ActiveModel = existing.into();
             active.policy_id = Set(policy.id);

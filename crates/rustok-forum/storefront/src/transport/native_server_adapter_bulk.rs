@@ -79,11 +79,9 @@ async fn storefront_category_mark_read_native(
         .map_err(server_error)?;
         let db = runtime_ctx.db_clone();
         let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
-            Some(facts) => ForumStorefrontReadStateService::with_audience_facts(
-                db,
-                event_bus,
-                facts,
-            ),
+            Some(facts) => {
+                ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts)
+            }
             None => ForumStorefrontReadStateService::new(db, event_bus),
         };
         let result = match service
@@ -168,11 +166,9 @@ async fn storefront_all_topics_mark_read_native(
         .map_err(server_error)?;
         let db = runtime_ctx.db_clone();
         let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
-            Some(facts) => ForumStorefrontReadStateService::with_audience_facts(
-                db,
-                event_bus,
-                facts,
-            ),
+            Some(facts) => {
+                ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts)
+            }
             None => ForumStorefrontReadStateService::new(db, event_bus),
         };
         let result = service

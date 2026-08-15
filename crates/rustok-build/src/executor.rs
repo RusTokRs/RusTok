@@ -67,10 +67,13 @@ impl BuildExecutionService {
         if build.status == BuildStatus::Running {
             bail!("build {} is already running", build.id);
         }
-        if let Some(running) = self.build_service.running_build().await? {
-            if running.id != build.id {
-                bail!("build {} is already running", running.id);
-            }
+        if let Some(running) = self
+            .build_service
+            .running_build()
+            .await?
+            .filter(|running| running.id != build.id)
+        {
+            bail!("build {} is already running", running.id);
         }
 
         let plan = parse_execution_plan(build.id, build.modules_delta.as_ref())?;

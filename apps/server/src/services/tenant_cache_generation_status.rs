@@ -188,20 +188,20 @@ impl TenantCacheGenerationListenerState {
     async fn active_error_summary(&self) -> Option<String> {
         let mut errors = Vec::with_capacity(3);
 
-        if self.local_degraded.load(Ordering::Acquire) {
-            if let Some(error) = self.local_error.read().await.as_deref() {
-                errors.push(format!("local: {error}"));
-            }
+        if self.local_degraded.load(Ordering::Acquire)
+            && let Some(error) = self.local_error.read().await.as_deref()
+        {
+            errors.push(format!("local: {error}"));
         }
-        if self.subscriber_degraded.load(Ordering::Acquire) {
-            if let Some(error) = self.subscriber_error.read().await.as_deref() {
-                errors.push(format!("subscriber: {error}"));
-            }
+        if self.subscriber_degraded.load(Ordering::Acquire)
+            && let Some(error) = self.subscriber_error.read().await.as_deref()
+        {
+            errors.push(format!("subscriber: {error}"));
         }
-        if self.reconciliation_degraded.load(Ordering::Acquire) {
-            if let Some(error) = self.reconciliation_error.read().await.as_deref() {
-                errors.push(format!("reconciliation: {error}"));
-            }
+        if self.reconciliation_degraded.load(Ordering::Acquire)
+            && let Some(error) = self.reconciliation_error.read().await.as_deref()
+        {
+            errors.push(format!("reconciliation: {error}"));
         }
 
         (!errors.is_empty()).then(|| bounded_listener_error(errors.join("; ")))

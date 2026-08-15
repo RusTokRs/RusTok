@@ -116,7 +116,7 @@ mod tests {
             bounded_error("\n".into()),
             "sandbox test failed without an error message"
         );
-        assert!(TEST_RUN_LEASE_SECONDS > 0);
+        const { assert!(TEST_RUN_LEASE_SECONDS > 0) };
     }
 
     #[tokio::test]

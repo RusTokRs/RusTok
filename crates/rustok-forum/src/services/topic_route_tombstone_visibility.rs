@@ -134,13 +134,8 @@ async fn topic_audience_allows_public_in_tx(
     let security = SecurityContext::public_read();
     let facts = ForumAudienceFacts::default();
     for layer in &policy.inherited_category_layers {
-        if !ForumAudienceEvaluator::decide(
-            tenant_id,
-            &layer.constraints,
-            &security,
-            &facts,
-        )?
-        .allowed
+        if !ForumAudienceEvaluator::decide(tenant_id, &layer.constraints, &security, &facts)?
+            .allowed
         {
             return Ok(false);
         }
@@ -348,7 +343,11 @@ async fn insert_snapshot_channels_in_tx(
                 VALUES ($1, $2, $3)
                 ON CONFLICT (tenant_id, topic_id, channel_slug) DO NOTHING
                 "#,
-                vec![tenant_id.into(), topic_id.into(), channel_slug.clone().into()],
+                vec![
+                    tenant_id.into(),
+                    topic_id.into(),
+                    channel_slug.clone().into(),
+                ],
             ),
             DatabaseBackend::Sqlite => Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
@@ -359,7 +358,11 @@ async fn insert_snapshot_channels_in_tx(
                 VALUES (?, ?, ?)
                 ON CONFLICT (tenant_id, topic_id, channel_slug) DO NOTHING
                 "#,
-                vec![tenant_id.into(), topic_id.into(), channel_slug.clone().into()],
+                vec![
+                    tenant_id.into(),
+                    topic_id.into(),
+                    channel_slug.clone().into(),
+                ],
             ),
             backend => return Err(unsupported_backend(backend)),
         };

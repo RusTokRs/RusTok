@@ -579,16 +579,15 @@ pub async fn extract_http_error(response: reqwest::Response) -> String {
         return format!("request failed with status {status}");
     }
 
-    if let Ok(payload) = serde_json::from_str::<serde_json::Value>(trimmed) {
-        if let Some(message) = payload
+    if let Ok(payload) = serde_json::from_str::<serde_json::Value>(trimmed)
+        && let Some(message) = payload
             .get("message")
             .and_then(Value::as_str)
             .or_else(|| payload.get("error").and_then(Value::as_str))
             .map(str::trim)
             .filter(|value| !value.is_empty())
-        {
-            return message.to_string();
-        }
+    {
+        return message.to_string();
     }
 
     trimmed.to_string()

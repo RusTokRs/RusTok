@@ -83,7 +83,7 @@ async fn assign_case_in_transaction(
         .checked_add(1)
         .ok_or(ModerationError::RevisionConflict)?;
     let now: DateTimeWithTimeZone = Utc::now().into();
-    let started_at = current.started_at.clone().or_else(|| Some(now.clone()));
+    let started_at = current.started_at.or(Some(now));
     let updated = moderation_case::Entity::update_many()
         .col_expr(
             moderation_case::Column::AssignedModeratorId,

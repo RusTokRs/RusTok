@@ -28,9 +28,8 @@ impl TopicService {
             select = select.filter(forum_topic::Column::CategoryId.eq(category_id));
         }
         if !hidden_category_ids.is_empty() {
-            select = select.filter(
-                forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()),
-            );
+            select = select
+                .filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()));
         }
         if !include_pinned {
             select = select.filter(forum_topic::Column::IsPinned.eq(false));
@@ -60,7 +59,7 @@ impl TopicService {
 
         let paginator = select
             .order_by_desc(forum_topic::Column::Id)
-            .paginate(&self.db, per_page.max(1).min(100));
+            .paginate(&self.db, per_page.clamp(1, 100));
         let total = paginator.num_items().await?;
         let topics = paginator.fetch_page(page.saturating_sub(1)).await?;
         let items = self

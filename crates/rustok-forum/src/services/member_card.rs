@@ -1,9 +1,7 @@
 mod member_card {
     use std::collections::{HashMap, HashSet};
 
-    use rustok_profiles::{
-        ProfileAccessAudience, ProfilePresentationService, ProfileSummary,
-    };
+    use rustok_profiles::{ProfileAccessAudience, ProfilePresentationService, ProfileSummary};
     use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
     use serde::{Deserialize, Serialize};
     use uuid::Uuid;

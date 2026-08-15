@@ -513,10 +513,8 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         if let Some(name) = command.name {
             active.name = Set(Some(name));
         }
-        if status_changed {
-            if let Some(status) = requested_status.as_ref() {
-                active.status = Set(status.clone());
-            }
+        if status_changed && let Some(status) = requested_status.as_ref() {
+            active.status = Set(status.clone());
         }
         if let Some(password) = command.password {
             active.password_hash = Set(hash_password(&password)

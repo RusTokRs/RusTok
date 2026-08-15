@@ -106,7 +106,8 @@ impl ReplyService {
             ));
         }
 
-        let topic = TopicService::find_topic_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
+        let topic =
+            TopicService::find_topic_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
         if topic.status != TopicStatus::Open || topic.is_locked {
             return Err(ForumError::Validation(
                 "Forum import reply insertion requires the private provisional topic state"
@@ -115,7 +116,8 @@ impl ReplyService {
         }
 
         if let Some(parent_reply_id) = prepared.record.parent_reply_id {
-            let parent = reply::ReplyService::find_reply_in_tx(txn, tenant_id, parent_reply_id).await?;
+            let parent =
+                reply::ReplyService::find_reply_in_tx(txn, tenant_id, parent_reply_id).await?;
             if parent.topic_id != prepared.record.topic_id {
                 return Err(ForumError::Validation(
                     "Forum import reply parent belongs to another topic".to_string(),
@@ -126,7 +128,8 @@ impl ReplyService {
             // The enclosing 34P tombstone batch proves every final Deleted row.
         }
 
-        let position = allocate_reply_position_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
+        let position =
+            allocate_reply_position_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
         let author_id = prepared.record.author.as_ref().map(|author| author.user_id);
 
         forum_reply::ActiveModel {
@@ -137,8 +140,8 @@ impl ReplyService {
             parent_reply_id: Set(prepared.record.parent_reply_id),
             status: Set(ReplyStatus::Deleted),
             position: Set(position),
-            created_at: Set(prepared.created_at.clone().into()),
-            updated_at: Set(prepared.created_at.clone().into()),
+            created_at: Set(prepared.created_at.into()),
+            updated_at: Set(prepared.created_at.into()),
         }
         .insert(txn)
         .await?;
@@ -149,8 +152,8 @@ impl ReplyService {
             tenant_id: Set(tenant_id),
             locale: Set(prepared.record.locale.clone()),
             body: Set(prepared.stored_body.clone()),
-            created_at: Set(prepared.created_at.clone().into()),
-            updated_at: Set(prepared.created_at.clone().into()),
+            created_at: Set(prepared.created_at.into()),
+            updated_at: Set(prepared.created_at.into()),
         }
         .insert(txn)
         .await?;
@@ -222,7 +225,7 @@ async fn persist_import_reply_tombstone_in_tx(
              SET deleted_at = $1, updated_at = $1 \
              WHERE tenant_id = $2 AND id = $3 AND status = 'deleted' AND deleted_at IS NULL",
             vec![
-                deleted_at.clone().into(),
+                deleted_at.into(),
                 tenant_id.into(),
                 prepared.record.id.into(),
             ],
@@ -233,8 +236,8 @@ async fn persist_import_reply_tombstone_in_tx(
              SET deleted_at = ?, updated_at = ? \
              WHERE tenant_id = ? AND id = ? AND status = 'deleted' AND deleted_at IS NULL",
             vec![
-                deleted_at.clone().into(),
-                deleted_at.clone().into(),
+                deleted_at.into(),
+                deleted_at.into(),
                 tenant_id.into(),
                 prepared.record.id.into(),
             ],
@@ -264,14 +267,22 @@ async fn persist_import_reply_tombstone_in_tx(
             "UPDATE forum_reply_revisions \
              SET created_at = $1 \
              WHERE tenant_id = $2 AND reply_id = $3 AND revision_reason = 'delete'",
-            vec![deleted_at.into(), tenant_id.into(), prepared.record.id.into()],
+            vec![
+                deleted_at.into(),
+                tenant_id.into(),
+                prepared.record.id.into(),
+            ],
         ),
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "UPDATE forum_reply_revisions \
              SET created_at = ? \
              WHERE tenant_id = ? AND reply_id = ? AND revision_reason = 'delete'",
-            vec![deleted_at.into(), tenant_id.into(), prepared.record.id.into()],
+            vec![
+                deleted_at.into(),
+                tenant_id.into(),
+                prepared.record.id.into(),
+            ],
         ),
         backend => {
             return Err(ForumError::Validation(format!(

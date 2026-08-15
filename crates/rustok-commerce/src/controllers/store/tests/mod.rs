@@ -345,17 +345,15 @@ impl tower::Service<Request<Body>> for StorefrontTestClient {
         if !request
             .headers()
             .contains_key(rustok_cart::GUEST_CART_TOKEN_HEADER)
-        {
-            if let Some(token) = self
+            && let Some(token) = self
                 .guest_cart_token
                 .lock()
                 .expect("guest cart test token lock")
                 .clone()
-            {
-                request
-                    .headers_mut()
-                    .insert(rustok_cart::GUEST_CART_TOKEN_HEADER, token);
-            }
+        {
+            request
+                .headers_mut()
+                .insert(rustok_cart::GUEST_CART_TOKEN_HEADER, token);
         }
 
         let router = self.router.clone();

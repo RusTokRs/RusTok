@@ -335,14 +335,10 @@ async fn graphql_runtime(db: &DatabaseConnection) -> ReplayGraphqlRuntime {
         .expect("guarded locale replay runtime should materialize");
     let extensions = Arc::new(extensions);
     let (stop_handle, stop_receiver) = StopHandle::new();
-    let schema = Schema::build(
-        ReplayTestQuery::default(),
-        IndexReplayMutation::default(),
-        EmptySubscription,
-    )
-    .data(extensions)
-    .data(stop_handle.clone())
-    .finish();
+    let schema = Schema::build(ReplayTestQuery, IndexReplayMutation, EmptySubscription)
+        .data(extensions)
+        .data(stop_handle.clone())
+        .finish();
 
     ReplayGraphqlRuntime {
         schema,

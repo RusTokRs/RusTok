@@ -379,10 +379,11 @@ impl ScriptRegistry for InMemoryStorage {
                 return Ok(TestRunClaim::Replay(existing));
             }
             let mut leases = self.test_leases.write().await;
-            if let Some((_, expires_at)) = leases.get(&existing.id) {
-                if *expires_at > now {
-                    return Ok(TestRunClaim::InProgress(existing));
-                }
+            if leases
+                .get(&existing.id)
+                .is_some_and(|(_, expires_at)| *expires_at > now)
+            {
+                return Ok(TestRunClaim::InProgress(existing));
             }
             let source = self
                 .source_revisions

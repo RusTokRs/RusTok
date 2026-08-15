@@ -294,10 +294,12 @@ pub(crate) fn format_price_list_option_label(
         t(locale, "pricing.selected.priceListTypeLabel", "type"),
         option.list_type
     );
-    if option.rule_kind.as_deref() == Some("percentage_discount") {
-        if let Some(adjustment_percent) = option.adjustment_percent.as_deref() {
-            label.push_str(format!(" | -{adjustment_percent}%").as_str());
-        }
+    if let Some(adjustment_percent) = option
+        .adjustment_percent
+        .as_deref()
+        .filter(|_| option.rule_kind.as_deref() == Some("percentage_discount"))
+    {
+        label.push_str(format!(" | -{adjustment_percent}%").as_str());
     }
     label
 }

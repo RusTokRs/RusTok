@@ -154,7 +154,10 @@ pub(in super::super) fn record_submission_success(
         });
 }
 
-pub(in super::super) fn record_invalid_endpoint(summary: &mut SitemapSubmissionSummary, endpoint: &str) {
+pub(in super::super) fn record_invalid_endpoint(
+    summary: &mut SitemapSubmissionSummary,
+    endpoint: &str,
+) {
     summary.failure_count += 1;
     summary
         .endpoint_results

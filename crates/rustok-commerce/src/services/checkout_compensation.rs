@@ -463,9 +463,7 @@ impl CheckoutCompensationService {
                 ));
             }
             _ => {
-                return Err(compensation_conflict(
-                    "cart state does not allow release",
-                ));
+                return Err(compensation_conflict("cart state does not allow release"));
             }
         }
         Ok(())

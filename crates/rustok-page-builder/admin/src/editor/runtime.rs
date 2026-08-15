@@ -214,7 +214,8 @@ impl AdminEditorRuntime {
             self.server_preview_html.set(None);
         }
         if matches!(&intent, UiIntent::RequestSave) {
-            if let Some(evaluation) = self.evaluate_runtime_publish_gate() {
+            let evaluation = self.evaluate_runtime_publish_gate();
+            if let Some(evaluation) = evaluation {
                 let allowed = evaluation.allowed;
                 let message = gate_error_message(&evaluation);
                 self.runtime_publish_gate_evaluation.set(Some(evaluation));

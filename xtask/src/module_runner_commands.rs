@@ -39,9 +39,9 @@ pub(crate) fn module_runner_command(args: &[String]) -> Result<()> {
         return Ok(());
     }
 
-    let registry_url = registry_url_argument(&args[1..]).with_context(|| {
-        "Live module runner requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
-    })?;
+    let registry_url = registry_url_argument(&args[1..]).with_context(
+        || "Live module runner requires --registry-url or RUSTOK_MODULE_REGISTRY_URL",
+    )?;
     let runner_token = runner_token_argument(&args[1..]).with_context(|| {
         format!("Live module runner requires --runner-token or {REMOTE_RUNNER_TOKEN_ENV}")
     })?;

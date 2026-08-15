@@ -20,8 +20,8 @@ mod category_audience_read {
 mod category_audience_visibility;
 #[allow(clippy::collapsible_if)]
 mod category_command {
-    include!("category_command.rs");
     include!("category_command_owner.rs");
+    include!("category_command.rs");
 }
 mod category_lifecycle {
     include!("category_lifecycle.rs");

@@ -236,7 +236,7 @@ fn command(
         decision_kind,
         reason_code: ModerationReasonCode::Other,
         effect: ModerationDecisionEffect::v1(action)?,
-        decision_hash: std::iter::repeat(hash_char).take(64).collect(),
+        decision_hash: std::iter::repeat_n(hash_char, 64).collect(),
     })
 }
 

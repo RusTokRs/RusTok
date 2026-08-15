@@ -16,8 +16,8 @@ use rustok_comments::{
     CommentsTcpDelegationSigner, CommentsTcpServerChannelAcceptor, CommentsThreadPort,
     CommentsThreadTransport, DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY,
     DEFAULT_COMMENTS_TCP_DELEGATION_TTL_MS, MAX_COMMENTS_TCP_DELEGATION_TTL_MS,
-    PlaintextLoopbackCommentsTcpChannel, TcpJsonCommentsServerAdapter,
-    TcpJsonCommentsTransport, in_process_comments_thread_port, remote_comments_thread_port,
+    PlaintextLoopbackCommentsTcpChannel, TcpJsonCommentsServerAdapter, TcpJsonCommentsTransport,
+    in_process_comments_thread_port, remote_comments_thread_port,
 };
 use rustok_core::ModuleRuntimeExtensions;
 use tokio::{
@@ -46,8 +46,7 @@ pub const COMMENTS_TCP_BIND_ENV: &str = "RUSTOK_COMMENTS_TCP_BIND";
 pub const COMMENTS_TCP_MAX_CONNECTIONS_ENV: &str = "RUSTOK_COMMENTS_TCP_MAX_CONNECTIONS";
 pub const COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS_ENV: &str =
     "RUSTOK_COMMENTS_TCP_PRE_REQUEST_TIMEOUT_MS";
-pub const COMMENTS_TCP_SHUTDOWN_GRACE_MS_ENV: &str =
-    "RUSTOK_COMMENTS_TCP_SHUTDOWN_GRACE_MS";
+pub const COMMENTS_TCP_SHUTDOWN_GRACE_MS_ENV: &str = "RUSTOK_COMMENTS_TCP_SHUTDOWN_GRACE_MS";
 pub const COMMENTS_TCP_MAX_FRAME_BYTES_ENV: &str = "RUSTOK_COMMENTS_TCP_MAX_FRAME_BYTES";
 
 const DEFAULT_COMMENTS_TCP_MAX_CONNECTIONS: usize = 64;
@@ -88,9 +87,7 @@ pub struct SharedCommentsTcpAuthorityResolver(pub Arc<dyn CommentsTcpAuthorityRe
 /// classified as authenticated and encrypted does not weaken bearer/delegation
 /// authorization and does not yet enable non-loopback publication.
 #[derive(Clone)]
-pub struct SharedCommentsTcpClientChannelConnector(
-    pub Arc<dyn CommentsTcpClientChannelConnector>,
-);
+pub struct SharedCommentsTcpClientChannelConnector(pub Arc<dyn CommentsTcpClientChannelConnector>);
 
 /// Optional host-provided server channel acceptor.
 ///
@@ -98,9 +95,7 @@ pub struct SharedCommentsTcpClientChannelConnector(
 /// acceptor must finish its own bounded handshake before returning a byte
 /// channel to the typed Comments server adapter.
 #[derive(Clone)]
-pub struct SharedCommentsTcpServerChannelAcceptor(
-    pub Arc<dyn CommentsTcpServerChannelAcceptor>,
-);
+pub struct SharedCommentsTcpServerChannelAcceptor(pub Arc<dyn CommentsTcpServerChannelAcceptor>);
 
 /// Optional host override for the provider served by the TCP listener.
 ///
@@ -228,9 +223,7 @@ pub fn register_comments_provider_runtime(
                 )
             })?;
             let endpoint = raw_endpoint.trim().parse::<SocketAddr>().map_err(|_| {
-                format!(
-                    "{COMMENTS_TCP_ENDPOINT_ENV} must be an explicit IP socket address"
-                )
+                format!("{COMMENTS_TCP_ENDPOINT_ENV} must be an explicit IP socket address")
             })?;
             let channel_connector = extensions
                 .get::<SharedCommentsTcpClientChannelConnector>()
@@ -257,7 +250,8 @@ pub fn register_comments_provider_runtime(
                 ),
             };
             let transport: Arc<dyn CommentsThreadTransport> = Arc::new(transport);
-            extensions.insert::<Arc<dyn CommentsThreadPort>>(remote_comments_thread_port(transport));
+            extensions
+                .insert::<Arc<dyn CommentsThreadPort>>(remote_comments_thread_port(transport));
             extensions.insert(CommentsProviderRuntimeSelection {
                 profile: match channel_protection {
                     CommentsTcpChannelProtection::PlaintextLoopback => {
@@ -318,11 +312,9 @@ async fn start_comments_tcp_listener(
     let authority = runtime_ctx
         .shared_get::<SharedCommentsTcpAuthorityResolver>()
         .or_else(|| {
-            extensions.as_ref().and_then(|values| {
-                values
-                    .get::<SharedCommentsTcpAuthorityResolver>()
-                    .cloned()
-            })
+            extensions
+                .as_ref()
+                .and_then(|values| values.get::<SharedCommentsTcpAuthorityResolver>().cloned())
         })
         .map(|shared| shared.0)
         .map(Ok)
@@ -344,11 +336,9 @@ async fn start_comments_tcp_listener(
     let provider = runtime_ctx
         .shared_get::<SharedCommentsTcpServerProvider>()
         .or_else(|| {
-            extensions.as_ref().and_then(|values| {
-                values
-                    .get::<SharedCommentsTcpServerProvider>()
-                    .cloned()
-            })
+            extensions
+                .as_ref()
+                .and_then(|values| values.get::<SharedCommentsTcpServerProvider>().cloned())
         })
         .map(|shared| shared.0)
         .unwrap_or_else(|| {
@@ -437,7 +427,8 @@ fn require_loopback_endpoint(
     }
 }
 
-fn comments_tcp_bearer_token_from_environment() -> std::result::Result<CommentsTcpBearerToken, String> {
+fn comments_tcp_bearer_token_from_environment()
+-> std::result::Result<CommentsTcpBearerToken, String> {
     let secret = match env::var(COMMENTS_TCP_BEARER_TOKEN_ENV) {
         Ok(value) => value,
         Err(env::VarError::NotPresent) => {
@@ -453,14 +444,12 @@ fn comments_tcp_bearer_token_from_environment() -> std::result::Result<CommentsT
     };
 
     CommentsTcpBearerToken::new(secret).map_err(|error| {
-        format!(
-            "{COMMENTS_TCP_BEARER_TOKEN_ENV} is not a valid Comments TCP bearer token: {error}"
-        )
+        format!("{COMMENTS_TCP_BEARER_TOKEN_ENV} is not a valid Comments TCP bearer token: {error}")
     })
 }
 
-fn comments_tcp_delegation_secret_from_environment(
-) -> std::result::Result<Option<CommentsTcpDelegationSecret>, String> {
+fn comments_tcp_delegation_secret_from_environment()
+-> std::result::Result<Option<CommentsTcpDelegationSecret>, String> {
     let Some(secret) = read_optional_environment(COMMENTS_TCP_DELEGATION_SECRET_ENV)? else {
         return Ok(None);
     };
@@ -484,8 +473,8 @@ fn comments_tcp_delegation_ttl_ms_from_environment() -> std::result::Result<u64,
     Ok(ttl_ms)
 }
 
-fn comments_tcp_delegation_signer_from_environment(
-) -> std::result::Result<Option<CommentsTcpDelegationSigner>, String> {
+fn comments_tcp_delegation_signer_from_environment()
+-> std::result::Result<Option<CommentsTcpDelegationSigner>, String> {
     let Some(secret) = comments_tcp_delegation_secret_from_environment()? else {
         return Ok(None);
     };
@@ -495,8 +484,8 @@ fn comments_tcp_delegation_signer_from_environment(
         .map_err(|error| format!("Comments TCP delegation signer configuration failed: {error}"))
 }
 
-fn comments_tcp_authority_from_environment(
-) -> std::result::Result<Arc<dyn CommentsTcpAuthorityResolver>, String> {
+fn comments_tcp_authority_from_environment()
+-> std::result::Result<Arc<dyn CommentsTcpAuthorityResolver>, String> {
     let token = comments_tcp_bearer_token_from_environment()?;
     let actor = comments_tcp_service_actor_from_environment()?;
     let Some(delegation_secret) = comments_tcp_delegation_secret_from_environment()? else {
@@ -719,10 +708,7 @@ fn parse_positive_usize_value(
     Ok(parsed)
 }
 
-fn parse_positive_u64_value(
-    key: &'static str,
-    value: &str,
-) -> std::result::Result<u64, String> {
+fn parse_positive_u64_value(key: &'static str, value: &str) -> std::result::Result<u64, String> {
     let parsed = value
         .trim()
         .parse::<u64>()
@@ -790,11 +776,13 @@ mod tests {
     #[test]
     fn protected_connector_does_not_enable_non_loopback() {
         let endpoint: SocketAddr = "192.0.2.10:9000".parse().unwrap();
-        assert!(require_loopback_endpoint(
-            endpoint,
-            CommentsTcpChannelProtection::AuthenticatedEncrypted,
-        )
-        .is_err());
+        assert!(
+            require_loopback_endpoint(
+                endpoint,
+                CommentsTcpChannelProtection::AuthenticatedEncrypted,
+            )
+            .is_err()
+        );
     }
 
     #[test]

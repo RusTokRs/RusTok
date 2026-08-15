@@ -13,11 +13,6 @@ mod retained_postgres_evidence {
     use sea_orm_migration::SchemaManager;
     use uuid::Uuid;
 
-    use super::{
-        CommentsTcpDelegationScheduleAuditOperatorContext,
-        CommentsTcpDelegationScheduleAuditOperatorError,
-        CommentsTcpDelegationScheduleAuditOperatorRuntime,
-    };
     use super::super::{
         keyring_schedule_audit_handoff_postgres::{
             CommentsTcpDelegationScheduleAuditHandoffError,
@@ -36,14 +31,15 @@ mod retained_postgres_evidence {
         },
         keyring_schedule_audit_source_retry_postgres::CommentsTcpDelegationScheduleAuditSourceFailureCode,
     };
-    use crate::services::rbac_request_scope::{
-        RbacRequestScope, with_rbac_request_scope,
+    use super::{
+        CommentsTcpDelegationScheduleAuditOperatorContext,
+        CommentsTcpDelegationScheduleAuditOperatorError,
+        CommentsTcpDelegationScheduleAuditOperatorRuntime,
     };
+    use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
 
-    const POSTGRES_DATABASE_ENV: &str =
-        "RUSTOK_BLOG_COMMENTS_AUDIT_TEST_DATABASE_URL";
-    const SOURCE_TABLE: &str =
-        "blog_comments_tcp_delegation_schedule_audit_outbox";
+    const POSTGRES_DATABASE_ENV: &str = "RUSTOK_BLOG_COMMENTS_AUDIT_TEST_DATABASE_URL";
+    const SOURCE_TABLE: &str = "blog_comments_tcp_delegation_schedule_audit_outbox";
     const RECOVERY_AUDIT_TABLE: &str =
         "blog_comments_tcp_delegation_schedule_audit_recovery_audits";
     const STATE_KEY: &str = "comments_tcp_delegation_schedule";
@@ -156,10 +152,8 @@ mod retained_postgres_evidence {
             &self,
             _transaction: &DatabaseTransaction,
             _publication: &CommentsTcpDelegationScheduleAuditCanonicalPublication,
-        ) -> std::result::Result<
-            Uuid,
-            CommentsTcpDelegationScheduleAuditCanonicalWriteError,
-        > {
+        ) -> std::result::Result<Uuid, CommentsTcpDelegationScheduleAuditCanonicalWriteError>
+        {
             Err(CommentsTcpDelegationScheduleAuditCanonicalWriteError::Conflict)
         }
     }
@@ -167,11 +161,7 @@ mod retained_postgres_evidence {
     #[tokio::test]
     #[ignore = "requires maintainer PostgreSQL execution"]
     async fn authorization_precedes_validation_and_storage() -> Result<()> {
-        let Some(context) = PostgresRecoveryEvidenceDb::setup(
-            "authorization_order",
-            false,
-        )
-        .await?
+        let Some(context) = PostgresRecoveryEvidenceDb::setup("authorization_order", false).await?
         else {
             return Ok(());
         };
@@ -309,9 +299,7 @@ mod retained_postgres_evidence {
     #[tokio::test]
     #[ignore = "requires maintainer PostgreSQL execution"]
     async fn exact_inspection_requeue_and_append_only_audit_are_atomic() -> Result<()> {
-        let Some(context) =
-            PostgresRecoveryEvidenceDb::setup("exact_requeue", true).await?
-        else {
+        let Some(context) = PostgresRecoveryEvidenceDb::setup("exact_requeue", true).await? else {
             return Ok(());
         };
 
@@ -442,9 +430,7 @@ mod retained_postgres_evidence {
     #[tokio::test]
     #[ignore = "requires maintainer PostgreSQL execution"]
     async fn stale_and_non_terminal_requeue_fail_closed() -> Result<()> {
-        let Some(context) =
-            PostgresRecoveryEvidenceDb::setup("closed_denials", true).await?
-        else {
+        let Some(context) = PostgresRecoveryEvidenceDb::setup("closed_denials", true).await? else {
             return Ok(());
         };
 
@@ -478,15 +464,8 @@ mod retained_postgres_evidence {
 
             let operator = operator(context.db.clone(), tenant_id)?;
             let operator_context =
-                CommentsTcpDelegationScheduleAuditOperatorContext::new(
-                    tenant_id,
-                    actor_id,
-                )?;
-            let authority = scope(
-                tenant_id,
-                actor_id,
-                vec![Permission::MODULES_MANAGE],
-            );
+                CommentsTcpDelegationScheduleAuditOperatorContext::new(tenant_id, actor_id)?;
+            let authority = scope(tenant_id, actor_id, vec![Permission::MODULES_MANAGE]);
 
             let stale_attempt = with_rbac_request_scope(
                 Some(authority.clone()),
@@ -500,8 +479,7 @@ mod retained_postgres_evidence {
             )
             .await?;
             ensure!(
-                stale_attempt
-                    == CommentsTcpDelegationScheduleAuditRecoveryOutcome::StaleInspection
+                stale_attempt == CommentsTcpDelegationScheduleAuditRecoveryOutcome::StaleInspection
             );
 
             let stale_epoch = with_rbac_request_scope(
@@ -516,8 +494,7 @@ mod retained_postgres_evidence {
             )
             .await?;
             ensure!(
-                stale_epoch
-                    == CommentsTcpDelegationScheduleAuditRecoveryOutcome::StaleInspection
+                stale_epoch == CommentsTcpDelegationScheduleAuditRecoveryOutcome::StaleInspection
             );
 
             let non_terminal = with_rbac_request_scope(
@@ -532,8 +509,7 @@ mod retained_postgres_evidence {
             )
             .await?;
             ensure!(
-                non_terminal
-                    == CommentsTcpDelegationScheduleAuditRecoveryOutcome::NotDeadLetter
+                non_terminal == CommentsTcpDelegationScheduleAuditRecoveryOutcome::NotDeadLetter
             );
 
             let stale_state = source_state(&context.db, stale_request_id).await?;
@@ -556,9 +532,9 @@ mod retained_postgres_evidence {
 
     #[tokio::test]
     #[ignore = "requires maintainer PostgreSQL execution"]
-    async fn concurrent_requeue_admits_one_epoch_and_next_worker_claim_starts_at_one() -> Result<()> {
-        let Some(context) =
-            PostgresRecoveryEvidenceDb::setup("concurrent_epoch", true).await?
+    async fn concurrent_requeue_admits_one_epoch_and_next_worker_claim_starts_at_one() -> Result<()>
+    {
+        let Some(context) = PostgresRecoveryEvidenceDb::setup("concurrent_epoch", true).await?
         else {
             return Ok(());
         };
@@ -584,15 +560,8 @@ mod retained_postgres_evidence {
             let first = operator(context.db.clone(), tenant_id)?;
             let second = operator(peer, tenant_id)?;
             let operator_context =
-                CommentsTcpDelegationScheduleAuditOperatorContext::new(
-                    tenant_id,
-                    actor_id,
-                )?;
-            let first_scope = scope(
-                tenant_id,
-                actor_id,
-                vec![Permission::MODULES_MANAGE],
-            );
+                CommentsTcpDelegationScheduleAuditOperatorContext::new(tenant_id, actor_id)?;
+            let first_scope = scope(tenant_id, actor_id, vec![Permission::MODULES_MANAGE]);
             let second_scope = first_scope.clone();
 
             let first_task = tokio::spawn(async move {
@@ -657,14 +626,13 @@ mod retained_postgres_evidence {
 
             let writer: SharedCommentsTcpDelegationScheduleAuditCanonicalWriter =
                 Arc::new(UnusedCanonicalWriter);
-            let handoff =
-                PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff::new(
-                    context.db.clone(),
-                    tenant_id,
-                    writer,
-                    Duration::from_secs(60),
-                )
-                .map_err(anyhow::Error::msg)?;
+            let handoff = PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff::new(
+                context.db.clone(),
+                tenant_id,
+                writer,
+                Duration::from_secs(60),
+            )
+            .map_err(anyhow::Error::msg)?;
             let claim = handoff
                 .claim_next_retry_ready(8)
                 .await
@@ -692,26 +660,16 @@ mod retained_postgres_evidence {
         db: DatabaseConnection,
         control_plane_tenant_id: Uuid,
     ) -> Result<CommentsTcpDelegationScheduleAuditOperatorRuntime> {
-        let recovery =
-            PostgresCommentsTcpDelegationScheduleAuditRecoveryStore::new(db)
-                .map_err(|error| anyhow!(error))?;
+        let recovery = PostgresCommentsTcpDelegationScheduleAuditRecoveryStore::new(db)
+            .map_err(|error| anyhow!(error))?;
         Ok(CommentsTcpDelegationScheduleAuditOperatorRuntime::new(
             control_plane_tenant_id,
             recovery,
         ))
     }
 
-    fn scope(
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        permissions: Vec<Permission>,
-    ) -> RbacRequestScope {
-        RbacRequestScope::new(
-            tenant_id,
-            actor_id,
-            permissions,
-            UserRole::Admin,
-        )
+    fn scope(tenant_id: Uuid, actor_id: Uuid, permissions: Vec<Permission>) -> RbacRequestScope {
+        RbacRequestScope::new(tenant_id, actor_id, permissions, UserRole::Admin)
     }
 
     async fn seed_schedule_state(db: &DatabaseConnection) -> Result<()> {
@@ -782,10 +740,7 @@ mod retained_postgres_evidence {
         dead_lettered: bool,
     }
 
-    async fn source_state(
-        db: &DatabaseConnection,
-        request_id: Uuid,
-    ) -> Result<StoredSourceState> {
+    async fn source_state(db: &DatabaseConnection, request_id: Uuid) -> Result<StoredSourceState> {
         let row = query_one(
             db,
             format!(
@@ -832,8 +787,7 @@ mod retained_postgres_evidence {
         )
         .await?;
         Ok(StoredRecoveryAudit {
-            control_plane_tenant_id: row
-                .try_get("", "control_plane_tenant_id")?,
+            control_plane_tenant_id: row.try_get("", "control_plane_tenant_id")?,
             request_id: row.try_get("", "request_id")?,
             actor_id: row.try_get("", "actor_id")?,
             reason: row.try_get("", "reason")?,
@@ -851,26 +805,17 @@ mod retained_postgres_evidence {
         Ok(row.try_get("", "value")?)
     }
 
-    async fn query_one(
-        db: &DatabaseConnection,
-        sql: String,
-    ) -> Result<QueryResult> {
-        db.query_one(Statement::from_string(
-            DatabaseBackend::Postgres,
-            sql,
-        ))
-        .await?
-        .context("expected PostgreSQL evidence row")
+    async fn query_one(db: &DatabaseConnection, sql: String) -> Result<QueryResult> {
+        db.query_one(Statement::from_string(DatabaseBackend::Postgres, sql))
+            .await?
+            .context("expected PostgreSQL evidence row")
     }
 
     fn postgres_database_url() -> Option<String> {
         std::env::var(POSTGRES_DATABASE_ENV)
             .or_else(|_| std::env::var("DATABASE_URL"))
             .ok()
-            .filter(|url| {
-                url.starts_with("postgres://")
-                    || url.starts_with("postgresql://")
-            })
+            .filter(|url| url.starts_with("postgres://") || url.starts_with("postgresql://"))
     }
 
     async fn connect(database_url: &str) -> Result<DatabaseConnection> {
@@ -882,14 +827,9 @@ mod retained_postgres_evidence {
         Ok(Database::connect(options).await?)
     }
 
-    async fn set_search_path(
-        db: &DatabaseConnection,
-        schema_name: &str,
-    ) -> Result<()> {
-        db.execute_unprepared(&format!(
-            r#"SET search_path TO "{schema_name}""#
-        ))
-        .await?;
+    async fn set_search_path(db: &DatabaseConnection, schema_name: &str) -> Result<()> {
+        db.execute_unprepared(&format!(r#"SET search_path TO "{schema_name}""#))
+            .await?;
         Ok(())
     }
 
@@ -912,9 +852,7 @@ mod retained_postgres_evidence {
         }
     }
 
-    fn map_handoff_error(
-        error: CommentsTcpDelegationScheduleAuditHandoffError,
-    ) -> anyhow::Error {
+    fn map_handoff_error(error: CommentsTcpDelegationScheduleAuditHandoffError) -> anyhow::Error {
         anyhow!("retry-aware handoff claim failed: {error:?}")
     }
 }

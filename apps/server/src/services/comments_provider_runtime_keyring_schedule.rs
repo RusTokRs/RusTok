@@ -36,10 +36,8 @@ mod historical {
 }
 
 pub use historical::{
-    COMMENTS_TCP_DELEGATION_SCHEDULE_ENABLED_ENV,
-    CommentsTcpDelegationScheduleReloadOutcome,
-    CommentsTcpDelegationScheduleReloadStatus,
-    CommentsTcpDelegationScheduleRuntimeSelection,
+    COMMENTS_TCP_DELEGATION_SCHEDULE_ENABLED_ENV, CommentsTcpDelegationScheduleReloadOutcome,
+    CommentsTcpDelegationScheduleReloadStatus, CommentsTcpDelegationScheduleRuntimeSelection,
 };
 
 /// Public schedule handle with read-only status and provider behavior.
@@ -56,8 +54,7 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         generation: u64,
     ) -> std::result::Result<Self, String> {
         historical::SharedCommentsTcpDelegationScheduleHandle::from_host_schedule(
-            schedule,
-            generation,
+            schedule, generation,
         )
         .map(Self)
     }
@@ -66,11 +63,8 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         file_path: impl AsRef<Path>,
         max_ttl: Duration,
     ) -> std::result::Result<Self, String> {
-        historical::SharedCommentsTcpDelegationScheduleHandle::from_file(
-            file_path,
-            max_ttl,
-        )
-        .map(Self)
+        historical::SharedCommentsTcpDelegationScheduleHandle::from_file(file_path, max_ttl)
+            .map(Self)
     }
 
     pub fn current_status(
@@ -91,9 +85,7 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         generation: u64,
     ) -> std::result::Result<Self, String> {
         historical::SharedCommentsTcpDelegationScheduleHandle::from_prepared_file(
-            file_path,
-            schedule,
-            generation,
+            file_path, schedule, generation,
         )
         .map(Self)
     }
@@ -122,12 +114,8 @@ impl SharedCommentsTcpDelegationScheduleHandle {
     where
         F: FnOnce() -> std::result::Result<(), String>,
     {
-        self.0.replace_prepared_with_commit(
-            schedule,
-            generation,
-            source,
-            before_publish,
-        )
+        self.0
+            .replace_prepared_with_commit(schedule, generation, source, before_publish)
     }
 
     fn historical_clone(&self) -> historical::SharedCommentsTcpDelegationScheduleHandle {

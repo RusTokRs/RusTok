@@ -145,6 +145,7 @@ impl From<ChannelError> for ChannelQueryError {
 impl ChannelQueryError {
     /// Preserve the unchanged resolver expression `err.to_string()` while retaining
     /// the typed Channel owner error until the transport-owned GraphQL mapper.
+    #[allow(clippy::wrong_self_convention)]
     pub(crate) fn to_string(self) -> ChannelGraphqlMessage {
         ChannelGraphqlMessage { error: self.error }
     }

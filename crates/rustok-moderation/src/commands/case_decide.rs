@@ -126,11 +126,11 @@ async fn decide_case_in_transaction(
         )
         .col_expr(
             moderation_case::Column::DecidedAt,
-            sea_orm::sea_query::Expr::value(Some(now.clone())),
+            sea_orm::sea_query::Expr::value(Some(now)),
         )
         .col_expr(
             moderation_case::Column::UpdatedAt,
-            sea_orm::sea_query::Expr::value(now.clone()),
+            sea_orm::sea_query::Expr::value(now),
         )
         .filter(moderation_case::Column::TenantId.eq(tenant_id))
         .filter(moderation_case::Column::Id.eq(command.case_id))
@@ -151,8 +151,8 @@ async fn decide_case_in_transaction(
         subject_revision: Set(current.subject_revision),
         decision_hash: Set(decision_hash.clone()),
         decided_by: Set(decided_by),
-        decided_at: Set(now.clone()),
-        created_at: Set(now.clone()),
+        decided_at: Set(now),
+        created_at: Set(now),
     }
     .insert(&receipt.transaction)
     .await?;

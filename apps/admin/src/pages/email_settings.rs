@@ -41,25 +41,24 @@ pub fn EmailSettingsPage() -> impl IntoView {
     );
 
     Effect::new(move |_| {
-        if let Some(Ok(response)) = settings_resource.get() {
-            if !loaded.get_untracked() {
-                if let Ok(val) = serde_json::from_str::<Value>(&response.platform_settings.settings)
-                {
-                    if let Some(s) = val.get("smtp_host").and_then(|v| v.as_str()) {
-                        set_smtp_host.set(s.to_string());
-                    }
-                    if let Some(p) = val.get("smtp_port").and_then(|v| v.as_u64()) {
-                        set_smtp_port.set(p.to_string());
-                    }
-                    if let Some(u) = val.get("smtp_username").and_then(|v| v.as_str()) {
-                        set_smtp_username.set(u.to_string());
-                    }
-                    if let Some(f) = val.get("from_address").and_then(|v| v.as_str()) {
-                        set_from_address.set(f.to_string());
-                    }
+        if let Some(Ok(response)) = settings_resource.get()
+            && !loaded.get_untracked()
+        {
+            if let Ok(val) = serde_json::from_str::<Value>(&response.platform_settings.settings) {
+                if let Some(s) = val.get("smtp_host").and_then(|v| v.as_str()) {
+                    set_smtp_host.set(s.to_string());
                 }
-                set_loaded.set(true);
+                if let Some(p) = val.get("smtp_port").and_then(|v| v.as_u64()) {
+                    set_smtp_port.set(p.to_string());
+                }
+                if let Some(u) = val.get("smtp_username").and_then(|v| v.as_str()) {
+                    set_smtp_username.set(u.to_string());
+                }
+                if let Some(f) = val.get("from_address").and_then(|v| v.as_str()) {
+                    set_from_address.set(f.to_string());
+                }
             }
+            set_loaded.set(true);
         }
     });
 

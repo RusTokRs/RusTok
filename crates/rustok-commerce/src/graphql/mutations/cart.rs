@@ -370,17 +370,17 @@ impl CommerceCartMutation {
         ensure_storefront_cart_access(&cart, customer_id)?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx);
-        if let Some(existing_line_item) = cart.line_items.iter().find(|item| item.id == line_id) {
-            if let Some(variant_id) = existing_line_item.variant_id {
-                validate_storefront_line_item_quantity(
-                    db,
-                    tenant_id,
-                    variant_id,
-                    input.quantity,
-                    public_channel_slug.as_deref(),
-                )
-                .await?;
-            }
+        if let Some(existing_line_item) = cart.line_items.iter().find(|item| item.id == line_id)
+            && let Some(variant_id) = existing_line_item.variant_id
+        {
+            validate_storefront_line_item_quantity(
+                db,
+                tenant_id,
+                variant_id,
+                input.quantity,
+                public_channel_slug.as_deref(),
+            )
+            .await?;
         }
         let updated = if let Some((variant_id, product_id)) = cart
             .line_items

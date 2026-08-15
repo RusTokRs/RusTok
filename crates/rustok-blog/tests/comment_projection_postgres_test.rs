@@ -175,9 +175,10 @@ async fn concurrent_created_events_converge_without_lost_updates() -> TestResult
     let barrier = Arc::new(Barrier::new(envelopes.len()));
     let mut tasks = Vec::with_capacity(envelopes.len());
 
-    for envelope in envelopes.iter().cloned() {
+    for envelope in &envelopes {
         let db = test_db.isolated_connection().await?;
         let barrier = Arc::clone(&barrier);
+        let envelope = envelope.clone();
         tasks.push(tokio::spawn(async move {
             let handler = BlogCommentProjectionHandler::new(db);
             barrier.wait().await;

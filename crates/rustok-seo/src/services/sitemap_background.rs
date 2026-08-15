@@ -67,10 +67,10 @@ impl SeoService {
         &self,
     ) -> SeoResult<Option<crate::dto::SeoSitemapJobRecord>> {
         let active = crate::entities::seo_sitemap_job::Entity::find()
-            .filter(crate::entities::seo_sitemap_job::Column::Status.is_in([
-                SITEMAP_JOB_RUNNING,
-                SITEMAP_JOB_SUBMITTING,
-            ]))
+            .filter(
+                crate::entities::seo_sitemap_job::Column::Status
+                    .is_in([SITEMAP_JOB_RUNNING, SITEMAP_JOB_SUBMITTING]),
+            )
             .order_by_asc(crate::entities::seo_sitemap_job::Column::UpdatedAt)
             .one(&self.db)
             .await?;
@@ -79,9 +79,7 @@ impl SeoService {
             job
         } else {
             let Some(job) = crate::entities::seo_sitemap_job::Entity::find()
-                .filter(
-                    crate::entities::seo_sitemap_job::Column::Status.eq(SITEMAP_JOB_QUEUED),
-                )
+                .filter(crate::entities::seo_sitemap_job::Column::Status.eq(SITEMAP_JOB_QUEUED))
                 .order_by_asc(crate::entities::seo_sitemap_job::Column::CreatedAt)
                 .one(&self.db)
                 .await?
@@ -184,10 +182,7 @@ impl SeoService {
             .await
     }
 
-    async fn load_background_sitemap_tenant(
-        &self,
-        tenant_id: Uuid,
-    ) -> SeoResult<TenantContext> {
+    async fn load_background_sitemap_tenant(&self, tenant_id: Uuid) -> SeoResult<TenantContext> {
         let tenant = rustok_tenant::entities::tenant::Entity::find_by_id(tenant_id)
             .one(&self.db)
             .await?
@@ -209,9 +204,10 @@ impl SeoService {
         public_origin: &str,
     ) -> SeoResult<Vec<String>> {
         let mut urls = Vec::new();
-        for provider in self.registry.providers_with_capability(
-            rustok_seo_targets::SeoTargetCapabilityKind::Sitemaps,
-        ) {
+        for provider in self
+            .registry
+            .providers_with_capability(rustok_seo_targets::SeoTargetCapabilityKind::Sitemaps)
+        {
             let candidates = provider
                 .sitemap_candidates(
                     &self.target_runtime(),
@@ -234,10 +230,7 @@ impl SeoService {
                 )?;
                 urls.push(format!(
                     "{public_origin}{}",
-                    super::routing::locale_prefixed_path(
-                        locale.as_str(),
-                        candidate.route.as_str(),
-                    )
+                    super::routing::locale_prefixed_path(locale.as_str(), candidate.route.as_str(),)
                 ));
             }
         }
@@ -350,7 +343,9 @@ impl SeoService {
             job_id: Set(job_id),
             path: Set("sitemap.xml".to_string()),
             url_count: Set(urls.len() as i32),
-            content: Set(index_generation::render_sitemap_index(index_urls.as_slice())),
+            content: Set(index_generation::render_sitemap_index(
+                index_urls.as_slice(),
+            )),
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -419,9 +414,7 @@ impl SeoService {
         publication: BackgroundSitemapEventPublication,
     ) -> SeoResult<()> {
         let existing = crate::entities::seo_event_delivery::Entity::find()
-            .filter(
-                crate::entities::seo_event_delivery::Column::TenantId.eq(publication.tenant_id),
-            )
+            .filter(crate::entities::seo_event_delivery::Column::TenantId.eq(publication.tenant_id))
             .filter(
                 crate::entities::seo_event_delivery::Column::IdempotencyKey
                     .eq(publication.idempotency_key.as_str()),
@@ -434,12 +427,7 @@ impl SeoService {
 
         let outbox_event_id = self
             .event_bus
-            .publish_in_tx_with_envelope_id(
-                txn,
-                publication.tenant_id,
-                None,
-                publication.event,
-            )
+            .publish_in_tx_with_envelope_id(txn, publication.tenant_id, None, publication.event)
             .await
             .map_err(background_sitemap_transactional_event_error)?;
         crate::entities::seo_event_delivery::ActiveModel {
@@ -484,16 +472,12 @@ async fn submit_background_sitemap_endpoints(
     let runtime = submission_adapters::SitemapSubmissionRuntime::default_with_timeout(
         SITEMAP_BACKGROUND_SUBMIT_TIMEOUT_SECS,
     )?;
-    let mut summary =
-        submission_aggregation::SitemapSubmissionSummary::default();
+    let mut summary = submission_aggregation::SitemapSubmissionSummary::default();
     for endpoint in endpoints {
         let Some(request_url) =
             build_background_sitemap_submission_url(endpoint.as_str(), sitemap_index_url)
         else {
-            submission_aggregation::record_invalid_endpoint(
-                &mut summary,
-                endpoint.as_str(),
-            );
+            submission_aggregation::record_invalid_endpoint(&mut summary, endpoint.as_str());
             continue;
         };
         let request = submission_adapters::SitemapSubmitEndpoint {
@@ -501,10 +485,9 @@ async fn submit_background_sitemap_endpoints(
             request_url,
         };
         match runtime.adapter().submit_sitemap_index(request).await {
-            Ok(()) => submission_aggregation::record_submission_success(
-                &mut summary,
-                endpoint.as_str(),
-            ),
+            Ok(()) => {
+                submission_aggregation::record_submission_success(&mut summary, endpoint.as_str())
+            }
             Err(message) => {
                 submission_aggregation::record_submission_failure(
                     &mut summary,
@@ -608,10 +591,7 @@ mod sitemap_background_tests {
     fn background_file_count_keeps_the_index_and_chunks() {
         assert_eq!(background_sitemap_file_count(0), 1);
         assert_eq!(background_sitemap_file_count(1), 2);
-        assert_eq!(
-            background_sitemap_file_count(SITEMAP_CHUNK_SIZE + 1),
-            3
-        );
+        assert_eq!(background_sitemap_file_count(SITEMAP_CHUNK_SIZE + 1), 3);
     }
 
     #[test]

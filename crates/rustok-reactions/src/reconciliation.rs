@@ -191,14 +191,14 @@ impl ReactionsService {
 
         let actor_id = Uuid::parse_str(&context.actor.id).ok();
         let result = self.execute_repair(lease, actor_id, &command).await;
-        if let Err(error) = &result {
-            if let Err(receipt_error) = idempotency::fail(self.database(), lease, error).await {
-                tracing::error!(
-                    operation_id = %lease.operation_id,
-                    error = %receipt_error.message,
-                    "failed to persist Reactions reconciliation failure receipt"
-                );
-            }
+        if let Err(error) = &result
+            && let Err(receipt_error) = idempotency::fail(self.database(), lease, error).await
+        {
+            tracing::error!(
+                operation_id = %lease.operation_id,
+                error = %receipt_error.message,
+                "failed to persist Reactions reconciliation failure receipt"
+            );
         }
         result
     }

@@ -139,8 +139,7 @@ impl ForumTopicReadStateService {
         validate_nonnegative(&input)?;
 
         let txn = self.db.begin().await?;
-        let topic =
-            lock_active_topic_read_state_write_in_tx(&txn, tenant_id, topic_id).await?;
+        let topic = lock_active_topic_read_state_write_in_tx(&txn, tenant_id, topic_id).await?;
         lock_topic_read_state_scopes_in_tx(&txn, tenant_id, &[topic_id]).await?;
 
         let latest_public_position = forum_reply::Entity::find()
@@ -245,7 +244,7 @@ impl ForumTopicReadStateService {
             .transpose()?;
         let snapshot_at = cursor
             .as_ref()
-            .map(|cursor| cursor.snapshot_at.clone())
+            .map(|cursor| cursor.snapshot_at)
             .unwrap_or_else(|| Utc::now().into());
 
         let txn = self.db.begin().await?;
@@ -259,17 +258,17 @@ impl ForumTopicReadStateService {
         let mut select = forum_topic::Entity::find()
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
             .filter(forum_topic::Column::Status.ne(TopicStatus::Archived))
-            .filter(forum_topic::Column::CreatedAt.lte(snapshot_at.clone()));
+            .filter(forum_topic::Column::CreatedAt.lte(snapshot_at));
         if let Some(category_ids) = category_ids {
             select = select.filter(forum_topic::Column::CategoryId.is_in(category_ids));
         }
         if let Some(cursor) = cursor.as_ref() {
             select = select.filter(
                 Condition::any()
-                    .add(forum_topic::Column::CreatedAt.gt(cursor.created_at.clone()))
+                    .add(forum_topic::Column::CreatedAt.gt(cursor.created_at))
                     .add(
                         Condition::all()
-                            .add(forum_topic::Column::CreatedAt.eq(cursor.created_at.clone()))
+                            .add(forum_topic::Column::CreatedAt.eq(cursor.created_at))
                             .add(forum_topic::Column::Id.gt(cursor.topic_id)),
                     ),
             );
@@ -464,8 +463,8 @@ async fn upsert_topic_read_high_water_in_tx(
         user_id: Set(user_id),
         last_read_position: Set(high_water.last_read_position),
         last_read_revision: Set(high_water.last_read_revision),
-        created_at: Set(observed_at.clone()),
-        updated_at: Set(observed_at.clone()),
+        created_at: Set(*observed_at),
+        updated_at: Set(*observed_at),
     })
     .on_conflict(
         OnConflict::columns([
@@ -510,7 +509,7 @@ async fn upsert_topic_read_high_water_in_tx(
         .filter(forum_topic_read_state::Column::LastReadPosition.lte(high_water.last_read_position))
         .filter(forum_topic_read_state::Column::LastReadRevision.lte(high_water.last_read_revision))
         .set(forum_topic_read_state::ActiveModel {
-            updated_at: Set(observed_at.clone()),
+            updated_at: Set(*observed_at),
             ..Default::default()
         })
         .exec(txn)

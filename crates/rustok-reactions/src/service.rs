@@ -281,14 +281,14 @@ impl ReactionWritePort for ReactionsService {
                 catalog_value,
             )
             .await;
-        if let Err(error) = &result {
-            if let Err(receipt_error) = idempotency::fail(self.database(), lease, error).await {
-                tracing::error!(
-                    operation_id = %lease.operation_id,
-                    error = %receipt_error.message,
-                    "failed to persist Reactions command failure receipt"
-                );
-            }
+        if let Err(error) = &result
+            && let Err(receipt_error) = idempotency::fail(self.database(), lease, error).await
+        {
+            tracing::error!(
+                operation_id = %lease.operation_id,
+                error = %receipt_error.message,
+                "failed to persist Reactions command failure receipt"
+            );
         }
         result
     }

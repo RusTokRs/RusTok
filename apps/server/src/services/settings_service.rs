@@ -108,18 +108,18 @@ impl SettingsValidator for EmailSettingsValidator {
     fn validate(&self, settings: &Value) -> Result<(), Vec<String>> {
         let mut errors = Vec::new();
 
-        if let Some(from) = settings.get("from").and_then(|v| v.as_str()) {
-            if !from.contains('@') {
-                errors.push("email.from must be a valid email address".to_string());
-            }
+        if let Some(from) = settings.get("from").and_then(|v| v.as_str())
+            && !from.contains('@')
+        {
+            errors.push("email.from must be a valid email address".to_string());
         }
 
-        if let Some(provider) = settings.get("provider").and_then(|v| v.as_str()) {
-            if !matches!(provider, "smtp" | "sendgrid" | "mailgun" | "ses" | "none") {
-                errors.push(format!(
-                    "email.provider must be one of: smtp, sendgrid, mailgun, ses, none; got '{provider}'"
-                ));
-            }
+        if let Some(provider) = settings.get("provider").and_then(|v| v.as_str())
+            && !matches!(provider, "smtp" | "sendgrid" | "mailgun" | "ses" | "none")
+        {
+            errors.push(format!(
+                "email.provider must be one of: smtp, sendgrid, mailgun, ses, none; got '{provider}'"
+            ));
         }
 
         if errors.is_empty() {

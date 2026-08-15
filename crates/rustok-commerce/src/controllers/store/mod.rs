@@ -363,13 +363,13 @@ pub(crate) fn ensure_store_cart_access(
     cart: &CartResponse,
     customer_id: Option<Uuid>,
 ) -> HttpResult<()> {
-    if let Some(expected_customer_id) = cart.customer_id {
-        if customer_id != Some(expected_customer_id) {
-            return Err(HttpError::unauthorized(
-                "commerce_store_denied",
-                "Cart belongs to another customer".to_string(),
-            ));
-        }
+    if let Some(expected_customer_id) = cart.customer_id
+        && customer_id != Some(expected_customer_id)
+    {
+        return Err(HttpError::unauthorized(
+            "commerce_store_denied",
+            "Cart belongs to another customer".to_string(),
+        ));
     }
 
     Ok(())

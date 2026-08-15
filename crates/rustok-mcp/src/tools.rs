@@ -307,20 +307,23 @@ pub async fn list_modules_filtered(
     request: ModuleQueryRequest,
 ) -> ModuleListResponse {
     let modules = state.registry.list();
-    let filtered = modules.into_iter().filter(|module| {
-        let slug = module.slug();
-        if let Some(prefix) = request.slug_prefix.as_deref() {
-            if !slug.starts_with(prefix) {
+    let filtered =
+        modules.into_iter().filter(|module| {
+            let slug = module.slug();
+            if request
+                .slug_prefix
+                .as_deref()
+                .is_some_and(|prefix| !slug.starts_with(prefix))
+            {
                 return false;
             }
-        }
-        if let Some(dependency) = request.dependency.as_deref() {
-            if !module.dependencies().iter().any(|dep| dep == &dependency) {
+            if request.dependency.as_deref().is_some_and(|dependency| {
+                !module.dependencies().iter().any(|dep| dep == &dependency)
+            }) {
                 return false;
             }
-        }
-        true
-    });
+            true
+        });
 
     let offset = request.offset.unwrap_or(0);
     let limit = request.limit.unwrap_or(usize::MAX);

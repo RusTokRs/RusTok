@@ -302,11 +302,7 @@ impl InProcessCheckoutPaymentExecutionPort {
                         CheckoutPaymentExecutionReconciliationReason::ProviderFailureCheckpointFailed,
                     ));
                 }
-                return Err(payment_error_to_port_error(
-                    context,
-                    owner_operation,
-                    error,
-                ));
+                return Err(payment_error_to_port_error(context, owner_operation, error));
             }
         };
         let result_payload = serde_json::to_value(&provider_result).map_err(|_| {

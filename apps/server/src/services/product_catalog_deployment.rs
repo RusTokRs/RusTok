@@ -91,7 +91,7 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
             insecure_loopback = remote.allow_insecure_loopback,
             "Product catalog deployment provider initialized"
         );
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(feature = "mod-product"))]

@@ -2,8 +2,7 @@ use std::{fmt, time::Duration};
 
 use rustok_api::AuthPrincipalKind;
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult,
-    Statement, TransactionTrait,
+    ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -86,8 +85,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
     ) -> std::result::Result<Self, String> {
         if database.get_database_backend() != DbBackend::Postgres {
             return Err(
-                "Comments schedule audit canonical handoff requires PostgreSQL"
-                    .to_string(),
+                "Comments schedule audit canonical handoff requires PostgreSQL".to_string(),
             );
         }
         if control_plane_tenant_id.is_nil() {
@@ -98,8 +96,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         }
         let claim_ttl_seconds = claim_ttl.as_secs();
         if claim_ttl_seconds == 0
-            || claim_ttl_seconds
-                > COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_MAX_CLAIM_SECONDS
+            || claim_ttl_seconds > COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_HANDOFF_MAX_CLAIM_SECONDS
             || claim_ttl != Duration::from_secs(claim_ttl_seconds)
         {
             return Err(format!(
@@ -107,8 +104,7 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
             ));
         }
         let claim_ttl_seconds = i64::try_from(claim_ttl_seconds).map_err(|_| {
-            "Comments schedule audit canonical handoff claim TTL is out of range"
-                .to_string()
+            "Comments schedule audit canonical handoff claim TTL is out of range".to_string()
         })?;
         Ok(Self {
             database,
@@ -289,24 +285,40 @@ impl fmt::Debug for PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
 }
 
 impl StoredAuditHandoffRecord {
-    fn from_row(row: &QueryResult) -> std::result::Result<Self, CommentsTcpDelegationScheduleAuditHandoffError> {
+    fn from_row(
+        row: &QueryResult,
+    ) -> std::result::Result<Self, CommentsTcpDelegationScheduleAuditHandoffError> {
         Ok(Self {
-            audit_schema_version: row.try_get("", "audit_schema_version").map_err(unavailable)?,
+            audit_schema_version: row
+                .try_get("", "audit_schema_version")
+                .map_err(unavailable)?,
             request_id: row.try_get("", "request_id").map_err(unavailable)?,
             state_key: row.try_get("", "state_key").map_err(unavailable)?,
             event_type: row.try_get("", "event_type").map_err(unavailable)?,
-            occurred_at_unix_ms: row.try_get("", "occurred_at_unix_ms").map_err(unavailable)?,
+            occurred_at_unix_ms: row
+                .try_get("", "occurred_at_unix_ms")
+                .map_err(unavailable)?,
             actor_id: row.try_get("", "actor_id").map_err(unavailable)?,
             principal_kind: row.try_get("", "principal_kind").map_err(unavailable)?,
             operation: row.try_get("", "operation").map_err(unavailable)?,
             source: row.try_get("", "source").map_err(unavailable)?,
-            previous_generation: row.try_get("", "previous_generation").map_err(unavailable)?,
-            candidate_generation: row.try_get("", "candidate_generation").map_err(unavailable)?,
+            previous_generation: row
+                .try_get("", "previous_generation")
+                .map_err(unavailable)?,
+            candidate_generation: row
+                .try_get("", "candidate_generation")
+                .map_err(unavailable)?,
             outcome: row.try_get("", "outcome").map_err(unavailable)?,
-            canonical_envelope_id: row.try_get("", "canonical_envelope_id").map_err(unavailable)?,
+            canonical_envelope_id: row
+                .try_get("", "canonical_envelope_id")
+                .map_err(unavailable)?,
             published: row.try_get("", "published").map_err(unavailable)?,
-            claim_token: row.try_get("", "handoff_claim_token").map_err(unavailable)?,
-            claim_attempt_count: row.try_get("", "handoff_attempt_count").map_err(unavailable)?,
+            claim_token: row
+                .try_get("", "handoff_claim_token")
+                .map_err(unavailable)?,
+            claim_attempt_count: row
+                .try_get("", "handoff_attempt_count")
+                .map_err(unavailable)?,
             claim_active: row.try_get("", "claim_active").map_err(unavailable)?,
         })
     }
@@ -430,12 +442,14 @@ fn principal_kind_from_text(value: &str) -> Option<AuthPrincipalKind> {
     }
 }
 
-fn operation_from_text(value: &str) -> Option<trigger::CommentsTcpDelegationScheduleTriggerOperation> {
+fn operation_from_text(
+    value: &str,
+) -> Option<trigger::CommentsTcpDelegationScheduleTriggerOperation> {
     match value {
         "reload_file" => Some(trigger::CommentsTcpDelegationScheduleTriggerOperation::ReloadFile),
-        "replace_host_schedule" => Some(
-            trigger::CommentsTcpDelegationScheduleTriggerOperation::ReplaceHostSchedule,
-        ),
+        "replace_host_schedule" => {
+            Some(trigger::CommentsTcpDelegationScheduleTriggerOperation::ReplaceHostSchedule)
+        }
         _ => None,
     }
 }
@@ -553,7 +567,10 @@ mod tests {
 
     #[test]
     fn source_value_parsers_reject_unknown_contract_values() {
-        assert_eq!(principal_kind_from_text("service"), Some(AuthPrincipalKind::Service));
+        assert_eq!(
+            principal_kind_from_text("service"),
+            Some(AuthPrincipalKind::Service)
+        );
         assert!(principal_kind_from_text("delegated_user").is_none());
         assert!(operation_from_text("unknown").is_none());
         assert!(source_from_text("unknown").is_none());
@@ -561,18 +578,22 @@ mod tests {
 
     #[test]
     fn claim_requires_non_nil_fencing_identity_and_positive_attempt() {
-        assert!(validate_claim(CommentsTcpDelegationScheduleAuditHandoffClaim {
-            request_id: Uuid::nil(),
-            claim_token: Uuid::new_v4(),
-            attempt_count: 1,
-        })
-        .is_err());
-        assert!(validate_claim(CommentsTcpDelegationScheduleAuditHandoffClaim {
-            request_id: Uuid::new_v4(),
-            claim_token: Uuid::new_v4(),
-            attempt_count: 0,
-        })
-        .is_err());
+        assert!(
+            validate_claim(CommentsTcpDelegationScheduleAuditHandoffClaim {
+                request_id: Uuid::nil(),
+                claim_token: Uuid::new_v4(),
+                attempt_count: 1,
+            })
+            .is_err()
+        );
+        assert!(
+            validate_claim(CommentsTcpDelegationScheduleAuditHandoffClaim {
+                request_id: Uuid::new_v4(),
+                claim_token: Uuid::new_v4(),
+                attempt_count: 0,
+            })
+            .is_err()
+        );
     }
 
     #[test]

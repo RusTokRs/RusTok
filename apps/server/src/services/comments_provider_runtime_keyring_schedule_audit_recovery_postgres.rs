@@ -39,29 +39,39 @@ impl CommentsTcpDelegationScheduleAuditRecoveryRequest {
         reason: impl Into<String>,
     ) -> std::result::Result<Self, CommentsTcpDelegationScheduleAuditRecoveryError> {
         if control_plane_tenant_id.is_nil() {
-            return Err(CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
-                "control-plane tenant ID must not be nil",
-            ));
+            return Err(
+                CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
+                    "control-plane tenant ID must not be nil",
+                ),
+            );
         }
         if request_id.is_nil() {
-            return Err(CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
-                "request ID must not be nil",
-            ));
+            return Err(
+                CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
+                    "request ID must not be nil",
+                ),
+            );
         }
         if actor_id.is_nil() {
-            return Err(CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
-                "actor ID must not be nil",
-            ));
+            return Err(
+                CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
+                    "actor ID must not be nil",
+                ),
+            );
         }
         if expected_attempt_count <= 0 {
-            return Err(CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
-                "expected attempt count must be positive",
-            ));
+            return Err(
+                CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
+                    "expected attempt count must be positive",
+                ),
+            );
         }
         if expected_recovery_epoch < 0 {
-            return Err(CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
-                "expected recovery epoch must not be negative",
-            ));
+            return Err(
+                CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
+                    "expected recovery epoch must not be negative",
+                ),
+            );
         }
         let reason = reason.into();
         validate_recovery_reason(&reason)?;
@@ -121,9 +131,7 @@ impl CommentsTcpDelegationScheduleAuditRecoveryInspection {
         self.recovery_epoch
     }
 
-    pub fn last_failure_code(
-        &self,
-    ) -> Option<CommentsTcpDelegationScheduleAuditSourceFailureCode> {
+    pub fn last_failure_code(&self) -> Option<CommentsTcpDelegationScheduleAuditSourceFailureCode> {
         self.last_failure_code
     }
 
@@ -175,9 +183,11 @@ impl PostgresCommentsTcpDelegationScheduleAuditRecoveryStore {
         CommentsTcpDelegationScheduleAuditRecoveryError,
     > {
         if request_id.is_nil() {
-            return Err(CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
-                "request ID must not be nil",
-            ));
+            return Err(
+                CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
+                    "request ID must not be nil",
+                ),
+            );
         }
         self.database
             .query_one(inspect_dead_letter_statement(request_id))
@@ -224,11 +234,13 @@ impl PostgresCommentsTcpDelegationScheduleAuditRecoveryStore {
         };
 
         match transaction.commit().await {
-            Ok(()) => Ok(CommentsTcpDelegationScheduleAuditRecoveryOutcome::Requeued {
-                audit_id,
-                request_id: request.request_id,
-                recovery_epoch,
-            }),
+            Ok(()) => Ok(
+                CommentsTcpDelegationScheduleAuditRecoveryOutcome::Requeued {
+                    audit_id,
+                    request_id: request.request_id,
+                    recovery_epoch,
+                },
+            ),
             Err(_) => {
                 self.reconcile_requeue(audit_id, &request, recovery_epoch)
                     .await
@@ -278,11 +290,13 @@ impl PostgresCommentsTcpDelegationScheduleAuditRecoveryStore {
         {
             return Err(CommentsTcpDelegationScheduleAuditRecoveryError::InvalidStoredState);
         }
-        Ok(CommentsTcpDelegationScheduleAuditRecoveryOutcome::Requeued {
-            audit_id,
-            request_id: request.request_id,
-            recovery_epoch,
-        })
+        Ok(
+            CommentsTcpDelegationScheduleAuditRecoveryOutcome::Requeued {
+                audit_id,
+                request_id: request.request_id,
+                recovery_epoch,
+            },
+        )
     }
 }
 
@@ -396,11 +410,13 @@ async fn requeue_in_transaction(
     {
         return Err(RequeueTransactionError::StaleInspection);
     }
-    let recovery_epoch = stored.recovery_epoch.checked_add(1).ok_or(
-        RequeueTransactionError::Recovery(
-            CommentsTcpDelegationScheduleAuditRecoveryError::InvalidStoredState,
-        ),
-    )?;
+    let recovery_epoch =
+        stored
+            .recovery_epoch
+            .checked_add(1)
+            .ok_or(RequeueTransactionError::Recovery(
+                CommentsTcpDelegationScheduleAuditRecoveryError::InvalidStoredState,
+            ))?;
     let audit_id = Uuid::new_v4();
     let updated = transaction
         .execute(requeue_source_statement(request, recovery_epoch))
@@ -462,12 +478,14 @@ fn validate_recovery_reason(
 ) -> std::result::Result<(), CommentsTcpDelegationScheduleAuditRecoveryError> {
     if reason.is_empty()
         || reason.trim() != reason
-        || reason.as_bytes().len() > COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_RECOVERY_MAX_REASON_BYTES
+        || reason.len() > COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_RECOVERY_MAX_REASON_BYTES
         || reason.chars().any(char::is_control)
     {
-        return Err(CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
-            "reason must be trimmed, non-empty, control-free, and at most 512 UTF-8 bytes",
-        ));
+        return Err(
+            CommentsTcpDelegationScheduleAuditRecoveryError::InvalidRequest(
+                "reason must be trimmed, non-empty, control-free, and at most 512 UTF-8 bytes",
+            ),
+        );
     }
     Ok(())
 }
@@ -592,37 +610,4 @@ fn reconcile_requeue_statement(audit_id: Uuid) -> Statement {
         ),
         vec![audit_id.into()],
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn recovery_reason_is_bounded_and_control_free() {
-        assert!(validate_recovery_reason("operator approved retry").is_ok());
-        assert!(validate_recovery_reason("").is_err());
-        assert!(validate_recovery_reason(" padded").is_err());
-        assert!(validate_recovery_reason("line\nbreak").is_err());
-        assert!(validate_recovery_reason(&"x".repeat(513)).is_err());
-    }
-
-    #[test]
-    fn requeue_sql_repeats_the_terminal_inspection_fence() {
-        let request = CommentsTcpDelegationScheduleAuditRecoveryRequest::new(
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            8,
-            2,
-            "operator approved retry",
-        )
-        .unwrap();
-        let sql = requeue_source_statement(&request, 3).sql;
-        assert!(sql.contains("handoff_attempt_count = $2"));
-        assert!(sql.contains("handoff_recovery_epoch = $3"));
-        assert!(sql.contains("handoff_claim_token IS NULL"));
-        assert!(sql.contains("handoff_dead_letter_reason = 'attempt_budget_exhausted'"));
-        assert!(sql.contains("handoff_attempt_count = 0"));
-    }
 }

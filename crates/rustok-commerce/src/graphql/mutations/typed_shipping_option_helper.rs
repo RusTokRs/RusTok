@@ -289,22 +289,21 @@ pub(crate) async fn validate_selected_shipping_option(
             }
         });
 
-    if shipping_selections.is_none() {
-        if let Some(shipping_option_id) = selected_shipping_option_id {
-            if cart.delivery_groups.len() > 1 {
-                return Err(shipping_option_graphql_error(
-                    ShippingOptionFailure::multiple_delivery_groups(shipping_option_id),
-                    &owner_context,
-                    cart.id,
-                    requested_selection_count,
-                    cart.delivery_groups.len(),
-                    requested_currency_code_length,
-                    public_channel_slug,
-                    requested_locale,
-                    tenant_default_locale,
-                ));
-            }
-        }
+    if shipping_selections.is_none()
+        && let Some(shipping_option_id) = selected_shipping_option_id
+        && cart.delivery_groups.len() > 1
+    {
+        return Err(shipping_option_graphql_error(
+            ShippingOptionFailure::multiple_delivery_groups(shipping_option_id),
+            &owner_context,
+            cart.id,
+            requested_selection_count,
+            cart.delivery_groups.len(),
+            requested_currency_code_length,
+            public_channel_slug,
+            requested_locale,
+            tenant_default_locale,
+        ));
     }
 
     let selections = if let Some(shipping_selections) = shipping_selections {

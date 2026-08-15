@@ -448,18 +448,21 @@ impl IndexSourceCatalog {
                     incoming_source: source_name.clone(),
                 });
             }
-            if let Some((existing_owner, existing_source)) =
-                self.identity_sources.get(&schema.identity())
+            if let Some((existing_owner, existing_source)) = self
+                .identity_sources
+                .get(&schema.identity())
+                .filter(|(existing_owner, existing_source)| {
+                    existing_owner.as_str() != owner_module.as_str()
+                        || existing_source.as_str() != source_name.as_str()
+                })
             {
-                if existing_owner != &owner_module || existing_source != &source_name {
-                    return Err(IndexSourceError::SchemaIdentitySourceConflict {
-                        identity: schema.identity(),
-                        existing_owner: existing_owner.clone(),
-                        existing_source: existing_source.clone(),
-                        incoming_owner: owner_module.clone(),
-                        incoming_source: source_name.clone(),
-                    });
-                }
+                return Err(IndexSourceError::SchemaIdentitySourceConflict {
+                    identity: schema.identity(),
+                    existing_owner: existing_owner.clone(),
+                    existing_source: existing_source.clone(),
+                    incoming_owner: owner_module.clone(),
+                    incoming_source: source_name.clone(),
+                });
             }
         }
 

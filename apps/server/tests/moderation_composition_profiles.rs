@@ -89,7 +89,7 @@ async fn selected_moderation_feature_fails_when_owner_module_is_missing() {
         Err(error) => error,
     };
 
-    assert!(matches!(&error, Error::Message(_)));
+    assert!(matches!(&error, rustok_server::error::Error::Message(_)));
     assert_eq!(
         error.to_string(),
         "Moderation feature is selected but ModerationModule is missing from ModuleRegistry"

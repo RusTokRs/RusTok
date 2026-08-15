@@ -10,9 +10,7 @@ use std::{
 use rustok_api::AuthPrincipalKind;
 
 use super::{
-    keyring,
-    keyring_schedule,
-    keyring_schedule_persistence as persistence,
+    keyring, keyring_schedule, keyring_schedule_persistence as persistence,
     keyring_schedule_trigger as trigger,
 };
 
@@ -46,9 +44,7 @@ pub struct CommentsTcpDelegationPersistedScheduleAuditRecord {
 }
 
 #[derive(Clone)]
-pub struct SharedCommentsTcpDelegationPersistedScheduleTrigger(
-    Arc<PersistedScheduleTriggerState>,
-);
+pub struct SharedCommentsTcpDelegationPersistedScheduleTrigger(Arc<PersistedScheduleTriggerState>);
 
 struct PersistedScheduleTriggerState {
     schedule_handle: keyring_schedule::SharedCommentsTcpDelegationScheduleHandle,
@@ -56,22 +52,24 @@ struct PersistedScheduleTriggerState {
     authorizer: trigger::SharedCommentsTcpDelegationScheduleTriggerAuthorizer,
     store: persistence::SharedCommentsTcpDelegationSchedulePersistenceStore,
     operation: Mutex<()>,
-    persistence_record:
-        Mutex<persistence::CommentsTcpDelegationSchedulePersistenceRecord>,
+    persistence_record: Mutex<persistence::CommentsTcpDelegationSchedulePersistenceRecord>,
     audit: Mutex<PersistedScheduleAuditState>,
 }
 
 enum PersistedScheduleSource {
-    HostProvided { max_ttl: Duration },
-    File { file_path: PathBuf, max_ttl: Duration },
+    HostProvided {
+        max_ttl: Duration,
+    },
+    File {
+        file_path: PathBuf,
+        max_ttl: Duration,
+    },
 }
 
 impl PersistedScheduleSource {
     fn category(&self) -> keyring::CommentsTcpDelegationKeyringSource {
         match self {
-            Self::HostProvided { .. } => {
-                keyring::CommentsTcpDelegationKeyringSource::HostProvided
-            }
+            Self::HostProvided { .. } => keyring::CommentsTcpDelegationKeyringSource::HostProvided,
             Self::File { .. } => keyring::CommentsTcpDelegationKeyringSource::File,
         }
     }
@@ -121,8 +119,7 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
         audit_capacity: usize,
     ) -> std::result::Result<Self, String> {
         let file_path = file_path.into();
-        let prepared =
-            persistence::load_prepared_schedule_from_file(&file_path, max_ttl)?;
+        let prepared = persistence::load_prepared_schedule_from_file(&file_path, max_ttl)?;
         let handle =
             keyring_schedule::SharedCommentsTcpDelegationScheduleHandle::from_prepared_file(
                 file_path.clone(),
@@ -131,10 +128,7 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
             )?;
         Self::new(
             handle,
-            PersistedScheduleSource::File {
-                file_path,
-                max_ttl,
-            },
+            PersistedScheduleSource::File { file_path, max_ttl },
             prepared,
             authorizer,
             store,
@@ -153,8 +147,7 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
         audit_capacity: usize,
     ) -> std::result::Result<Self, String> {
         if audit_capacity == 0
-            || audit_capacity
-                > trigger::MAX_COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_CAPACITY
+            || audit_capacity > trigger::MAX_COMMENTS_TCP_DELEGATION_SCHEDULE_AUDIT_CAPACITY
         {
             return Err(format!(
                 "Comments TCP persisted schedule audit capacity must be within 1..={}",
@@ -162,9 +155,7 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
             ));
         }
         let initial_record =
-            persistence::CommentsTcpDelegationSchedulePersistenceRecord::from_prepared(
-                &prepared,
-            );
+            persistence::CommentsTcpDelegationSchedulePersistenceRecord::from_prepared(&prepared);
         match startup_mode {
             persistence::CommentsTcpDelegationSchedulePersistenceStartupMode::BootstrapEmpty => {
                 store
@@ -195,41 +186,30 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
 
     pub fn current_selection(
         &self,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleRuntimeSelection,
-        String,
-    > {
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleRuntimeSelection, String>
+    {
         self.0.schedule_handle.current_selection()
     }
 
     pub fn current_persistence_record(
         &self,
-    ) -> std::result::Result<
-        persistence::CommentsTcpDelegationSchedulePersistenceRecord,
-        String,
-    > {
+    ) -> std::result::Result<persistence::CommentsTcpDelegationSchedulePersistenceRecord, String>
+    {
         self.0
             .persistence_record
             .lock()
             .map(|record| *record)
-            .map_err(|_| {
-                "Comments TCP persisted schedule state is unavailable".to_string()
-            })
+            .map_err(|_| "Comments TCP persisted schedule state is unavailable".to_string())
     }
 
     pub fn audit_records(
         &self,
-    ) -> std::result::Result<
-        Vec<CommentsTcpDelegationPersistedScheduleAuditRecord>,
-        String,
-    > {
+    ) -> std::result::Result<Vec<CommentsTcpDelegationPersistedScheduleAuditRecord>, String> {
         self.0
             .audit
             .lock()
             .map(|audit| audit.records.iter().copied().collect())
-            .map_err(|_| {
-                "Comments TCP persisted schedule audit state is unavailable".to_string()
-            })
+            .map_err(|_| "Comments TCP persisted schedule audit state is unavailable".to_string())
     }
 
     pub fn audit_capacity(&self) -> std::result::Result<usize, String> {
@@ -237,30 +217,22 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
             .audit
             .lock()
             .map(|audit| audit.capacity)
-            .map_err(|_| {
-                "Comments TCP persisted schedule audit state is unavailable".to_string()
-            })
+            .map_err(|_| "Comments TCP persisted schedule audit state is unavailable".to_string())
     }
 
     pub fn reload_file(
         &self,
         context: trigger::CommentsTcpDelegationScheduleTriggerContext,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome,
-        String,
-    > {
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome, String>
+    {
         self.execute(
             context,
             trigger::CommentsTcpDelegationScheduleTriggerOperation::ReloadFile,
             None,
             |source| match source {
-                PersistedScheduleSource::File {
-                    file_path,
-                    max_ttl,
-                } => persistence::load_prepared_schedule_from_file(
-                    file_path,
-                    *max_ttl,
-                ),
+                PersistedScheduleSource::File { file_path, max_ttl } => {
+                    persistence::load_prepared_schedule_from_file(file_path, *max_ttl)
+                }
                 PersistedScheduleSource::HostProvided { .. } => Err(
                     "Comments TCP persisted host schedule must be replaced programmatically"
                         .to_string(),
@@ -273,16 +245,15 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
         &self,
         context: trigger::CommentsTcpDelegationScheduleTriggerContext,
         document: persistence::CommentsTcpDelegationSchedulePersistenceDocument,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome,
-        String,
-    > {
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome, String>
+    {
         let requested_generation = Some(document.generation());
         self.execute(
             context,
             trigger::CommentsTcpDelegationScheduleTriggerOperation::ReplaceHostSchedule,
             requested_generation,
-            move |source| match source {
+            move |source| {
+                match source {
                 PersistedScheduleSource::HostProvided { max_ttl } => document.prepare(
                     keyring::CommentsTcpDelegationKeyringSource::HostProvided,
                     *max_ttl,
@@ -291,6 +262,7 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
                     "Comments TCP persisted file schedule must be reloaded from its configured file"
                         .to_string(),
                 ),
+            }
             },
         )
     }
@@ -307,17 +279,11 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
         operation: trigger::CommentsTcpDelegationScheduleTriggerOperation,
         requested_generation: Option<u64>,
         prepare: P,
-    ) -> std::result::Result<
-        keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome,
-        String,
-    >
+    ) -> std::result::Result<keyring_schedule::CommentsTcpDelegationScheduleReloadOutcome, String>
     where
         P: FnOnce(
             &PersistedScheduleSource,
-        ) -> std::result::Result<
-            persistence::PreparedScheduleCandidate,
-            String,
-        >,
+        ) -> std::result::Result<persistence::PreparedScheduleCandidate, String>,
     {
         let _operation = self.0.operation.lock().map_err(|_| {
             "Comments TCP persisted schedule trigger state is unavailable".to_string()
@@ -340,24 +306,21 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
             }
         };
 
-        let authorization =
-            if context.principal_kind() == AuthPrincipalKind::DelegatedUser {
-                Err(
-                    trigger::CommentsTcpDelegationScheduleTriggerAuthorizationError::Denied,
-                )
-            } else {
-                self.0.authorizer.authorize(
-                    &trigger::CommentsTcpDelegationScheduleTriggerAuthorizationRequest {
-                        request_id: context.request_id(),
-                        actor_id: context.actor_id(),
-                        principal_kind: context.principal_kind(),
-                        operation,
-                        source: selection.source,
-                        current_generation: selection.generation,
-                        requested_generation,
-                    },
-                )
-            };
+        let authorization = if context.principal_kind() == AuthPrincipalKind::DelegatedUser {
+            Err(trigger::CommentsTcpDelegationScheduleTriggerAuthorizationError::Denied)
+        } else {
+            self.0.authorizer.authorize(
+                &trigger::CommentsTcpDelegationScheduleTriggerAuthorizationRequest {
+                    request_id: context.request_id(),
+                    actor_id: context.actor_id(),
+                    principal_kind: context.principal_kind(),
+                    operation,
+                    source: selection.source,
+                    current_generation: selection.generation,
+                    requested_generation,
+                },
+            )
+        };
 
         let mut audit = self.0.audit.lock().map_err(|_| {
             "Comments TCP persisted schedule audit state is unavailable".to_string()
@@ -365,15 +328,12 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
         let sequence = audit.allocate_sequence()?;
 
         match authorization {
-            Err(
-                trigger::CommentsTcpDelegationScheduleTriggerAuthorizationError::Denied,
-            ) => {
-                let outcome =
-                    if context.principal_kind() == AuthPrincipalKind::DelegatedUser {
-                        CommentsTcpDelegationPersistedScheduleAuditOutcome::PrincipalIneligible
-                    } else {
-                        CommentsTcpDelegationPersistedScheduleAuditOutcome::AuthorizationDenied
-                    };
+            Err(trigger::CommentsTcpDelegationScheduleTriggerAuthorizationError::Denied) => {
+                let outcome = if context.principal_kind() == AuthPrincipalKind::DelegatedUser {
+                    CommentsTcpDelegationPersistedScheduleAuditOutcome::PrincipalIneligible
+                } else {
+                    CommentsTcpDelegationPersistedScheduleAuditOutcome::AuthorizationDenied
+                };
                 audit.append(CommentsTcpDelegationPersistedScheduleAuditRecord {
                     sequence,
                     occurred_at_unix_ms,
@@ -388,13 +348,10 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
                     current_generation: Some(selection.generation),
                 });
                 return Err(
-                    "Comments TCP persisted schedule trigger authorization was denied"
-                        .to_string(),
+                    "Comments TCP persisted schedule trigger authorization was denied".to_string(),
                 );
             }
-            Err(
-                trigger::CommentsTcpDelegationScheduleTriggerAuthorizationError::Unavailable,
-            ) => {
+            Err(trigger::CommentsTcpDelegationScheduleTriggerAuthorizationError::Unavailable) => {
                 audit.append(CommentsTcpDelegationPersistedScheduleAuditRecord {
                     sequence,
                     occurred_at_unix_ms,
@@ -436,12 +393,12 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
             }
         };
         let candidate_record =
-            persistence::CommentsTcpDelegationSchedulePersistenceRecord::from_prepared(
-                &candidate,
-            );
-        let mut persisted = self.0.persistence_record.lock().map_err(|_| {
-            "Comments TCP persisted schedule state is unavailable".to_string()
-        })?;
+            persistence::CommentsTcpDelegationSchedulePersistenceRecord::from_prepared(&candidate);
+        let mut persisted = self
+            .0
+            .persistence_record
+            .lock()
+            .map_err(|_| "Comments TCP persisted schedule state is unavailable".to_string())?;
         if persisted.source() != selection.source
             || persisted.generation() != selection.generation
             || candidate.source != self.0.source.category()
@@ -453,7 +410,8 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
                 actor_id: context.actor_id(),
                 principal_kind: context.principal_kind(),
                 operation,
-                outcome: CommentsTcpDelegationPersistedScheduleAuditOutcome::PersistenceStateMismatch,
+                outcome:
+                    CommentsTcpDelegationPersistedScheduleAuditOutcome::PersistenceStateMismatch,
                 source: Some(selection.source),
                 previous_generation: Some(selection.generation),
                 candidate_generation: Some(candidate.generation),
@@ -477,8 +435,7 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
                     .compare_and_store(Some(&expected_record), &candidate_record)
                     .map_err(|error| {
                         store_error.set(Some(error));
-                        "Comments TCP persisted schedule durable commit was rejected"
-                            .to_string()
+                        "Comments TCP persisted schedule durable commit was rejected".to_string()
                     })
             },
         );
@@ -493,7 +450,8 @@ impl SharedCommentsTcpDelegationPersistedScheduleTrigger {
                     actor_id: context.actor_id(),
                     principal_kind: context.principal_kind(),
                     operation,
-                    outcome: CommentsTcpDelegationPersistedScheduleAuditOutcome::ReplacementSucceeded,
+                    outcome:
+                        CommentsTcpDelegationPersistedScheduleAuditOutcome::ReplacementSucceeded,
                     source: Some(reload.current.source),
                     previous_generation: Some(reload.previous_generation),
                     candidate_generation: Some(candidate_record.generation()),
@@ -625,10 +583,9 @@ fn startup_store_error(
 }
 
 fn current_unix_ms() -> std::result::Result<u64, String> {
-    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| {
-        "Comments TCP persisted schedule audit clock is not available".to_string()
-    })?;
-    u64::try_from(elapsed.as_millis()).map_err(|_| {
-        "Comments TCP persisted schedule audit clock is not available".to_string()
-    })
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "Comments TCP persisted schedule audit clock is not available".to_string())?;
+    u64::try_from(elapsed.as_millis())
+        .map_err(|_| "Comments TCP persisted schedule audit clock is not available".to_string())
 }

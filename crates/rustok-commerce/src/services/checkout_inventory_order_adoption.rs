@@ -213,13 +213,12 @@ impl CheckoutInventoryOrderAdoptionService {
 
             if let Some(existing_order_line_id) =
                 load_order_line_adoption(&txn, tenant_id, mapping.reservation_id).await?
+                && existing_order_line_id != binding.order_line_item_id
             {
-                if existing_order_line_id != binding.order_line_item_id {
-                    return Err(CheckoutInventoryOrderAdoptionError::Conflict(format!(
-                        "reservation {} is already adopted by another order line",
-                        mapping.reservation_id
-                    )));
-                }
+                return Err(CheckoutInventoryOrderAdoptionError::Conflict(format!(
+                    "reservation {} is already adopted by another order line",
+                    mapping.reservation_id
+                )));
             }
 
             let reservation = reservation_item::Entity::find_by_id(mapping.reservation_id)

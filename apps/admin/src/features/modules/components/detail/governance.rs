@@ -865,10 +865,10 @@ pub fn registry_yank_authority_label(
         if !actors.iter().any(|actor| actor == &release.publisher) {
             actors.push(release.publisher.clone());
         }
-    } else if let Some(request) = request.and_then(|request| request.publisher.clone()) {
-        if !actors.iter().any(|actor| actor == &request) {
-            actors.push(request);
-        }
+    } else if let Some(request) = request.and_then(|request| request.publisher.clone())
+        && !actors.iter().any(|actor| actor == &request)
+    {
+        actors.push(request);
     }
     actors.push(operators.to_string());
     actors.join(" / ")
@@ -1294,22 +1294,21 @@ pub fn registry_operator_command_lines(
         lines.push(publish_dry_run);
     }
 
-    if let Some(request) = request {
-        if !validation_stages.is_empty()
-            && (status_eq(&request.status, "approved") || status_eq(&request.status, "published"))
-        {
-            for stage in validation_stages {
-                if validation_stage_has_local_xtask_runner(&stage.key) {
-                    let mut command =
-                        validation_stage_runner_xtask_hint(&module.slug, &request.id, &stage.key);
-                    command.push_str(" --dry-run");
-                    lines.push(command);
-                } else {
-                    lines.push(format!(
-                        "cargo xtask module stage {} {} <queued|running|passed|failed|blocked> --dry-run",
-                        request.id, stage.key
-                    ));
-                }
+    if let Some(request) = request
+        && !validation_stages.is_empty()
+        && (status_eq(&request.status, "approved") || status_eq(&request.status, "published"))
+    {
+        for stage in validation_stages {
+            if validation_stage_has_local_xtask_runner(&stage.key) {
+                let mut command =
+                    validation_stage_runner_xtask_hint(&module.slug, &request.id, &stage.key);
+                command.push_str(" --dry-run");
+                lines.push(command);
+            } else {
+                lines.push(format!(
+                    "cargo xtask module stage {} {} <queued|running|passed|failed|blocked> --dry-run",
+                    request.id, stage.key
+                ));
             }
         }
     }
@@ -1981,10 +1980,10 @@ pub fn moderation_history_context_lines(
         ));
     }
 
-    if let Some(detail) = detail {
-        if !lines.iter().any(|line| line.ends_with(&detail)) {
-            lines.push(format!("{}: {}", tr(locale, "Detail", "Detail"), detail));
-        }
+    if let Some(detail) = detail
+        && !lines.iter().any(|line| line.ends_with(&detail))
+    {
+        lines.push(format!("{}: {}", tr(locale, "Detail", "Detail"), detail));
     }
 
     lines

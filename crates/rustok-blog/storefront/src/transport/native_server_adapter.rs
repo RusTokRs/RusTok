@@ -1,30 +1,27 @@
-#[cfg(all(feature = "ssr", not(feature = "comment-island")))]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::comments_pagination::COMMENTS_PAGE_SIZE;
-#[cfg(not(feature = "comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::core::BlogStorefrontFetchRequest;
-#[cfg(feature = "ssr")]
-use crate::model::BlogPostListItem;
-#[cfg(not(feature = "comment-island"))]
-use crate::model::StorefrontBlogData;
 use crate::model::{BlogCommentCreateRequest, BlogCommentDetail};
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use crate::model::{
     BlogCommentList, BlogCommentListItem, BlogCommentsAvailability, BlogPostDetail, BlogPostList,
+    BlogPostListItem, StorefrontBlogData,
 };
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use std::sync::Arc;
 
 use super::ApiError;
-#[cfg(not(feature = "comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use super::configured_tenant_slug;
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "blog";
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 
-#[cfg(not(feature = "comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 pub async fn fetch_blog(
     request: BlogStorefrontFetchRequest,
     comments_page: u64,
@@ -150,7 +147,7 @@ async fn create_blog_comment_native(
     }
 }
 
-#[cfg(not(feature = "comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 async fn fetch_storefront_blog_server(
     tenant_slug: Option<String>,
     post_slug: String,
@@ -163,7 +160,7 @@ async fn fetch_storefront_blog_server(
 }
 
 #[server(prefix = "/api/fn", endpoint = "blog/storefront-data")]
-#[cfg(not(feature = "comment-island"))]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 async fn storefront_blog_native(
     tenant_slug: Option<String>,
     post_slug: String,
@@ -379,7 +376,7 @@ fn map_comment_detail(comment: rustok_blog::CommentResponse) -> BlogCommentDetai
     }
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 fn map_comments_availability(
     availability: rustok_blog::PublicCommentsAvailability,
 ) -> BlogCommentsAvailability {
@@ -418,7 +415,7 @@ fn is_visible_for_public_channel(
         .any(|slug| slug.eq_ignore_ascii_case(public_channel_slug))
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 fn map_post_detail(
     post: rustok_blog::PostResponse,
     public_comments: BlogCommentList,
@@ -444,7 +441,7 @@ fn map_post_detail(
     }
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 fn map_comment_list_item(comment: rustok_blog::CommentListItem) -> BlogCommentListItem {
     BlogCommentListItem {
         id: comment.id.to_string(),
@@ -456,7 +453,7 @@ fn map_comment_list_item(comment: rustok_blog::CommentListItem) -> BlogCommentLi
     }
 }
 
-#[cfg(feature = "ssr")]
+#[cfg(any(feature = "ssr", not(feature = "comment-island")))]
 fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
     BlogPostListItem {
         id: post.id.to_string(),
@@ -474,7 +471,7 @@ fn map_post_list_item(post: rustok_blog::PostSummary) -> BlogPostListItem {
     }
 }
 
-#[cfg(all(test, feature = "ssr"))]
+#[cfg(all(test, any(feature = "ssr", not(feature = "comment-island"))))]
 mod tests {
     use super::*;
 

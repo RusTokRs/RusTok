@@ -77,13 +77,12 @@ impl EventDeliverySettingsService {
         profile: EventDeliveryProfile,
         actor_id: Uuid,
     ) -> Result<(), EventDeliverySettingsError> {
-        if profile.requires_iggy() {
-            if let Some(reason) =
+        if profile.requires_iggy()
+            && let Some(reason) =
                 crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::readiness_error(ctx)
                     .await
-            {
-                return Err(EventDeliverySettingsError::IggyNotConfigured(reason));
-            }
+        {
+            return Err(EventDeliverySettingsError::IggyNotConfigured(reason));
         }
 
         let now: chrono::DateTime<chrono::FixedOffset> = chrono::Utc::now().into();

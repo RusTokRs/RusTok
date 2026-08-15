@@ -44,8 +44,7 @@ fn bind_generation_recovery_owner(
             return Ok(());
         }
         return Err(CacheBackendGenerationError::SharedGeneration(
-            "cache backend generation prefix is already owned by another CacheService"
-                .to_string(),
+            "cache backend generation prefix is already owned by another CacheService".to_string(),
         ));
     }
 
@@ -79,15 +78,13 @@ fn generation_recovery_states_for(
         .collect()
 }
 
-fn unique_generation_recovery_namespace(
-    state: &Arc<BackendGenerationState>,
-) -> Option<String> {
+fn unique_generation_recovery_namespace(state: &Arc<BackendGenerationState>) -> Option<String> {
     let registry = backend_generations()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut prefixes = registry.iter().filter_map(|(prefix, candidate)| {
-        Arc::ptr_eq(candidate, state).then_some(prefix.clone())
-    });
+    let mut prefixes = registry
+        .iter()
+        .filter_map(|(prefix, candidate)| Arc::ptr_eq(candidate, state).then_some(prefix.clone()));
     let prefix = prefixes.next()?;
     if prefixes.next().is_some() {
         None
@@ -273,7 +270,9 @@ impl GenerationRecoveryHealthBackend {
                 "cache backend generation recovery did not verify shared Redis state".to_string(),
             ));
         }
-        self.state.observe(generation.value()).map_err(Self::error)?;
+        self.state
+            .observe(generation.value())
+            .map_err(Self::error)?;
         tracing::info!(
             namespace = %namespace,
             generation = generation.value(),
@@ -343,7 +342,10 @@ mod recovery_tests {
     use super::*;
 
     fn unique_prefix(name: &str) -> String {
-        format!("test:generation-recovery:{name}:{}", Uuid::new_v4().simple())
+        format!(
+            "test:generation-recovery:{name}:{}",
+            Uuid::new_v4().simple()
+        )
     }
 
     #[test]
@@ -383,10 +385,12 @@ mod recovery_tests {
 
         assert!(error.contains("another CacheService"));
         assert!(second.get("key").await.is_err());
-        assert!(second
-            .set("key".to_string(), b"value".to_vec())
-            .await
-            .is_err());
+        assert!(
+            second
+                .set("key".to_string(), b"value".to_vec())
+                .await
+                .is_err()
+        );
     }
 
     #[cfg(feature = "redis-cache")]

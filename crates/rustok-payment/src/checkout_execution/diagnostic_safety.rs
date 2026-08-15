@@ -132,13 +132,9 @@ fn checkout_payment_execution_local_operation(
         "payment.checkout_currency_invalid" => Some("validate_checkout_currency"),
         "payment.checkout_plan_hash_invalid" => Some("validate_checkout_plan_hash"),
         "payment.checkout_collection_id_invalid" => Some("validate_collection_id"),
-        "payment.checkout_collection_operation_conflict" => {
-            Some("validate_collection_operation")
-        }
+        "payment.checkout_collection_operation_conflict" => Some("validate_collection_operation"),
         "payment.checkout_collection_plan_conflict" => Some("validate_collection_plan"),
-        "payment.checkout_collection_identity_conflict" => {
-            Some("validate_collection_identity")
-        }
+        "payment.checkout_collection_identity_conflict" => Some("validate_collection_identity"),
         "payment.checkout_collection_identity_missing" => Some("require_collection_identity"),
         "payment.checkout_authorize_state_conflict"
             if operation == AUTHORIZE_CHECKOUT_COLLECTION_OPERATION =>
@@ -169,9 +165,7 @@ fn checkout_payment_execution_local_operation(
         "payment.provider_unavailable" | "payment.provider_rejected" => {
             Some("execute_provider_operation")
         }
-        "payment.checkout_execution_manual_reconciliation" => {
-            Some("require_manual_reconciliation")
-        }
+        "payment.checkout_execution_manual_reconciliation" => Some("require_manual_reconciliation"),
         "payment.provider_not_configured" => Some("resolve_provider"),
         _ => None,
     }

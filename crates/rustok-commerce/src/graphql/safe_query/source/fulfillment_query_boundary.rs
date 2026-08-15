@@ -71,7 +71,11 @@ fn map_shipping_option_lookup_port_error(
         requested_locale,
         tenant_default_locale,
         error_kind,
-        if optional_not_found { "OPTIONAL_NONE" } else { code },
+        if optional_not_found {
+            "OPTIONAL_NONE"
+        } else {
+            code
+        },
         if optional_not_found { false } else { retryable },
         technical,
     );
@@ -143,9 +147,7 @@ fn map_fulfillment_port_error(
     );
 
     if matches!(&error.kind, PortErrorKind::NotFound) {
-        FulfillmentError::FulfillmentNotFound(
-            fulfillment_id.or(order_id).unwrap_or_else(Uuid::nil),
-        )
+        FulfillmentError::FulfillmentNotFound(fulfillment_id.or(order_id).unwrap_or_else(Uuid::nil))
     } else {
         FulfillmentError::Public(BoundaryError::Public {
             message,
@@ -155,9 +157,7 @@ fn map_fulfillment_port_error(
     }
 }
 
-fn public_fulfillment_port_policy(
-    kind: &PortErrorKind,
-) -> (&'static str, &'static str, bool) {
+fn public_fulfillment_port_policy(kind: &PortErrorKind) -> (&'static str, &'static str, bool) {
     match kind {
         PortErrorKind::Validation => (
             "Fulfillment query is invalid",
@@ -206,9 +206,7 @@ fn port_error_kind_name(kind: &PortErrorKind) -> &'static str {
 fn is_technical_port_error(kind: &PortErrorKind) -> bool {
     matches!(
         kind,
-        PortErrorKind::Unavailable
-            | PortErrorKind::Timeout
-            | PortErrorKind::InvariantViolation
+        PortErrorKind::Unavailable | PortErrorKind::Timeout | PortErrorKind::InvariantViolation
     )
 }
 
@@ -248,10 +246,7 @@ fn fulfillment_query_context_facts(context: &PortContext) -> FulfillmentQueryCon
         correlation_id_length: context.correlation_id.chars().count(),
         context_locale_length: context.locale.chars().count(),
         channel_present: context.channel.is_some(),
-        channel_length: context
-            .channel
-            .as_ref()
-            .map(|value| value.chars().count()),
+        channel_length: context.channel.as_ref().map(|value| value.chars().count()),
         deadline_ms: context.deadline_ms,
     }
 }

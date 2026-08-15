@@ -309,12 +309,10 @@ impl SeaOrmStorage {
     }
 
     fn ensure_script_scope(&self, script: &Script) -> ScriptResult<()> {
-        if let Some(tenant_id) = self.tenant_id {
-            if script.tenant_id != tenant_id {
-                return Err(ScriptError::NotFound {
-                    name: script.id.to_string(),
-                });
-            }
+        if self.tenant_id.is_some_and(|t| script.tenant_id != t) {
+            return Err(ScriptError::NotFound {
+                name: script.id.to_string(),
+            });
         }
         Ok(())
     }
@@ -1448,7 +1446,7 @@ impl ScriptRegistry for SeaOrmStorage {
         if model.lease_token != Some(lease_token)
             || model
                 .lease_expires_at
-                .map_or(true, |expires_at| expires_at <= now)
+                .is_none_or(|expires_at| expires_at <= now)
         {
             return Err(crate::model::TestRunError::LeaseLost.into());
         }

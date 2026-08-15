@@ -409,7 +409,7 @@ async fn count_legacy_routes(
         ))
         .await?
         .expect("legacy route count");
-    Ok(row.try_get("", "value")?)
+    row.try_get("", "value")
 }
 
 async fn assert_inbox_completed(

@@ -61,9 +61,7 @@ async fn test_post_lifecycle() -> TestResult<()> {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Test Post".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(
-                    &"Hello, Blog!".to_string(),
-                ),
+                content: rustok_blog::richtext::article_document_from_plain_text("Hello, Blog!"),
                 excerpt: Some("Short excerpt".to_string()),
                 slug: None,
                 publish: false,
@@ -135,9 +133,7 @@ async fn test_create_and_publish_post() -> TestResult<()> {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Draft Post".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(
-                    &"Content".to_string(),
-                ),
+                content: rustok_blog::richtext::article_document_from_plain_text("Content"),
                 excerpt: None,
                 slug: Some("draft-post".to_string()),
                 publish: false,
@@ -192,9 +188,7 @@ async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestR
             CreatePostInput {
                 locale: "en-us".to_string(),
                 title: "Localized Post".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(
-                    &"Body".to_string(),
-                ),
+                content: rustok_blog::richtext::article_document_from_plain_text("Body"),
                 excerpt: None,
                 slug: Some("localized-post".to_string()),
                 publish: true,
@@ -263,9 +257,7 @@ async fn test_list_posts_with_pagination() -> TestResult<()> {
                 CreatePostInput {
                     locale: "en".to_string(),
                     title: format!("Post {i}"),
-                    content: rustok_blog::richtext::article_document_from_plain_text(
-                        &"Body".to_string(),
-                    ),
+                    content: rustok_blog::richtext::article_document_from_plain_text("Body"),
                     excerpt: None,
                     slug: None,
                     publish: false,
@@ -332,9 +324,7 @@ async fn test_filter_posts_by_tag() -> TestResult<()> {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Rust Post".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(
-                    &"Body".to_string(),
-                ),
+                content: rustok_blog::richtext::article_document_from_plain_text("Body"),
                 excerpt: None,
                 slug: None,
                 publish: false,
@@ -356,9 +346,7 @@ async fn test_filter_posts_by_tag() -> TestResult<()> {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Go Post".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(
-                    &"Body".to_string(),
-                ),
+                content: rustok_blog::richtext::article_document_from_plain_text("Body"),
                 excerpt: None,
                 slug: None,
                 publish: false,
@@ -403,9 +391,7 @@ async fn test_cannot_delete_published_post() -> TestResult<()> {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Published Post".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(
-                    &"Content".to_string(),
-                ),
+                content: rustok_blog::richtext::article_document_from_plain_text("Content"),
                 excerpt: None,
                 slug: None,
                 publish: true,
@@ -729,9 +715,7 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Post for comments".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(
-                    &"Post body".to_string(),
-                ),
+                content: rustok_blog::richtext::article_document_from_plain_text("Post body"),
                 excerpt: None,
                 slug: None,
                 publish: true,
@@ -871,9 +855,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Post with comments".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(
-                    &"Body".to_string(),
-                ),
+                content: rustok_blog::richtext::article_document_from_plain_text("Body"),
                 excerpt: None,
                 slug: None,
                 publish: true,
@@ -1054,9 +1036,7 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
             CreatePostInput {
                 locale: "en".to_string(),
                 title: "Post for moderation".to_string(),
-                content: rustok_blog::richtext::article_document_from_plain_text(
-                    &"Body".to_string(),
-                ),
+                content: rustok_blog::richtext::article_document_from_plain_text("Body"),
                 excerpt: None,
                 slug: None,
                 publish: true,
@@ -1281,9 +1261,7 @@ mod unit_tests {
         let input = CreatePostInput {
             locale: "ru".to_string(),
             title: "Заголовок".to_string(),
-            content: rustok_blog::richtext::article_document_from_plain_text(
-                &"Тело поста".to_string(),
-            ),
+            content: rustok_blog::richtext::article_document_from_plain_text("Тело поста"),
             excerpt: Some("Краткое содержание".to_string()),
             slug: Some("zagolovok".to_string()),
             publish: false,

@@ -17,11 +17,9 @@ use rustok_comments::{
     CommentsTcpAuthorityResolver, CommentsTcpBearerToken, CommentsTcpChannelProtection,
     CommentsTcpClientChannelConnector, CommentsTcpDelegationKeyId,
     CommentsTcpDelegationKeyringProvider, CommentsTcpDelegationSchedule,
-    CommentsTcpDelegationScheduledKey, CommentsTcpDelegationSecret,
-    CommentsThreadPort, CommentsThreadTransport,
-    DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS,
-    PlaintextLoopbackCommentsTcpChannel,
-    ReloadableCommentsTcpDelegatingAuthorityResolver,
+    CommentsTcpDelegationScheduledKey, CommentsTcpDelegationSecret, CommentsThreadPort,
+    CommentsThreadTransport, DEFAULT_COMMENTS_TCP_DELEGATION_CLOCK_SKEW_MS,
+    PlaintextLoopbackCommentsTcpChannel, ReloadableCommentsTcpDelegatingAuthorityResolver,
     ReloadableCommentsTcpDelegationSigner, ReloadableTcpJsonCommentsTransport,
     remote_comments_thread_port,
 };
@@ -98,10 +96,7 @@ impl SharedCommentsTcpDelegationScheduleHandle {
             generation,
             keyring::CommentsTcpDelegationKeyringSource::HostProvided,
         )?;
-        Ok(Self::new(
-            DelegationScheduleSource::HostProvided,
-            snapshot,
-        ))
+        Ok(Self::new(DelegationScheduleSource::HostProvided, snapshot))
     }
 
     pub fn from_file(
@@ -109,9 +104,8 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         max_ttl: Duration,
     ) -> std::result::Result<Self, String> {
         let file_path = file_path.as_ref().to_path_buf();
-        let max_ttl_ms = duration_ms(max_ttl).ok_or_else(|| {
-            "Comments TCP delegation schedule TTL is invalid".to_string()
-        })?;
+        let max_ttl_ms = duration_ms(max_ttl)
+            .ok_or_else(|| "Comments TCP delegation schedule TTL is invalid".to_string())?;
         let snapshot = load_schedule_snapshot_from_file(&file_path, max_ttl_ms)?;
         Ok(Self::new(
             DelegationScheduleSource::File(file_path),
@@ -122,9 +116,11 @@ impl SharedCommentsTcpDelegationScheduleHandle {
     pub fn current_status(
         &self,
     ) -> std::result::Result<CommentsTcpDelegationScheduleReloadStatus, String> {
-        let current = self.0.current.read().map_err(|_| {
-            "Comments TCP delegation schedule state is unavailable".to_string()
-        })?;
+        let current = self
+            .0
+            .current
+            .read()
+            .map_err(|_| "Comments TCP delegation schedule state is unavailable".to_string())?;
         Ok(CommentsTcpDelegationScheduleReloadStatus {
             selection: schedule_selection(&current)?,
             successful_reloads: self.0.successful_reloads.load(Ordering::Relaxed),
@@ -175,9 +171,8 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         let max_ttl_ms = match self.0.current.read() {
             Ok(current) => current.schedule.max_ttl_ms(),
             Err(_) => {
-                return self.reject(
-                    "Comments TCP delegation schedule state is unavailable".to_string(),
-                );
+                return self
+                    .reject("Comments TCP delegation schedule state is unavailable".to_string());
             }
         };
         let candidate = match load_schedule_snapshot_from_file(&file_path, max_ttl_ms) {
@@ -204,16 +199,14 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         let mut current = match self.0.current.write() {
             Ok(current) => current,
             Err(_) => {
-                return self.reject(
-                    "Comments TCP delegation schedule state is unavailable".to_string(),
-                );
+                return self
+                    .reject("Comments TCP delegation schedule state is unavailable".to_string());
             }
         };
         if candidate.source != current.source {
             drop(current);
             return self.reject(
-                "Comments TCP delegation schedule reload cannot change source category"
-                    .to_string(),
+                "Comments TCP delegation schedule reload cannot change source category".to_string(),
             );
         }
         if candidate.generation <= current.generation {
@@ -232,13 +225,9 @@ impl SharedCommentsTcpDelegationScheduleHandle {
                 "Comments TCP delegation schedule replacement is unsafe: {error}"
             ));
         }
-        candidate
-            .schedule
-            .current_keyring_at(now_ms)
-            .map_err(|_| {
-                "Comments TCP delegation schedule replacement has no active signing key"
-                    .to_string()
-            })?;
+        candidate.schedule.current_keyring_at(now_ms).map_err(|_| {
+            "Comments TCP delegation schedule replacement has no active signing key".to_string()
+        })?;
 
         let previous_generation = current.generation;
         let current_selection = schedule_selection_at(&candidate, now_ms)?;
@@ -338,12 +327,11 @@ struct DelegationScheduleFileEntry {
 pub(super) fn register_comments_provider_runtime(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> std::result::Result<(), String> {
-    let schedule_enabled = match read_optional_environment(
-        COMMENTS_TCP_DELEGATION_SCHEDULE_ENABLED_ENV,
-    )? {
-        Some(value) => parse_bool_value(COMMENTS_TCP_DELEGATION_SCHEDULE_ENABLED_ENV, &value)?,
-        None => false,
-    };
+    let schedule_enabled =
+        match read_optional_environment(COMMENTS_TCP_DELEGATION_SCHEDULE_ENABLED_ENV)? {
+            Some(value) => parse_bool_value(COMMENTS_TCP_DELEGATION_SCHEDULE_ENABLED_ENV, &value)?,
+            None => false,
+        };
     let host_handle = extensions
         .get::<SharedCommentsTcpDelegationScheduleHandle>()
         .cloned();
@@ -361,8 +349,11 @@ pub(super) fn register_comments_provider_runtime(
     }
     if read_optional_environment(keyring_reload::COMMENTS_TCP_DELEGATION_RELOAD_ENABLED_ENV)?
         .is_some_and(|value| {
-            parse_bool_value(keyring_reload::COMMENTS_TCP_DELEGATION_RELOAD_ENABLED_ENV, &value)
-                .unwrap_or(false)
+            parse_bool_value(
+                keyring_reload::COMMENTS_TCP_DELEGATION_RELOAD_ENABLED_ENV,
+                &value,
+            )
+            .unwrap_or(false)
         })
     {
         return Err(format!(
@@ -437,10 +428,7 @@ pub(super) fn register_comments_provider_runtime(
                 },
             ),
             Some("tcp") => {
-                let (port, selection) = prepare_scheduled_tcp_client(
-                    extensions,
-                    &schedule_handle,
-                )?;
+                let (port, selection) = prepare_scheduled_tcp_client(extensions, &schedule_handle)?;
                 (Some(port), selection)
             }
             _ => {
@@ -468,8 +456,7 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
     let Some(schedule_handle) = schedule_handle_from_context(runtime_ctx) else {
         return keyring_reload_guard::start_comments_tcp_listener_if_enabled(runtime_ctx).await;
     };
-    let Some(_) = base::CommentsTcpListenerConfig::from_environment()
-        .map_err(Error::BadRequest)?
+    let Some(_) = base::CommentsTcpListenerConfig::from_environment().map_err(Error::BadRequest)?
     else {
         return Ok(());
     };
@@ -505,8 +492,7 @@ fn build_schedule_snapshot(
 ) -> std::result::Result<DelegationScheduleSnapshot, String> {
     if generation == 0 {
         return Err(
-            "Comments TCP delegation schedule generation must be greater than zero"
-                .to_string(),
+            "Comments TCP delegation schedule generation must be greater than zero".to_string(),
         );
     }
     schedule.current_keyring().map_err(|_| {
@@ -531,8 +517,7 @@ fn schedule_selection_at(
     now_ms: u64,
 ) -> std::result::Result<CommentsTcpDelegationScheduleRuntimeSelection, String> {
     let keyring = snapshot.schedule.current_keyring_at(now_ms).map_err(|_| {
-        "Comments TCP delegation schedule has no safe keyring for the current time"
-            .to_string()
+        "Comments TCP delegation schedule has no safe keyring for the current time".to_string()
     })?;
     Ok(CommentsTcpDelegationScheduleRuntimeSelection {
         source: snapshot.source,
@@ -558,12 +543,13 @@ fn parse_schedule_document(
     bytes: &[u8],
     max_ttl_ms: u64,
 ) -> std::result::Result<DelegationScheduleSnapshot, String> {
-    let document = serde_json::from_slice::<DelegationScheduleFileDocument>(bytes).map_err(|_| {
-        format!(
-            "{} must contain one valid version-2 Comments TCP delegation schedule JSON object",
-            keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV
-        )
-    })?;
+    let document =
+        serde_json::from_slice::<DelegationScheduleFileDocument>(bytes).map_err(|_| {
+            format!(
+                "{} must contain one valid version-2 Comments TCP delegation schedule JSON object",
+                keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV
+            )
+        })?;
     if document.schema_version != COMMENTS_TCP_DELEGATION_SCHEDULE_SCHEMA_VERSION {
         return Err(format!(
             "{} schema_version must equal {COMMENTS_TCP_DELEGATION_SCHEDULE_SCHEMA_VERSION} in schedule mode",
@@ -626,8 +612,8 @@ fn parse_schedule_document(
         )
     })?;
     if let Some(raw_legacy_key_id) = document.legacy_unkeyed_key_id {
-        let legacy_key_id = CommentsTcpDelegationKeyId::new(raw_legacy_key_id)
-            .map_err(|error| {
+        let legacy_key_id =
+            CommentsTcpDelegationKeyId::new(raw_legacy_key_id).map_err(|error| {
                 format!(
                     "{} legacy_unkeyed_key_id is invalid: {error}",
                     keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV
@@ -695,9 +681,7 @@ fn read_bounded_schedule_file(file_path: &Path) -> std::result::Result<Vec<u8>, 
                 keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV
             )
         })?;
-    if bytes.is_empty()
-        || bytes.len() > keyring::MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES
-    {
+    if bytes.is_empty() || bytes.len() > keyring::MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES {
         return Err(format!(
             "{} file size must be within 1..={} bytes",
             keyring::COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV,
@@ -746,12 +730,13 @@ fn prepare_scheduled_tcp_client(
         Duration::from_millis(ttl_ms),
     )
     .map_err(|error| format!("Comments TCP delegation signer configuration failed: {error}"))?;
-    let transport = ReloadableTcpJsonCommentsTransport::with_channel_connector_bearer_and_delegation(
-        endpoint,
-        channel_connector,
-        bearer_token,
-        signer,
-    );
+    let transport =
+        ReloadableTcpJsonCommentsTransport::with_channel_connector_bearer_and_delegation(
+            endpoint,
+            channel_connector,
+            bearer_token,
+            signer,
+        );
     let transport: Arc<dyn CommentsThreadTransport> = Arc::new(transport);
     let port = remote_comments_thread_port(transport);
     let selection = base::CommentsProviderRuntimeSelection {
@@ -850,8 +835,8 @@ fn require_loopback_endpoint(
     }
 }
 
-fn comments_tcp_bearer_token_from_environment(
-) -> std::result::Result<CommentsTcpBearerToken, String> {
+fn comments_tcp_bearer_token_from_environment()
+-> std::result::Result<CommentsTcpBearerToken, String> {
     let secret = read_required_environment(
         base::COMMENTS_TCP_BEARER_TOKEN_ENV,
         format!(
@@ -913,9 +898,7 @@ fn read_required_environment(
     match env::var(key) {
         Ok(value) => Ok(value),
         Err(env::VarError::NotPresent) => Err(missing_message),
-        Err(env::VarError::NotUnicode(_)) => {
-            Err(format!("{key} must contain valid UTF-8"))
-        }
+        Err(env::VarError::NotUnicode(_)) => Err(format!("{key} must contain valid UTF-8")),
     }
 }
 
@@ -971,10 +954,7 @@ fn parse_positive_usize_value(
     Ok(parsed)
 }
 
-fn parse_positive_u64_value(
-    key: &'static str,
-    value: &str,
-) -> std::result::Result<u64, String> {
+fn parse_positive_u64_value(key: &'static str, value: &str) -> std::result::Result<u64, String> {
     let parsed = value
         .trim()
         .parse::<u64>()
@@ -990,10 +970,9 @@ fn duration_ms(duration: Duration) -> Option<u64> {
 }
 
 fn current_unix_ms() -> std::result::Result<u64, String> {
-    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| {
-        "Comments TCP delegation schedule clock is not available".to_string()
-    })?;
-    u64::try_from(elapsed.as_millis()).map_err(|_| {
-        "Comments TCP delegation schedule clock is not available".to_string()
-    })
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "Comments TCP delegation schedule clock is not available".to_string())?;
+    u64::try_from(elapsed.as_millis())
+        .map_err(|_| "Comments TCP delegation schedule clock is not available".to_string())
 }

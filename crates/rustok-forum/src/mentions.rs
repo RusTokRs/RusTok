@@ -351,7 +351,7 @@ pub async fn resolve_forum_mentions(
         let profile = profiles
             .get_profile_by_handle(tenant_id, &handle, requested_locale, tenant_default_locale)
             .await
-            .map_err(|error| map_profile_mention_error(error))?;
+            .map_err(map_profile_mention_error)?;
         validate_resolved_profile(tenant_id, &handle, &profile)?;
         users.insert(
             profile.user_id,
@@ -517,10 +517,12 @@ fn collect_document_mentions(
     if node.kind == "codeBlock" {
         return Ok(());
     }
-    if node.kind == "text" && !node.marks.iter().any(|mark| mark.kind == "code") {
-        if let Some(text) = node.text.as_deref() {
-            scan_text_mentions(text, policy, handles, audiences)?;
-        }
+    if let Some(text) = node
+        .text
+        .as_deref()
+        .filter(|_| node.kind == "text" && !node.marks.iter().any(|mark| mark.kind == "code"))
+    {
+        scan_text_mentions(text, policy, handles, audiences)?;
     }
     for child in &node.content {
         collect_document_mentions(child, policy, handles, audiences)?;

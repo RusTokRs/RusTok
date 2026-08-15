@@ -10,7 +10,7 @@ use rustok_groups::{
     GroupLocalizationService, ListGroupTranslationsRequest, UpsertGroupTranslationRequest,
 };
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use tempfile::TempDir;
 use uuid::Uuid;
 

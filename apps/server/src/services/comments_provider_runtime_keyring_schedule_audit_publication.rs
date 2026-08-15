@@ -144,9 +144,7 @@ impl CommentsTcpDelegationScheduleAuditCanonicalPublication {
 
     pub const fn operation_text(&self) -> &'static str {
         match self.operation {
-            trigger::CommentsTcpDelegationScheduleTriggerOperation::ReloadFile => {
-                "reload_file"
-            }
+            trigger::CommentsTcpDelegationScheduleTriggerOperation::ReloadFile => "reload_file",
             trigger::CommentsTcpDelegationScheduleTriggerOperation::ReplaceHostSchedule => {
                 "replace_host_schedule"
             }
@@ -159,9 +157,7 @@ impl CommentsTcpDelegationScheduleAuditCanonicalPublication {
 
     pub const fn source_text(&self) -> &'static str {
         match self.source {
-            keyring::CommentsTcpDelegationKeyringSource::HostProvided => {
-                "host_provided"
-            }
+            keyring::CommentsTcpDelegationKeyringSource::HostProvided => "host_provided",
             keyring::CommentsTcpDelegationKeyringSource::File => "file",
         }
     }
@@ -191,10 +187,7 @@ pub trait CommentsTcpDelegationScheduleAuditCanonicalWriter: Send + Sync {
         &self,
         transaction: &DatabaseTransaction,
         publication: &CommentsTcpDelegationScheduleAuditCanonicalPublication,
-    ) -> std::result::Result<
-        Uuid,
-        CommentsTcpDelegationScheduleAuditCanonicalWriteError,
-    >;
+    ) -> std::result::Result<Uuid, CommentsTcpDelegationScheduleAuditCanonicalWriteError>;
 }
 
 pub type SharedCommentsTcpDelegationScheduleAuditCanonicalWriter =
@@ -206,10 +199,7 @@ mod tests {
 
     fn publication(
         principal_kind: AuthPrincipalKind,
-    ) -> std::result::Result<
-        CommentsTcpDelegationScheduleAuditCanonicalPublication,
-        String,
-    > {
+    ) -> std::result::Result<CommentsTcpDelegationScheduleAuditCanonicalPublication, String> {
         CommentsTcpDelegationScheduleAuditCanonicalPublication::new(
             Uuid::new_v4(),
             Uuid::new_v4(),
@@ -225,10 +215,7 @@ mod tests {
 
     #[test]
     fn admits_bounded_direct_and_service_publications() {
-        for principal_kind in [
-            AuthPrincipalKind::DirectUser,
-            AuthPrincipalKind::Service,
-        ] {
+        for principal_kind in [AuthPrincipalKind::DirectUser, AuthPrincipalKind::Service] {
             let publication = publication(principal_kind)
                 .expect("eligible principal publication should validate");
             assert_eq!(publication.idempotency_key(), publication.request_id());

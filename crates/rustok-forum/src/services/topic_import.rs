@@ -38,7 +38,7 @@ impl PreparedImportTopicInsert {
     }
 
     pub(crate) fn created_at(&self) -> chrono::DateTime<Utc> {
-        self.created_at.clone()
+        self.created_at
     }
 }
 
@@ -131,8 +131,8 @@ impl TopicService {
             is_pinned: Set(prepared.record.is_pinned),
             is_locked: Set(false),
             reply_count: Set(0),
-            created_at: Set(prepared.created_at.clone().into()),
-            updated_at: Set(prepared.created_at.clone().into()),
+            created_at: Set(prepared.created_at.into()),
+            updated_at: Set(prepared.created_at.into()),
             last_reply_at: Set(None),
         }
         .insert(txn)
@@ -144,12 +144,8 @@ impl TopicService {
             prepared.record.id,
         )
         .await?;
-        super::topic_tag_lock::lock_topic_tag_scopes_in_tx(
-            txn,
-            tenant_id,
-            &[prepared.record.id],
-        )
-        .await?;
+        super::topic_tag_lock::lock_topic_tag_scopes_in_tx(txn, tenant_id, &[prepared.record.id])
+            .await?;
 
         forum_topic_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -159,8 +155,8 @@ impl TopicService {
             title: Set(prepared.record.title.clone()),
             slug: Set(prepared.normalized_slug.clone()),
             body: Set(prepared.stored_body.clone()),
-            created_at: Set(prepared.created_at.clone().into()),
-            updated_at: Set(prepared.created_at.clone().into()),
+            created_at: Set(prepared.created_at.into()),
+            updated_at: Set(prepared.created_at.into()),
         }
         .insert(txn)
         .await?;
@@ -208,14 +204,8 @@ impl TopicService {
         )
         .await?;
 
-        CategoryService::adjust_counters_in_tx(
-            txn,
-            tenant_id,
-            prepared.record.category_id,
-            1,
-            0,
-        )
-        .await?;
+        CategoryService::adjust_counters_in_tx(txn, tenant_id, prepared.record.category_id, 1, 0)
+            .await?;
         UserStatsService::adjust_topic_count_in_tx(txn, tenant_id, author_id, 1).await?;
 
         if write_event_mode
@@ -252,7 +242,7 @@ impl TopicService {
         active.is_locked = Set(prepared.record.is_locked);
         active.reply_count = Set(approved_reply_count.max(0));
         active.last_reply_at = Set(last_reply_at.map(Into::into));
-        active.updated_at = Set(prepared.created_at.clone().into());
+        active.updated_at = Set(prepared.created_at.into());
         active.update(txn).await?;
         Ok(())
     }

@@ -642,15 +642,13 @@ pub fn AiAdmin() -> impl IntoView {
                 if let Some(session_id) = requested_session_id
                     .as_deref()
                     .filter(|value| !value.trim().is_empty())
-                {
-                    if !bootstrap
+                    && !bootstrap
                         .sessions
                         .iter()
                         .any(|session| session.id == session_id)
-                    {
-                        set_selected_session.set(None);
-                        session_query_writer.clear_key(AdminQueryKey::SessionId.as_str());
-                    }
+                {
+                    set_selected_session.set(None);
+                    session_query_writer.clear_key(AdminQueryKey::SessionId.as_str());
                 }
             }
             _ => {}

@@ -285,7 +285,7 @@ pub(crate) async fn ensure_storefront_order_access(
         Some(auth),
     )
     .await?
-    .ok_or_else(|| <FieldError as GraphQLError>::unauthenticated())?;
+    .ok_or_else(<FieldError as GraphQLError>::unauthenticated)?;
 
     let runtime = crate::graphql_runtime::order_read_runtime_for_current_graphql_scope(
         db.clone(),

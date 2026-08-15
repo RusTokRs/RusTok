@@ -130,20 +130,21 @@ impl WorkflowStep for HttpStep {
             }
         }
 
-        if method != reqwest::Method::GET {
-            if let Some(body) = config.get("body") {
-                let serialized = serde_json::to_vec(body).map_err(|error| {
-                    WorkflowError::InvalidStepConfig(format!(
-                        "http: failed to serialize request body: {error}"
-                    ))
-                })?;
-                if serialized.len() > MAX_REQUEST_BODY_BYTES {
-                    return Err(WorkflowError::InvalidStepConfig(
-                        "http: request body exceeds the 1 MiB size limit".to_string(),
-                    ));
-                }
-                request = request.json(body);
+        if let Some(body) = config
+            .get("body")
+            .filter(|_| method != reqwest::Method::GET)
+        {
+            let serialized = serde_json::to_vec(body).map_err(|error| {
+                WorkflowError::InvalidStepConfig(format!(
+                    "http: failed to serialize request body: {error}"
+                ))
+            })?;
+            if serialized.len() > MAX_REQUEST_BODY_BYTES {
+                return Err(WorkflowError::InvalidStepConfig(
+                    "http: request body exceeds the 1 MiB size limit".to_string(),
+                ));
             }
+            request = request.json(body);
         }
 
         let mut response = request

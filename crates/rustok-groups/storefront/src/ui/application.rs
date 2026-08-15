@@ -218,7 +218,7 @@ pub fn GroupsMembershipApplication(transport: GroupsStorefrontTransportContext) 
     });
 
     if application_group_id.trim().is_empty() {
-        return view! { <></> }.into_any();
+        return ().into_any();
     }
 
     let ApplicationCopy {

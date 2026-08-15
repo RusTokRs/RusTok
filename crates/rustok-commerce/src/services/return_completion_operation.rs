@@ -57,7 +57,16 @@ impl ReturnCompletionOperationStage {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(value: &str) -> ReturnCompletionOperationResult<Self> {
+        <Self as std::str::FromStr>::from_str(value)
+    }
+}
+
+impl std::str::FromStr for ReturnCompletionOperationStage {
+    type Err = ReturnCompletionOperationError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "created" => Ok(Self::Created),
             "resolution_created" => Ok(Self::ResolutionCreated),

@@ -28,23 +28,22 @@ impl Extension for GraphqlPrincipalTenantPolicyExtension {
         if let (Some(auth), Some(tenant)) = (
             ctx.data_opt::<AuthContext>(),
             ctx.data_opt::<TenantContext>(),
-        ) {
-            if auth.tenant_id != tenant.id {
-                tracing::warn!(
-                    operation_name = ?operation_name,
-                    principal_tenant_id = %auth.tenant_id,
-                    request_tenant_id = %tenant.id,
-                    user_id = %auth.user_id,
-                    client_id = ?auth.client_id,
-                    "Rejected GraphQL principal bound to another tenant"
-                );
-                return Response::from_errors(vec![
-                    <FieldError as GraphQLError>::permission_denied(
-                        "Authenticated principal is not bound to the request tenant",
-                    )
-                    .into_server_error(Pos::default()),
-                ]);
-            }
+        ) && auth.tenant_id != tenant.id
+        {
+            tracing::warn!(
+                operation_name = ?operation_name,
+                principal_tenant_id = %auth.tenant_id,
+                request_tenant_id = %tenant.id,
+                user_id = %auth.user_id,
+                client_id = ?auth.client_id,
+                "Rejected GraphQL principal bound to another tenant"
+            );
+            return Response::from_errors(vec![
+                <FieldError as GraphQLError>::permission_denied(
+                    "Authenticated principal is not bound to the request tenant",
+                )
+                .into_server_error(Pos::default()),
+            ]);
         }
 
         next.run(ctx, operation_name).await

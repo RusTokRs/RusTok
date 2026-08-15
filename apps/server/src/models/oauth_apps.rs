@@ -185,27 +185,27 @@ impl ActiveModel {
 }
 
 fn database_active(model: ActiveModel) -> DatabaseActiveModel {
-    let mut active = <DatabaseActiveModel as Default>::default();
-    active.id = model.id;
-    active.tenant_id = model.tenant_id;
-    active.slug = model.slug;
-    active.app_type = model.app_type;
-    active.icon_url = model.icon_url;
-    active.client_id = model.client_id;
-    active.client_secret_hash = model.client_secret_hash;
-    active.redirect_uris = model.redirect_uris;
-    active.scopes = model.scopes;
-    active.grant_types = model.grant_types;
-    active.granted_permissions = model.granted_permissions;
-    active.manifest_ref = model.manifest_ref;
-    active.auto_created = model.auto_created;
-    active.is_active = model.is_active;
-    active.revoked_at = model.revoked_at;
-    active.last_used_at = model.last_used_at;
-    active.metadata = model.metadata;
-    active.created_at = model.created_at;
-    active.updated_at = model.updated_at;
-    active
+    DatabaseActiveModel {
+        id: model.id,
+        tenant_id: model.tenant_id,
+        slug: model.slug,
+        app_type: model.app_type,
+        icon_url: model.icon_url,
+        client_id: model.client_id,
+        client_secret_hash: model.client_secret_hash,
+        redirect_uris: model.redirect_uris,
+        scopes: model.scopes,
+        grant_types: model.grant_types,
+        granted_permissions: model.granted_permissions,
+        manifest_ref: model.manifest_ref,
+        auto_created: model.auto_created,
+        is_active: model.is_active,
+        revoked_at: model.revoked_at,
+        last_used_at: model.last_used_at,
+        metadata: model.metadata,
+        created_at: model.created_at,
+        updated_at: model.updated_at,
+    }
 }
 
 fn active_value<T>(value: &ActiveValue<T>) -> Option<T>
@@ -361,14 +361,12 @@ async fn hydrate_tenant_default_or_identifier(
         .as_ref()
         .and_then(|tenant| normalize_locale_tag(tenant.default_locale.as_str()))
         .filter(|locale| locale != LEGACY_UNDETERMINED_LOCALE)
-    {
-        if let Some(translation) =
+        && let Some(translation) =
             resolve_translation(db, model.tenant_id, model.id, &locale).await?
-        {
-            model.name = translation.name;
-            model.description = translation.description;
-            return Ok(model);
-        }
+    {
+        model.name = translation.name;
+        model.description = translation.description;
+        return Ok(model);
     }
 
     // OAuth security identity must remain usable even when presentation copy for the

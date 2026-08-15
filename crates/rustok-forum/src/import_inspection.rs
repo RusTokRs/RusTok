@@ -78,23 +78,23 @@ impl NodebbForumImportInspector {
         let mut unresolved_dependencies = Vec::new();
 
         for (record, candidate) in batch.categories.iter().zip(&candidates.categories) {
-            if let Some(parent_id) = record.parent_cid.filter(|value| *value > 0) {
-                if let Some(parent_source) = candidate.parent_source.as_ref() {
-                    let disposition = if !category_ids.contains(&parent_id) {
-                        Some(ForumImportDependencyDisposition::MissingBatchRecord)
-                    } else if cyclic_category_ids.contains(&record.cid) {
-                        Some(ForumImportDependencyDisposition::CyclicBatchRelation)
-                    } else {
-                        None
-                    };
-                    if let Some(disposition) = disposition {
-                        unresolved_dependencies.push(ForumImportDependencyIssue {
-                            owner: candidate.source.clone(),
-                            relation: ForumImportDependencyRelation::CategoryParent,
-                            target: parent_source.clone(),
-                            disposition,
-                        });
-                    }
+            if let Some(parent_id) = record.parent_cid.filter(|value| *value > 0)
+                && let Some(parent_source) = candidate.parent_source.as_ref()
+            {
+                let disposition = if !category_ids.contains(&parent_id) {
+                    Some(ForumImportDependencyDisposition::MissingBatchRecord)
+                } else if cyclic_category_ids.contains(&record.cid) {
+                    Some(ForumImportDependencyDisposition::CyclicBatchRelation)
+                } else {
+                    None
+                };
+                if let Some(disposition) = disposition {
+                    unresolved_dependencies.push(ForumImportDependencyIssue {
+                        owner: candidate.source.clone(),
+                        relation: ForumImportDependencyRelation::CategoryParent,
+                        target: parent_source.clone(),
+                        disposition,
+                    });
                 }
             }
         }
@@ -109,26 +109,25 @@ impl NodebbForumImportInspector {
                 });
             }
 
-            if let Some(main_pid) = record.main_pid.filter(|value| *value > 0) {
-                if let Some(main_post_source) = candidate.body_post_source.as_ref() {
-                    match post_topics.get(&main_pid) {
-                        None => unresolved_dependencies.push(ForumImportDependencyIssue {
+            if let Some(main_pid) = record.main_pid.filter(|value| *value > 0)
+                && let Some(main_post_source) = candidate.body_post_source.as_ref()
+            {
+                match post_topics.get(&main_pid) {
+                    None => unresolved_dependencies.push(ForumImportDependencyIssue {
+                        owner: candidate.source.clone(),
+                        relation: ForumImportDependencyRelation::TopicMainPost,
+                        target: main_post_source.clone(),
+                        disposition: ForumImportDependencyDisposition::MissingBatchRecord,
+                    }),
+                    Some(post_topic_id) if *post_topic_id != record.tid => {
+                        unresolved_dependencies.push(ForumImportDependencyIssue {
                             owner: candidate.source.clone(),
                             relation: ForumImportDependencyRelation::TopicMainPost,
                             target: main_post_source.clone(),
-                            disposition: ForumImportDependencyDisposition::MissingBatchRecord,
-                        }),
-                        Some(post_topic_id) if *post_topic_id != record.tid => {
-                            unresolved_dependencies.push(ForumImportDependencyIssue {
-                                owner: candidate.source.clone(),
-                                relation: ForumImportDependencyRelation::TopicMainPost,
-                                target: main_post_source.clone(),
-                                disposition:
-                                    ForumImportDependencyDisposition::MismatchedBatchRecord,
-                            });
-                        }
-                        Some(_) => {}
+                            disposition: ForumImportDependencyDisposition::MismatchedBatchRecord,
+                        });
                     }
+                    Some(_) => {}
                 }
             }
 
@@ -221,7 +220,7 @@ fn category_cycle_members(
             current = parent_id;
         }
 
-        completed.extend(path.into_iter());
+        completed.extend(path);
     }
 
     cyclic

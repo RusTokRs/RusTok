@@ -229,13 +229,17 @@ fn observe_rhai_source_capabilities(
             continue;
         };
         if name == "fn" {
-            if let Some(RhaiToken::Identifier(helper)) = tokens.get(index + 1) {
-                if is_capability_helper(helper) {
-                    return Err(AlloyArtifactError::ReservedCapabilityHelper {
-                        path: path.to_string(),
-                        helper: helper.clone(),
-                    });
+            let reserved = match tokens.get(index + 1) {
+                Some(RhaiToken::Identifier(helper)) if is_capability_helper(helper) => {
+                    Some(helper.clone())
                 }
+                _ => None,
+            };
+            if let Some(helper) = reserved {
+                return Err(AlloyArtifactError::ReservedCapabilityHelper {
+                    path: path.to_string(),
+                    helper,
+                });
             }
         }
         if !matches!(tokens.get(index + 1), Some(RhaiToken::Symbol('('))) {

@@ -280,7 +280,7 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
                                         let application_id_for_pick = item.id.clone();
                                         let application_id_for_reopen = item.id.clone();
                                         let reopenable = matches!(item.status.as_str(), "rejected" | "cancelled");
-                                        let reopen_callback = on_reopen.clone();
+                                        let reopen_callback = on_reopen;
                                         let answers = item.answers.clone();
                                         let acknowledgements = item.acknowledged_rule_keys.join(", ");
                                         let reopen = reopen.clone();
@@ -305,7 +305,6 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
                                                                 class="rounded-lg border border-border bg-background px-3 py-1 text-xs font-medium"
                                                                 type="button"
                                                                 on:click={
-                                                                    let reopen_callback = reopen_callback.clone();
                                                                     let application_id_for_reopen = application_id_for_reopen.clone();
                                                                     move |_| reopen_callback.run(application_id_for_reopen.clone())
                                                                 }

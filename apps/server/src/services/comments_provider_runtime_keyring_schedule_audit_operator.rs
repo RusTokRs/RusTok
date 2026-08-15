@@ -70,9 +70,13 @@ impl CommentsTcpDelegationScheduleAuditOperatorContext {
 pub enum CommentsTcpDelegationScheduleAuditOperatorError {
     #[error("Comments schedule audit operator tenant and actor must not be nil")]
     InvalidContext,
-    #[error("Comments schedule audit operator tenant does not match the configured control-plane tenant")]
+    #[error(
+        "Comments schedule audit operator tenant does not match the configured control-plane tenant"
+    )]
     TenantMismatch,
-    #[error("Comments schedule audit operations require a request-bound effective permission snapshot")]
+    #[error(
+        "Comments schedule audit operations require a request-bound effective permission snapshot"
+    )]
     MissingRequestAuthority,
     #[error("modules:manage is required for Comments schedule audit operations")]
     Forbidden,
@@ -197,25 +201,21 @@ mod tests {
 
     #[test]
     fn operator_context_rejects_nil_identity() {
-        assert!(CommentsTcpDelegationScheduleAuditOperatorContext::new(
-            Uuid::nil(),
-            Uuid::new_v4(),
-        )
-        .is_err());
-        assert!(CommentsTcpDelegationScheduleAuditOperatorContext::new(
-            Uuid::new_v4(),
-            Uuid::nil(),
-        )
-        .is_err());
+        assert!(
+            CommentsTcpDelegationScheduleAuditOperatorContext::new(Uuid::nil(), Uuid::new_v4(),)
+                .is_err()
+        );
+        assert!(
+            CommentsTcpDelegationScheduleAuditOperatorContext::new(Uuid::new_v4(), Uuid::nil(),)
+                .is_err()
+        );
     }
 
     #[test]
     fn tenant_mismatch_fails_before_request_authority_lookup() {
-        let context = CommentsTcpDelegationScheduleAuditOperatorContext::new(
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-        )
-        .unwrap();
+        let context =
+            CommentsTcpDelegationScheduleAuditOperatorContext::new(Uuid::new_v4(), Uuid::new_v4())
+                .unwrap();
         assert!(matches!(
             context.authorize_for(Uuid::new_v4()),
             Err(CommentsTcpDelegationScheduleAuditOperatorError::TenantMismatch)

@@ -25,7 +25,7 @@ use super::robots::{
 };
 use super::routing::{canonical_url_for_locale, locale_prefixed_path, with_x_default};
 use super::templates::{generated_translation, render_generated_record, source_label};
-use super::{trimmed_option, LoadedMeta, SeoService, TargetState};
+use super::{LoadedMeta, SeoService, TargetState, trimmed_option};
 
 const MAX_EXPOSED_ISSUES: usize = 50;
 const DIAGNOSTICS_META_BATCH_SIZE: usize = 256;
@@ -159,9 +159,8 @@ impl SeoService {
                 ) else {
                     continue;
                 };
-                let page_context = route_state.map(|state| {
-                    build_diagnostics_page_context(tenant, state, explicit, settings)
-                });
+                let page_context = route_state
+                    .map(|state| build_diagnostics_page_context(tenant, state, explicit, settings));
                 let effective_canonical = page_context
                     .as_ref()
                     .map(|context| context.route.canonical_url.clone())
@@ -353,7 +352,8 @@ impl SeoService {
                         ));
                     }
                     for block in &schema_blocks {
-                        for validation_issue in super::schema_validation::validate_schema_block(block)
+                        for validation_issue in
+                            super::schema_validation::validate_schema_block(block)
                         {
                             issues.push(issue(
                                 validation_issue.code,
@@ -597,7 +597,11 @@ fn build_diagnostics_meta_record(
                 },
                 source: "explicit".to_string(),
                 open_graph: Some(state.open_graph),
-                structured_data: explicit.meta.structured_data.clone().map(async_graphql::Json),
+                structured_data: explicit
+                    .meta
+                    .structured_data
+                    .clone()
+                    .map(async_graphql::Json),
                 effective_state: SeoDocumentEffectiveState {
                     title: diagnostic_field_state(SeoFieldSource::Explicit, title_present),
                     description: diagnostic_field_state(
@@ -622,7 +626,9 @@ fn build_diagnostics_meta_record(
         (Some(explicit), None) => {
             let resolved = resolve_by_locale_with_fallback(
                 explicit.translations.as_slice(),
-                requested_locale.as_deref().unwrap_or(tenant.default_locale.as_str()),
+                requested_locale
+                    .as_deref()
+                    .unwrap_or(tenant.default_locale.as_str()),
                 Some(tenant.default_locale.as_str()),
                 |item| item.locale.as_str(),
             );
@@ -676,7 +682,11 @@ fn build_diagnostics_meta_record(
                 },
                 source: "explicit".to_string(),
                 open_graph: None,
-                structured_data: explicit.meta.structured_data.clone().map(async_graphql::Json),
+                structured_data: explicit
+                    .meta
+                    .structured_data
+                    .clone()
+                    .map(async_graphql::Json),
                 effective_state: SeoDocumentEffectiveState {
                     title: diagnostic_field_state(SeoFieldSource::Explicit, title_present),
                     description: diagnostic_field_state(
@@ -1010,8 +1020,7 @@ fn build_diagnostics_page_context(
                 open_graph: diagnostic_field_state(source, true),
                 twitter: diagnostic_field_state(
                     source,
-                    generated.twitter_title.is_some()
-                        || generated.twitter_description.is_some(),
+                    generated.twitter_title.is_some() || generated.twitter_description.is_some(),
                 ),
                 structured_data: diagnostic_field_state(SeoFieldSource::Fallback, true),
             },
@@ -1249,9 +1258,8 @@ fn count_by_key<'a>(keys: impl Iterator<Item = &'a str>) -> Vec<SeoDiagnosticCou
 #[cfg(test)]
 mod tests {
     use super::{
-        CROSS_LINK_GAP_REMEDIATION_MESSAGE, RedirectTrace,
-        collect_missing_image_descriptor_counts, is_image_seo_critical_target,
-        redirect_lookup_route, trace_redirects,
+        CROSS_LINK_GAP_REMEDIATION_MESSAGE, RedirectTrace, collect_missing_image_descriptor_counts,
+        is_image_seo_critical_target, redirect_lookup_route, trace_redirects,
     };
     use crate::dto::{SeoDocument, SeoImageAsset, SeoOpenGraph, SeoPageContext, SeoTwitterCard};
     use std::collections::HashMap;
@@ -1262,7 +1270,10 @@ mod tests {
             redirect_lookup_route("https://example.test/en/page?x=1").as_deref(),
             Some("/en/page?x=1")
         );
-        assert_eq!(redirect_lookup_route("/en/page").as_deref(), Some("/en/page"));
+        assert_eq!(
+            redirect_lookup_route("/en/page").as_deref(),
+            Some("/en/page")
+        );
     }
 
     #[test]

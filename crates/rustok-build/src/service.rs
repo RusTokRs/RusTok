@@ -75,14 +75,15 @@ impl BuildService {
     {
         let manifest_hash = compute_build_request_hash(&request);
 
-        if let Some(existing) = Self::find_build_by_hash_on(db, &manifest_hash).await? {
-            if existing.status == BuildStatus::Success {
-                info!(
-                    build_id = %existing.id,
-                    "Build with same immutable execution plan already exists, returning existing build"
-                );
-                return Ok((existing, false));
-            }
+        if let Some(existing) = Self::find_build_by_hash_on(db, &manifest_hash)
+            .await?
+            .filter(|existing| existing.status == BuildStatus::Success)
+        {
+            info!(
+                build_id = %existing.id,
+                "Build with same immutable execution plan already exists, returning existing build"
+            );
+            return Ok((existing, false));
         }
 
         let build = Build::new(

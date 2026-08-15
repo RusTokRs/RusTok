@@ -123,7 +123,7 @@ async fn selected_reactions_feature_fails_when_owner_module_is_missing() {
         Err(error) => error,
     };
 
-    assert!(matches!(&error, Error::Message(_)));
+    assert!(matches!(&error, rustok_server::error::Error::Message(_)));
     assert_eq!(
         error.to_string(),
         "Reactions feature is selected but ReactionsModule is missing from ModuleRegistry"

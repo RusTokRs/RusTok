@@ -27,7 +27,7 @@ impl PreparedImportReplyInsert {
     }
 
     pub(crate) fn created_at(&self) -> chrono::DateTime<Utc> {
-        self.created_at.clone()
+        self.created_at
     }
 }
 
@@ -90,7 +90,8 @@ impl ReplyService {
             ));
         }
 
-        let topic = TopicService::find_topic_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
+        let topic =
+            TopicService::find_topic_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
         if topic.status != TopicStatus::Open || topic.is_locked {
             return Err(ForumError::Validation(
                 "Forum import reply insertion requires the private provisional topic state"
@@ -99,7 +100,8 @@ impl ReplyService {
         }
 
         if let Some(parent_reply_id) = prepared.record.parent_reply_id {
-            let parent = reply::ReplyService::find_reply_in_tx(txn, tenant_id, parent_reply_id).await?;
+            let parent =
+                reply::ReplyService::find_reply_in_tx(txn, tenant_id, parent_reply_id).await?;
             if parent.topic_id != prepared.record.topic_id {
                 return Err(ForumError::Validation(
                     "Forum import reply parent belongs to another topic".to_string(),
@@ -113,7 +115,8 @@ impl ReplyService {
             }
         }
 
-        let position = allocate_reply_position_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
+        let position =
+            allocate_reply_position_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
         let author_id = prepared.record.author.as_ref().map(|author| author.user_id);
 
         forum_reply::ActiveModel {
@@ -124,8 +127,8 @@ impl ReplyService {
             parent_reply_id: Set(prepared.record.parent_reply_id),
             status: Set(prepared.record.status),
             position: Set(position),
-            created_at: Set(prepared.created_at.clone().into()),
-            updated_at: Set(prepared.created_at.clone().into()),
+            created_at: Set(prepared.created_at.into()),
+            updated_at: Set(prepared.created_at.into()),
         }
         .insert(txn)
         .await?;
@@ -136,8 +139,8 @@ impl ReplyService {
             tenant_id: Set(tenant_id),
             locale: Set(prepared.record.locale.clone()),
             body: Set(prepared.stored_body.clone()),
-            created_at: Set(prepared.created_at.clone().into()),
-            updated_at: Set(prepared.created_at.clone().into()),
+            created_at: Set(prepared.created_at.into()),
+            updated_at: Set(prepared.created_at.into()),
         }
         .insert(txn)
         .await?;
@@ -156,8 +159,7 @@ impl ReplyService {
         if prepared.record.status == ReplyStatus::Approved {
             TopicService::adjust_reply_count_in_tx(txn, tenant_id, prepared.record.topic_id, 1)
                 .await?;
-            CategoryService::adjust_counters_in_tx(txn, tenant_id, topic.category_id, 0, 1)
-                .await?;
+            CategoryService::adjust_counters_in_tx(txn, tenant_id, topic.category_id, 0, 1).await?;
             UserStatsService::adjust_reply_count_in_tx(txn, tenant_id, author_id, 1).await?;
 
             if write_event_mode

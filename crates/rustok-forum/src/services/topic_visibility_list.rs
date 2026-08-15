@@ -25,9 +25,8 @@ impl TopicService {
             select = select.filter(forum_topic::Column::Status.eq(status));
         }
         if !hidden_category_ids.is_empty() {
-            select = select.filter(
-                forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()),
-            );
+            select = select
+                .filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()));
         }
 
         let paginator = select
@@ -75,9 +74,8 @@ impl TopicService {
             select = select.filter(forum_topic::Column::CategoryId.eq(category_id));
         }
         if !hidden_category_ids.is_empty() {
-            select = select.filter(
-                forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()),
-            );
+            select = select
+                .filter(forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()));
         }
         select = apply_tenant_scoped_storefront_channel_filter(select, tenant_id, channel_slug);
 

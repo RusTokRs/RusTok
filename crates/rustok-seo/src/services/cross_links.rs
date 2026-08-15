@@ -6,7 +6,7 @@ use rustok_seo_targets::{SeoBulkSummaryRecord, SeoTargetBulkListRequest, SeoTarg
 use crate::dto::SeoCrossLinkSuggestionRecord;
 use crate::{SeoError, SeoResult};
 
-use super::{normalize_effective_locale, SeoService};
+use super::{SeoService, normalize_effective_locale};
 
 const DEFAULT_SUGGESTIONS_PER_TARGET: usize = 3;
 const MAX_SUGGESTIONS_PER_TARGET: usize = 10;

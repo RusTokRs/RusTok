@@ -248,15 +248,14 @@ impl BindingIndex {
             if let Some(first) = by_target.insert(
                 (binding.target_kind, binding.target_id),
                 binding.source.clone(),
-            ) {
-                if first != binding.source {
-                    return Err(ForumImportResolutionError::TargetIdentityCollision {
-                        kind: binding.target_kind,
-                        target_id: binding.target_id,
-                        first,
-                        second: binding.source.clone(),
-                    });
-                }
+            ) && first != binding.source
+            {
+                return Err(ForumImportResolutionError::TargetIdentityCollision {
+                    kind: binding.target_kind,
+                    target_id: binding.target_id,
+                    first,
+                    second: binding.source.clone(),
+                });
             }
         }
 
@@ -400,14 +399,14 @@ fn validate_candidate_sources(
     }
 
     for category in &inspection.candidates.categories {
-        if let Some(parent) = category.parent_source.as_ref() {
-            if !category_sources.contains(&ref_key(parent)) {
-                return Err(ForumImportResolutionError::CrossBatchDependency {
-                    owner: category.source.clone(),
-                    relation: ForumImportDependencyRelation::CategoryParent,
-                    target: parent.clone(),
-                });
-            }
+        if let Some(parent) = category.parent_source.as_ref()
+            && !category_sources.contains(&ref_key(parent))
+        {
+            return Err(ForumImportResolutionError::CrossBatchDependency {
+                owner: category.source.clone(),
+                relation: ForumImportDependencyRelation::CategoryParent,
+                target: parent.clone(),
+            });
         }
     }
     validate_category_acyclic(&inspection.candidates.categories, &category_by_key)?;

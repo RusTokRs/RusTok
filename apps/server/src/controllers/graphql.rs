@@ -234,10 +234,10 @@ async fn handle_graphql_ws(
                     }
                 }
                 Ok(Message::Binary(bytes)) => {
-                    if let Ok(text) = String::from_utf8(bytes.to_vec()) {
-                        if incoming_tx.send(text).is_err() {
-                            break;
-                        }
+                    if let Ok(text) = String::from_utf8(bytes.to_vec())
+                        && incoming_tx.send(text).is_err()
+                    {
+                        break;
                     }
                 }
                 Ok(Message::Close(_)) => break,
@@ -264,11 +264,11 @@ async fn handle_graphql_ws(
             break;
         };
 
-        if let Some(lease) = auth_lease.get() {
-            if revalidate_ws_auth(&auth_runtime, lease).await.is_err() {
-                let _ = close_ws_for_auth_change(&mut sink).await;
-                break;
-            }
+        if let Some(lease) = auth_lease.get()
+            && revalidate_ws_auth(&auth_runtime, lease).await.is_err()
+        {
+            let _ = close_ws_for_auth_change(&mut sink).await;
+            break;
         }
 
         let result = match message {

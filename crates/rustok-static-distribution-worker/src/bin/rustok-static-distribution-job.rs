@@ -28,7 +28,7 @@ fn required_path(
     let flag = arguments
         .next()
         .ok_or("missing static-distribution launcher argument")?;
-    if flag != OsString::from(expected_flag) {
+    if flag != expected_flag {
         return Err(format!("expected static-distribution launcher flag {expected_flag}").into());
     }
     let path = PathBuf::from(

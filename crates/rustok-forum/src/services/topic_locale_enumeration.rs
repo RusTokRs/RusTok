@@ -59,9 +59,8 @@ impl TopicService {
         let mut result = Vec::with_capacity(topic_ids.len());
         for topic_id in topic_ids {
             let translations = translations_by_topic.remove(topic_id).unwrap_or_default();
-            let locales = available_locales_from(&translations, |translation| {
-                translation.locale.as_str()
-            });
+            let locales =
+                available_locales_from(&translations, |translation| translation.locale.as_str());
             if locales.is_empty() {
                 return Err(ForumError::Validation(format!(
                     "Forum topic {topic_id} has no stored locale translation"

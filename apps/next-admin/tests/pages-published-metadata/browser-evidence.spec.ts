@@ -1,6 +1,12 @@
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import {
+  expect,
+  test,
+  type Browser,
+  type BrowserContext,
+  type Page
+} from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
@@ -9,16 +15,16 @@ import {
   renameSync,
   rmSync,
   statSync,
-  writeFileSync,
-} from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+  writeFileSync
+} from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 const contractPath =
-  "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json";
+  'crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json';
 const contract = JSON.parse(
-  readFileSync(path.join(repoRoot, contractPath), "utf8"),
+  readFileSync(path.join(repoRoot, contractPath), 'utf8')
 ) as BrowserContract;
 
 const surfaceSelector = "[data-pages-published-metadata-surface='registered']";
@@ -75,17 +81,19 @@ const observations: Record<string, ScenarioObservation> = {};
 let inputs: EvidenceInputs | null = null;
 
 function fail(message: string): never {
-  throw new Error(`Pages published metadata browser evidence failed: ${message}`);
+  throw new Error(
+    `Pages published metadata browser evidence failed: ${message}`
+  );
 }
 
 function sha256(value: Buffer | string): string {
-  return createHash("sha256").update(value).digest("hex");
+  return createHash('sha256').update(value).digest('hex');
 }
 
 function requiredEnvironment(name: string, maximumLength = 16_384): string {
   const value = process.env[name];
   if (
-    typeof value !== "string" ||
+    typeof value !== 'string' ||
     value.length === 0 ||
     value.length > maximumLength ||
     /[\u0000\r\n]/u.test(value)
@@ -95,9 +103,12 @@ function requiredEnvironment(name: string, maximumLength = 16_384): string {
   return value;
 }
 
-function optionalEnvironment(name: string, maximumLength = 16_384): string | null {
+function optionalEnvironment(
+  name: string,
+  maximumLength = 16_384
+): string | null {
   const value = process.env[name];
-  if (value === undefined || value === "") return null;
+  if (value === undefined || value === '') return null;
   if (value.length > maximumLength || /[\u0000]/u.test(value)) {
     fail(`${name} is outside the bounded environment input`);
   }
@@ -106,14 +117,14 @@ function optionalEnvironment(name: string, maximumLength = 16_384): string | nul
 
 function requireCommit(value: string): string {
   if (!/^[0-9a-f]{40}$/u.test(value)) {
-    fail("source commit must be a full lowercase Git SHA");
+    fail('source commit must be a full lowercase Git SHA');
   }
   return value;
 }
 
 function requireDeploymentDigest(value: string): string {
   if (!/^[^@\s]+@sha256:[0-9a-f]{64}$/u.test(value)) {
-    fail("deployment digest must be an immutable image RepoDigest");
+    fail('deployment digest must be an immutable image RepoDigest');
   }
   return value;
 }
@@ -126,19 +137,23 @@ function requireUrl(value: string, label: string): string {
     fail(`${label} must be an absolute HTTP(S) URL`);
   }
   if (
-    !["http:", "https:"].includes(parsed.protocol) ||
+    !['http:', 'https:'].includes(parsed.protocol) ||
     parsed.username ||
     parsed.password ||
     parsed.hash ||
     value.length > 4096
   ) {
-    fail(`${label} must be a bounded credential-free HTTP(S) URL without a fragment`);
+    fail(
+      `${label} must be a bounded credential-free HTTP(S) URL without a fragment`
+    );
   }
   return parsed.toString();
 }
 
 function resolveInput(value: string): string {
-  return path.isAbsolute(value) ? path.resolve(value) : path.resolve(repoRoot, value);
+  return path.isAbsolute(value)
+    ? path.resolve(value)
+    : path.resolve(repoRoot, value);
 }
 
 function regularFileRecord(value: string, label: string): FileRecord {
@@ -157,9 +172,9 @@ function regularFileRecord(value: string, label: string): FileRecord {
 }
 
 function currentCommit(): string {
-  const value = execFileSync("git", ["rev-parse", "HEAD"], {
+  const value = execFileSync('git', ['rev-parse', 'HEAD'], {
     cwd: repoRoot,
-    encoding: "utf8",
+    encoding: 'utf8'
   }).trim();
   return requireCommit(value);
 }
@@ -169,52 +184,58 @@ function sourceHashes(): Record<string, string> {
     !Array.isArray(contract.required_source_files) ||
     contract.required_source_files.length === 0
   ) {
-    fail("browser execution contract has no required source files");
+    fail('browser execution contract has no required source files');
   }
   return Object.fromEntries(
     contract.required_source_files.map((relativePath) => {
-      const record = regularFileRecord(relativePath, `source file ${relativePath}`);
+      const record = regularFileRecord(
+        relativePath,
+        `source file ${relativePath}`
+      );
       return [relativePath, record.sha256];
-    }),
+    })
   );
 }
 
 function outputPath(): string {
   const raw = optionalEnvironment(contract.output.environment, 16_384);
   const absolute = resolveInput(raw ?? contract.output.default_path);
-  const targetRoot = path.resolve(repoRoot, "target");
+  const targetRoot = path.resolve(repoRoot, 'target');
   const relative = path.relative(targetRoot, absolute);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    fail("browser evidence output must remain inside repository target/");
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    fail('browser evidence output must remain inside repository target/');
   }
   return absolute;
 }
 
-function writeAtomic(location: string, document: Record<string, unknown>): void {
+function writeAtomic(
+  location: string,
+  document: Record<string, unknown>
+): void {
   mkdirSync(path.dirname(location), { recursive: true });
   const temporary = `${location}.tmp-${process.pid}`;
   rmSync(temporary, { force: true });
-  writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+  writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`, 'utf8');
   renameSync(temporary, location);
 }
 
 function playwrightVersion(): string {
   const packagePath = path.join(
     repoRoot,
-    "apps/next-admin/node_modules/@playwright/test/package.json",
+    'apps/next-admin/node_modules/@playwright/test/package.json'
   );
-  const document = JSON.parse(readFileSync(packagePath, "utf8")) as {
+  const document = JSON.parse(readFileSync(packagePath, 'utf8')) as {
     version?: unknown;
   };
-  if (typeof document.version !== "string" || document.version.length === 0) {
-    fail("installed Playwright version is unavailable");
+  if (typeof document.version !== 'string' || document.version.length === 0) {
+    fail('installed Playwright version is unavailable');
   }
   return document.version;
 }
 
 function loadInputs(): EvidenceInputs {
   const sourceCommit = requireCommit(
-    requiredEnvironment(contract.environment.source_commit),
+    requiredEnvironment(contract.environment.source_commit)
   );
   const head = currentCommit();
   if (sourceCommit !== head) {
@@ -222,23 +243,23 @@ function loadInputs(): EvidenceInputs {
   }
 
   const deploymentDigest = requireDeploymentDigest(
-    requiredEnvironment(contract.environment.deployment_digest),
+    requiredEnvironment(contract.environment.deployment_digest)
   );
   const editorStorage = regularFileRecord(
     requiredEnvironment(contract.environment.editor_storage_state),
-    "editor storage state",
+    'editor storage state'
   );
   const urlEnvironment = {
     published: contract.environment.published_url,
     draft: contract.environment.draft_url,
     archived: contract.environment.archived_url,
-    missing: contract.environment.missing_url,
+    missing: contract.environment.missing_url
   };
   const urls = Object.fromEntries(
     Object.entries(urlEnvironment).map(([profile, environment]) => [
       profile,
-      requireUrl(requiredEnvironment(environment), `${profile} profile URL`),
-    ]),
+      requireUrl(requiredEnvironment(environment), `${profile} profile URL`)
+    ])
   );
 
   return {
@@ -247,9 +268,9 @@ function loadInputs(): EvidenceInputs {
     editorStorage,
     urls,
     routeHashes: Object.fromEntries(
-      Object.entries(urls).map(([profile, url]) => [profile, sha256(url)]),
+      Object.entries(urls).map(([profile, url]) => [profile, sha256(url)])
     ),
-    sourceHashes: sourceHashes(),
+    sourceHashes: sourceHashes()
   };
 }
 
@@ -257,7 +278,7 @@ async function openProfile(
   browser: Browser,
   url: string,
   storageState: string,
-  label: string,
+  label: string
 ): Promise<{
   context: BrowserContext;
   page: Page;
@@ -268,53 +289,60 @@ async function openProfile(
   const failures: BrowserFailures = {
     consoleErrors: 0,
     pageErrors: 0,
-    criticalRequestFailures: 0,
+    criticalRequestFailures: 0
   };
-  page.on("console", (message) => {
-    if (message.type() === "error") failures.consoleErrors += 1;
+  page.on('console', (message) => {
+    if (message.type() === 'error') failures.consoleErrors += 1;
   });
-  page.on("pageerror", () => {
+  page.on('pageerror', () => {
     failures.pageErrors += 1;
   });
-  page.on("requestfailed", (request) => {
+  page.on('requestfailed', (request) => {
     if (
-      ["document", "script", "stylesheet", "fetch", "xhr"].includes(
-        request.resourceType(),
+      ['document', 'script', 'stylesheet', 'fetch', 'xhr'].includes(
+        request.resourceType()
       )
     ) {
       failures.criticalRequestFailures += 1;
     }
   });
 
-  const response = await page.goto(url, { waitUntil: "domcontentloaded" });
+  const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
   expect(response, `${label} navigation response`).not.toBeNull();
   expect(response?.status(), `${label} status`).toBeLessThan(400);
   return { context, page, failures };
 }
 
 function criticalFailureCount(failures: BrowserFailures): number {
-  return failures.consoleErrors + failures.pageErrors + failures.criticalRequestFailures;
+  return (
+    failures.consoleErrors +
+    failures.pageErrors +
+    failures.criticalRequestFailures
+  );
 }
 
-function assertNoCriticalFailures(failures: BrowserFailures, label: string): void {
+function assertNoCriticalFailures(
+  failures: BrowserFailures,
+  label: string
+): void {
   expect(failures.consoleErrors, `${label} console errors`).toBe(0);
   expect(failures.pageErrors, `${label} page errors`).toBe(0);
   expect(
     failures.criticalRequestFailures,
-    `${label} critical request failures`,
+    `${label} critical request failures`
   ).toBe(0);
 }
 
 async function assertHiddenProfile(
   browser: Browser,
-  profile: "draft" | "archived" | "missing",
+  profile: 'draft' | 'archived' | 'missing'
 ): Promise<void> {
-  if (inputs === null) fail("browser inputs were not initialized");
+  if (inputs === null) fail('browser inputs were not initialized');
   const { context, page, failures } = await openProfile(
     browser,
     inputs.urls[profile],
     inputs.editorStorage.path,
-    `${profile} profile`,
+    `${profile} profile`
   );
   try {
     await expect(page.locator(surfaceSelector)).toHaveCount(0);
@@ -325,27 +353,37 @@ async function assertHiddenProfile(
       criticalFailures: criticalFailureCount(failures),
       facts: {
         registered_published_surface_absent: true,
-        metadata_surface_error_absent: true,
-      },
+        metadata_surface_error_absent: true
+      }
     };
   } finally {
     await context.close();
   }
 }
 
-test.describe.serial("Pages published metadata retained browser evidence", () => {
+test.describe
+  .serial('Pages published metadata retained browser evidence', () => {
   test.beforeAll(() => {
     expect(contract.schema_version).toBe(1);
-    expect(contract.module).toBe("pages");
-    expect(contract.packet).toBe("published_metadata_surface_browser_evidence");
-    expect(contract.status).toBe("source_ready_maintainer_execution_pending");
-    expect(contract.profiles).toEqual(["published", "draft", "archived", "missing"]);
+    expect(contract.module).toBe('pages');
+    expect(contract.packet).toBe('published_metadata_surface_browser_evidence');
+    expect(contract.status).toBe('source_ready_maintainer_execution_pending');
+    expect(contract.profiles).toEqual([
+      'published',
+      'draft',
+      'archived',
+      'missing'
+    ]);
     inputs = loadInputs();
   });
 
   test.afterAll(() => {
     if (inputs === null) return;
-    if (!contract.profiles.every((profile) => observations[profile]?.passed === true)) {
+    if (
+      !contract.profiles.every(
+        (profile) => observations[profile]?.passed === true
+      )
+    ) {
       return;
     }
     writeAtomic(outputPath(), {
@@ -359,50 +397,66 @@ test.describe.serial("Pages published metadata retained browser evidence", () =>
       input_records: {
         editor_storage_state: {
           bytes: inputs.editorStorage.bytes,
-          sha256: inputs.editorStorage.sha256,
+          sha256: inputs.editorStorage.sha256
         },
-        profile_url_sha256: inputs.routeHashes,
+        profile_url_sha256: inputs.routeHashes
       },
       observations,
       retained_secrets: false,
       metadata_values_retained: false,
       browser_execution_only: true,
       consumer_properties_admission_pending: true,
-      executed_at: new Date().toISOString(),
+      executed_at: new Date().toISOString()
     });
   });
 
-  test("published page exposes registered metadata without Fly authoring", async ({ browser }) => {
-    if (inputs === null) fail("browser inputs were not initialized");
+  test('published page exposes registered metadata without Fly authoring', async ({
+    browser
+  }) => {
+    if (inputs === null) fail('browser inputs were not initialized');
     const { context, page, failures } = await openProfile(
       browser,
       inputs.urls.published,
       inputs.editorStorage.path,
-      "published profile",
+      'published profile'
     );
     try {
       const surface = page.locator(surfaceSelector);
       await expect(surface).toBeVisible();
       await expect(surface).toHaveAttribute(
-        "data-pages-published-metadata-admission",
-        "published-only",
+        'data-pages-published-metadata-admission',
+        'published-only'
       );
-      await expect(surface).toHaveAttribute("data-pages-fly-canvas-mounted", "false");
-      await expect(surface).toHaveAttribute("data-pages-document-authoring", "false");
-      await expect(surface).toHaveAttribute("data-pages-metadata-runtime", "registered");
-      await expect(surface).toHaveAttribute("data-pages-metadata-persistence", "owner-port");
+      await expect(surface).toHaveAttribute(
+        'data-pages-fly-canvas-mounted',
+        'false'
+      );
+      await expect(surface).toHaveAttribute(
+        'data-pages-document-authoring',
+        'false'
+      );
+      await expect(surface).toHaveAttribute(
+        'data-pages-metadata-runtime',
+        'registered'
+      );
+      await expect(surface).toHaveAttribute(
+        'data-pages-metadata-persistence',
+        'owner-port'
+      );
 
       const panel = surface.locator(panelSelector);
       await expect(panel).toBeVisible();
       await expect(panel).toHaveAttribute(
-        "data-fly-consumer-property-editor",
-        "rustok.pages.metadata.editor",
+        'data-fly-consumer-property-editor',
+        'rustok.pages.metadata.editor'
       );
-      await expect(panel.locator("#fly-consumer-property-title")).toBeVisible();
-      await expect(panel.locator("#fly-consumer-property-slug")).toBeVisible();
-      await expect(panel.getByRole("button", { name: "Save properties" })).toBeEnabled();
+      await expect(panel.locator('#fly-consumer-property-title')).toBeVisible();
+      await expect(panel.locator('#fly-consumer-property-slug')).toBeVisible();
+      await expect(
+        panel.getByRole('button', { name: 'Save properties' })
+      ).toBeEnabled();
       await expect(page.locator(errorSurfaceSelector)).toHaveCount(0);
-      assertNoCriticalFailures(failures, "published profile");
+      assertNoCriticalFailures(failures, 'published profile');
 
       observations.published = {
         passed: true,
@@ -415,23 +469,29 @@ test.describe.serial("Pages published metadata retained browser evidence", () =>
           registered_runtime_present: true,
           owner_port_persistence_declared: true,
           registered_property_panel_ready: true,
-          save_action_available_without_mutation: true,
-        },
+          save_action_available_without_mutation: true
+        }
       };
     } finally {
       await context.close();
     }
   });
 
-  test("draft page hides the published-only registered surface", async ({ browser }) => {
-    await assertHiddenProfile(browser, "draft");
+  test('draft page hides the published-only registered surface', async ({
+    browser
+  }) => {
+    await assertHiddenProfile(browser, 'draft');
   });
 
-  test("archived page hides the published-only registered surface", async ({ browser }) => {
-    await assertHiddenProfile(browser, "archived");
+  test('archived page hides the published-only registered surface', async ({
+    browser
+  }) => {
+    await assertHiddenProfile(browser, 'archived');
   });
 
-  test("missing selection hides the published-only registered surface", async ({ browser }) => {
-    await assertHiddenProfile(browser, "missing");
+  test('missing selection hides the published-only registered surface', async ({
+    browser
+  }) => {
+    await assertHiddenProfile(browser, 'missing');
   });
 });

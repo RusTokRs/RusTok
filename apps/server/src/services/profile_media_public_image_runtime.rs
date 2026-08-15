@@ -48,7 +48,7 @@ pub fn attach_profile_media_public_image_provider(
         // provider even when it builds a fresh HostRuntimeContext.
         ctx.shared_insert(selected);
         ctx.shared_insert(enriched.clone());
-        return enriched;
+        enriched
     }
 
     #[cfg(not(all(feature = "mod-profiles", feature = "mod-media")))]

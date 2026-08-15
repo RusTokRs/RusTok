@@ -1329,14 +1329,13 @@ pub fn ModulesList(
             .find(|module| module.slug == slug)
     };
     Effect::new(move |_| {
-        if let Some(slug) = selected_module_slug.get() {
-            if let Some(module) = marketplace_catalog
+        if let Some(slug) = selected_module_slug.get()
+            && let Some(module) = marketplace_catalog
                 .get()
                 .into_iter()
                 .find(|module| module.slug == slug)
-            {
-                set_selected_module_detail.set(Some(module));
-            }
+        {
+            set_selected_module_detail.set(Some(module));
         }
     });
     Effect::new(move |_| {

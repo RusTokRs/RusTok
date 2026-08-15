@@ -199,8 +199,6 @@ impl CommentsTcpDelegationScheduleAuditHandoffWorkerHandle {
 
 struct CommentsTcpDelegationScheduleAuditHandoffWorkerLifecycleReservation;
 
-
-
 fn ensure_stop_handle(runtime_ctx: &ServerRuntimeContext) -> StopHandle {
     if let Some(handle) = runtime_ctx.shared_get::<StopHandle>() {
         return handle;
@@ -217,9 +215,7 @@ fn read_optional_environment(name: &str) -> std::result::Result<Option<String>, 
     match env::var(name) {
         Ok(value) => Ok(Some(value)),
         Err(env::VarError::NotPresent) => Ok(None),
-        Err(env::VarError::NotUnicode(_)) => {
-            Err(format!("{name} must contain valid UTF-8"))
-        }
+        Err(env::VarError::NotUnicode(_)) => Err(format!("{name} must contain valid UTF-8")),
     }
 }
 
@@ -242,8 +238,8 @@ fn parse_required_canonical_uuid(
     if value.trim() != value {
         return Err(format!("{name} must not contain surrounding whitespace"));
     }
-    let parsed = Uuid::parse_str(value)
-        .map_err(|_| format!("{name} must be a canonical non-nil UUID"))?;
+    let parsed =
+        Uuid::parse_str(value).map_err(|_| format!("{name} must be a canonical non-nil UUID"))?;
     if parsed.is_nil() || parsed.to_string() != value {
         return Err(format!("{name} must be a canonical non-nil UUID"));
     }
@@ -314,8 +310,14 @@ mod tests {
             Ok(tenant_id)
         );
         assert!(parse_required_canonical_uuid("tenant", None).is_err());
-        assert!(parse_required_canonical_uuid("tenant", Some("00000000-0000-0000-0000-000000000000")).is_err());
-        assert!(parse_required_canonical_uuid("tenant", Some(" 00000000-0000-0000-0000-000000000001")).is_err());
+        assert!(
+            parse_required_canonical_uuid("tenant", Some("00000000-0000-0000-0000-000000000000"))
+                .is_err()
+        );
+        assert!(
+            parse_required_canonical_uuid("tenant", Some(" 00000000-0000-0000-0000-000000000001"))
+                .is_err()
+        );
     }
 
     #[test]

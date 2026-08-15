@@ -216,11 +216,7 @@ pub fn PageBuilderContributionScope(
 fn required_contribution_permissions(enabled_modules: &HashSet<String>) -> Vec<String> {
     let mut permissions = Vec::new();
     if enabled_modules.contains("forum") {
-        permissions.extend(
-            rustok_forum_admin::forum_contribution_manifest()
-                .required_permissions
-                .into_iter(),
-        );
+        permissions.extend(rustok_forum_admin::forum_contribution_manifest().required_permissions);
     }
     permissions.sort();
     permissions.dedup();

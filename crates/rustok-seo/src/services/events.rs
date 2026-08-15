@@ -3,12 +3,12 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use sea_orm::ActiveValue::Set;
+#[cfg(test)]
+use sea_orm::TransactionTrait;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect,
 };
-#[cfg(test)]
-use sea_orm::TransactionTrait;
 use uuid::Uuid;
 
 use rustok_core::{DomainEvent, simple_hash};
@@ -255,7 +255,9 @@ impl SeoService {
         let txn = match self.db.begin().await {
             Ok(txn) => txn,
             Err(error) => {
-                tracing::error!("failed to begin transaction for publishing SEO meta event: {error}");
+                tracing::error!(
+                    "failed to begin transaction for publishing SEO meta event: {error}"
+                );
                 return;
             }
         };
@@ -372,18 +374,17 @@ impl SeoService {
             dead_lettered_at: Set(dead_lettered_at),
             created_at: Set(observed_at),
             updated_at: Set(observed_at),
-            dispatched_at: Set(if outbox_event_id.is_some() { Some(observed_at) } else { None }),
+            dispatched_at: Set(if outbox_event_id.is_some() {
+                Some(observed_at)
+            } else {
+                None
+            }),
         }
         .insert(txn)
         .await?;
 
-        self.upsert_index_cursor_in_tx(
-            txn,
-            tenant_id,
-            trigger.target_type.as_str(),
-            observed_at,
-        )
-        .await
+        self.upsert_index_cursor_in_tx(txn, tenant_id, trigger.target_type.as_str(), observed_at)
+            .await
     }
 
     async fn upsert_index_cursor_in_tx(
@@ -2444,10 +2445,7 @@ mod tests {
         assert_eq!(index_delivery.attempt_count, INDEX_RETRY_MAX_ATTEMPTS);
         assert!(index_delivery.outbox_event_id.is_none());
         assert!(index_delivery.last_error.is_some());
-        assert_eq!(
-            transport.published_count("index.reindex_requested"),
-            1
-        );
+        assert_eq!(transport.published_count("index.reindex_requested"), 1);
     }
 
     #[tokio::test]

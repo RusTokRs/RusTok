@@ -3,11 +3,11 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
     TransactionTrait,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
-use rustok_api::normalize_locale_tag;
 use rustok_api::TenantContext;
+use rustok_api::normalize_locale_tag;
 use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
 use rustok_seo_targets::SeoTargetSlug;
 
@@ -22,7 +22,7 @@ use crate::{SeoError, SeoResult};
 use super::redirects::validate_target_url;
 use super::robots::{first_open_graph_image_url, is_valid_structured_data_payload};
 use super::templates::{generated_translation, render_generated_record, source_label};
-use super::{trimmed_option, LoadedMeta, SeoService, TargetState};
+use super::{LoadedMeta, SeoService, TargetState, trimmed_option};
 
 impl SeoService {
     pub async fn seo_meta(
@@ -342,14 +342,9 @@ impl SeoService {
         .await?;
         txn.commit().await?;
 
-        self.seo_meta(
-            tenant,
-            kind,
-            target_id,
-            Some(response_locale.as_str()),
-        )
-        .await?
-        .ok_or(SeoError::NotFound)
+        self.seo_meta(tenant, kind, target_id, Some(response_locale.as_str()))
+            .await?
+            .ok_or(SeoError::NotFound)
     }
 
     async fn load_explicit_meta_in_tx(
@@ -774,7 +769,7 @@ mod tests {
     use super::{
         normalize_requested_meta_locale, upsert_response_locale, validate_structured_data_payload,
     };
-    use crate::{seo_builtin_slug, SeoMetaInput, SeoMetaTranslationInput, SeoTargetSlug};
+    use crate::{SeoMetaInput, SeoMetaTranslationInput, SeoTargetSlug, seo_builtin_slug};
     use serde_json::json;
     use uuid::Uuid;
 

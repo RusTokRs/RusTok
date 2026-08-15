@@ -263,16 +263,14 @@ impl RusToKMcpServer {
             return false;
         }
 
-        let access_allowed = match &self.access_context {
+        match &self.access_context {
             Some(access_context) => {
                 access_context
                     .authorize_tool(&default_tool_requirement(tool_name))
                     .allowed
             }
             None => true,
-        };
-
-        access_allowed
+        }
     }
 
     fn protocol_version() -> rmcp::model::ProtocolVersion {
@@ -378,10 +376,11 @@ impl RusToKMcpServer {
     }
 
     async fn record_tool_audit(&self, event: McpToolCallAuditEvent) {
-        if let Some(audit_sink) = &self.audit_sink {
-            if let Err(error) = audit_sink.record_tool_call(event).await {
-                tracing::warn!(error = %error, "Failed to persist MCP tool audit event");
-            }
+        let Some(audit_sink) = &self.audit_sink else {
+            return;
+        };
+        if let Err(error) = audit_sink.record_tool_call(event).await {
+            tracing::warn!(error = %error, "Failed to persist MCP tool audit event");
         }
     }
 }
@@ -410,7 +409,8 @@ impl ServerHandler for RusToKMcpServer {
         }
 
         if request.name.as_ref() != TOOL_MCP_HEALTH {
-            if let Some(access_context) = &self.access_context {
+            let access_context = self.access_context.as_ref();
+            if let Some(access_context) = access_context {
                 let decision =
                     access_context.authorize_tool(&default_tool_requirement(request.name.as_ref()));
                 if !decision.allowed {

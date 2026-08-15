@@ -29,9 +29,7 @@ impl SharedCommentsTcpDelegationScheduleHandle {
             DelegationScheduleSource::HostProvided => {
                 keyring::CommentsTcpDelegationKeyringSource::HostProvided
             }
-            DelegationScheduleSource::File(_) => {
-                keyring::CommentsTcpDelegationKeyringSource::File
-            }
+            DelegationScheduleSource::File(_) => keyring::CommentsTcpDelegationKeyringSource::File,
         };
         if source != configured_source {
             return self.reject(
@@ -58,16 +56,14 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         let mut current = match self.0.current.write() {
             Ok(current) => current,
             Err(_) => {
-                return self.reject(
-                    "Comments TCP delegation schedule state is unavailable".to_string(),
-                );
+                return self
+                    .reject("Comments TCP delegation schedule state is unavailable".to_string());
             }
         };
         if candidate.source != current.source {
             drop(current);
             return self.reject(
-                "Comments TCP delegation schedule reload cannot change source category"
-                    .to_string(),
+                "Comments TCP delegation schedule reload cannot change source category".to_string(),
             );
         }
         if candidate.generation <= current.generation {
@@ -86,13 +82,9 @@ impl SharedCommentsTcpDelegationScheduleHandle {
                 "Comments TCP delegation schedule replacement is unsafe: {error}"
             ));
         }
-        candidate
-            .schedule
-            .current_keyring_at(now_ms)
-            .map_err(|_| {
-                "Comments TCP delegation schedule replacement has no active signing key"
-                    .to_string()
-            })?;
+        candidate.schedule.current_keyring_at(now_ms).map_err(|_| {
+            "Comments TCP delegation schedule replacement has no active signing key".to_string()
+        })?;
 
         let previous_generation = current.generation;
         let current_selection = schedule_selection_at(&candidate, now_ms)?;
@@ -102,9 +94,7 @@ impl SharedCommentsTcpDelegationScheduleHandle {
         }
 
         *current = candidate;
-        self.0
-            .successful_reloads
-            .fetch_add(1, Ordering::Relaxed);
+        self.0.successful_reloads.fetch_add(1, Ordering::Relaxed);
         Ok(CommentsTcpDelegationScheduleReloadOutcome {
             previous_generation,
             current: current_selection,

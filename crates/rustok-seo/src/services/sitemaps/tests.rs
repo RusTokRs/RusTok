@@ -1,11 +1,11 @@
 use super::submission_aggregation::{
-    SITEMAP_SUBMIT_MAX_ERRORS, SITEMAP_SUBMIT_MAX_ERROR_LEN, SITEMAP_SUBMIT_MAX_TIMEOUT_DETAILS,
+    SITEMAP_SUBMIT_MAX_ERROR_LEN, SITEMAP_SUBMIT_MAX_ERRORS, SITEMAP_SUBMIT_MAX_TIMEOUT_DETAILS,
 };
 use super::{
+    SitemapSubmissionAdapter, SitemapSubmissionSummary, SitemapSubmitEndpoint,
     normalize_sitemap_submission_endpoints, record_invalid_endpoint, record_submission_failure,
     record_submission_success, render_robots_body, resolve_public_origin_from_values,
-    sitemap_event_key, sitemap_file_count, SitemapSubmissionAdapter, SitemapSubmissionSummary,
-    SitemapSubmitEndpoint,
+    sitemap_event_key, sitemap_file_count,
 };
 use crate::services::SeoService;
 use rustok_api::TenantContext;
@@ -175,9 +175,11 @@ fn public_origin_requires_explicit_configuration() {
     let error = resolve_public_origin_from_values(None, None, None)
         .expect_err("missing public origin must fail closed");
 
-    assert!(error
-        .to_string()
-        .contains("SEO public origin is not configured"));
+    assert!(
+        error
+            .to_string()
+            .contains("SEO public origin is not configured")
+    );
     assert!(error.to_string().contains("RUSTOK_PUBLIC_URL"));
 }
 

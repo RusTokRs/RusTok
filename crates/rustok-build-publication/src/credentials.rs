@@ -106,10 +106,7 @@ impl RegistryCredentialBroker for CommandRegistryCredentialBroker {
         target
             .validate()
             .map_err(|_| RegistryCredentialError::Rejected)?;
-        let minimum_ttl_seconds = minimum_ttl
-            .as_secs()
-            .max(1)
-            .min(MAX_CREDENTIAL_LEASE_SECONDS);
+        let minimum_ttl_seconds = minimum_ttl.as_secs().clamp(1, MAX_CREDENTIAL_LEASE_SECONDS);
         let request = serde_json::to_vec(&RegistryCredentialRequest {
             contract: CREDENTIAL_REQUEST_CONTRACT,
             registry: &target.registry,

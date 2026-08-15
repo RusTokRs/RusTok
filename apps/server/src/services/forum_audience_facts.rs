@@ -249,9 +249,7 @@ mod tests {
 
     use chrono::Utc;
     use rustok_api::{PortActor, PortErrorKind};
-    use rustok_channel::{
-        ChannelDetailResponse, ChannelListRequest, ChannelResponse,
-    };
+    use rustok_channel::{ChannelDetailResponse, ChannelListRequest, ChannelResponse};
 
     use super::*;
 
@@ -391,8 +389,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
         let group_id = Uuid::new_v4();
-        let (adapter, channel_calls, group_calls) =
-            adapter(tenant_id, ["members"], [group_id]);
+        let (adapter, channel_calls, group_calls) = adapter(tenant_id, ["members"], [group_id]);
 
         let facts = adapter
             .resolve_forum_audience_facts(

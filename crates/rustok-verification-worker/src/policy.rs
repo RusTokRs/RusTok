@@ -91,10 +91,10 @@ impl VerificationPolicy {
 
     pub(crate) fn trust_roots_at(&self, unix_seconds: u64) -> Vec<&VerificationTrustRoot> {
         let mut roots = vec![&self.trust_root.active];
-        if let Some(retiring) = &self.trust_root.retiring {
-            if unix_seconds < retiring.retire_after_unix_seconds {
-                roots.push(&retiring.root);
-            }
+        if let Some(retiring) = &self.trust_root.retiring
+            && unix_seconds < retiring.retire_after_unix_seconds
+        {
+            roots.push(&retiring.root);
         }
         roots
     }

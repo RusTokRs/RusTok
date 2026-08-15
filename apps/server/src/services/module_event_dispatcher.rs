@@ -81,7 +81,7 @@ fn enrich_runtime_extensions_after_event_start(
                 ctx.shared_insert(runtime.clone());
                 runtime
             });
-        let event_bus = transactional_event_bus_from_context(ctx);
+        let event_bus = crate::services::event_bus::transactional_event_bus_from_context(ctx);
         ctx.shared_insert(event_bus.clone());
         enriched.insert(financial_runtime.clone());
         enriched.insert(event_bus);

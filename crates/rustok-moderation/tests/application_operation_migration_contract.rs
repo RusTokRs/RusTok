@@ -379,7 +379,7 @@ async fn insert_decision(
     actor_id: Uuid,
     hash_char: char,
 ) -> TestResult<()> {
-    let decision_hash: String = std::iter::repeat(hash_char).take(64).collect();
+    let decision_hash: String = std::iter::repeat_n(hash_char, 64).collect();
     db.execute_unprepared(&format!(
         r#"
 INSERT INTO moderation_decisions (

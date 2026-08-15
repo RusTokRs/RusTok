@@ -33,7 +33,7 @@ mod tests {
             relation_kind: SocialRelationKind::Follow,
             active: true,
             revision: 1,
-            created_at: now.clone(),
+            created_at: now,
             updated_at: now,
         };
         let event = event_for_relation(&relation);

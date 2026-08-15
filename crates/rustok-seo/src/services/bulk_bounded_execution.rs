@@ -65,7 +65,9 @@ impl SeoService {
                 SeoError::validation(format!("failed to serialize bulk filter: {err}"))
             })?),
             input_payload: Set(serde_json::to_value(&queued_payload).map_err(|err| {
-                SeoError::validation(format!("failed to serialize bounded bulk apply payload: {err}"))
+                SeoError::validation(format!(
+                    "failed to serialize bounded bulk apply payload: {err}"
+                ))
             })?),
             publish_after_write: Set(input.publish_after_write),
             matched_count: Set(target_ids.len() as i32),
@@ -139,9 +141,7 @@ impl SeoService {
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
         let running_apply = seo_bulk_job::Entity::find()
             .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Running.as_str()))
-            .filter(
-                seo_bulk_job::Column::OperationKind.eq(SeoBulkJobOperationKind::Apply.as_str()),
-            )
+            .filter(seo_bulk_job::Column::OperationKind.eq(SeoBulkJobOperationKind::Apply.as_str()))
             .order_by_asc(seo_bulk_job::Column::UpdatedAt)
             .one(&self.db)
             .await?;
@@ -168,9 +168,7 @@ impl SeoService {
         };
 
         let result = match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
-            Some(SeoBulkJobOperationKind::Apply) => {
-                self.execute_apply_job_chunk(&running).await
-            }
+            Some(SeoBulkJobOperationKind::Apply) => self.execute_apply_job_chunk(&running).await,
             Some(SeoBulkJobOperationKind::ExportCsv) => {
                 self.execute_export_job_batched(&running).await
             }
@@ -407,7 +405,11 @@ impl SeoService {
             .await?;
         Ok(QueuedBulkApplyPayload {
             input,
-            target_ids: resolution.rows.into_iter().map(|row| row.target_id).collect(),
+            target_ids: resolution
+                .rows
+                .into_iter()
+                .map(|row| row.target_id)
+                .collect(),
         })
     }
 
@@ -420,10 +422,7 @@ impl SeoService {
             .iter()
             .filter(|item| item.status == "completed")
             .count() as i32;
-        let failed = items
-            .iter()
-            .filter(|item| item.status == "failed")
-            .count() as i32;
+        let failed = items.iter().filter(|item| item.status == "failed").count() as i32;
         let artifacts = seo_bulk_job_artifact::Entity::find()
             .filter(seo_bulk_job_artifact::Column::JobId.eq(job_id))
             .all(&self.db)

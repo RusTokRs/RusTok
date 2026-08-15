@@ -194,18 +194,21 @@ impl IndexSourceAbsenceCatalog {
                     incoming_provider: provider_name.clone(),
                 });
             }
-            if let Some((existing_owner, existing_provider)) =
-                self.identity_providers.get(&schema.identity())
+            if let Some((existing_owner, existing_provider)) = self
+                .identity_providers
+                .get(&schema.identity())
+                .filter(|(existing_owner, existing_provider)| {
+                    existing_owner.as_str() != owner_module.as_str()
+                        || existing_provider.as_str() != provider_name.as_str()
+                })
             {
-                if existing_owner != &owner_module || existing_provider != &provider_name {
-                    return Err(IndexSourceAbsenceError::SchemaIdentityProviderConflict {
-                        identity: schema.identity(),
-                        existing_owner: existing_owner.clone(),
-                        existing_provider: existing_provider.clone(),
-                        incoming_owner: owner_module.clone(),
-                        incoming_provider: provider_name.clone(),
-                    });
-                }
+                return Err(IndexSourceAbsenceError::SchemaIdentityProviderConflict {
+                    identity: schema.identity(),
+                    existing_owner: existing_owner.clone(),
+                    existing_provider: existing_provider.clone(),
+                    incoming_owner: owner_module.clone(),
+                    incoming_provider: provider_name.clone(),
+                });
             }
         }
 

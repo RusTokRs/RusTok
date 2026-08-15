@@ -1014,12 +1014,11 @@ mod tests {
         assert_eq!(result.refresh, CacheRefreshSchedule::Spawned);
 
         for _ in 0..100 {
-            if let Some(bytes) = backend.get("document").await.unwrap() {
-                if CacheEnvelope::<String>::decode_with_limit(&bytes, 1, 1024)
+            if let Some(bytes) = backend.get("document").await.unwrap()
+                && CacheEnvelope::<String>::decode_with_limit(&bytes, 1, 1024)
                     .is_ok_and(|envelope| envelope.payload() == "fresh")
-                {
-                    break;
-                }
+            {
+                break;
             }
             tokio::task::yield_now().await;
         }

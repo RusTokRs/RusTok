@@ -57,18 +57,14 @@ impl CategoryService {
             moderated: Set(record.moderated),
             topic_count: Set(0),
             reply_count: Set(0),
-            created_at: Set(created_at.clone().into()),
+            created_at: Set(created_at.into()),
             updated_at: Set(created_at.into()),
         }
         .insert(txn)
         .await?;
 
         super::category_route::ForumCategoryRouteService::ensure_current_route_key_available_in_tx(
-            txn,
-            tenant_id,
-            record.id,
-            &locale,
-            &slug,
+            txn, tenant_id, record.id, &locale, &slug,
         )
         .await?;
         forum_category_translation::ActiveModel {

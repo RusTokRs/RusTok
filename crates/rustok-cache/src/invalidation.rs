@@ -326,10 +326,12 @@ impl CacheInvalidationGapTracker {
             .last_by_channel
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(current) = generations.get(&channel).copied() {
-            if proposed < current {
-                return Err(CacheInvalidationPayloadError::OffsetRegressed { current, proposed });
-            }
+        if let Some(current) = generations
+            .get(&channel)
+            .copied()
+            .filter(|&current| proposed < current)
+        {
+            return Err(CacheInvalidationPayloadError::OffsetRegressed { current, proposed });
         }
         Ok(generations.insert(channel, proposed))
     }

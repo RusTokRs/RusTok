@@ -1,11 +1,5 @@
 use std::{
-    collections::HashSet,
-    env,
-    fs::File,
-    io::Read,
-    net::SocketAddr,
-    path::Path,
-    sync::Arc,
+    collections::HashSet, env, fs::File, io::Read, net::SocketAddr, path::Path, sync::Arc,
     time::Duration,
 };
 
@@ -67,8 +61,7 @@ impl SharedCommentsTcpDelegationKeyringSnapshot {
     ) -> std::result::Result<Self, String> {
         if generation == 0 {
             return Err(
-                "Comments TCP delegation keyring generation must be greater than zero"
-                    .to_string(),
+                "Comments TCP delegation keyring generation must be greater than zero".to_string(),
             );
         }
         if revoked_key_count > MAX_COMMENTS_TCP_DELEGATION_KEYS {
@@ -112,10 +105,7 @@ impl std::fmt::Debug for SharedCommentsTcpDelegationKeyringSnapshot {
             .debug_struct("SharedCommentsTcpDelegationKeyringSnapshot")
             .field("source", &self.0.selection.source)
             .field("generation", &self.0.selection.generation)
-            .field(
-                "retained_key_count",
-                &self.0.selection.retained_key_count,
-            )
+            .field("retained_key_count", &self.0.selection.retained_key_count)
             .field("revoked_key_count", &self.0.selection.revoked_key_count)
             .field(
                 "legacy_unkeyed_enabled",
@@ -214,8 +204,7 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
     let Some(snapshot) = keyring_snapshot_from_context(runtime_ctx) else {
         return base::start_comments_tcp_listener_if_enabled(runtime_ctx).await;
     };
-    let Some(_) = base::CommentsTcpListenerConfig::from_environment()
-        .map_err(Error::BadRequest)?
+    let Some(_) = base::CommentsTcpListenerConfig::from_environment().map_err(Error::BadRequest)?
     else {
         return Ok(());
     };
@@ -230,8 +219,8 @@ pub(super) async fn start_comments_tcp_listener_if_enabled(
                 .is_some()
         });
     if !authority_already_configured {
-        let authority = comments_tcp_authority_from_snapshot(&snapshot)
-            .map_err(Error::BadRequest)?;
+        let authority =
+            comments_tcp_authority_from_snapshot(&snapshot).map_err(Error::BadRequest)?;
         runtime_ctx.shared_insert(base::SharedCommentsTcpAuthorityResolver(authority));
     }
 
@@ -339,15 +328,12 @@ fn parse_keyring_document(
         }
     }
 
-    let active_key_id = CommentsTcpDelegationKeyId::new(document.active_key_id).map_err(|error| {
-        format!(
-            "{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} active_key_id is invalid: {error}"
-        )
-    })?;
+    let active_key_id =
+        CommentsTcpDelegationKeyId::new(document.active_key_id).map_err(|error| {
+            format!("{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} active_key_id is invalid: {error}")
+        })?;
     let mut keyring = CommentsTcpDelegationKeyring::new(active_key_id, keys).map_err(|error| {
-        format!(
-            "{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} keyring is invalid: {error}"
-        )
+        format!("{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} keyring is invalid: {error}")
     })?;
     if let Some(raw_legacy_key_id) = document.legacy_unkeyed_key_id {
         let legacy_key_id = CommentsTcpDelegationKeyId::new(raw_legacy_key_id).map_err(|error| {
@@ -382,23 +368,17 @@ fn read_bounded_keyring_file(file_path: &str) -> std::result::Result<Vec<u8>, St
             "{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} must reference a non-empty file path"
         ));
     }
-    let mut file = File::open(Path::new(file_path)).map_err(|_| {
-        format!(
-            "{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} could not be opened"
-        )
-    })?;
+    let mut file = File::open(Path::new(file_path))
+        .map_err(|_| format!("{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} could not be opened"))?;
     let metadata = file.metadata().map_err(|_| {
-        format!(
-            "{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} metadata could not be read"
-        )
+        format!("{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} metadata could not be read")
     })?;
     if !metadata.is_file() {
         return Err(format!(
             "{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} must reference a regular file"
         ));
     }
-    if metadata.len() == 0
-        || metadata.len() > MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES as u64
+    if metadata.len() == 0 || metadata.len() > MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES as u64
     {
         return Err(format!(
             "{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} file size must be within 1..={MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES} bytes"
@@ -409,11 +389,7 @@ fn read_bounded_keyring_file(file_path: &str) -> std::result::Result<Vec<u8>, St
     file.by_ref()
         .take((MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
-        .map_err(|_| {
-            format!(
-                "{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} could not be read"
-            )
-        })?;
+        .map_err(|_| format!("{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} could not be read"))?;
     if bytes.is_empty() || bytes.len() > MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES {
         return Err(format!(
             "{COMMENTS_TCP_DELEGATION_KEYRING_FILE_ENV} file size must be within 1..={MAX_COMMENTS_TCP_DELEGATION_KEYRING_FILE_BYTES} bytes"
@@ -493,17 +469,14 @@ fn comments_tcp_authority_from_snapshot(
         base::COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY_ENV,
         rustok_comments::DEFAULT_COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY,
     )?;
-    let resolver = CommentsTcpDelegatingAuthorityResolver::with_keyring(
-        token,
-        actor,
-        snapshot.keyring(),
-    )
-    .with_service_claim(COMMENTS_TCP_SERVICE_PERMISSION)
-    .with_service_role(COMMENTS_TCP_SERVICE_ROLE)
-    .with_max_ttl(Duration::from_millis(ttl_ms))
-    .map_err(|error| format!("Comments TCP delegation TTL configuration failed: {error}"))?
-    .with_replay_capacity(replay_capacity)
-    .map_err(|error| format!("Comments TCP replay configuration failed: {error}"))?;
+    let resolver =
+        CommentsTcpDelegatingAuthorityResolver::with_keyring(token, actor, snapshot.keyring())
+            .with_service_claim(COMMENTS_TCP_SERVICE_PERMISSION)
+            .with_service_role(COMMENTS_TCP_SERVICE_ROLE)
+            .with_max_ttl(Duration::from_millis(ttl_ms))
+            .map_err(|error| format!("Comments TCP delegation TTL configuration failed: {error}"))?
+            .with_replay_capacity(replay_capacity)
+            .map_err(|error| format!("Comments TCP replay configuration failed: {error}"))?;
     Ok(Arc::new(resolver))
 }
 
@@ -553,8 +526,8 @@ fn require_loopback_endpoint(
     }
 }
 
-fn comments_tcp_bearer_token_from_environment(
-) -> std::result::Result<CommentsTcpBearerToken, String> {
+fn comments_tcp_bearer_token_from_environment()
+-> std::result::Result<CommentsTcpBearerToken, String> {
     let secret = read_required_environment(
         base::COMMENTS_TCP_BEARER_TOKEN_ENV,
         format!(
@@ -616,9 +589,7 @@ fn read_required_environment(
     match env::var(key) {
         Ok(value) => Ok(value),
         Err(env::VarError::NotPresent) => Err(missing_message),
-        Err(env::VarError::NotUnicode(_)) => {
-            Err(format!("{key} must contain valid UTF-8"))
-        }
+        Err(env::VarError::NotUnicode(_)) => Err(format!("{key} must contain valid UTF-8")),
     }
 }
 
@@ -664,10 +635,7 @@ fn parse_positive_usize_value(
     Ok(parsed)
 }
 
-fn parse_positive_u64_value(
-    key: &'static str,
-    value: &str,
-) -> std::result::Result<u64, String> {
+fn parse_positive_u64_value(key: &'static str, value: &str) -> std::result::Result<u64, String> {
     let parsed = value
         .trim()
         .parse::<u64>()
@@ -765,14 +733,18 @@ mod tests {
         let active = CommentsTcpDelegationKeyId::new("active").unwrap();
         let keyring = CommentsTcpDelegationKeyring::new(
             active.clone(),
-            vec![(active, CommentsTcpDelegationSecret::new(OLD_SECRET).unwrap())],
+            vec![(
+                active,
+                CommentsTcpDelegationSecret::new(OLD_SECRET).unwrap(),
+            )],
         )
         .unwrap();
-        let snapshot = SharedCommentsTcpDelegationKeyringSnapshot::from_host_keyring(
-            keyring, 3, 1,
-        )
-        .unwrap();
-        assert_eq!(snapshot.selection().source, CommentsTcpDelegationKeyringSource::HostProvided);
+        let snapshot =
+            SharedCommentsTcpDelegationKeyringSnapshot::from_host_keyring(keyring, 3, 1).unwrap();
+        assert_eq!(
+            snapshot.selection().source,
+            CommentsTcpDelegationKeyringSource::HostProvided
+        );
         assert_eq!(snapshot.selection().generation, 3);
         assert_eq!(snapshot.selection().retained_key_count, 1);
         assert_eq!(snapshot.selection().revoked_key_count, 1);

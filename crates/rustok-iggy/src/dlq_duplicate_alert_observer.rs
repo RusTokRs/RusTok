@@ -417,10 +417,18 @@ mod tests {
 
     #[test]
     fn bundled_mode_requires_matching_loopback_address() {
-        let mut config = IggyConfig::default();
-        config.mode = IggyMode::Bundled;
-        config.bundled.tcp_port = 8091;
-        config.external.addresses = vec!["127.0.0.1:8091".to_string()];
+        let mut config = IggyConfig {
+            mode: IggyMode::Bundled,
+            bundled: crate::config::BundledConfig {
+                tcp_port: 8091,
+                ..Default::default()
+            },
+            external: crate::config::ExternalConfig {
+                addresses: vec!["127.0.0.1:8091".to_string()],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         assert!(read_only_connection_config(&config).is_ok());
 
         config.external.addresses = vec!["127.0.0.1:8090".to_string()];

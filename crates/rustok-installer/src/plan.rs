@@ -201,19 +201,18 @@ impl InstallDistributionBinding {
         {
             return Err("distribution role artifacts do not match the role-set digest".to_string());
         }
-        if let Some(receipt) = &self.bootstrap_receipt {
-            if receipt.payload.preparation_id != self.preparation_id
+        if self.bootstrap_receipt.as_ref().is_some_and(|receipt| {
+            receipt.payload.preparation_id != self.preparation_id
                 || receipt.payload.distribution_release_id != self.distribution_release_id
                 || receipt.payload.preparation.evidence.bundle_reference != self.bundle_reference
                 || receipt.payload.preparation.evidence.bundle_root_digest
                     != self.bundle_root_digest
                 || receipt.payload.preparation.evidence.role_set_digest != self.role_set_digest
                 || receipt.payload.preparation.evidence.roles != self.roles
-            {
-                return Err(
-                    "distribution binding does not match its signed bootstrap receipt".to_string(),
-                );
-            }
+        }) {
+            return Err(
+                "distribution binding does not match its signed bootstrap receipt".to_string(),
+            );
         }
         Ok(())
     }

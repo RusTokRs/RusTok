@@ -242,18 +242,17 @@ fn selection_set_pagination_error(
             }
             Selection::FragmentSpread(fragment) => {
                 let fragment_name = fragment.node.fragment_name.node.clone();
-                if visited_fragments.insert(fragment_name.clone()) {
-                    if let Some(definition) = document.fragments.get(&fragment_name) {
-                        if let Some(error) = selection_set_pagination_error(
-                            &definition.node.selection_set.node,
-                            document,
-                            variables,
-                            defaults,
-                            visited_fragments,
-                        ) {
-                            return Some(error);
-                        }
-                    }
+                if visited_fragments.insert(fragment_name.clone())
+                    && let Some(definition) = document.fragments.get(&fragment_name)
+                    && let Some(error) = selection_set_pagination_error(
+                        &definition.node.selection_set.node,
+                        document,
+                        variables,
+                        defaults,
+                        visited_fragments,
+                    )
+                {
+                    return Some(error);
                 }
             }
             Selection::InlineFragment(fragment) => {

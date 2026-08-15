@@ -146,9 +146,8 @@ fn product_error_policy(error: &CommerceError) -> AdminProductHttpPolicy {
 }
 
 fn adopt_product_error_identity(context: &mut AdminProductErrorContext, error: &CommerceError) {
-    match error {
-        CommerceError::ProductNotFound(id) => context.product_id = Some(*id),
-        _ => {}
+    if let CommerceError::ProductNotFound(id) = error {
+        context.product_id = Some(*id);
     }
 }
 

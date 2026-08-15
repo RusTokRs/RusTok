@@ -495,14 +495,15 @@ mod tests {
 
     #[test]
     fn reconciliation_limit_is_bounded() {
+        fn resolve_limit(limit: Option<u64>) -> u64 {
+            limit.unwrap_or(DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT)
+        }
         assert_eq!(
-            None.unwrap_or(DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT),
+            resolve_limit(None),
             DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT
         );
         assert_eq!(
-            Some(10_000_u64)
-                .unwrap_or(DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT)
-                .clamp(1, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT),
+            resolve_limit(Some(10_000)).clamp(1, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT),
             MAX_FORUM_COUNTER_RECONCILIATION_LIMIT
         );
     }

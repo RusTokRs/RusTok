@@ -51,7 +51,7 @@ fn required_value(
     let flag = arguments
         .next()
         .ok_or("missing static-distribution publisher argument")?;
-    if flag != OsString::from(expected_flag) {
+    if flag != expected_flag {
         return Err(format!("expected static-distribution publisher flag {expected_flag}").into());
     }
     arguments
