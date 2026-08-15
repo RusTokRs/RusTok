@@ -17,6 +17,19 @@ const requireMarkers = (relative, markers) => {
   }
   return source;
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/gu, ' ').trim();
+const requireNormalizedMarkers = (relative, markers) => {
+  const source = normalizeWhitespace(read(relative));
+  for (const marker of markers) {
+    if (!source.includes(normalizeWhitespace(marker))) fail(`${relative} is missing ${marker}`);
+  }
+  return source;
+};
+const requirePattern = (relative, pattern, description) => {
+  const source = read(relative);
+  if (!pattern.test(source)) fail(`${relative} is missing ${description}`);
+  return source;
+};
 
 const testPath = 'crates/rustok-index/src/infrastructure/postgres/postgres_reference_equivalence_tests.rs';
 const test = requireMarkers(testPath, [
@@ -53,8 +66,6 @@ requireMarkers(referencePath, [
   'CursorCodec::encode_for_query',
   'let exact_count = query.include_exact_count.then_some(records.len() as u64);',
   '.take(page_size + 1)',
-  'plan.outer_projection()',
-  'plan.many_projections',
   'FilterExpr::And(children)',
   'FilterExpr::Or(children)',
   'FilterExpr::Not(child)',
@@ -68,6 +79,8 @@ requireMarkers(referencePath, [
   'FilterExpr::Contains(path, expected)',
   'FilterExpr::IsNull(path, expected_null)',
 ]);
+requirePattern(referencePath, /plan\s*\.outer_projection\(\)/u, 'plan.outer_projection()');
+requirePattern(referencePath, /plan\s*\.many_projections\b/u, 'plan.many_projections');
 
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
   'mod postgres_reference_equivalence_tests;',
@@ -75,16 +88,16 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
 requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-postgres-reference-equivalence.mjs'",
 ]);
-requireMarkers('crates/rustok-index/docs/m4-postgres-reference-equivalence.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/m4-postgres-reference-equivalence.md', [
   'Status: `fixture_capture_and_admission_source_complete_owner_execution_pending`',
   'compares the complete `IndexQueryPage`',
   'does not introduce Testcontainers or a second database stack',
   'Not run by the implementation agent',
 ]);
-requireMarkers('crates/rustok-index/docs/m4-query-planner.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/m4-query-planner.md', [
   'M4 PostgreSQL/reference fixture source: `source_complete_owner_execution_pending`',
   'M4 live PostgreSQL/reference execution evidence: `open_owner_action`',
-  'The canonical checklist remains open until the owner runs the fixture',
+  'The canonical checklist remains open until the owner runs the PostgreSQL/reference fixture through capture',
 ]);
 
 console.log('[verify-index-postgres-reference-equivalence] OK');
