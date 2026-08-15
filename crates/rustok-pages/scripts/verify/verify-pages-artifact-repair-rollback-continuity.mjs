@@ -255,8 +255,8 @@ for (const marker of [
   "Repair-to-Rollback Continuity Actualization",
   "repair-rollback-continuity-source-ready",
   "at least one rebuilt/activated locale",
-  "surviving manifest rows",
-  "source artifact is absent",
+  "Every surviving manifest row remains authoritative evidence",
+  "historical source artifact must be absent as well",
   "Historical targets stay fail-closed",
   "Page Builder registry parity correction",
 ]) {
