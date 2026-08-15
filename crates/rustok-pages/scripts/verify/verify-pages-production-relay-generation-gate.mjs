@@ -141,9 +141,11 @@ for (const marker of [
 ]) need(packet, marker, "packet");
 for (const marker of [
   "production-relay-generation-gate-source-ready",
-  "Production relay-to-Pages generation gate: source-ready",
-  "synchronous Pages invalidation now precedes downstream transport acceptance",
-  "process-bounded dedupe"
+  "synchronous generation gate source-ready",
+  "production-relay-native-route-source-ready",
+  "gate-to-native-route composition source-ready",
+  "production-gate-postgres-restart-source-ready",
+  "PostgreSQL retry source-ready"
 ]) need(plan, marker, "shared plan");
 
 if (failures.length) {
