@@ -105,11 +105,7 @@ async fn create_inserts_at_dense_sibling_index_and_rejects_out_of_range_position
     assert_eq!(load_category(&db, tenant_id, last).await.position, 2);
 
     let invalid = category_service
-        .create(
-            tenant_id,
-            admin(),
-            category_input("Out of range", None, 4),
-        )
+        .create(tenant_id, admin(), category_input("Out of range", None, 4))
         .await
         .expect_err("create position must be an insertion index inside the sibling list");
     assert!(matches!(invalid, BlogError::Validation(_)));

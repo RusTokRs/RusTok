@@ -12,8 +12,8 @@ use rustok_fulfillment::dto::{
     ShipFulfillmentInput, ShippingOptionTranslationInput,
 };
 use rustok_fulfillment::services::FulfillmentService;
-use rustok_inventory::entities;
 use rustok_inventory::InventoryService;
+use rustok_inventory::entities;
 use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
 use rustok_order::services::OrderService;
 use rustok_payment::dto::{
@@ -22,11 +22,11 @@ use rustok_payment::dto::{
 };
 use rustok_payment::services::{PaymentRefundCreationService, PaymentService};
 use rustok_pricing::PricingService;
+use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductOptionInput,
     ProductOptionTranslationInput, ProductTranslationInput,
 };
-use rustok_product::CatalogService;
 use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db_with_migrations, mock_transactional_event_bus};
@@ -380,14 +380,18 @@ async fn inventory_service_supports_normalized_inventory_on_migrated_schema() {
     assert_eq!(level.stocked_quantity, 20);
     assert_eq!(level.reserved_quantity, 6);
     assert_eq!(reservations, 1);
-    assert!(inventory
-        .check_availability(tenant_id, variant_id, 14)
-        .await
-        .expect("availability check should succeed"));
-    assert!(!inventory
-        .check_availability(tenant_id, variant_id, 15)
-        .await
-        .expect("availability check should succeed"));
+    assert!(
+        inventory
+            .check_availability(tenant_id, variant_id, 14)
+            .await
+            .expect("availability check should succeed")
+    );
+    assert!(
+        !inventory
+            .check_availability(tenant_id, variant_id, 15)
+            .await
+            .expect("availability check should succeed")
+    );
 }
 
 #[tokio::test]
@@ -504,10 +508,12 @@ async fn catalog_service_supports_multilingual_catalog_data_on_migrated_schema()
         .get_product(tenant_id, created.id)
         .await
         .expect("catalog get_product should work");
-    assert!(fetched.options[0]
-        .translations
-        .iter()
-        .all(|translation| translation.values.len() == 2));
+    assert!(
+        fetched.options[0]
+            .translations
+            .iter()
+            .all(|translation| translation.values.len() == 2)
+    );
 }
 
 async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid) {

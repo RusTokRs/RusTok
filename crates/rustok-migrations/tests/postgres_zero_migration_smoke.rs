@@ -19,13 +19,13 @@ use rustok_test_utils::{
     postgres_database_url as database_url_from_admin_url, unique_postgres_database_name,
 };
 use sea_orm_migration::{
+    MigrationTrait, SchemaManager,
     prelude::MigratorTrait,
     sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait},
-    MigrationTrait, SchemaManager,
 };
 use support::backfill_fixtures::{
-    apply_setup as apply_backfill_setup, assert_results as assert_backfill_results,
-    load_from_environment as load_backfill_fixtures, BackfillFixture,
+    BackfillFixture, apply_setup as apply_backfill_setup,
+    assert_results as assert_backfill_results, load_from_environment as load_backfill_fixtures,
 };
 
 #[tokio::test]

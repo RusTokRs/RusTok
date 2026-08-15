@@ -195,7 +195,10 @@ mod contract_tests {
         assert!(cart.dependencies().is_empty());
         assert!(customer.dependencies().is_empty());
         assert_eq!(product.dependencies(), &["taxonomy"]);
-        assert_eq!(profiles.dependencies(), &["media", "social_graph", "taxonomy"]);
+        assert_eq!(
+            profiles.dependencies(),
+            &["media", "social_graph", "taxonomy"]
+        );
         assert!(region.dependencies().is_empty());
         assert!(payment.dependencies().is_empty());
         assert!(fulfillment.dependencies().is_empty());

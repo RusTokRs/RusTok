@@ -1,8 +1,8 @@
 use rustok_migrations::Migrator;
 use rustok_payment::{
-    CompleteProviderEvent, FailProviderEvent, PaymentProviderEventJournal, ReceiveProviderEvent,
-    VerifiedProviderEvent, PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED,
-    PROVIDER_EVENT_PROCESSING, PROVIDER_EVENT_RECEIVED,
+    CompleteProviderEvent, FailProviderEvent, PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED,
+    PROVIDER_EVENT_PROCESSING, PROVIDER_EVENT_RECEIVED, PaymentProviderEventJournal,
+    ReceiveProviderEvent, VerifiedProviderEvent,
 };
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use serde_json::json;
@@ -142,9 +142,11 @@ async fn provider_event_inbox_deduplicates_and_replays_with_leases() {
     assert!(processed.processed_at.is_some());
     assert!(processed.lease_owner.is_none());
 
-    assert!(journal
-        .claim_processing(tenant_id, received.id, "late-worker", 30)
-        .await
-        .expect("processed claim query must not fail")
-        .is_none());
+    assert!(
+        journal
+            .claim_processing(tenant_id, received.id, "late-worker", 30)
+            .await
+            .expect("processed claim query must not fail")
+            .is_none()
+    );
 }

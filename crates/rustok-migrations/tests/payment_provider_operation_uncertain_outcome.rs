@@ -1,8 +1,8 @@
 use rust_decimal::Decimal;
 use rustok_migrations::Migrator;
 use rustok_payment::{
-    BeginProviderOperation, CreatePaymentCollectionInput, PaymentProviderOperationJournal,
-    PaymentService, PROVIDER_OPERATION_COMMITTED, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+    BeginProviderOperation, CreatePaymentCollectionInput, PROVIDER_OPERATION_COMMITTED,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PaymentProviderOperationJournal, PaymentService,
 };
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};

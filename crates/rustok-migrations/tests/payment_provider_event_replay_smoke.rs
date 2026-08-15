@@ -2,16 +2,16 @@ use async_trait::async_trait;
 use rustok_migrations::Migrator;
 use rustok_payment::providers::{PaymentProviderRegistry, PaymentProviderWebhookResult};
 use rustok_payment::{
-    CheckpointProviderEvent, FailProviderEvent, PaymentProviderEventApplier,
-    PaymentProviderEventApplyError, PaymentProviderEventContext,
-    PaymentProviderEventIngressService, PaymentProviderEventJournal, ReceiveProviderEvent,
-    PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED,
+    CheckpointProviderEvent, FailProviderEvent, PROVIDER_EVENT_DEAD_LETTER,
+    PROVIDER_EVENT_PROCESSED, PaymentProviderEventApplier, PaymentProviderEventApplyError,
+    PaymentProviderEventContext, PaymentProviderEventIngressService, PaymentProviderEventJournal,
+    ReceiveProviderEvent,
 };
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use serde_json::json;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 use uuid::Uuid;
 
@@ -83,11 +83,13 @@ async fn operator_replay_uses_verified_normalized_checkpoint_without_raw_payload
         .expect("permanent failure must enter dead-letter");
     assert_eq!(dead_letter.status, PROVIDER_EVENT_DEAD_LETTER);
     assert!(dead_letter.processed_at.is_some());
-    assert!(journal
-        .list_retryable(tenant_id, 10)
-        .await
-        .expect("retryable query must succeed")
-        .is_empty());
+    assert!(
+        journal
+            .list_retryable(tenant_id, 10)
+            .await
+            .expect("retryable query must succeed")
+            .is_empty()
+    );
     assert_eq!(
         journal
             .list_dead_letters(tenant_id, 10)
@@ -119,9 +121,11 @@ async fn operator_replay_uses_verified_normalized_checkpoint_without_raw_payload
     assert_eq!(replayed.provider_event.provider_id, "gateway");
     assert_eq!(replayed.provider_event.event_type, "payment.authorized");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
-    assert!(journal
-        .list_dead_letters(tenant_id, 10)
-        .await
-        .expect("dead-letter query must remain readable")
-        .is_empty());
+    assert!(
+        journal
+            .list_dead_letters(tenant_id, 10)
+            .await
+            .expect("dead-letter query must remain readable")
+            .is_empty()
+    );
 }

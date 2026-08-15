@@ -710,10 +710,7 @@ impl CategoryService {
     }
 }
 
-async fn lock_category_tree_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-) -> BlogResult<()> {
+async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> BlogResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
             txn.execute(Statement::from_sql_and_values(
@@ -770,8 +767,8 @@ async fn load_siblings_in_tx(
     tenant_id: Uuid,
     parent_id: Option<Uuid>,
 ) -> BlogResult<Vec<blog_category::Model>> {
-    let mut query = blog_category::Entity::find()
-        .filter(blog_category::Column::TenantId.eq(tenant_id));
+    let mut query =
+        blog_category::Entity::find().filter(blog_category::Column::TenantId.eq(tenant_id));
     query = match parent_id {
         Some(parent_id) => query.filter(blog_category::Column::ParentId.eq(parent_id)),
         None => query.filter(blog_category::Column::ParentId.is_null()),

@@ -1,6 +1,6 @@
 use rust_decimal::Decimal;
 use rustok_cart::dto::CreateCartInput;
-use rustok_cart::{in_process_cart_checkout_port, CartService};
+use rustok_cart::{CartService, in_process_cart_checkout_port};
 use rustok_commerce::{
     BeginCheckoutOperation, CheckoutCompensationSweepService, CheckoutOperationJournal,
 };

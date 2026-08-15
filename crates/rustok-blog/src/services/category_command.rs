@@ -128,13 +128,7 @@ impl CategoryCommandService {
         }
 
         updated.extend(
-            persist_descendant_depth_changes(
-                &txn,
-                &models,
-                &desired_depths,
-                &touched,
-            )
-            .await?,
+            persist_descendant_depth_changes(&txn, &models, &desired_depths, &touched).await?,
         );
 
         let moved = updated
@@ -148,10 +142,7 @@ impl CategoryCommandService {
     }
 }
 
-async fn lock_category_tree_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-) -> BlogResult<()> {
+async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> BlogResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
             txn.execute(Statement::from_sql_and_values(
@@ -364,11 +355,7 @@ mod tests {
         let root = Uuid::from_u128(1);
         let child = Uuid::from_u128(2);
         let grandchild = Uuid::from_u128(3);
-        let tree = HashMap::from([
-            (root, None),
-            (child, Some(root)),
-            (grandchild, Some(child)),
-        ]);
+        let tree = HashMap::from([(root, None), (child, Some(root)), (grandchild, Some(child))]);
         let depths = validate_and_compute_depths(&tree).expect("valid Blog tree");
         assert_eq!(depths[&root], 0);
         assert_eq!(depths[&child], 1);

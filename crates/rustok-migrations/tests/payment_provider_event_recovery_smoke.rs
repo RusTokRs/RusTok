@@ -2,15 +2,15 @@ use async_trait::async_trait;
 use rustok_migrations::Migrator;
 use rustok_payment::providers::PaymentProviderWebhookResult;
 use rustok_payment::{
-    PaymentProviderEventApplier, PaymentProviderEventApplyError, PaymentProviderEventContext,
-    PaymentProviderEventJournal, PaymentProviderEventRecoveryService, ReceiveProviderEvent,
-    VerifiedProviderEvent, PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED,
+    PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED, PaymentProviderEventApplier,
+    PaymentProviderEventApplyError, PaymentProviderEventContext, PaymentProviderEventJournal,
+    PaymentProviderEventRecoveryService, ReceiveProviderEvent, VerifiedProviderEvent,
 };
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use serde_json::json;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 use uuid::Uuid;
 
