@@ -83,14 +83,14 @@ identity authority.
 
 ## Tracked results
 
-Results 1-3 remain complete for the currently demonstrated contracts. Result 4
-was previously complete, but the new Profiles-driven Taxonomy owner-read source
-change is a semantic runtime-input change under the retained fingerprint policy.
-Its exact-head PostgreSQL proof has been refreshed; post-merge main evidence is
-still required before Result 4 may be called complete again. Future consumer
-pressure, a genuinely new vocabulary kind, or a new operational incident class
-must extend the tracked contract with explicit ownership and evidence rather
-than weakening these established baselines.
+Results 1-4 are complete for the currently demonstrated contracts. The
+Profiles-driven Taxonomy owner-read source change was a semantic runtime-input
+change under the retained fingerprint policy, so Result 4 was deliberately
+reopened until both a fully green exact-head pull-request run and a fully green
+post-merge main run existed for the replacement fingerprint set. Those proofs
+are now recorded. Future consumer pressure, a genuinely new vocabulary kind, or
+a new operational incident class must extend the tracked contract with explicit
+ownership and evidence rather than weakening these established baselines.
 
 1. **Keep dictionary and consumer contracts synchronized. — COMPLETE.** Update
    taxonomy terms, scope rules, consumer integrations, and manifest metadata
@@ -236,7 +236,7 @@ than weakening these established baselines.
    class can add new guidance without reopening or weakening the established
    missing/stale/cross-term recovery contract.
 
-4. **Collect production target and route-registry evidence. — REFRESH PENDING POST-MERGE MAIN EVIDENCE.** Run
+4. **Collect production target and route-registry evidence. — COMPLETE.** Run
    the canonical server migration graph, including the owner-operation receipt
    dependency and retained Taxonomy migrations, plus PostgreSQL concurrent
    localized-write, translation apply, and change-cursor scenarios before
@@ -302,14 +302,38 @@ than weakening these established baselines.
    `1.96.0-x86_64-unknown-linux-gnu` directory override. The refresh run's
    source job `94912365639` and gate `94914729792` failed by design against the
    stale pre-refresh snapshot; the runtime job itself succeeded and produced the
-   replacement exact-head evidence.
+   replacement runtime proof used to advance the evidence snapshot.
 
-   Result 4 refresh is pending post-merge main evidence. The evidence contracts
-   therefore carry exactly one open Result 4 item,
-   `post_merge_main_postgresql_evidence`. After this change reaches `main`, a
-   fresh exact-main PostgreSQL run must succeed and be recorded in a separate
-   evidence-only change before Result 4 returns to `COMPLETE` and the open item
-   is removed.
+   Final exact-head pull-request run `31847950553` then proved the updated
+   snapshot on `881390e04b0913fc5146c47028c57a1ebed5005e`. Source-contract job
+   `94919665168`, PostgreSQL runtime job `94919713676`, and evidence Gate
+   `94921419733` all completed successfully. The runtime asserted Rust `1.96.0`,
+   applied the canonical server migrations, passed the two-writer route-key
+   contention harness and both translation-target CAS/cursor scenarios, and
+   archived artifact `9236910817`, named
+   `taxonomy-postgres-evidence-31847950553-881390e04b0913fc5146c47028c57a1ebed5005e`,
+   with digest
+   `sha256:ea62a105395c7ca1cc49085acd759dbd265d4e3e3d85270c2962f20c35a3e55c`.
+
+   Post-merge main run `31857567129` repeated that complete evidence path on
+   exact main commit `a4cd8b03239c2070f695d11557573cc865799200`. Source-contract
+   job `94945097376`, PostgreSQL runtime job `94945619395`, and evidence Gate
+   `94947092429` all completed successfully. The runtime again asserted Rust
+   `1.96.0`, applied the canonical server migrations, passed route contention
+   and both translation-target scenarios, and archived artifact `9239718183`,
+   named
+   `taxonomy-postgres-evidence-31857567129-a4cd8b03239c2070f695d11557573cc865799200`,
+   with digest
+   `sha256:ac6dc10fd6ee17665fba036ff36343d51e0bacada7a59e1c1b4bf71ca7135637`.
+   The artifact metadata records identical expected/actual main SHAs and the
+   active `1.96.0-x86_64-unknown-linux-gnu` directory override.
+
+   Result 4 is complete for the current runtime input fingerprints. Both
+   evidence contracts record the fully green exact-head pull-request proof and
+   fully green post-merge main proof, and `remaining_open_result_4_evidence` is
+   empty. No Taxonomy production source, vocabulary kind, route ownership,
+   lifecycle, attachment ownership, or category hierarchy contract is changed
+   by this evidence-only closure.
 
    Both source verifiers compare recorded runtime input fingerprints with the
    current Git blob/tree identities, so any later semantic runtime-input change
@@ -342,9 +366,9 @@ than weakening these established baselines.
 - Recorded PostgreSQL runtime provenance remains guarded by both Taxonomy
   evidence verifiers and runtime input fingerprints; future semantic changes
   must produce fresh evidence rather than silently reusing recorded runs.
-- While Result 4 refresh is pending, the exact-head proof and the single open
-  post-merge evidence item must remain explicit; neither source verifier may
-  silently promote the result to complete.
+- Result 4 completion requires both the recorded fully green exact-head proof
+  and post-merge main proof to remain consistent with the current fingerprinted
+  runtime inputs; either verifier must fail closed on later semantic drift.
 
 ## Change rules
 
