@@ -229,18 +229,16 @@ requireOrder(
 );
 
 for (const marker of [
-  "Date: 2026-08-05",
-  "native storefront cache source packet",
-  "execution evidence remains pending",
-  "PR #2971",
-  "PR #2974",
-  "PR #2979",
+  "source-parity-current",
+  "cache policy, public reads",
+  "production-relay-generation-gate-source-ready",
+  "production-relay-native-route-source-ready",
 ]) {
   requireText(parityPlan, marker, "current parity continuation plan");
 }
 for (const marker of [
   "source-ready / execution-pending",
-  "same public `PagesCacheReadRuntime`",
+  "same public cache primitives used by the native server function",
   "old-generation value remains physically present",
   "native server-function execution remains pending",
 ]) {
@@ -248,9 +246,9 @@ for (const marker of [
 }
 for (const marker of [
   "typed metadata contribution is source-complete",
-  "immutable rollback is source-complete",
-  "native storefront cache source contract is ready",
-  "execution and rollout gates remain open",
+  "Immutable rollback is source-complete.",
+  "The native storefront cache source contract is ready.",
+  "Source parity has advanced, but execution and rollout remain open.",
 ]) {
   requireText(actualization, marker, "Page Builder parity actualization");
 }
