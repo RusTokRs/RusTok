@@ -6,8 +6,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const ACTIONS = Object.freeze({
-  checkout: "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
-  setupNode: "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
+  checkout: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+  setupNode: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
   uploadArtifact: "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
   downloadArtifact: "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",
   attest: "actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6",
