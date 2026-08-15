@@ -193,7 +193,7 @@ requireOrder(
     "let mut expected_rebuilt = canonical_snapshot.clone();",
     "expected_rebuilt.id = rebuilt_record.id;",
     "expected_rebuilt.instance_key = rebuilt_record.instance_key.clone();",
-    "expected_rebuilt.created_at = rebuilt_record.created_at.clone();",
+    "expected_rebuilt.created_at = rebuilt_record.created_at;",
     "assert_eq!(rebuilt_record, expected_rebuilt);",
   ],
   "exact rebuild model reproduction ordering",
@@ -229,7 +229,7 @@ for (const marker of [
   "receipts[0].artifact_generation, None",
   "requests[1].event_id, published.id",
   "requests[1].correlation_id, published.correlation_id",
-  "receipts[1].artifact_generation, Some(final_generations.artifact)",
+  "receipts[1].artifact_generation,\n        Some(final_generations.artifact)",
 ]) {
   requireText(harness, marker, "committed activation cache evidence");
 }
