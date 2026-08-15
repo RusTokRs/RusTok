@@ -156,8 +156,8 @@ for (const marker of [
 
 for (const marker of [
   "### P0 — runtime evidence",
-  "Execute #2856 Redis available/outage/restart recovery.",
-  "Execute #2862 registered-CLI repair propagation.",
+  "Execute #2856 Redis available/outage/restart recovery",
+  "Execute #2862 registered-CLI repair propagation",
   "Status: `in_progress`",
 ]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
@@ -175,5 +175,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready RBAC two-process Redis harness holds the recovered observer through parent NUMSUB proof, labels subscription phases, and retains the Redis/CLI runtime gates",
+  "✔ source-ready RBAC two-process Redis harness holds the recovered observer through parent NUMSUB proof, labels subscription phases, retains completed Redis execution in the handoff, and keeps the CLI runtime gate open",
 );
