@@ -5,7 +5,7 @@ language: en
 status: active
 owners:
   - rustok-forum
-last_reviewed: 2026-08-11
+last_reviewed: 2026-08-15
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -35,9 +35,12 @@ Leptos and Next topic create/edit plus reply composition use the shared frame,
 while storefront topic/reply reads use the editor-free shared `RichTextHtml`
 boundary. Leptos reply writes select a native server function for SSR/hydrate
 and the canonical GraphQL mutation for CSR/headless use without fallback. Dirty
-locale-switch policy, full mounted save/reload evidence, and the broader
-product/runtime gates listed below remain open. The native Forum storefront
-check, whole-host Next typecheck,
+locale switching is now fail-closed for Forum admin category/topic editors:
+unsaved owner-localized content and reply drafts block switching, fallback-only
+localized content is scrubbed before writable target-locale state is exposed,
+and unchanged Taxonomy tag attachments are preserved. Full mounted save/reload
+evidence and the broader product/runtime gates listed below remain open. The
+native Forum storefront check, whole-host Next typecheck,
 and the updated ownership verifier/self-test pass; its WASM check still stops in the existing
 `Resource::new_blocking`/non-`Send` GraphQL future and missing direct `web_sys`
 dependency path, outside the richtext renderer.
@@ -53,9 +56,9 @@ pre-existing manifest mismatch is not a richtext or authoring failure.
   receive the owner-selected content locale separately from host UI messages,
   propagate derived direction and spellcheck, and follow dynamic form
   busy/read-only state. Package typecheck/unit tests, the Chromium frame harness,
-  native Forum admin check, SSR/hydrate checks, and 63 Forum admin tests cover
-  this slice. Comments authoring, dirty locale-switch policy and full mounted
-  save/reload evidence remain open.
+  native Forum admin check, SSR/hydrate checks, and the focused Forum admin
+  locale-switch contract cover this slice. Owner-copy i18n and full mounted
+  save/reload/browser parity evidence remain open.
 
 ## Product model
 
@@ -273,7 +276,7 @@ remain pending.
 | `FORUM-25` | `planned` | Forum Translation provider and complete multilingual/RTL UI. |
 | `FORUM-26` | `in_progress` | Forum trust/posting facts exist. Add Moderation/Reputation facts, persistence/enforcement, shared rate limits, transports/UI and evidence. |
 | `FORUM-27` | `planned` | Compose Profiles directory/profile with Forum stats/activity and permitted reputation/achievements. |
-| `FORUM-28` | `in_progress` | Canonical storage, renderer, projections, shared editor runtime, Leptos and Next topic create/edit and reply composition, native SSR/hydrate plus GraphQL CSR reply writes, owner content-locale/direction/spellcheck propagation and dynamic read-only state are implemented. Complete owner-copy i18n, dirty locale-switch policy and mounted save/reload/browser parity evidence. |
+| `FORUM-28` | `in_progress` | Canonical storage, renderer, projections, shared editor runtime, Leptos and Next topic create/edit and reply composition, native SSR/hydrate plus GraphQL CSR reply writes, owner content-locale/direction/spellcheck propagation and dynamic read-only state are implemented. Dirty locale switching is now fail-closed for category/topic editors, fallback-only localized form state is scrubbed before writes, unsaved reply drafts block locale changes, and unchanged Taxonomy tag attachments are preserved. Complete owner-copy i18n and mounted save/reload/browser parity evidence. |
 | `FORUM-29` | `planned` | Shared realtime transport with Forum cursors/revisions and canonical reload. |
 | `FORUM-30` | `planned` | Complete Forum admin by composing Forum and shared owners. |
 | `FORUM-31` | `planned` | Complete Forum storefront by composing Profiles, Media, Reactions, Notifications and Search. |
