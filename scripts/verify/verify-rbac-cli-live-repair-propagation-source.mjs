@@ -13,6 +13,12 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const requireNormalizedText = (source, value, label) => {
+  if (!normalizeWhitespace(source).includes(normalizeWhitespace(value))) {
+    failures.push(`${label}: missing ${value}`);
+  }
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -186,19 +192,20 @@ for (const marker of [
   "same process identifier before and after repair",
   "source_ready_unvalidated",
   "live negative HTTP, GraphQL, WebSocket and native transport requests",
-]) requireText(sources.docs, marker, `${files.docs}: evidence boundary`);
+]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence boundary`);
 
 for (const marker of [
-  "### P0. Database concurrency and multi-replica recovery evidence",
-  "Exercise CLI system-role repair while live replicas are running",
+  "### P0 — runtime evidence",
+  "Execute #2856 Redis available/outage/restart recovery — PR #3579 run",
+  "Execute #2862 registered-CLI repair propagation. — `in_progress`",
   "Status: `in_progress`",
-]) requireText(sources.plan, marker, `${files.plan}: owner gate`);
+]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
   "Release readiness: `not_assessed`",
-]) requireText(sources.master, marker, `${files.master}: active cursor`);
+]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
   console.error("RBAC CLI live repair propagation source verification failed:");
