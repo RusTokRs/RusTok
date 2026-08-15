@@ -547,10 +547,10 @@ pub fn ForumAdmin() -> impl IntoView {
                     set_error.set(Some(dirty_error));
                 }
                 ForumAdminLocaleSwitchDecision::Reload { locale } => {
-                    if ReplyFormSnapshot {
+                    if (ReplyFormSnapshot {
                         locale: active_locale.clone(),
                         content: reply_body.get_untracked(),
-                    }
+                    })
                     .to_draft()
                     .is_some()
                     {
