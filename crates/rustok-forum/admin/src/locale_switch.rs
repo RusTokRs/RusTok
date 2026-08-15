@@ -41,34 +41,41 @@ pub fn topic_locale_switch_decision(
     )
 }
 
-pub fn category_target_form(detail: &CategoryDetail) -> CategoryFormSnapshot {
-    let mut form = CategoryFormSnapshot::from_detail(detail);
-    if !detail
-        .effective_locale
-        .eq_ignore_ascii_case(detail.requested_locale.as_str())
-    {
-        form.name.clear();
-        form.slug.clear();
-        form.description.clear();
+pub fn category_detail_for_editor(mut detail: CategoryDetail) -> CategoryDetail {
+    if detail_is_fallback(detail.requested_locale.as_str(), detail.effective_locale.as_str()) {
+        detail.name.clear();
+        detail.slug.clear();
+        detail.description = None;
     }
-    form
+    detail
+}
+
+pub fn topic_detail_for_editor(mut detail: TopicDetail) -> TopicDetail {
+    if detail_is_fallback(detail.requested_locale.as_str(), detail.effective_locale.as_str()) {
+        detail.title.clear();
+        detail.slug.clear();
+        detail.body.document = RichTextDocument::empty();
+        detail.body.html.clear();
+        detail.body_plain_text.clear();
+        detail.tags.clear();
+    }
+    detail
+}
+
+pub fn category_target_form(detail: &CategoryDetail) -> CategoryFormSnapshot {
+    CategoryFormSnapshot::from_detail(&category_detail_for_editor(detail.clone()))
 }
 
 pub fn topic_target_form(detail: &TopicDetail) -> TopicFormSnapshot {
-    let mut form = TopicFormSnapshot::from_detail(detail);
-    if !detail
-        .effective_locale
-        .eq_ignore_ascii_case(detail.requested_locale.as_str())
-    {
-        form.title.clear();
-        form.slug.clear();
-        form.body = RichTextDocument::empty();
-    }
-    form
+    TopicFormSnapshot::from_detail(&topic_detail_for_editor(detail.clone()))
 }
 
 pub fn locale_candidate_matches_active(candidate: &str, active: &str) -> bool {
     candidate.trim().eq_ignore_ascii_case(active.trim())
+}
+
+fn detail_is_fallback(requested_locale: &str, effective_locale: &str) -> bool {
+    !effective_locale.eq_ignore_ascii_case(requested_locale)
 }
 
 fn locale_switch_decision(
@@ -260,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn fallback_category_target_starts_a_blank_translation_without_losing_structure() {
+    fn fallback_category_detail_is_safe_for_initial_editor_load() {
         let detail = CategoryDetail {
             id: "category-1".to_string(),
             requested_locale: "ru".to_string(),
@@ -278,18 +285,18 @@ mod tests {
             reply_count: 3,
             moderated: true,
         };
-        let form = category_target_form(&detail);
-        assert_eq!(form.locale, "ru");
-        assert!(form.name.is_empty());
-        assert!(form.slug.is_empty());
-        assert!(form.description.is_empty());
-        assert_eq!(form.icon, "chat");
-        assert_eq!(form.position, 4);
-        assert!(form.moderated);
+        let detail = category_detail_for_editor(detail);
+        assert_eq!(detail.locale, "ru");
+        assert!(detail.name.is_empty());
+        assert!(detail.slug.is_empty());
+        assert_eq!(detail.description, None);
+        assert_eq!(detail.icon.as_deref(), Some("chat"));
+        assert_eq!(detail.position, 4);
+        assert!(detail.moderated);
     }
 
     #[test]
-    fn fallback_topic_target_clears_localized_copy_but_preserves_owner_attachments() {
+    fn fallback_topic_detail_clears_all_locale_labels_before_any_editor_write() {
         let detail = TopicDetail {
             id: "topic-1".to_string(),
             requested_locale: "ar".to_string(),
@@ -313,12 +320,36 @@ mod tests {
             created_at: String::new(),
             updated_at: String::new(),
         };
-        let form = topic_target_form(&detail);
-        assert_eq!(form.locale, "ar");
-        assert_eq!(form.category_id, "category-1");
-        assert!(form.title.is_empty());
-        assert!(form.slug.is_empty());
-        assert_eq!(form.body, RichTextDocument::empty());
-        assert_eq!(form.tags_raw, "intro");
+        let detail = topic_detail_for_editor(detail);
+        assert_eq!(detail.locale, "ar");
+        assert_eq!(detail.category_id, "category-1");
+        assert!(detail.title.is_empty());
+        assert!(detail.slug.is_empty());
+        assert_eq!(detail.body.document, RichTextDocument::empty());
+        assert!(detail.body.html.is_empty());
+        assert!(detail.body_plain_text.is_empty());
+        assert!(detail.tags.is_empty());
+    }
+
+    #[test]
+    fn exact_locale_detail_is_not_scrubbed() {
+        let detail = CategoryDetail {
+            id: "category-1".to_string(),
+            requested_locale: "en".to_string(),
+            locale: "en".to_string(),
+            effective_locale: "en".to_string(),
+            available_locales: vec!["en".to_string()],
+            name: "General".to_string(),
+            slug: "general".to_string(),
+            description: None,
+            icon: None,
+            color: None,
+            parent_id: None,
+            position: 0,
+            topic_count: 0,
+            reply_count: 0,
+            moderated: false,
+        };
+        assert_eq!(category_detail_for_editor(detail.clone()).name, detail.name);
     }
 }
