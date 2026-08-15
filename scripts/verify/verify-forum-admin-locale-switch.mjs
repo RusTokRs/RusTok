@@ -2,15 +2,17 @@ import fs from 'node:fs';
 
 const policyPath = 'crates/rustok-forum/admin/src/locale_switch.rs';
 const uiPath = 'crates/rustok-forum/admin/src/ui/leptos.rs';
+const transportPath = 'crates/rustok-forum/admin/src/transport/graphql_adapter.rs';
 const libPath = 'crates/rustok-forum/admin/src/lib.rs';
 const docsPath = 'crates/rustok-forum/docs/forum-28-admin-locale-switch-contract.md';
 
-for (const path of [policyPath, uiPath, libPath, docsPath]) {
+for (const path of [policyPath, uiPath, transportPath, libPath, docsPath]) {
   if (!fs.existsSync(path)) throw new Error(`missing ${path}`);
 }
 
 const policy = fs.readFileSync(policyPath, 'utf8');
 const ui = fs.readFileSync(uiPath, 'utf8');
+const transport = fs.readFileSync(transportPath, 'utf8');
 const lib = fs.readFileSync(libPath, 'utf8');
 const docs = fs.readFileSync(docsPath, 'utf8');
 
@@ -27,15 +29,24 @@ requireAll(policy, [
   'BlockedDirty',
   'category_locale_switch_decision',
   'topic_locale_switch_decision',
+  'category_detail_for_editor',
+  'topic_detail_for_editor',
   'category_target_form',
   'topic_target_form',
   'locale_candidate_matches_active',
   'effective_locale',
   'requested_locale',
-  'form.name.clear()',
-  'form.title.clear()',
-  'form.body = RichTextDocument::empty()',
+  'detail.name.clear()',
+  'detail.title.clear()',
+  'detail.body.document = RichTextDocument::empty()',
+  'detail.tags.clear()',
 ], 'locale policy');
+
+requireAll(transport, [
+  'use crate::locale_switch::{category_detail_for_editor, topic_detail_for_editor};',
+  '.map(category_detail_for_editor)',
+  '.map(topic_detail_for_editor)',
+], 'editor transport fallback guard');
 
 requireAll(ui, [
   'category_locale_input',
@@ -89,6 +100,8 @@ requireAll(docs, [
   'candidate locale',
   'dirty',
   'fallback',
+  'initial editor load',
+  'tag labels',
   'reply',
   'category tree',
   'FORUM-28',
