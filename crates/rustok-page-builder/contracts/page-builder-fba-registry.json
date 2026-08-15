@@ -327,7 +327,7 @@
             "test": "crates/rustok-pages/tests/artifact_rollback_activated_repair_rollback_continuity_postgres.rs",
             "verifier": "crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs",
             "evidence": "crates/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-source.json",
-            "executed_evidence": "pending"
+            "executed_evidence": "verified"
           },
           "historical_target_original_manifest_required": true,
           "source": "crates/rustok-pages/src/services/page/artifact_set.rs",
