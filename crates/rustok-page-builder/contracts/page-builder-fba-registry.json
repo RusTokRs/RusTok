@@ -333,7 +333,7 @@
           "source": "crates/rustok-pages/src/services/page/artifact_set.rs",
           "test": "crates/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs",
           "verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs",
-          "executed_evidence": "pending"
+          "executed_evidence": "verified"
         },
         "automatic_audit_to_rebuild": false,
         "automatic_rebuild_to_activation": false,
