@@ -17,6 +17,14 @@ const requireMarkers = (relative, markers) => {
   }
   return source;
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/gu, ' ').trim();
+const requireNormalizedMarkers = (relative, markers) => {
+  const source = normalizeWhitespace(read(relative));
+  for (const marker of markers) {
+    if (!source.includes(normalizeWhitespace(marker))) fail(`${relative} is missing ${marker}`);
+  }
+  return source;
+};
 
 const testPath = 'crates/rustok-index/src/application/query_snapshot_tests.rs';
 const test = requireMarkers(testPath, [
@@ -99,7 +107,7 @@ requireMarkers('scripts/verify/verify-index-query-contract.mjs', [
   "'verify-index-query-snapshots.mjs'",
   "console.log('[verify-index-query-contract] OK')",
 ]);
-requireMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
+requireNormalizedMarkers('crates/rustok-index/docs/m4-query-snapshots.md', [
   'Status: `source_complete_owner_execution_pending`',
   'compares all three files byte-for-byte',
   'does not execute SQL',
