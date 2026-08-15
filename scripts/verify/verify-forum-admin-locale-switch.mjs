@@ -31,6 +31,7 @@ requireAll(policy, [
   'topic_locale_switch_decision',
   'category_detail_for_editor',
   'topic_detail_for_editor',
+  'topic_tags_for_update',
   'category_target_form',
   'topic_target_form',
   'locale_candidate_matches_active',
@@ -40,13 +41,20 @@ requireAll(policy, [
   'detail.title.clear()',
   'detail.body.document = RichTextDocument::empty()',
   'detail.tags.clear()',
+  'candidate_tags == current_tags',
+  '&& candidate_tags.is_empty()',
 ], 'locale policy');
 
 requireAll(transport, [
-  'use crate::locale_switch::{category_detail_for_editor, topic_detail_for_editor};',
+  'topic_tags_for_update',
   '.map(category_detail_for_editor)',
   '.map(topic_detail_for_editor)',
-], 'editor transport fallback guard');
+  'let current = fetch_topic(',
+  'let tags = topic_tags_for_update(&current, draft.tags.clone())',
+  'update_topic_input(draft, tags)',
+  'fn update_topic_input(draft: TopicDraft, tags: Option<Vec<String>>)',
+  'tags,',
+], 'editor transport fallback/tag guard');
 
 requireAll(ui, [
   'category_locale_input',
@@ -102,6 +110,7 @@ requireAll(docs, [
   'fallback',
   'initial editor load',
   'tag labels',
+  'preserve',
   'reply',
   'category tree',
   'FORUM-28',
