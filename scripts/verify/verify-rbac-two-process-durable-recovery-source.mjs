@@ -123,9 +123,9 @@ const evidenceChecks = [
   [evidence.validation?.source_verifier_executed === false, "source-shape JSON must not claim verifier execution"],
   [evidence.validation?.postgresql_runtime_executed === false, "source-shape JSON must not claim PostgreSQL execution"],
   [evidence.validation?.subprocess_runtime_executed === false, "source-shape JSON must not claim subprocess execution"],
-  [evidence.redis_available_evidence === false, "Redis available evidence must remain open"],
-  [evidence.redis_restart_evidence === false, "Redis restart evidence must remain open"],
-  [evidence.cli_repair_live_replica_evidence === false, "CLI repair evidence must remain open"],
+  [evidence.redis_available_evidence === false, "source-shape JSON must remain immutable source-only evidence"],
+  [evidence.redis_restart_evidence === false, "source-shape JSON must remain immutable source-only evidence"],
+  [evidence.cli_repair_live_replica_evidence === false, "CLI repair source packet must remain open"],
   [evidence.full_multi_replica_gate_complete === false, "full multi-replica gate must remain open"],
   [evidence.cursor_advanced === false, "cursor must not advance"],
 ];
@@ -146,8 +146,9 @@ for (const marker of [
 
 for (const marker of [
   "### P0 — runtime evidence",
-  "[x] Execute #2853 independent-process watchdog recovery",
-  "[ ] Execute #2856 Redis available/outage/restart recovery.",
+  "Execute #2853 independent-process watchdog recovery",
+  "Execute #2856 Redis available/outage/restart recovery",
+  "Execute #2862 registered-CLI repair propagation",
   "Status: `in_progress`",
 ]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
@@ -165,5 +166,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ two-process durable-recovery source shape remains strict while the owner handoff retains completed #2853 evidence and keeps Redis/CLI gates open",
+  "✔ two-process durable-recovery source shape remains strict while the owner handoff retains completed #2853/#2856 evidence and keeps the CLI gate open",
 );
