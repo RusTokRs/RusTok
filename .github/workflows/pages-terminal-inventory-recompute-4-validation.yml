@@ -1,0 +1,45 @@
+name: Pages Terminal Inventory Recompute 4 Validation
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-page-builder/contracts/evidence/pages-page-builder-terminal-evidence-inventory-source.json"
+      - "scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs"
+      - "scripts/evidence/inventory-pages-page-builder-terminal-readiness.mjs"
+      - "scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs"
+      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "crates/rustok-pages/docs/implementation-plan.md"
+      - "docs/modules/pages-page-builder-terminal-evidence-inventory-actualization-2026-08-14.md"
+      - ".github/workflows/pages-terminal-inventory-recompute-4-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-terminal-inventory-recompute-4-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate terminal inventory recompute to four
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Require exact PR head checkout
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Verify terminal inventory source
+        run: node scripts/verify/verify-pages-page-builder-terminal-evidence-inventory.mjs
+      - name: Run terminal inventory synthetic evaluator tests
+        run: node --test scripts/evidence/inventory-pages-page-builder-terminal-readiness.test.mjs
