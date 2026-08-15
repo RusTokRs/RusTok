@@ -2,6 +2,7 @@
 
 mod core;
 mod i18n;
+mod locale_switch;
 mod model;
 mod page_builder;
 mod topic_fork_model;
