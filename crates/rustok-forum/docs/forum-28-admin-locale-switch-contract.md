@@ -17,14 +17,18 @@ For an open category or topic, the switch first reloads that owner detail in the
 
 Only a clean form may load the same owner identity in the requested target locale. The owner API remains the source of requested/effective locale and fallback behavior.
 
+The same fallback guard also applies to the **initial editor load**. Opening an owner row directly in a locale that only has fallback content must never expose that fallback copy as writable target-locale form state.
+
 ## Missing target translation
 
-A target read may resolve through fallback. Fallback content is read evidence, not an existing target translation. Therefore the target-form adapter must not prefill fallback localized copy as if it belonged to the requested locale:
+A target read may resolve through fallback. Fallback content is read evidence, not an existing target translation. Therefore the editor transport and target-form adapter must not prefill fallback localized copy as if it belonged to the requested locale:
 
 - category `name`, `slug`, and `description` are blanked while structural icon/color/position/moderation state is preserved;
-- topic `title`, `slug`, and rich-text `body` are blanked while the Forum-owned category attachment and existing tag attachment view remain available.
+- topic `title`, `slug`, rich-text `body`, and localized **tag labels** are blanked while the Forum-owned category attachment remains available.
 
-The normal required-field validation then requires deliberate target-language content before a missing translation can be persisted.
+Tag attachment identity is not rewritten by the read. Clearing fallback tag labels is necessary because Forum's update path resolves/ensures Taxonomy tag terms using the submitted content locale; carrying an English fallback label into an Arabic or Russian save could otherwise create or bind the wrong locale term identity.
+
+The normal required-field validation then requires deliberate target-language content before a missing translation can be persisted. Existing Forum/Taxonomy attachment rows remain unchanged unless the operator explicitly saves new target-locale tag labels.
 
 ## Topic reply draft
 
@@ -36,4 +40,4 @@ On the category admin page, the category tree follows the category active locale
 
 ## Ownership boundary
 
-Forum continues to own category hierarchy, topic/category attachment semantics, topic translations and reply content. Shared rich-text direction/spellcheck remains driven by the active content locale. This slice changes only the Forum admin transition policy and does not alter Taxonomy Results 1–4 or create any generic hierarchy in Taxonomy.
+Forum continues to own category hierarchy, topic/category attachment semantics, topic translations and reply content. Taxonomy continues to own tag vocabulary identity and localized term resolution. Shared rich-text direction/spellcheck remains driven by the active content locale. This slice changes only the Forum admin transition/write-safety policy and does not alter Taxonomy Results 1–4 or create any generic hierarchy in Taxonomy.
