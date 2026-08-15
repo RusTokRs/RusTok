@@ -40,7 +40,7 @@
     "maximum_blocker_paths": 256,
     "all_recursive_blocker_paths_must_be_zero_for_completion": true,
     "current_source_expected_to_have_blockers": true,
-    "current_source_rechecked_blocker_count": 3,
+    "current_source_rechecked_blocker_count": 2,
     "pending_blockers_prevent_transport_verified": true
   },
   "pages_ffa_inventory": {
