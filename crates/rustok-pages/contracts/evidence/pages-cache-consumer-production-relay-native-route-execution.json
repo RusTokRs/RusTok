@@ -1,0 +1,60 @@
+{
+  "format": "pages_cache_consumer_production_relay_native_route_execution_source_v1",
+  "status": "source_ready_main_execution_pending",
+  "workflow": ".github/workflows/pages-cache-consumer-production-relay-native-route-evidence.yml",
+  "target": {
+    "json_pointer": "/consumers/0/cache_consumer/executed_evidence",
+    "pre_state": "pending",
+    "success_state": "verified",
+    "provider_consumer_properties_expected_pre_state": "pending",
+    "separate_registry_admission_required": true
+  },
+  "packet": {
+    "source": "crates/rustok-pages/contracts/evidence/pages-production-relay-native-route-source.json",
+    "verifier": "crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs",
+    "supporting_verifiers": [
+      "crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs",
+      "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs"
+    ],
+    "test": "apps/server/tests/pages_production_relay_native_route_sqlite.rs",
+    "test_command": "cargo test --locked -p rustok-server --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture",
+    "check_command": "cargo check --locked -p rustok-server --features mod-pages --all-targets"
+  },
+  "output": {
+    "format": "pages_cache_consumer_production_relay_native_route_execution_v1",
+    "success_status": "production_relay_native_route_execution_passed_cache_consumer_admission_pending",
+    "receipt_path": "evidence/pages-cache-consumer-production-relay-native-route/receipt.json",
+    "maximum_bytes": 1048576,
+    "retention_days": 90
+  },
+  "required_source_files": [
+    "Cargo.toml",
+    "Cargo.lock",
+    "apps/server/Cargo.toml",
+    "apps/server/tests/pages_production_relay_native_route_sqlite.rs",
+    "apps/server/src/services/tenant_generation_delivery_gate.rs",
+    "apps/server/src/services/pages_cache_invalidation.rs",
+    "crates/rustok-outbox/src/relay.rs",
+    "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+    "crates/rustok-pages/src/cache_invalidation.rs",
+    "crates/rustok-pages/contracts/evidence/pages-production-relay-native-route-source.json",
+    "crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+    "docs/modules/pages-page-builder-production-relay-native-route-packet-2026-08-05.md",
+    "docs/modules/pages-page-builder-parity-continuation-plan.md",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+  ],
+  "non_claims": {
+    "registry_mutated": false,
+    "cache_consumer_registry_verified": false,
+    "provider_consumer_properties_verified": false,
+    "pages_ffa_promoted": false,
+    "page_builder_fba_promoted": false,
+    "owner_platform_review_ready": false,
+    "browser_execution_claimed": false,
+    "cross_process_exact_once_claimed": false
+  }
+}
