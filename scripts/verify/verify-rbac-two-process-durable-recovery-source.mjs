@@ -105,7 +105,7 @@ for (const marker of [
 
 const evidence = JSON.parse(sources.evidence);
 const evidenceChecks = [
-  [evidence.status === "source_ready_unvalidated", "status must remain source_ready_unvalidated"],
+  [evidence.status === "source_ready_unvalidated", "source-shape status must remain source_ready_unvalidated"],
   [evidence.cycle === "cycle-001", "cycle must remain cycle-001"],
   [evidence.component === "core/rbac", "component must remain core/rbac"],
   [evidence.topology?.database === "isolated_postgresql_database", "database must remain isolated PostgreSQL"],
@@ -119,10 +119,10 @@ const evidenceChecks = [
   [evidence.scenario?.expected_pre_recovery_decision === "allow_from_stale_process_cache", "stale pre-recovery allow is required"],
   [evidence.scenario?.expected_post_recovery_decision === "deny", "post-recovery deny is required"],
   [evidence.scenario?.maximum_recovery_elapsed_ms === 7000, "recovery bound must remain 7000 ms"],
-  [evidence.validation?.rust_test_executed === false, "Rust execution must not be claimed"],
-  [evidence.validation?.source_verifier_executed === false, "source verifier execution must not be claimed"],
-  [evidence.validation?.postgresql_runtime_executed === false, "PostgreSQL execution must not be claimed"],
-  [evidence.validation?.subprocess_runtime_executed === false, "subprocess execution must not be claimed"],
+  [evidence.validation?.rust_test_executed === false, "source-shape JSON must not claim Rust execution"],
+  [evidence.validation?.source_verifier_executed === false, "source-shape JSON must not claim verifier execution"],
+  [evidence.validation?.postgresql_runtime_executed === false, "source-shape JSON must not claim PostgreSQL execution"],
+  [evidence.validation?.subprocess_runtime_executed === false, "source-shape JSON must not claim subprocess execution"],
   [evidence.redis_available_evidence === false, "Redis available evidence must remain open"],
   [evidence.redis_restart_evidence === false, "Redis restart evidence must remain open"],
   [evidence.cli_repair_live_replica_evidence === false, "CLI repair evidence must remain open"],
@@ -139,23 +139,23 @@ for (const marker of [
   "cannot receive the fast-path publication",
   "canonical five-second durable-generation watchdog",
   "source_ready_unvalidated",
-  "It does not prove:",
+  "## Retained execution",
   "Redis publication between live replicas",
   "The full multi-replica P0 gate remains open.",
 ]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence boundary`);
 
 for (const marker of [
   "### P0 — runtime evidence",
-  "Execute #2853 independent-process watchdog recovery.",
-  "Execute #2856 Redis available/outage/restart recovery.",
+  "[x] Execute #2853 independent-process watchdog recovery",
+  "[ ] Execute #2856 Redis available/outage/restart recovery.",
   "Status: `in_progress`",
 ]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "PostgreSQL concurrency/watchdog runs",
-  "mandatory current-revision runtime evidence remains open",
+  "durable watchdog packet #2853 passed 1/1",
+  "Redis available/outage/restart packet #2856",
 ]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
@@ -165,5 +165,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready two-process RBAC recovery harness proves an intentionally missed local publication can recover through the durable PostgreSQL generation without Redis or manual cache shortcuts",
+  "✔ two-process durable-recovery source shape remains strict while the owner handoff retains completed #2853 evidence and keeps Redis/CLI gates open",
 );

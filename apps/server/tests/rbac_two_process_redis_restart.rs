@@ -40,6 +40,7 @@ const CHILD_FAST_RESULT_PATH_ENV: &str = "RUSTOK_RBAC_REDIS_FAST_RESULT_PATH";
 const CHILD_OUTAGE_REQUEST_PATH_ENV: &str = "RUSTOK_RBAC_REDIS_OUTAGE_REQUEST_PATH";
 const CHILD_OUTAGE_RESULT_PATH_ENV: &str = "RUSTOK_RBAC_REDIS_OUTAGE_RESULT_PATH";
 const CHILD_RESTART_RESULT_PATH_ENV: &str = "RUSTOK_RBAC_REDIS_RESTART_RESULT_PATH";
+const CHILD_RESTART_ACK_PATH_ENV: &str = "RUSTOK_RBAC_REDIS_RESTART_ACK_PATH";
 const CHILD_MUTATION_RESULT_PATH_ENV: &str = "RUSTOK_RBAC_REDIS_MUTATION_RESULT_PATH";
 const CHILD_TEST_NAME: &str = "rbac_redis_replica_child";
 const FAST_PATH_BOUND: Duration = Duration::from_secs(3);
@@ -113,6 +114,7 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
         let outage_request_path = workspace.path().join("outage-check.request");
         let outage_result_path = workspace.path().join("outage-result.json");
         let restart_result_path = workspace.path().join("restart-result.json");
+        let restart_ack_path = workspace.path().join("restart-result.ack");
         let first_mutation_path = workspace.path().join("first-mutation.json");
         let second_mutation_path = workspace.path().join("second-mutation.json");
         let replica_sequence_started = Instant::now();
@@ -128,6 +130,7 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
             &outage_request_path,
             &outage_result_path,
             &restart_result_path,
+            &restart_ack_path,
         )?;
         wait_for_file(&ready_path, Duration::from_secs(8)).await?;
         let ready: ObserverReady = read_json(&ready_path)?;
@@ -140,7 +143,7 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
                 ready.initial_generation
             )));
         }
-        wait_for_redis_subscribers(&redis_url, 1).await?;
+        wait_for_redis_subscribers(&redis_url, 1, "parent initial observer subscription").await?;
 
         let fast_started = Instant::now();
         let mut first_mutator = spawn_mutator(
@@ -199,7 +202,8 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
 
         let restart_started = Instant::now();
         redis_process = spawn_redis(redis_binary.as_str(), redis_port).await?;
-        wait_for_redis_subscribers(&redis_url, 1).await?;
+        wait_for_redis_subscribers(&redis_url, 1, "observer resubscription after Redis restart")
+            .await?;
         wait_for_file(&restart_result_path, RESTART_RECOVERY_BOUND).await?;
         if restart_started.elapsed() > RESTART_RECOVERY_BOUND {
             return Err(test_error("Redis reconnect recovery exceeded the eight-second bound"));
@@ -219,6 +223,7 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
             ));
         }
 
+        std::fs::write(&restart_ack_path, b"release-observer")?;
         wait_for_child(&mut observer, CHILD_LIFETIME_BOUND, "observer").await?;
         db.close().await?;
         Ok(())
@@ -263,7 +268,12 @@ async fn run_child(role: &str) -> TestResult<()> {
 
     match role {
         "observer" => {
-            wait_for_redis_subscribers(redis_url.as_str(), 1).await?;
+            wait_for_redis_subscribers(
+                redis_url.as_str(),
+                1,
+                "observer child initial subscription",
+            )
+            .await?;
             let fast_user_id = Uuid::parse_str(&required_env(CHILD_FAST_USER_ID_ENV)?)?;
             let restart_user_id = Uuid::parse_str(&required_env(CHILD_RESTART_USER_ID_ENV)?)?;
             run_observer(
@@ -277,6 +287,7 @@ async fn run_child(role: &str) -> TestResult<()> {
                 PathBuf::from(required_env(CHILD_OUTAGE_REQUEST_PATH_ENV)?),
                 PathBuf::from(required_env(CHILD_OUTAGE_RESULT_PATH_ENV)?),
                 PathBuf::from(required_env(CHILD_RESTART_RESULT_PATH_ENV)?),
+                PathBuf::from(required_env(CHILD_RESTART_ACK_PATH_ENV)?),
             )
             .await
         }
@@ -309,6 +320,7 @@ async fn run_observer(
     outage_request_path: PathBuf,
     outage_result_path: PathBuf,
     restart_result_path: PathBuf,
+    restart_ack_path: PathBuf,
 ) -> TestResult<()> {
     let initial_generation = rustok_rbac::read_permission_invalidation_generation(&db).await?;
     let fast_user_allowed =
@@ -381,6 +393,7 @@ async fn run_observer(
             redis_configured,
         },
     )?;
+    wait_for_file(&restart_ack_path, Duration::from_secs(3)).await?;
     Ok(())
 }
 
@@ -441,6 +454,7 @@ fn spawn_observer(
     outage_request_path: &Path,
     outage_result_path: &Path,
     restart_result_path: &Path,
+    restart_ack_path: &Path,
 ) -> TestResult<Child> {
     let mut command = child_command("observer", database_url, redis_url, tenant_id)?;
     command
@@ -450,7 +464,8 @@ fn spawn_observer(
         .env(CHILD_FAST_RESULT_PATH_ENV, fast_result_path)
         .env(CHILD_OUTAGE_REQUEST_PATH_ENV, outage_request_path)
         .env(CHILD_OUTAGE_RESULT_PATH_ENV, outage_result_path)
-        .env(CHILD_RESTART_RESULT_PATH_ENV, restart_result_path);
+        .env(CHILD_RESTART_RESULT_PATH_ENV, restart_result_path)
+        .env(CHILD_RESTART_ACK_PATH_ENV, restart_ack_path);
     Ok(command.spawn()?)
 }
 
@@ -548,7 +563,7 @@ async fn wait_for_redis(url: &str) -> TestResult<()> {
     Ok(())
 }
 
-async fn wait_for_redis_subscribers(url: &str, expected: usize) -> TestResult<()> {
+async fn wait_for_redis_subscribers(url: &str, expected: usize, stage: &str) -> TestResult<()> {
     tokio::time::timeout(Duration::from_secs(6), async {
         loop {
             if let Ok(client) = redis::Client::open(url)
@@ -571,7 +586,11 @@ async fn wait_for_redis_subscribers(url: &str, expected: usize) -> TestResult<()
         }
     })
     .await
-    .map_err(|_| test_error(format!("Redis did not expose {expected} RBAC subscribers")))?;
+    .map_err(|_| {
+        test_error(format!(
+            "Redis did not expose {expected} RBAC subscribers during {stage}"
+        ))
+    })?;
     Ok(())
 }
 
