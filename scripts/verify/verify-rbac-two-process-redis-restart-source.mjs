@@ -61,6 +61,8 @@ for (const marker of [
   'redis::cmd("PUBSUB")',
   '.arg("NUMSUB")',
   "RBAC_PERMISSION_INVALIDATION_CHANNEL",
+  "let restart_user_rewarmed = RbacService::has_permission(",
+  "restart user process-cache precondition was not restored before Redis outage",
   "stop_redis(&mut redis_process)",
   "redis_process = spawn_redis",
   "replica_sequence_started.elapsed() > REPLICA_SEQUENCE_BOUND",
@@ -74,6 +76,20 @@ for (const marker of [
   "outage_result.authoritative_allowed",
   "restart_result.allowed",
 ]) requireText(sources.harness, marker, `${files.harness}: two-process Redis harness`);
+
+const outageRewarmIndex = sources.harness.indexOf(
+  "let restart_user_rewarmed = RbacService::has_permission(",
+);
+const firstRedisStopIndex = sources.harness.indexOf("stop_redis(&mut redis_process)");
+if (
+  outageRewarmIndex < 0 ||
+  firstRedisStopIndex < 0 ||
+  outageRewarmIndex > firstRedisStopIndex
+) {
+  failures.push(
+    `${files.harness}: outage-user process cache must be re-primed after fast-path invalidation and before Redis shutdown`,
+  );
+}
 
 for (const forbidden of [
   "start_rbac_invalidation_generation_watchdog",
@@ -175,5 +191,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready RBAC two-process Redis harness holds the recovered observer through parent NUMSUB proof, labels subscription phases, retains completed Redis execution in the handoff, and keeps the CLI runtime gate open",
+  "✔ source-ready RBAC two-process Redis harness holds the recovered observer through parent NUMSUB proof, re-primes the outage-user process-cache precondition after fast-path invalidation, labels subscription phases, retains completed Redis execution in the handoff, and keeps the CLI runtime gate open",
 );
