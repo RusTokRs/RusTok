@@ -6,17 +6,18 @@ use uuid::Uuid;
 
 use crate::{
     AlloyImportError, AlloyPublishedReleaseImportCommand, AlloyReleaseImporter,
-    AlloyReleaseStageCommand, RevisionedReleaseStager, RevisionedTestRunner, ScriptRegistry,
-    TestCommand,
-    model::{ReviewCommand, Script, ScriptStatus, SourceProvenance},
+    AlloyReleaseStageCommand, RevisionedReleaseStager, RevisionedTestRunner,
+    ScriptEvidenceRetentionCommand, ScriptRegistry, TestCommand,
+    model::{ReviewCommand, Script, ScriptDeletionCommand, ScriptStatus, SourceProvenance},
     runner::ExecutionOutcome,
     utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
 };
 
 use super::{
-    CreateScriptInput, GqlExecutionResult, GqlImportedDraft, GqlReviewDecision, GqlScript,
-    GqlStageRelease, GqlTestRun, ImportPublishedReleaseInput, ReviewScriptInput, RunScriptInput,
-    RunWorkspaceTestInput, ScriptTriggerInput, StageReleaseInput, UpdateScriptInput,
+    CreateScriptInput, DeleteScriptInput, GqlDeletedEvidenceRetention, GqlExecutionResult,
+    GqlImportedDraft, GqlReviewDecision, GqlScript, GqlStageRelease, GqlTestRun,
+    ImportPublishedReleaseInput, ReviewScriptInput, RunScriptInput, RunWorkspaceTestInput,
+    ScriptTriggerInput, StageReleaseInput, UpdateDeletedEvidenceRetentionInput, UpdateScriptInput,
     published_rhai_source_from_graphql_ctx, release_governance_from_graphql_ctx, require_admin,
     require_release_admin, runtime_from_graphql_ctx,
 };
@@ -178,27 +179,56 @@ impl AlloyMutation {
         Ok(saved.into())
     }
 
-    async fn delete_script(
-        &self,
-        ctx: &Context<'_>,
-        id: Uuid,
-        expected_version: u32,
-    ) -> Result<bool> {
-        require_admin(ctx).await?;
+    async fn delete_script(&self, ctx: &Context<'_>, input: DeleteScriptInput) -> Result<bool> {
+        let auth = require_admin(ctx).await?;
         let runtime = runtime_from_graphql_ctx(ctx)?;
-        let script = runtime
-            .storage
-            .get(id)
-            .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-        ensure_expected_revision(&script, expected_version)?;
+        let script = match runtime.storage.get(input.id).await {
+            Ok(script) => {
+                ensure_expected_revision(&script, input.expected_version)?;
+                Some(script)
+            }
+            Err(crate::ScriptError::NotFound { .. }) => None,
+            Err(error) => return Err(async_graphql::Error::new(error.to_string())),
+        };
         runtime
             .storage
-            .delete(id, expected_version)
+            .delete(ScriptDeletionCommand {
+                script_id: input.id,
+                expected_revision: input.expected_version,
+                actor_id: auth.user_id.to_string(),
+                reason: input.reason,
+                idempotency_key: input.idempotency_key,
+            })
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        if let Some(script) = script {
+            runtime.engine.invalidate(&script.name);
+        }
 
         Ok(true)
+    }
+
+    async fn update_deleted_evidence_retention(
+        &self,
+        ctx: &Context<'_>,
+        input: UpdateDeletedEvidenceRetentionInput,
+    ) -> Result<GqlDeletedEvidenceRetention> {
+        let auth = require_admin(ctx).await?;
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let retention = runtime
+            .storage
+            .update_deleted_evidence_retention(ScriptEvidenceRetentionCommand {
+                script_id: input.script_id,
+                deletion_request_digest: input.deletion_request_digest,
+                expected_retention_revision: input.expected_retention_revision,
+                action: input.action.into(),
+                actor_id: auth.user_id.to_string(),
+                reason: input.reason,
+                idempotency_key: input.idempotency_key,
+            })
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        Ok(retention.into())
     }
 
     async fn run_script(

@@ -71,13 +71,15 @@ Available when `AlloyScaffoldState` is configured:
 - `alloy_script_helpers`
 
 Generic stdio and in-process MCP do not expose tenant-owned Alloy script reads,
-CRUD, validation, or execution. The generic adapter has no owner-scoped Alloy
-runtime, so exposing those operations would make tenant binding and actor audit
-ambiguous. Authenticated server remote JSON/SSE transport composes the
-remote-only `alloy_*_script` authoring tools from the same tenant-scoped Alloy
+CRUD, validation, execution, or deleted-evidence retention authority. The
+generic adapter has no owner-scoped Alloy runtime, so exposing those operations
+would make tenant binding and actor audit ambiguous. Authenticated server remote
+JSON/SSE transport composes the remote-only `alloy_*_script` authoring and
+`alloy_*_deleted_evidence_retention` tools from the same tenant-scoped Alloy
 runtime as HTTP and GraphQL. It requires `scripts.manage`, derives actor and
 tenant from the durable MCP binding, checks identity-to-binding tenant equality,
-and returns source-redacted results. Those names are guarded from generic MCP.
+and returns source-redacted or source-free results. Those names are guarded from
+generic MCP.
 
 `alloy_scaffold_module` stages a reviewed design scaffold for
 `crates/rustok-<slug>`; it records requested transport surfaces in documentation

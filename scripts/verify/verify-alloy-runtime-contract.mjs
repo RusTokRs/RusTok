@@ -50,9 +50,26 @@ sameArray(contract.script_crud_validation_contract?.rest_update, ['invalidate_ol
 sameArray(contract.script_crud_validation_contract?.graphql_create_update, ['require_admin', 'require_matching_authenticated_tenant', 'validate_cron_trigger', 'validate_workspace_and_compile_entrypoint_before_save', 'tenant_from_context_on_create', 'author_from_authenticated_context', 'require_expected_version'], 'GraphQL create/update validation');
 sameArray(contract.execution_command_contract?.manual_run, ['require_expected_version', 'execute_loaded_snapshot', 'require_scripts_manage_and_matching_authenticated_tenant', 'record_authenticated_actor'], 'manual execution revision contract');
 sameArray(contract.lifecycle_command_contract?.rest_activate_pause, ['require_expected_version', 'require_scripts_manage_and_matching_authenticated_tenant', 'record_authenticated_actor'], 'REST lifecycle revision contract');
-sameArray(contract.lifecycle_command_contract?.rest_delete, ['require_expected_version'], 'REST delete revision contract');
+sameArray(contract.lifecycle_command_contract?.rest_delete, ['require_expected_version', 'require_scripts_manage_and_matching_authenticated_tenant', 'derive_actor_from_authenticated_principal', 'require_reason_and_idempotency_key', 'durable_tombstone_audit_receipt', 'initialize_fixed_retain_until_evidence_window', 'schedule_expired_evidence_collection', 'expose_revision_guarded_legal_hold_owner_lifecycle', 'exact_idempotency_replay_only'], 'REST delete command contract');
 sameArray(contract.lifecycle_command_contract?.graphql_status_mutations, ['require_expected_version'], 'GraphQL lifecycle revision contract');
-sameArray(contract.lifecycle_command_contract?.graphql_delete, ['require_expected_version'], 'GraphQL delete revision contract');
+sameArray(contract.lifecycle_command_contract?.graphql_delete, ['require_expected_version', 'require_scripts_manage_and_matching_authenticated_tenant', 'derive_actor_from_authenticated_principal', 'require_reason_and_idempotency_key', 'durable_tombstone_audit_receipt', 'initialize_fixed_retain_until_evidence_window', 'schedule_expired_evidence_collection', 'expose_revision_guarded_legal_hold_owner_lifecycle', 'exact_idempotency_replay_only'], 'GraphQL delete command contract');
+if (contract.deletion_contract?.persistence !== 'tenant_scoped_durable_tombstone_audit_receipt') fail('deletion persistence contract drift');
+if (contract.deletion_contract?.precondition !== 'expected_current_revision') fail('deletion revision contract drift');
+if (contract.deletion_contract?.idempotency !== 'script_id_idempotency_key_and_request_digest') fail('deletion idempotency contract drift');
+if (contract.deletion_contract?.actor !== 'derived_from_authenticated_principal' || contract.deletion_contract?.reason !== 'required_bounded_text') fail('deletion attribution contract drift');
+sameArray(contract.deletion_contract?.audit_fields, ['deleted_by', 'delete_reason', 'idempotency_key', 'request_digest', 'deleted_at'], 'deletion audit fields');
+if (contract.deletion_contract?.replay !== 'exact_request_digest_only') fail('deletion replay contract drift');
+if (contract.deletion_contract?.retained_evidence_visibility !== 'owner_reads_return_not_found_after_delete') fail('deletion evidence visibility contract drift');
+if (contract.deletion_contract?.retention?.initial_policy !== 'retain_until' || contract.deletion_contract?.retention?.initial_duration_days !== 30) fail('deletion initial retention contract drift');
+if (contract.deletion_contract?.retention?.automatic_collection !== 'owner_scheduler_collects_only_expired_retain_until_tombstones') fail('deletion automatic collection contract drift');
+sameArray(contract.deletion_contract?.retention?.collected_evidence, ['tombstone', 'source_revisions', 'reviews', 'test_runs'], 'deletion collected evidence');
+if (contract.deletion_contract?.retention?.purge_receipt !== 'content_free_tenant_scoped_counts_and_request_digest') fail('deletion purge receipt contract drift');
+if (contract.deletion_contract?.retention?.post_expiry_redaction !== 'irreversibly_erases_review_reasons_and_test_diagnostics_without_a_redacted_copy') fail('deletion post-expiry redaction contract drift');
+if (contract.deletion_contract?.retention?.legal_hold_collection !== 'excluded_from_automatic_collection' || contract.deletion_contract?.retention?.legal_hold_authority !== 'revision_guarded_owner_lifecycle_command') fail('deletion legal-hold contract drift');
+if (contract.deletion_contract?.retention?.legal_hold_release !== 'starts_new_fixed_retain_until_window') fail('deletion legal-hold release contract drift');
+if (contract.deletion_contract?.retention?.state_read !== 'source_free_tenant_scoped_owner_read') fail('deletion retention state-read contract drift');
+if (contract.deletion_contract?.retention?.idempotency !== 'tenant_script_deletion_digest_idempotency_key_and_request_digest') fail('deletion retention idempotency contract drift');
+if (contract.deletion_contract?.retention?.audit_receipt !== 'actor_action_policy_revision_and_request_digest_without_reason') fail('deletion retention audit receipt contract drift');
 if (contract.source_revision_ledger_contract?.persistence !== 'durable_immutable_source_snapshots') fail('source revision ledger persistence contract drift');
 if (contract.source_revision_ledger_contract?.lookup !== 'owner_scoped_by_script_id_and_revision') fail('source revision ledger lookup contract drift');
 if (contract.source_revision_ledger_contract?.listing !== 'owner_tenant_scoped_revision_ascending') fail('source revision ledger listing contract drift');
@@ -110,6 +127,7 @@ sameArray(contract.scheduler_hook_contract?.before_outcomes, ['Continue', 'Rejec
 
 if (evidence.generated_from !== contractPath || evidence.status !== contract.status) fail('evidence header drift');
 sameArray(evidence.cases.map(c => c.name), ['script_list_pagination_status_contract', 'execution_history_transport_contract', 'documentation_sync_contract', 'sandbox_limits_timeout_contract', 'scheduler_hook_runtime_contract', 'script_crud_validation_contract', 'execution_command_revision_contract', 'lifecycle_command_revision_contract', 'source_revision_ledger_read_contract', 'workspace_payload_contract', 'review_revision_contract', 'test_command_revision_contract', 'release_stage_revision_contract', 'release_capability_declaration_contract'], 'evidence cases');
+sameArray(evidence.cases.find(c => c.name === 'lifecycle_command_revision_contract')?.assertions, ['rest_activate_pause_require_expected_revision', 'rest_delete_requires_attributable_idempotent_command', 'graphql_status_mutations_require_expected_revision', 'graphql_delete_requires_attributable_idempotent_command', 'deletion_tombstone_persists_audit_receipt_and_replays_only_exactly', 'deletion_initializes_fixed_retain_until_window', 'expiry_reaper_collects_evidence_with_content_free_receipt', 'post_expiry_collection_erases_review_reasons_and_test_diagnostics', 'legal_hold_is_excluded_from_automatic_collection', 'legal_hold_owner_lifecycle_is_revision_guarded_and_idempotent', 'legal_hold_transports_are_tenant_bound_and_source_free', 'generic_mcp_does_not_expose_script_mutation'], 'lifecycle evidence assertions');
 
 const dto = read('crates/alloy/src/api/dto.rs');
 hasAll(dto, [
@@ -209,6 +227,15 @@ const scriptsMigration = read('crates/alloy/src/migration.rs');
 hasAll(scriptsMigration, [
   'alloy_script_tombstones',
   'idx_alloy_script_tombstones_deleted_at',
+  'idx_alloy_script_tombstones_retention',
+  'alloy_script_purge_receipts',
+  'uidx_alloy_script_purge_receipts_deletion',
+  'alloy_script_retention_receipts',
+  'uidx_alloy_script_retention_receipts_idempotency',
+  'RetentionRevision',
+  'DeletionRequestDigest',
+  'RetentionPolicy',
+  'RetainUntil',
   'ScriptTombstones'
 ], 'Alloy retired script identity migration');
 
@@ -350,8 +377,14 @@ hasAll(installation, [
   'pub payload_media_type: String',
   'admission.media_type AS payload_media_type',
   'media_type: self.payload_media_type.clone()',
-  'rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE'
+  'valid_media_type_for(self.descriptor.payload_kind, &self.payload_media_type)',
+  'fn valid_media_type_for(kind: ArtifactPayloadKind, media_type: &str)'
 ], 'durable artifact payload media type');
+const moduleArtifact = read('crates/rustok-modules/src/artifact.rs');
+hasAll(moduleArtifact, [
+  'pub fn supports_media_type(self, media_type: &str) -> bool',
+  'MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE | rustok_sandbox::RHAI_WORKSPACE_MEDIA_TYPE'
+], 'Rhai artifact media type allowlist');
 const reviewGraphql = read('crates/alloy/src/graphql/mutation.rs');
 hasAll(reviewGraphql, [
   'async fn review_script',
@@ -541,25 +574,120 @@ hasAll(gqlMutation, [
 ], 'GraphQL lifecycle revision validation');
 hasAll(gqlMutation, [
   'async fn delete_script',
-  'expected_version: u32',
-  '.delete(id, expected_version)'
-], 'GraphQL delete revision validation');
+  'input: DeleteScriptInput',
+  'input.expected_version',
+  'ScriptDeletionCommand',
+  'actor_id: auth.user_id.to_string()',
+  '.delete(ScriptDeletionCommand {'
+], 'GraphQL attributable delete command');
+const deletionModel = read('crates/alloy/src/model/deletion.rs');
+hasAll(deletionModel, [
+  'DELETED_EVIDENCE_RETENTION_DAYS: i64 = 30',
+  'pub fn deleted_evidence_retention',
+  'RetentionPolicy::RetainUntil',
+  'Client deletion requests never choose the'
+], 'Alloy fixed deletion retention policy');
+const retentionModel = read('crates/alloy/src/model/retention.rs');
+hasAll(retentionModel, [
+  'pub enum ScriptEvidenceRetentionAction',
+  'ApplyLegalHold',
+  'ReleaseLegalHold',
+  'pub struct ScriptEvidenceRetentionCommand',
+  'pub deletion_request_digest: String',
+  'expected_retention_revision',
+  'pub struct ScriptEvidenceRetentionState',
+  'starts a new owner-selected `retain_until` window',
+  'a_legal_hold_clears_the_deadline_and_release_starts_a_new_window'
+], 'Alloy legal-hold retention model');
 const storageTraits = read('crates/alloy/src/storage/traits.rs');
 hasAll(storageTraits, [
-  'async fn delete(&self, id: ScriptId, expected_version: u32)'
-], 'owner delete CAS contract');
+  'async fn delete(&self, command: ScriptDeletionCommand)',
+  'async fn get_deleted_evidence_retention',
+  'async fn update_deleted_evidence_retention',
+  'async fn purge_expired_evidence(&self, now: DateTime<Utc>, limit: u16)'
+], 'owner attributable delete contract');
 const memoryStorage = read('crates/alloy/src/storage/memory.rs');
 hasAll(memoryStorage, [
-  'async fn delete(&self, id: ScriptId, expected_version: u32)',
-  'script.version != expected_version',
-  'ScriptError::RevisionConflict'
-], 'memory delete CAS');
+  'async fn delete(&self, command: ScriptDeletionCommand)',
+  'script.version != command.expected_revision',
+  'deletion_receipts',
+  'ScriptDeletionError::IdempotencyConflict',
+  'ScriptError::RevisionConflict',
+  'async fn purge_expired_evidence',
+  'RetentionPolicy::RetainUntil',
+  'purge_receipts',
+  'retention_receipts',
+  'ScriptEvidenceRetentionError::IdempotencyConflict',
+  'Review reason that must be erased after expiry.',
+  'Test diagnostic that must be erased after expiry.',
+  'legal_hold_requires_a_retention_revision_and_blocks_collection_until_release'
+], 'memory attributable delete contract');
 const seaOrmStorage = read('crates/alloy/src/storage/sea_orm.rs');
 hasAll(seaOrmStorage, [
-  'async fn delete(&self, id: ScriptId, expected_version: u32)',
+  'async fn delete(&self, command: ScriptDeletionCommand)',
   'Column::Version.eq',
-  'ScriptError::RevisionConflict'
-], 'SeaORM delete CAS');
+  'deleted_by: ActiveValue::Set(command.actor_id)',
+  'delete_reason: ActiveValue::Set(command.reason)',
+  'request_digest: ActiveValue::Set(request_digest)',
+  'ScriptError::RevisionConflict',
+  'async fn purge_expired_evidence',
+  'Alloy evidence retention must run through the unscoped owner storage',
+  'RetentionPolicy::RetainUntil.as_str()',
+  'draft_revision::Entity::delete_many()',
+  'draft_review::Entity::delete_many()',
+  'draft_test_run::Entity::delete_many()',
+  'draft_purge_receipt::Entity::insert',
+  'draft_retention_receipt::Entity::insert',
+  'RetentionRevision',
+  'Review reason that must be erased after expiry.',
+  'Test diagnostic that must be erased after expiry.',
+  'legal_hold_is_durable_tenant_scoped_and_excluded_from_collection'
+], 'SeaORM attributable delete contract');
+const coreRetention = read('crates/rustok-core/src/retention.rs');
+hasAll(coreRetention, [
+  'pub enum RetentionPolicy',
+  'Self::LegalHold => "legal_hold"',
+  '!matches!(self, Self::LegalHold)'
+], 'shared retention legal-hold guard');
+hasAll(controllers, [
+  'async fn get_deleted_evidence_retention',
+  'async fn update_deleted_evidence_retention',
+  '/api/alloy/deleted-scripts/{id}/retention',
+  'ScriptEvidenceRetentionCommand',
+  'alloy_evidence_retention_revision_conflict'
+], 'Alloy host HTTP legal-hold transport');
+hasAll(gqlMutation, [
+  'async fn update_deleted_evidence_retention',
+  'UpdateDeletedEvidenceRetentionInput',
+  'ScriptEvidenceRetentionCommand',
+  'actor_id: auth.user_id.to_string()'
+], 'Alloy GraphQL legal-hold mutation');
+const gqlQuery = read('crates/alloy/src/graphql/query.rs');
+hasAll(gqlQuery, [
+  'async fn deleted_evidence_retention',
+  '.get_deleted_evidence_retention(script_id)'
+], 'Alloy GraphQL legal-hold query');
+const gqlTypes = read('crates/alloy/src/graphql/types.rs');
+hasAll(gqlTypes, [
+  'pub enum GqlRetentionPolicy',
+  'pub enum GqlEvidenceRetentionAction',
+  'pub struct UpdateDeletedEvidenceRetentionInput',
+  'pub struct GqlDeletedEvidenceRetention'
+], 'Alloy GraphQL legal-hold types');
+const remoteAlloyAuthoring = read('crates/rustok-mcp/src/alloy_authoring.rs');
+hasAll(remoteAlloyAuthoring, [
+  'TOOL_ALLOY_GET_DELETED_EVIDENCE_RETENTION',
+  'TOOL_ALLOY_CHANGE_DELETED_EVIDENCE_RETENTION',
+  'owner-bound Alloy authoring'
+], 'remote MCP legal-hold tool contract');
+const remoteAlloyController = read('apps/server/src/controllers/mcp.rs');
+hasAll(remoteAlloyController, [
+  'TOOL_ALLOY_GET_DELETED_EVIDENCE_RETENTION',
+  'TOOL_ALLOY_CHANGE_DELETED_EVIDENCE_RETENTION',
+  '.get_deleted_evidence_retention(parse_remote_alloy_args(arguments)?)',
+  '.change_deleted_evidence_retention(&actor_id, parse_remote_alloy_args(arguments)?)',
+  'owner_bound_alloy_authoring'
+], 'remote MCP legal-hold transport');
 const mcpAlloyTools = read('crates/rustok-mcp/src/alloy_tools.rs');
 for (const forbidden of [
   'alloy_list_scripts',
@@ -567,6 +695,8 @@ for (const forbidden of [
   'alloy_create_script',
   'alloy_update_script',
   'alloy_delete_script',
+  'alloy_get_deleted_evidence_retention',
+  'alloy_change_deleted_evidence_retention',
   'alloy_validate_script',
   'alloy_run_script',
   'ScriptRegistry'
@@ -600,7 +730,11 @@ hasAll(scheduler, [
   '.with_tenant(script.tenant_id.to_string())',
   'self.update_schedule(&script).await',
   'job.running = false',
-  'scheduler_tick_persists_execution_log_with_script_tenant'
+  'scheduler_tick_persists_execution_log_with_script_tenant',
+  'EVIDENCE_RETENTION_SWEEP_LIMIT: u16 = 64',
+  'EVIDENCE_RETENTION_SWEEP_INTERVAL',
+  '.purge_expired_evidence(now, EVIDENCE_RETENTION_SWEEP_LIMIT)',
+  'scheduler_tick_collects_expired_deleted_evidence'
 ], 'scheduler phase tenant and running flag contract');
 
 const hookExecutor = read('crates/alloy/src/integration/hook_executor.rs');

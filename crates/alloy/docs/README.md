@@ -35,8 +35,17 @@ modules, but remains a capability-only layer, not a tenant business domain.
   deleted scripts also hide their retained source, review, and test evidence
   from every owner read path and review/test idempotency replay. A test lease
   that races with deletion is settled for retention, then returns `NotFound`;
-  the durable tombstone keeps that script ID non-reusable until retention policy
-  purges it;
+  the durable tombstone keeps that script ID non-reusable until the global owner
+  scheduler collects its fixed 30-day `retain_until` window. The collection
+  transaction removes the tombstone, source revisions, reviews, and test runs,
+then retains a content-free purge receipt with counts and request digest.
+Collection irreversibly erases review reasons and test diagnostics and retains
+no redacted copy. `legal_hold` remains excluded from automatic collection. Owner HTTP,
+  GraphQL, and remote MCP expose only source-free retention state and apply
+  revision-guarded, deletion-digest-bound hold transitions. Applying a hold
+  removes the deadline; releasing it starts a new fixed 30-day window. The
+  durable retention receipt records actor, action, policy, revision, and
+  request digests without retaining the reason;
 - owner-resolved installed-parent sandbox policy for imported-draft previews
   and workspace tests, with no default-policy fallback;
 - no transformation of the script runtime into a separate tenant business domain.

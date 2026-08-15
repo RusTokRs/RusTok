@@ -10,8 +10,9 @@ does not define or re-export `Port*` types.
 
 - Define the base module traits and registry-facing contracts.
 - Define runtime identity, RBAC, security-context, ID, and error primitives; permission DTOs are consumed from `rustok-api`.
+- Define the shared retention-policy vocabulary and deadline validation used by evidence-owning domains.
 - Provide flex/custom-fields schema contracts and content-format helpers used by multiple domains.
-- Keep compatibility re-exports for foundational runtime contracts that are being split into dedicated crates.
+- Re-export canonical foundational runtime contracts from dedicated modules.
 - Expose event foundation contracts, including EventBus stats, in-memory transport reliability, and backpressure observability controls, dispatcher retry semantics, and dispatch latency hooks.
 - Stay free from host-specific transport, ORM, and UI concerns.
 - Remain free from domain-specific orchestration logic (auth lifecycle, user CRUD, commerce flows).

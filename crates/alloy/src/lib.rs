@@ -32,13 +32,14 @@ pub use artifact::{
 };
 pub use authoring::{
     AlloyAuthoringError, AlloyAuthoringService, AlloyExecutionOutcome, AlloyScriptLifecycleAction,
-    AlloyScriptValidation, AuthoringEntityInput, ChangeAlloyScriptLifecycleCommand,
-    CreateAlloyScriptCommand, DeleteAlloyScriptCommand, DeletedAlloyScript, GetAlloyScriptCommand,
+    AlloyScriptValidation, AuthoringEntityInput, ChangeAlloyDeletedEvidenceRetentionCommand,
+    ChangeAlloyScriptLifecycleCommand, CreateAlloyScriptCommand, DeleteAlloyScriptCommand,
+    DeletedAlloyScript, GetAlloyDeletedEvidenceRetentionCommand, GetAlloyScriptCommand,
     ListAlloyScriptReviewsCommand, ListAlloyScriptRevisionsCommand, ListAlloyScriptsCommand,
-    RedactedAlloyExecution, RedactedAlloyReview, RedactedAlloyScript, RedactedAlloyScriptPage,
-    RedactedAlloySourceRevision, RedactedAlloyTestRun, ReviewAlloyScriptCommand,
-    RunAlloyScriptCommand, RunAlloyWorkspaceTestCommand, UpdateAlloyScriptCommand,
-    ValidateAlloyScriptCommand,
+    RedactedAlloyEvidenceRetention, RedactedAlloyExecution, RedactedAlloyReview,
+    RedactedAlloyScript, RedactedAlloyScriptPage, RedactedAlloySourceRevision,
+    RedactedAlloyTestRun, ReviewAlloyScriptCommand, RunAlloyScriptCommand,
+    RunAlloyWorkspaceTestCommand, UpdateAlloyScriptCommand, ValidateAlloyScriptCommand,
 };
 pub use bridge::{Bridge, PhaseCapabilities};
 pub use context::{ExecutionContext, ExecutionPhase};
@@ -54,12 +55,14 @@ pub use migration::ScriptsMigration;
 pub use model::{
     AlloyImportError, AlloyImportedDraftCommand, AlloyImportedDraftResult,
     AlloyPublicationSmokeEvidence, AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSource,
-    AlloyReleaseError, AlloyReleaseStageCommand, AuthoringOrigin, EntityProxy, EventType,
-    HttpMethod, ProvenanceError, ReviewCommand, ReviewDecision, ReviewError, ReviewStatus,
-    RhaiWorkspace, RhaiWorkspaceError, RhaiWorkspaceFile, RhaiWorkspaceFileKind, Script, ScriptId,
-    ScriptSourceRevision, ScriptStatus, ScriptTrigger, SourceProvenance, TestCommand, TestRun,
-    TestRunClaim, TestRunCompletion, TestRunError, TestRunLease, TestRunStatus,
-    register_entity_proxy,
+    AlloyReleaseError, AlloyReleaseStageCommand, AuthoringOrigin, DELETED_EVIDENCE_RETENTION_DAYS,
+    EntityProxy, EventType, HttpMethod, ProvenanceError, ReviewCommand, ReviewDecision,
+    ReviewError, ReviewStatus, RhaiWorkspace, RhaiWorkspaceError, RhaiWorkspaceFile,
+    RhaiWorkspaceFileKind, Script, ScriptDeletionCommand, ScriptDeletionError,
+    ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError,
+    ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger,
+    SourceProvenance, TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunError,
+    TestRunLease, TestRunStatus, deleted_evidence_retention, register_entity_proxy,
 };
 pub use runner::{
     AlloyPublishedRhaiSourceProvider, AlloyPublishedRhaiSourceProviderHandle,

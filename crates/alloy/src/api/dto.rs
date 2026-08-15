@@ -50,6 +50,24 @@ pub struct ScriptRevisionRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DeleteScriptRequest {
+    pub expected_version: u32,
+    pub reason: String,
+    pub idempotency_key: Uuid,
+}
+
+/// Owner-only transition for evidence belonging to an already deleted draft.
+/// The deletion digest binds the request to one non-reusable tombstone lineage.
+#[derive(Debug, Deserialize)]
+pub struct UpdateDeletedEvidenceRetentionRequest {
+    pub deletion_request_digest: String,
+    pub expected_retention_revision: u32,
+    pub action: crate::ScriptEvidenceRetentionAction,
+    pub reason: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ReviewScriptRequest {
     pub expected_version: u32,
     pub status: ReviewStatus,
@@ -601,5 +619,35 @@ mod tests {
         let request = serde_json::from_str::<ScriptRevisionRequest>(r#"{"expected_version": 3}"#)
             .expect("expected version should deserialize");
         assert_eq!(request.expected_version, 3);
+    }
+
+    #[test]
+    fn delete_request_requires_attributable_retention_metadata() {
+        assert!(serde_json::from_str::<DeleteScriptRequest>(r#"{"expected_version": 3}"#).is_err());
+        let request = serde_json::from_str::<DeleteScriptRequest>(
+            r#"{"expected_version":3,"reason":"Superseded by a reviewed draft.","idempotency_key":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}"#,
+        )
+        .expect("complete deletion request should deserialize");
+        assert_eq!(request.expected_version, 3);
+        assert_eq!(request.reason, "Superseded by a reviewed draft.");
+    }
+
+    #[test]
+    fn deleted_evidence_retention_request_requires_a_bound_revision_command() {
+        assert!(
+            serde_json::from_str::<UpdateDeletedEvidenceRetentionRequest>(
+                r#"{"expected_retention_revision":2}"#
+            )
+            .is_err()
+        );
+        let request = serde_json::from_str::<UpdateDeletedEvidenceRetentionRequest>(
+            r#"{"deletion_request_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expected_retention_revision":2,"action":"apply_legal_hold","reason":"Legal preservation is required.","idempotency_key":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}"#,
+        )
+        .expect("complete evidence retention request should deserialize");
+        assert_eq!(request.expected_retention_revision, 2);
+        assert!(matches!(
+            request.action,
+            crate::ScriptEvidenceRetentionAction::ApplyLegalHold
+        ));
     }
 }

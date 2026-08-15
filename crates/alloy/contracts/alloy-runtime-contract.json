@@ -154,14 +154,65 @@
       "record_authenticated_actor"
     ],
     "rest_delete": [
-      "require_expected_version"
+      "require_expected_version",
+      "require_scripts_manage_and_matching_authenticated_tenant",
+      "derive_actor_from_authenticated_principal",
+      "require_reason_and_idempotency_key",
+      "durable_tombstone_audit_receipt",
+      "initialize_fixed_retain_until_evidence_window",
+      "schedule_expired_evidence_collection",
+      "expose_revision_guarded_legal_hold_owner_lifecycle",
+      "exact_idempotency_replay_only"
     ],
     "graphql_status_mutations": [
       "require_expected_version"
     ],
     "graphql_delete": [
-      "require_expected_version"
+      "require_expected_version",
+      "require_scripts_manage_and_matching_authenticated_tenant",
+      "derive_actor_from_authenticated_principal",
+      "require_reason_and_idempotency_key",
+      "durable_tombstone_audit_receipt",
+      "initialize_fixed_retain_until_evidence_window",
+      "schedule_expired_evidence_collection",
+      "expose_revision_guarded_legal_hold_owner_lifecycle",
+      "exact_idempotency_replay_only"
     ]
+  },
+  "deletion_contract": {
+    "persistence": "tenant_scoped_durable_tombstone_audit_receipt",
+    "precondition": "expected_current_revision",
+    "idempotency": "script_id_idempotency_key_and_request_digest",
+    "actor": "derived_from_authenticated_principal",
+    "reason": "required_bounded_text",
+    "audit_fields": [
+      "deleted_by",
+      "delete_reason",
+      "idempotency_key",
+      "request_digest",
+      "deleted_at"
+    ],
+    "replay": "exact_request_digest_only",
+    "retained_evidence_visibility": "owner_reads_return_not_found_after_delete",
+    "retention": {
+      "initial_policy": "retain_until",
+      "initial_duration_days": 30,
+      "automatic_collection": "owner_scheduler_collects_only_expired_retain_until_tombstones",
+      "collected_evidence": [
+        "tombstone",
+        "source_revisions",
+        "reviews",
+        "test_runs"
+      ],
+      "purge_receipt": "content_free_tenant_scoped_counts_and_request_digest",
+      "post_expiry_redaction": "irreversibly_erases_review_reasons_and_test_diagnostics_without_a_redacted_copy",
+      "legal_hold_collection": "excluded_from_automatic_collection",
+      "legal_hold_authority": "revision_guarded_owner_lifecycle_command",
+      "legal_hold_release": "starts_new_fixed_retain_until_window",
+      "state_read": "source_free_tenant_scoped_owner_read",
+      "idempotency": "tenant_script_deletion_digest_idempotency_key_and_request_digest",
+      "audit_receipt": "actor_action_policy_revision_and_request_digest_without_reason"
+    }
   },
   "source_revision_ledger_contract": {
     "persistence": "durable_immutable_source_snapshots",

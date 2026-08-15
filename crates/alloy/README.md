@@ -66,6 +66,19 @@ Lifecycle status and deletion mutations also require the caller's
 `expected_version`; owner storage applies the same revision CAS before
 mutating or removing a script.
 
+Deletion creates a fixed 30-day `retain_until` tombstone, chosen only by the
+owner. The global Alloy scheduler collects an expired tombstone with its hidden
+source revisions, reviews, and test runs in one transaction and keeps only a
+content-free receipt (tenant/script identity, timing, counts, and request
+digest). Collection irreversibly erases review reasons and test diagnostics;
+it retains no redacted copy. `legal_hold` is part of the shared retention vocabulary and is never
+an automatic collection candidate. Authenticated owner HTTP, GraphQL, and
+remote MCP commands expose only source-free retention state and use its
+deletion digest and retention revision to apply or release a hold. Applying a
+hold removes the deadline; releasing it begins a new 30-day `retain_until`
+window. The retention audit receipt includes actor, action, policy, revision,
+and request digests but does not retain the reason.
+
 All operator HTTP routes are composed only through `controllers::axum_router`.
 Every route requires an authenticated principal whose tenant matches the request
 tenant and who holds `scripts.manage`; source, execution history, validation,

@@ -82,8 +82,8 @@ pub use machine_service::{
 };
 pub use memory::{
     MemoryEntryRecord, MemoryListInput, MemoryLookupInput, MemoryMatchEvidence, MemoryMatchKind,
-    MemoryMutationRecord, MemoryRetentionPolicy, MemorySuggestion, PurgeMemoryEntryInput,
-    SetMemoryRetentionInput, TombstoneMemoryEntryInput, TranslationMemoryService,
+    MemoryMutationRecord, MemorySuggestion, PurgeMemoryEntryInput, SetMemoryRetentionInput,
+    TombstoneMemoryEntryInput, TranslationMemoryService,
 };
 pub use policy::{
     ReplaceRequiredTargetLocalesInput, TranslationPolicyFreshness, TranslationPolicyRecord,

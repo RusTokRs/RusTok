@@ -158,7 +158,8 @@ machine-translation orchestration.
   evidence. Unknown-locale, sensitive, secret, personal, and immutable
   transaction content does not enter the default memory path.
 - Provides revision-guarded owner-lifecycle, retain-until, and legal-hold
-  policies plus replay-safe tombstone and purge. Tombstoned entries leave
+  policies through the shared `rustok-core::RetentionPolicy` contract, plus
+  replay-safe tombstone and purge. Tombstoned entries leave
   lookup immediately; purge removes content while retaining content-free
   operation receipts.
 - Persists typed QA warnings/errors. Required-field presence, non-empty

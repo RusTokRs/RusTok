@@ -58,11 +58,16 @@ Remaining:
   mutation. A pre-ledger script receives a baseline snapshot before its first
   new revision commits. Owner storage exposes tenant-scoped lookup by
   `(script_id, revision)` and revision-ascending history without SQL bypass;
-- REST and GraphQL update, lifecycle, and deletion commands now require the
-  caller's expected revision; manual-run commands use the same requirement and
-  execute the loaded snapshot without a second registry lookup. Idempotency,
-  workspace-level command revisions, review, and publication orchestration still
-  need owner contracts;
+- REST and GraphQL update and lifecycle commands require the caller's expected
+  revision; manual-run commands use the same requirement and execute the loaded
+  snapshot without a second registry lookup. Deletion additionally requires a
+  bounded reason and a non-nil idempotency key. HTTP, GraphQL, and remote MCP
+  derive the actor from their authenticated owner boundary, then persist the
+  actor, reason, request digest, idempotency key, and deletion time in one
+  tenant-scoped tombstone transaction. Only an exact request digest replays
+  after physical removal; reusing its idempotency key with a different command
+  fails closed. Workspace-level command revisions, review, and publication
+  orchestration still need owner contracts;
 - all host-composed HTTP operator routes now require a matching authenticated
   tenant and `scripts.manage`, including source/history reads, validation,
   manual runs, lifecycle, review, and tests. HTTP and GraphQL derive every
@@ -75,8 +80,22 @@ Remaining:
   owner reads or review/test idempotency replay. A test lease that races with
   deletion is still settled for retention, but its completion returns
   `NotFound`; a durable tombstone keeps its ID non-reusable until the retention
-  policy purges it. The generic in-memory Axum router has been removed so it
-  cannot bypass tenant, permission, or provenance policy;
+  policy purges it. `rustok-core::RetentionPolicy` now provides the canonical
+  `owner_lifecycle` / `retain_until` / `legal_hold` vocabulary and deadline
+  invariant shared with Translation Memory. Alloy deletion atomically assigns a
+  fixed 30-day `retain_until` window. Its global owner scheduler reaps only
+  expired `retain_until` tombstones, their source revisions, reviews, and test
+  runs in one transaction, then retains a content-free receipt with counts and
+  the deletion request digest. `legal_hold` is excluded from automatic
+  collection. Owner HTTP, GraphQL, and remote MCP commands now read a
+  source-free retention state and use its deletion digest plus a separate
+  retention revision for exact, tenant-scoped idempotent hold transitions.
+  Applying a hold clears the deadline; releasing it begins a new fixed 30-day
+  `retain_until` window. The durable retention receipt retains actor, action,
+  policy, revision, and request digests but never the reason. At expiry the
+  collector irreversibly erases review reasons and test diagnostics rather than
+  retaining a redacted copy. The generic in-memory Axum router has
+  been removed so it cannot bypass tenant, permission, or provenance policy;
 - published-release import now has durable exact-replay receipts and immutable
   parent lineage. Registry publication projects the canonical artifact/evidence
   and source-lineage contract through the module owner. The production source
@@ -158,8 +177,12 @@ Remaining:
 - [x] Require the expected revision for REST activate/pause commands and all
   GraphQL status mutations (activate, pause, disable, archive, and reset
   errors); stale lifecycle writes fail with a revision conflict.
-- [x] Require the expected revision for REST and GraphQL deletion, with the
-  owner storage applying an atomic version predicate before removing a script.
+- [x] Require an attributable idempotent command for REST, GraphQL, and remote
+  MCP deletion: expected revision, bounded reason, and idempotency key arrive
+  from the command, while the actor is derived from authenticated owner state.
+  Owner storage applies the atomic version predicate and writes a durable
+  tenant-scoped audit tombstone in the same transaction; only the exact
+  request-digest retry replays after removal.
 - [x] Remove generic MCP script CRUD, validation, and execution. It cannot
   compose an owner-scoped Alloy runtime, so it must not simulate tenant or
   actor binding. Canonical authoring stays on host-composed HTTP and GraphQL.

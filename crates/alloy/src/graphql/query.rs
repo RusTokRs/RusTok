@@ -6,8 +6,9 @@ use uuid::Uuid;
 use crate::{ScriptRegistry, storage::ScriptQuery};
 
 use super::{
-    GqlEventType, GqlExecutionLogConnection, GqlExecutionLogEntry, GqlReviewDecision, GqlScript,
-    GqlScriptConnection, GqlScriptStatus, require_admin, runtime_from_graphql_ctx,
+    GqlDeletedEvidenceRetention, GqlEventType, GqlExecutionLogConnection, GqlExecutionLogEntry,
+    GqlReviewDecision, GqlScript, GqlScriptConnection, GqlScriptStatus, require_admin,
+    runtime_from_graphql_ctx,
 };
 
 pub const EXECUTION_HISTORY_GRAPHQL_FIELDS: &[&str] = &[
@@ -85,6 +86,24 @@ impl AlloyQuery {
         match state.storage.get(id).await {
             Ok(script) => Ok(Some(script.into())),
             Err(_) => Ok(None),
+        }
+    }
+
+    async fn deleted_evidence_retention(
+        &self,
+        ctx: &Context<'_>,
+        script_id: Uuid,
+    ) -> Result<Option<GqlDeletedEvidenceRetention>> {
+        require_admin(ctx).await?;
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        match runtime
+            .storage
+            .get_deleted_evidence_retention(script_id)
+            .await
+        {
+            Ok(retention) => Ok(Some(retention.into())),
+            Err(crate::ScriptError::NotFound { .. }) => Ok(None),
+            Err(error) => Err(async_graphql::Error::new(error.to_string())),
         }
     }
 

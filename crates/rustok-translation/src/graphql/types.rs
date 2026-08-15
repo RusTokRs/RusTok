@@ -2,6 +2,7 @@ use async_graphql::{Enum, FieldError, InputObject, SimpleObject, Union};
 use chrono::{DateTime, FixedOffset};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::{PortActor, PortActorKind, TenantLocale};
+use rustok_core::RetentionPolicy;
 use rustok_translation_targets::{
     FieldKey, OwnerSlug, ResourceId, ResourceKind, TranslationResourceIdentity,
 };
@@ -12,10 +13,9 @@ use crate::{
     GlossaryMatchKind, GlossaryRecord, GlossaryScope, GlossarySummaryRecord, GlossaryTermPolicy,
     GlossaryVariant, JobItemRecord, JobProgressRecord, JobRecord, MachineCancellationRecord,
     MachineProposalOutcome, MachineProposalRecord, MemoryEntryRecord, MemoryMatchEvidence,
-    MemoryMatchKind, MemoryMutationRecord, MemoryRetentionPolicy, MemorySuggestion, ProposalOrigin,
-    ProposalRecord, ProviderProgressRecord, RequiredProviderProgressRecord, RetryRecord,
-    ReviewerQueueRecord, ReviewerWorkloadRecord,
-    TranslationInterchangeArtifactContent as InterchangeArtifactContent,
+    MemoryMatchKind, MemoryMutationRecord, MemorySuggestion, ProposalOrigin, ProposalRecord,
+    ProviderProgressRecord, RequiredProviderProgressRecord, RetryRecord, ReviewerQueueRecord,
+    ReviewerWorkloadRecord, TranslationInterchangeArtifactContent as InterchangeArtifactContent,
     TranslationInterchangeArtifactRecord as InterchangeArtifactRecord,
     TranslationInterchangeConflictReport as InterchangeConflictReport,
     TranslationInterchangeDocument as InterchangeDocument,
@@ -1519,7 +1519,7 @@ pub enum TranslationMemoryRetentionPolicy {
     LegalHold,
 }
 
-impl From<TranslationMemoryRetentionPolicy> for MemoryRetentionPolicy {
+impl From<TranslationMemoryRetentionPolicy> for RetentionPolicy {
     fn from(value: TranslationMemoryRetentionPolicy) -> Self {
         match value {
             TranslationMemoryRetentionPolicy::OwnerLifecycle => Self::OwnerLifecycle,
@@ -1529,12 +1529,12 @@ impl From<TranslationMemoryRetentionPolicy> for MemoryRetentionPolicy {
     }
 }
 
-impl From<MemoryRetentionPolicy> for TranslationMemoryRetentionPolicy {
-    fn from(value: MemoryRetentionPolicy) -> Self {
+impl From<RetentionPolicy> for TranslationMemoryRetentionPolicy {
+    fn from(value: RetentionPolicy) -> Self {
         match value {
-            MemoryRetentionPolicy::OwnerLifecycle => Self::OwnerLifecycle,
-            MemoryRetentionPolicy::RetainUntil => Self::RetainUntil,
-            MemoryRetentionPolicy::LegalHold => Self::LegalHold,
+            RetentionPolicy::OwnerLifecycle => Self::OwnerLifecycle,
+            RetentionPolicy::RetainUntil => Self::RetainUntil,
+            RetentionPolicy::LegalHold => Self::LegalHold,
         }
     }
 }

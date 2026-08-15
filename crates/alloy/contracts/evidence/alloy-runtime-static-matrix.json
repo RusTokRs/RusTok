@@ -74,9 +74,16 @@
       "name": "lifecycle_command_revision_contract",
       "assertions": [
         "rest_activate_pause_require_expected_revision",
-        "rest_delete_requires_expected_revision",
+        "rest_delete_requires_attributable_idempotent_command",
         "graphql_status_mutations_require_expected_revision",
-        "graphql_delete_requires_expected_revision",
+        "graphql_delete_requires_attributable_idempotent_command",
+        "deletion_tombstone_persists_audit_receipt_and_replays_only_exactly",
+        "deletion_initializes_fixed_retain_until_window",
+        "expiry_reaper_collects_evidence_with_content_free_receipt",
+        "post_expiry_collection_erases_review_reasons_and_test_diagnostics",
+        "legal_hold_is_excluded_from_automatic_collection",
+        "legal_hold_owner_lifecycle_is_revision_guarded_and_idempotent",
+        "legal_hold_transports_are_tenant_bound_and_source_free",
         "generic_mcp_does_not_expose_script_mutation"
       ]
     },

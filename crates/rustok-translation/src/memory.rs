@@ -5,7 +5,7 @@ use rustok_api::{
     Action, PortActorKind, PortCallPolicy, PortContext, Resource, TenantLocale,
     manifest_hash::hash_manifest,
 };
-use rustok_core::{PermissionScope, SecurityContext, generate_id};
+use rustok_core::{PermissionScope, RetentionPolicy, SecurityContext, generate_id};
 use rustok_translation_targets::{
     FieldKey, TranslationDataClassification, TranslationResourceIdentity,
 };
@@ -78,24 +78,6 @@ pub struct MemorySuggestion {
     pub evidence: MemoryMatchEvidence,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MemoryRetentionPolicy {
-    OwnerLifecycle,
-    RetainUntil,
-    LegalHold,
-}
-
-impl MemoryRetentionPolicy {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::OwnerLifecycle => "owner_lifecycle",
-            Self::RetainUntil => "retain_until",
-            Self::LegalHold => "legal_hold",
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryListInput {
     pub source_locale: Option<TenantLocale>,
@@ -108,7 +90,7 @@ pub struct MemoryListInput {
 pub struct SetMemoryRetentionInput {
     pub entry_id: Uuid,
     pub expected_revision: i64,
-    pub policy: MemoryRetentionPolicy,
+    pub policy: RetentionPolicy,
     pub retain_until: Option<DateTime<FixedOffset>>,
 }
 
@@ -147,7 +129,7 @@ pub struct MemoryEntryRecord {
     pub reviewer_actor_id: String,
     pub proposal_id: Uuid,
     pub apply_receipt_id: Uuid,
-    pub retention_policy: MemoryRetentionPolicy,
+    pub retention_policy: RetentionPolicy,
     pub retain_until: Option<DateTime<FixedOffset>>,
     pub tombstoned_at: Option<DateTime<FixedOffset>>,
     pub revision: i64,
@@ -160,7 +142,7 @@ pub struct MemoryMutationRecord {
     pub entry_id: Uuid,
     pub revision: i64,
     pub state: String,
-    pub retention_policy: MemoryRetentionPolicy,
+    pub retention_policy: RetentionPolicy,
     pub retain_until: Option<DateTime<FixedOffset>>,
     pub tombstoned_at: Option<DateTime<FixedOffset>>,
 }
@@ -713,42 +695,19 @@ fn mutation_record(model: memory_entry::Model) -> TranslationResult<MemoryMutati
     })
 }
 
-fn parse_retention_policy(value: &str) -> TranslationResult<MemoryRetentionPolicy> {
-    match value {
-        "owner_lifecycle" => Ok(MemoryRetentionPolicy::OwnerLifecycle),
-        "retain_until" => Ok(MemoryRetentionPolicy::RetainUntil),
-        "legal_hold" => Ok(MemoryRetentionPolicy::LegalHold),
-        _ => Err(TranslationError::MemoryInvariant(format!(
-            "unknown retention policy `{value}`"
-        ))),
-    }
+fn parse_retention_policy(value: &str) -> TranslationResult<RetentionPolicy> {
+    value.parse().map_err(|_| {
+        TranslationError::MemoryInvariant(format!("unknown retention policy `{value}`"))
+    })
 }
 
 fn validate_retention(
-    policy: MemoryRetentionPolicy,
+    policy: RetentionPolicy,
     retain_until: Option<&DateTime<FixedOffset>>,
 ) -> TranslationResult<()> {
-    match (policy, retain_until) {
-        (MemoryRetentionPolicy::RetainUntil, Some(retain_until))
-            if *retain_until > Utc::now().fixed_offset() =>
-        {
-            Ok(())
-        }
-        (MemoryRetentionPolicy::RetainUntil, Some(_)) => {
-            Err(TranslationError::MemoryRetentionConflict(
-                "retain_until must be in the future".to_string(),
-            ))
-        }
-        (MemoryRetentionPolicy::RetainUntil, None) => {
-            Err(TranslationError::MemoryRetentionConflict(
-                "retain_until policy requires a timestamp".to_string(),
-            ))
-        }
-        (MemoryRetentionPolicy::OwnerLifecycle | MemoryRetentionPolicy::LegalHold, None) => Ok(()),
-        _ => Err(TranslationError::MemoryRetentionConflict(
-            "retain_until is valid only for the retain_until policy".to_string(),
-        )),
-    }
+    policy
+        .validate(retain_until, Utc::now().fixed_offset())
+        .map_err(|error| TranslationError::MemoryRetentionConflict(error.to_string()))
 }
 
 fn validate_expected_revision(revision: i64) -> TranslationResult<()> {

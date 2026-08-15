@@ -2592,8 +2592,10 @@ evolution while sharing the production sandbox and module release contracts.
   matching authenticated tenant plus `scripts.manage`; source-revision author
   and manual-execution actor are derived from that principal. The generic
   in-memory Axum router was removed, so it cannot bypass tenant, permission,
-  or provenance policy. Prompt/tool provenance retention and redaction remain
-  unfinished. Build-command idempotency remains pending.
+  or provenance policy. Prompt/tool provenance uses an optional canonical
+  prompt digest only; raw prompts, tool inputs/results, review reasons, and
+  test diagnostics have no post-expiry retention path. Build-command
+  idempotency remains pending.
   Alloy release staging now selects the current immutable source revision and
   latest approved review, then delegates an idempotent `alloy_authored` stage
   to `rustok-modules`. The owner records source/review evidence together with
@@ -2673,7 +2675,7 @@ evolution while sharing the production sandbox and module release contracts.
   staging gate, origin-aware owner artifact upload, and authenticated HTTP /
   GraphQL staging adapters are complete; final marketplace promotion remains
   an owner governance operation.
-- [ ] Preserve author, prompt/tool provenance, tests, and review evidence under
+- [x] Preserve author, prompt/tool provenance, tests, and review evidence under
   explicit retention/redaction rules. The first durable provenance slice now
   records the authenticated author plus owner-generated HTTP, GraphQL, remote
   MCP, release-import, or internal origin and normalized tool name on each
@@ -2682,10 +2684,29 @@ evolution while sharing the production sandbox and module release contracts.
   model completions, and tool results have no Alloy persistence field. Remote
   MCP and its audit metadata remain source-redacted, and deleted scripts hide
   retained source/review/test evidence from owner reads and idempotency replay.
-  A racing test completion settles its retained lease and returns `NotFound`;
-  a durable tombstone makes the deleted script ID non-reusable until retention
-  policy purges it. Retention duration, legal hold, and post-expiry redaction/collection of review reasons and test
-  diagnostics remain open before this item can close.
+  Deletion itself now requires an authenticated owner-derived actor, a bounded
+  reason, and an idempotency key on every HTTP, GraphQL, and remote MCP command.
+  The tenant-scoped tombstone records actor, reason, request digest, key, and
+  deletion time in the same deletion transaction; only an exact digest replay
+  succeeds after removal, while a mismatched reuse fails closed. A racing test
+  completion settles its retained lease and returns `NotFound`; a durable
+  tombstone makes the deleted script ID non-reusable until retention policy
+  purges it. `rustok-core::RetentionPolicy` now defines the shared closed
+  `owner_lifecycle` / `retain_until` / `legal_hold` vocabulary, deadline
+  invariant, and legal-hold collection guard used by Translation Memory. Alloy
+  deletion now assigns a fixed 30-day `retain_until` policy in the tombstone;
+  its global owner scheduler atomically collects an expired tombstone, source
+  revisions, reviews, and test runs, then preserves only a content-free receipt
+  with tenant/script identity, timing, counts, and request digest. The collector
+  selects only `retain_until`, so a legal hold is excluded from automatic
+  collection. Authenticated owner HTTP, GraphQL, and remote MCP now expose only
+  source-free retention state and apply tenant-scoped, deletion-digest-bound,
+  retention-revision CAS commands to place or release a legal hold. Applying a
+  hold clears the collection deadline; releasing it starts a fresh fixed
+  30-day `retain_until` window. The durable command receipt records actor,
+  action, policy, revision, and request digests without retaining the reason.
+  At expiry the collector irreversibly erases review reasons and test
+  diagnostics rather than retaining a redacted copy.
 
 ### 6.3 Marketplace Fork and Continued Development
 

@@ -14,9 +14,10 @@ use uuid::Uuid;
 use crate::utils::{json_to_dynamic, validate_cron_expression};
 use crate::{
     AlloyDraftRuntime, EntityProxy, ExecutionOutcome, ReviewCommand, ReviewDecision, ReviewStatus,
-    RevisionedTestRunner, RhaiWorkspace, ScopedAlloyRuntime, Script, ScriptEngine, ScriptError,
-    ScriptOrchestrator, ScriptQuery, ScriptRegistry, ScriptStatus, ScriptTrigger, SourceProvenance,
-    TestCommand, TestRun, TestRunStatus,
+    RevisionedTestRunner, RhaiWorkspace, ScopedAlloyRuntime, Script, ScriptDeletionCommand,
+    ScriptEngine, ScriptError, ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand,
+    ScriptEvidenceRetentionState, ScriptOrchestrator, ScriptQuery, ScriptRegistry, ScriptStatus,
+    ScriptTrigger, SourceProvenance, TestCommand, TestRun, TestRunStatus,
 };
 
 /// Authoring operations are always bound to one tenant before a command is
@@ -203,16 +204,77 @@ impl<R: ScriptRegistry> AlloyAuthoringService<R> {
 
     pub async fn delete_script(
         &self,
+        actor_id: &str,
         request: DeleteAlloyScriptCommand,
     ) -> Result<DeletedAlloyScript, AlloyAuthoringError> {
-        let script = self.script_for_tenant(request.script_id).await?;
-        self.require_expected_revision(&script, request.expected_version)?;
+        self.validate_actor(actor_id)?;
+        let script = match self.script_for_tenant(request.script_id).await {
+            Ok(script) => {
+                self.require_expected_revision(&script, request.expected_version)?;
+                Some(script)
+            }
+            Err(AlloyAuthoringError::NotFound) => None,
+            Err(error) => return Err(error),
+        };
         self.registry
-            .delete(request.script_id, request.expected_version)
+            .delete(ScriptDeletionCommand {
+                script_id: request.script_id,
+                expected_revision: request.expected_version,
+                actor_id: actor_id.to_owned(),
+                reason: request.reason,
+                idempotency_key: request.idempotency_key,
+            })
             .await
             .map_err(AlloyAuthoringError::from_script_error)?;
-        self.engine.invalidate(&script.name);
+        if let Some(script) = script {
+            self.engine.invalidate(&script.name);
+        }
         Ok(DeletedAlloyScript { deleted: true })
+    }
+
+    pub async fn get_deleted_evidence_retention(
+        &self,
+        request: GetAlloyDeletedEvidenceRetentionCommand,
+    ) -> Result<RedactedAlloyEvidenceRetention, AlloyAuthoringError> {
+        let state = self
+            .registry
+            .get_deleted_evidence_retention(request.script_id)
+            .await
+            .map_err(AlloyAuthoringError::from_script_error)?;
+        self.require_retention_owned(&state)?;
+        Ok(state.into())
+    }
+
+    pub async fn change_deleted_evidence_retention(
+        &self,
+        actor_id: &str,
+        request: ChangeAlloyDeletedEvidenceRetentionCommand,
+    ) -> Result<RedactedAlloyEvidenceRetention, AlloyAuthoringError> {
+        self.validate_actor(actor_id)?;
+        let current = self
+            .registry
+            .get_deleted_evidence_retention(request.script_id)
+            .await
+            .map_err(AlloyAuthoringError::from_script_error)?;
+        self.require_retention_owned(&current)?;
+        if current.deletion_request_digest != request.deletion_request_digest {
+            return Err(AlloyAuthoringError::NotFound);
+        }
+        let state = self
+            .registry
+            .update_deleted_evidence_retention(ScriptEvidenceRetentionCommand {
+                script_id: request.script_id,
+                deletion_request_digest: request.deletion_request_digest,
+                expected_retention_revision: request.expected_retention_revision,
+                action: request.action,
+                actor_id: actor_id.to_owned(),
+                reason: request.reason,
+                idempotency_key: request.idempotency_key,
+            })
+            .await
+            .map_err(AlloyAuthoringError::from_script_error)?;
+        self.require_retention_owned(&state)?;
+        Ok(state.into())
     }
 
     pub fn validate_script(
@@ -425,6 +487,15 @@ impl<R: ScriptRegistry> AlloyAuthoringService<R> {
             .ok_or(AlloyAuthoringError::NotFound)
     }
 
+    fn require_retention_owned(
+        &self,
+        state: &ScriptEvidenceRetentionState,
+    ) -> Result<(), AlloyAuthoringError> {
+        (state.tenant_id == self.tenant_id)
+            .then_some(())
+            .ok_or(AlloyAuthoringError::NotFound)
+    }
+
     fn require_expected_revision(
         &self,
         script: &Script,
@@ -446,6 +517,8 @@ pub enum AlloyAuthoringError {
     NotFound,
     #[error("Alloy script revision conflict")]
     RevisionConflict { expected_version: u32 },
+    #[error("Alloy evidence retention revision conflict")]
+    RetentionRevisionConflict { expected_retention_revision: u32 },
     #[error("Alloy authoring command is invalid")]
     Invalid,
     #[error("Alloy authoring operation failed")]
@@ -459,6 +532,11 @@ impl AlloyAuthoringError {
             ScriptError::RevisionConflict { expected } => Self::RevisionConflict {
                 expected_version: expected,
             },
+            ScriptError::RetentionRevisionConflict { expected } => {
+                Self::RetentionRevisionConflict {
+                    expected_retention_revision: expected,
+                }
+            }
             ScriptError::Compilation(_)
             | ScriptError::InvalidTrigger(_)
             | ScriptError::InvalidStatus(_)
@@ -466,6 +544,8 @@ impl AlloyAuthoringError {
             | ScriptError::InvalidLineage(_)
             | ScriptError::ImportIdempotencyConflict
             | ScriptError::ImportDraftNameConflict
+            | ScriptError::Deletion(_)
+            | ScriptError::EvidenceRetention(_)
             | ScriptError::Review(_)
             | ScriptError::TestRun(_) => Self::Invalid,
             ScriptError::Runtime(_)
@@ -514,6 +594,25 @@ pub struct UpdateAlloyScriptCommand {
 pub struct DeleteAlloyScriptCommand {
     pub script_id: Uuid,
     pub expected_version: u32,
+    pub reason: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GetAlloyDeletedEvidenceRetentionCommand {
+    pub script_id: Uuid,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChangeAlloyDeletedEvidenceRetentionCommand {
+    pub script_id: Uuid,
+    pub deletion_request_digest: String,
+    pub expected_retention_revision: u32,
+    pub action: ScriptEvidenceRetentionAction,
+    pub reason: String,
+    pub idempotency_key: Uuid,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -716,6 +815,29 @@ pub struct DeletedAlloyScript {
     pub deleted: bool,
 }
 
+/// The retention state is intentionally source-free and omits actor and reason
+/// fields from the durable audit record.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RedactedAlloyEvidenceRetention {
+    pub script_id: Uuid,
+    pub deletion_request_digest: String,
+    pub policy: rustok_core::RetentionPolicy,
+    pub retain_until: Option<String>,
+    pub retention_revision: u32,
+}
+
+impl From<ScriptEvidenceRetentionState> for RedactedAlloyEvidenceRetention {
+    fn from(state: ScriptEvidenceRetentionState) -> Self {
+        Self {
+            script_id: state.script_id,
+            deletion_request_digest: state.deletion_request_digest,
+            policy: state.policy,
+            retain_until: state.retain_until.map(|value| value.to_rfc3339()),
+            retention_revision: state.retention_revision,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AlloyExecutionOutcome {
@@ -910,6 +1032,97 @@ mod tests {
         assert!(!result.valid);
         assert!(!serialized.contains("let secret"));
         assert!(!serialized.contains("message"));
+    }
+
+    #[tokio::test]
+    async fn remote_delete_replays_only_the_same_attributed_command() {
+        let tenant_id = Uuid::new_v4();
+        let service = service(tenant_id, Arc::new(InMemoryStorage::new()));
+        let created = service
+            .create_script("mcp-delete", command("deletable_rule", "40 + 2"))
+            .await
+            .expect("remote MCP author may create a draft");
+        let deletion = DeleteAlloyScriptCommand {
+            script_id: created.id,
+            expected_version: created.version,
+            reason: "The draft was superseded by a reviewed replacement.".into(),
+            idempotency_key: Uuid::new_v4(),
+        };
+
+        service
+            .delete_script("mcp-client", deletion.clone())
+            .await
+            .expect("first owner deletion should succeed");
+        service
+            .delete_script("mcp-client", deletion.clone())
+            .await
+            .expect("the exact remote MCP retry should replay from the tombstone");
+
+        let mut conflicting_replay = deletion;
+        conflicting_replay.reason = "A different retention reason.".into();
+        assert_eq!(
+            service
+                .delete_script("mcp-client", conflicting_replay)
+                .await
+                .expect_err("a changed command must not replay"),
+            AlloyAuthoringError::Invalid
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_retention_commands_are_tenant_bound_and_source_free() {
+        let registry = Arc::new(InMemoryStorage::new());
+        let owner_tenant = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let owner = service(owner_tenant, registry.clone());
+        let other = service(other_tenant, registry);
+        let created = owner
+            .create_script("mcp-retention", command("retained_rule", "40 + 2"))
+            .await
+            .expect("owner should create a draft");
+        owner
+            .delete_script(
+                "mcp-owner",
+                DeleteAlloyScriptCommand {
+                    script_id: created.id,
+                    expected_version: created.version,
+                    reason: "The draft was superseded by a reviewed replacement.".into(),
+                    idempotency_key: Uuid::new_v4(),
+                },
+            )
+            .await
+            .expect("owner should delete its draft");
+        let retention = owner
+            .get_deleted_evidence_retention(GetAlloyDeletedEvidenceRetentionCommand {
+                script_id: created.id,
+            })
+            .await
+            .expect("owner should read source-free retention state");
+        let serialized = serde_json::to_string(&retention).expect("retention state serializes");
+        assert!(!serialized.contains("mcp-owner"));
+        assert!(!serialized.contains("superseded"));
+
+        let command = ChangeAlloyDeletedEvidenceRetentionCommand {
+            script_id: created.id,
+            deletion_request_digest: retention.deletion_request_digest.clone(),
+            expected_retention_revision: retention.retention_revision,
+            action: ScriptEvidenceRetentionAction::ApplyLegalHold,
+            reason: "A legal investigation requires preservation.".into(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        assert_eq!(
+            other
+                .change_deleted_evidence_retention("mcp-other", command.clone())
+                .await
+                .expect_err("another tenant must not change retained evidence"),
+            AlloyAuthoringError::NotFound
+        );
+        let held = owner
+            .change_deleted_evidence_retention("mcp-owner", command)
+            .await
+            .expect("owner should apply legal hold");
+        assert_eq!(held.policy, rustok_core::RetentionPolicy::LegalHold);
+        assert_eq!(held.retain_until, None);
     }
 
     #[tokio::test]

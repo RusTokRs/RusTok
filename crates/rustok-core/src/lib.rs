@@ -25,6 +25,7 @@ pub mod module;
 pub mod rbac;
 pub mod registry;
 pub mod resilience;
+pub mod retention;
 pub mod search_projection;
 pub mod security;
 pub mod security_principal;
@@ -86,6 +87,7 @@ pub use resilience::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState, RetryPolicy,
     RetryStrategy,
 };
+pub use retention::{RetentionPolicy, RetentionPolicyError};
 pub use security::{
     AuditEvent, AuditLogger, InputValidator, RateLimitConfig, RateLimitResult, RateLimiter,
     SecurityAudit, SecurityAuditResult, SecurityCategory, SecurityConfig, SecurityFinding,

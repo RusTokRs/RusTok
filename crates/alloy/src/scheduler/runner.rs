@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{Duration as ChronoDuration, Utc};
 use cron::Schedule;
 use tokio::sync::RwLock;
 use tokio::time::{Duration, interval};
@@ -15,11 +15,15 @@ use crate::storage::{ScriptQuery, ScriptRegistry};
 
 use super::job::ScheduledJob;
 
+const EVIDENCE_RETENTION_SWEEP_LIMIT: u16 = 64;
+const EVIDENCE_RETENTION_SWEEP_INTERVAL: ChronoDuration = ChronoDuration::minutes(1);
+
 pub struct Scheduler<S: ScriptRegistry + 'static> {
     executor: ScriptExecutor<S>,
     registry: Arc<S>,
     jobs: Arc<RwLock<HashMap<ScriptId, ScheduledJob>>>,
     running: Arc<RwLock<bool>>,
+    retention_next_run: Arc<RwLock<chrono::DateTime<Utc>>>,
 }
 
 impl<S: ScriptRegistry + 'static> Scheduler<S> {
@@ -29,6 +33,7 @@ impl<S: ScriptRegistry + 'static> Scheduler<S> {
             registry,
             jobs: Arc::new(RwLock::new(HashMap::new())),
             running: Arc::new(RwLock::new(false)),
+            retention_next_run: Arc::new(RwLock::new(Utc::now())),
         }
     }
 
@@ -92,6 +97,7 @@ impl<S: ScriptRegistry + 'static> Scheduler<S> {
 
     async fn tick(&self) {
         let now = Utc::now();
+        self.reap_expired_evidence(now).await;
         let mut jobs_to_run = Vec::new();
 
         {
@@ -105,6 +111,26 @@ impl<S: ScriptRegistry + 'static> Scheduler<S> {
 
         for script_id in jobs_to_run {
             self.execute_job(script_id).await;
+        }
+    }
+
+    async fn reap_expired_evidence(&self, now: chrono::DateTime<Utc>) {
+        {
+            let mut next_run = self.retention_next_run.write().await;
+            if *next_run > now {
+                return;
+            }
+            *next_run = now + EVIDENCE_RETENTION_SWEEP_INTERVAL;
+        }
+
+        match self
+            .registry
+            .purge_expired_evidence(now, EVIDENCE_RETENTION_SWEEP_LIMIT)
+            .await
+        {
+            Ok(0) => {}
+            Ok(purged) => info!(purged, "Purged expired Alloy draft evidence"),
+            Err(error) => error!(error = %error, "Alloy evidence retention sweep failed"),
         }
     }
 
@@ -270,5 +296,50 @@ mod tests {
         let tenant_id_str = tenant_id.to_string();
         assert_eq!(ctx.tenant_id.as_deref(), Some(tenant_id_str.as_str()));
         assert!(result.is_success());
+    }
+
+    #[tokio::test]
+    async fn scheduler_tick_collects_expired_deleted_evidence() {
+        let storage = Arc::new(InMemoryStorage::new());
+        let execution_log = Arc::new(CapturingExecutionLog::default());
+        let executor = ScriptExecutor::new(create_test_alloy_draft_runtime(), Arc::clone(&storage))
+            .with_execution_log(execution_log);
+        let scheduler = Scheduler::new(executor, Arc::clone(&storage));
+        let script = storage
+            .save(Script::new(
+                "retention_tick_subject",
+                RhaiWorkspace::single_source("40 + 2"),
+                ScriptTrigger::Manual,
+            ))
+            .await
+            .expect("retention subject should save");
+        storage
+            .delete(crate::ScriptDeletionCommand {
+                script_id: script.id,
+                expected_revision: script.version,
+                actor_id: "scheduler-test".into(),
+                reason: "The retention test draft was deleted.".into(),
+                idempotency_key: uuid::Uuid::new_v4(),
+            })
+            .await
+            .expect("deletion should retain evidence first");
+        storage
+            .set_deleted_evidence_deadline(script.id, Utc::now() - ChronoDuration::seconds(1))
+            .await
+            .expect("test should expire retained evidence");
+
+        scheduler.tick().await;
+
+        let mut replacement = Script::new(
+            "retention_tick_replacement",
+            RhaiWorkspace::single_source("43 + 2"),
+            ScriptTrigger::Manual,
+        );
+        replacement.id = script.id;
+        replacement.tenant_id = script.tenant_id;
+        storage
+            .save(replacement)
+            .await
+            .expect("scheduler reaper should release the purged draft ID");
     }
 }

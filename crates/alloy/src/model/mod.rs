@@ -1,12 +1,18 @@
+mod deletion;
 mod import;
 mod provenance;
 mod proxy;
 mod release;
+mod retention;
 mod review;
 mod script;
 mod test_run;
 mod trigger;
 
+pub use deletion::{
+    DELETED_EVIDENCE_RETENTION_DAYS, MAX_DELETION_ACTOR_ID_LENGTH, MAX_DELETION_REASON_LENGTH,
+    ScriptDeletionCommand, ScriptDeletionError, deleted_evidence_retention,
+};
 pub use import::{
     AlloyImportError, AlloyImportedDraftCommand, AlloyImportedDraftResult,
     AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSource,
@@ -18,6 +24,10 @@ pub use proxy::{EntityProxy, register_entity_proxy};
 pub use release::{
     AlloyPublicationSmokeEvidence, AlloyReleaseError, AlloyReleaseStageCommand,
     MAX_RELEASE_ACTOR_ID_LENGTH, is_release_approved, review_evidence_digest, review_reference,
+};
+pub use retention::{
+    ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError,
+    ScriptEvidenceRetentionState,
 };
 pub use review::{
     MAX_REVIEW_ACTOR_ID_LENGTH, MAX_REVIEW_POLICY_REVISION_LENGTH, MAX_REVIEW_REASON_LENGTH,

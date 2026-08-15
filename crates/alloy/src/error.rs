@@ -26,6 +26,9 @@ pub enum ScriptError {
     #[error("Script revision conflict: expected version {expected}")]
     RevisionConflict { expected: u32 },
 
+    #[error("Evidence retention revision conflict: expected revision {expected}")]
+    RetentionRevisionConflict { expected: u32 },
+
     #[error("Max call depth exceeded: {depth}")]
     MaxDepthExceeded { depth: usize },
 
@@ -49,6 +52,12 @@ pub enum ScriptError {
 
     #[error("an Alloy draft with the requested tenant-scoped name already exists")]
     ImportDraftNameConflict,
+
+    #[error(transparent)]
+    Deletion(#[from] crate::model::ScriptDeletionError),
+
+    #[error(transparent)]
+    EvidenceRetention(#[from] crate::model::ScriptEvidenceRetentionError),
 
     #[error(transparent)]
     Review(#[from] crate::model::ReviewError),

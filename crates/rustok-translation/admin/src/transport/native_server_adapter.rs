@@ -1261,17 +1261,11 @@ fn map_origin_input(value: ProposalOrigin) -> rustok_translation::ProposalOrigin
 }
 
 #[cfg(feature = "ssr")]
-fn map_memory_retention_input(
-    value: MemoryRetentionPolicy,
-) -> rustok_translation::MemoryRetentionPolicy {
+fn map_memory_retention_input(value: MemoryRetentionPolicy) -> rustok_core::RetentionPolicy {
     match value {
-        MemoryRetentionPolicy::OwnerLifecycle => {
-            rustok_translation::MemoryRetentionPolicy::OwnerLifecycle
-        }
-        MemoryRetentionPolicy::RetainUntil => {
-            rustok_translation::MemoryRetentionPolicy::RetainUntil
-        }
-        MemoryRetentionPolicy::LegalHold => rustok_translation::MemoryRetentionPolicy::LegalHold,
+        MemoryRetentionPolicy::OwnerLifecycle => rustok_core::RetentionPolicy::OwnerLifecycle,
+        MemoryRetentionPolicy::RetainUntil => rustok_core::RetentionPolicy::RetainUntil,
+        MemoryRetentionPolicy::LegalHold => rustok_core::RetentionPolicy::LegalHold,
     }
 }
 
@@ -1399,15 +1393,11 @@ fn map_glossary(value: rustok_translation::GlossaryRecord) -> Glossary {
 }
 
 #[cfg(feature = "ssr")]
-fn map_memory_retention(value: rustok_translation::MemoryRetentionPolicy) -> MemoryRetentionPolicy {
+fn map_memory_retention(value: rustok_core::RetentionPolicy) -> MemoryRetentionPolicy {
     match value {
-        rustok_translation::MemoryRetentionPolicy::OwnerLifecycle => {
-            MemoryRetentionPolicy::OwnerLifecycle
-        }
-        rustok_translation::MemoryRetentionPolicy::RetainUntil => {
-            MemoryRetentionPolicy::RetainUntil
-        }
-        rustok_translation::MemoryRetentionPolicy::LegalHold => MemoryRetentionPolicy::LegalHold,
+        rustok_core::RetentionPolicy::OwnerLifecycle => MemoryRetentionPolicy::OwnerLifecycle,
+        rustok_core::RetentionPolicy::RetainUntil => MemoryRetentionPolicy::RetainUntil,
+        rustok_core::RetentionPolicy::LegalHold => MemoryRetentionPolicy::LegalHold,
     }
 }
 

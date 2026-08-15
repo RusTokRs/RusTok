@@ -17,16 +17,20 @@ use uuid::Uuid;
 use crate::{
     AlloyImportError, AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSourceProviderHandle,
     AlloyReleaseGovernanceHandle, AlloyReleaseImporter, RevisionedReleaseStager,
-    RevisionedTestRunner, ScopedAlloyRuntime, ScriptError, SharedAlloyRuntime, TestCommand,
+    RevisionedTestRunner, ScopedAlloyRuntime, ScriptError, ScriptEvidenceRetentionCommand,
+    SharedAlloyRuntime, TestCommand,
     api::{
-        CreateScriptRequest, EntityInput, ExecutionLogResponse, ImportPublishedReleaseRequest,
-        ImportPublishedReleaseResponse, ListExecutionLogQuery, ListExecutionLogResponse,
-        ListScriptsQuery, ListScriptsResponse, ReviewDecisionResponse, ReviewScriptRequest,
-        RunScriptRequest, RunScriptResponse, RunWorkspaceTestRequest, ScriptResponse,
-        ScriptRevisionRequest, StageReleaseRequest, StageReleaseResponse, TestRunResponse,
-        UpdateScriptRequest,
+        CreateScriptRequest, DeleteScriptRequest, EntityInput, ExecutionLogResponse,
+        ImportPublishedReleaseRequest, ImportPublishedReleaseResponse, ListExecutionLogQuery,
+        ListExecutionLogResponse, ListScriptsQuery, ListScriptsResponse, ReviewDecisionResponse,
+        ReviewScriptRequest, RunScriptRequest, RunScriptResponse, RunWorkspaceTestRequest,
+        ScriptResponse, ScriptRevisionRequest, StageReleaseRequest, StageReleaseResponse,
+        TestRunResponse, UpdateDeletedEvidenceRetentionRequest, UpdateScriptRequest,
     },
-    model::{EntityProxy, ReviewCommand, Script, ScriptStatus, ScriptTrigger, SourceProvenance},
+    model::{
+        EntityProxy, ReviewCommand, Script, ScriptDeletionCommand, ScriptStatus, ScriptTrigger,
+        SourceProvenance,
+    },
     runner::ExecutionOutcome,
     storage::ScriptRegistry,
     utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
@@ -87,6 +91,11 @@ fn script_error(error: ScriptError) -> HttpError {
             "alloy_script_revision_conflict",
             format!("Script revision conflict: expected version {expected}"),
         ),
+        ScriptError::RetentionRevisionConflict { expected } => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_evidence_retention_revision_conflict",
+            format!("Evidence retention revision conflict: expected revision {expected}"),
+        ),
         ScriptError::ImportIdempotencyConflict => HttpError::new(
             StatusCode::CONFLICT,
             "alloy_import_idempotency_conflict",
@@ -108,6 +117,23 @@ fn script_error(error: ScriptError) -> HttpError {
             StatusCode::CONFLICT,
             "alloy_review_idempotency_conflict",
             "Review idempotency key was reused for a different command",
+        ),
+        ScriptError::EvidenceRetention(
+            crate::ScriptEvidenceRetentionError::IdempotencyConflict,
+        ) => HttpError::new(
+            StatusCode::CONFLICT,
+            "alloy_evidence_retention_idempotency_conflict",
+            "Evidence retention idempotency key was reused for a different command",
+        ),
+        retention_error @ ScriptError::EvidenceRetention(
+            crate::ScriptEvidenceRetentionError::InvalidCommand
+            | crate::ScriptEvidenceRetentionError::InvalidTransition
+            | crate::ScriptEvidenceRetentionError::InvalidStoredState
+            | crate::ScriptEvidenceRetentionError::RevisionOverflow
+            | crate::ScriptEvidenceRetentionError::Serialize(_),
+        ) => HttpError::bad_request(
+            "invalid_alloy_evidence_retention",
+            retention_error.to_string(),
         ),
         review_error @ ScriptError::Review(
             crate::ReviewError::InvalidCommand | crate::ReviewError::InvalidTransition { .. },
@@ -407,23 +433,78 @@ pub async fn delete_script(
     tenant: TenantContext,
     auth: Option<Extension<AuthContextExtension>>,
     Path(id): Path<Uuid>,
-    Json(request): Json<ScriptRevisionRequest>,
+    Json(request): Json<DeleteScriptRequest>,
 ) -> HttpResult<StatusCode> {
-    scripts_manage_actor(auth, &tenant, "Alloy script deletion")?;
+    let actor_id = scripts_manage_actor(auth, &tenant, "Alloy script deletion")?;
     let runtime = runtime.scoped(tenant.id)?;
-    let script = runtime.storage.get(id).await.map_err(script_error)?;
-    if script.version != request.expected_version {
-        return Err(script_error(crate::ScriptError::RevisionConflict {
-            expected: request.expected_version,
-        }));
-    }
+    let script = match runtime.storage.get(id).await {
+        Ok(script) => {
+            if script.version != request.expected_version {
+                return Err(script_error(crate::ScriptError::RevisionConflict {
+                    expected: request.expected_version,
+                }));
+            }
+            Some(script)
+        }
+        Err(crate::ScriptError::NotFound { .. }) => None,
+        Err(error) => return Err(script_error(error)),
+    };
     runtime
         .storage
-        .delete(id, request.expected_version)
+        .delete(ScriptDeletionCommand {
+            script_id: id,
+            expected_revision: request.expected_version,
+            actor_id,
+            reason: request.reason,
+            idempotency_key: request.idempotency_key,
+        })
         .await
         .map_err(script_error)?;
-    runtime.engine.invalidate(&script.name);
+    if let Some(script) = script {
+        runtime.engine.invalidate(&script.name);
+    }
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_deleted_evidence_retention(
+    State(runtime): State<AlloyHttpRuntime>,
+    tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
+    Path(id): Path<Uuid>,
+) -> HttpResult<Json<crate::RedactedAlloyEvidenceRetention>> {
+    scripts_manage_actor(auth, &tenant, "Alloy deleted evidence retention lookup")?;
+    let runtime = runtime.scoped(tenant.id)?;
+    let retention = runtime
+        .storage
+        .get_deleted_evidence_retention(id)
+        .await
+        .map_err(script_error)?;
+    Ok(Json(retention.into()))
+}
+
+pub async fn update_deleted_evidence_retention(
+    State(runtime): State<AlloyHttpRuntime>,
+    tenant: TenantContext,
+    auth: Option<Extension<AuthContextExtension>>,
+    Path(id): Path<Uuid>,
+    Json(request): Json<UpdateDeletedEvidenceRetentionRequest>,
+) -> HttpResult<Json<crate::RedactedAlloyEvidenceRetention>> {
+    let actor_id = scripts_manage_actor(auth, &tenant, "Alloy deleted evidence retention update")?;
+    let runtime = runtime.scoped(tenant.id)?;
+    let retention = runtime
+        .storage
+        .update_deleted_evidence_retention(ScriptEvidenceRetentionCommand {
+            script_id: id,
+            deletion_request_digest: request.deletion_request_digest,
+            expected_retention_revision: request.expected_retention_revision,
+            action: request.action,
+            actor_id,
+            reason: request.reason,
+            idempotency_key: request.idempotency_key,
+        })
+        .await
+        .map_err(script_error)?;
+    Ok(Json(retention.into()))
 }
 
 pub async fn run_script(
@@ -804,6 +885,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .route(
             "/api/alloy/scripts/{id}",
             get(get_script).put(update_script).delete(delete_script),
+        )
+        .route(
+            "/api/alloy/deleted-scripts/{id}/retention",
+            get(get_deleted_evidence_retention).put(update_deleted_evidence_retention),
         )
         .route("/api/alloy/scripts/{id}/run", post(run_script))
         .route(

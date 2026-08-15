@@ -115,6 +115,39 @@ impl MigrationTrait for ScriptsMigration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
+                    .col(
+                        ColumnDef::new(ScriptTombstones::DeletedBy)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptTombstones::DeleteReason)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptTombstones::IdempotencyKey)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptTombstones::RequestDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptTombstones::RetentionPolicy)
+                            .string_len(32)
+                            .not_null()
+                            .default("retain_until"),
+                    )
+                    .col(ColumnDef::new(ScriptTombstones::RetainUntil).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(ScriptTombstones::RetentionRevision)
+                            .integer()
+                            .not_null()
+                            .default(1),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -127,10 +160,183 @@ impl MigrationTrait for ScriptsMigration {
                     .col(ScriptTombstones::DeletedAt)
                     .to_owned(),
             )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_alloy_script_tombstones_retention")
+                    .table(ScriptTombstones::Table)
+                    .col(ScriptTombstones::RetentionPolicy)
+                    .col(ScriptTombstones::RetainUntil)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ScriptRetentionReceipts::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::ScriptId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::Action)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::ActorId)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::IdempotencyKey)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::RequestDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::DeletionRequestDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::RetentionPolicy)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::RetainUntil)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::RetentionRevision)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptRetentionReceipts::RecordedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .index(
+                        Index::create()
+                            .unique()
+                            .name("uidx_alloy_script_retention_receipts_idempotency")
+                            .col(ScriptRetentionReceipts::TenantId)
+                            .col(ScriptRetentionReceipts::ScriptId)
+                            .col(ScriptRetentionReceipts::DeletionRequestDigest)
+                            .col(ScriptRetentionReceipts::IdempotencyKey),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ScriptPurgeReceipts::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ScriptPurgeReceipts::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptPurgeReceipts::ScriptId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptPurgeReceipts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptPurgeReceipts::RetentionPolicy)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptPurgeReceipts::RetainUntil)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptPurgeReceipts::PurgedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptPurgeReceipts::SourceRevisionCount)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptPurgeReceipts::ReviewCount)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptPurgeReceipts::TestRunCount)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ScriptPurgeReceipts::DeletionRequestDigest)
+                            .string_len(71)
+                            .not_null(),
+                    )
+                    .index(
+                        Index::create()
+                            .unique()
+                            .name("uidx_alloy_script_purge_receipts_deletion")
+                            .col(ScriptPurgeReceipts::TenantId)
+                            .col(ScriptPurgeReceipts::ScriptId)
+                            .col(ScriptPurgeReceipts::DeletionRequestDigest),
+                    )
+                    .to_owned(),
+            )
             .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ScriptRetentionReceipts::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ScriptPurgeReceipts::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
         manager
             .drop_table(
                 Table::drop()
@@ -177,4 +383,45 @@ enum ScriptTombstones {
     Id,
     TenantId,
     DeletedAt,
+    DeletedBy,
+    DeleteReason,
+    IdempotencyKey,
+    RequestDigest,
+    RetentionPolicy,
+    RetainUntil,
+    RetentionRevision,
+}
+
+#[derive(Iden)]
+enum ScriptRetentionReceipts {
+    #[iden = "alloy_script_retention_receipts"]
+    Table,
+    Id,
+    ScriptId,
+    TenantId,
+    Action,
+    ActorId,
+    IdempotencyKey,
+    RequestDigest,
+    DeletionRequestDigest,
+    RetentionPolicy,
+    RetainUntil,
+    RetentionRevision,
+    RecordedAt,
+}
+
+#[derive(Iden)]
+enum ScriptPurgeReceipts {
+    #[iden = "alloy_script_purge_receipts"]
+    Table,
+    Id,
+    ScriptId,
+    TenantId,
+    RetentionPolicy,
+    RetainUntil,
+    PurgedAt,
+    SourceRevisionCount,
+    ReviewCount,
+    TestRunCount,
+    DeletionRequestDigest,
 }

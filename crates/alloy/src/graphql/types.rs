@@ -7,8 +7,9 @@ use crate::{
     context::ExecutionPhase,
     execution_log::ExecutionLogEntry,
     model::{
-        EventType, HttpMethod, ReviewDecision, ReviewStatus, RhaiWorkspace, Script, ScriptStatus,
-        ScriptTrigger, TestRun, TestRunStatus,
+        EventType, HttpMethod, ReviewDecision, ReviewStatus, RhaiWorkspace, Script,
+        ScriptEvidenceRetentionAction, ScriptEvidenceRetentionState, ScriptStatus, ScriptTrigger,
+        TestRun, TestRunStatus,
     },
 };
 
@@ -20,6 +21,40 @@ pub enum GqlScriptStatus {
     Paused,
     Disabled,
     Archived,
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlRetentionPolicy {
+    OwnerLifecycle,
+    RetainUntil,
+    LegalHold,
+}
+
+impl From<rustok_core::RetentionPolicy> for GqlRetentionPolicy {
+    fn from(policy: rustok_core::RetentionPolicy) -> Self {
+        match policy {
+            rustok_core::RetentionPolicy::OwnerLifecycle => Self::OwnerLifecycle,
+            rustok_core::RetentionPolicy::RetainUntil => Self::RetainUntil,
+            rustok_core::RetentionPolicy::LegalHold => Self::LegalHold,
+        }
+    }
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlEvidenceRetentionAction {
+    ApplyLegalHold,
+    ReleaseLegalHold,
+}
+
+impl From<GqlEvidenceRetentionAction> for ScriptEvidenceRetentionAction {
+    fn from(action: GqlEvidenceRetentionAction) -> Self {
+        match action {
+            GqlEvidenceRetentionAction::ApplyLegalHold => Self::ApplyLegalHold,
+            GqlEvidenceRetentionAction::ReleaseLegalHold => Self::ReleaseLegalHold,
+        }
+    }
 }
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -273,6 +308,28 @@ impl From<Script> for GqlScript {
     }
 }
 
+/// Source-free evidence retention state for an already deleted script.
+#[derive(SimpleObject)]
+pub struct GqlDeletedEvidenceRetention {
+    pub script_id: Uuid,
+    pub deletion_request_digest: String,
+    pub policy: GqlRetentionPolicy,
+    pub retain_until: Option<DateTime<Utc>>,
+    pub retention_revision: u32,
+}
+
+impl From<ScriptEvidenceRetentionState> for GqlDeletedEvidenceRetention {
+    fn from(state: ScriptEvidenceRetentionState) -> Self {
+        Self {
+            script_id: state.script_id,
+            deletion_request_digest: state.deletion_request_digest,
+            policy: state.policy.into(),
+            retain_until: state.retain_until,
+            retention_revision: state.retention_revision,
+        }
+    }
+}
+
 #[derive(SimpleObject)]
 pub struct GqlExecutionResult {
     pub execution_id: Uuid,
@@ -491,6 +548,24 @@ pub struct UpdateScriptInput {
     pub status: Option<GqlScriptStatus>,
     pub run_as_system: Option<bool>,
     pub permissions: Option<Vec<String>>,
+}
+
+#[derive(InputObject)]
+pub struct DeleteScriptInput {
+    pub id: Uuid,
+    pub expected_version: u32,
+    pub reason: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(InputObject)]
+pub struct UpdateDeletedEvidenceRetentionInput {
+    pub script_id: Uuid,
+    pub deletion_request_digest: String,
+    pub expected_retention_revision: u32,
+    pub action: GqlEvidenceRetentionAction,
+    pub reason: String,
+    pub idempotency_key: Uuid,
 }
 
 #[derive(InputObject)]

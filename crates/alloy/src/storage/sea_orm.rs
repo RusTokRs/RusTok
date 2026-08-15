@@ -6,15 +6,19 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, TransactionTrait,
 };
+use std::str::FromStr;
 
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
     AlloyImportedDraftCommand, AlloyImportedDraftResult, EventType, HttpMethod, ReviewCommand,
-    ReviewDecision, ReviewStatus, RhaiWorkspace, Script, ScriptId, ScriptSourceRevision,
-    ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
-    TestRunLease, TestRunStatus, validate_transition,
+    ReviewDecision, ReviewStatus, RhaiWorkspace, Script, ScriptDeletionCommand,
+    ScriptDeletionError, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError,
+    ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger,
+    TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus,
+    deleted_evidence_retention, validate_transition,
 };
 use crate::storage::{ScriptPage, ScriptQuery, ScriptRegistry};
+use rustok_core::RetentionPolicy;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "scripts")]
@@ -100,6 +104,67 @@ mod draft_tombstone {
         pub id: Uuid,
         pub tenant_id: Uuid,
         pub deleted_at: DateTime<Utc>,
+        pub deleted_by: String,
+        pub delete_reason: String,
+        pub idempotency_key: Uuid,
+        pub request_digest: String,
+        pub retention_policy: String,
+        pub retain_until: Option<DateTime<Utc>>,
+        pub retention_revision: i32,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod draft_retention_receipt {
+    use chrono::{DateTime, Utc};
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "alloy_script_retention_receipts")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub script_id: Uuid,
+        pub tenant_id: Uuid,
+        pub action: String,
+        pub actor_id: String,
+        pub idempotency_key: Uuid,
+        pub request_digest: String,
+        pub deletion_request_digest: String,
+        pub retention_policy: String,
+        pub retain_until: Option<DateTime<Utc>>,
+        pub retention_revision: i32,
+        pub recorded_at: DateTime<Utc>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod draft_purge_receipt {
+    use chrono::{DateTime, Utc};
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "alloy_script_purge_receipts")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub script_id: Uuid,
+        pub tenant_id: Uuid,
+        pub retention_policy: String,
+        pub retain_until: DateTime<Utc>,
+        pub purged_at: DateTime<Utc>,
+        pub source_revision_count: i32,
+        pub review_count: i32,
+        pub test_run_count: i32,
+        pub deletion_request_digest: String,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -252,6 +317,103 @@ impl SeaOrmStorage {
             }
         }
         Ok(())
+    }
+
+    async fn deletion_receipt(&self, id: ScriptId) -> ScriptResult<Option<draft_tombstone::Model>> {
+        let mut query = draft_tombstone::Entity::find_by_id(id);
+        if let Some(tenant_id) = self.tenant_id {
+            query = query.filter(draft_tombstone::Column::TenantId.eq(tenant_id));
+        }
+        query
+            .one(&self.db)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))
+    }
+
+    async fn retention_receipt(
+        &self,
+        id: ScriptId,
+        deletion_request_digest: &str,
+        idempotency_key: Uuid,
+    ) -> ScriptResult<Option<draft_retention_receipt::Model>> {
+        let mut query = draft_retention_receipt::Entity::find()
+            .filter(draft_retention_receipt::Column::ScriptId.eq(id))
+            .filter(
+                draft_retention_receipt::Column::DeletionRequestDigest.eq(deletion_request_digest),
+            )
+            .filter(draft_retention_receipt::Column::IdempotencyKey.eq(idempotency_key));
+        if let Some(tenant_id) = self.tenant_id {
+            query = query.filter(draft_retention_receipt::Column::TenantId.eq(tenant_id));
+        }
+        query
+            .one(&self.db)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))
+    }
+
+    fn retention_state_from_parts(
+        script_id: ScriptId,
+        tenant_id: Uuid,
+        deletion_request_digest: String,
+        retention_policy: String,
+        retain_until: Option<DateTime<Utc>>,
+        retention_revision: i32,
+    ) -> ScriptResult<ScriptEvidenceRetentionState> {
+        let policy = RetentionPolicy::from_str(&retention_policy)
+            .map_err(|_| ScriptEvidenceRetentionError::InvalidStoredState)?;
+        let retention_revision = u32::try_from(retention_revision)
+            .map_err(|_| ScriptEvidenceRetentionError::InvalidStoredState)?;
+        ScriptEvidenceRetentionState::new(
+            script_id,
+            tenant_id,
+            deletion_request_digest,
+            policy,
+            retain_until,
+            retention_revision,
+        )
+        .map_err(ScriptError::from)
+    }
+
+    fn retention_state_from_tombstone(
+        tombstone: &draft_tombstone::Model,
+    ) -> ScriptResult<ScriptEvidenceRetentionState> {
+        Self::retention_state_from_parts(
+            tombstone.id,
+            tombstone.tenant_id,
+            tombstone.request_digest.clone(),
+            tombstone.retention_policy.clone(),
+            tombstone.retain_until,
+            tombstone.retention_revision,
+        )
+    }
+
+    fn retention_state_from_receipt(
+        receipt: &draft_retention_receipt::Model,
+    ) -> ScriptResult<ScriptEvidenceRetentionState> {
+        Self::retention_state_from_parts(
+            receipt.script_id,
+            receipt.tenant_id,
+            receipt.deletion_request_digest.clone(),
+            receipt.retention_policy.clone(),
+            receipt.retain_until,
+            receipt.retention_revision,
+        )
+    }
+
+    fn replay_deleted_command(
+        existing: &draft_tombstone::Model,
+        command: &ScriptDeletionCommand,
+        request_digest: &str,
+    ) -> ScriptResult<()> {
+        if existing.request_digest == request_digest {
+            return Ok(());
+        }
+        if existing.idempotency_key == command.idempotency_key {
+            return Err(ScriptDeletionError::IdempotencyConflict.into());
+        }
+        Err(ScriptError::NotFound {
+            name: command.script_id.to_string(),
+        })
     }
 
     fn trigger_to_parts(trigger: &ScriptTrigger) -> (String, serde_json::Value) {
@@ -1614,13 +1776,21 @@ impl ScriptRegistry for SeaOrmStorage {
         self.get(script.id).await
     }
 
-    async fn delete(&self, id: ScriptId, expected_version: u32) -> ScriptResult<()> {
+    async fn delete(&self, command: ScriptDeletionCommand) -> ScriptResult<()> {
+        command.validate()?;
+        let request_digest = command.request_digest()?;
+        let id = command.script_id;
+        if let Some(existing) = self.deletion_receipt(id).await? {
+            return Self::replay_deleted_command(&existing, &command, &request_digest);
+        }
         let current = self.get(id).await?;
-        if current.version != expected_version {
+        if current.version != command.expected_revision {
             return Err(ScriptError::RevisionConflict {
-                expected: expected_version,
+                expected: command.expected_revision,
             });
         }
+        let deleted_at = Utc::now();
+        let (retention_policy, retain_until) = deleted_evidence_retention(deleted_at);
 
         let transaction = self
             .db
@@ -1631,11 +1801,13 @@ impl ScriptRegistry for SeaOrmStorage {
         if let Some(tenant_id) = self.tenant_id {
             delete = delete.filter(Column::TenantId.eq(tenant_id));
         }
-        delete = delete.filter(Column::Version.eq(i32::try_from(expected_version).map_err(
-            |_| ScriptError::RevisionConflict {
-                expected: expected_version,
-            },
-        )?));
+        delete = delete.filter(Column::Version.eq(
+            i32::try_from(command.expected_revision).map_err(|_| {
+                ScriptError::RevisionConflict {
+                    expected: command.expected_revision,
+                }
+            })?,
+        ));
         let result = delete
             .exec(&transaction)
             .await
@@ -1646,9 +1818,12 @@ impl ScriptRegistry for SeaOrmStorage {
                 .rollback()
                 .await
                 .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            if let Some(existing) = self.deletion_receipt(id).await? {
+                return Self::replay_deleted_command(&existing, &command, &request_digest);
+            }
             return match self.get(id).await {
                 Ok(_current) => Err(ScriptError::RevisionConflict {
-                    expected: expected_version,
+                    expected: command.expected_revision,
                 }),
                 Err(ScriptError::NotFound { .. }) => Err(ScriptError::NotFound {
                     name: id.to_string(),
@@ -1660,7 +1835,14 @@ impl ScriptRegistry for SeaOrmStorage {
         draft_tombstone::Entity::insert(draft_tombstone::ActiveModel {
             id: ActiveValue::Set(id),
             tenant_id: ActiveValue::Set(current.tenant_id),
-            deleted_at: ActiveValue::Set(Utc::now()),
+            deleted_at: ActiveValue::Set(deleted_at),
+            deleted_by: ActiveValue::Set(command.actor_id),
+            delete_reason: ActiveValue::Set(command.reason),
+            idempotency_key: ActiveValue::Set(command.idempotency_key),
+            request_digest: ActiveValue::Set(request_digest),
+            retention_policy: ActiveValue::Set(retention_policy.as_str().to_string()),
+            retain_until: ActiveValue::Set(Some(retain_until)),
+            retention_revision: ActiveValue::Set(1),
         })
         .exec_without_returning(&transaction)
         .await
@@ -1671,6 +1853,259 @@ impl ScriptRegistry for SeaOrmStorage {
             .map_err(|error| ScriptError::Storage(error.to_string()))?;
 
         Ok(())
+    }
+
+    async fn get_deleted_evidence_retention(
+        &self,
+        id: ScriptId,
+    ) -> ScriptResult<ScriptEvidenceRetentionState> {
+        let tombstone = self
+            .deletion_receipt(id)
+            .await?
+            .ok_or_else(|| ScriptError::NotFound {
+                name: id.to_string(),
+            })?;
+        Self::retention_state_from_tombstone(&tombstone)
+    }
+
+    async fn update_deleted_evidence_retention(
+        &self,
+        command: ScriptEvidenceRetentionCommand,
+    ) -> ScriptResult<ScriptEvidenceRetentionState> {
+        command.validate()?;
+        let request_digest = command.request_digest()?;
+        let tombstone = self.deletion_receipt(command.script_id).await?;
+        let Some(tombstone) = tombstone else {
+            return match self
+                .retention_receipt(
+                    command.script_id,
+                    &command.deletion_request_digest,
+                    command.idempotency_key,
+                )
+                .await?
+            {
+                Some(receipt) if receipt.request_digest == request_digest => {
+                    Self::retention_state_from_receipt(&receipt)
+                }
+                _ => Err(ScriptError::NotFound {
+                    name: command.script_id.to_string(),
+                }),
+            };
+        };
+        let current = Self::retention_state_from_tombstone(&tombstone)?;
+        if current.deletion_request_digest != command.deletion_request_digest {
+            return Err(ScriptError::NotFound {
+                name: command.script_id.to_string(),
+            });
+        }
+        if let Some(receipt) = self
+            .retention_receipt(
+                command.script_id,
+                &command.deletion_request_digest,
+                command.idempotency_key,
+            )
+            .await?
+        {
+            return if receipt.request_digest == request_digest {
+                Self::retention_state_from_receipt(&receipt)
+            } else {
+                Err(ScriptEvidenceRetentionError::IdempotencyConflict.into())
+            };
+        }
+        if current.retention_revision != command.expected_retention_revision {
+            return Err(ScriptError::RetentionRevisionConflict {
+                expected: command.expected_retention_revision,
+            });
+        }
+        let updated = current.transition(command.action, Utc::now())?;
+        let expected_revision = i32::try_from(current.retention_revision)
+            .map_err(|_| ScriptEvidenceRetentionError::InvalidStoredState)?;
+        let updated_revision = i32::try_from(updated.retention_revision)
+            .map_err(|_| ScriptEvidenceRetentionError::InvalidStoredState)?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let changed = draft_tombstone::Entity::update_many()
+            .col_expr(
+                draft_tombstone::Column::RetentionPolicy,
+                Expr::value(updated.policy.as_str()),
+            )
+            .col_expr(
+                draft_tombstone::Column::RetainUntil,
+                Expr::value(updated.retain_until),
+            )
+            .col_expr(
+                draft_tombstone::Column::RetentionRevision,
+                Expr::value(updated_revision),
+            )
+            .filter(draft_tombstone::Column::Id.eq(command.script_id))
+            .filter(draft_tombstone::Column::TenantId.eq(current.tenant_id))
+            .filter(draft_tombstone::Column::RetentionPolicy.eq(current.policy.as_str()))
+            .filter(draft_tombstone::Column::RetentionRevision.eq(expected_revision))
+            .exec(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        if changed.rows_affected != 1 {
+            transaction
+                .rollback()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            if let Some(receipt) = self
+                .retention_receipt(
+                    command.script_id,
+                    &command.deletion_request_digest,
+                    command.idempotency_key,
+                )
+                .await?
+            {
+                return if receipt.request_digest == request_digest {
+                    Self::retention_state_from_receipt(&receipt)
+                } else {
+                    Err(ScriptEvidenceRetentionError::IdempotencyConflict.into())
+                };
+            }
+            return Err(ScriptError::RetentionRevisionConflict {
+                expected: command.expected_retention_revision,
+            });
+        }
+        draft_retention_receipt::Entity::insert(draft_retention_receipt::ActiveModel {
+            id: ActiveValue::Set(Uuid::new_v4()),
+            script_id: ActiveValue::Set(command.script_id),
+            tenant_id: ActiveValue::Set(current.tenant_id),
+            action: ActiveValue::Set(command.action.as_str().to_string()),
+            actor_id: ActiveValue::Set(command.actor_id),
+            idempotency_key: ActiveValue::Set(command.idempotency_key),
+            request_digest: ActiveValue::Set(request_digest),
+            deletion_request_digest: ActiveValue::Set(command.deletion_request_digest),
+            retention_policy: ActiveValue::Set(updated.policy.as_str().to_string()),
+            retain_until: ActiveValue::Set(updated.retain_until),
+            retention_revision: ActiveValue::Set(updated_revision),
+            recorded_at: ActiveValue::Set(Utc::now()),
+        })
+        .exec_without_returning(&transaction)
+        .await
+        .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        Ok(updated)
+    }
+
+    async fn purge_expired_evidence(&self, now: DateTime<Utc>, limit: u16) -> ScriptResult<u64> {
+        if self.tenant_id.is_some() {
+            return Err(ScriptError::Storage(
+                "Alloy evidence retention must run through the unscoped owner storage".into(),
+            ));
+        }
+        if limit == 0 {
+            return Ok(0);
+        }
+
+        // Unknown persisted policy values intentionally never enter this query:
+        // a policy decoder drift must retain data rather than collect it.
+        let candidates = draft_tombstone::Entity::find()
+            .filter(
+                draft_tombstone::Column::RetentionPolicy.eq(RetentionPolicy::RetainUntil.as_str()),
+            )
+            .filter(draft_tombstone::Column::RetainUntil.lte(now))
+            .order_by_asc(draft_tombstone::Column::RetainUntil)
+            .order_by_asc(draft_tombstone::Column::Id)
+            .limit(u64::from(limit))
+            .all(&self.db)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let mut purged = 0_u64;
+
+        for tombstone in candidates {
+            let retain_until = tombstone.retain_until.ok_or_else(|| {
+                ScriptError::Storage("retain_until evidence has no deadline".into())
+            })?;
+            let transaction = self
+                .db
+                .begin()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+
+            // Delete the tombstone first with its retention predicate as the
+            // transaction-local claim. The evidence deletion and content-free
+            // receipt remain atomic, while another reaper sees zero rows and
+            // cannot collect the same draft twice.
+            let claimed = draft_tombstone::Entity::delete_many()
+                .filter(draft_tombstone::Column::Id.eq(tombstone.id))
+                .filter(draft_tombstone::Column::TenantId.eq(tombstone.tenant_id))
+                .filter(
+                    draft_tombstone::Column::RetentionPolicy
+                        .eq(RetentionPolicy::RetainUntil.as_str()),
+                )
+                .filter(draft_tombstone::Column::RetainUntil.lte(now))
+                .exec(&transaction)
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            if claimed.rows_affected != 1 {
+                transaction
+                    .rollback()
+                    .await
+                    .map_err(|error| ScriptError::Storage(error.to_string()))?;
+                continue;
+            }
+
+            let source_revision_count = i32::try_from(
+                draft_revision::Entity::delete_many()
+                    .filter(draft_revision::Column::ScriptId.eq(tombstone.id))
+                    .filter(draft_revision::Column::TenantId.eq(tombstone.tenant_id))
+                    .exec(&transaction)
+                    .await
+                    .map_err(|error| ScriptError::Storage(error.to_string()))?
+                    .rows_affected,
+            )
+            .map_err(|_| ScriptError::Storage("source revision count exceeds i32".into()))?;
+            let review_count = i32::try_from(
+                draft_review::Entity::delete_many()
+                    .filter(draft_review::Column::ScriptId.eq(tombstone.id))
+                    .filter(draft_review::Column::TenantId.eq(tombstone.tenant_id))
+                    .exec(&transaction)
+                    .await
+                    .map_err(|error| ScriptError::Storage(error.to_string()))?
+                    .rows_affected,
+            )
+            .map_err(|_| ScriptError::Storage("review count exceeds i32".into()))?;
+            let test_run_count = i32::try_from(
+                draft_test_run::Entity::delete_many()
+                    .filter(draft_test_run::Column::ScriptId.eq(tombstone.id))
+                    .filter(draft_test_run::Column::TenantId.eq(tombstone.tenant_id))
+                    .exec(&transaction)
+                    .await
+                    .map_err(|error| ScriptError::Storage(error.to_string()))?
+                    .rows_affected,
+            )
+            .map_err(|_| ScriptError::Storage("test run count exceeds i32".into()))?;
+
+            draft_purge_receipt::Entity::insert(draft_purge_receipt::ActiveModel {
+                id: ActiveValue::Set(Uuid::new_v4()),
+                script_id: ActiveValue::Set(tombstone.id),
+                tenant_id: ActiveValue::Set(tombstone.tenant_id),
+                retention_policy: ActiveValue::Set(tombstone.retention_policy),
+                retain_until: ActiveValue::Set(retain_until),
+                purged_at: ActiveValue::Set(now),
+                source_revision_count: ActiveValue::Set(source_revision_count),
+                review_count: ActiveValue::Set(review_count),
+                test_run_count: ActiveValue::Set(test_run_count),
+                deletion_request_digest: ActiveValue::Set(tombstone.request_digest),
+            })
+            .exec_without_returning(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            transaction
+                .commit()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            purged = purged.saturating_add(1);
+        }
+
+        Ok(purged)
     }
 
     async fn set_status(&self, id: ScriptId, status: ScriptStatus) -> ScriptResult<()> {
@@ -1746,7 +2181,15 @@ mod tests {
             Err(ScriptError::NotFound { .. })
         ));
         assert!(matches!(
-            other.delete(script.id, script.version).await,
+            other
+                .delete(ScriptDeletionCommand {
+                    script_id: script.id,
+                    expected_revision: script.version,
+                    actor_id: "operator:delete".into(),
+                    reason: "The draft was intentionally removed.".into(),
+                    idempotency_key: Uuid::new_v4(),
+                })
+                .await,
             Err(ScriptError::NotFound { .. })
         ));
         assert!(matches!(
@@ -1885,9 +2328,114 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legal_hold_is_durable_tenant_scoped_and_excluded_from_collection() {
+        let (storage, owner_tenant, other_tenant, script) = storage_with_script().await;
+        let owner = storage.for_tenant(owner_tenant);
+        let other = storage.for_tenant(other_tenant);
+        owner
+            .delete(ScriptDeletionCommand {
+                script_id: script.id,
+                expected_revision: script.version,
+                actor_id: "operator:retention".into(),
+                reason: "The draft must be retained before a legal review.".into(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("deletion should create retained evidence");
+        let initial = owner
+            .get_deleted_evidence_retention(script.id)
+            .await
+            .expect("owner should read the source-free retention state");
+        assert!(matches!(
+            other.get_deleted_evidence_retention(script.id).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        let hold = ScriptEvidenceRetentionCommand {
+            script_id: script.id,
+            deletion_request_digest: initial.deletion_request_digest.clone(),
+            expected_retention_revision: initial.retention_revision,
+            action: crate::ScriptEvidenceRetentionAction::ApplyLegalHold,
+            actor_id: "operator:retention".into(),
+            reason: "A legal investigation requires preservation.".into(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let held = owner
+            .update_deleted_evidence_retention(hold.clone())
+            .await
+            .expect("owner should place a legal hold");
+        assert_eq!(held.policy, RetentionPolicy::LegalHold);
+        assert_eq!(held.retain_until, None);
+        assert_eq!(held.retention_revision, 2);
+        let receipt = draft_retention_receipt::Entity::find()
+            .filter(draft_retention_receipt::Column::ScriptId.eq(script.id))
+            .filter(draft_retention_receipt::Column::TenantId.eq(owner_tenant))
+            .one(&storage.db)
+            .await
+            .expect("retention receipt lookup should succeed")
+            .expect("legal-hold receipt should persist");
+        assert_eq!(receipt.action, "apply_legal_hold");
+        assert_eq!(receipt.actor_id, "operator:retention");
+        assert_eq!(
+            receipt.deletion_request_digest,
+            initial.deletion_request_digest
+        );
+        assert_eq!(
+            receipt.retention_policy,
+            RetentionPolicy::LegalHold.as_str()
+        );
+        assert_eq!(receipt.retain_until, None);
+        assert_eq!(
+            storage
+                .purge_expired_evidence(Utc::now() + chrono::Duration::days(90), 8)
+                .await
+                .expect("legal-hold collection pass should succeed"),
+            0
+        );
+        assert!(matches!(
+            other.update_deleted_evidence_retention(hold.clone()).await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        assert_eq!(
+            owner
+                .update_deleted_evidence_retention(hold.clone())
+                .await
+                .expect("exact hold retry should replay"),
+            held
+        );
+        let mut conflicting_hold = hold;
+        conflicting_hold.reason = "A different reason must not replay.".into();
+        assert!(matches!(
+            owner
+                .update_deleted_evidence_retention(conflicting_hold)
+                .await,
+            Err(ScriptError::EvidenceRetention(
+                ScriptEvidenceRetentionError::IdempotencyConflict
+            ))
+        ));
+
+        let released = owner
+            .update_deleted_evidence_retention(ScriptEvidenceRetentionCommand {
+                script_id: script.id,
+                deletion_request_digest: held.deletion_request_digest.clone(),
+                expected_retention_revision: held.retention_revision,
+                action: crate::ScriptEvidenceRetentionAction::ReleaseLegalHold,
+                actor_id: "operator:retention".into(),
+                reason: "The legal hold was released by its owner.".into(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("owner should release the legal hold");
+        assert_eq!(released.policy, RetentionPolicy::RetainUntil);
+        assert!(released.retain_until > Some(Utc::now()));
+        assert_eq!(released.retention_revision, 3);
+    }
+
+    #[tokio::test]
     async fn deleted_script_hides_retained_source_and_review_evidence() {
         let (storage, owner_tenant, _, script) = storage_with_script().await;
         let owner = storage.for_tenant(owner_tenant);
+        let review_reason = "Review reason that must be erased after expiry.";
+        let test_diagnostic = "Test diagnostic that must be erased after expiry.";
         let mut script = owner
             .get(script.id)
             .await
@@ -1904,7 +2452,7 @@ mod tests {
             status: ReviewStatus::ChangesRequested,
             policy_revision: "policy:current".into(),
             actor_id: "operator:reviewer".into(),
-            reason: None,
+            reason: Some(review_reason.into()),
             idempotency_key: Uuid::new_v4(),
         };
         owner
@@ -1925,11 +2473,70 @@ mod tests {
         else {
             panic!("new test command must claim a lease");
         };
-
+        let terminal_test = TestCommand {
+            script_id: script.id,
+            expected_revision: script.version,
+            test_path: "tests/smoke.rhai".into(),
+            actor_id: "operator:tester".into(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let TestRunClaim::Claimed(terminal_lease) = owner
+            .claim_test_run(terminal_test)
+            .await
+            .expect("terminal test claim should be recorded before deletion")
+        else {
+            panic!("distinct test command must claim a lease");
+        };
         owner
-            .delete(script.id, script.version)
+            .complete_test_run(
+                terminal_lease.run.id,
+                terminal_lease.lease_token,
+                TestRunCompletion::failed(Some(test_diagnostic.into()))
+                    .expect("diagnostic should be valid test evidence"),
+            )
+            .await
+            .expect("terminal diagnostic should persist until expiry");
+
+        let deletion = ScriptDeletionCommand {
+            script_id: script.id,
+            expected_revision: script.version,
+            actor_id: "operator:delete".into(),
+            reason: "The draft was intentionally removed.".into(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        owner
+            .delete(deletion.clone())
             .await
             .expect("current script should delete");
+        let tombstone = owner
+            .deletion_receipt(script.id)
+            .await
+            .expect("deletion receipt should load")
+            .expect("deletion receipt should persist");
+        assert_eq!(tombstone.deleted_by, deletion.actor_id);
+        assert_eq!(tombstone.delete_reason, deletion.reason);
+        assert_eq!(tombstone.idempotency_key, deletion.idempotency_key);
+        assert_eq!(
+            tombstone.retention_policy,
+            RetentionPolicy::RetainUntil.as_str()
+        );
+        assert!(
+            tombstone
+                .retain_until
+                .is_some_and(|retain_until| retain_until > tombstone.deleted_at)
+        );
+        owner
+            .delete(deletion.clone())
+            .await
+            .expect("the exact deletion command should replay after removal");
+        let mut conflicting_replay = deletion;
+        conflicting_replay.reason = "A different retention reason.".into();
+        assert!(matches!(
+            owner.delete(conflicting_replay).await,
+            Err(ScriptError::Deletion(
+                ScriptDeletionError::IdempotencyConflict
+            ))
+        ));
 
         assert!(matches!(
             owner.get_source_revision(script.id, script.version).await,
@@ -1968,5 +2575,85 @@ mod tests {
             owner.save(replacement).await,
             Err(ScriptError::InvalidLineage(_))
         ));
+
+        let expired_at = Utc::now() - chrono::Duration::seconds(1);
+        draft_tombstone::Entity::update_many()
+            .col_expr(
+                draft_tombstone::Column::RetainUntil,
+                Expr::value(expired_at),
+            )
+            .filter(draft_tombstone::Column::Id.eq(script.id))
+            .filter(draft_tombstone::Column::TenantId.eq(owner_tenant))
+            .exec(&storage.db)
+            .await
+            .expect("retention expiry should be persisted for the reaper");
+        assert_eq!(
+            storage
+                .purge_expired_evidence(Utc::now(), 8)
+                .await
+                .expect("global owner storage should collect expired evidence"),
+            1
+        );
+        assert!(
+            draft_tombstone::Entity::find_by_id(script.id)
+                .one(&storage.db)
+                .await
+                .expect("tombstone lookup should succeed")
+                .is_none()
+        );
+        assert!(
+            draft_revision::Entity::find()
+                .filter(draft_revision::Column::ScriptId.eq(script.id))
+                .one(&storage.db)
+                .await
+                .expect("source revision lookup should succeed")
+                .is_none()
+        );
+        assert!(
+            draft_review::Entity::find()
+                .filter(draft_review::Column::ScriptId.eq(script.id))
+                .one(&storage.db)
+                .await
+                .expect("review lookup should succeed")
+                .is_none()
+        );
+        assert!(
+            draft_test_run::Entity::find()
+                .filter(draft_test_run::Column::ScriptId.eq(script.id))
+                .one(&storage.db)
+                .await
+                .expect("test-run lookup should succeed")
+                .is_none()
+        );
+        let purge_receipt = draft_purge_receipt::Entity::find()
+            .filter(draft_purge_receipt::Column::ScriptId.eq(script.id))
+            .filter(draft_purge_receipt::Column::TenantId.eq(owner_tenant))
+            .one(&storage.db)
+            .await
+            .expect("purge receipt lookup should succeed")
+            .expect("content-free purge receipt should persist");
+        assert_eq!(
+            purge_receipt.retention_policy,
+            RetentionPolicy::RetainUntil.as_str()
+        );
+        assert_eq!(purge_receipt.source_revision_count, 2);
+        assert_eq!(purge_receipt.review_count, 1);
+        assert_eq!(purge_receipt.test_run_count, 2);
+        assert!(purge_receipt.deletion_request_digest.starts_with("sha256:"));
+        let receipt_debug = format!("{purge_receipt:?}");
+        assert!(!receipt_debug.contains(review_reason));
+        assert!(!receipt_debug.contains(test_diagnostic));
+
+        let mut replacement = Script::new(
+            "reused_after_evidence_purge",
+            RhaiWorkspace::single_source("43 + 2"),
+            ScriptTrigger::Manual,
+        );
+        replacement.id = script.id;
+        replacement.tenant_id = owner_tenant;
+        owner
+            .save(replacement)
+            .await
+            .expect("purged draft ID may be reused without retained evidence");
     }
 }

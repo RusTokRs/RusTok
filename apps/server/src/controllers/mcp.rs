@@ -38,8 +38,9 @@ use tokio_stream::once;
 
 #[cfg(feature = "mod-alloy")]
 use rustok_mcp::{
-    AlloyPublishedReleaseImportRequest, TOOL_ALLOY_CHANGE_SCRIPT_LIFECYCLE,
-    TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT, TOOL_ALLOY_GET_SCRIPT,
+    AlloyPublishedReleaseImportRequest, TOOL_ALLOY_CHANGE_DELETED_EVIDENCE_RETENTION,
+    TOOL_ALLOY_CHANGE_SCRIPT_LIFECYCLE, TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT,
+    TOOL_ALLOY_GET_DELETED_EVIDENCE_RETENTION, TOOL_ALLOY_GET_SCRIPT,
     TOOL_ALLOY_LIST_SCRIPT_REVIEWS, TOOL_ALLOY_LIST_SCRIPT_REVISIONS, TOOL_ALLOY_LIST_SCRIPTS,
     TOOL_ALLOY_REVIEW_SCRIPT, TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_RUN_WORKSPACE_TEST,
     TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT, import_published_release,
@@ -276,14 +277,14 @@ async fn execute_remote_tool_call(
     })
 }
 
-/// Source-bearing Alloy commands must not use caller-controlled audit metadata.
+/// Owner-bound Alloy commands must not use caller-controlled audit metadata.
 /// The durable audit row confirms the operation and its binding without becoming
-/// a second persistence path for script source, tests, or diagnostics.
+/// a persistence path for script source, tests, diagnostics, or retention reasons.
 fn remote_tool_audit_metadata(tool_name: &str, metadata: serde_json::Value) -> serde_json::Value {
     if is_remote_alloy_authoring_tool(tool_name) {
         serde_json::json!({
             "redacted": true,
-            "reason": "source_bearing_alloy_authoring",
+            "reason": "owner_bound_alloy_authoring",
         })
     } else {
         metadata
@@ -342,7 +343,17 @@ async fn execute_remote_alloy_authoring(
         ),
         TOOL_ALLOY_DELETE_SCRIPT => remote_alloy_result(
             service
-                .delete_script(parse_remote_alloy_args(arguments)?)
+                .delete_script(&actor_id, parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_GET_DELETED_EVIDENCE_RETENTION => remote_alloy_result(
+            service
+                .get_deleted_evidence_retention(parse_remote_alloy_args(arguments)?)
+                .await,
+        ),
+        TOOL_ALLOY_CHANGE_DELETED_EVIDENCE_RETENTION => remote_alloy_result(
+            service
+                .change_deleted_evidence_retention(&actor_id, parse_remote_alloy_args(arguments)?)
                 .await,
         ),
         TOOL_ALLOY_VALIDATE_SCRIPT => {
@@ -429,6 +440,12 @@ where
             envelope_value(McpToolResponse::<()>::error(
                 "alloy_script_revision_conflict",
                 "Alloy script revision conflict",
+            ))
+        }
+        Err(alloy::AlloyAuthoringError::RetentionRevisionConflict { .. }) => {
+            envelope_value(McpToolResponse::<()>::error(
+                "alloy_evidence_retention_revision_conflict",
+                "Alloy evidence retention revision conflict",
             ))
         }
         Err(alloy::AlloyAuthoringError::Invalid) => envelope_value(McpToolResponse::<()>::error(
@@ -986,7 +1003,7 @@ mod tests {
 
         let redacted = remote_tool_audit_metadata(rustok_mcp::TOOL_ALLOY_CREATE_SCRIPT, metadata);
         assert_eq!(redacted["redacted"], true);
-        assert_eq!(redacted["reason"], "source_bearing_alloy_authoring");
+        assert_eq!(redacted["reason"], "owner_bound_alloy_authoring");
         assert!(!redacted.to_string().contains("credential"));
     }
 

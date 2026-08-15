@@ -17,6 +17,7 @@ use rustok_api::{
 };
 #[cfg(feature = "graphql")]
 use rustok_api::{AuthContext, RequestContext};
+use rustok_core::RetentionPolicy;
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use rustok_storage::{
     LocalStorageConfig, StorageRuntime,
@@ -32,14 +33,14 @@ use rustok_translation::{
     CreateWorkflowNoteInput, ExportTranslationJobInput, GlossaryBinding, GlossaryConcept,
     GlossaryMatchKind, GlossaryScope, GlossaryTermPolicy, GlossaryVariant,
     ImportTranslationItemInput, ListInterchangeArtifactsInput, ListWorkflowNotesInput,
-    MemoryListInput, MemoryLookupInput, MemoryMatchKind, MemoryRetentionPolicy,
-    ProcessInterchangeImportArtifactInput, ProposalOrigin, ProposalValue, PurgeMemoryEntryInput,
-    ReadInterchangeArtifactInput, RecoverApplyInput, ReplaceGlossaryTermsInput,
-    ResolveWorkflowNoteInput, RetryItemInput, ReviewerQueueInput, ReviewerWorkloadInput,
-    SaveProposalInput, SetMemoryRetentionInput, StoreInterchangeImportArtifactInput,
-    SubmitProposalInput, TombstoneMemoryEntryInput, TranslationError, TranslationExchangeService,
-    TranslationGlossaryService, TranslationInterchangeArtifactStatus, TranslationMemoryService,
-    TranslationProgressService, TranslationWorkflowService, UnassignItemInput,
+    MemoryListInput, MemoryLookupInput, MemoryMatchKind, ProcessInterchangeImportArtifactInput,
+    ProposalOrigin, ProposalValue, PurgeMemoryEntryInput, ReadInterchangeArtifactInput,
+    RecoverApplyInput, ReplaceGlossaryTermsInput, ResolveWorkflowNoteInput, RetryItemInput,
+    ReviewerQueueInput, ReviewerWorkloadInput, SaveProposalInput, SetMemoryRetentionInput,
+    StoreInterchangeImportArtifactInput, SubmitProposalInput, TombstoneMemoryEntryInput,
+    TranslationError, TranslationExchangeService, TranslationGlossaryService,
+    TranslationInterchangeArtifactStatus, TranslationMemoryService, TranslationProgressService,
+    TranslationWorkflowService, UnassignItemInput,
     entities::{
         apply_operation, apply_receipt, apply_recovery, assignment, cancellation, exchange_job,
         job, job_item, job_progress, memory_entry, memory_receipt, proposal, retry,
@@ -1763,7 +1764,7 @@ async fn memory_retention_tombstone_and_purge_are_revisioned_and_replay_safe() {
             SetMemoryRetentionInput {
                 entry_id: entry.id,
                 expected_revision: entry.revision,
-                policy: MemoryRetentionPolicy::LegalHold,
+                policy: RetentionPolicy::LegalHold,
                 retain_until: None,
             },
         )
@@ -1775,7 +1776,7 @@ async fn memory_retention_tombstone_and_purge_are_revisioned_and_replay_safe() {
             SetMemoryRetentionInput {
                 entry_id: entry.id,
                 expected_revision: entry.revision,
-                policy: MemoryRetentionPolicy::LegalHold,
+                policy: RetentionPolicy::LegalHold,
                 retain_until: None,
             },
         )
@@ -1805,7 +1806,7 @@ async fn memory_retention_tombstone_and_purge_are_revisioned_and_replay_safe() {
             SetMemoryRetentionInput {
                 entry_id: entry.id,
                 expected_revision: legal_hold.revision,
-                policy: MemoryRetentionPolicy::OwnerLifecycle,
+                policy: RetentionPolicy::OwnerLifecycle,
                 retain_until: None,
             },
         )

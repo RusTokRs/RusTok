@@ -6,7 +6,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::alloy_authoring::{
-    TOOL_ALLOY_CHANGE_SCRIPT_LIFECYCLE, TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT,
+    TOOL_ALLOY_CHANGE_DELETED_EVIDENCE_RETENTION, TOOL_ALLOY_CHANGE_SCRIPT_LIFECYCLE,
+    TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT, TOOL_ALLOY_GET_DELETED_EVIDENCE_RETENTION,
     TOOL_ALLOY_GET_SCRIPT, TOOL_ALLOY_LIST_SCRIPT_REVIEWS, TOOL_ALLOY_LIST_SCRIPT_REVISIONS,
     TOOL_ALLOY_LIST_SCRIPTS, TOOL_ALLOY_REVIEW_SCRIPT, TOOL_ALLOY_RUN_SCRIPT,
     TOOL_ALLOY_RUN_WORKSPACE_TEST, TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
@@ -267,6 +268,8 @@ pub fn default_tool_requirement(tool_name: &str) -> McpToolRequirement {
         | TOOL_ALLOY_CREATE_SCRIPT
         | TOOL_ALLOY_UPDATE_SCRIPT
         | TOOL_ALLOY_DELETE_SCRIPT
+        | TOOL_ALLOY_GET_DELETED_EVIDENCE_RETENTION
+        | TOOL_ALLOY_CHANGE_DELETED_EVIDENCE_RETENTION
         | TOOL_ALLOY_VALIDATE_SCRIPT
         | TOOL_ALLOY_RUN_SCRIPT
         | TOOL_ALLOY_REVIEW_SCRIPT
@@ -402,7 +405,8 @@ mod tests {
 
     #[test]
     fn maps_remote_alloy_authoring_to_scripts_manage() {
-        let requirement = default_tool_requirement(crate::TOOL_ALLOY_CREATE_SCRIPT);
+        let requirement =
+            default_tool_requirement(crate::TOOL_ALLOY_CHANGE_DELETED_EVIDENCE_RETENTION);
 
         assert_eq!(
             requirement.required_permissions,

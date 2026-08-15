@@ -8,8 +8,10 @@ use super::traits::{ScriptPage, ScriptQuery, ScriptRegistry};
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
     AlloyImportedDraftCommand, AlloyImportedDraftResult, ReviewCommand, ReviewDecision, Script,
-    ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun,
-    TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus, validate_transition,
+    ScriptDeletionCommand, ScriptDeletionError, ScriptEvidenceRetentionCommand,
+    ScriptEvidenceRetentionError, ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision,
+    ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
+    TestRunLease, TestRunStatus, validate_transition,
 };
 
 #[derive(Clone)]
@@ -20,9 +22,42 @@ struct ReleaseImportReceipt {
 }
 
 #[derive(Clone)]
+struct DeletionReceipt {
+    tenant_id: uuid::Uuid,
+    idempotency_key: uuid::Uuid,
+    request_digest: String,
+    retention_policy: rustok_core::RetentionPolicy,
+    retain_until: Option<chrono::DateTime<chrono::Utc>>,
+    retention_revision: u32,
+}
+
+#[derive(Clone)]
+struct RetentionReceipt {
+    request_digest: String,
+    state: ScriptEvidenceRetentionState,
+}
+
+#[cfg(test)]
+#[derive(Clone, Debug)]
+struct PurgeReceipt {
+    script_id: ScriptId,
+    tenant_id: uuid::Uuid,
+    retention_policy: rustok_core::RetentionPolicy,
+    retain_until: chrono::DateTime<chrono::Utc>,
+    source_revision_count: u32,
+    review_count: u32,
+    test_run_count: u32,
+    deletion_request_digest: String,
+}
+
+#[derive(Clone)]
 pub struct InMemoryStorage {
     scripts: Arc<RwLock<HashMap<ScriptId, Script>>>,
     retired_script_ids: Arc<RwLock<HashSet<ScriptId>>>,
+    deletion_receipts: Arc<RwLock<HashMap<ScriptId, DeletionReceipt>>>,
+    retention_receipts: Arc<RwLock<HashMap<(ScriptId, String, uuid::Uuid), RetentionReceipt>>>,
+    #[cfg(test)]
+    purge_receipts: Arc<RwLock<Vec<PurgeReceipt>>>,
     source_revisions: Arc<RwLock<HashMap<(ScriptId, u32), ScriptSourceRevision>>>,
     release_imports: Arc<RwLock<HashMap<(uuid::Uuid, uuid::Uuid), ReleaseImportReceipt>>>,
     reviews: Arc<RwLock<HashMap<(ScriptId, u32), Vec<ReviewDecision>>>>,
@@ -35,6 +70,10 @@ impl InMemoryStorage {
         Self {
             scripts: Arc::new(RwLock::new(HashMap::new())),
             retired_script_ids: Arc::new(RwLock::new(HashSet::new())),
+            deletion_receipts: Arc::new(RwLock::new(HashMap::new())),
+            retention_receipts: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(test)]
+            purge_receipts: Arc::new(RwLock::new(Vec::new())),
             source_revisions: Arc::new(RwLock::new(HashMap::new())),
             release_imports: Arc::new(RwLock::new(HashMap::new())),
             reviews: Arc::new(RwLock::new(HashMap::new())),
@@ -59,6 +98,37 @@ impl InMemoryStorage {
             parent_release: script.parent_release.clone(),
             created_at: script.updated_at,
         }
+    }
+
+    fn retention_state(
+        script_id: ScriptId,
+        receipt: &DeletionReceipt,
+    ) -> ScriptResult<ScriptEvidenceRetentionState> {
+        ScriptEvidenceRetentionState::new(
+            script_id,
+            receipt.tenant_id,
+            receipt.request_digest.clone(),
+            receipt.retention_policy,
+            receipt.retain_until,
+            receipt.retention_revision,
+        )
+        .map_err(ScriptError::from)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn set_deleted_evidence_deadline(
+        &self,
+        script_id: ScriptId,
+        retain_until: chrono::DateTime<chrono::Utc>,
+    ) -> ScriptResult<()> {
+        let mut receipts = self.deletion_receipts.write().await;
+        let receipt = receipts
+            .get_mut(&script_id)
+            .ok_or_else(|| ScriptError::NotFound {
+                name: script_id.to_string(),
+            })?;
+        receipt.retain_until = Some(retain_until);
+        Ok(())
     }
 }
 
@@ -562,19 +632,224 @@ impl ScriptRegistry for InMemoryStorage {
         Ok(script)
     }
 
-    async fn delete(&self, id: ScriptId, expected_version: u32) -> ScriptResult<()> {
+    async fn delete(&self, command: ScriptDeletionCommand) -> ScriptResult<()> {
+        command.validate()?;
+        let request_digest = command.request_digest()?;
+        let id = command.script_id;
         let mut guard = self.scripts.write().await;
+        let mut retired = self.retired_script_ids.write().await;
+        let mut receipts = self.deletion_receipts.write().await;
+        if let Some(existing) = receipts.get(&id) {
+            if existing.request_digest == request_digest {
+                return Ok(());
+            }
+            return if existing.idempotency_key == command.idempotency_key {
+                Err(ScriptDeletionError::IdempotencyConflict.into())
+            } else {
+                Err(ScriptError::NotFound {
+                    name: id.to_string(),
+                })
+            };
+        }
         let script = guard.get(&id).ok_or(ScriptError::NotFound {
             name: id.to_string(),
         })?;
-        if script.version != expected_version {
+        if script.version != command.expected_revision {
             return Err(ScriptError::RevisionConflict {
-                expected: expected_version,
+                expected: command.expected_revision,
             });
         }
+        let deleted_at = chrono::Utc::now();
+        let (retention_policy, retain_until) = crate::model::deleted_evidence_retention(deleted_at);
+        let tenant_id = script.tenant_id;
         guard.remove(&id);
-        self.retired_script_ids.write().await.insert(id);
+        retired.insert(id);
+        receipts.insert(
+            id,
+            DeletionReceipt {
+                tenant_id,
+                idempotency_key: command.idempotency_key,
+                request_digest,
+                retention_policy,
+                retain_until: Some(retain_until),
+                retention_revision: 1,
+            },
+        );
         Ok(())
+    }
+
+    async fn get_deleted_evidence_retention(
+        &self,
+        id: ScriptId,
+    ) -> ScriptResult<ScriptEvidenceRetentionState> {
+        let receipts = self.deletion_receipts.read().await;
+        let receipt = receipts.get(&id).ok_or_else(|| ScriptError::NotFound {
+            name: id.to_string(),
+        })?;
+        Self::retention_state(id, receipt)
+    }
+
+    async fn update_deleted_evidence_retention(
+        &self,
+        command: ScriptEvidenceRetentionCommand,
+    ) -> ScriptResult<ScriptEvidenceRetentionState> {
+        command.validate()?;
+        let request_digest = command.request_digest()?;
+        let mut receipts = self.deletion_receipts.write().await;
+        let mut retention_receipts = self.retention_receipts.write().await;
+        let receipt_key = (
+            command.script_id,
+            command.deletion_request_digest.clone(),
+            command.idempotency_key,
+        );
+        let deletion = match receipts.get_mut(&command.script_id) {
+            Some(deletion) => deletion,
+            None => {
+                return retention_receipts
+                    .get(&receipt_key)
+                    .filter(|receipt| receipt.request_digest == request_digest)
+                    .map(|receipt| receipt.state.clone())
+                    .ok_or_else(|| ScriptError::NotFound {
+                        name: command.script_id.to_string(),
+                    });
+            }
+        };
+        let current = Self::retention_state(command.script_id, deletion)?;
+        if current.deletion_request_digest != command.deletion_request_digest {
+            return Err(ScriptError::NotFound {
+                name: command.script_id.to_string(),
+            });
+        }
+        if let Some(receipt) = retention_receipts.get(&receipt_key) {
+            return if receipt.request_digest == request_digest {
+                Ok(receipt.state.clone())
+            } else {
+                Err(ScriptEvidenceRetentionError::IdempotencyConflict.into())
+            };
+        }
+        if current.retention_revision != command.expected_retention_revision {
+            return Err(ScriptError::RetentionRevisionConflict {
+                expected: command.expected_retention_revision,
+            });
+        }
+        let state = current.transition(command.action, chrono::Utc::now())?;
+        deletion.retention_policy = state.policy;
+        deletion.retain_until = state.retain_until;
+        deletion.retention_revision = state.retention_revision;
+        retention_receipts.insert(
+            receipt_key,
+            RetentionReceipt {
+                request_digest,
+                state: state.clone(),
+            },
+        );
+        Ok(state)
+    }
+
+    async fn purge_expired_evidence(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        limit: u16,
+    ) -> ScriptResult<u64> {
+        if limit == 0 {
+            return Ok(0);
+        }
+
+        // Acquire locks in the same owner-first order as delete/save so a
+        // retention sweep cannot expose or race a partially deleted draft.
+        let _scripts = self.scripts.write().await;
+        let mut retired = self.retired_script_ids.write().await;
+        let mut deletions = self.deletion_receipts.write().await;
+        let candidate_ids = deletions
+            .iter()
+            .filter(|(_, receipt)| {
+                receipt.retention_policy == rustok_core::RetentionPolicy::RetainUntil
+                    && receipt
+                        .retain_until
+                        .is_some_and(|retain_until| retain_until <= now)
+            })
+            .map(|(script_id, _)| *script_id)
+            .take(usize::from(limit))
+            .collect::<Vec<_>>();
+        if candidate_ids.is_empty() {
+            return Ok(0);
+        }
+        let candidates = candidate_ids
+            .iter()
+            .filter_map(|script_id| {
+                deletions
+                    .get(script_id)
+                    .cloned()
+                    .map(|receipt| (*script_id, receipt))
+            })
+            .collect::<Vec<_>>();
+
+        let candidate_set = candidate_ids.into_iter().collect::<HashSet<_>>();
+        let mut source_revisions = self.source_revisions.write().await;
+        let mut reviews = self.reviews.write().await;
+        let mut test_runs = self.test_runs.write().await;
+        #[cfg(test)]
+        let mut test_leases = self.test_leases.write().await;
+        #[cfg(test)]
+        let mut purge_receipts = self.purge_receipts.write().await;
+
+        for (script_id, deletion) in candidates {
+            let retain_until = deletion.retain_until.ok_or_else(|| {
+                ScriptError::Storage("retain_until evidence has no deadline".into())
+            })?;
+            #[cfg(not(test))]
+            let _ = retain_until;
+            #[cfg(test)]
+            let source_revision_count: u32 = source_revisions
+                .keys()
+                .filter(|(id, _)| *id == script_id)
+                .count()
+                .try_into()
+                .map_err(|_| ScriptError::Storage("source revision count exceeds u32".into()))?;
+            source_revisions.retain(|(id, _), _| *id != script_id);
+
+            #[cfg(test)]
+            let review_count: u32 = reviews
+                .iter()
+                .filter(|((id, _), _)| *id == script_id)
+                .map(|(_, decisions)| decisions.len())
+                .sum::<usize>()
+                .try_into()
+                .map_err(|_| ScriptError::Storage("review count exceeds u32".into()))?;
+            reviews.retain(|(id, _), _| *id != script_id);
+
+            #[cfg(test)]
+            let purged_run_ids = test_runs
+                .iter()
+                .filter(|((id, _, _), _)| *id == script_id)
+                .map(|(_, run)| run.id)
+                .collect::<HashSet<_>>();
+            #[cfg(test)]
+            let test_run_count: u32 = purged_run_ids
+                .len()
+                .try_into()
+                .map_err(|_| ScriptError::Storage("test run count exceeds u32".into()))?;
+            test_runs.retain(|(id, _, _), _| *id != script_id);
+            #[cfg(test)]
+            test_leases.retain(|run_id, _| !purged_run_ids.contains(run_id));
+
+            #[cfg(test)]
+            purge_receipts.push(PurgeReceipt {
+                script_id,
+                tenant_id: deletion.tenant_id,
+                retention_policy: deletion.retention_policy,
+                retain_until,
+                source_revision_count,
+                review_count,
+                test_run_count,
+                deletion_request_digest: deletion.request_digest,
+            });
+            deletions.remove(&script_id);
+            retired.remove(&script_id);
+        }
+        debug_assert!(candidate_set.iter().all(|id| !retired.contains(id)));
+        Ok(u64::try_from(candidate_set.len())
+            .map_err(|_| ScriptError::Storage("purge count exceeds u64".into()))?)
     }
 
     async fn set_status(&self, id: ScriptId, status: ScriptStatus) -> ScriptResult<()> {
@@ -723,7 +998,15 @@ mod tests {
             .expect("current revision should save");
 
         assert!(matches!(
-            storage.delete(saved.id, saved.version).await,
+            storage
+                .delete(ScriptDeletionCommand {
+                    script_id: saved.id,
+                    expected_revision: saved.version,
+                    actor_id: "operator:delete".into(),
+                    reason: "The superseded draft is no longer needed.".into(),
+                    idempotency_key: Uuid::new_v4(),
+                })
+                .await,
             Err(ScriptError::RevisionConflict { expected: 1 })
         ));
         let review = ReviewCommand {
@@ -739,10 +1022,29 @@ mod tests {
             .review(review.clone())
             .await
             .expect("review should be recorded before deletion");
+        let deletion = ScriptDeletionCommand {
+            script_id: updated.id,
+            expected_revision: updated.version,
+            actor_id: "operator:delete".into(),
+            reason: "The draft was intentionally removed.".into(),
+            idempotency_key: Uuid::new_v4(),
+        };
         storage
-            .delete(updated.id, updated.version)
+            .delete(deletion.clone())
             .await
             .expect("current revision should delete");
+        storage
+            .delete(deletion.clone())
+            .await
+            .expect("the exact deletion command should replay after removal");
+        let mut conflicting_replay = deletion;
+        conflicting_replay.reason = "A different retention reason.".into();
+        assert!(matches!(
+            storage.delete(conflicting_replay).await,
+            Err(ScriptError::Deletion(
+                ScriptDeletionError::IdempotencyConflict
+            ))
+        ));
         assert!(matches!(
             storage.get(updated.id).await,
             Err(ScriptError::NotFound { .. })
@@ -771,6 +1073,214 @@ mod tests {
             storage.save(replacement).await,
             Err(ScriptError::InvalidLineage(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn expired_deleted_evidence_is_collected_with_a_content_free_receipt() {
+        let storage = InMemoryStorage::new();
+        let review_reason = "Review reason that must be erased after expiry.";
+        let test_diagnostic = "Test diagnostic that must be erased after expiry.";
+        let mut script = named_script("retention_subject", ScriptStatus::Draft);
+        script.workspace.files.push(RhaiWorkspaceFile {
+            path: "tests/smoke.rhai".into(),
+            kind: RhaiWorkspaceFileKind::Test,
+            contents: "true".into(),
+        });
+        let script = storage
+            .save(script)
+            .await
+            .expect("retention subject should save");
+        storage
+            .review(ReviewCommand {
+                script_id: script.id,
+                expected_revision: script.version,
+                status: ReviewStatus::ChangesRequested,
+                policy_revision: "policy:retention".into(),
+                actor_id: "operator:reviewer".into(),
+                reason: Some(review_reason.into()),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("review should persist");
+        let TestRunClaim::Claimed(lease) = storage
+            .claim_test_run(TestCommand {
+                script_id: script.id,
+                expected_revision: script.version,
+                test_path: "tests/smoke.rhai".into(),
+                actor_id: "operator:tester".into(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("test evidence should reserve")
+        else {
+            panic!("new test command must claim a lease");
+        };
+        storage
+            .complete_test_run(
+                lease.run.id,
+                lease.lease_token,
+                TestRunCompletion::failed(Some(test_diagnostic.into()))
+                    .expect("diagnostic should be valid test evidence"),
+            )
+            .await
+            .expect("terminal diagnostic should persist until expiry");
+        storage
+            .delete(ScriptDeletionCommand {
+                script_id: script.id,
+                expected_revision: script.version,
+                actor_id: "operator:delete".into(),
+                reason: "Retention period elapsed for this draft.".into(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("deletion should retain evidence first");
+
+        storage
+            .set_deleted_evidence_deadline(
+                script.id,
+                chrono::Utc::now() - chrono::Duration::seconds(1),
+            )
+            .await
+            .expect("deletion receipt should exist");
+
+        assert_eq!(
+            storage
+                .purge_expired_evidence(chrono::Utc::now(), 1)
+                .await
+                .expect("expired retention should purge"),
+            1
+        );
+        assert!(
+            !storage
+                .source_revisions
+                .read()
+                .await
+                .keys()
+                .any(|(id, _)| *id == script.id)
+        );
+        assert!(
+            !storage
+                .reviews
+                .read()
+                .await
+                .keys()
+                .any(|(id, _)| *id == script.id)
+        );
+        assert!(
+            !storage
+                .test_runs
+                .read()
+                .await
+                .keys()
+                .any(|(id, _, _)| *id == script.id)
+        );
+        let receipt = storage
+            .purge_receipts
+            .read()
+            .await
+            .last()
+            .cloned()
+            .expect("content-free purge receipt should persist");
+        assert_eq!(receipt.script_id, script.id);
+        assert_eq!(receipt.tenant_id, script.tenant_id);
+        assert_eq!(
+            receipt.retention_policy,
+            rustok_core::RetentionPolicy::RetainUntil
+        );
+        assert!(receipt.retain_until <= chrono::Utc::now());
+        assert_eq!(receipt.source_revision_count, 1);
+        assert_eq!(receipt.review_count, 1);
+        assert_eq!(receipt.test_run_count, 1);
+        assert!(receipt.deletion_request_digest.starts_with("sha256:"));
+        let receipt_debug = format!("{receipt:?}");
+        assert!(!receipt_debug.contains(review_reason));
+        assert!(!receipt_debug.contains(test_diagnostic));
+
+        let mut replacement = named_script("reused_after_purge", ScriptStatus::Draft);
+        replacement.id = script.id;
+        storage
+            .save(replacement)
+            .await
+            .expect("purged draft ID may be reused without prior evidence");
+    }
+
+    #[tokio::test]
+    async fn legal_hold_requires_a_retention_revision_and_blocks_collection_until_release() {
+        let storage = InMemoryStorage::new();
+        let script = storage
+            .save(named_script("legal_hold_subject", ScriptStatus::Draft))
+            .await
+            .expect("script should save");
+        storage
+            .delete(ScriptDeletionCommand {
+                script_id: script.id,
+                expected_revision: script.version,
+                actor_id: "operator:retention".into(),
+                reason: "The draft must be retained before a legal review.".into(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("script deletion should create an initial retention state");
+        let initial = storage
+            .get_deleted_evidence_retention(script.id)
+            .await
+            .expect("initial retention state should be visible to the owner");
+        let hold = ScriptEvidenceRetentionCommand {
+            script_id: script.id,
+            deletion_request_digest: initial.deletion_request_digest.clone(),
+            expected_retention_revision: initial.retention_revision,
+            action: crate::ScriptEvidenceRetentionAction::ApplyLegalHold,
+            actor_id: "operator:retention".into(),
+            reason: "A legal investigation requires preservation.".into(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let held = storage
+            .update_deleted_evidence_retention(hold.clone())
+            .await
+            .expect("owner should be able to apply a legal hold");
+        assert_eq!(held.policy, rustok_core::RetentionPolicy::LegalHold);
+        assert_eq!(held.retain_until, None);
+        assert_eq!(held.retention_revision, 2);
+        assert_eq!(
+            storage
+                .purge_expired_evidence(chrono::Utc::now() + chrono::Duration::days(90), 8)
+                .await
+                .expect("legal-hold sweep should complete"),
+            0
+        );
+        assert_eq!(
+            storage
+                .update_deleted_evidence_retention(hold.clone())
+                .await
+                .expect("exact legal-hold retry should replay"),
+            held
+        );
+        let mut conflicting_hold = hold;
+        conflicting_hold.reason = "A different reason must not replay.".into();
+        assert!(matches!(
+            storage
+                .update_deleted_evidence_retention(conflicting_hold)
+                .await,
+            Err(ScriptError::EvidenceRetention(
+                ScriptEvidenceRetentionError::IdempotencyConflict
+            ))
+        ));
+
+        let released = storage
+            .update_deleted_evidence_retention(ScriptEvidenceRetentionCommand {
+                script_id: script.id,
+                deletion_request_digest: held.deletion_request_digest.clone(),
+                expected_retention_revision: held.retention_revision,
+                action: crate::ScriptEvidenceRetentionAction::ReleaseLegalHold,
+                actor_id: "operator:retention".into(),
+                reason: "The legal hold was released by its owner.".into(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("owner should be able to release a legal hold");
+        assert_eq!(released.policy, rustok_core::RetentionPolicy::RetainUntil);
+        assert!(released.retain_until > Some(chrono::Utc::now()));
+        assert_eq!(released.retention_revision, 3);
     }
 
     #[tokio::test]
@@ -879,7 +1389,13 @@ mod tests {
             Err(ScriptError::RevisionConflict { .. })
         ));
         storage
-            .delete(next.id, next.version)
+            .delete(ScriptDeletionCommand {
+                script_id: next.id,
+                expected_revision: next.version,
+                actor_id: "operator:delete".into(),
+                reason: "The draft was intentionally removed.".into(),
+                idempotency_key: Uuid::new_v4(),
+            })
             .await
             .expect("current script should delete");
         assert!(matches!(
