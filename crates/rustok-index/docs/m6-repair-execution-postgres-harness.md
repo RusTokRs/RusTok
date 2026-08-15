@@ -129,7 +129,8 @@ leave the repair command prepared, and reject the stale exact-edge owner call.
 
 ## Retained admission boundary
 
-The source-ready packet is locked by:
+The canonical clean-commit runner is `capture-index-repair-postgres.mjs` at
+`scripts/evidence/capture-index-repair-postgres.mjs`. The source-ready packet is locked by:
 
 ```text
 crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution-contract.json
