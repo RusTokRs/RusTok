@@ -30,6 +30,10 @@ use crate::core::{
     topic_card_view_model, topic_category_filter,
 };
 use crate::i18n::t;
+use crate::locale_switch::{
+    ForumAdminLocaleSwitchDecision, category_locale_switch_decision, category_target_form,
+    locale_candidate_matches_active, topic_locale_switch_decision, topic_target_form,
+};
 use crate::model::{CategoryListItem, ReplyListItem, TopicListItem};
 use crate::transport;
 use crate::ui::category_dnd::CategoryDndGrid;
@@ -149,6 +153,31 @@ pub fn ForumAdmin() -> impl IntoView {
         "forum.error.deleteTopic",
         "Failed to delete topic",
     );
+    let locale_switch_load_error = t(
+        ui_locale.as_deref(),
+        "forum.error.localeSwitchLoad",
+        "Failed to switch content locale",
+    );
+    let locale_switch_dirty_error = t(
+        ui_locale.as_deref(),
+        "forum.error.localeSwitchDirty",
+        "Save or reset unsaved changes before switching content locale.",
+    );
+    let locale_switch_invalid_error = t(
+        ui_locale.as_deref(),
+        "forum.error.localeSwitchInvalid",
+        "Content locale must not be empty.",
+    );
+    let locale_switch_pending_error = t(
+        ui_locale.as_deref(),
+        "forum.error.localeSwitchPending",
+        "Apply or reset the pending content locale before saving.",
+    );
+    let locale_switch_reply_error = t(
+        ui_locale.as_deref(),
+        "forum.error.localeSwitchReplyDirty",
+        "Post or clear the unsaved reply before switching topic locale.",
+    );
 
     let form_error_labels = ForumAdminFormErrorLabels {
         category_required: category_required_error.clone(),
@@ -161,6 +190,7 @@ pub fn ForumAdmin() -> impl IntoView {
 
     let (editing_category_id, set_editing_category_id) = signal(Option::<String>::None);
     let (category_locale, set_category_locale) = signal(default_locale.clone());
+    let (category_locale_input, set_category_locale_input) = signal(default_locale.clone());
     let (category_name, set_category_name) = signal(String::new());
     let (category_slug, set_category_slug) = signal(String::new());
     let (category_description, set_category_description) = signal(String::new());
@@ -170,7 +200,8 @@ pub fn ForumAdmin() -> impl IntoView {
     let (category_moderated, set_category_moderated) = signal(false);
 
     let (editing_topic_id, set_editing_topic_id) = signal(Option::<String>::None);
-    let (topic_locale, set_topic_locale) = signal(default_locale);
+    let (topic_locale, set_topic_locale) = signal(default_locale.clone());
+    let (topic_locale_input, set_topic_locale_input) = signal(default_locale);
     let (topic_category_id, set_topic_category_id) = signal(String::new());
     let (topic_title, set_topic_title) = signal(String::new());
     let (topic_slug, set_topic_slug) = signal(String::new());
@@ -181,12 +212,12 @@ pub fn ForumAdmin() -> impl IntoView {
 
     let categories = local_resource(
         move || {
-            (
-                token.get(),
-                tenant.get(),
-                refresh_nonce.get(),
-                category_locale.get(),
-            )
+            let locale = if is_categories_page {
+                category_locale.get()
+            } else {
+                topic_locale.get()
+            };
+            (token.get(), tenant.get(), refresh_nonce.get(), locale)
         },
         move |(token_value, tenant_value, _, locale)| async move {
             transport::fetch_category_tree(token_value, tenant_value, locale).await
@@ -249,19 +280,24 @@ pub fn ForumAdmin() -> impl IntoView {
             match transport::fetch_category(token_value, tenant_value, category_id.clone(), locale)
                 .await
             {
-                Ok(category) => apply_category_to_form(
-                    set_editing_category_id,
-                    set_category_locale,
-                    set_category_name,
-                    set_category_slug,
-                    set_category_description,
-                    set_category_icon,
-                    set_category_color,
-                    set_category_position,
-                    set_category_moderated,
-                    CategoryFormSnapshot::from_detail(&category),
-                ),
+                Ok(category) => {
+                    let form = CategoryFormSnapshot::from_detail(&category);
+                    set_category_locale_input.set(form.locale.clone());
+                    apply_category_to_form(
+                        set_editing_category_id,
+                        set_category_locale,
+                        set_category_name,
+                        set_category_slug,
+                        set_category_description,
+                        set_category_icon,
+                        set_category_color,
+                        set_category_position,
+                        set_category_moderated,
+                        form,
+                    );
+                }
                 Err(err) => {
+                    set_category_locale_input.set(category_locale.get_untracked());
                     clear_category_form(
                         set_editing_category_id,
                         set_category_name,
@@ -296,17 +332,22 @@ pub fn ForumAdmin() -> impl IntoView {
         spawn_local(async move {
             match transport::fetch_topic(token_value, tenant_value, topic_id.clone(), locale).await
             {
-                Ok(topic) => apply_topic_to_form(
-                    set_editing_topic_id,
-                    set_topic_locale,
-                    set_topic_category_id,
-                    set_topic_title,
-                    set_topic_slug,
-                    set_topic_body,
-                    set_topic_tags,
-                    TopicFormSnapshot::from_detail(&topic),
-                ),
+                Ok(topic) => {
+                    let form = TopicFormSnapshot::from_detail(&topic);
+                    set_topic_locale_input.set(form.locale.clone());
+                    apply_topic_to_form(
+                        set_editing_topic_id,
+                        set_topic_locale,
+                        set_topic_category_id,
+                        set_topic_title,
+                        set_topic_slug,
+                        set_topic_body,
+                        set_topic_tags,
+                        form,
+                    );
+                }
                 Err(err) => {
+                    set_topic_locale_input.set(topic_locale.get_untracked());
                     clear_topic_form(
                         set_editing_topic_id,
                         set_topic_category_id,
@@ -324,34 +365,276 @@ pub fn ForumAdmin() -> impl IntoView {
             set_busy_key.set(None);
         });
     });
+
+    let category_switch_load_error = locale_switch_load_error.clone();
+    let category_switch_dirty_error = locale_switch_dirty_error.clone();
+    let category_switch_invalid_error = locale_switch_invalid_error.clone();
+    let switch_category_locale = Callback::new(move |requested_locale: String| {
+        let active_locale = category_locale.get_untracked();
+        let current = CategoryFormSnapshot {
+            editing_id: editing_category_id.get_untracked(),
+            locale: active_locale.clone(),
+            name: category_name.get_untracked(),
+            slug: category_slug.get_untracked(),
+            description: category_description.get_untracked(),
+            icon: category_icon.get_untracked(),
+            color: category_color.get_untracked(),
+            position: category_position.get_untracked(),
+            moderated: category_moderated.get_untracked(),
+        };
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let load_error = category_switch_load_error.clone();
+        let dirty_error = category_switch_dirty_error.clone();
+        let invalid_error = category_switch_invalid_error.clone();
+        let busy_item_id = current.editing_id.clone();
+        set_error.set(None);
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Category,
+            ForumAdminBusyAction::Edit,
+            busy_item_id.as_deref(),
+        )));
+        spawn_local(async move {
+            let persisted = match current.editing_id.as_ref() {
+                Some(category_id) => match transport::fetch_category(
+                    token_value.clone(),
+                    tenant_value.clone(),
+                    category_id.clone(),
+                    active_locale.clone(),
+                )
+                .await
+                {
+                    Ok(category) => Some(CategoryFormSnapshot::from_detail(&category)),
+                    Err(err) => {
+                        set_category_locale_input.set(active_locale.clone());
+                        set_error.set(Some(forum_admin_transport_error_message(
+                            load_error.as_str(),
+                            err,
+                        )));
+                        set_busy_key.set(None);
+                        return;
+                    }
+                },
+                None => None,
+            };
+
+            match category_locale_switch_decision(
+                &current,
+                persisted.as_ref(),
+                requested_locale.as_str(),
+            ) {
+                ForumAdminLocaleSwitchDecision::Noop { locale } => {
+                    set_category_locale_input.set(locale);
+                }
+                ForumAdminLocaleSwitchDecision::Invalid => {
+                    set_category_locale_input.set(active_locale.clone());
+                    set_error.set(Some(invalid_error));
+                }
+                ForumAdminLocaleSwitchDecision::BlockedDirty => {
+                    set_category_locale_input.set(active_locale.clone());
+                    set_error.set(Some(dirty_error));
+                }
+                ForumAdminLocaleSwitchDecision::Reload { locale } => {
+                    if let Some(category_id) = current.editing_id.clone() {
+                        match transport::fetch_category(
+                            token_value,
+                            tenant_value,
+                            category_id,
+                            locale.clone(),
+                        )
+                        .await
+                        {
+                            Ok(category) => {
+                                let form = category_target_form(&category);
+                                set_category_locale_input.set(form.locale.clone());
+                                apply_category_to_form(
+                                    set_editing_category_id,
+                                    set_category_locale,
+                                    set_category_name,
+                                    set_category_slug,
+                                    set_category_description,
+                                    set_category_icon,
+                                    set_category_color,
+                                    set_category_position,
+                                    set_category_moderated,
+                                    form,
+                                );
+                            }
+                            Err(err) => {
+                                set_category_locale_input.set(active_locale.clone());
+                                set_error.set(Some(forum_admin_transport_error_message(
+                                    load_error.as_str(),
+                                    err,
+                                )));
+                            }
+                        }
+                    } else {
+                        set_category_locale.set(locale.clone());
+                        set_category_locale_input.set(locale);
+                    }
+                }
+            }
+            set_busy_key.set(None);
+        });
+    });
+
+    let topic_switch_load_error = locale_switch_load_error;
+    let topic_switch_dirty_error = locale_switch_dirty_error;
+    let topic_switch_invalid_error = locale_switch_invalid_error;
+    let topic_switch_reply_error = locale_switch_reply_error.clone();
+    let switch_topic_locale = Callback::new(move |requested_locale: String| {
+        let active_locale = topic_locale.get_untracked();
+        let current = TopicFormSnapshot {
+            editing_id: editing_topic_id.get_untracked(),
+            locale: active_locale.clone(),
+            category_id: topic_category_id.get_untracked(),
+            title: topic_title.get_untracked(),
+            slug: topic_slug.get_untracked(),
+            body: topic_body.get_untracked(),
+            tags_raw: topic_tags.get_untracked(),
+        };
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        let load_error = topic_switch_load_error.clone();
+        let dirty_error = topic_switch_dirty_error.clone();
+        let invalid_error = topic_switch_invalid_error.clone();
+        let reply_error = topic_switch_reply_error.clone();
+        let busy_item_id = current.editing_id.clone();
+        set_error.set(None);
+        set_busy_key.set(Some(forum_admin_busy_key(
+            ForumAdminBusySurface::Topic,
+            ForumAdminBusyAction::Edit,
+            busy_item_id.as_deref(),
+        )));
+        spawn_local(async move {
+            let persisted = match current.editing_id.as_ref() {
+                Some(topic_id) => match transport::fetch_topic(
+                    token_value.clone(),
+                    tenant_value.clone(),
+                    topic_id.clone(),
+                    active_locale.clone(),
+                )
+                .await
+                {
+                    Ok(topic) => Some(TopicFormSnapshot::from_detail(&topic)),
+                    Err(err) => {
+                        set_topic_locale_input.set(active_locale.clone());
+                        set_error.set(Some(forum_admin_transport_error_message(
+                            load_error.as_str(),
+                            err,
+                        )));
+                        set_busy_key.set(None);
+                        return;
+                    }
+                },
+                None => None,
+            };
+
+            match topic_locale_switch_decision(
+                &current,
+                persisted.as_ref(),
+                requested_locale.as_str(),
+            ) {
+                ForumAdminLocaleSwitchDecision::Noop { locale } => {
+                    set_topic_locale_input.set(locale);
+                }
+                ForumAdminLocaleSwitchDecision::Invalid => {
+                    set_topic_locale_input.set(active_locale.clone());
+                    set_error.set(Some(invalid_error));
+                }
+                ForumAdminLocaleSwitchDecision::BlockedDirty => {
+                    set_topic_locale_input.set(active_locale.clone());
+                    set_error.set(Some(dirty_error));
+                }
+                ForumAdminLocaleSwitchDecision::Reload { locale } => {
+                    if ReplyFormSnapshot {
+                        locale: active_locale.clone(),
+                        content: reply_body.get_untracked(),
+                    }
+                    .to_draft()
+                    .is_some()
+                    {
+                        set_topic_locale_input.set(active_locale.clone());
+                        set_error.set(Some(reply_error));
+                        set_busy_key.set(None);
+                        return;
+                    }
+
+                    if let Some(topic_id) = current.editing_id.clone() {
+                        match transport::fetch_topic(
+                            token_value,
+                            tenant_value,
+                            topic_id,
+                            locale.clone(),
+                        )
+                        .await
+                        {
+                            Ok(topic) => {
+                                let form = topic_target_form(&topic);
+                                set_topic_locale_input.set(form.locale.clone());
+                                apply_topic_to_form(
+                                    set_editing_topic_id,
+                                    set_topic_locale,
+                                    set_topic_category_id,
+                                    set_topic_title,
+                                    set_topic_slug,
+                                    set_topic_body,
+                                    set_topic_tags,
+                                    form,
+                                );
+                            }
+                            Err(err) => {
+                                set_topic_locale_input.set(active_locale.clone());
+                                set_error.set(Some(forum_admin_transport_error_message(
+                                    load_error.as_str(),
+                                    err,
+                                )));
+                            }
+                        }
+                    } else {
+                        set_topic_locale.set(locale.clone());
+                        set_topic_locale_input.set(locale);
+                    }
+                }
+            }
+            set_busy_key.set(None);
+        });
+    });
+
     let initial_edit_category = edit_category;
     let initial_edit_topic = edit_topic;
     Effect::new(
         move |_| match selected_query_id(selected_category_query.get()) {
             Some(category_id) => initial_edit_category.run(category_id),
-            None => clear_category_form(
-                set_editing_category_id,
-                set_category_name,
-                set_category_slug,
-                set_category_description,
-                set_category_icon,
-                set_category_color,
-                set_category_position,
-                set_category_moderated,
-            ),
+            None => {
+                set_category_locale_input.set(category_locale.get_untracked());
+                clear_category_form(
+                    set_editing_category_id,
+                    set_category_name,
+                    set_category_slug,
+                    set_category_description,
+                    set_category_icon,
+                    set_category_color,
+                    set_category_position,
+                    set_category_moderated,
+                );
+            }
         },
     );
     Effect::new(
         move |_| match selected_query_id(selected_topic_query.get()) {
             Some(topic_id) => initial_edit_topic.run(topic_id),
-            None => clear_topic_form(
-                set_editing_topic_id,
-                set_topic_category_id,
-                set_topic_title,
-                set_topic_slug,
-                set_topic_body,
-                set_topic_tags,
-            ),
+            None => {
+                set_topic_locale_input.set(topic_locale.get_untracked());
+                clear_topic_form(
+                    set_editing_topic_id,
+                    set_topic_category_id,
+                    set_topic_title,
+                    set_topic_slug,
+                    set_topic_body,
+                    set_topic_tags,
+                );
+            }
         },
     );
 
@@ -359,13 +642,22 @@ pub fn ForumAdmin() -> impl IntoView {
     let topic_query_writer = query_writer.clone();
     let category_form_error_labels = form_error_labels.clone();
     let topic_form_error_labels = form_error_labels.clone();
+    let category_pending_locale_error = locale_switch_pending_error.clone();
     let submit_category = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_error.set(None);
         let category_query_writer = category_query_writer.clone();
+        let active_locale = category_locale.get_untracked();
+        if !locale_candidate_matches_active(
+            category_locale_input.get_untracked().as_str(),
+            active_locale.as_str(),
+        ) {
+            set_error.set(Some(category_pending_locale_error.clone()));
+            return;
+        }
         let form = CategoryFormSnapshot {
             editing_id: editing_category_id.get_untracked(),
-            locale: category_locale.get_untracked(),
+            locale: active_locale,
             name: category_name.get_untracked(),
             slug: category_slug.get_untracked(),
             description: category_description.get_untracked(),
@@ -404,6 +696,8 @@ pub fn ForumAdmin() -> impl IntoView {
             match result {
                 Ok(category) => {
                     let category_id = category.id.clone();
+                    let form = CategoryFormSnapshot::from_detail(&category);
+                    set_category_locale_input.set(form.locale.clone());
                     apply_category_to_form(
                         set_editing_category_id,
                         set_category_locale,
@@ -414,7 +708,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         set_category_color,
                         set_category_position,
                         set_category_moderated,
-                        CategoryFormSnapshot::from_detail(&category),
+                        form,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
                     category_query_writer.apply_query_intent(forum_admin_saved_query_intent(
@@ -431,13 +725,22 @@ pub fn ForumAdmin() -> impl IntoView {
         });
     };
 
+    let topic_pending_locale_error = locale_switch_pending_error.clone();
     let submit_topic = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_error.set(None);
         let topic_query_writer = topic_query_writer.clone();
+        let active_locale = topic_locale.get_untracked();
+        if !locale_candidate_matches_active(
+            topic_locale_input.get_untracked().as_str(),
+            active_locale.as_str(),
+        ) {
+            set_error.set(Some(topic_pending_locale_error.clone()));
+            return;
+        }
         let form = TopicFormSnapshot {
             editing_id: editing_topic_id.get_untracked(),
-            locale: topic_locale.get_untracked(),
+            locale: active_locale,
             category_id: topic_category_id.get_untracked(),
             title: topic_title.get_untracked(),
             slug: topic_slug.get_untracked(),
@@ -474,6 +777,8 @@ pub fn ForumAdmin() -> impl IntoView {
             match result {
                 Ok(topic) => {
                     let topic_id = topic.id.clone();
+                    let form = TopicFormSnapshot::from_detail(&topic);
+                    set_topic_locale_input.set(form.locale.clone());
                     apply_topic_to_form(
                         set_editing_topic_id,
                         set_topic_locale,
@@ -482,7 +787,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         set_topic_slug,
                         set_topic_body,
                         set_topic_tags,
-                        TopicFormSnapshot::from_detail(&topic),
+                        form,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
                     topic_query_writer.apply_query_intent(forum_admin_saved_query_intent(
@@ -499,15 +804,24 @@ pub fn ForumAdmin() -> impl IntoView {
         });
     };
 
+    let reply_pending_locale_error = locale_switch_pending_error;
     let submit_reply = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         set_error.set(None);
+        let active_locale = topic_locale.get_untracked();
+        if !locale_candidate_matches_active(
+            topic_locale_input.get_untracked().as_str(),
+            active_locale.as_str(),
+        ) {
+            set_error.set(Some(reply_pending_locale_error.clone()));
+            return;
+        }
         let Some(topic_id) = editing_topic_id.get_untracked() else {
             set_error.set(Some(reply_topic_required_error.clone()));
             return;
         };
         let Some(draft) = (ReplyFormSnapshot {
-            locale: topic_locale.get_untracked(),
+            locale: active_locale,
             content: reply_body.get_untracked(),
         })
         .to_draft() else {
@@ -561,6 +875,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         delete_category_query_writer.apply_query_intent(intent);
                     }
                     if outcome.should_clear_form {
+                        set_category_locale_input.set(category_locale.get_untracked());
                         clear_category_form(
                             set_editing_category_id,
                             set_category_name,
@@ -609,6 +924,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         delete_topic_query_writer.apply_query_intent(intent);
                     }
                     if outcome.should_clear_form {
+                        set_topic_locale_input.set(topic_locale.get_untracked());
                         clear_topic_form(
                             set_editing_topic_id,
                             set_topic_category_id,
@@ -654,6 +970,7 @@ pub fn ForumAdmin() -> impl IntoView {
         reset_category_query_writer.apply_query_intent(forum_admin_reset_query_intent(
             ForumAdminQuerySurface::Category,
         ));
+        set_category_locale_input.set(category_locale.get_untracked());
         clear_category_form(
             set_editing_category_id,
             set_category_name,
@@ -669,6 +986,7 @@ pub fn ForumAdmin() -> impl IntoView {
         reset_topic_query_writer.apply_query_intent(forum_admin_reset_query_intent(
             ForumAdminQuerySurface::Topic,
         ));
+        set_topic_locale_input.set(topic_locale.get_untracked());
         clear_topic_form(
             set_editing_topic_id,
             set_topic_category_id,
@@ -729,7 +1047,8 @@ pub fn ForumAdmin() -> impl IntoView {
                         busy_key=busy_key
                         editing_id=editing_category_id
                         locale=category_locale
-                        set_locale=set_category_locale
+                        locale_input=category_locale_input
+                        set_locale_input=set_category_locale_input
                         name=category_name
                         set_name=set_category_name
                         slug=category_slug
@@ -744,6 +1063,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         set_position=set_category_position
                         moderated=category_moderated
                         set_moderated=set_category_moderated
+                        on_locale_switch=switch_category_locale
                         on_edit=open_category
                         on_delete=delete_category
                         on_submit=submit_category
@@ -761,7 +1081,8 @@ pub fn ForumAdmin() -> impl IntoView {
                         busy_key=busy_key
                         editing_id=editing_topic_id
                         locale=topic_locale
-                        set_locale=set_topic_locale
+                        locale_input=topic_locale_input
+                        set_locale_input=set_topic_locale_input
                         category_id=topic_category_id
                         set_category_id=set_topic_category_id
                         title=topic_title
@@ -774,6 +1095,7 @@ pub fn ForumAdmin() -> impl IntoView {
                         set_tags=set_topic_tags
                         filter_category_id=topic_filter_category_id
                         set_filter_category_id=set_topic_filter_category_id
+                        on_locale_switch=switch_topic_locale
                         on_edit=open_topic
                         on_delete=delete_topic
                         on_submit=submit_topic
@@ -850,7 +1172,8 @@ fn CategoriesPage(
     busy_key: ReadSignal<Option<String>>,
     editing_id: ReadSignal<Option<String>>,
     locale: ReadSignal<String>,
-    set_locale: WriteSignal<String>,
+    locale_input: ReadSignal<String>,
+    set_locale_input: WriteSignal<String>,
     name: ReadSignal<String>,
     set_name: WriteSignal<String>,
     slug: ReadSignal<String>,
@@ -865,6 +1188,7 @@ fn CategoriesPage(
     set_position: WriteSignal<i32>,
     moderated: ReadSignal<bool>,
     set_moderated: WriteSignal<bool>,
+    on_locale_switch: Callback<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
     on_submit: impl Fn(SubmitEvent) + 'static,
@@ -873,6 +1197,11 @@ fn CategoriesPage(
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let host_locale_for_seo = ui_locale.clone().unwrap_or_default();
     let placeholders = forum_admin_placeholder_policy(locale.get_untracked().as_str());
+    let switch_locale_label = t(
+        ui_locale.as_deref(),
+        "forum.form.switchLocale",
+        "Load locale",
+    );
     let matrix_labels = forum_admin_category_matrix_labels(
         t(
             ui_locale.as_deref(),
@@ -938,7 +1267,7 @@ fn CategoriesPage(
         t(
             ui_locale.as_deref(),
             "forum.form.localeHintCategory",
-            "Published locale for this category.",
+            "Published locale for this category. Load a different locale explicitly before editing its translation.",
         ),
         t(ui_locale.as_deref(), "forum.form.name", "Name"),
         t(
@@ -1125,12 +1454,23 @@ fn CategoriesPage(
                 </div>
                 <form class="mt-6 space-y-4" on:submit=on_submit>
                     <FieldShell label=category_form_labels.locale_label.clone() hint=category_form_labels.locale_hint.clone()>
-                        <input
-                            class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
-                            prop:value=move || locale.get()
-                            on:input=move |ev| set_locale.set(event_target_value(&ev))
-                            placeholder=placeholders.locale.clone()
-                        />
+                        <div class="flex gap-2">
+                            <input
+                                class="min-w-0 flex-1 rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
+                                prop:value=move || locale_input.get()
+                                on:input=move |ev| set_locale_input.set(event_target_value(&ev))
+                                placeholder=placeholders.locale.clone()
+                                disabled=move || busy_key.get().is_some()
+                            />
+                            <button
+                                type="button"
+                                class="rounded-2xl border border-border px-4 py-3 text-sm font-medium transition hover:bg-muted"
+                                on:click=move |_| on_locale_switch.run(locale_input.get_untracked())
+                                disabled=move || busy_key.get().is_some()
+                            >
+                                {switch_locale_label.clone()}
+                            </button>
+                        </div>
                     </FieldShell>
                     <FieldShell label=category_form_labels.name_label.clone() hint=category_form_labels.name_hint.clone()>
                         <input
@@ -1249,7 +1589,8 @@ fn TopicsPage(
     busy_key: ReadSignal<Option<String>>,
     editing_id: ReadSignal<Option<String>>,
     locale: ReadSignal<String>,
-    set_locale: WriteSignal<String>,
+    locale_input: ReadSignal<String>,
+    set_locale_input: WriteSignal<String>,
     category_id: ReadSignal<String>,
     set_category_id: WriteSignal<String>,
     title: ReadSignal<String>,
@@ -1262,6 +1603,7 @@ fn TopicsPage(
     set_tags: WriteSignal<String>,
     filter_category_id: ReadSignal<String>,
     set_filter_category_id: WriteSignal<String>,
+    on_locale_switch: Callback<String>,
     on_edit: Callback<String>,
     on_delete: Callback<String>,
     on_submit: impl Fn(SubmitEvent) + 'static,
@@ -1271,6 +1613,11 @@ fn TopicsPage(
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let host_locale_for_seo = ui_locale.clone().unwrap_or_default();
     let placeholders = forum_admin_placeholder_policy(locale.get_untracked().as_str());
+    let switch_locale_label = t(
+        ui_locale.as_deref(),
+        "forum.form.switchLocale",
+        "Load locale",
+    );
     let all_categories_label = t(
         ui_locale.as_deref(),
         "forum.topics.allCategories",
@@ -1349,7 +1696,7 @@ fn TopicsPage(
         t(
             ui_locale.as_deref(),
             "forum.form.localeHintTopic",
-            "Thread locale for publishing and reads.",
+            "Thread locale for publishing and reads. Load another locale explicitly before editing its translation.",
         ),
         t(ui_locale.as_deref(), "forum.form.category", "Category"),
         t(
@@ -1561,12 +1908,23 @@ fn TopicsPage(
 
                     <form class="mt-6 space-y-4" on:submit=on_submit>
                         <FieldShell label=topic_form_labels.locale_label.clone() hint=topic_form_labels.locale_hint.clone()>
-                            <input
-                                class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
-                                prop:value=move || locale.get()
-                                on:input=move |ev| set_locale.set(event_target_value(&ev))
-                                placeholder=placeholders.locale.clone()
-                            />
+                            <div class="flex gap-2">
+                                <input
+                                    class="min-w-0 flex-1 rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
+                                    prop:value=move || locale_input.get()
+                                    on:input=move |ev| set_locale_input.set(event_target_value(&ev))
+                                    placeholder=placeholders.locale.clone()
+                                    disabled=move || busy_key.get().is_some()
+                                />
+                                <button
+                                    type="button"
+                                    class="rounded-2xl border border-border px-4 py-3 text-sm font-medium transition hover:bg-muted"
+                                    on:click=move |_| on_locale_switch.run(locale_input.get_untracked())
+                                    disabled=move || busy_key.get().is_some()
+                                >
+                                    {switch_locale_label.clone()}
+                                </button>
+                            </div>
                         </FieldShell>
                         <FieldShell label=topic_form_labels.category_label.clone() hint=topic_form_labels.category_hint.clone()>
                             <Suspense fallback=move || view! { <div class="h-14 animate-pulse rounded-2xl bg-muted"></div> }>
