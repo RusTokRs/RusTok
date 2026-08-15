@@ -66,12 +66,21 @@ Each test:
 There is no SQLite fallback. The tests do not update the generation row with raw
 SQL and do not issue manual role-lock SQL.
 
+The three top-level harness cases must run serially at the libtest layer. Each
+case creates and fully migrates its own database, so running all three fixture
+setups concurrently can exhaust the PostgreSQL service's shared lock-memory
+budget before the RBAC assertions execute. Serial top-level execution does not
+weaken the evidence: the role-replacement, super-admin and generation scenarios
+retain their internal synchronized concurrency of two, two and eight operations,
+respectively.
+
 ## Execution
 
-Run the ignored PostgreSQL harness explicitly:
+Run the ignored PostgreSQL harness explicitly with debug info disabled and the
+migration-heavy top-level cases serialized:
 
 ```bash
-cargo test -p rustok-server --test rbac_postgres_concurrency -- --ignored --nocapture
+CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-server --test rbac_postgres_concurrency -- --ignored --nocapture --test-threads=1
 ```
 
 Run the focused source guard separately:
@@ -80,9 +89,31 @@ Run the focused source guard separately:
 node scripts/verify/verify-rbac-postgres-concurrency-source.mjs
 ```
 
-Retain the test output and exact commit SHA before marking PostgreSQL concurrency
-verified. Until then, the evidence remains `source_ready_unvalidated`.
+## Retained execution
 
-This harness does not prove Redis delivery, two-replica recovery, missed PubSub
-catch-up, CLI repair propagation, formatting, compilation, Clippy, or broader
-RBAC runtime behavior. Those gates remain open.
+PR #3570 retained a successful exact-head execution at
+`b1ee738459afea328c644c10f60514f75bf96a87` in RBAC Runtime Evidence run
+`31836046621`, artifact `9233262963`, with `CARGO_PROFILE_TEST_DEBUG=0`,
+PostgreSQL 16, repository-selected `stable` Rust (`rustc 1.97.1`, `cargo 1.97.1`).
+The source-contract verifier passed and the PostgreSQL harness reported:
+
+```text
+running 3 tests
+concurrent_generation_reservations_are_unique_contiguous_and_committed ... ok
+concurrent_role_replacement_serializes_one_target_and_advances_two_generations ... ok
+concurrent_super_admin_demotions_preserve_one_active_super_admin ... ok
+
+test result: ok. 3 passed; 0 failed
+```
+
+The PR was merged normally into `main` as
+`9d7a8d4790c66bbcee3479cb880dc2008e5765b4`. The dedicated push-to-main RBAC
+workflow is the preferred same-main-revision confirmation when available; the PR
+artifact remains retained proof for the executable tree merged by #3570.
+
+The source-contract JSON remains a source-shape record rather than a mutable CI
+receipt. Runtime execution is retained by the workflow run and artifact above.
+
+This harness does not prove Redis delivery, Redis restart recovery, CLI repair
+propagation, formatting, Clippy, broad module verification, or the full RBAC
+release gate. Those gates remain open.

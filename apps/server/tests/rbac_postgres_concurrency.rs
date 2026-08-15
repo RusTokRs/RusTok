@@ -291,7 +291,7 @@ async fn insert_tenant(db: &DatabaseConnection, suffix: &str) -> TestResult<Uuid
     tenants::Entity::insert(tenants::ActiveModel {
         id: Set(tenant_id),
         name: Set(format!("RBAC PostgreSQL {suffix}")),
-        slug: Set(format!("rbac-postgres-{suffix}-{tenant_id}")),
+        slug: Set(format!("rbac-pg-{tenant_id}")),
         domain: Set(None),
         settings: Set(serde_json::json!({})),
         default_locale: Set("en".to_string()),

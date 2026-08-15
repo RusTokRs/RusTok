@@ -27,6 +27,8 @@ pub struct UpdateCategoryInput {
     pub slug: Option<String>,
     #[schema(max_length = 1000)]
     pub description: Option<String>,
+    /// Compatibility field retained for decoding only. The owner service rejects it;
+    /// use `MoveCategoryInput` instead so sibling ordering stays a single write path.
     pub position: Option<i32>,
     pub settings: Option<serde_json::Value>,
 }

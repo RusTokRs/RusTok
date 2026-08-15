@@ -13,6 +13,12 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const requireNormalizedText = (source, value, label) => {
+  if (!normalizeWhitespace(source).includes(normalizeWhitespace(value))) {
+    failures.push(`${label}: missing ${value}`);
+  }
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -39,10 +45,19 @@ for (const marker of [
   'const RESTART_RECOVERY_BOUND: Duration = Duration::from_secs(8)',
   'const REPLICA_SEQUENCE_BOUND: Duration = Duration::from_secs(25)',
   'const REDIS_SERVER_BIN_ENV: &str = "RUSTOK_CACHE_REDIS_SERVER_BIN"',
+  'const CHILD_RESTART_ACK_PATH_ENV: &str = "RUSTOK_RBAC_REDIS_RESTART_ACK_PATH"',
+  'let restart_ack_path = workspace.path().join("restart-result.ack")',
+  ".env(CHILD_RESTART_ACK_PATH_ENV, restart_ack_path)",
+  'std::fs::write(&restart_ack_path, b"release-observer")?',
+  "wait_for_file(&restart_ack_path, Duration::from_secs(3)).await?",
   "std::env::current_exe()",
   'child_command("observer"',
   'child_command("mutator"',
-  "wait_for_redis_subscribers(redis_url.as_str(), 1).await?",
+  "wait_for_redis_subscribers(&redis_url, 1, \"parent initial observer subscription\")",
+  '"observer child initial subscription"',
+  '"observer resubscription after Redis restart"',
+  "async fn wait_for_redis_subscribers(url: &str, expected: usize, stage: &str)",
+  '"Redis did not expose {expected} RBAC subscribers during {stage}"',
   'redis::cmd("PUBSUB")',
   '.arg("NUMSUB")',
   "RBAC_PERMISSION_INVALIDATION_CHANNEL",
@@ -137,20 +152,21 @@ for (const marker of [
   "source_ready_unvalidated",
   "live CLI system-role repair propagation",
   "full multi-replica P0 gate remains open",
-]) requireText(sources.docs, marker, `${files.docs}: evidence boundary`);
+]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence boundary`);
 
 for (const marker of [
-  "### P0. Database concurrency and multi-replica recovery evidence",
-  "Exercise at least two server replicas with Redis available, unavailable",
-  "Exercise CLI system-role repair while live replicas are running",
+  "### P0 — runtime evidence",
+  "Execute #2856 Redis available/outage/restart recovery.",
+  "Execute #2862 registered-CLI repair propagation.",
   "Status: `in_progress`",
-]) requireText(sources.plan, marker, `${files.plan}: owner gate`);
+]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "multi-replica Redis recovery remain absent",
-]) requireText(sources.master, marker, `${files.master}: active cursor`);
+  "Redis available/outage/restart packet #2856",
+  "CLI repair propagation #2862",
+]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
   console.error("RBAC two-process Redis restart source verification failed:");
@@ -159,5 +175,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready RBAC two-process Redis harness proves the fast path without a watchdog and durable resubscribe recovery after a real Redis restart while excluding the periodic poll and retaining all runtime gates",
+  "✔ source-ready RBAC two-process Redis harness holds the recovered observer through parent NUMSUB proof, labels subscription phases, and retains the Redis/CLI runtime gates",
 );

@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rustok_api::normalize_locale_tag;
-use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
+use rustok_taxonomy::{TaxonomyOwnerReader, TaxonomyService, TaxonomyTermKind};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
     EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
@@ -740,6 +740,7 @@ impl ProfileService {
             .map(|profile| profile.user_id)
             .collect::<Vec<_>>();
         let relations = entities::profile_tag::Entity::find()
+            .filter(entities::profile_tag::Column::TenantId.eq(tenant_id))
             .filter(entities::profile_tag::Column::ProfileUserId.is_in(profile_user_ids))
             .order_by_asc(entities::profile_tag::Column::ProfileUserId)
             .order_by_asc(entities::profile_tag::Column::CreatedAt)
@@ -749,16 +750,6 @@ impl ProfileService {
         if relations.is_empty() {
             return Ok(HashMap::new());
         }
-
-        let locale = requested_locale
-            .map(|value| Self::normalize_locale(Some(value)))
-            .transpose()?
-            .flatten()
-            .or(Self::normalize_locale(tenant_default_locale)?)
-            .ok_or_else(|| {
-                ProfileError::InvalidLocale("effective profile locale is required".to_string())
-            })?;
-        let fallback_locale = Self::normalize_locale(tenant_default_locale)?;
 
         let mut term_ids = Vec::new();
         let mut relations_by_profile: HashMap<Uuid, Vec<entities::profile_tag::Model>> =
@@ -773,17 +764,32 @@ impl ProfileService {
                 .push(relation);
         }
 
-        let names = TaxonomyService::new(self.db.clone())
-            .resolve_term_names(tenant_id, &term_ids, &locale, fallback_locale.as_deref())
+        let names = TaxonomyOwnerReader::new(self.db.clone())
+            .load_term_names(tenant_id, TaxonomyTermKind::Tag, &term_ids)
             .await?;
 
         let mut tags_by_profile = HashMap::new();
         for profile in profiles {
+            let locale_chain = Self::locale_candidates(
+                requested_locale,
+                profile.preferred_locale.as_deref(),
+                tenant_default_locale,
+            )?;
+            if locale_chain.is_empty() {
+                return Err(ProfileError::InvalidLocale(
+                    "effective profile locale is required".to_string(),
+                ));
+            }
+
             let tags = relations_by_profile
                 .get(&profile.user_id)
                 .into_iter()
                 .flatten()
-                .filter_map(|relation| names.get(&relation.term_id).cloned())
+                .filter_map(|relation| {
+                    names
+                        .get(&relation.term_id)
+                        .map(|term| term.resolve_name_for_locale_chain(&locale_chain))
+                })
                 .collect::<Vec<_>>();
             if !tags.is_empty() {
                 tags_by_profile.insert(profile.user_id, tags);

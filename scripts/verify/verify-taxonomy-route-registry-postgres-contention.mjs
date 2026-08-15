@@ -30,6 +30,30 @@ const runtimeInputPaths = [
   'crates/rustok-translation-targets/src',
   '.github/workflows/taxonomy-postgres-evidence.yml',
 ];
+const exactHead = {
+  runId: 31847950553,
+  headSha: '881390e04b0913fc5146c47028c57a1ebed5005e',
+  sourceJobId: 94919665168,
+  runtimeJobId: 94919713676,
+  gateJobId: 94921419733,
+  artifactId: 9236910817,
+  artifactName:
+    'taxonomy-postgres-evidence-31847950553-881390e04b0913fc5146c47028c57a1ebed5005e',
+  artifactDigest: 'sha256:ea62a105395c7ca1cc49085acd759dbd265d4e3e3d85270c2962f20c35a3e55c',
+  artifactExpiresAt: '2026-11-12T22:47:03Z',
+};
+const postMergeMain = {
+  runId: 31857567129,
+  headSha: 'a4cd8b03239c2070f695d11557573cc865799200',
+  sourceJobId: 94945097376,
+  runtimeJobId: 94945619395,
+  gateJobId: 94947092429,
+  artifactId: 9239718183,
+  artifactName:
+    'taxonomy-postgres-evidence-31857567129-a4cd8b03239c2070f695d11557573cc865799200',
+  artifactDigest: 'sha256:ac6dc10fd6ee17665fba036ff36343d51e0bacada7a59e1c1b4bf71ca7135637',
+  artifactExpiresAt: '2026-11-13T01:49:57Z',
+};
 
 function read(relativePath) {
   const target = path.join(repoRoot, relativePath);
@@ -61,6 +85,10 @@ function forbidMarkers(source, markers, label) {
   }
 }
 
+function workflowCommandValue(value) {
+  return String(value).replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+}
+
 function gitObjectId(relativePath) {
   try {
     return execFileSync('git', ['rev-parse', `HEAD:${relativePath}`], {
@@ -79,8 +107,8 @@ function verifyRuntimeInputSnapshot(evidence, label) {
   const fingerprints = snapshot.git_objects ?? {};
 
   if (
-    snapshot.runtime_commit !== '32b2255337bb090acef5a41ea4649a3a60e81110' ||
-    snapshot.validated_through_commit !== '62d959b897edd914a8bbc7cb3d94f3a0eb563f6b'
+    snapshot.runtime_commit !== postMergeMain.headSha ||
+    snapshot.validated_through_commit !== postMergeMain.headSha
   ) {
     failures.push(`${label}: runtime input snapshot provenance drift`);
   }
@@ -106,11 +134,25 @@ function verifyRuntimeInputSnapshot(evidence, label) {
   }
 }
 
+function verifyRun(recorded, expected, label) {
+  if (
+    recorded.run_id !== expected.runId ||
+    recorded.head_sha !== expected.headSha ||
+    recorded.source_job_id !== expected.sourceJobId ||
+    recorded.runtime_job_id !== expected.runtimeJobId ||
+    recorded.gate_job_id !== expected.gateJobId ||
+    recorded.conclusion !== 'success' ||
+    recorded.artifact_id !== expected.artifactId ||
+    recorded.artifact_name !== expected.artifactName ||
+    recorded.artifact_digest !== expected.artifactDigest ||
+    recorded.artifact_expires_at !== expected.artifactExpiresAt
+  ) {
+    failures.push(`${label}: runtime provenance drift`);
+  }
+}
+
 function verifyRecordedRuntimeEvidence(evidence, label) {
   const runtime = evidence.runtime_evidence ?? {};
-  const exact = runtime.exact_head_pull_request ?? {};
-  const postMerge = runtime.post_merge_main ?? {};
-
   if (
     runtime.workflow !== 'Taxonomy PostgreSQL Evidence' ||
     runtime.required_backend !== 'PostgreSQL 16'
@@ -118,32 +160,8 @@ function verifyRecordedRuntimeEvidence(evidence, label) {
     failures.push(`${label}: runtime evidence environment drift`);
   }
 
-  if (
-    exact.run_id !== 31738994542 ||
-    exact.head_sha !== '2cde81ad6bbf7b544e09fd68c2374488f587593e' ||
-    exact.runtime_job_id !== 94577622139 ||
-    exact.gate_job_id !== 94579422423 ||
-    exact.conclusion !== 'success' ||
-    exact.artifact_id !== 9196489480 ||
-    exact.artifact_digest !==
-      'sha256:cb550e168911af07564d147b27cfcbad3557dd0ff86531b6317c0d3186c244e6'
-  ) {
-    failures.push(`${label}: exact-head runtime provenance drift`);
-  }
-
-  if (
-    postMerge.run_id !== 31745429243 ||
-    postMerge.head_sha !== '32b2255337bb090acef5a41ea4649a3a60e81110' ||
-    postMerge.runtime_job_id !== 94598773113 ||
-    postMerge.gate_job_id !== 94601290823 ||
-    postMerge.conclusion !== 'success' ||
-    postMerge.artifact_id !== 9199060002 ||
-    postMerge.artifact_digest !==
-      'sha256:2132b65d576c958504b11e6bcda36296f1f99f8fb314a8e3399ad974c0155d23'
-  ) {
-    failures.push(`${label}: post-merge runtime provenance drift`);
-  }
-
+  verifyRun(runtime.exact_head_pull_request ?? {}, exactHead, `${label}: exact-head pull request`);
+  verifyRun(runtime.post_merge_main ?? {}, postMergeMain, `${label}: post-merge main`);
   verifyRuntimeInputSnapshot(evidence, label);
 }
 
@@ -166,7 +184,7 @@ requireMarkers(
     'Arc::new(Barrier::new(2))',
     'SELECT id FROM taxonomy_term_translations',
     'FOR UPDATE',
-    'wait_event_type = \'Lock\'',
+    "wait_event_type = 'Lock'",
     'update_module_term_in_tx(',
     'CONTESTED_ROUTE_KEY',
     'success_count, 1',
@@ -203,6 +221,7 @@ if (evidence) {
   if (
     evidence.environment?.primary !== 'RUSTOK_TAXONOMY_TEST_DATABASE_URL' ||
     evidence.environment?.required_backend !== 'postgresql' ||
+    evidence.environment?.rust_toolchain !== '1.96.0' ||
     evidence.test_target !== files.test ||
     evidence.source_guardrail !==
       'scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs' ||
@@ -231,7 +250,7 @@ if (evidence) {
     !Array.isArray(evidence.remaining_open_result_4_evidence) ||
     evidence.remaining_open_result_4_evidence.length !== 0
   ) {
-    failures.push(`${files.evidence}: remaining Open result 4 evidence drift`);
+    failures.push(`${files.evidence}: Result 4 must not retain open evidence items`);
   }
   verifyRecordedRuntimeEvidence(evidence, files.evidence);
 }
@@ -240,13 +259,18 @@ requireMarkers(
   workflow,
   [
     'name: Taxonomy PostgreSQL Evidence',
+    'RUST_TOOLCHAIN: "1.96.0"',
     'DATABASE_URL:',
     'RUSTOK_TAXONOMY_TEST_DATABASE_URL:',
     'image: postgres:16',
+    'ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+    'Activate exact Rust evidence toolchain',
+    'rustup override set',
     'Apply canonical server migrations',
     'cargo run --locked -p rustok-migrations --bin rustok-migrate -- up',
     'cargo test --locked -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture',
     'cargo test --locked -p rustok-taxonomy --test translation_target_postgres -- --nocapture',
+    'Archive Taxonomy PostgreSQL evidence',
     'Taxonomy PostgreSQL Evidence Gate',
   ],
   files.workflow,
@@ -261,7 +285,9 @@ requireMarkers(
     'two-writer route-key contention',
     'translation apply CAS',
     'change-cursor',
-    'Result 4 is complete',
+    'Final exact-head pull-request run `31847950553`',
+    'Post-merge main run `31857567129`',
+    'Result 4 is complete for the current runtime input fingerprints.',
     'runtime input fingerprints',
   ],
   files.plan,
@@ -269,10 +295,15 @@ requireMarkers(
 
 if (failures.length > 0) {
   console.error('[verify-taxonomy-route-registry-postgres-contention] FAIL');
-  for (const failure of failures) console.error(`- ${failure}`);
+  for (const failure of failures) {
+    console.error(`- ${failure}`);
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      console.error(`::error title=Taxonomy route evidence::${workflowCommandValue(failure)}`);
+    }
+  }
   process.exit(Math.min(failures.length, 255));
 }
 
 console.log(
-  '[verify-taxonomy-route-registry-postgres-contention] PASS source=canonical-migrator+harness+evidence+workflow runtime=recorded+fingerprinted',
+  '[verify-taxonomy-route-registry-postgres-contention] PASS source=canonical-migrator+harness+evidence+workflow runtime=exact-head+post-merge-recorded+fingerprinted result4=complete',
 );

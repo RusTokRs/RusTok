@@ -50,12 +50,10 @@ operator alert thresholds.
 
 ## Evidence boundary
 
-The packet status is `source_ready_unvalidated`.
-
-It is real two-process and PostgreSQL source coverage, but it is not retained runtime
-evidence until the ignored test and source verifier pass on the same revision. It
-covers Redis-unavailable and intentionally missed-local-publication recovery only.
-It does not prove:
+The source-contract JSON remains a `source_ready_unvalidated` source-shape record.
+Runtime execution is retained separately by the workflow run and artifact below.
+This packet covers Redis-unavailable and intentionally missed-local-publication
+recovery only. It does not prove:
 
 - Redis publication between live replicas;
 - Redis process restart or subscriber reconnection;
@@ -68,7 +66,7 @@ The full multi-replica P0 gate remains open.
 ## Execution
 
 ```bash
-cargo test -p rustok-server \
+CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-server \
   --test rbac_two_process_durable_recovery \
   separate_process_replica_recovers_missed_local_publication_from_durable_generation \
   -- --ignored --nocapture
@@ -78,3 +76,29 @@ node scripts/verify/verify-rbac-two-process-durable-recovery-source.mjs
 
 `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` must provide PostgreSQL database-creation
 permissions. The test creates and drops a unique isolated database.
+
+## Retained execution
+
+PR #3570 retained a successful exact-head execution at
+`b1ee738459afea328c644c10f60514f75bf96a87` in RBAC Runtime Evidence run
+`31836046621`, artifact `9233262963`, with `CARGO_PROFILE_TEST_DEBUG=0`,
+PostgreSQL 16, repository-selected `stable` Rust (`rustc 1.97.1`, `cargo 1.97.1`).
+The source-contract verifier passed and the two-process scenario reported:
+
+```text
+test rbac_multi_replica_child ... ok
+test rbac_multi_replica_child ... ok
+test separate_process_replica_recovers_missed_local_publication_from_durable_generation ... ok
+
+test result: ok. 1 passed; 0 failed
+```
+
+The parent scenario completed in 8.58 seconds while the retained observer recovery
+bound remains seven seconds from the mutation/recovery checkpoint rather than from
+full process and fixture startup. The successful test assertion is the authority for
+that bounded recovery observation.
+
+The PR was merged normally into `main` as
+`9d7a8d4790c66bbcee3479cb880dc2008e5765b4`. The dedicated push-to-main RBAC
+workflow is the preferred same-main-revision confirmation when available; the PR
+artifact remains retained proof for the executable tree merged by #3570.

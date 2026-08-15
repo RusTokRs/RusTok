@@ -64,6 +64,14 @@ Provider apply uses the shared Outbox receipt ledger under owner slug
 transaction. The provider records durable owner change evidence but does not
 claim a global `translation.target.changed` event contract.
 
+The Profiles consumer now has demonstrated pressure for a per-profile locale
+preference between requested locale and tenant default when presenting attached
+Taxonomy tags. Taxonomy therefore exposes a tenant/kind-bounded owner read
+projection for localized term names while Profiles keeps `profile_tags`, the
+per-profile preference order, and batching semantics. This does not add a new
+Taxonomy kind, generic relation storage, category hierarchy, or a second route
+identity authority.
+
 ## FFA/FBA boundary
 
 - FFA status: `not_started`
@@ -75,10 +83,14 @@ claim a global `translation.target.changed` event contract.
 
 ## Tracked results
 
-All currently demonstrated Taxonomy roadmap results below are complete. Future
-consumer pressure, a genuinely new vocabulary kind, or a new operational
-incident class must extend the tracked contract with explicit ownership and
-evidence rather than weakening these established baselines.
+Results 1-4 are complete for the currently demonstrated contracts. The
+Profiles-driven Taxonomy owner-read source change was a semantic runtime-input
+change under the retained fingerprint policy, so Result 4 was deliberately
+reopened until both a fully green exact-head pull-request run and a fully green
+post-merge main run existed for the replacement fingerprint set. Those proofs
+are now recorded. Future consumer pressure, a genuinely new vocabulary kind, or
+a new operational incident class must extend the tracked contract with explicit
+ownership and evidence rather than weakening these established baselines.
 
 1. **Keep dictionary and consumer contracts synchronized. — COMPLETE.** Update
    taxonomy terms, scope rules, consumer integrations, and manifest metadata
@@ -234,7 +246,8 @@ evidence rather than weakening these established baselines.
    **Done when:** retained migration/backfill, two-writer route-key contention,
    translation apply CAS, and cursor-recovery evidence prove that exactly one
    route owner can commit and the registered provider remains correct under
-   multi-replica conditions.
+   multi-replica conditions, with both an exact-head pull-request run and a
+   post-merge main run over the same fingerprinted runtime inputs.
 
    Source evidence for the two-writer route-key contention portion is executable
    in `tests/route_registry_contention_postgres.rs`. With
@@ -262,27 +275,72 @@ evidence rather than weakening these established baselines.
    transaction commit-order guarantee.
 
    `.github/workflows/taxonomy-postgres-evidence.yml` is the retained runtime
-   path. It provisions PostgreSQL 16, runs `rustok-migrate up` against the
-   ephemeral database, executes both Taxonomy PostgreSQL harnesses, archives
-   migration/test provenance and logs, and requires the source/runtime gate.
+   path. It provisions PostgreSQL 16, checks out the exact pull-request head (or
+   exact push SHA), activates and asserts Rust `1.96.0`, runs `rustok-migrate up`
+   against the ephemeral database, executes both Taxonomy PostgreSQL harnesses,
+   archives migration/test provenance and logs, and requires the source/runtime
+   gate. During an evidence refresh, the runtime job may still collect proof
+   after a deliberately stale source snapshot fails; the final gate remains
+   fail-closed until the snapshot itself is updated.
 
-   Result 4 is complete with two retained successful executions. Exact-head
-   pull-request run `31738994542` exercised head
-   `2cde81ad6bbf7b544e09fd68c2374488f587593e`; its runtime job
-   `94577622139` and gate `94579422423` succeeded, and artifact `9196489480`
+   The previous Result 4 completion remains historical evidence: exact-head run
+   `31738994542` and post-merge main run `31745429243` proved the earlier
+   fingerprint set. The Profiles-driven owner-read source change invalidated
+   that set exactly as the source verifiers are designed to do; those old runs
+   are not reused as proof for the current runtime inputs.
+
+   Fresh exact-head refresh run `31845977594` exercised
+   `0118ddd0dc73edceefb01eb2e82e29f03a4dc228` on PostgreSQL 16 with an asserted
+   Rust `1.96.0` toolchain. Runtime job `94912907567` successfully applied the
+   canonical server migrations, passed the two-writer route-key contention
+   harness, and passed both translation-target CAS/cursor scenarios. Artifact
+   `9236159727`, named
+   `taxonomy-postgres-evidence-31845977594-0118ddd0dc73edceefb01eb2e82e29f03a4dc228`,
    records digest
-   `sha256:cb550e168911af07564d147b27cfcbad3557dd0ff86531b6317c0d3186c244e6`.
-   Post-merge main run `31745429243` re-exercised commit
-   `32b2255337bb090acef5a41ea4649a3a60e81110`; runtime job `94598773113`
-   and gate `94601290823` succeeded, and artifact `9199060002` records digest
-   `sha256:2132b65d576c958504b11e6bcda36296f1f99f8fb314a8e3399ad974c0155d23`.
-   The two evidence contracts therefore record `runtime_status: passed` and
-   carry no remaining Result 4 evidence items. This runtime evidence is
-   production-like PostgreSQL 16 CI evidence; it does not claim observation of
-   live production traffic or arbitrary concurrent transaction commit ordering.
+   `sha256:6c42063e312f9113eb0cc3d014c28b227d4ae952440e4b52085b4ad8e46117a2`.
+   Its metadata records identical expected/actual head SHAs and the active
+   `1.96.0-x86_64-unknown-linux-gnu` directory override. The refresh run's
+   source job `94912365639` and gate `94914729792` failed by design against the
+   stale pre-refresh snapshot; the runtime job itself succeeded and produced the
+   replacement runtime proof used to advance the evidence snapshot.
+
+   Final exact-head pull-request run `31847950553` then proved the updated
+   snapshot on `881390e04b0913fc5146c47028c57a1ebed5005e`. Source-contract job
+   `94919665168`, PostgreSQL runtime job `94919713676`, and evidence Gate
+   `94921419733` all completed successfully. The runtime asserted Rust `1.96.0`,
+   applied the canonical server migrations, passed the two-writer route-key
+   contention harness and both translation-target CAS/cursor scenarios, and
+   archived artifact `9236910817`, named
+   `taxonomy-postgres-evidence-31847950553-881390e04b0913fc5146c47028c57a1ebed5005e`,
+   with digest
+   `sha256:ea62a105395c7ca1cc49085acd759dbd265d4e3e3d85270c2962f20c35a3e55c`.
+
+   Post-merge main run `31857567129` repeated that complete evidence path on
+   exact main commit `a4cd8b03239c2070f695d11557573cc865799200`. Source-contract
+   job `94945097376`, PostgreSQL runtime job `94945619395`, and evidence Gate
+   `94947092429` all completed successfully. The runtime again asserted Rust
+   `1.96.0`, applied the canonical server migrations, passed route contention
+   and both translation-target scenarios, and archived artifact `9239718183`,
+   named
+   `taxonomy-postgres-evidence-31857567129-a4cd8b03239c2070f695d11557573cc865799200`,
+   with digest
+   `sha256:ac6dc10fd6ee17665fba036ff36343d51e0bacada7a59e1c1b4bf71ca7135637`.
+   The artifact metadata records identical expected/actual main SHAs and the
+   active `1.96.0-x86_64-unknown-linux-gnu` directory override.
+
+   Result 4 is complete for the current runtime input fingerprints. Both
+   evidence contracts record the fully green exact-head pull-request proof and
+   fully green post-merge main proof, and `remaining_open_result_4_evidence` is
+   empty. No Taxonomy production source, vocabulary kind, route ownership,
+   lifecycle, attachment ownership, or category hierarchy contract is changed
+   by this evidence-only closure.
+
    Both source verifiers compare recorded runtime input fingerprints with the
-   current Git blob/tree identities, so a semantic runtime-input change
-   invalidates the recorded evidence and requires a fresh PostgreSQL run.
+   current Git blob/tree identities, so any later semantic runtime-input change
+   invalidates the recorded evidence and requires another fresh PostgreSQL run.
+   This evidence remains production-like PostgreSQL 16 CI evidence; it does not
+   claim observation of live production traffic or arbitrary concurrent
+   transaction commit ordering.
 
 ## Verification
 
@@ -307,7 +365,10 @@ evidence rather than weakening these established baselines.
 - `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test translation_target_postgres -- --nocapture`
 - Recorded PostgreSQL runtime provenance remains guarded by both Taxonomy
   evidence verifiers and runtime input fingerprints; future semantic changes
-  must produce fresh evidence rather than silently reusing these recorded runs.
+  must produce fresh evidence rather than silently reusing recorded runs.
+- Result 4 completion requires both the recorded fully green exact-head proof
+  and post-merge main proof to remain consistent with the current fingerprinted
+  runtime inputs; either verifier must fail closed on later semantic drift.
 
 ## Change rules
 

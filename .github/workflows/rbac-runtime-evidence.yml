@@ -1,0 +1,229 @@
+name: RBAC Runtime Evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/**"
+      - "apps/server/tests/rbac_mutation_api_architecture_guard.rs"
+      - "apps/server/tests/rbac_postgres_concurrency.rs"
+      - "apps/server/tests/rbac_two_process_durable_recovery.rs"
+      - "apps/server/tests/rbac_two_process_redis_restart.rs"
+      - "crates/rustok-api/Cargo.toml"
+      - "crates/rustok-api/src/**"
+      - "crates/rustok-cache/Cargo.toml"
+      - "crates/rustok-cache/src/**"
+      - "crates/rustok-core/Cargo.toml"
+      - "crates/rustok-core/src/**"
+      - "crates/rustok-migrations/Cargo.toml"
+      - "crates/rustok-migrations/src/**"
+      - "crates/rustok-rbac/Cargo.toml"
+      - "crates/rustok-rbac/src/**"
+      - "crates/rustok-test-utils/Cargo.toml"
+      - "crates/rustok-test-utils/src/**"
+      - "scripts/verify/verify-rbac-postgres-concurrency-source.mjs"
+      - "scripts/verify/verify-rbac-two-process-durable-recovery-source.mjs"
+      - "scripts/verify/verify-rbac-two-process-redis-restart-source.mjs"
+      - ".github/workflows/rbac-runtime-evidence.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/**"
+      - "apps/server/tests/rbac_mutation_api_architecture_guard.rs"
+      - "apps/server/tests/rbac_postgres_concurrency.rs"
+      - "apps/server/tests/rbac_two_process_durable_recovery.rs"
+      - "apps/server/tests/rbac_two_process_redis_restart.rs"
+      - "crates/rustok-api/Cargo.toml"
+      - "crates/rustok-api/src/**"
+      - "crates/rustok-cache/Cargo.toml"
+      - "crates/rustok-cache/src/**"
+      - "crates/rustok-core/Cargo.toml"
+      - "crates/rustok-core/src/**"
+      - "crates/rustok-migrations/Cargo.toml"
+      - "crates/rustok-migrations/src/**"
+      - "crates/rustok-rbac/Cargo.toml"
+      - "crates/rustok-rbac/src/**"
+      - "crates/rustok-test-utils/Cargo.toml"
+      - "crates/rustok-test-utils/src/**"
+      - "scripts/verify/verify-rbac-postgres-concurrency-source.mjs"
+      - "scripts/verify/verify-rbac-two-process-durable-recovery-source.mjs"
+      - "scripts/verify/verify-rbac-two-process-redis-restart-source.mjs"
+      - ".github/workflows/rbac-runtime-evidence.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+
+jobs:
+  source-contract:
+    name: RBAC evidence source contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact evidence revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+      - name: Verify checked-out revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          echo "expected_sha=$expected"
+          echo "actual_sha=$actual"
+          test "$actual" = "$expected"
+      - name: Verify PostgreSQL concurrency source contract
+        run: node scripts/verify/verify-rbac-postgres-concurrency-source.mjs
+      - name: Verify two-process durable recovery source contract
+        run: node scripts/verify/verify-rbac-two-process-durable-recovery-source.mjs
+      - name: Verify two-process Redis restart source contract
+        run: node scripts/verify/verify-rbac-two-process-redis-restart-source.mjs
+
+  runtime-evidence:
+    name: RBAC PostgreSQL runtime evidence
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+      RUSTOK_CACHE_REDIS_SERVER_BIN: /usr/bin/redis-server
+    steps:
+      - name: Checkout exact evidence revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record repository-selected Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup show active-toolchain
+          rustc --version
+          cargo --version
+      - name: Install Redis process binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y redis-server redis-tools
+          test -x "$RUSTOK_CACHE_REDIS_SERVER_BIN"
+          "$RUSTOK_CACHE_REDIS_SERVER_BIN" --version
+      - name: Record evidence provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/rbac-runtime
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "event=${GITHUB_EVENT_NAME}"
+            echo "ref=${GITHUB_REF}"
+            echo "expected_sha=$expected"
+            echo "actual_sha=$actual"
+            echo "cargo_profile_test_debug=${CARGO_PROFILE_TEST_DEBUG}"
+            echo "redis_server_bin=${RUSTOK_CACHE_REDIS_SERVER_BIN}"
+            "$RUSTOK_CACHE_REDIS_SERVER_BIN" --version
+            rustup show active-toolchain
+            rustc --version
+            cargo --version
+          } | tee evidence/rbac-runtime/metadata.txt
+      - name: Execute RBAC mutation architecture guard
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-server \
+            --test rbac_mutation_api_architecture_guard \
+            -- --nocapture \
+            2>&1 | tee evidence/rbac-runtime/architecture-guard.log
+      - name: Execute RBAC PostgreSQL concurrency evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-server \
+            --test rbac_postgres_concurrency \
+            -- --ignored --nocapture --test-threads=1 \
+            2>&1 | tee evidence/rbac-runtime/postgres-concurrency.log
+      - name: Execute RBAC two-process watchdog recovery evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-server \
+            --test rbac_two_process_durable_recovery \
+            separate_process_replica_recovers_missed_local_publication_from_durable_generation \
+            -- --ignored --nocapture \
+            2>&1 | tee evidence/rbac-runtime/two-process-durable-recovery.log
+      - name: Execute RBAC two-process Redis restart evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-server \
+            --test rbac_two_process_redis_restart \
+            separate_process_redis_fast_path_survives_restart_and_recovers_missed_publication \
+            -- --ignored --nocapture \
+            2>&1 | tee evidence/rbac-runtime/two-process-redis-restart.log
+      - name: Archive RBAC runtime evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rbac-runtime-evidence-${{ github.run_id }}-${{ github.sha }}
+          path: evidence/rbac-runtime
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  gate:
+    name: RBAC Runtime Evidence Gate
+    if: ${{ !cancelled() }}
+    needs:
+      - source-contract
+      - runtime-evidence
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require source and runtime evidence
+        shell: bash
+        run: |
+          if [[ "${{ needs.source-contract.result }}" != "success" ]] || \
+             [[ "${{ needs.runtime-evidence.result }}" != "success" ]]; then
+            echo "::error::RBAC runtime evidence did not complete successfully."
+            exit 1
+          fi

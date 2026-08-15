@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use chrono::{DateTime, Utc};
+use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_content::resolve_by_locale_with_fallback;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
@@ -28,6 +29,41 @@ pub struct TaxonomyOwnerTerm {
     pub name: String,
     pub slug: String,
     pub created_at: DateTime<Utc>,
+}
+
+/// Tenant- and kind-bounded vocabulary names for attached Taxonomy terms.
+///
+/// Consumers with owner-specific locale preference chains can resolve the same
+/// attached term without reading Taxonomy persistence entities. Exact consumer
+/// locales are tried in order, then Taxonomy retains its platform fallback,
+/// deterministic first-available fallback, and canonical-key terminal fallback.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaxonomyOwnerTermNames {
+    pub id: Uuid,
+    pub canonical_key: String,
+    names_by_locale: BTreeMap<String, String>,
+}
+
+impl TaxonomyOwnerTermNames {
+    pub fn resolve_name_for_locale_chain(&self, locales: &[String]) -> String {
+        for locale in locales {
+            if let Some(locale) = normalize_term_locale(locale)
+                && let Some(name) = self.names_by_locale.get(&locale)
+            {
+                return name.clone();
+            }
+        }
+
+        if let Some(name) = self.names_by_locale.get(PLATFORM_FALLBACK_LOCALE) {
+            return name.clone();
+        }
+
+        self.names_by_locale
+            .values()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| self.canonical_key.clone())
+    }
 }
 
 /// Storage-encapsulating read adapter for modules that own relations to Taxonomy terms.
@@ -114,6 +150,65 @@ impl TaxonomyOwnerReader {
             .await?;
 
         materialize_terms(txn, tenant_id, terms, &locale, fallback_locale.as_deref()).await
+    }
+
+    /// Loads all localized names needed to apply an owner-specific locale chain.
+    ///
+    /// The result is bounded by the supplied IDs and Taxonomy's tenant/kind identity.
+    /// It intentionally does not expose Taxonomy persistence rows, aliases, routes, or
+    /// relation storage. Consumers remain responsible only for attachment semantics and
+    /// the ordering of their locale preferences.
+    pub async fn load_term_names(
+        &self,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        term_ids: &[Uuid],
+    ) -> TaxonomyResult<HashMap<Uuid, TaxonomyOwnerTermNames>> {
+        if term_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let terms = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(kind))
+            .filter(taxonomy_term::Column::Id.is_in(term_ids.to_vec()))
+            .all(&self.db)
+            .await?;
+        if terms.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let loaded_term_ids = terms.iter().map(|term| term.id).collect::<Vec<_>>();
+        let translations = taxonomy_term_translation::Entity::find()
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_translation::Column::TermId.is_in(loaded_term_ids))
+            .all(&self.db)
+            .await?;
+
+        let mut names = terms
+            .into_iter()
+            .map(|term| {
+                (
+                    term.id,
+                    TaxonomyOwnerTermNames {
+                        id: term.id,
+                        canonical_key: term.canonical_key,
+                        names_by_locale: BTreeMap::new(),
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        for translation in translations {
+            let Some(term_names) = names.get_mut(&translation.term_id) else {
+                continue;
+            };
+            let locale = normalize_term_locale(&translation.locale)
+                .unwrap_or_else(|| translation.locale.clone());
+            term_names.names_by_locale.insert(locale, translation.name);
+        }
+
+        Ok(names)
     }
 }
 
@@ -253,6 +348,58 @@ mod tests {
         assert_eq!(
             normalize_term_locale(PLATFORM_FALLBACK_LOCALE),
             Some(PLATFORM_FALLBACK_LOCALE.to_owned())
+        );
+    }
+
+    #[test]
+    fn owner_term_names_honor_consumer_chain_before_taxonomy_fallbacks() {
+        let names = TaxonomyOwnerTermNames {
+            id: Uuid::nil(),
+            canonical_key: "canonical-tag".to_string(),
+            names_by_locale: BTreeMap::from([
+                ("de".to_string(), "Deutsch".to_string()),
+                ("en".to_string(), "English".to_string()),
+                ("ru".to_string(), "Русский".to_string()),
+            ]),
+        };
+
+        assert_eq!(
+            names.resolve_name_for_locale_chain(&[
+                "fr".to_string(),
+                "ru".to_string(),
+                "de".to_string(),
+            ]),
+            "Русский"
+        );
+        assert_eq!(
+            names.resolve_name_for_locale_chain(&["fr".to_string()]),
+            "English"
+        );
+    }
+
+    #[test]
+    fn owner_term_names_keep_deterministic_and_canonical_terminal_fallbacks() {
+        let available = TaxonomyOwnerTermNames {
+            id: Uuid::nil(),
+            canonical_key: "canonical-tag".to_string(),
+            names_by_locale: BTreeMap::from([
+                ("fr".to_string(), "Français".to_string()),
+                ("de".to_string(), "Deutsch".to_string()),
+            ]),
+        };
+        assert_eq!(
+            available.resolve_name_for_locale_chain(&["ru".to_string()]),
+            "Deutsch"
+        );
+
+        let canonical = TaxonomyOwnerTermNames {
+            id: Uuid::nil(),
+            canonical_key: "canonical-tag".to_string(),
+            names_by_locale: BTreeMap::new(),
+        };
+        assert_eq!(
+            canonical.resolve_name_for_locale_chain(&["ru".to_string()]),
+            "canonical-tag"
         );
     }
 }

@@ -1,5 +1,8 @@
 use std::path::{Path, PathBuf};
 
+const ROLE_REPLACEMENT_CALL: &str = "RbacService::replace_user_role(";
+const AUTH_LIFECYCLE_PATH: &str = "services/auth_lifecycle.rs";
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -27,6 +30,27 @@ fn rust_sources(root: &Path, files: &mut Vec<PathBuf>) {
     }
 }
 
+fn production_source<'a>(path: &Path, content: &'a str) -> &'a str {
+    if !path.ends_with(AUTH_LIFECYCLE_PATH) {
+        return content;
+    }
+
+    let tests_module = content
+        .find("mod tests {")
+        .expect("auth_lifecycle.rs must retain its cfg(test) module");
+    let cfg_test = content[..tests_module]
+        .rfind("#[cfg(test)]")
+        .expect("auth_lifecycle.rs tests module must retain cfg(test)");
+    assert!(
+        content[cfg_test + "#[cfg(test)]".len()..tests_module]
+            .trim()
+            .is_empty(),
+        "auth_lifecycle.rs tests module must remain directly guarded by cfg(test)"
+    );
+
+    &content[..cfg_test]
+}
+
 #[test]
 fn initial_role_assignment_is_private_and_confined_to_new_user_creation() {
     let service = source("apps/server/src/services/rbac_service.rs");
@@ -42,7 +66,7 @@ fn initial_role_assignment_is_private_and_confined_to_new_user_creation() {
     for path in files {
         let content = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-        for _ in content.match_indices("RbacService::replace_user_role(") {
+        for _ in production_source(&path, &content).match_indices(ROLE_REPLACEMENT_CALL) {
             call_sites.push(path.clone());
         }
     }
@@ -52,7 +76,7 @@ fn initial_role_assignment_is_private_and_confined_to_new_user_creation() {
         1,
         "new-user role initialization must have one production call site"
     );
-    assert!(call_sites[0].ends_with("services/auth_lifecycle.rs"));
+    assert!(call_sites[0].ends_with(AUTH_LIFECYCLE_PATH));
 
     let lifecycle = source("apps/server/src/services/auth_lifecycle.rs");
     let create_start = lifecycle
@@ -63,11 +87,48 @@ fn initial_role_assignment_is_private_and_confined_to_new_user_creation() {
         .map(|offset| create_start + offset)
         .expect("user creation block must end before profile update");
     let create_block = &lifecycle[create_start..create_end];
+    assert_eq!(create_block.matches(ROLE_REPLACEMENT_CALL).count(), 1);
+}
+
+#[test]
+fn production_call_scan_excludes_only_auth_lifecycle_test_module() {
+    let source = r#"
+fn production() {
+    RbacService::replace_user_role(...);
+}
+
+#[cfg(test)]
+fn test_helper() {
+    helper();
+}
+
+#[cfg(test)]
+mod tests {
+    fn first() {
+        RbacService::replace_user_role(...);
+    }
+
+    fn second() {
+        RbacService::replace_user_role(...);
+    }
+}
+"#;
+
+    let auth_lifecycle = Path::new("/tmp/services/auth_lifecycle.rs");
+    let production = production_source(auth_lifecycle, source);
+    assert_eq!(production.matches(ROLE_REPLACEMENT_CALL).count(), 1);
+    assert!(
+        production.contains("fn test_helper()"),
+        "production scan must exclude only the auth_lifecycle cfg(test) module"
+    );
+
+    let other_file = Path::new("/tmp/services/other.rs");
     assert_eq!(
-        create_block
-            .matches("RbacService::replace_user_role(")
+        production_source(other_file, source)
+            .matches(ROLE_REPLACEMENT_CALL)
             .count(),
-        1
+        3,
+        "test-module exclusion must remain narrowly scoped to auth_lifecycle.rs"
     );
 }
 

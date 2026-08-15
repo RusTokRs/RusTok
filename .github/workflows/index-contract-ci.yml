@@ -18,6 +18,7 @@ on:
       - "scripts/verify/verify-event-contract-digest-admission.mjs"
       - "scripts/verify/verify-index-query-planner.mjs"
       - "scripts/verify/verify-index-postgres-query-compiler.mjs"
+      - "scripts/verify/verify-index-query-snapshots.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
@@ -47,6 +48,7 @@ on:
       - "scripts/verify/verify-event-contract-digest-admission.mjs"
       - "scripts/verify/verify-index-query-planner.mjs"
       - "scripts/verify/verify-index-postgres-query-compiler.mjs"
+      - "scripts/verify/verify-index-query-snapshots.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
@@ -88,6 +90,8 @@ jobs:
         run: node scripts/verify/verify-index-query-planner.mjs
       - name: Verify Index PostgreSQL query compiler source contract
         run: node scripts/verify/verify-index-postgres-query-compiler.mjs
+      - name: Verify Index query snapshot source contract
+        run: node scripts/verify/verify-index-query-snapshots.mjs
       - name: Verify event digest admission contract
         run: node scripts/verify/verify-event-contract-digest-admission.mjs
       - name: Verify Product Index refresh family

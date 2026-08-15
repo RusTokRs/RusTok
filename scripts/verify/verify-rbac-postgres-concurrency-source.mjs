@@ -13,6 +13,12 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const requireNormalizedText = (source, value, label) => {
+  if (!normalizeWhitespace(source).includes(normalizeWhitespace(value))) {
+    failures.push(`${label}: missing ${value}`);
+  }
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -50,6 +56,7 @@ for (const marker of [
   "barrier.wait().await",
   "RbacService::replace_user_role_committed",
   "RbacRoleAssignmentDbWriter::new(db_a.clone())",
+  'slug: Set(format!("rbac-pg-{tenant_id}"))',
   "assignments.len() != 1",
   "generation_before + 2",
   "cannot demote the last active super administrator",
@@ -70,6 +77,7 @@ for (const forbidden of [
   "connect_for_assertions",
   "RUSTOK_RBAC_ACTIVE_TEST_DATABASE",
   "tokio::time::sleep",
+  'rbac-postgres-{suffix}-{tenant_id}',
 ]) forbidText(sources.harness, forbidden, `${files.harness}: shortcut`);
 
 for (const marker of [
@@ -99,7 +107,7 @@ for (const marker of [
 
 const evidence = JSON.parse(sources.evidence);
 const evidenceChecks = [
-  [evidence.status === "source_ready_unvalidated", "status must remain source_ready_unvalidated"],
+  [evidence.status === "source_ready_unvalidated", "source-shape status must remain source_ready_unvalidated"],
   [evidence.cycle === "cycle-001", "cycle must remain cycle-001"],
   [evidence.component === "core/rbac", "component must remain core/rbac"],
   [evidence.fixture?.backend === "postgresql", "fixture backend must be PostgreSQL"],
@@ -113,9 +121,9 @@ const evidenceChecks = [
   [evidence.scenarios?.generation_allocation?.concurrent_transactions === 8, "generation allocation must retain eight transactions"],
   [evidence.scenarios?.generation_allocation?.expected_unique === true, "unique generation requirement must remain true"],
   [evidence.scenarios?.generation_allocation?.expected_contiguous === true, "contiguous generation requirement must remain true"],
-  [evidence.validation?.rust_test_executed === false, "Rust execution must not be claimed"],
-  [evidence.validation?.source_verifier_executed === false, "source verifier execution must not be claimed"],
-  [evidence.validation?.postgresql_runtime_executed === false, "PostgreSQL execution must not be claimed"],
+  [evidence.validation?.rust_test_executed === false, "source-shape JSON must not claim Rust execution"],
+  [evidence.validation?.source_verifier_executed === false, "source-shape JSON must not claim verifier execution"],
+  [evidence.validation?.postgresql_runtime_executed === false, "source-shape JSON must not claim PostgreSQL execution"],
   [evidence.multi_replica_evidence === false, "multi-replica evidence must remain open"],
   [evidence.redis_transport_evidence === false, "Redis evidence must remain open"],
   [evidence.cli_repair_live_replica_evidence === false, "CLI repair live-replica evidence must remain open"],
@@ -132,22 +140,27 @@ for (const marker of [
   "Last-active-super-admin serialization",
   "Unique monotonic generation allocation",
   "There is no SQLite fallback.",
-  "source_ready_unvalidated",
+  "top-level harness cases must run serially at the libtest layer",
+  "internal synchronized concurrency of two, two and eight operations",
+  "--test-threads=1",
+  "## Retained execution",
+  "Runtime execution is retained by the workflow run and artifact above.",
   "does not prove Redis delivery",
-]) requireText(sources.docs, marker, `${files.docs}: evidence contract`);
+]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence contract`);
 
 for (const marker of [
-  "### P0. Database concurrency and multi-replica recovery evidence",
-  "PostgreSQL integration evidence",
-  "multi-replica",
+  "### P0 — runtime evidence",
+  "[x] Execute #2849 PostgreSQL concurrency",
+  "[x] Execute #2853 independent-process watchdog recovery",
   "Status: `in_progress`",
-]) requireText(sources.plan, marker, `${files.plan}: owner gate`);
+]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "PostgreSQL concurrency",
-]) requireText(sources.master, marker, `${files.master}: active cursor`);
+  "PostgreSQL concurrency packet #2849 passed 3/3",
+  "durable watchdog packet #2853 passed 1/1",
+]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
   console.error("RBAC PostgreSQL concurrency source verification failed:");
@@ -156,5 +169,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready PostgreSQL RBAC concurrency harness covers synchronized role replacement, last-super-admin continuity and unique contiguous generation allocation without claiming execution or multi-replica evidence",
+  "✔ PostgreSQL RBAC concurrency source shape remains strict while the owner handoff retains completed #2849/#2853 runtime evidence and keeps later gates open",
 );

@@ -10,7 +10,8 @@
 - Keep public profile data separate from auth identity, commerce customers, and future seller accounts.
 - Own profile storage (`profiles`, `profile_translations`), migrations, and the reusable profile service contract.
 - Own profile-to-taxonomy relation storage via `profile_tags`.
-- Provide batched profile summary lookup for downstream author/member presentation without per-user fan-out.
+- Resolve localized profile copy and attached Taxonomy tag names with the same profile-owned preference order: requested locale, that profile's preferred locale, then tenant default locale; Taxonomy retains platform, deterministic first-available, and canonical-key terminal fallback for vocabulary names.
+- Provide batched profile summary lookup for downstream author/member presentation without per-user fan-out; each profile keeps its own preferred-locale step during one batched tag vocabulary read.
 - Provide a tenant-scoped base-row privacy read adapter whose decisions do not depend on localized copy, tags, or media joins.
 - Resolve active `followers_only` access through bounded Social Graph owner reads before presentation summaries are loaded.
 - Validate avatar/banner references through the Media owner read port before self-service profile writes.
@@ -31,7 +32,7 @@
 
 - Depends on `rustok-core` for module contracts, permission vocabulary, and typed runtime extensions.
 - Uses SeaORM-backed storage and module-local migrations for profile persistence.
-- Depends on `rustok-taxonomy` for shared scope-aware tags while keeping `profile_tags` module-owned.
+- Depends on `rustok-taxonomy` for shared scope-aware tags while keeping `profile_tags` module-owned. Profiles consumes Taxonomy vocabulary through its owner read/service boundaries and does not read Taxonomy persistence entities directly.
 - Depends on Media owner ports for tenant-scoped asset lookup and public descriptor selection; Profiles accepts only owner-uploaded image assets and revalidates tenant/uploader/MIME before exposing the Media-selected descriptor.
 - Server composition prefers a deployment-preseeded `ProfileMediaPublicImageProvider`, then an existing module extension, then the embedded owner service. It publishes the same selected wrapper to GraphQL and native server-function host contexts.
 - Profiles never imports the Media gRPC adapter, endpoint configuration, object keys, or capability route construction.
