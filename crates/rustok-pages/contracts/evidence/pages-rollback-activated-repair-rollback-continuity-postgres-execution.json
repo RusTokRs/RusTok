@@ -1,0 +1,67 @@
+{
+  "format": "pages_rollback_activated_repair_rollback_continuity_postgres_execution_source_v1",
+  "status": "source_ready_main_execution_pending",
+  "scope": "rollback-activated repaired-current rollback continuity PostgreSQL evidence",
+  "workflow": ".github/workflows/pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml",
+  "source_packet": {
+    "historical_source_contract": "crates/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-source.json",
+    "source_verifier": "crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs",
+    "postgres_test": "crates/rustok-pages/tests/artifact_rollback_activated_repair_rollback_continuity_postgres.rs",
+    "repeated_loss_regression_test": "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
+    "source_actualization": "docs/modules/pages-page-builder-rollback-activated-repair-rollback-continuity-actualization-2026-08-07.md"
+  },
+  "execution": {
+    "postgres_version": "16",
+    "rust_toolchain": "1.96.0",
+    "source_verifier_required": true,
+    "postgres_success_and_corrupted_anchor_rejection_required": true,
+    "repeated_loss_latest_state_regression_required": true,
+    "cargo_check_all_targets_required": true,
+    "exact_main_receipt_required": true,
+    "artifact_retention_days": 90
+  },
+  "admission_boundary": {
+    "target_json_pointer": "/consumers/0/artifact_repair/rollback_continuity/rollback_activated_repair_to_rollback/executed_evidence",
+    "target_pre_state": "pending",
+    "artifact_repair_parent_required_pre_state": "verified",
+    "physical_loss_recovery_parent_required_pre_state": "verified",
+    "physical_loss_activation_prefix_required_pre_state": "verified",
+    "repeated_loss_recovery_required_pre_state": "verified",
+    "rollback_continuity_parent_required_pre_state": "pending",
+    "separate_registry_admission_required": true
+  },
+  "output": {
+    "format": "pages_rollback_activated_repair_rollback_continuity_postgres_execution_v1",
+    "success_status": "postgres_execution_passed_rollback_activated_repair_to_rollback_admission_pending",
+    "receipt_path": "evidence/pages-rollback-activated-repair-rollback-continuity-postgres/receipt.json",
+    "maximum_receipt_bytes": 1048576
+  },
+  "required_source_files": [
+    ".github/workflows/pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml",
+    "crates/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-postgres-execution.json",
+    "crates/rustok-pages/contracts/evidence/pages-rollback-activated-repair-rollback-continuity-source.json",
+    "crates/rustok-pages/scripts/verify/verify-pages-rollback-activated-repair-rollback-continuity.mjs",
+    "crates/rustok-pages/tests/artifact_rollback_activated_repair_rollback_continuity_postgres.rs",
+    "crates/rustok-pages/tests/artifact_repeated_loss_recovery_postgres.rs",
+    "crates/rustok-pages/src/services/page/artifact_set.rs",
+    "crates/rustok-pages/src/services/page/artifact_binding_replacement.rs",
+    "crates/rustok-pages/src/services/page/rollback.rs",
+    "crates/rustok-pages/docs/implementation-plan.md",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "docs/modules/pages-page-builder-rollback-activated-repair-rollback-continuity-actualization-2026-08-07.md",
+    "docs/modules/pages-rollback-activated-repair-rollback-continuity-postgres-evidence-actualization-2026-08-15.md"
+  ],
+  "non_claims": {
+    "historical_source_contract_mutated": false,
+    "registry_mutated": false,
+    "target_registry_verified": false,
+    "physical_loss_activation_prefix_reverified_or_mutated": false,
+    "rollback_continuity_parent_verified": false,
+    "cache_consumer_verified": false,
+    "provider_consumer_properties_verified": false,
+    "terminal_inventory_complete": false,
+    "owner_platform_review_ready": false,
+    "pages_ffa_promoted": false,
+    "page_builder_fba_promoted": false
+  }
+}
