@@ -197,7 +197,8 @@ for (const marker of [
 for (const marker of [
   "### P0 — runtime evidence",
   "Execute #2856 Redis available/outage/restart recovery — PR #3579 run",
-  "Execute #2862 registered-CLI repair propagation. — `in_progress`",
+  "Execute #2862 registered-CLI repair propagation — PR #3590 run",
+  "Retain one same-revision result set within documented bounds",
   "Status: `in_progress`",
 ]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
@@ -214,5 +215,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready RBAC CLI repair harness runs the canonical CLI path in an independent process and requires two live DB-only replicas to recover through durable generation without restart while retaining all execution gates",
+  "✔ source-ready RBAC CLI repair harness remains strict while the owner handoff retains successful live registered-CLI propagation and keeps the broader component gates open",
 );
