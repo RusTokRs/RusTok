@@ -1,0 +1,67 @@
+name: Profiles Taxonomy Tag Locale Contract
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-taxonomy/src/owner_read.rs"
+      - "crates/rustok-taxonomy/src/lib.rs"
+      - "crates/rustok-profiles/src/services.rs"
+      - "crates/rustok-profiles/tests/profile_tag_locale_fallback.rs"
+      - "crates/rustok-profiles/tests/profile_service_test.rs"
+      - "crates/rustok-profiles/tests/support.rs"
+      - "crates/rustok-profiles/README.md"
+      - "crates/rustok-profiles/docs/README.md"
+      - "crates/rustok-taxonomy/Cargo.toml"
+      - "crates/rustok-profiles/Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/profiles-taxonomy-tag-locale-contract.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-taxonomy/src/owner_read.rs"
+      - "crates/rustok-taxonomy/src/lib.rs"
+      - "crates/rustok-profiles/src/services.rs"
+      - "crates/rustok-profiles/tests/profile_tag_locale_fallback.rs"
+      - "crates/rustok-profiles/tests/profile_service_test.rs"
+      - "crates/rustok-profiles/tests/support.rs"
+      - "crates/rustok-profiles/README.md"
+      - "crates/rustok-profiles/docs/README.md"
+      - "crates/rustok-taxonomy/Cargo.toml"
+      - "crates/rustok-profiles/Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/profiles-taxonomy-tag-locale-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  profiles-taxonomy-tag-locale-contract:
+    name: Profiles taxonomy tag locale contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run Taxonomy owner locale-chain unit contract
+        run: cargo test --locked -p rustok-taxonomy --lib owner_read::tests -- --nocapture
+      - name: Run Profiles taxonomy tag locale integration contract
+        run: cargo test --locked -p rustok-profiles --test profile_tag_locale_fallback -- --nocapture
+      - name: Run existing Profiles batch locale fallback regression
+        run: >-
+          cargo test --locked -p rustok-profiles --test profile_service_test
+          batched_reader_uses_locale_fallback_and_skips_missing_profiles -- --exact --nocapture

@@ -51,7 +51,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Verify checked-out evidence revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          echo "expected_sha=$expected"
+          echo "actual_sha=$actual"
+          test "$actual" = "$expected"
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -63,6 +73,7 @@ jobs:
   postgres-evidence:
     name: Taxonomy PostgreSQL runtime evidence
     needs: source-contract
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -82,24 +93,42 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Activate exact Rust evidence toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup override set "${RUST_TOOLCHAIN}"
+          rustup show active-toolchain
+          rustc --version
+          cargo --version
+          test "$(rustc --version | awk '{print $2}')" = "${RUST_TOOLCHAIN}"
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: taxonomy-postgres-evidence
       - name: Record evidence provenance
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p evidence/taxonomy-postgres
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
           {
             echo "workflow=${GITHUB_WORKFLOW}"
             echo "run_id=${GITHUB_RUN_ID}"
             echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
-            echo "sha=${GITHUB_SHA}"
-            echo "ref=${GITHUB_REF}"
             echo "event=${GITHUB_EVENT_NAME}"
+            echo "ref=${GITHUB_REF}"
+            echo "expected_sha=$expected"
+            echo "actual_sha=$actual"
+            rustup show active-toolchain
+            rustc --version
+            cargo --version
           } > evidence/taxonomy-postgres/metadata.txt
       - name: Apply canonical server migrations
         shell: bash
@@ -123,7 +152,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: taxonomy-postgres-evidence-${{ github.run_id }}-${{ github.sha }}
+          name: taxonomy-postgres-evidence-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: evidence/taxonomy-postgres
           if-no-files-found: error
           retention-days: 90
