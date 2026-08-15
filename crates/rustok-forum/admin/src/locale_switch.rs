@@ -42,7 +42,10 @@ pub fn topic_locale_switch_decision(
 }
 
 pub fn category_detail_for_editor(mut detail: CategoryDetail) -> CategoryDetail {
-    if detail_is_fallback(detail.requested_locale.as_str(), detail.effective_locale.as_str()) {
+    if detail_is_fallback(
+        detail.requested_locale.as_str(),
+        detail.effective_locale.as_str(),
+    ) {
         detail.name.clear();
         detail.slug.clear();
         detail.description = None;
@@ -51,7 +54,10 @@ pub fn category_detail_for_editor(mut detail: CategoryDetail) -> CategoryDetail 
 }
 
 pub fn topic_detail_for_editor(mut detail: TopicDetail) -> TopicDetail {
-    if detail_is_fallback(detail.requested_locale.as_str(), detail.effective_locale.as_str()) {
+    if detail_is_fallback(
+        detail.requested_locale.as_str(),
+        detail.effective_locale.as_str(),
+    ) {
         detail.title.clear();
         detail.slug.clear();
         detail.body.document = RichTextDocument::empty();
@@ -139,7 +145,10 @@ fn category_editable_state_matches(
         && current.moderated == persisted.moderated
 }
 
-fn topic_editable_state_matches(current: &TopicFormSnapshot, persisted: &TopicFormSnapshot) -> bool {
+fn topic_editable_state_matches(
+    current: &TopicFormSnapshot,
+    persisted: &TopicFormSnapshot,
+) -> bool {
     current.editing_id == persisted.editing_id
         && current.category_id == persisted.category_id
         && current.title == persisted.title
@@ -386,10 +395,7 @@ mod tests {
     fn unchanged_exact_locale_tags_do_not_trigger_attachment_resync() {
         let detail = topic_detail("en", "en");
         assert_eq!(
-            topic_tags_for_update(
-                &detail,
-                vec![" intro ".to_string(), "news".to_string()]
-            ),
+            topic_tags_for_update(&detail, vec![" intro ".to_string(), "news".to_string()]),
             None
         );
     }
@@ -407,9 +413,6 @@ mod tests {
             topic_tags_for_update(&detail, vec!["arabic".to_string()]),
             Some(vec!["arabic".to_string()])
         );
-        assert_eq!(
-            topic_tags_for_update(&detail, Vec::new()),
-            Some(Vec::new())
-        );
+        assert_eq!(topic_tags_for_update(&detail, Vec::new()), Some(Vec::new()));
     }
 }

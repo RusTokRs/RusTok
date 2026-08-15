@@ -79,7 +79,7 @@ async function mountOrderContract(page: Page) {
       <iframe id="canvas-a-frame" data-fly-iframe-canvas title="Fly response order canvas"></iframe>
     </div>
   `,
-    { url: '/' }
+    { waitUntil: 'domcontentloaded' }
   );
 
   await page.evaluate(async (source) => {

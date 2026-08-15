@@ -2,7 +2,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { DataTableColumnHeader } from '@/components/ui/table/data-table-column-header';
-import { Column, ColumnDef } from '@tanstack/react-table';
+import { ColumnDef } from '@tanstack/react-table';
 import { Text, CircleDot } from 'lucide-react';
 import { CellAction } from './cell-action';
 import { STATUS_OPTIONS } from './options';
@@ -20,16 +20,16 @@ const statusLabel: Record<string, string> = {
   ARCHIVED: 'Archived'
 };
 
-export const columns: ColumnDef<PostSummary>[] = [
+export const columns: ColumnDef<PostSummary, any>[] = [
   {
     id: 'title',
     accessorKey: 'title',
-    header: ({ column }: { column: Column<PostSummary, unknown> }) => (
+    header: ({ column }) => (
       <DataTableColumnHeader column={column} title='Title' />
     ),
-    cell: ({ cell }) => (
+    cell: ({ getValue }) => (
       <div className='max-w-[300px] truncate font-medium'>
-        {cell.getValue<string>()}
+        {String(getValue() ?? '')}
       </div>
     ),
     meta: {
@@ -43,11 +43,11 @@ export const columns: ColumnDef<PostSummary>[] = [
   {
     id: 'status',
     accessorKey: 'status',
-    header: ({ column }: { column: Column<PostSummary, unknown> }) => (
+    header: ({ column }) => (
       <DataTableColumnHeader column={column} title='Status' />
     ),
-    cell: ({ cell }) => {
-      const status = cell.getValue<string>();
+    cell: ({ getValue }) => {
+      const status = String(getValue() ?? '');
       return (
         <Badge
           variant={statusVariant[status] ?? 'outline'}
@@ -72,8 +72,8 @@ export const columns: ColumnDef<PostSummary>[] = [
   {
     accessorKey: 'createdAt',
     header: 'Created',
-    cell: ({ cell }) => {
-      const raw = cell.getValue<string>();
+    cell: ({ getValue }) => {
+      const raw = getValue() as string | undefined;
       if (!raw) return '—';
       return new Date(raw).toLocaleDateString();
     }
@@ -81,8 +81,8 @@ export const columns: ColumnDef<PostSummary>[] = [
   {
     accessorKey: 'publishedAt',
     header: 'Published',
-    cell: ({ cell }) => {
-      const raw = cell.getValue<string | null>();
+    cell: ({ getValue }) => {
+      const raw = getValue() as string | null | undefined;
       if (!raw) return '—';
       return new Date(raw).toLocaleDateString();
     }

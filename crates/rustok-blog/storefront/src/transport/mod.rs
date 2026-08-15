@@ -92,14 +92,14 @@ pub async fn create_comment(
     token: Option<String>,
     request: BlogCommentCreateRequest,
 ) -> Result<BlogCommentDetail, BlogTransportError> {
-    #[cfg(feature = "comment-island")]
+    #[cfg(all(feature = "comment-island", not(feature = "ssr")))]
     {
         let _ = token;
         return native_server_adapter::create_comment(request)
             .await
             .map_err(|error| UiTransportError::native("blog_comment_create", error));
     }
-    #[cfg(not(feature = "comment-island"))]
+    #[cfg(any(feature = "ssr", not(feature = "comment-island")))]
     {
         let native_request = request.clone();
         execute_selected_transport(

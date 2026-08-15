@@ -58,7 +58,7 @@ async function mountProblemContract(page: Page) {
       <iframe id="canvas-a-frame" data-fly-iframe-canvas title="Fly capability canvas"></iframe>
     </div>
   `,
-    { url: '/' }
+    { waitUntil: 'domcontentloaded' }
   );
 
   await page.evaluate(async (source) => {
