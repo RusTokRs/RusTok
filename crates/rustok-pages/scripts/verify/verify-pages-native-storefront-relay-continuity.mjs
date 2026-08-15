@@ -123,7 +123,7 @@ for (const key of [
 }
 
 need(cargo, "rustok-events.workspace = true", "Cargo");
-need(cargo, "rustok-page-builder.workspace = true", "Cargo");
+need(cargo, 'rustok-page-builder = { path = "../../rustok-page-builder", default-features = false }', "Cargo");
 for (const marker of [
   "PageBuilderReviewedPublishRuntime",
   "OutboxModule",
@@ -228,7 +228,7 @@ for (const marker of [
 for (const marker of [
   "Topology correction",
   "test-target acknowledgement",
-  "production listener acknowledgement gap",
+  "Production listener acknowledgement gap",
   "no production behavior change"
 ]) need(correction, marker, "topology correction packet");
 for (const marker of [
@@ -239,10 +239,10 @@ for (const marker of [
 ]) need(gatePacket, marker, "production gate packet");
 for (const marker of [
   "production-relay-generation-gate-source-ready",
-  "Production relay-to-Pages generation gate: source-ready",
-  "custom synchronous relay target",
-  "test-target packet and does not replace production-gate execution evidence",
-  "process-bounded dedupe"
+  "relay continuity, production gate, native route, PostgreSQL retry and profile parity",
+  "Historical dated packets remain evidence for the source slices that produced the current state",
+  "The following #2955–#3063 list is a retained historical snapshot",
+  "execution remains pending"
 ]) need(plan, marker, "current parity plan");
 
 if (failures.length) {
