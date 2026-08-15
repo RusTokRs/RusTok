@@ -1,0 +1,38 @@
+name: Forum Admin Locale Switch Contract
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-forum/admin/**"
+      - "crates/rustok-forum/docs/forum-28-admin-locale-switch-contract.md"
+      - "scripts/verify/verify-forum-admin-locale-switch.mjs"
+      - ".github/workflows/forum-admin-locale-switch-contract.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: forum-admin-locale-switch-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Verify locale-switch source contract
+        run: node scripts/verify/verify-forum-admin-locale-switch.mjs
+
+  rust-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Test locale-switch policy
+        run: cargo test --locked -p rustok-forum-admin locale_switch -- --nocapture
+      - name: Check Forum admin package
+        run: cargo check --locked -p rustok-forum-admin
