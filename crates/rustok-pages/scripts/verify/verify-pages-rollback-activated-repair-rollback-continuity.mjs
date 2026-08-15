@@ -99,7 +99,7 @@ for (const marker of [
   "TargetPublishOperationId.eq(operation.id)",
   "TargetArtifactSetHash",
   "rollback.request_hash != expected_request_hash",
-  "let anchor_version = resolve_repair_activation_anchor_in_tx",
+  "resolve_repair_activation_anchor_in_tx(txn, operation, current_page_version).await?",
   ".gt(anchor_version)",
   "let mut cursor = anchor_version",
   ".limit((MAX_RECOVERED_ACTIVATION_PREFIX + 1) as u64)",
