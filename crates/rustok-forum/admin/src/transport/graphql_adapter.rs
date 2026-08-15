@@ -5,6 +5,7 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use rustok_ui_core::normalize_ui_text;
 use serde::{Deserialize, Serialize};
 
+use crate::locale_switch::{category_detail_for_editor, topic_detail_for_editor};
 use crate::model::{
     CategoryDetail, CategoryDraft, ReplyDraft, ReplyListItem, TopicDetail, TopicDraft,
     TopicListItem,
@@ -302,6 +303,7 @@ pub async fn fetch_category(
     .await?;
     response
         .forum_category
+        .map(category_detail_for_editor)
         .ok_or_else(|| format!("Forum category not found: {id}"))
 }
 
@@ -426,6 +428,7 @@ pub async fn fetch_topic(
     .await?;
     response
         .forum_topic
+        .map(topic_detail_for_editor)
         .ok_or_else(|| format!("Forum topic not found: {id}"))
 }
 
