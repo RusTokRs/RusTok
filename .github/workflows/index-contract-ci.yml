@@ -9,6 +9,7 @@ on:
       - "crates/rustok-events/**"
       - "crates/rustok-product/**"
       - "crates/rustok-index/**"
+      - "crates/rustok-social-graph/**"
       - "crates/rustok-distribution/src/product_index/**"
       - "crates/rustok-distribution/src/product_variant_index.rs"
       - "crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
@@ -20,6 +21,7 @@ on:
       - "scripts/verify/verify-index-postgres-query-compiler.mjs"
       - "scripts/verify/verify-index-query-snapshots.mjs"
       - "scripts/verify/verify-index-postgres-reference-equivalence.mjs"
+      - "scripts/verify/verify-index-source-schema-registry.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
@@ -40,6 +42,7 @@ on:
       - "crates/rustok-events/**"
       - "crates/rustok-product/**"
       - "crates/rustok-index/**"
+      - "crates/rustok-social-graph/**"
       - "crates/rustok-distribution/src/product_index/**"
       - "crates/rustok-distribution/src/product_variant_index.rs"
       - "crates/rustok-distribution/tests/product_current_schema_promotion_postgres.rs"
@@ -51,6 +54,7 @@ on:
       - "scripts/verify/verify-index-postgres-query-compiler.mjs"
       - "scripts/verify/verify-index-query-snapshots.mjs"
       - "scripts/verify/verify-index-postgres-reference-equivalence.mjs"
+      - "scripts/verify/verify-index-source-schema-registry.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
@@ -96,6 +100,8 @@ jobs:
         run: node scripts/verify/verify-index-query-snapshots.mjs
       - name: Verify Index PostgreSQL/reference equivalence source contract
         run: node scripts/verify/verify-index-postgres-reference-equivalence.mjs
+      - name: Verify Index source-schema registry contract
+        run: node scripts/verify/verify-index-source-schema-registry.mjs
       - name: Verify event digest admission contract
         run: node scripts/verify/verify-event-contract-digest-admission.mjs
       - name: Verify Product Index refresh family

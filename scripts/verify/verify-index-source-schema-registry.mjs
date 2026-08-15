@@ -69,7 +69,7 @@ const socialGraph = requireMarkers('crates/rustok-social-graph/src/lib.rs', [
   '&["index", "outbox"]',
   'social_graph_relation_index_schema()',
   'register_index_schema_source(extensions, self.slug(), schema)',
-  'module_publishes_its_index_schema_through_runtime_extensions',
+  'module_publishes_complete_index_source_contracts',
 ]);
 if (socialGraph.includes('PostgresIndexQueryPort::new')) {
   fail('Social Graph module composition must not construct the query port');
