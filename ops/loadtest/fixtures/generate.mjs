@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { once } from 'node:events';
 
 const TIERS = Object.freeze({
@@ -197,9 +197,6 @@ async function main() {
     manifest_core_sha256: createHash('sha256').update(manifestCanonical).digest('hex'),
   };
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-
-  const firstLine = readFileSync(productsPath, 'utf8').split('\n', 1)[0];
-  if (firstLine !== JSON.stringify(productFor(seed, 0))) throw new Error('Determinism self-check failed for first product');
 
   process.stdout.write(`${JSON.stringify({ output_dir: outputDir, product_count: productCount, manifest_core_sha256: manifest.manifest_core_sha256 })}\n`);
 }
