@@ -17,9 +17,7 @@ use rustok_api::{
     ChannelContext, ChannelContextExtension, ChannelResolutionSource, HostRuntimeContext,
     TenantContext, TenantContextExtension,
 };
-use rustok_channel::{
-    BindChannelModuleInput, ChannelResponse, ChannelService, CreateChannelInput,
-};
+use rustok_channel::{BindChannelModuleInput, ChannelResponse, ChannelService, CreateChannelInput};
 use rustok_core::events::EventHandler;
 use rustok_core::{EventTransport, MigrationSource, ReliabilityLevel, SecurityContext};
 use rustok_events::{DomainEvent, EventEnvelope};
