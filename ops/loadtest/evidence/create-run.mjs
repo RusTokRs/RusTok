@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
-import { basename, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 
 function parseArgs(argv) {
   const out = {};
@@ -22,8 +22,11 @@ function parseArgs(argv) {
   return out;
 }
 
-function sha256File(path) {
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
+async function sha256File(path) {
+  const hash = createHash('sha256');
+  const stream = createReadStream(path);
+  for await (const chunk of stream) hash.update(chunk);
+  return hash.digest('hex');
 }
 
 function commandVersion(command, args = ['--version']) {
@@ -50,10 +53,42 @@ function cleanObject(value) {
   return value;
 }
 
-function main() {
+function findPlaceholders(value, path = '$', found = []) {
+  if (typeof value === 'string') {
+    if (/REPLACE_ME|\bunknown\b|\bunresolved\b/i.test(value)) found.push(path);
+    return found;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => findPlaceholders(item, `${path}[${index}]`, found));
+    return found;
+  }
+  if (value && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) findPlaceholders(item, `${path}.${key}`, found);
+  }
+  return found;
+}
+
+async function verifyFixtureFiles(fixturePath, fixtures) {
+  const fixtureDir = dirname(fixturePath);
+  const verified = {};
+  for (const [file, expected] of Object.entries(fixtures.files || {})) {
+    const path = resolve(fixtureDir, file);
+    if (!existsSync(path)) throw new Error(`Fixture file not found: ${path}`);
+    const actual = await sha256File(path);
+    if (actual !== expected.sha256) {
+      throw new Error(`Fixture SHA-256 mismatch for ${file}: expected ${expected.sha256}, got ${actual}`);
+    }
+    verified[file] = { sha256: actual };
+  }
+  if (Object.keys(verified).length === 0) throw new Error('Fixture manifest contains no verifiable files');
+  return verified;
+}
+
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   const fixturePath = resolve(String(args.fixtures || 'target/loadtest-fixtures/s/manifest.json'));
   const topologyPath = resolve(String(args.topology || 'ops/loadtest/evidence/topology.example.json'));
+  const allowPlaceholders = Boolean(args['allow-placeholders']);
   if (!existsSync(fixturePath)) throw new Error(`Fixture manifest not found: ${fixturePath}`);
   if (!existsSync(topologyPath)) throw new Error(`Topology file not found: ${topologyPath}`);
 
@@ -61,6 +96,18 @@ function main() {
   if (fixtures.contract !== 'rustok_vs_magento_fixture_v1') throw new Error(`Unsupported fixture contract '${fixtures.contract}'`);
   const topology = JSON.parse(readFileSync(topologyPath, 'utf8'));
   if (topology.contract !== 'rustok_vs_magento_topology_v1') throw new Error(`Unsupported topology contract '${topology.contract}'`);
+
+  const verifiedFixtureFiles = await verifyFixtureFiles(fixturePath, fixtures);
+  const rustokCommit = String(args['rustok-commit'] || process.env.RUSTOK_COMMIT || gitSha() || 'unknown');
+  const magentoRelease = String(args['magento-release'] || process.env.MAGENTO_RELEASE || 'unresolved');
+  const unresolved = [
+    ...findPlaceholders(topology, '$.topology'),
+    ...findPlaceholders(rustokCommit, '$.rustok_commit'),
+    ...findPlaceholders(magentoRelease, '$.magento_release'),
+  ];
+  if (unresolved.length && !allowPlaceholders) {
+    throw new Error(`Refusing evidence manifest with unresolved values: ${unresolved.join(', ')}`);
+  }
 
   const now = new Date();
   const defaultRunId = `${now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')}-${fixtures.requested_tier}`;
@@ -76,14 +123,16 @@ function main() {
     run_id: runId,
     created_at: now.toISOString(),
     benchmark_contract: 'docs/benchmarks/rustok-vs-magento.md',
-    rustok_commit: String(args['rustok-commit'] || process.env.RUSTOK_COMMIT || gitSha() || 'unknown'),
-    magento_release: String(args['magento-release'] || process.env.MAGENTO_RELEASE || 'unresolved'),
+    evidence_placeholders_allowed: allowPlaceholders,
+    unresolved_fields: unresolved,
+    rustok_commit: rustokCommit,
+    magento_release: magentoRelease,
     profile: String(args.profile || process.env.BENCHMARK_PROFILE || 'P1'),
     workload: String(args.workload || process.env.BENCHMARK_WORKLOAD || 'R4'),
     fixture_manifest: {
       path: fixturePath,
       file: basename(fixturePath),
-      sha256: sha256File(fixturePath),
+      sha256: await sha256File(fixturePath),
       contract: fixtures.contract,
       generator_version: fixtures.generator_version,
       seed: fixtures.seed,
@@ -91,11 +140,12 @@ function main() {
       product_count: fixtures.product_count,
       variants_per_product: fixtures.variants_per_product,
       manifest_core_sha256: fixtures.manifest_core_sha256,
+      verified_files: verifiedFixtureFiles,
     },
     topology: {
       path: topologyPath,
       file: basename(topologyPath),
-      sha256: sha256File(topologyPath),
+      sha256: await sha256File(topologyPath),
       definition: topology,
     },
     load_generator: {
@@ -124,7 +174,7 @@ function main() {
   });
 
   writeFileSync(resolve(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
-  process.stdout.write(`${JSON.stringify({ evidence_dir: root, run_id: runId, fixture_sha256: manifest.fixture_manifest.sha256, topology_sha256: manifest.topology.sha256 })}\n`);
+  process.stdout.write(`${JSON.stringify({ evidence_dir: root, run_id: runId, fixture_sha256: manifest.fixture_manifest.sha256, topology_sha256: manifest.topology.sha256, verified_fixture_files: Object.keys(verifiedFixtureFiles).length })}\n`);
 }
 
-try { main(); } catch (error) { console.error(error.stack || String(error)); process.exitCode = 1; }
+main().catch((error) => { console.error(error.stack || String(error)); process.exitCode = 1; });
