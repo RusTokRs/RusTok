@@ -25,8 +25,9 @@ All load-test tooling is dependency-free Node.js except k6 itself.
 node ops/loadtest/verify.mjs
 ```
 
-The verifier checks JavaScript syntax, JSON adapter/topology parsing, and generates the same
-100-product fixture twice to assert byte-identical JSONL/CSV and identical manifest hashes.
+The verifier checks JavaScript syntax and JSON contracts, generates the same 100-product fixture
+twice to assert byte-identical JSONL/CSV, verifies fail-closed evidence creation, and on Linux
+smoke-tests the process sampler plus result summarizer with synthetic k6 metrics.
 
 ## 1. Generate deterministic fixtures
 
@@ -52,8 +53,8 @@ The generator streams its output and produces:
 - `manifest.json` — seed, counts, selected benchmark SKUs, search terms/cardinality and SHA-256 digests.
 
 Every product title contains exactly one `bench-group-NN` search token. The manifest records
-the exact expected match count for each token, so the search workload can validate semantic
-parity rather than only HTTP success.
+the exact expected match count for each token, so the search workload validates semantic parity
+rather than only HTTP success.
 
 ## 2. Import the same fixture into RusTok
 
@@ -77,7 +78,8 @@ node ops/loadtest/fixtures/import-rustok.mjs \
 under an additional ingress/module prefix, and the fixture tool must not guess it.
 
 Interrupted imports can continue with `--resume`; only receipt rows with `status: created`
-are skipped. Failed rows stay visible in the receipt.
+are skipped. Failed rows stay visible in the receipt. Concurrency is bounded in product-sized
+batches, so an import failure cannot disappear from a detached promise.
 
 ## 3. Import the same fixture into Magento
 
@@ -119,18 +121,33 @@ actual process/container/VM limits and dependency versions.
 cp ops/loadtest/evidence/topology.example.json target/loadtest-topology.json
 # edit target/loadtest-topology.json with exact benchmark resources/versions
 
+RATE=500 \
+WARMUP=30s \
+DURATION=3m \
+OPERATION=mixed \
+PRODUCT_SKU=RTBM-00050001 \
+SEARCH_TERM=bench-group-00 \
+SEARCH_EXPECTED_MATCHES=5000 \
 node ops/loadtest/evidence/create-run.mjs \
   --fixtures target/loadtest-fixtures/m/manifest.json \
   --topology target/loadtest-topology.json \
-  --run-id m-p1-r4-001 \
+  --run-id m-p1-r4-500rps \
   --rustok-commit "$(git rev-parse HEAD)" \
   --magento-release '<exact-release>' \
   --profile P1 \
   --workload R4
 ```
 
+Use the exact `expected_matches` value from the selected manifest search case; `5000` is the
+expected value for each of 20 groups only in the canonical 100k-product tier.
+
 The writer creates `evidence/rustok-vs-magento/<run-id>/` with `rustok/`, `magento/` and a
-non-overwritable `manifest.json`. Fixture and topology files are SHA-256 pinned in that manifest.
+non-overwritable `manifest.json`. It re-hashes `products.jsonl` and `products.csv`, pins the
+topology hash, and refuses unresolved `REPLACE_ME`/`unknown`/`unresolved` values by default.
+`--allow-placeholders` is for harness development only and must not be used for publishable evidence.
+
+Use one run directory per dataset/profile/workload/rate point. The three repetitions for that
+point live inside the same directory.
 
 ## 5. Collect measured-window resources
 
@@ -149,7 +166,7 @@ node ops/loadtest/evidence/collect-process.mjs \
   --delay-ms 30000 \
   --duration-ms 180000 \
   --interval-ms 1000 \
-  --output evidence/rustok-vs-magento/m-p1-r4-001/rustok/telemetry-run-1.jsonl
+  --output evidence/rustok-vs-magento/m-p1-r4-500rps/rustok/telemetry-run-1.jsonl
 ```
 
 The collector records RSS, high-water RSS, thread counts and user/system CPU ticks. It records
@@ -174,11 +191,15 @@ k6 run \
   -e PRODUCT_ID=<rustok-id-from-receipt> \
   -e PRODUCT_SKU=RTBM-00050001 \
   -e SEARCH_TERM=bench-group-00 \
+  -e SEARCH_EXPECTED_MATCHES=5000 \
   k6/comparison.js
 ```
 
 Run exactly the same arrival-rate profile for Magento by changing only its adapter/base URL and
 platform-specific product identity where required.
+
+The search adapter on both platforms checks the shared token **and** exact total hit count from
+`SEARCH_EXPECTED_MATCHES`. A `200 OK` with different business results therefore fails validation.
 
 The runner separates warm-up from measurement, counts `measured_requests` independently and
 fails the measured scenario if k6 drops iterations. It also enforces the read SLO:
@@ -196,11 +217,11 @@ Move each generated `summary.json` into its immutable run directory as
 
 ```bash
 node ops/loadtest/evidence/summarize.mjs \
-  --summary evidence/rustok-vs-magento/m-p1-r4-001/rustok/summary-run-1.json \
-  --telemetry evidence/rustok-vs-magento/m-p1-r4-001/rustok/telemetry-run-1.jsonl \
+  --summary evidence/rustok-vs-magento/m-p1-r4-500rps/rustok/summary-run-1.json \
+  --telemetry evidence/rustok-vs-magento/m-p1-r4-500rps/rustok/telemetry-run-1.jsonl \
   --app-target app \
   --application-vcpu 4 \
-  --output evidence/rustok-vs-magento/m-p1-r4-001/rustok/result-run-1.json
+  --output evidence/rustok-vs-magento/m-p1-r4-500rps/rustok/result-run-1.json
 ```
 
 The result contains achieved measured RPS, p50/p95/p99, failures, dropped iterations, SLO pass,
@@ -223,6 +244,7 @@ application average CPU cores, peak RSS/HWM, sampled-stack CPU/RSS and normalize
 | `PRODUCT_ID` | empty | RusTok product UUID placeholder |
 | `PRODUCT_SKU` | empty | Shared parent SKU placeholder |
 | `SEARCH_TERM` | `shirt` | Shared title search token; use a manifest case for evidence |
+| `SEARCH_EXPECTED_MATCHES` | empty | Exact `expected_matches` for `SEARCH_TERM`; required by evidence search/mixed runs |
 | `TENANT_ID` | empty | Optional tenant placeholder/header value |
 | `CHANNEL` | empty | Optional channel placeholder/header value |
 
@@ -237,7 +259,7 @@ A throughput number is publishable only when the run also records:
 5. cache profile (`app-cold`, `app-warm`, or `edge-cache`);
 6. three successful repetitions with the same configuration;
 7. p50/p95/p99, achieved RPS, error rate, CPU and peak/resident memory;
-8. validation that returned business data is equivalent for sampled fixtures.
+8. exact search cardinality and sampled business-data parity.
 
 Do not quote Criterion nanosecond timings, README throughput claims, or CDN/Varnish cache hits
 as dynamic commerce RPS.
