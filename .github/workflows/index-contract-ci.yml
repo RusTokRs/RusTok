@@ -25,6 +25,7 @@ on:
       - "scripts/verify/verify-index-schema-readiness.mjs"
       - "scripts/verify/verify-index-schema-supersession.mjs"
       - "scripts/verify/verify-index-schema-scoped-source-event-id.mjs"
+      - "scripts/verify/verify-index-source-replay-contract.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
@@ -61,6 +62,7 @@ on:
       - "scripts/verify/verify-index-schema-readiness.mjs"
       - "scripts/verify/verify-index-schema-supersession.mjs"
       - "scripts/verify/verify-index-schema-scoped-source-event-id.mjs"
+      - "scripts/verify/verify-index-source-replay-contract.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
@@ -114,6 +116,8 @@ jobs:
         run: node scripts/verify/verify-index-schema-supersession.mjs
       - name: Verify Index schema-scoped source event ID contract
         run: node scripts/verify/verify-index-schema-scoped-source-event-id.mjs
+      - name: Verify Index source replay contract
+        run: node scripts/verify/verify-index-source-replay-contract.mjs
       - name: Verify event digest admission contract
         run: node scripts/verify/verify-event-contract-digest-admission.mjs
       - name: Verify Product Index refresh family
