@@ -147,6 +147,18 @@ canonical fixture contract.
 
 ## Workloads
 
+The evidence workload and k6 `OPERATION` are one contract and must match exactly:
+
+| Workload | k6 `OPERATION` |
+| --- | --- |
+| R1 | `catalog` |
+| R2 | `product` |
+| R3 | `search` |
+| R4 | `mixed` |
+
+The evidence writer refuses a mismatch so a directory labeled R4 cannot accidentally contain a
+catalog-only k6 run.
+
 ### R1 — Catalog list
 
 Return the first 24 published products with the same minimum public projection on both sides.
@@ -311,6 +323,7 @@ default it refuses to create evidence if:
 - RusTok commit or Magento release is unresolved;
 - a canonical fixture file is missing;
 - a canonical fixture file SHA-256 differs from the fixture manifest;
+- the workload and k6 `OPERATION` disagree;
 - the selected search term is absent from the fixture manifest;
 - R3/R4 omit `SEARCH_EXPECTED_MATCHES`;
 - `SEARCH_EXPECTED_MATCHES` disagrees with the selected manifest search case.
@@ -326,7 +339,7 @@ non-publishable until replaced by a clean run.
 - exact topology definition and its SHA-256;
 - fixture tier, seed, manifest hash and verified fixture-file hashes;
 - benchmark SKU, search term and exact expected search count;
-- cache profile/workload;
+- cache profile/workload and exact k6 operation;
 - load-generator OS, CPU, RAM and tool versions;
 - k6 parameters available when the manifest is created.
 
@@ -385,6 +398,7 @@ Implemented in this benchmark track:
 - warm-up and measured phases separated by tags;
 - measured-only request counter and measured dropped-iteration gate;
 - read SLO thresholds and response sanity/GraphQL error checks;
+- workload-to-k6-operation binding;
 - deterministic mixed read distribution;
 - exact shared search-cardinality validation for both adapters;
 - example RusTok REST and Magento core GraphQL adapters;
@@ -396,7 +410,7 @@ Implemented in this benchmark track:
 - measured-window Linux process resource collector;
 - per-step measured-only result summarizer;
 - static verifier for syntax, JSON contracts, fixture determinism, evidence fail-closed behavior,
-  required search-count pinning and Linux sampler/summarizer smoke behavior.
+  operation binding, required search-count pinning and Linux sampler/summarizer smoke behavior.
 
 Before accepting the first real number, complete these operational items:
 
