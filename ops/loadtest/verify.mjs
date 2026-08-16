@@ -60,6 +60,7 @@ try {
 
   const topology = JSON.parse(readFileSync(exampleTopologyPath, 'utf8'));
   const resolvedTopology = JSON.parse(JSON.stringify(topology).replaceAll('REPLACE_ME', 'verification-version'));
+  resolvedTopology.notes = 'verification topology';
   const resolvedTopologyPath = resolve(tmp, 'topology.json');
   writeFileSync(resolvedTopologyPath, `${JSON.stringify(resolvedTopology, null, 2)}\n`, 'utf8');
   const selectedSearch = manifestA.search_cases[0];
@@ -99,6 +100,7 @@ try {
     run([
       resolve(root, 'evidence/collect-process.mjs'),
       '--target', `app:${process.pid}`,
+      '--delay-ms', '0',
       '--interval-ms', '10',
       '--duration-ms', '30',
       '--output', telemetryPath,
@@ -108,7 +110,7 @@ try {
 
     const summaryPath = resolve(tmp, 'summary.json');
     writeFileSync(summaryPath, `${JSON.stringify({
-      metadata: { platform: 'verification', operation: 'mixed', requested_rps: 500 },
+      metadata: { platform: 'verification', operation: 'mixed', requested_rps: 500, search_term: selectedSearch.term, search_expected_matches: selectedSearch.expected_matches },
       k6: { metrics: {
         measured_requests: { values: { count: 1500, rate: 500 } },
         'http_req_duration{phase:measure}': { values: { med: 20, 'p(95)': 50, 'p(99)': 80 } },
@@ -128,6 +130,7 @@ try {
     ]);
     const result = JSON.parse(readFileSync(resultPath, 'utf8'));
     if (result.performance.achieved_rps !== 500 || result.performance.slo_pass !== true) throw new Error('Result summarizer did not preserve measured RPS/SLO');
+    if (result.source.search_expected_matches !== selectedSearch.expected_matches) throw new Error('Result summarizer did not preserve search cardinality identity');
   }
 
   process.stdout.write('loadtest static verification: PASS\n');
