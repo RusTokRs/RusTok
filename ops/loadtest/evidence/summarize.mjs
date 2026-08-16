@@ -98,7 +98,7 @@ function main() {
   const latency = metric(metrics, 'http_req_duration{phase:measure}', 'http_req_duration');
   const httpFailed = metric(metrics, 'http_req_failed{phase:measure}', 'http_req_failed');
   const validationFailed = metric(metrics, 'response_validation_failures{phase:measure}', 'response_validation_failures');
-  const dropped = metric(metrics, 'dropped_iterations{phase:measure}', 'dropped_iterations');
+  const dropped = metric(metrics, 'dropped_iterations{scenario:measure}', 'dropped_iterations{phase:measure}', 'dropped_iterations');
 
   const achievedRps = value(measured, 'rate');
   const p50 = value(latency, 'med');
