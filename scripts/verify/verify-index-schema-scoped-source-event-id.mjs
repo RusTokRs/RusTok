@@ -58,9 +58,9 @@ if (inboxPrimaryKey.includes('.col(IndexInbox::SchemaVersion)')) {
 requireMarkers('crates/rustok-index/docs/m4-single-current-schema-supersession.md', [
   'Inbox delivery identity is a separate boundary',
   '`(tenant_id, source_name, delivery_id)`',
-  '`derive_index_schema_source_event_id`',
-  'schema-scoped deterministic Product replay delivery IDs',
-  'switch from `derive_index_source_event_id` to `derive_index_schema_source_event_id`',
+  'The legacy `derive_index_source_event_id` remains stable for existing sources',
+  'must instead use `derive_index_schema_source_event_id`',
+  'The selected Product source uses `derive_index_schema_source_event_id`',
 ]);
 
 console.log('[verify-index-schema-scoped-source-event-id] schema supersession replay deliveries are schema-scoped without changing legacy source IDs');
