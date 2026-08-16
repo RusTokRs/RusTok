@@ -31,9 +31,11 @@ try {
   ]) {
     run(['--check', resolve(root, file)]);
   }
-  for (const file of ['config/rustok.example.json', 'config/magento.example.json', 'evidence/topology.example.json']) {
-    JSON.parse(readFileSync(resolve(root, file), 'utf8'));
-  }
+  const rustokConfig = JSON.parse(readFileSync(resolve(root, 'config/rustok.example.json'), 'utf8'));
+  const magentoConfig = JSON.parse(readFileSync(resolve(root, 'config/magento.example.json'), 'utf8'));
+  JSON.parse(readFileSync(resolve(root, 'evidence/topology.example.json'), 'utf8'));
+  if (rustokConfig.name !== 'rustok-rest') throw new Error(`Unexpected RusTok adapter profile '${rustokConfig.name}'`);
+  if (magentoConfig.name !== 'magento-core-graphql') throw new Error(`Unexpected Magento adapter profile '${magentoConfig.name}'`);
 
   const outA = resolve(tmp, 'a');
   const outB = resolve(tmp, 'b');
