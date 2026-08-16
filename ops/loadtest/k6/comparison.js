@@ -1,6 +1,6 @@
 import http from 'k6/http';
 import { check } from 'k6';
-import { Rate } from 'k6/metrics';
+import { Counter, Rate } from 'k6/metrics';
 
 const CONFIG_PATH = __ENV.CONFIG;
 if (!CONFIG_PATH) {
@@ -27,6 +27,7 @@ const preAllocatedVUs = Math.max(1, Number(__ENV.PRE_ALLOCATED_VUS || 64));
 const maxVUs = Math.max(preAllocatedVUs, Number(__ENV.MAX_VUS || 2048));
 
 export const responseValidationFailures = new Rate('response_validation_failures');
+export const measuredRequests = new Counter('measured_requests');
 
 const workloadTags = { benchmark: 'rustok_vs_magento', platform: config.name || 'unknown' };
 
@@ -56,6 +57,7 @@ export const options = {
     },
   },
   thresholds: {
+    measured_requests: ['count>0'],
     'http_req_failed{phase:measure}': ['rate<0.001'],
     'http_req_duration{phase:measure}': ['p(95)<250', 'p(99)<500'],
     'response_validation_failures{phase:measure}': ['rate<0.001'],
@@ -109,6 +111,9 @@ function execute(name, phase) {
   };
 
   const response = http.request(method, url, body, params);
+  if (phase === 'measure') {
+    measuredRequests.add(1, { operation: name, platform: config.name || 'unknown' });
+  }
   const expectedStatus = Number(descriptor.expectedStatus || 200);
   const requiredBodyFragments = descriptor.requiredBodyFragments || [];
 
