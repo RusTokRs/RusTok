@@ -8,7 +8,17 @@ if (!CONFIG_PATH) {
 }
 
 const config = JSON.parse(open(`../${CONFIG_PATH}`));
+const baseUrl = String(__ENV.BASE_URL || config.baseUrl || '').replace(/\/$/, '');
+if (!baseUrl) {
+  throw new Error('BASE_URL or config.baseUrl is required');
+}
+
 const operation = (__ENV.OPERATION || 'mixed').toLowerCase();
+const supportedOperations = new Set(['catalog', 'product', 'search', 'mixed']);
+if (!supportedOperations.has(operation)) {
+  throw new Error(`Unsupported OPERATION '${operation}'`);
+}
+
 const measuredRate = Math.max(1, Number(__ENV.RATE || 100));
 const warmupRate = Math.max(1, Number(__ENV.WARMUP_RATE || Math.ceil(measuredRate / 4)));
 const warmupDuration = __ENV.WARMUP || '30s';
@@ -90,7 +100,7 @@ function requestDescriptor(name) {
 function execute(name, phase) {
   const descriptor = requestDescriptor(name);
   const method = String(descriptor.method || 'GET').toUpperCase();
-  const url = `${String(config.baseUrl || '').replace(/\/$/, '')}${interpolate(descriptor.path || '')}`;
+  const url = `${baseUrl}${interpolate(descriptor.path || '')}`;
   const body = descriptor.body == null ? null : interpolate(JSON.stringify(descriptor.body));
   const params = {
     headers: headersFor(descriptor),
@@ -142,6 +152,7 @@ export function handleSummary(data) {
     contract: 'rustok_vs_magento_read_v1',
     platform: config.name || 'unknown',
     config: CONFIG_PATH,
+    base_url: baseUrl,
     operation,
     requested_rps: measuredRate,
     warmup_rps: warmupRate,
