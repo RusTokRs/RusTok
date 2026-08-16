@@ -85,8 +85,19 @@ try {
       '--rustok-commit', '0123456789abcdef0123456789abcdef01234567',
       '--magento-release', '2.4.x-test',
       '--workload', workload,
-    ], { env: { ...process.env, SEARCH_TERM: selectedSearch.term } });
+    ], { env: { ...process.env, SEARCH_TERM: selectedSearch.term, OPERATION: workload === 'R3' ? 'search' : 'mixed' } });
   }
+
+  runMustFail([
+    resolve(root, 'evidence/create-run.mjs'),
+    '--fixtures', resolve(outA, 'manifest.json'),
+    '--topology', resolvedTopologyPath,
+    '--out-root', evidenceRoot,
+    '--run-id', 'must-fail-operation-mismatch',
+    '--rustok-commit', '0123456789abcdef0123456789abcdef01234567',
+    '--magento-release', '2.4.x-test',
+    '--workload', 'R4',
+  ], { env: { ...requiredSearchEnv, OPERATION: 'catalog' } });
 
   run([
     resolve(root, 'evidence/create-run.mjs'),
@@ -102,6 +113,7 @@ try {
   if (Object.keys(evidenceManifest.fixture_manifest.verified_files || {}).length !== 2) throw new Error('Evidence manifest did not verify both canonical fixture files');
   if (evidenceManifest.unresolved_fields.length !== 0) throw new Error('Resolved verification topology still contains unresolved evidence fields');
   if (evidenceManifest.run_parameters.search_expected_matches !== selectedSearch.expected_matches) throw new Error('Evidence manifest did not pin search cardinality');
+  if (evidenceManifest.run_parameters.operation !== 'mixed') throw new Error('Evidence manifest did not bind R4 to mixed k6 operation');
   if (evidenceManifest.adapters?.rustok !== 'rustok-rest' || evidenceManifest.adapters?.magento !== 'magento-core-graphql') throw new Error('Evidence manifest did not pin adapter profiles');
 
   runMustFail([
