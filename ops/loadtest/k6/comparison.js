@@ -69,6 +69,7 @@ const placeholders = {
   PRODUCT_ID: __ENV.PRODUCT_ID || '',
   PRODUCT_SKU: __ENV.PRODUCT_SKU || '',
   SEARCH_TERM: __ENV.SEARCH_TERM || 'shirt',
+  SEARCH_EXPECTED_MATCHES: __ENV.SEARCH_EXPECTED_MATCHES || '',
   TENANT_ID: __ENV.TENANT_ID || '',
   CHANNEL: __ENV.CHANNEL || '',
 };
@@ -98,6 +99,36 @@ function requestDescriptor(name) {
   const descriptor = config.operations?.[name];
   if (!descriptor) throw new Error(`Operation '${name}' is missing from ${CONFIG_PATH}`);
   return descriptor;
+}
+
+function jsonValueAtPath(value, path) {
+  return String(path).split('.').reduce((current, segment) => {
+    if (current == null || typeof current !== 'object') return undefined;
+    return current[segment];
+  }, value);
+}
+
+function validateJsonValues(response, name, descriptor) {
+  const expectations = descriptor.requiredJsonValues || [];
+  if (expectations.length === 0) return true;
+
+  let body;
+  try {
+    body = response.json();
+  } catch {
+    return check(response, { [`${name}: valid JSON body`]: () => false });
+  }
+
+  let valid = true;
+  for (const expectation of expectations) {
+    const expected = interpolate(String(expectation.equals));
+    const actual = jsonValueAtPath(body, expectation.path);
+    const expectationValid = check(response, {
+      [`${name}: ${expectation.path} == ${expected}`]: () => String(actual) === expected,
+    });
+    valid = valid && expectationValid;
+  }
+  return valid;
 }
 
 function execute(name, phase) {
@@ -132,6 +163,7 @@ function execute(name, phase) {
     valid = valid && fragmentValid;
   }
 
+  valid = validateJsonValues(response, name, descriptor) && valid;
   responseValidationFailures.add(!valid, { phase, operation: name, platform: config.name || 'unknown' });
 }
 
@@ -163,6 +195,9 @@ export function handleSummary(data) {
     warmup_rps: warmupRate,
     warmup_duration: warmupDuration,
     measured_duration: measuredDuration,
+    search_term: placeholders.SEARCH_TERM,
+    search_expected_matches: placeholders.SEARCH_EXPECTED_MATCHES || null,
+    product_sku: placeholders.PRODUCT_SKU || null,
   };
 
   return {
