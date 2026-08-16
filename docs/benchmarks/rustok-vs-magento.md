@@ -123,7 +123,8 @@ Each canonical fixture becomes one published product with:
 - a JSONL receipt mapping the canonical SKU to the created RusTok product ID.
 
 The importer is resumable and the full deployed admin-products URL is explicit so it does not
-guess a host/module/ingress prefix.
+guess a host/module/ingress prefix. Product-level concurrency is bounded so importer failures are
+observed before the next batch proceeds.
 
 ### Magento
 
@@ -133,8 +134,9 @@ chosen Magento installation must expose an explicit benchmark configurable attri
 operator must provide its exact attribute ID and value indexes. The importer refuses to invent
 installation-specific IDs.
 
-The first importer is synchronous and resumable for auditability. A future bulk importer may
-replace it without changing the canonical fixture contract.
+The first importer is synchronous and resumable for auditability. Simple-child URL keys are
+unique and deterministic. A future bulk importer may replace this importer without changing the
+canonical fixture contract.
 
 ## Workloads
 
@@ -151,12 +153,13 @@ the benchmark SKU and equivalent public identity/title fields.
 ### R3 — Catalog search
 
 Search the public/localized product title for a manifest-provided `bench-group-NN` token with known
-cardinality and return 24 items. Validate both response success and semantic fixture identity.
-Report R3 separately because search-engine topology and resource consumption are part of the
-result.
+cardinality and return 24 items. The runner must validate the token and the **exact total hit
+count** against the fixture manifest on both platforms. A `200 OK` with a different total is a
+business-response mismatch and invalidates the run.
 
-Do not silently broaden one side to full-text/attribute search while the other side performs title
-search. A broader search contract is a separate benchmark version.
+Report R3 separately because search-engine topology and resource consumption are part of the
+result. Do not silently broaden one side to full-text/attribute search while the other side
+performs title search. A broader search contract is a separate benchmark version.
 
 ### R4 — Mixed read
 
@@ -167,7 +170,8 @@ The v1 k6 runner uses a deterministic mix:
 - 15% search.
 
 The mix is deterministic by VU/iteration so platform A and platform B do not receive materially
-different random workloads.
+different random workloads. Because R4 includes search, its evidence must also pin and validate
+`SEARCH_EXPECTED_MATCHES` for the selected manifest term.
 
 ### W1 — Cart lifecycle (phase 2)
 
@@ -198,8 +202,9 @@ Every point uses:
 - three successful repetitions;
 - identical requested arrival rate for the paired platforms.
 
-The runner counts `measured_requests` separately from warm-up. Headline achieved RPS must come from
-that measured-only counter.
+Use one immutable run directory per dataset/profile/workload/rate point. The three repetitions
+for that point live inside the same directory. The runner counts `measured_requests` separately
+from warm-up; headline achieved RPS must come from that measured-only counter.
 
 ## Sustainable-capacity SLO
 
@@ -293,7 +298,9 @@ default it refuses to create evidence if:
 - the topology still contains `REPLACE_ME`, `unknown` or `unresolved` values;
 - RusTok commit or Magento release is unresolved;
 - a canonical fixture file is missing;
-- a canonical fixture file SHA-256 differs from the fixture manifest.
+- a canonical fixture file SHA-256 differs from the fixture manifest;
+- the selected search term is absent from the fixture manifest;
+- `SEARCH_EXPECTED_MATCHES` disagrees with the selected manifest search case.
 
 `--allow-placeholders` exists only for harness development and makes the resulting packet
 non-publishable until replaced by a clean run.
@@ -304,7 +311,7 @@ non-publishable until replaced by a clean run.
 - Magento exact release/build;
 - exact topology definition and its SHA-256;
 - fixture tier, seed, manifest hash and verified fixture-file hashes;
-- benchmark SKUs/search terms;
+- benchmark SKU, search term and exact expected search count;
 - cache profile/workload;
 - load-generator OS, CPU, RAM and tool versions;
 - k6 parameters available when the manifest is created.
@@ -314,13 +321,18 @@ Raw evidence is never replaced in place. A rerun gets a new run ID.
 ## Per-step result normalization
 
 `ops/loadtest/evidence/summarize.mjs` combines one k6 `summary.json` with one aligned process
-telemetry file and emits a non-overwriting `rustok_vs_magento_step_result_v1` record containing:
+telemetry file and emits a non-overwriting `rustok_vs_magento_step_result_v1` record. It refuses
+summaries without the measured-only `measured_requests` metric and telemetry without at least two
+successful `app` samples.
+
+The result contains:
 
 - achieved measured RPS;
 - p50/p95/p99;
 - HTTP and response-validation failure rates;
 - measured-scenario dropped iterations;
 - SLO pass/fail;
+- product/search fixture identity captured by the k6 summary;
 - application average CPU cores and peak RSS/HWM;
 - sampled process-set CPU/RSS;
 - application RPS/vCPU and MiB/1k RPS when the application vCPU limit is supplied.
@@ -360,15 +372,17 @@ Implemented in this benchmark track:
 - measured-only request counter and measured dropped-iteration gate;
 - read SLO thresholds and response sanity/GraphQL error checks;
 - deterministic mixed read distribution;
+- exact shared search-cardinality validation for both adapters;
 - example RusTok REST and Magento GraphQL adapters;
 - streaming deterministic S/M/L fixture generator with stable hashes;
 - shared SKU/title-search fixture contract and known search cardinality;
-- resumable RusTok admin-product importer using the live DTO shape;
-- resumable Magento configurable-parent/simple-child importer;
+- resumable bounded RusTok admin-product importer using the live DTO shape;
+- resumable bounded Magento configurable-parent/simple-child importer;
 - fail-closed immutable evidence manifest writer;
 - measured-window Linux process resource collector;
-- per-step result summarizer;
-- static verifier for syntax, JSON contracts and fixture determinism.
+- per-step measured-only result summarizer;
+- static verifier for syntax, JSON contracts, fixture determinism, evidence fail-closed behavior,
+  search-count pinning and Linux sampler/summarizer smoke behavior.
 
 Before accepting the first real number, complete these operational items:
 
