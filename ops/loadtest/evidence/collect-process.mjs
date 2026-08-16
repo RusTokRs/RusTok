@@ -91,6 +91,7 @@ async function main() {
   if (targets.length === 0) throw new Error('At least one --target NAME:PID is required');
   const intervalMs = positiveInt(args['interval-ms'], 1000, 'interval-ms');
   const durationMs = positiveInt(args['duration-ms'], 180000, 'duration-ms');
+  const delayMs = args['delay-ms'] == null ? 0 : positiveInt(args['delay-ms'], 0, 'delay-ms');
   const output = resolve(String(args.output || 'telemetry.jsonl'));
   const stream = createWriteStream(output, { flags: 'wx', encoding: 'utf8' });
   const clockTicksPerSecond = sysconf('CLK_TCK', 100);
@@ -102,9 +103,11 @@ async function main() {
     page_size_bytes: pageSizeBytes,
     interval_ms: intervalMs,
     duration_ms: durationMs,
+    delay_ms: delayMs,
     targets,
   };
   stream.write(`${JSON.stringify(metadata)}\n`);
+  if (delayMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, delayMs));
   const startedAt = Date.now();
   let samples = 0;
 
@@ -123,7 +126,7 @@ async function main() {
   }
   stream.end();
   await once(stream, 'finish');
-  process.stdout.write(`${JSON.stringify({ output, samples, interval_ms: intervalMs, duration_ms: durationMs, targets })}\n`);
+  process.stdout.write(`${JSON.stringify({ output, samples, interval_ms: intervalMs, duration_ms: durationMs, delay_ms: delayMs, targets })}\n`);
 }
 
 main().catch((error) => { console.error(error.stack || String(error)); process.exitCode = 1; });
