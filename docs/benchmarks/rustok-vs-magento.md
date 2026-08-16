@@ -164,6 +164,11 @@ cardinality and return 24 items. The runner must validate the token and the **ex
 count** against the fixture manifest on both platforms. A `200 OK` with a different total is a
 business-response mismatch and invalidates the run.
 
+`SEARCH_TERM` and `SEARCH_EXPECTED_MATCHES` are mandatory publishable evidence identity for R3.
+The evidence writer refuses R3 without an explicit expected count even if it could infer one from
+the manifest; this prevents a launcher from silently omitting the semantic assertion supplied to
+k6.
+
 Report R3 separately because search-engine topology and resource consumption are part of the
 result. Do not silently broaden one side to full-text/attribute search while the other side
 performs title search. A broader search contract is a separate benchmark version.
@@ -177,8 +182,8 @@ The v1 k6 runner uses a deterministic mix:
 - 15% search.
 
 The mix is deterministic by VU/iteration so platform A and platform B do not receive materially
-different random workloads. Because R4 includes search, its evidence must also pin and validate
-`SEARCH_EXPECTED_MATCHES` for the selected manifest term.
+different random workloads. Because R4 includes search, `SEARCH_TERM` and
+`SEARCH_EXPECTED_MATCHES` are also mandatory publishable evidence identity for R4.
 
 ### W1 — Cart lifecycle (phase 2)
 
@@ -307,6 +312,7 @@ default it refuses to create evidence if:
 - a canonical fixture file is missing;
 - a canonical fixture file SHA-256 differs from the fixture manifest;
 - the selected search term is absent from the fixture manifest;
+- R3/R4 omit `SEARCH_EXPECTED_MATCHES`;
 - `SEARCH_EXPECTED_MATCHES` disagrees with the selected manifest search case.
 
 `--allow-placeholders` exists only for harness development and makes the resulting packet
@@ -314,6 +320,7 @@ non-publishable until replaced by a clean run.
 
 `manifest.json` records:
 
+- adapter profiles (`rustok-rest`, `magento-core-graphql`);
 - RusTok commit SHA;
 - Magento exact release/build;
 - exact topology definition and its SHA-256;
@@ -389,7 +396,7 @@ Implemented in this benchmark track:
 - measured-window Linux process resource collector;
 - per-step measured-only result summarizer;
 - static verifier for syntax, JSON contracts, fixture determinism, evidence fail-closed behavior,
-  search-count pinning and Linux sampler/summarizer smoke behavior.
+  required search-count pinning and Linux sampler/summarizer smoke behavior.
 
 Before accepting the first real number, complete these operational items:
 
