@@ -14,7 +14,6 @@ rustok-api.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-seo-targets.workspace = true
-rustok-media.workspace = true
 flex.workspace = true
 rustok-taxonomy.workspace = true
 rustok-inventory.workspace = true

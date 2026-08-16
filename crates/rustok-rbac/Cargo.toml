@@ -19,7 +19,6 @@ thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-rustok-test-utils.workspace = true
 tokio.workspace = true
 
 [features]

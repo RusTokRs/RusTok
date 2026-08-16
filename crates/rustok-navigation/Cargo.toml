@@ -15,7 +15,6 @@ rustok-api = { workspace = true, features = ["server"] }
 rustok-channel.workspace = true
 rustok-core.workspace = true
 rustok-outbox.workspace = true
-rustok-tenant.workspace = true
 rustok-translation-targets.workspace = true
 rustok-web.workspace = true
 sea-orm.workspace = true

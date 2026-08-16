@@ -25,7 +25,6 @@ rustok-outbox.workspace = true
 rustok-page-builder = { path = "../rustok-page-builder", default-features = false }
 rustok-seo-targets.workspace = true
 rustok-translation-targets.workspace = true
-rustok-media.workspace = true
 rustok-telemetry.workspace = true
 rustok-tenant.workspace = true
 rustok-web.workspace = true

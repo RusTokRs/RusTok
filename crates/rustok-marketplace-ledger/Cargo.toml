@@ -23,4 +23,3 @@ uuid.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
-rustok-test-utils.workspace = true

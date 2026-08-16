@@ -33,4 +33,3 @@ graphql = ["dep:async-graphql", "rustok-api/server"]
 
 [dev-dependencies]
 tokio.workspace = true
-rustok-test-utils.workspace = true
