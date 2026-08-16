@@ -83,7 +83,7 @@ for (const marker of [
   "DomainEvent::NodePublished",
   "kind == PAGES_CACHE_ENTITY_KIND",
   "page_cache_namespace(scope: PageCacheScope, tenant_id: Uuid)",
-  '":g-{generation}:page:{page_id}:{variant_hash}"',
+  '"{}:g-{generation}:page:{page_id}:{variant_hash}"',
   "storefront_pages_cache_key",
   "rg-{}:pg-{}:ag-{}",
   "Sha256::digest(variant.as_bytes())",

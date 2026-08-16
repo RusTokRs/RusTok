@@ -155,7 +155,7 @@ requireText(devDependencies, "tower.workspace = true", "test router dependency")
 for (const marker of [
   "struct RecordingCachePort",
   "impl PagesCacheReadPort for RecordingCachePort",
-  "PageCacheGenerationSnapshot::new(3, 5, 7)",
+  "RecordingCachePort::new(PageCacheGenerationSnapshot::new(\n        3, 5, 7,\n    ))",
   "HostRuntimeContext::new(db.clone())",
   ".with_shared_value(mock_transactional_event_bus())",
   ".with_shared_value(PagesCacheReadRuntime::new(cache_port))",
@@ -206,8 +206,8 @@ requireOrder(
   "HTTP miss refill hit generation ordering",
 );
 for (const marker of [
-  "assert!(to_bytes(second.into_body(), RESPONSE_BODY_LIMIT).await?.is_empty())",
-  "assert!(to_bytes(fourth.into_body(), RESPONSE_BODY_LIMIT).await?.is_empty())",
+  "to_bytes(second.into_body(), RESPONSE_BODY_LIMIT)\n            .await?\n            .is_empty()",
+  "to_bytes(fourth.into_body(), RESPONSE_BODY_LIMIT)\n            .await?\n            .is_empty()",
   "artifact_request(&fixture, Some(&first_etag))",
 ]) {
   requireText(testBody, marker, "conditional artifact response evidence");
@@ -287,7 +287,7 @@ requireOrder(
 const boundRead = sliceBetween(
   artifactOwner,
   "async fn load_bound_artifact_in_tx(",
-  "async fn find_artifact_in_tx(",
+  "async fn find_canonical_artifact_in_tx(",
   "published artifact binding read",
 );
 requireOrder(
@@ -300,7 +300,14 @@ requireOrder(
   ],
   "body binding artifact read ordering",
 );
-requireText(artifactOwner, "artifact.verify_integrity()", "artifact integrity owner");
+for (const marker of [
+  "fn published_record(",
+  "verify_record(&record)?",
+  "fn verify_record(",
+  ".verify_integrity()",
+]) {
+  requireText(artifactOwner, marker, "artifact integrity owner");
+}
 
 for (const marker of [
   "pub trait PagesCacheReadPort",
