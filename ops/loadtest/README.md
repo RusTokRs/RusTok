@@ -33,7 +33,9 @@ node ops/loadtest/verify.mjs
 
 The verifier checks JavaScript syntax and JSON contracts, generates the same 100-product fixture
 twice to assert byte-identical JSONL/CSV, verifies fail-closed evidence creation, and on Linux
-smoke-tests the process sampler plus result summarizer with synthetic k6 metrics.
+smoke-tests the process sampler plus result summarizer with synthetic k6 metrics. It also proves
+that R3/R4 evidence creation fails when search cardinality is omitted or disagrees with the
+fixture manifest.
 
 ## 1. Generate deterministic fixtures
 
@@ -144,8 +146,10 @@ node ops/loadtest/evidence/create-run.mjs \
   --workload R4
 ```
 
-Use the exact `expected_matches` value from the selected manifest search case; `5000` is the
-expected value for each of 20 groups only in the canonical 100k-product tier.
+For R3/R4, both `SEARCH_TERM` and `SEARCH_EXPECTED_MATCHES` are evidence identity. Use the exact
+`expected_matches` value from the selected manifest search case; `5000` is the expected value for
+each of 20 groups only in the canonical 100k-product tier. The evidence writer rejects an omitted
+or mismatching count for R3/R4.
 
 The writer creates `evidence/rustok-vs-magento/<run-id>/` with `rustok/`, `magento/` and a
 non-overwritable `manifest.json`. It re-hashes `products.jsonl` and `products.csv`, pins the
@@ -252,7 +256,7 @@ peak RSS/HWM, sampled-stack CPU/RSS and normalized `app_rps_per_vcpu` / `app_mib
 | `PRODUCT_ID` | empty | RusTok product UUID placeholder |
 | `PRODUCT_SKU` | empty | Shared parent SKU placeholder |
 | `SEARCH_TERM` | `shirt` | Shared title search token; use a manifest case for evidence |
-| `SEARCH_EXPECTED_MATCHES` | empty | Exact `expected_matches` for `SEARCH_TERM`; required by evidence search/mixed runs |
+| `SEARCH_EXPECTED_MATCHES` | empty | Exact `expected_matches` for `SEARCH_TERM`; mandatory for R3/R4 publishable evidence |
 | `TENANT_ID` | empty | Optional tenant placeholder/header value |
 | `CHANNEL` | empty | Optional channel placeholder/header value |
 
