@@ -7,7 +7,7 @@ These folders are intentionally **not** application source code, but they are **
 ## Structure
 
 - `ops/benches/` — Rust benchmark crate (`rustok-benchmarks`) with Criterion scenarios used for performance regression checks and baseline measurements.
-- `ops/loadtest/` — end-to-end HTTP/API load-test contracts and runners for externally observable throughput, latency, correctness, and capacity comparisons.
+- `ops/loadtest/` — reproducible end-to-end HTTP/API load-test fixtures, runners and evidence tooling for externally observable throughput, latency, correctness and resource-capacity comparisons.
 - `ops/grafana/` — Grafana provisioning assets (dashboards + datasources) used by `docker-compose.observability.yml`.
 - `ops/prometheus/` — Prometheus scrape and alert rules consumed by `docker-compose.observability.yml`.
 
