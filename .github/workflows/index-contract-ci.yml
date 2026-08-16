@@ -22,6 +22,7 @@ on:
       - "scripts/verify/verify-index-query-snapshots.mjs"
       - "scripts/verify/verify-index-postgres-reference-equivalence.mjs"
       - "scripts/verify/verify-index-source-schema-registry.mjs"
+      - "scripts/verify/verify-index-schema-readiness.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
@@ -55,6 +56,7 @@ on:
       - "scripts/verify/verify-index-query-snapshots.mjs"
       - "scripts/verify/verify-index-postgres-reference-equivalence.mjs"
       - "scripts/verify/verify-index-source-schema-registry.mjs"
+      - "scripts/verify/verify-index-schema-readiness.mjs"
       - "scripts/verify/verify-index-product-refresh-event-family.mjs"
       - "scripts/verify/verify-index-product-refresh-delivery.mjs"
       - "scripts/verify/verify-index-product-refresh-host-consumer.mjs"
@@ -102,6 +104,8 @@ jobs:
         run: node scripts/verify/verify-index-postgres-reference-equivalence.mjs
       - name: Verify Index source-schema registry contract
         run: node scripts/verify/verify-index-source-schema-registry.mjs
+      - name: Verify Index schema readiness contract
+        run: node scripts/verify/verify-index-schema-readiness.mjs
       - name: Verify event digest admission contract
         run: node scripts/verify/verify-event-contract-digest-admission.mjs
       - name: Verify Product Index refresh family
