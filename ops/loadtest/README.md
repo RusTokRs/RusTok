@@ -14,6 +14,11 @@ The first runnable slice is read-path only:
 - catalog search with a shared title token of known cardinality;
 - deterministic mixed reads (50% catalog / 35% product / 15% search).
 
+The v1 Magento adapter is `magento-core-graphql`: it targets the core Magento Open Source / Adobe
+Commerce `products` GraphQL contract. Adobe Commerce SaaS Catalog Service and Live Search expose
+different product/search contracts and must use separate adapters/topologies rather than being
+mixed into the core-GraphQL result.
+
 Stateful cart/checkout workloads remain a separate phase because inventory reservation,
 tax, shipping and payment-stub semantics must be equivalent before their timings are useful.
 
