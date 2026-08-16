@@ -5,7 +5,7 @@ libraries. The pure Axum runtime uses only the active library snapshots listed
 below as implementation references.
 
 - Version source: `Cargo.lock`
-- Snapshot date: `2026-07-02`
+- Snapshot date: `2026-08-16`
 - Update: `make docs-sync-server-libs`
 - Freshness check: `make docs-check-server-libs`
 - Mode: `Snapshot contains current versions and direct links to docs.rs without downloading HTML.`
