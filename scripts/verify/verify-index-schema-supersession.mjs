@@ -75,8 +75,8 @@ requireMarkers('crates/rustok-index/src/lib.rs', [
 ]);
 
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/schema_readiness.rs', [
-  'if status != "active"',
-  'IndexSchemaReadinessFailure::Inactive',
+  'persisted.status != "active"',
+  'PersistedSchemaReadinessFailure::Inactive',
 ]);
 requireMarkers('crates/rustok-index/src/infrastructure/postgres/query_port.rs', [
   'if status != "active"',
