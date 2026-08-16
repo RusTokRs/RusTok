@@ -29,6 +29,13 @@ document intentionally does **not** encode a publishable multiplier.
 A `10x`, `30x`, or any other comparative claim is accepted only when derived from the measurement
 and resource-normalization rules below.
 
+## Magento comparison target
+
+The v1 adapter targets the **core Magento Open Source / Adobe Commerce `products` GraphQL**
+contract (`magento-core-graphql`). Adobe Commerce SaaS Catalog Service and Live Search expose
+different product/search APIs and must be benchmarked through separate adapters and separately
+named topologies. Do not combine those results with the core-GraphQL comparison.
+
 ## Fairness invariants
 
 Every paired run must satisfy all of these rules:
@@ -373,7 +380,7 @@ Implemented in this benchmark track:
 - read SLO thresholds and response sanity/GraphQL error checks;
 - deterministic mixed read distribution;
 - exact shared search-cardinality validation for both adapters;
-- example RusTok REST and Magento GraphQL adapters;
+- example RusTok REST and Magento core GraphQL adapters;
 - streaming deterministic S/M/L fixture generator with stable hashes;
 - shared SKU/title-search fixture contract and known search cardinality;
 - resumable bounded RusTok admin-product importer using the live DTO shape;
