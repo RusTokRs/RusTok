@@ -30,6 +30,25 @@ const WARMUP_REQUESTS: usize = 16;
 const CONCURRENCY: usize = 16;
 const SEARCH_GROUPS: usize = 10;
 
+async fn ensure_proxy_taxonomy_route_key_schema(db: &sea_orm::DatabaseConnection) {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS taxonomy_term_route_keys (
+    tenant_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    scope_type TEXT NOT NULL,
+    scope_value TEXT NOT NULL,
+    locale TEXT NOT NULL,
+    route_key TEXT NOT NULL,
+    term_id TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, kind, scope_type, scope_value, locale, route_key)
+)
+"#,
+    )
+    .await
+    .expect("taxonomy route-key registry should exist for proxy catalog lifecycle");
+}
+
 async fn seed_tenant(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
@@ -233,6 +252,7 @@ fn proc_status_kib(field: &str) -> Option<u64> {
 async fn storefront_sqlite_proxy_benchmark() {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
+    ensure_proxy_taxonomy_route_key_schema(&db).await;
     let tenant_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
     let actor_id = Uuid::new_v4();
