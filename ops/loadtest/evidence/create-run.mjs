@@ -144,6 +144,10 @@ async function main() {
     benchmark_contract: 'docs/benchmarks/rustok-vs-magento.md',
     evidence_placeholders_allowed: allowPlaceholders,
     unresolved_fields: unresolved,
+    adapters: {
+      rustok: 'rustok-rest',
+      magento: 'magento-core-graphql',
+    },
     rustok_commit: rustokCommit,
     magento_release: magentoRelease,
     profile: String(args.profile || process.env.BENCHMARK_PROFILE || 'P1'),
@@ -194,7 +198,7 @@ async function main() {
   });
 
   writeFileSync(resolve(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
-  process.stdout.write(`${JSON.stringify({ evidence_dir: root, run_id: runId, fixture_sha256: manifest.fixture_manifest.sha256, topology_sha256: manifest.topology.sha256, verified_fixture_files: Object.keys(verifiedFixtureFiles).length, search_term: search.term, search_expected_matches: search.expectedMatches })}\n`);
+  process.stdout.write(`${JSON.stringify({ evidence_dir: root, run_id: runId, fixture_sha256: manifest.fixture_manifest.sha256, topology_sha256: manifest.topology.sha256, verified_fixture_files: Object.keys(verifiedFixtureFiles).length, search_term: search.term, search_expected_matches: search.expectedMatches, adapters: manifest.adapters })}\n`);
 }
 
 main().catch((error) => { console.error(error.stack || String(error)); process.exitCode = 1; });
