@@ -84,7 +84,7 @@ async function verifyFixtureFiles(fixturePath, fixtures) {
   return verified;
 }
 
-function resolveSearchCase(fixtures, allowPlaceholders) {
+function resolveSearchCase(fixtures, allowPlaceholders, workload) {
   const searchTerm = process.env.SEARCH_TERM || fixtures.search_cases?.[0]?.term || null;
   const searchCase = fixtures.search_cases?.find((item) => item.term === searchTerm) || null;
   if (!searchCase && !allowPlaceholders) {
@@ -98,6 +98,9 @@ function resolveSearchCase(fixtures, allowPlaceholders) {
       throw new Error(`SEARCH_EXPECTED_MATCHES ${parsed} does not match fixture manifest ${searchCase.expected_matches} for '${searchTerm}'`);
     }
     return { term: searchTerm, expectedMatches: parsed };
+  }
+  if ((workload === 'R3' || workload === 'R4') && !allowPlaceholders) {
+    throw new Error(`SEARCH_EXPECTED_MATCHES is required for workload ${workload}`);
   }
   return { term: searchTerm, expectedMatches: searchCase?.expected_matches ?? null };
 }
@@ -115,8 +118,9 @@ async function main() {
   const topology = JSON.parse(readFileSync(topologyPath, 'utf8'));
   if (topology.contract !== 'rustok_vs_magento_topology_v1') throw new Error(`Unsupported topology contract '${topology.contract}'`);
 
+  const workload = String(args.workload || process.env.BENCHMARK_WORKLOAD || 'R4');
   const verifiedFixtureFiles = await verifyFixtureFiles(fixturePath, fixtures);
-  const search = resolveSearchCase(fixtures, allowPlaceholders);
+  const search = resolveSearchCase(fixtures, allowPlaceholders, workload);
   const rustokCommit = String(args['rustok-commit'] || process.env.RUSTOK_COMMIT || gitSha() || 'unknown');
   const magentoRelease = String(args['magento-release'] || process.env.MAGENTO_RELEASE || 'unresolved');
   const unresolved = [
@@ -151,7 +155,7 @@ async function main() {
     rustok_commit: rustokCommit,
     magento_release: magentoRelease,
     profile: String(args.profile || process.env.BENCHMARK_PROFILE || 'P1'),
-    workload: String(args.workload || process.env.BENCHMARK_WORKLOAD || 'R4'),
+    workload,
     fixture_manifest: {
       path: fixturePath,
       file: basename(fixturePath),
