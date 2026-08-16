@@ -1,5 +1,5 @@
 {
-  "name": "magento",
+  "name": "magento-core-graphql",
   "baseUrl": "http://127.0.0.1",
   "headers": {
     "Accept": "application/json",
