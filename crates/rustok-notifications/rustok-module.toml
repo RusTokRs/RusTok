@@ -30,6 +30,11 @@ nav_label = "Notifications"
 nav_group = "operations"
 nav_order = 70
 
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
 [provides.storefront_ui]
 leptos_crate = "rustok-notifications-storefront"
 slot = "home_before_footer"

@@ -1,3 +1,30 @@
+# `rustok-notifications` Documentation
+
+## Purpose
+
+`rustok-notifications` is the notification owner for user notifications, templates, delivery channels, and preference management.
+
+## Scope
+
+- Notification templates, queues, delivery status, and user preferences;
+- Multi-channel delivery (in-app, email, push);
+- Read/unread tracking and batching.
+
+## Integration
+
+- Consumes domain events from Outbox to trigger notification delivery;
+- Provides GraphQL and native ports for in-app inbox and settings.
+
+## Verification
+
+- `cargo test -p rustok-notifications`
+- `cargo xtask module validate notifications`
+
+## Related documents
+
+- [Crate README](../README.md)
+- [Implementation Plan](./implementation-plan.md)
+
 # `rustok-notifications` live contract
 
 ## Responsibility zone

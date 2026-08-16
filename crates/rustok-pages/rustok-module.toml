@@ -2,7 +2,7 @@
 slug = "pages"
 name = "Pages"
 version = "0.1.0"
-description = "Static pages and published visual documents"
+description = "Pages, visual documents and published artifacts"
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "dual_surface"

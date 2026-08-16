@@ -601,7 +601,9 @@ transport context and reloads automatically when its token or tenant changes, wh
 post-command refresh remains authoritative. The admin package remains outside this storefront
 completion claim and retains its explicit degraded state.
 
-## Maintainer verification set
+## Verification
+
+### Maintainer verification set
 
 ```bash
 cargo fmt --all -- --check

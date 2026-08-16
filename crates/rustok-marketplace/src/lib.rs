@@ -71,6 +71,17 @@ impl RusToKModule for MarketplaceModule {
         env!("CARGO_PKG_VERSION")
     }
 
+    fn dependencies(&self) -> &[&'static str] {
+        &[
+            "marketplace_seller",
+            "marketplace_listing",
+            "marketplace_allocation",
+            "marketplace_commission",
+            "marketplace_ledger",
+            "marketplace_payout",
+        ]
+    }
+
     fn permissions(&self) -> Vec<Permission> {
         Vec::new()
     }

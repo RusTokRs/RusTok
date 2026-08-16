@@ -50,7 +50,7 @@ cart = { crate = "rustok-cart", source = "path", path = "crates/rustok-cart" }
 customer = { crate = "rustok-customer", source = "path", path = "crates/rustok-customer" }
 product = { crate = "rustok-product", source = "path", path = "crates/rustok-product", depends_on = ["taxonomy"] }
 profiles = { crate = "rustok-profiles", source = "path", path = "crates/rustok-profiles", depends_on = ["media", "social_graph", "taxonomy"] }
-social_graph = { crate = "rustok-social-graph", source = "path", path = "crates/rustok-social-graph", depends_on = ["outbox"] }
+social_graph = { crate = "rustok-social-graph", source = "path", path = "crates/rustok-social-graph", depends_on = ["index", "outbox"] }
 reactions = { crate = "rustok-reactions", source = "path", path = "crates/rustok-reactions", depends_on = ["outbox"] }
 groups = { crate = "rustok-groups", source = "path", path = "crates/rustok-groups" }
 region = { crate = "rustok-region", source = "path", path = "crates/rustok-region" }
@@ -76,7 +76,7 @@ pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages",
 navigation = { crate = "rustok-navigation", source = "path", path = "crates/rustok-navigation", depends_on = ["channel", "outbox"] }
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/rustok-page-builder" }
 taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/rustok-taxonomy", depends_on = ["content", "outbox"] }
-media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" }
+media = { crate = "rustok-media", source = "path", path = "crates/rustok-media", depends_on = ["outbox"] }
 translation = { crate = "rustok-translation", source = "path", path = "crates/rustok-translation" }
 seo = { crate = "rustok-seo", source = "path", path = "crates/rustok-seo", depends_on = ["content"] }
 workflow = { crate = "rustok-workflow", source = "path", path = "crates/rustok-workflow" }

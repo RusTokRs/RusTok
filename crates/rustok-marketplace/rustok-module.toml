@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Marketplace family root and cross-marketplace orchestration boundary"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "backend_only"
+ui_classification = "no_ui"
 
 [marketplace]
 category = "commerce"

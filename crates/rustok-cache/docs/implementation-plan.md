@@ -32,7 +32,7 @@ Last reconciled with `main`: 2026-07-29.
 - Last verified at (UTC): 2026-07-29
 - Owner: Cache module maintainers
 
-## Ownership boundary
+## Scope
 
 - `rustok-cache` owns backend selection, Redis lifecycle/timeouts, bounded memory policy, degraded
   fallback semantics, typed envelopes, loading/refresh/lease primitives, invalidation transport,
@@ -43,7 +43,7 @@ Last reconciled with `main`: 2026-07-29.
 - Redis PubSub is an at-most-once fast path. Durable convergence requires a database generation,
   transactional outbox record or persisted stream offset owned by the affected domain.
 
-## Current source-complete contract
+## Current state
 
 ### 1. Redis, TTL and backend correctness
 
@@ -221,7 +221,7 @@ The detailed active-cache contract is maintained in
 - [x] Keep host ownership and cross-replica consistency decisions documented in owner plans instead
   of duplicating domain policy here.
 
-## Remaining work, in priority order
+## Milestones
 
 ### P0. Compiled verification
 
@@ -282,7 +282,7 @@ The detailed active-cache contract is maintained in
   workflow command atomically. Do not replace it with an alias or another compatibility feature.
   The workflow edit requires explicit CI/CD authorization under `AGENTS.md` rule 7.
 
-## Verification commands
+## Verification
 
 ```bash
 cargo fmt --all -- --check

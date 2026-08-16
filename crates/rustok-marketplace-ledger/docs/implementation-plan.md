@@ -1,8 +1,8 @@
-# `rustok-marketplace-seller` Implementation Plan
+# `rustok-marketplace-ledger` Implementation Plan
 
 ## Scope
 
-`rustok-marketplace-seller` owns seller management, membership, and store bindings.
+`rustok-marketplace-ledger` owns seller ledger, escrow accounting, and transaction entries.
 
 ## Current state
 
@@ -17,8 +17,8 @@ Status: `in_progress`.
 
 ## Verification
 
-- `cargo test -p rustok-marketplace-seller`
-- `cargo xtask module validate marketplace_seller`
+- `cargo test -p rustok-marketplace-ledger`
+- `cargo xtask module validate marketplace_ledger`
 
 ## Change rules
 

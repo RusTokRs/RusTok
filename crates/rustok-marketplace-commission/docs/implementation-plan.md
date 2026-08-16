@@ -1,8 +1,8 @@
-# `rustok-marketplace-seller` Implementation Plan
+# `rustok-marketplace-commission` Implementation Plan
 
 ## Scope
 
-`rustok-marketplace-seller` owns seller management, membership, and store bindings.
+`rustok-marketplace-commission` owns commission calculation, rate rules, and fee assignment.
 
 ## Current state
 
@@ -17,8 +17,8 @@ Status: `in_progress`.
 
 ## Verification
 
-- `cargo test -p rustok-marketplace-seller`
-- `cargo xtask module validate marketplace_seller`
+- `cargo test -p rustok-marketplace-commission`
+- `cargo xtask module validate marketplace_commission`
 
 ## Change rules
 

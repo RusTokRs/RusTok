@@ -105,6 +105,8 @@ Module local documentation lives inside the crates themselves at
 | `rustok-product` | [docs](../../crates/rustok-product/docs/README.md) | [plan](../../crates/rustok-product/docs/implementation-plan.md) |
 | `rustok-profiles` | [docs](../../crates/rustok-profiles/docs/README.md) | [plan](../../crates/rustok-profiles/docs/implementation-plan.md) |
 | `rustok-groups` | [docs](../../crates/rustok-groups/docs/README.md) | [plan](../../crates/rustok-groups/docs/implementation-plan.md) |
+| `rustok-reactions` | [docs](../../crates/rustok-reactions/docs/README.md) | [plan](../../crates/rustok-reactions/docs/implementation-plan.md) |
+| `rustok-social-graph` | [docs](../../crates/rustok-social-graph/docs/README.md) | [plan](../../crates/rustok-social-graph/docs/implementation-plan.md) |
 | `rustok-region` | [docs](../../crates/rustok-region/docs/README.md) | [plan](../../crates/rustok-region/docs/implementation-plan.md) |
 | `rustok-pricing` | [docs](../../crates/rustok-pricing/docs/README.md) | [plan](../../crates/rustok-pricing/docs/implementation-plan.md) |
 | `rustok-tax` | [docs](../../crates/rustok-tax/docs/README.md) | [plan](../../crates/rustok-tax/docs/implementation-plan.md) |
@@ -116,6 +118,11 @@ Module local documentation lives inside the crates themselves at
 | `rustok-marketplace` | [docs](../../crates/rustok-marketplace/docs/README.md) | [plan](../../crates/rustok-marketplace/docs/implementation-plan.md) |
 | `rustok-marketplace-seller` | [docs](../../crates/rustok-marketplace-seller/docs/README.md) | [plan](../../crates/rustok-marketplace-seller/docs/implementation-plan.md) |
 | `rustok-marketplace-listing` | [docs](../../crates/rustok-marketplace-listing/docs/README.md) | [plan](../../crates/rustok-marketplace-listing/docs/implementation-plan.md) |
+| `rustok-marketplace-allocation` | [docs](../../crates/rustok-marketplace-allocation/docs/README.md) | [plan](../../crates/rustok-marketplace-allocation/docs/implementation-plan.md) |
+| `rustok-marketplace-commission` | [docs](../../crates/rustok-marketplace-commission/docs/README.md) | [plan](../../crates/rustok-marketplace-commission/docs/implementation-plan.md) |
+| `rustok-marketplace-ledger` | [docs](../../crates/rustok-marketplace-ledger/docs/README.md) | [plan](../../crates/rustok-marketplace-ledger/docs/implementation-plan.md) |
+| `rustok-marketplace-payout` | [docs](../../crates/rustok-marketplace-payout/docs/README.md) | [plan](../../crates/rustok-marketplace-payout/docs/implementation-plan.md) |
+| `rustok-moderation` | [docs](../../crates/rustok-moderation/docs/README.md) | [plan](../../crates/rustok-moderation/docs/implementation-plan.md) |
 | `rustok-blog` | [docs](../../crates/rustok-blog/docs/README.md) | [plan](../../crates/rustok-blog/docs/implementation-plan.md) |
 | `rustok-comments` | [docs](../../crates/rustok-comments/docs/README.md) | [plan](../../crates/rustok-comments/docs/implementation-plan.md) |
 | `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |

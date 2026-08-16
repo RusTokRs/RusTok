@@ -9,7 +9,7 @@ applications, feature bindings, governance, receipts, audit, and group-local enf
 A group membership is social participation in one group. It is not a paid subscription, billing
 agreement, entitlement, organization seat, event attendance record, or chat membership.
 
-## Responsibility zone
+## Responsibility Zone
 
 Groups owns:
 
@@ -136,7 +136,9 @@ Bulk review:
 - runs each item through transactional focused review;
 - returns per-item success/error without rolling back successful siblings.
 
-## FBA and transport contract
+## Integration
+
+### FBA and transport contract
 
 All public ports use `PortContext`, `PortCallPolicy`, and `PortError`. Reads require deadline; writes
 require deadline plus idempotency key. Consumers never import Groups entities or query Groups tables.
@@ -169,6 +171,11 @@ The following remain open:
 No Cargo check, test, migration, Node verifier, browser, or CI command was executed for this source
 slice. Runtime evidence remains `null`; FFA, FBA, `GROUPS-06`, `GROUPS-07`, and `GROUPS-19` remain
 `in_progress`.
+
+## Verification
+
+- `cargo test -p rustok-groups`
+- `cargo xtask module validate groups`
 
 ## Related documents
 

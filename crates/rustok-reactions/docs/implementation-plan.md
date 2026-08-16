@@ -1,3 +1,23 @@
+## Scope
+
+Reactions ownership.
+
+## Current state
+
+Reactions module implementation.
+
+## Milestones
+
+1. Foundation
+
+## Verification
+
+- `cargo test -p rustok-reactions`
+
+## Change rules
+
+Standard rules.
+
 ---
 id: doc://crates/rustok-reactions/docs/implementation-plan.md
 kind: module_implementation_plan

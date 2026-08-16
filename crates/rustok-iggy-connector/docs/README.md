@@ -10,7 +10,7 @@ low-level message I/O, without taking away transport-level semantics from `rusto
 - keep bundled/external mode switching and lifecycle management in a separate crate;
 - provide `rustok-iggy` and other potential consumers with a unified low-level connector surface.
 
-## Responsibilities
+## Scope
 
 - `IggyConnector`, `ExternalConnector`, `BundledConnector`, `ConsumerCursor`;
 - `ConnectorConfig`, `PublishRequest`, `MessageSubscriber`, `SubscriberMessage`, `SubscriberMessageMetadata`, `ConnectorAckToken`, `ConnectorError`;

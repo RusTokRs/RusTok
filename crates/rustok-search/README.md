@@ -77,12 +77,12 @@ transport-local Blog route builder, or compatibility URL implementation.
 | Public search | `storefrontSearch` | Storefronts | Tenant-scoped, published/public documents only |
 | Suggestions | `storefrontSearchSuggestions` | Storefronts | Same public visibility boundary as search |
 | Click tracking | `trackSearchClick` | Storefronts/admin | Best-effort analytics write using canonical href |
-| Admin preview | `searchPreview` | Admin packages | Authenticated tenant-scoped control plane |
+| Admin preview | `searchPreview` / `searchSettingsPreview` | Admin packages | Authenticated tenant-scoped control plane |
 | Host quick search | `adminGlobalSearch` | Admin shell/KBar | Permission-filtered canonical results |
-| Diagnostics | diagnostics queries | Operators | Tenant-scoped lag and consistency inspection |
+| Diagnostics | `searchDiagnostics` | Operators | Tenant-scoped lag and consistency inspection |
 | Analytics | `searchAnalytics` | Operators | Query, CTR, abandonment, and latency analysis |
 | Dictionaries | dictionary queries/mutations | Operators | Tenant-owned synonyms, stop words, and pin rules |
-| Settings/rebuild | settings and rebuild mutations | Operators | Permission-gated and event-published |
+| Settings/rebuild | `triggerSearchRebuild` and settings mutations | Operators | Permission-gated and event-published |
 
 ## Validation and error policy
 

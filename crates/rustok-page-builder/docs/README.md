@@ -1,3 +1,30 @@
+# `rustok-page-builder` Documentation
+
+## Purpose
+
+`rustok-page-builder` is the Fly visual document authoring provider and runtime host for visual document editing.
+
+## Scope
+
+- Framework-neutral visual builder container and message bridge;
+- Component contribution schema validation and preview iframe sandboxing;
+- Inline authoring permissions, asset transport, and save pipeline.
+
+## Integration
+
+- Host for consumer modules (Pages, Blog, Forum) providing visual blocks;
+- Communicates via Fly message bridge contracts.
+
+## Verification
+
+- `cargo test -p rustok-page-builder`
+- `cargo xtask module validate page_builder`
+
+## Related documents
+
+- [Crate README](../README.md)
+- [Implementation Plan](./implementation-plan.md)
+
 # rustok-page-builder runtime
 
 `rustok-page-builder` is the framework-neutral Page Builder module boundary.

@@ -1,3 +1,7 @@
+## Scope
+
+Groups domain ownership.
+
 ---
 id: doc://crates/rustok-groups/docs/implementation-plan.md
 kind: module_implementation_plan
@@ -99,7 +103,7 @@ already exists. Invitation/application identity locks do not create a cycle with
 the enforcement command never locks invitation or application rows. Bulk review remains one
 transaction, audit, receipt, and result per item.
 
-## Current implementation state
+## Current state
 
 Source exists for:
 
@@ -512,7 +516,9 @@ above rather than introduce a second Groups enforcement state path.
 - moderation-disabled mode preserves existing Groups enforcement;
 - PostgreSQL/SQLite migration, lock, compatibility, accessibility, and no-fallback evidence.
 
-## Remaining implementation order
+## Milestones
+
+### Remaining implementation order
 
 1. Add the neutral moderation subject adapter over the shared enforcement owner mutation.
 2. Convert provider ACL consumers and remote/degraded profiles.
@@ -572,3 +578,8 @@ npm run verify:frontend:host-ffa-contract
 
 No Cargo check, test, migration, Node verifier, browser, or CI command was executed for this source
 slice. All affected runtime evidence remains `null`.
+
+
+## Change rules
+
+Follow AGENTS.md rules.

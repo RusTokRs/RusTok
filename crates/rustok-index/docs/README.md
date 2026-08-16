@@ -1,8 +1,27 @@
 # `rustok-index` Architecture Documentation
 
-This directory contains the detailed technical architecture documentation for `rustok-index`, RusTok's cross-module relational Index Engine.
+## Purpose
 
----
+`rustok-index` is RusTok's cross-module relational Index Engine providing high-performance schema-agnostic read-model projections.
+
+## Scope
+
+- Schema-agnostic PostgreSQL JSONB storage and derived secondary indexes;
+- Checkpointed ingestion, keyset cursor pagination, and consistency drift discovery;
+- Durable rebuilds, outbox event deduplication, and schema contracts.
+
+## Integration
+
+- Consumes domain module entity lifecycle events via transactional outbox/inbox;
+- Exposes neutral read ports and cursor pagination to search and domain query layers.
+
+## Verification
+
+- `cargo test -p rustok-index`
+- `cargo xtask module validate index`
+
+## Related documents
+
 
 ## Architectural Comparison Matrix
 
@@ -51,7 +70,7 @@ The repository owner still executes and retains the PostgreSQL packet. Source-co
 
 ---
 
-## Reference Documents
+## Related documents
 
 - [Current Implementation Plan — 2026-08-12](./implementation-plan-current-2026-08-12.md)
 - [Previous Current Plan — 2026-08-09](./implementation-plan-current-2026-08-09.md)

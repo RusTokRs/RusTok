@@ -1,8 +1,8 @@
-# `rustok-marketplace-seller` Implementation Plan
+# `rustok-marketplace-payout` Implementation Plan
 
 ## Scope
 
-`rustok-marketplace-seller` owns seller management, membership, and store bindings.
+`rustok-marketplace-payout` owns seller payouts, banking details, and disbursement processing.
 
 ## Current state
 
@@ -17,8 +17,8 @@ Status: `in_progress`.
 
 ## Verification
 
-- `cargo test -p rustok-marketplace-seller`
-- `cargo xtask module validate marketplace_seller`
+- `cargo test -p rustok-marketplace-payout`
+- `cargo xtask module validate marketplace_payout`
 
 ## Change rules
 

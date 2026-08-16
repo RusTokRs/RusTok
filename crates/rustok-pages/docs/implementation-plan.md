@@ -3,6 +3,10 @@
 Date: 2026-08-08  
 Status: `in_progress / contribution-manifest-generation-source-ready / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / repeated-artifact-loss-recovery-source-ready / execution-rollout-pending`
 
+## Scope
+
+Pages owns page identity, localization, document revisions, lifecycle, route history, immutable published bindings, artifact audit/rebuild/activation/rollback, caches, authenticated inline grants/save transport and the module-owned inline asset HTTP contract.
+
 ## Policy: current code only
 
 Pages keeps no legacy compatibility editor, component mirror, block table, shadow document authority or migration shim.
@@ -29,7 +33,7 @@ Fly remains the only visual document and command authority. Pages owns page iden
 
 `source-ready` means code/contracts exist. It does not mean tests, Cargo, formatting, verifiers, databases, Trunk, npm, WASM, server binaries, Docker images, HTTP, browsers, workflows, CI or tenant rollout were executed.
 
-## Current source state
+## Current state
 
 ### Metadata, publication and persistence ownership
 
@@ -343,7 +347,9 @@ These exact phrases remain only for retained static guard compatibility and desc
 - `Admin-owned inline edit launch: source-ready`.
 - `release-composition-source-ready`.
 
-## Remaining Pages work: execution evidence only
+## Milestones
+
+### Remaining Pages work: execution evidence only
 
 Shared cross-module contribution-generator generalization is tracked in the central Page Builder plan; the Pages reference consumer source boundary is complete in this plan.
 
@@ -434,3 +440,13 @@ bash scripts/build/build-pages-inline-edit-deployment.sh
 ```
 
 Execution evidence remains pending.
+
+
+## Verification
+
+- `cargo test -p rustok-pages`
+- `cargo xtask module validate pages`
+
+## Change rules
+
+All Pages visual authoring contracts must adhere to Fly visual document authority without legacy fallback editors.

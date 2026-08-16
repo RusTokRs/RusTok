@@ -1,29 +1,27 @@
-# Marketplace seller runtime contract
+# `rustok-marketplace-seller` Documentation
 
-`rustok-marketplace-seller` is the seller owner module of the Marketplace Family.
+## Purpose
 
-Persistence and lifecycle commands remain owner-owned. Consumers use
-`MarketplaceSellerReadPort` and `MarketplaceSellerCommandPort` with
-`rustok_api::ports::PortContext` and `PortError`. Read calls require deadlines;
-write calls require deadlines and stable idempotency keys.
+`rustok-marketplace-seller` owns seller management, membership, and store bindings within the RusToK Marketplace family.
 
-Every command-port write is admitted through
-`marketplace_seller_command_receipts`. The immutable receipt identity is scoped by
-tenant and idempotency key and binds the actor, command kind, and normalized
-canonical SHA-256 request hash. The receipt, seller/member mutation, and normalized
-typed response snapshot commit in the same transaction. A repeated identical
-command returns the saved response; a different command or payload returns the
-stable `marketplace_seller.idempotency_conflict` error.
+## Scope
 
-The optional module-owned GraphQL roots and the admin native/GraphQL adapters call
-the same typed ports. The admin package selects exactly one transport through
-`execute_selected_transport`; it does not automatically fall back. Explicit retry
-reuses the original idempotency key and command envelope.
+- Domain models and storage for seller management, membership, and store bindings;
+- Idempotent command ports and typed query boundaries;
+- Transactional coordination with related marketplace bounded contexts.
 
-Platform permissions use the `marketplace_sellers` resource. Seller membership
-roles remain seller-owned and do not create a second platform RBAC system.
-Database and driver details are not exposed through GraphQL, server functions, or
-FBA errors.
+## Integration
 
-The canonical family roadmap is maintained in
-`crates/rustok-commerce/docs/implementation-plan.md`.
+- Implements FBA ports consumed by `rustok-marketplace` and `rustok-commerce`;
+- Coordinates via transactional events.
+
+## Verification
+
+- `cargo test -p rustok-marketplace-seller`
+- `cargo xtask module validate marketplace_seller`
+
+## Related documents
+
+- [Crate README](../README.md)
+- [Implementation Plan](./implementation-plan.md)
+- [Commerce Plan](../../rustok-commerce/docs/implementation-plan.md)

@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Marketplace Family immutable double-entry ledger owner"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "api_only"
+ui_classification = "no_ui"
 
 [marketplace]
 category = "commerce"
@@ -41,3 +41,6 @@ degraded_modes = [
     "seller_balance_projection_missing",
     "seller_balance_rebuild_required",
 ]
+
+[dependencies]
+marketplace_commission = { version_req = ">=0.1.0" }

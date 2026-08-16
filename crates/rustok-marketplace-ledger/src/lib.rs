@@ -43,6 +43,10 @@ impl RusToKModule for MarketplaceLedgerModule {
         env!("CARGO_PKG_VERSION")
     }
 
+    fn dependencies(&self) -> &[&'static str] {
+        &["marketplace_commission"]
+    }
+
     fn permissions(&self) -> Vec<Permission> {
         vec![
             Permission::ORDERS_READ,

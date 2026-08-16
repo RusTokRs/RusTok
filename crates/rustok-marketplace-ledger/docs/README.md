@@ -1,12 +1,12 @@
-# `rustok-marketplace` Documentation
+# `rustok-marketplace-ledger` Documentation
 
 ## Purpose
 
-`rustok-marketplace` owns Marketplace family orchestration, root surfaces, and composition within the RusToK Marketplace family.
+`rustok-marketplace-ledger` owns seller ledger, escrow accounting, and transaction entries within the RusToK Marketplace family.
 
 ## Scope
 
-- Domain models and storage for Marketplace family orchestration, root surfaces, and composition;
+- Domain models and storage for seller ledger, escrow accounting, and transaction entries;
 - Idempotent command ports and typed query boundaries;
 - Transactional coordination with related marketplace bounded contexts.
 
@@ -17,8 +17,8 @@
 
 ## Verification
 
-- `cargo test -p rustok-marketplace`
-- `cargo xtask module validate marketplace`
+- `cargo test -p rustok-marketplace-ledger`
+- `cargo xtask module validate marketplace_ledger`
 
 ## Related documents
 

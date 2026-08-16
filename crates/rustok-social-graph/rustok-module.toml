@@ -8,6 +8,7 @@ trust_level = "verified"
 ui_classification = "capability_only"
 
 [dependencies]
+index = { version_req = ">=0.1.0" }
 outbox = { version_req = ">=0.1.0" }
 
 [crate]

@@ -99,6 +99,9 @@ integration. The canonical source of truth here is only manifest wiring.
 
 ### Optional/Admin Surfaces
 
+- `rustok-notifications` admin UI: [README](../../crates/rustok-notifications/admin/README.md)
+- `rustok-marketplace-listing` admin UI: [README](../../crates/rustok-marketplace-listing/admin/README.md)
+- `rustok-groups` admin UI: [README](../../crates/rustok-groups/admin/README.md)
 - `rustok-product` admin UI: [README](../../crates/rustok-product/admin/README.md)
 - Ecommerce admin UI routes `rustok-product` <-> `rustok-pricing` support
   stable deep links through product `id`; display fields are not used as identity.
@@ -109,6 +112,7 @@ integration. The canonical source of truth here is only manifest wiring.
 - `rustok-inventory` admin UI: [README](../../crates/rustok-inventory/admin/README.md)
 - `rustok-pricing` admin UI: [README](../../crates/rustok-pricing/admin/README.md)
 - `rustok-commerce` admin UI: [README](../../crates/rustok-commerce/admin/README.md)
+- `rustok-marketplace-seller` admin UI: [README](../../crates/rustok-marketplace-seller/admin/README.md)
 - `rustok-page-builder` admin UI: [README](../../crates/rustok-page-builder/admin/README.md)
 - `rustok-pages` admin UI: [README](../../crates/rustok-pages/admin/README.md)
 - `rustok-seo` admin UI: [README](../../crates/rustok-seo/admin/README.md)
@@ -127,6 +131,8 @@ integration. The canonical source of truth here is only manifest wiring.
 
 ### Optional/Storefront Surfaces
 
+- `rustok-notifications` storefront UI: [README](../../crates/rustok-notifications/storefront/README.md)
+- `rustok-groups` storefront UI: [README](../../crates/rustok-groups/storefront/README.md)
 - `rustok-blog` storefront UI: [README](../../crates/rustok-blog/storefront/README.md)
 - `rustok-cart` storefront UI: [README](../../crates/rustok-cart/storefront/README.md)
 - `rustok-commerce` storefront UI: [README](../../crates/rustok-commerce/storefront/README.md)
@@ -136,6 +142,7 @@ integration. The canonical source of truth here is only manifest wiring.
 - `rustok-forum` storefront UI: [README](../../crates/rustok-forum/storefront/README.md)
 - `rustok-pages` storefront UI: [README](../../crates/rustok-pages/storefront/README.md)
 - `rustok-pricing` storefront UI: [README](../../crates/rustok-pricing/storefront/README.md)
+- `rustok-profiles` storefront UI: [README](../../crates/rustok-profiles/storefront/README.md)
 - `rustok-product` storefront UI: [README](../../crates/rustok-product/storefront/README.md)
 - Ecommerce storefront UI routes `rustok-product` <-> `rustok-pricing`
   preserve navigation context through `handle` and pricing query fields, and locale

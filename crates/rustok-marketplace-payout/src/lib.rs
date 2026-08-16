@@ -40,6 +40,10 @@ impl RusToKModule for MarketplacePayoutModule {
         env!("CARGO_PKG_VERSION")
     }
 
+    fn dependencies(&self) -> &[&'static str] {
+        &["marketplace_ledger"]
+    }
+
     fn permissions(&self) -> Vec<Permission> {
         vec![
             Permission::ORDERS_READ,

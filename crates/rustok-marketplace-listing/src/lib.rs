@@ -42,11 +42,15 @@ impl RusToKModule for MarketplaceListingModule {
     }
 
     fn description(&self) -> &'static str {
-        "Marketplace Family listing identity, versioned terms, lifecycle, and eligibility owner"
+        "Marketplace Family listing identity, versioned terms, lifecycle, approval, and eligibility owner"
     }
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn dependencies(&self) -> &[&'static str] {
+        &["marketplace_seller", "product"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

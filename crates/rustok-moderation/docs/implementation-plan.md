@@ -1,3 +1,23 @@
+## Scope
+
+Moderation ownership.
+
+## Current state
+
+Moderation module implementation.
+
+## Milestones
+
+1. Foundation
+
+## Verification
+
+- `cargo test -p rustok-moderation`
+
+## Change rules
+
+Standard rules.
+
 ---
 id: doc://crates/rustok-moderation/docs/implementation-plan.md
 kind: module_plan

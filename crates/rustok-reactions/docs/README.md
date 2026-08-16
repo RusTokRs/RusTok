@@ -1,5 +1,25 @@
 # Reactions module contract
 
+## Purpose
+
+`rustok-reactions` is the first-party owner for configurable, tenant-scoped reactions across entity subjects.
+
+## Scope
+
+- Reaction subjects, catalogs, actor states, and aggregate counts;
+- Idempotent command receipts and atomic transition facts;
+- Reconciliation inspection and repair.
+
+## Integration
+
+- Depends on Outbox for shared durable owner-operation receipts and `rustok-events` for semantic events;
+- Exposes neutral ports consumed by domain modules.
+
+## Related documents
+
+- [Crate README](../README.md)
+- [Implementation Plan](./implementation-plan.md)
+
 `rustok-reactions` is an optional first-party owner. It depends on Outbox for
 the shared durable owner-operation receipt ledger and on `rustok-events` for the
 sealed semantic event family.

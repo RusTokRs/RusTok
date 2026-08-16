@@ -1,12 +1,12 @@
-# `rustok-marketplace` Documentation
+# `rustok-marketplace-payout` Documentation
 
 ## Purpose
 
-`rustok-marketplace` owns Marketplace family orchestration, root surfaces, and composition within the RusToK Marketplace family.
+`rustok-marketplace-payout` owns seller payouts, banking details, and disbursement processing within the RusToK Marketplace family.
 
 ## Scope
 
-- Domain models and storage for Marketplace family orchestration, root surfaces, and composition;
+- Domain models and storage for seller payouts, banking details, and disbursement processing;
 - Idempotent command ports and typed query boundaries;
 - Transactional coordination with related marketplace bounded contexts.
 
@@ -17,8 +17,8 @@
 
 ## Verification
 
-- `cargo test -p rustok-marketplace`
-- `cargo xtask module validate marketplace`
+- `cargo test -p rustok-marketplace-payout`
+- `cargo xtask module validate marketplace_payout`
 
 ## Related documents
 

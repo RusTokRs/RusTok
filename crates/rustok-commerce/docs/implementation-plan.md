@@ -26,7 +26,11 @@ and market/store remain owner bounded contexts. Marketplace persistence belongs 
 the explicit `rustok-marketplace-*` family and must never be folded into
 `rustok-commerce`.
 
-## Current boundary
+## Scope
+
+`rustok-commerce` owns cross-domain ecommerce orchestration.
+
+## Current state
 
 - Ecommerce audit gate: `reopened_p0`.
 - Ecommerce FFA: `in_progress`.
@@ -46,7 +50,9 @@ the explicit `rustok-marketplace-*` family and must never be folded into
   migrations, tenant isolation, contention, restart, mounted transports, remote
   profiles, and financial reconciliation evidence are retained.
 
-## Audit 2026-07-22: reopened P0 work
+## Milestones
+
+### Audit 2026-07-22: reopened P0 work
 
 The following items were rechecked against current `main` after the staged checkout,
 payment webhook, marketplace allocation, commission, and ledger source waves.
@@ -641,7 +647,9 @@ These are source-contract defects, not verification-only tasks.
   degraded, reconciliation, observer replay, and operator evidence.
 - [ ] Prove adapters never own payment/refund lifecycle state.
 
-## Verification and promotion checklist
+## Verification
+
+### Verification and promotion checklist
 
 Source inspection is not execution evidence.
 
