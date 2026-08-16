@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { dirname, resolve } from 'node:path';
 
@@ -24,6 +24,13 @@ function positiveInt(value, fallback, name) {
   if (value == null) return fallback;
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new Error(`${name} must be a positive integer`);
+  return parsed;
+}
+
+function nonNegativeInt(value, fallback, name) {
+  if (value == null) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`${name} must be a non-negative integer`);
   return parsed;
 }
 
@@ -61,10 +68,14 @@ async function requestJson(url, method, payload, headers, retries) {
   throw lastError;
 }
 
-function customAttributes(product, configValue, attributeCode) {
+function childUrlKey(product, variant) {
+  return `${product.handle}-${variant.sku.toLowerCase()}`;
+}
+
+function childCustomAttributes(product, variant, configValue, attributeCode) {
   return [
     { attribute_code: 'description', value: product.description },
-    { attribute_code: 'url_key', value: product.handle },
+    { attribute_code: 'url_key', value: childUrlKey(product, variant) },
     { attribute_code: attributeCode, value: String(configValue) },
   ];
 }
@@ -113,7 +124,7 @@ function childPayload(product, variant, attributeSetId, configValue, attributeCo
       options: [],
       media_gallery_entries: [],
       tier_prices: [],
-      custom_attributes: customAttributes(product, configValue, attributeCode),
+      custom_attributes: childCustomAttributes(product, variant, configValue, attributeCode),
     },
     saveOptions: true,
   };
@@ -173,15 +184,17 @@ async function main() {
     positiveInt(process.env.MAGENTO_CONFIG_VALUE_2, null, 'MAGENTO_CONFIG_VALUE_2'),
   ];
   const concurrency = positiveInt(args.concurrency, 4, 'concurrency');
-  const retries = positiveInt(args.retries, 3, 'retries');
+  const retries = nonNegativeInt(args.retries, 3, 'retries');
   const limit = args.limit ? positiveInt(args.limit, null, 'limit') : null;
   const resume = Boolean(args.resume);
 
   if (!host) throw new Error('--host or MAGENTO_BASE_URL is required');
   if (!existsSync(input)) throw new Error(`Input not found: ${input}`);
   if (existsSync(receipt) && !resume) throw new Error(`Receipt exists: ${receipt}; pass --resume or choose another --receipt`);
+  if (new Set(configValues).size !== configValues.length) throw new Error('Magento configurable option value indexes must be distinct');
   mkdirSync(dirname(receipt), { recursive: true });
   if (!existsSync(receipt)) writeFileSync(receipt, '', 'utf8');
+
   const completed = resume ? loadCompleted(receipt) : new Set();
   const base = `${host}/rest/${encodeURIComponent(storeCode)}`;
   const settings = {
@@ -195,44 +208,46 @@ async function main() {
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json' },
   };
 
-  const active = new Set();
-  let scheduled = 0; let created = 0; let skipped = 0; let failed = 0;
-  async function schedule(product) {
-    if (completed.has(product.ordinal)) { skipped += 1; return; }
-    const task = (async () => {
-      try {
-        await importProduct(product, settings);
-        appendFileSync(receipt, `${JSON.stringify({ ordinal: product.ordinal, shared_id: product.shared_id, sku: product.sku, status: 'created' })}\n`, 'utf8');
-        created += 1;
-      } catch (error) {
-        failed += 1;
-        appendFileSync(receipt, `${JSON.stringify({ ordinal: product.ordinal, shared_id: product.shared_id, sku: product.sku, status: 'failed', error: String(error.message || error).slice(0, 2000) })}\n`, 'utf8');
-        throw error;
-      }
-    })();
-    active.add(task);
-    task.finally(() => active.delete(task));
-    if (active.size >= concurrency) await Promise.race(active);
+  let scheduled = 0;
+  let created = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  async function importOne(product) {
+    if (completed.has(product.ordinal)) {
+      skipped += 1;
+      return;
+    }
+    try {
+      await importProduct(product, settings);
+      appendFileSync(receipt, `${JSON.stringify({ ordinal: product.ordinal, shared_id: product.shared_id, sku: product.sku, status: 'created' })}\n`, 'utf8');
+      created += 1;
+    } catch (error) {
+      failed += 1;
+      appendFileSync(receipt, `${JSON.stringify({ ordinal: product.ordinal, shared_id: product.shared_id, sku: product.sku, status: 'failed', error: String(error.message || error).slice(0, 2000) })}\n`, 'utf8');
+      throw error;
+    }
   }
 
-  const queue = [];
   const reader = createInterface({ input: createReadStream(input, { encoding: 'utf8' }), crlfDelay: Infinity });
-  try {
-    for await (const line of reader) {
-      if (!line.trim()) continue;
-      if (limit != null && scheduled >= limit) break;
-      const product = JSON.parse(line);
-      if (!Array.isArray(product.variants) || product.variants.length !== configValues.length) throw new Error(`Fixture ${product.sku} has ${product.variants?.length} variants; importer is configured for ${configValues.length}`);
-      scheduled += 1;
-      queue.push(schedule(product));
-      if (queue.length >= concurrency * 4) await Promise.all(queue.splice(0, queue.length));
+  let batch = [];
+  for await (const line of reader) {
+    if (!line.trim()) continue;
+    if (limit != null && scheduled >= limit) break;
+    const product = JSON.parse(line);
+    if (!Array.isArray(product.variants) || product.variants.length !== configValues.length) {
+      throw new Error(`Fixture ${product.sku} has ${product.variants?.length} variants; importer is configured for ${configValues.length}`);
     }
-    await Promise.all(queue);
-    await Promise.all(active);
-  } catch (error) {
-    await Promise.allSettled([...queue, ...active]);
-    throw error;
+    scheduled += 1;
+    batch.push(product);
+    if (batch.length >= concurrency) {
+      const current = batch;
+      batch = [];
+      await Promise.all(current.map(importOne));
+    }
   }
+  if (batch.length) await Promise.all(batch.map(importOne));
+
   process.stdout.write(`${JSON.stringify({ input, receipt, scheduled, created, skipped, failed, store_code: storeCode })}\n`);
 }
 
