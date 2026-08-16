@@ -36,6 +36,7 @@ cd ops/loadtest
 
 k6 run \
   -e CONFIG=config/rustok.example.json \
+  -e BASE_URL=http://127.0.0.1:5150 \
   -e OPERATION=mixed \
   -e RATE=500 \
   -e WARMUP=30s \
@@ -46,12 +47,13 @@ k6 run \
   k6/comparison.js
 ```
 
-Run the same load profile against Magento by changing only `CONFIG` and the target
-endpoint/identity variables required by that adapter:
+Run the same load profile against Magento by changing only `CONFIG`, `BASE_URL`, and the
+target identity variables required by that adapter:
 
 ```bash
 k6 run \
   -e CONFIG=config/magento.example.json \
+  -e BASE_URL=http://127.0.0.1 \
   -e OPERATION=mixed \
   -e RATE=500 \
   -e WARMUP=30s \
@@ -61,6 +63,9 @@ k6 run \
   k6/comparison.js
 ```
 
+`BASE_URL` overrides the example value stored in the adapter config, so production ingress
+or local route prefixes can be selected without modifying tracked benchmark files.
+
 The runner writes `summary.json`. Archive it together with system telemetry and the
 run manifest described in the comparison contract.
 
@@ -69,6 +74,7 @@ run manifest described in the comparison contract.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `CONFIG` | required | Adapter JSON file |
+| `BASE_URL` | adapter value | Target scheme/host/port and optional route prefix |
 | `OPERATION` | `mixed` | `catalog`, `product`, `search`, or `mixed` |
 | `RATE` | `100` | Measured requests/second target |
 | `WARMUP_RATE` | `RATE / 4` | Warm-up requests/second |
