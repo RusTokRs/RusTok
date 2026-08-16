@@ -58,6 +58,7 @@ export const options = {
   },
   thresholds: {
     measured_requests: ['count>0'],
+    'dropped_iterations{scenario:measure}': ['count==0'],
     'http_req_failed{phase:measure}': ['rate<0.001'],
     'http_req_duration{phase:measure}': ['p(95)<250', 'p(99)<500'],
     'response_validation_failures{phase:measure}': ['rate<0.001'],
@@ -137,7 +138,6 @@ function execute(name, phase) {
 function chooseOperation() {
   if (operation !== 'mixed') return operation;
 
-  // Deterministic mix by VU/iteration avoids random-run drift between platforms.
   const bucket = ((__VU * 131 + __ITER * 17) % 100);
   if (bucket < 50) return 'catalog';
   if (bucket < 85) return 'product';
