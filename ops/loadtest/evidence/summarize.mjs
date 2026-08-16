@@ -95,6 +95,7 @@ function main() {
   const payload = JSON.parse(readFileSync(summaryPath, 'utf8'));
   const metrics = payload.k6?.metrics || payload.metrics || {};
   const measured = metric(metrics, 'measured_requests');
+  if (!measured) throw new Error('summary.json is missing measured_requests; warm-up and measured throughput cannot be separated safely');
   const latency = metric(metrics, 'http_req_duration{phase:measure}', 'http_req_duration');
   const httpFailed = metric(metrics, 'http_req_failed{phase:measure}', 'http_req_failed');
   const validationFailed = metric(metrics, 'response_validation_failures{phase:measure}', 'response_validation_failures');
@@ -107,10 +108,12 @@ function main() {
   const httpFailureRate = value(httpFailed, 'rate');
   const validationFailureRate = value(validationFailed, 'rate');
   const droppedIterations = value(dropped, 'count') ?? 0;
+  if (!Number.isFinite(achievedRps) || achievedRps <= 0) throw new Error('measured_requests has no positive rate');
 
   const { metadata, samples } = parseTelemetry(telemetryPath);
   const ticksPerSecond = numberOrNull(metadata.clock_ticks_per_second) || 100;
   const appSeries = processSeries(samples, appTarget);
+  if (appSeries.length < 2) throw new Error(`Telemetry does not contain at least two successful samples for app target '${appTarget}'`);
   const appPeakRssKib = peak(appSeries, (process) => process.status.vm_rss_kib);
   const appPeakHwmKib = peak(appSeries, (process) => process.status.vm_hwm_kib);
   const appCpuCores = cpuCores(appSeries, ticksPerSecond);
@@ -133,6 +136,9 @@ function main() {
       platform: payload.metadata?.platform || null,
       operation: payload.metadata?.operation || null,
       requested_rps: payload.metadata?.requested_rps ?? null,
+      search_term: payload.metadata?.search_term ?? null,
+      search_expected_matches: payload.metadata?.search_expected_matches ?? null,
+      product_sku: payload.metadata?.product_sku ?? null,
     },
     performance: {
       achieved_rps: achievedRps,
