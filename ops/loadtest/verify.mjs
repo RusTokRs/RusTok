@@ -50,6 +50,14 @@ try {
 
   const exampleTopologyPath = resolve(root, 'evidence/topology.example.json');
   const evidenceRoot = resolve(tmp, 'evidence');
+  const selectedSearch = manifestA.search_cases[0];
+  const requiredSearchEnv = {
+    ...process.env,
+    SEARCH_TERM: selectedSearch.term,
+    SEARCH_EXPECTED_MATCHES: String(selectedSearch.expected_matches),
+    RATE: '500',
+    OPERATION: 'mixed',
+  };
   runMustFail([
     resolve(root, 'evidence/create-run.mjs'),
     '--fixtures', resolve(outA, 'manifest.json'),
@@ -58,21 +66,26 @@ try {
     '--run-id', 'must-fail-placeholder-topology',
     '--rustok-commit', '0123456789abcdef0123456789abcdef01234567',
     '--magento-release', '2.4.x-test',
-  ]);
+    '--workload', 'R4',
+  ], { env: requiredSearchEnv });
 
   const topology = JSON.parse(readFileSync(exampleTopologyPath, 'utf8'));
   const resolvedTopology = JSON.parse(JSON.stringify(topology).replaceAll('REPLACE_ME', 'verification-version'));
   resolvedTopology.notes = 'verification topology';
   const resolvedTopologyPath = resolve(tmp, 'topology.json');
   writeFileSync(resolvedTopologyPath, `${JSON.stringify(resolvedTopology, null, 2)}\n`, 'utf8');
-  const selectedSearch = manifestA.search_cases[0];
-  const evidenceEnv = {
-    ...process.env,
-    SEARCH_TERM: selectedSearch.term,
-    SEARCH_EXPECTED_MATCHES: String(selectedSearch.expected_matches),
-    RATE: '500',
-    OPERATION: 'mixed',
-  };
+
+  runMustFail([
+    resolve(root, 'evidence/create-run.mjs'),
+    '--fixtures', resolve(outA, 'manifest.json'),
+    '--topology', resolvedTopologyPath,
+    '--out-root', evidenceRoot,
+    '--run-id', 'must-fail-missing-search-count',
+    '--rustok-commit', '0123456789abcdef0123456789abcdef01234567',
+    '--magento-release', '2.4.x-test',
+    '--workload', 'R4',
+  ], { env: { ...process.env, SEARCH_TERM: selectedSearch.term } });
+
   run([
     resolve(root, 'evidence/create-run.mjs'),
     '--fixtures', resolve(outA, 'manifest.json'),
@@ -81,11 +94,13 @@ try {
     '--run-id', 'verified-run',
     '--rustok-commit', '0123456789abcdef0123456789abcdef01234567',
     '--magento-release', '2.4.x-test',
-  ], { env: evidenceEnv });
+    '--workload', 'R4',
+  ], { env: requiredSearchEnv });
   const evidenceManifest = JSON.parse(readFileSync(resolve(evidenceRoot, 'verified-run/manifest.json'), 'utf8'));
   if (Object.keys(evidenceManifest.fixture_manifest.verified_files || {}).length !== 2) throw new Error('Evidence manifest did not verify both canonical fixture files');
   if (evidenceManifest.unresolved_fields.length !== 0) throw new Error('Resolved verification topology still contains unresolved evidence fields');
   if (evidenceManifest.run_parameters.search_expected_matches !== selectedSearch.expected_matches) throw new Error('Evidence manifest did not pin search cardinality');
+  if (evidenceManifest.adapters?.rustok !== 'rustok-rest' || evidenceManifest.adapters?.magento !== 'magento-core-graphql') throw new Error('Evidence manifest did not pin adapter profiles');
 
   runMustFail([
     resolve(root, 'evidence/create-run.mjs'),
@@ -95,7 +110,8 @@ try {
     '--run-id', 'must-fail-search-count',
     '--rustok-commit', '0123456789abcdef0123456789abcdef01234567',
     '--magento-release', '2.4.x-test',
-  ], { env: { ...evidenceEnv, SEARCH_EXPECTED_MATCHES: String(selectedSearch.expected_matches + 1) } });
+    '--workload', 'R4',
+  ], { env: { ...requiredSearchEnv, SEARCH_EXPECTED_MATCHES: String(selectedSearch.expected_matches + 1) } });
 
   if (process.platform === 'linux') {
     const telemetryPath = resolve(tmp, 'telemetry.jsonl');
