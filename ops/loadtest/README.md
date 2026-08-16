@@ -143,8 +143,9 @@ expected value for each of 20 groups only in the canonical 100k-product tier.
 
 The writer creates `evidence/rustok-vs-magento/<run-id>/` with `rustok/`, `magento/` and a
 non-overwritable `manifest.json`. It re-hashes `products.jsonl` and `products.csv`, pins the
-topology hash, and refuses unresolved `REPLACE_ME`/`unknown`/`unresolved` values by default.
-`--allow-placeholders` is for harness development only and must not be used for publishable evidence.
+topology hash, validates the selected search term/count against the fixture manifest, and refuses
+unresolved `REPLACE_ME`/`unknown`/`unresolved` values by default. `--allow-placeholders` is for
+harness development only and must not be used for publishable evidence.
 
 Use one run directory per dataset/profile/workload/rate point. The three repetitions for that
 point live inside the same directory.
@@ -224,9 +225,10 @@ node ops/loadtest/evidence/summarize.mjs \
   --output evidence/rustok-vs-magento/m-p1-r4-500rps/rustok/result-run-1.json
 ```
 
-The result contains achieved measured RPS, p50/p95/p99, failures, dropped iterations, SLO pass,
-application average CPU cores, peak RSS/HWM, sampled-stack CPU/RSS and normalized
-`app_rps_per_vcpu` / `app_mib_per_1k_rps`.
+The summarizer refuses old/ambiguous summaries without the measured-only `measured_requests`
+metric and requires at least two valid `app` telemetry samples. The result contains achieved
+measured RPS, p50/p95/p99, failures, dropped iterations, SLO pass, application average CPU cores,
+peak RSS/HWM, sampled-stack CPU/RSS and normalized `app_rps_per_vcpu` / `app_mib_per_1k_rps`.
 
 ## k6 environment variables
 
