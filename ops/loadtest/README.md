@@ -14,10 +14,10 @@ The first runnable slice is read-path only:
 - catalog search with a shared title token of known cardinality;
 - deterministic mixed reads (50% catalog / 35% product / 15% search).
 
-The v1 Magento adapter is `magento-core-graphql`: it targets the core Magento Open Source / Adobe
-Commerce `products` GraphQL contract. Adobe Commerce SaaS Catalog Service and Live Search expose
-different product/search contracts and must use separate adapters/topologies rather than being
-mixed into the core-GraphQL result.
+The v1 adapters are explicit profiles: `rustok-rest` and `magento-core-graphql`. The Magento
+profile targets the core Magento Open Source / Adobe Commerce `products` GraphQL contract. Adobe
+Commerce SaaS Catalog Service and Live Search expose different product/search contracts and must
+use separate adapters/topologies rather than being mixed into the core-GraphQL result.
 
 Stateful cart/checkout workloads remain a separate phase because inventory reservation,
 tax, shipping and payment-stub semantics must be equivalent before their timings are useful.
@@ -201,8 +201,8 @@ k6 run \
   k6/comparison.js
 ```
 
-Run exactly the same arrival-rate profile for Magento by changing only its adapter/base URL and
-platform-specific product identity where required.
+Run exactly the same arrival-rate profile for `magento-core-graphql` by changing only its
+adapter/base URL and platform-specific product identity where required.
 
 The search adapter on both platforms checks the shared token **and** exact total hit count from
 `SEARCH_EXPECTED_MATCHES`. A `200 OK` with different business results therefore fails validation.
