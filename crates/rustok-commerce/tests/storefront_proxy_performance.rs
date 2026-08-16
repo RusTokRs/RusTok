@@ -5,11 +5,11 @@ use axum::{
 };
 use rust_decimal::Decimal;
 use rustok_api::{TenantContext, context::TenantContextExtension};
-use rustok_commerce::{
-    controllers::{CommerceHttpRuntime, store},
+use rustok_commerce::controllers::{CommerceHttpRuntime, store};
+use rustok_product::{
+    CatalogService,
     dto::{CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput},
 };
-use rustok_product::CatalogService;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::{Value, json};
