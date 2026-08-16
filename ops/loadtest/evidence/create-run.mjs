@@ -84,6 +84,19 @@ async function verifyFixtureFiles(fixturePath, fixtures) {
   return verified;
 }
 
+function expectedOperationForWorkload(workload) {
+  return ({ R1: 'catalog', R2: 'product', R3: 'search', R4: 'mixed' })[workload] || null;
+}
+
+function validateOperation(workload, allowPlaceholders) {
+  const expected = expectedOperationForWorkload(workload);
+  const operation = process.env.OPERATION || null;
+  if (expected && operation !== expected && !allowPlaceholders) {
+    throw new Error(`OPERATION '${operation}' does not match workload ${workload}; expected '${expected}'`);
+  }
+  return operation || expected;
+}
+
 function resolveSearchCase(fixtures, allowPlaceholders, workload) {
   const searchTerm = process.env.SEARCH_TERM || fixtures.search_cases?.[0]?.term || null;
   const searchCase = fixtures.search_cases?.find((item) => item.term === searchTerm) || null;
@@ -119,6 +132,7 @@ async function main() {
   if (topology.contract !== 'rustok_vs_magento_topology_v1') throw new Error(`Unsupported topology contract '${topology.contract}'`);
 
   const workload = String(args.workload || process.env.BENCHMARK_WORKLOAD || 'R4');
+  const operation = validateOperation(workload, allowPlaceholders);
   const verifiedFixtureFiles = await verifyFixtureFiles(fixturePath, fixtures);
   const search = resolveSearchCase(fixtures, allowPlaceholders, workload);
   const rustokCommit = String(args['rustok-commit'] || process.env.RUSTOK_COMMIT || gitSha() || 'unknown');
@@ -194,7 +208,7 @@ async function main() {
       duration: process.env.DURATION || null,
       pre_allocated_vus: process.env.PRE_ALLOCATED_VUS || null,
       max_vus: process.env.MAX_VUS || null,
-      operation: process.env.OPERATION || null,
+      operation,
       search_term: search.term,
       search_expected_matches: search.expectedMatches,
       product_sku: process.env.PRODUCT_SKU || fixtures.selection?.[1]?.sku || null,
@@ -202,7 +216,7 @@ async function main() {
   });
 
   writeFileSync(resolve(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
-  process.stdout.write(`${JSON.stringify({ evidence_dir: root, run_id: runId, fixture_sha256: manifest.fixture_manifest.sha256, topology_sha256: manifest.topology.sha256, verified_fixture_files: Object.keys(verifiedFixtureFiles).length, search_term: search.term, search_expected_matches: search.expectedMatches, adapters: manifest.adapters })}\n`);
+  process.stdout.write(`${JSON.stringify({ evidence_dir: root, run_id: runId, fixture_sha256: manifest.fixture_manifest.sha256, topology_sha256: manifest.topology.sha256, verified_fixture_files: Object.keys(verifiedFixtureFiles).length, workload, operation, search_term: search.term, search_expected_matches: search.expectedMatches, adapters: manifest.adapters })}\n`);
 }
 
 main().catch((error) => { console.error(error.stack || String(error)); process.exitCode = 1; });
