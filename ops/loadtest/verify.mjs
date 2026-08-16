@@ -11,7 +11,15 @@ function run(args, options = {}) {
 const root = resolve(new URL('.', import.meta.url).pathname);
 const tmp = mkdtempSync(join(tmpdir(), 'rustok-loadtest-'));
 try {
-  for (const file of ['k6/comparison.js', 'fixtures/generate.mjs', 'fixtures/import-rustok.mjs', 'evidence/create-run.mjs', 'evidence/collect-process.mjs']) {
+  for (const file of [
+    'k6/comparison.js',
+    'fixtures/generate.mjs',
+    'fixtures/import-rustok.mjs',
+    'fixtures/import-magento.mjs',
+    'evidence/create-run.mjs',
+    'evidence/collect-process.mjs',
+    'evidence/summarize.mjs',
+  ]) {
     run(['--check', resolve(root, file)]);
   }
   for (const file of ['config/rustok.example.json', 'config/magento.example.json', 'evidence/topology.example.json']) {
