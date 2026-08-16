@@ -75,16 +75,18 @@ try {
   const resolvedTopologyPath = resolve(tmp, 'topology.json');
   writeFileSync(resolvedTopologyPath, `${JSON.stringify(resolvedTopology, null, 2)}\n`, 'utf8');
 
-  runMustFail([
-    resolve(root, 'evidence/create-run.mjs'),
-    '--fixtures', resolve(outA, 'manifest.json'),
-    '--topology', resolvedTopologyPath,
-    '--out-root', evidenceRoot,
-    '--run-id', 'must-fail-missing-search-count',
-    '--rustok-commit', '0123456789abcdef0123456789abcdef01234567',
-    '--magento-release', '2.4.x-test',
-    '--workload', 'R4',
-  ], { env: { ...process.env, SEARCH_TERM: selectedSearch.term } });
+  for (const workload of ['R3', 'R4']) {
+    runMustFail([
+      resolve(root, 'evidence/create-run.mjs'),
+      '--fixtures', resolve(outA, 'manifest.json'),
+      '--topology', resolvedTopologyPath,
+      '--out-root', evidenceRoot,
+      '--run-id', `must-fail-missing-search-count-${workload.toLowerCase()}`,
+      '--rustok-commit', '0123456789abcdef0123456789abcdef01234567',
+      '--magento-release', '2.4.x-test',
+      '--workload', workload,
+    ], { env: { ...process.env, SEARCH_TERM: selectedSearch.term } });
+  }
 
   run([
     resolve(root, 'evidence/create-run.mjs'),
