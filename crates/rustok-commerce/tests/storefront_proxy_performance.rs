@@ -10,8 +10,9 @@ use rustok_product::{
     CatalogService,
     dto::{CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput},
 };
+use rustok_taxonomy::entities::{taxonomy_term_route_key, translation_change};
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DbBackend, Schema, Statement};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -30,23 +31,20 @@ const WARMUP_REQUESTS: usize = 16;
 const CONCURRENCY: usize = 16;
 const SEARCH_GROUPS: usize = 10;
 
-async fn ensure_proxy_taxonomy_route_key_schema(db: &sea_orm::DatabaseConnection) {
-    db.execute_unprepared(
-        r#"
-CREATE TABLE IF NOT EXISTS taxonomy_term_route_keys (
-    tenant_id TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    scope_type TEXT NOT NULL,
-    scope_value TEXT NOT NULL,
-    locale TEXT NOT NULL,
-    route_key TEXT NOT NULL,
-    term_id TEXT NOT NULL,
-    PRIMARY KEY (tenant_id, kind, scope_type, scope_value, locale, route_key)
-)
-"#,
-    )
-    .await
-    .expect("taxonomy route-key registry should exist for proxy catalog lifecycle");
+async fn ensure_proxy_taxonomy_extension_schema(db: &sea_orm::DatabaseConnection) {
+    assert_eq!(db.get_database_backend(), DbBackend::Sqlite);
+    let builder = db.get_database_backend();
+    let schema = Schema::new(builder);
+
+    for mut statement in [
+        schema.create_table_from_entity(taxonomy_term_route_key::Entity),
+        schema.create_table_from_entity(translation_change::Entity),
+    ] {
+        statement.if_not_exists();
+        db.execute(builder.build(&statement))
+            .await
+            .expect("taxonomy extension table should exist for proxy catalog lifecycle");
+    }
 }
 
 async fn seed_tenant(db: &sea_orm::DatabaseConnection, tenant_id: Uuid) {
@@ -252,7 +250,7 @@ fn proc_status_kib(field: &str) -> Option<u64> {
 async fn storefront_sqlite_proxy_benchmark() {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
-    ensure_proxy_taxonomy_route_key_schema(&db).await;
+    ensure_proxy_taxonomy_extension_schema(&db).await;
     let tenant_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
     let actor_id = Uuid::new_v4();
