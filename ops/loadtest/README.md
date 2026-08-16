@@ -17,7 +17,8 @@ The first runnable slice is read-path only:
 The v1 adapters are explicit profiles: `rustok-rest` and `magento-core-graphql`. The Magento
 profile targets the core Magento Open Source / Adobe Commerce `products` GraphQL contract. Adobe
 Commerce SaaS Catalog Service and Live Search expose different product/search contracts and must
-use separate adapters/topologies rather than being mixed into the core-GraphQL result.
+use separate adapters/topologies rather than being mixed into the core-GraphQL result. Evidence
+manifests pin both adapter profile names.
 
 Stateful cart/checkout workloads remain a separate phase because inventory reservation,
 tax, shipping and payment-stub semantics must be equivalent before their timings are useful.
@@ -148,9 +149,9 @@ expected value for each of 20 groups only in the canonical 100k-product tier.
 
 The writer creates `evidence/rustok-vs-magento/<run-id>/` with `rustok/`, `magento/` and a
 non-overwritable `manifest.json`. It re-hashes `products.jsonl` and `products.csv`, pins the
-topology hash, validates the selected search term/count against the fixture manifest, and refuses
-unresolved `REPLACE_ME`/`unknown`/`unresolved` values by default. `--allow-placeholders` is for
-harness development only and must not be used for publishable evidence.
+topology hash and adapter profile names, validates the selected search term/count against the
+fixture manifest, and refuses unresolved `REPLACE_ME`/`unknown`/`unresolved` values by default.
+`--allow-placeholders` is for harness development only and must not be used for publishable evidence.
 
 Use one run directory per dataset/profile/workload/rate point. The three repetitions for that
 point live inside the same directory.
