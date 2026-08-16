@@ -26,6 +26,13 @@ function positiveInt(value, fallback, name) {
   return parsed;
 }
 
+function nonNegativeInt(value, fallback, name) {
+  if (value == null) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`${name} must be a non-negative integer`);
+  return parsed;
+}
+
 function parseTarget(value) {
   const split = value.lastIndexOf(':');
   if (split <= 0) throw new Error(`Target '${value}' must be NAME:PID`);
@@ -91,7 +98,7 @@ async function main() {
   if (targets.length === 0) throw new Error('At least one --target NAME:PID is required');
   const intervalMs = positiveInt(args['interval-ms'], 1000, 'interval-ms');
   const durationMs = positiveInt(args['duration-ms'], 180000, 'duration-ms');
-  const delayMs = args['delay-ms'] == null ? 0 : positiveInt(args['delay-ms'], 0, 'delay-ms');
+  const delayMs = nonNegativeInt(args['delay-ms'], 0, 'delay-ms');
   const output = resolve(String(args.output || 'telemetry.jsonl'));
   const stream = createWriteStream(output, { flags: 'wx', encoding: 'utf8' });
   const clockTicksPerSecond = sysconf('CLK_TCK', 100);
