@@ -34,8 +34,7 @@ node ops/loadtest/verify.mjs
 The verifier checks JavaScript syntax and JSON contracts, generates the same 100-product fixture
 twice to assert byte-identical JSONL/CSV, verifies fail-closed evidence creation, and on Linux
 smoke-tests the process sampler plus result summarizer with synthetic k6 metrics. It also proves
-that R3/R4 evidence creation fails when search cardinality is omitted or disagrees with the
-fixture manifest.
+that workload/operation mismatches and missing or incorrect R3/R4 search cardinality fail closed.
 
 ## 1. Generate deterministic fixtures
 
@@ -146,16 +145,17 @@ node ops/loadtest/evidence/create-run.mjs \
   --workload R4
 ```
 
-For R3/R4, both `SEARCH_TERM` and `SEARCH_EXPECTED_MATCHES` are evidence identity. Use the exact
-`expected_matches` value from the selected manifest search case; `5000` is the expected value for
-each of 20 groups only in the canonical 100k-product tier. The evidence writer rejects an omitted
-or mismatching count for R3/R4.
+The evidence workload and k6 operation are one binding: R1=`catalog`, R2=`product`, R3=`search`,
+R4=`mixed`. The writer rejects mismatches. For R3/R4, `SEARCH_TERM` and
+`SEARCH_EXPECTED_MATCHES` are also mandatory evidence identity. Use the exact `expected_matches`
+from the selected fixture manifest case; `5000` is valid only for each of the 20 groups in the
+canonical 100k-product tier.
 
 The writer creates `evidence/rustok-vs-magento/<run-id>/` with `rustok/`, `magento/` and a
 non-overwritable `manifest.json`. It re-hashes `products.jsonl` and `products.csv`, pins the
-topology hash and adapter profile names, validates the selected search term/count against the
-fixture manifest, and refuses unresolved `REPLACE_ME`/`unknown`/`unresolved` values by default.
-`--allow-placeholders` is for harness development only and must not be used for publishable evidence.
+topology hash and adapter profile names, validates workload/operation and search identity, and
+refuses unresolved `REPLACE_ME`/`unknown`/`unresolved` values by default. `--allow-placeholders`
+is for harness development only and must not be used for publishable evidence.
 
 Use one run directory per dataset/profile/workload/rate point. The three repetitions for that
 point live inside the same directory.
@@ -246,7 +246,7 @@ peak RSS/HWM, sampled-stack CPU/RSS and normalized `app_rps_per_vcpu` / `app_mib
 | --- | --- | --- |
 | `CONFIG` | required | Adapter JSON file |
 | `BASE_URL` | adapter value | Target scheme/host/port and optional route prefix |
-| `OPERATION` | `mixed` | `catalog`, `product`, `search`, or `mixed` |
+| `OPERATION` | `mixed` | Must match evidence workload: R1 catalog, R2 product, R3 search, R4 mixed |
 | `RATE` | `100` | Measured requests/second target |
 | `WARMUP_RATE` | `RATE / 4` | Warm-up requests/second |
 | `WARMUP` | `30s` | Warm-up duration |
@@ -255,8 +255,8 @@ peak RSS/HWM, sampled-stack CPU/RSS and normalized `app_rps_per_vcpu` / `app_mib
 | `MAX_VUS` | `2048` | Maximum VU pool |
 | `PRODUCT_ID` | empty | RusTok product UUID placeholder |
 | `PRODUCT_SKU` | empty | Shared parent SKU placeholder |
-| `SEARCH_TERM` | `shirt` | Shared title search token; use a manifest case for evidence |
-| `SEARCH_EXPECTED_MATCHES` | empty | Exact `expected_matches` for `SEARCH_TERM`; mandatory for R3/R4 publishable evidence |
+| `SEARCH_TERM` | `shirt` | Shared title search token; use a manifest case for R3/R4 evidence |
+| `SEARCH_EXPECTED_MATCHES` | empty | Exact manifest count; mandatory for R3/R4 publishable evidence |
 | `TENANT_ID` | empty | Optional tenant placeholder/header value |
 | `CHANNEL` | empty | Optional channel placeholder/header value |
 
