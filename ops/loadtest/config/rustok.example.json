@@ -1,5 +1,5 @@
 {
-  "name": "rustok",
+  "name": "rustok-rest",
   "baseUrl": "http://127.0.0.1:5150",
   "headers": {
     "Accept": "application/json",
