@@ -1,33 +1,33 @@
 # RusTok vs Magento end-to-end benchmark contract
 
-Status: initial reproducible contract; no comparative result is accepted until an evidence
+Status: executable evidence contract; no comparative result is accepted until a paired evidence
 packet satisfying this document exists.
 
 ## Purpose
 
-Measure how much externally observable commerce throughput RusTok delivers per unit of
-server capacity compared with Magento under equivalent business workloads.
+Measure how much externally observable commerce throughput RusTok delivers per unit of server
+capacity compared with Magento under equivalent business workloads.
 
-This benchmark exists to replace architecture-based estimates with reproducible evidence.
-It must answer two separate questions:
+This benchmark exists to replace architecture-based estimates with reproducible evidence. It
+answers two separate questions:
 
 1. **Performance:** how much sustainable RPS each platform delivers at the same latency and
    correctness SLO.
-2. **Efficiency:** how much CPU and RAM the complete serving stack needs to deliver the same
-   workload.
+2. **Efficiency:** how much CPU and RAM the application layer and complete serving stack need to
+   deliver the same workload.
 
-The existing Criterion and PostgreSQL evidence suites remain valuable regression tools, but
-they are not substitutes for an end-to-end HTTP/API comparison.
+The existing Criterion and PostgreSQL evidence suites remain valuable regression tools, but they
+are not substitutes for an end-to-end HTTP/API comparison.
 
 ## Initial hypothesis, not a result
 
-The working engineering hypothesis is that RusTok may sustain materially more dynamic
-commerce RPS per application vCPU and may require materially less application memory than
-Magento because the default RusTok topology is a native Rust/Tokio process with in-process
-module calls. This document intentionally does **not** encode a publishable multiplier.
+The working engineering hypothesis is that RusTok may sustain materially more dynamic commerce
+RPS per application vCPU and may require materially less application memory than Magento because
+the default RusTok topology is a native Rust/Tokio process with in-process module calls. This
+document intentionally does **not** encode a publishable multiplier.
 
-A `10x`, `30x`, or any other comparative claim is accepted only when derived from the
-measurement and resource-normalization rules below.
+A `10x`, `30x`, or any other comparative claim is accepted only when derived from the measurement
+and resource-normalization rules below.
 
 ## Fairness invariants
 
@@ -35,7 +35,7 @@ Every paired run must satisfy all of these rules:
 
 - same physical host class or identical pinned VM/container CPU and memory limits;
 - same load-generator host and network path;
-- same product fixtures, SKUs, searchable terms and result cardinality where semantics allow;
+- same canonical product fixtures, SKUs, title search tokens and expected result cardinality;
 - production/release builds, no debug logging, no profiler unless both runs use it;
 - exact platform revision/release, database, cache and search-engine versions recorded;
 - no CDN/Varnish/Fastly result in a dynamic-backend comparison;
@@ -78,19 +78,63 @@ Results from different profiles must never be combined into one headline number.
 
 ## Dataset
 
-Use deterministic fixtures with the same public catalog semantics on both platforms.
+Use the canonical deterministic generator in `ops/loadtest/fixtures/generate.mjs` and import the
+same generated records into both platforms.
 
 Required dataset tiers:
 
-| Tier | Products | Variants/product | Searchable attributes | Purpose |
+| Tier | Products | Variants/product | Fixture attributes | Purpose |
 | --- | ---: | ---: | ---: | --- |
-| S | 10,000 | 2 | >= 8 | smoke and harness validation |
-| M | 100,000 | 2 | >= 8 | primary comparison |
-| L | 1,000,000 | 2 | >= 8 | scale behavior |
+| S | 10,000 | 2 | 8 | smoke and harness validation |
+| M | 100,000 | 2 | 8 | primary comparison |
+| L | 1,000,000 | 2 | 8 | scale behavior |
 
-Each evidence packet records a fixture generator version plus a stable SHA-256 digest of the
-seed/manifest. Product IDs may differ between platforms, but benchmark SKUs and public field
-values must match.
+The eight deterministic `bench_attr_*` properties are fixture-parity data; they are **not** a
+claim that the current RusTok REST search endpoint searches all eight attributes. Search parity
+for the first slice is deliberately narrower and explicit: every generated product title contains
+exactly one shared `bench-group-NN` token, and the manifest records the exact expected cardinality
+for every token.
+
+The generator produces:
+
+- `products.jsonl` as the canonical platform-neutral fixture stream;
+- `products.csv` as flat inspection/import interchange data;
+- `manifest.json` with seed, counts, selected SKUs/handles, search terms/cardinality and SHA-256
+  digests.
+
+Each evidence run re-hashes the real fixture files and refuses a manifest/file mismatch. Product
+IDs may differ between platforms, but shared SKUs, names, handles, variants, title search tokens
+and public fixture values must match.
+
+## Fixture import policy
+
+Fixture import duration is not part of the benchmark.
+
+### RusTok
+
+`ops/loadtest/fixtures/import-rustok.mjs` uses the current commerce admin create-product contract.
+Each canonical fixture becomes one published product with:
+
+- one localized product translation;
+- one `Edition` option;
+- two variants with deterministic SKUs and prices;
+- bounded inventory suitable for read tests;
+- benchmark identity/attribute metadata;
+- a JSONL receipt mapping the canonical SKU to the created RusTok product ID.
+
+The importer is resumable and the full deployed admin-products URL is explicit so it does not
+guess a host/module/ingress prefix.
+
+### Magento
+
+`ops/loadtest/fixtures/import-magento.mjs` creates one visible configurable parent plus two simple
+children, assigns a two-value configurable attribute and links the children to the parent. The
+chosen Magento installation must expose an explicit benchmark configurable attribute and the
+operator must provide its exact attribute ID and value indexes. The importer refuses to invent
+installation-specific IDs.
+
+The first importer is synchronous and resumable for auditability. A future bulk importer may
+replace it without changing the canonical fixture contract.
 
 ## Workloads
 
@@ -101,13 +145,18 @@ Measure request parsing, tenant/store resolution, catalog reads, serialization a
 
 ### R2 — Product detail
 
-Return one published product selected from the shared fixture manifest. The response must
-contain the benchmark SKU and equivalent public identity/title fields.
+Return one published product selected from the shared fixture manifest. The response must contain
+the benchmark SKU and equivalent public identity/title fields.
 
 ### R3 — Catalog search
 
-Search for a fixture term with known result cardinality and return 24 items. Report R3
-separately because search-engine topology and resource consumption are part of the result.
+Search the public/localized product title for a manifest-provided `bench-group-NN` token with known
+cardinality and return 24 items. Validate both response success and semantic fixture identity.
+Report R3 separately because search-engine topology and resource consumption are part of the
+result.
+
+Do not silently broaden one side to full-text/attribute search while the other side performs title
+search. A broader search contract is a separate benchmark version.
 
 ### R4 — Mixed read
 
@@ -139,8 +188,8 @@ recommended first pass is:
 
 `50 -> 100 -> 250 -> 500 -> 1k -> 2k -> 5k -> 10k -> 20k RPS`
 
-Skip obviously irrelevant low points after a smoke run; add intermediate points around the
-first failing step.
+Skip obviously irrelevant low points after a smoke run; add intermediate points around the first
+failing step.
 
 Every point uses:
 
@@ -148,6 +197,9 @@ Every point uses:
 - measured window: at least 3 minutes (10 minutes for publication runs);
 - three successful repetitions;
 - identical requested arrival rate for the paired platforms.
+
+The runner counts `measured_requests` separately from warm-up. Headline achieved RPS must come from
+that measured-only counter.
 
 ## Sustainable-capacity SLO
 
@@ -157,19 +209,20 @@ The default read SLO for the first slice is:
 - p99 < 500 ms;
 - HTTP failure rate < 0.1%;
 - response-validation failure rate < 0.1%;
+- zero dropped iterations in the `measure` scenario;
 - no sustained dependency backlog, OOM, restart loop or load-generator saturation.
 
-The **max sustainable RPS** is the highest achieved request rate satisfying all SLO conditions.
-If k6 cannot maintain the requested arrival rate because `dropped_iterations` rises, use the
-achieved rate and mark that step saturated.
+The **max sustainable RPS** is the highest achieved measured request rate satisfying all SLO
+conditions. A k6 step with measured `dropped_iterations > 0` is saturated and does not pass even
+if completed-request latency still looks good.
 
 A second report may show raw saturation throughput, but it must not replace the SLO-constrained
 capacity result.
 
 ## Resource accounting
 
-Record resources for the complete components needed by each profile. Do not compare only the
-Rust process against an entire Magento stack.
+Record resources for the complete components needed by each profile. Do not compare only the Rust
+process against an entire Magento stack.
 
 At minimum record:
 
@@ -180,6 +233,12 @@ At minimum record:
 - search-engine CPU and memory for R3/R4;
 - reverse proxy/Varnish resources when included by the selected profile;
 - total serving-stack CPU and memory.
+
+`ops/loadtest/evidence/collect-process.mjs` samples Linux process RSS/HWM, thread count and CPU ticks.
+For P1 it must start sampling after the warm-up delay so the telemetry interval aligns with the k6
+measured window. Use target name `app` for the application process. If the serving stack spans
+multiple hosts, collect each host separately; a single process telemetry file is not automatically
+a whole-stack total.
 
 Report both application-layer and whole-stack efficiency.
 
@@ -212,6 +271,9 @@ evidence/rustok-vs-magento/<run-id>/
     telemetry-run-1.*
     telemetry-run-2.*
     telemetry-run-3.*
+    result-run-1.json
+    result-run-2.json
+    result-run-3.json
   magento/
     summary-run-1.json
     summary-run-2.json
@@ -219,24 +281,52 @@ evidence/rustok-vs-magento/<run-id>/
     telemetry-run-1.*
     telemetry-run-2.*
     telemetry-run-3.*
+    result-run-1.json
+    result-run-2.json
+    result-run-3.json
   comparison.json
 ```
+
+`ops/loadtest/evidence/create-run.mjs` creates the root and `manifest.json` without overwrite. By
+default it refuses to create evidence if:
+
+- the topology still contains `REPLACE_ME`, `unknown` or `unresolved` values;
+- RusTok commit or Magento release is unresolved;
+- a canonical fixture file is missing;
+- a canonical fixture file SHA-256 differs from the fixture manifest.
+
+`--allow-placeholders` exists only for harness development and makes the resulting packet
+non-publishable until replaced by a clean run.
 
 `manifest.json` records:
 
 - RusTok commit SHA;
-- Magento exact release/build and enabled extensions;
-- OS/kernel/container runtime;
-- hardware/VM identity and limits;
-- dependency versions and limits;
-- fixture tier, manifest hash and benchmark SKUs/search terms;
-- cache profile;
-- k6 version and all environment parameters;
-- warm-up/measurement duration;
-- run order;
-- any deviation from this contract.
+- Magento exact release/build;
+- exact topology definition and its SHA-256;
+- fixture tier, seed, manifest hash and verified fixture-file hashes;
+- benchmark SKUs/search terms;
+- cache profile/workload;
+- load-generator OS, CPU, RAM and tool versions;
+- k6 parameters available when the manifest is created.
 
 Raw evidence is never replaced in place. A rerun gets a new run ID.
+
+## Per-step result normalization
+
+`ops/loadtest/evidence/summarize.mjs` combines one k6 `summary.json` with one aligned process
+telemetry file and emits a non-overwriting `rustok_vs_magento_step_result_v1` record containing:
+
+- achieved measured RPS;
+- p50/p95/p99;
+- HTTP and response-validation failure rates;
+- measured-scenario dropped iterations;
+- SLO pass/fail;
+- application average CPU cores and peak RSS/HWM;
+- sampled process-set CPU/RSS;
+- application RPS/vCPU and MiB/1k RPS when the application vCPU limit is supplied.
+
+This per-step result is evidence for a single ladder point. A headline capacity ratio is computed
+only after the paired rate ladder and three repetitions are complete.
 
 ## Reporting rules
 
@@ -257,37 +347,44 @@ A public/internal comparison table must show at least:
 
 Also publish the dataset tier and cache profile directly next to the table.
 
-Do not cherry-pick the best repetition. Use the median of the three valid repetitions for
-headline latency/resource values and the conservative (lowest) sustainable capacity when the
-three repetitions disagree on the passing knee.
+Do not cherry-pick the best repetition. Use the median of the three valid repetitions for headline
+latency/resource values and the conservative (lowest) sustainable capacity when the three
+repetitions disagree on the passing knee.
 
-## First implementation slice
+## Implemented benchmark tooling
 
 Implemented in this benchmark track:
 
 - platform-neutral k6 constant-arrival-rate runner;
 - warm-up and measured phases separated by tags;
-- read SLO thresholds;
-- response sanity/GraphQL error checks;
+- measured-only request counter and measured dropped-iteration gate;
+- read SLO thresholds and response sanity/GraphQL error checks;
 - deterministic mixed read distribution;
-- example RusTok REST adapter;
-- example Magento GraphQL adapter;
-- machine-readable `summary.json` output.
+- example RusTok REST and Magento GraphQL adapters;
+- streaming deterministic S/M/L fixture generator with stable hashes;
+- shared SKU/title-search fixture contract and known search cardinality;
+- resumable RusTok admin-product importer using the live DTO shape;
+- resumable Magento configurable-parent/simple-child importer;
+- fail-closed immutable evidence manifest writer;
+- measured-window Linux process resource collector;
+- per-step result summarizer;
+- static verifier for syntax, JSON contracts and fixture determinism.
 
 Before accepting the first real number, complete these operational items:
 
-1. verify the deployed RusTok public route prefix and adapter paths against the exact revision;
-2. pin the Magento release and confirm its GraphQL queries against that release;
-3. build the deterministic S/M fixture generator/importers;
-4. add a resource telemetry collector and manifest writer;
-5. run smoke parity checks at low RPS;
-6. execute the paired rate ladder on isolated benchmark hardware;
-7. assemble and verify the first immutable evidence packet.
+1. pin the deployed RusTok public route prefix and exact product IDs from the import receipt;
+2. pin the Magento release and validate the configured benchmark attribute/query schema;
+3. run import/parity smoke checks on the same canonical fixture tier;
+4. populate an exact topology file with no placeholders;
+5. execute the paired rate ladder on isolated benchmark hardware with three repetitions;
+6. collect DB/cache/search metrics needed for whole-stack accounting;
+7. assemble and verify the first immutable paired evidence packet;
+8. compute the conservative sustainable-capacity and resource-efficiency ratios.
 
 ## Relationship to existing performance tooling
 
 - `ops/benches` answers whether Rust components/storage paths regress.
 - `ops/loadtest` answers what a client observes through real transport boundaries.
-- Grafana/Prometheus evidence answers what resources the serving stack consumed.
+- Grafana/Prometheus and host/process telemetry answer what resources the serving stack consumed.
 
 All three are useful; none should be presented as a substitute for another.
