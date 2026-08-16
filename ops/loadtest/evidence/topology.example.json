@@ -1,0 +1,20 @@
+{
+  "contract": "rustok_vs_magento_topology_v1",
+  "notes": "Replace example values with the exact benchmark host/container limits and dependency versions before creating an evidence run.",
+  "load_generator": {
+    "separate_host_required": true
+  },
+  "rustok": {
+    "application": { "vcpu": 4, "memory_mib": 4096, "replicas": 1, "build_profile": "release" },
+    "database": { "engine": "PostgreSQL", "version": "REPLACE_ME", "vcpu": 4, "memory_mib": 8192 },
+    "cache": { "engine": "Redis", "version": "REPLACE_ME", "vcpu": 1, "memory_mib": 1024 },
+    "search": { "engine": "Meilisearch", "version": "REPLACE_ME", "vcpu": 2, "memory_mib": 2048 }
+  },
+  "magento": {
+    "application": { "vcpu": 4, "memory_mib": 4096, "replicas": 1, "build_profile": "production" },
+    "database": { "engine": "MySQL/MariaDB", "version": "REPLACE_ME", "vcpu": 4, "memory_mib": 8192 },
+    "cache": { "engine": "Redis/Valkey", "version": "REPLACE_ME", "vcpu": 1, "memory_mib": 1024 },
+    "search": { "engine": "OpenSearch", "version": "REPLACE_ME", "vcpu": 2, "memory_mib": 2048 },
+    "reverse_proxy": { "engine": "nginx/Varnish", "version": "REPLACE_ME", "profile_usage": "P3_only_or_explicit" }
+  }
+}
