@@ -1,6 +1,6 @@
 {
   "contract": "rustok_vs_magento_topology_v1",
-  "notes": "Replace example values with the exact benchmark host/container limits and dependency versions before creating an evidence run.",
+  "notes": "NON-PUBLISHABLE EXAMPLE. Copy this file and replace every REPLACE_ME value with exact benchmark host/container limits and dependency versions before creating evidence.",
   "load_generator": {
     "separate_host_required": true
   },
