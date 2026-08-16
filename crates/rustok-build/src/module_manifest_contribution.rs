@@ -530,12 +530,11 @@ provider = "fly.builtin"
             Some(&"1".to_string())
         );
         assert_eq!(normalized.role("landing").expect("role").surface, "admin");
-        assert!(
-            normalized
-                .manifest_json()
-                .unwrap()
-                .contains("\"module_id\":\"pages\"")
-        );
+        let has_module_id = normalized
+            .manifest_json()
+            .unwrap()
+            .contains("\"module_id\":\"pages\"");
+        assert!(has_module_id);
         let metadata = normalized.admin[0]
             .get("metadata")
             .and_then(serde_json::Value::as_object)
@@ -561,11 +560,10 @@ provider = "fly.builtin"
             "required_capabilities = [\"properties\", \"publish\"]",
         );
         let error = normalize_module_contribution_manifest(&invalid).expect_err("must fail");
-        assert!(
-            error
-                .to_string()
-                .contains("outside fba.builder_consumer.capabilities")
-        );
+        let contains_expected_error = error
+            .to_string()
+            .contains("outside fba.builder_consumer.capabilities");
+        assert!(contains_expected_error);
     }
 
     #[test]

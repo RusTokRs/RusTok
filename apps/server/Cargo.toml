@@ -60,7 +60,7 @@ mod-cart      = ["dep:rustok-cart", "rustok-distribution/mod-cart"]
 mod-customer  = ["dep:rustok-customer", "rustok-distribution/mod-customer"]
 mod-product   = ["dep:rustok-product", "dep:rustok-product-transport", "mod-taxonomy", "rustok-distribution/mod-product"]
 mod-profiles  = ["dep:rustok-profiles", "dep:rustok-media-transport", "mod-media", "mod-social_graph", "mod-taxonomy", "rustok-distribution/mod-profiles"]
-mod-social_graph = ["rustok-social-graph/graphql", "rustok-social-graph/index-consumer"]
+mod-social_graph = ["dep:rustok-social-graph", "rustok-social-graph/graphql", "rustok-social-graph/index-consumer"]
 mod-groups    = ["dep:rustok-groups", "rustok-groups/graphql", "rustok-distribution/mod-groups"]
 mod-region    = ["dep:rustok-region", "rustok-distribution/mod-region"]
 mod-pricing   = ["dep:rustok-pricing", "mod-product", "rustok-distribution/mod-pricing"]
@@ -125,7 +125,7 @@ rustok-customer  = { workspace = true, optional = true }
 rustok-product   = { workspace = true, optional = true }
 rustok-product-transport = { path = "../../crates/rustok-product-transport", optional = true }
 rustok-profiles  = { workspace = true, optional = true }
-rustok-social-graph = { path = "../../crates/rustok-social-graph" }
+rustok-social-graph = { path = "../../crates/rustok-social-graph", optional = true }
 rustok-groups = { path = "../../crates/rustok-groups", default-features = false, optional = true }
 rustok-region    = { workspace = true, optional = true }
 rustok-pricing   = { workspace = true, optional = true }
