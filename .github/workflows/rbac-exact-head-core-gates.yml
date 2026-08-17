@@ -1,0 +1,359 @@
+name: RBAC Exact-Head Core Gates
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "modules.toml"
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/**"
+      - "apps/server/tests/rbac_permission_resolver_read_only_guard.rs"
+      - "apps/server/tests/rbac_auth_admin_effective_noop_guard.rs"
+      - "crates/rustok-api/**"
+      - "crates/rustok-events/**"
+      - "crates/rustok-migrations/**"
+      - "crates/rustok-rbac/**"
+      - "crates/rustok-rbac-admin/**"
+      - "scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs"
+      - "scripts/verify/verify-rbac-owner-role-mutation-contract.mjs"
+      - "scripts/verify/verify-rbac-artifact-permission-outbox.mjs"
+      - "scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs"
+      - "scripts/verify/verify-rbac-explicit-principal-kind.mjs"
+      - "scripts/verify/verify-rbac-invalidation-observability.mjs"
+      - "xtask/**"
+      - ".github/workflows/rbac-exact-head-core-gates.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "modules.toml"
+      - "apps/server/Cargo.toml"
+      - "apps/server/src/**"
+      - "apps/server/tests/rbac_permission_resolver_read_only_guard.rs"
+      - "apps/server/tests/rbac_auth_admin_effective_noop_guard.rs"
+      - "crates/rustok-api/**"
+      - "crates/rustok-events/**"
+      - "crates/rustok-migrations/**"
+      - "crates/rustok-rbac/**"
+      - "crates/rustok-rbac-admin/**"
+      - "scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs"
+      - "scripts/verify/verify-rbac-owner-role-mutation-contract.mjs"
+      - "scripts/verify/verify-rbac-artifact-permission-outbox.mjs"
+      - "scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs"
+      - "scripts/verify/verify-rbac-explicit-principal-kind.mjs"
+      - "scripts/verify/verify-rbac-invalidation-observability.mjs"
+      - "xtask/**"
+      - ".github/workflows/rbac-exact-head-core-gates.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_BUILD_JOBS: 2
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+
+jobs:
+  format-source:
+    name: RBAC format and source verifiers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact verification revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+      - name: Record exact-head provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/rbac-exact-head/format-source
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "event=${GITHUB_EVENT_NAME}"
+            echo "ref=${GITHUB_REF}"
+            echo "expected_sha=$expected"
+            echo "actual_sha=$actual"
+            echo "cargo_profile_test_debug=${CARGO_PROFILE_TEST_DEBUG}"
+            echo "cargo_build_jobs=${CARGO_BUILD_JOBS}"
+            rustup show active-toolchain
+            rustc --version
+            cargo --version
+            node --version
+          } | tee evidence/rbac-exact-head/format-source/metadata.txt
+      - name: Execute formatting and source verifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          run_logged() {
+            local name="$1"
+            shift
+            echo "::group::$name"
+            set +e
+            "$@" 2>&1 | tee "evidence/rbac-exact-head/format-source/${name}.log"
+            rc=${PIPESTATUS[0]}
+            set -e
+            echo "::endgroup::"
+            if [[ $rc -ne 0 ]]; then
+              echo "::error::$name failed with exit code $rc"
+              failed=1
+            fi
+          }
+          run_logged cargo-fmt cargo fmt --all -- --check
+          run_logged cli-repair-source node scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs
+          run_logged owner-role-mutation node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs
+          run_logged artifact-outbox node scripts/verify/verify-rbac-artifact-permission-outbox.mjs
+          run_logged artifact-tenant-integrity node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs
+          run_logged explicit-principal-kind node scripts/verify/verify-rbac-explicit-principal-kind.mjs
+          run_logged invalidation-observability node scripts/verify/verify-rbac-invalidation-observability.mjs
+          exit "$failed"
+      - name: Archive format and source evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rbac-core-format-source-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: evidence/rbac-exact-head/format-source
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  compile:
+    name: RBAC exact-head compilation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact verification revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record exact-head provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/rbac-exact-head/compile
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "event=${GITHUB_EVENT_NAME}"
+            echo "ref=${GITHUB_REF}"
+            echo "expected_sha=$expected"
+            echo "actual_sha=$actual"
+            echo "cargo_profile_test_debug=${CARGO_PROFILE_TEST_DEBUG}"
+            echo "cargo_build_jobs=${CARGO_BUILD_JOBS}"
+            rustup show active-toolchain
+            rustc --version
+            cargo --version
+          } | tee evidence/rbac-exact-head/compile/metadata.txt
+      - name: Execute required compilation gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          run_logged() {
+            local name="$1"
+            shift
+            echo "::group::$name"
+            set +e
+            "$@" 2>&1 | tee "evidence/rbac-exact-head/compile/${name}.log"
+            rc=${PIPESTATUS[0]}
+            set -e
+            echo "::endgroup::"
+            if [[ $rc -ne 0 ]]; then
+              echo "::error::$name failed with exit code $rc"
+              failed=1
+            fi
+          }
+          run_logged rustok-api cargo check --locked -p rustok-api
+          run_logged rustok-api-server cargo check --locked -p rustok-api --features server
+          run_logged rustok-events cargo check --locked -p rustok-events --all-targets
+          run_logged rustok-rbac cargo check --locked -p rustok-rbac --all-features
+          run_logged rustok-rbac-admin cargo check --locked -p rustok-rbac-admin --features ssr
+          run_logged rustok-server-lib cargo check --locked -p rustok-server --lib
+          exit "$failed"
+      - name: Archive compilation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rbac-core-compile-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: evidence/rbac-exact-head/compile
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  focused-tests:
+    name: RBAC exact-head focused tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact verification revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record exact-head provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/rbac-exact-head/focused-tests
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "event=${GITHUB_EVENT_NAME}"
+            echo "ref=${GITHUB_REF}"
+            echo "expected_sha=$expected"
+            echo "actual_sha=$actual"
+            echo "cargo_profile_test_debug=${CARGO_PROFILE_TEST_DEBUG}"
+            echo "cargo_build_jobs=${CARGO_BUILD_JOBS}"
+            rustup show active-toolchain
+            rustc --version
+            cargo --version
+          } | tee evidence/rbac-exact-head/focused-tests/metadata.txt
+      - name: Execute required focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          run_logged() {
+            local name="$1"
+            shift
+            echo "::group::$name"
+            set +e
+            "$@" 2>&1 | tee "evidence/rbac-exact-head/focused-tests/${name}.log"
+            rc=${PIPESTATUS[0]}
+            set -e
+            echo "::endgroup::"
+            if [[ $rc -ne 0 ]]; then
+              echo "::error::$name failed with exit code $rc"
+              failed=1
+            fi
+          }
+          run_logged event-contracts cargo test --locked -p rustok-events --test rbac_artifact_permission_contracts
+          run_logged artifact-outbox-sqlite cargo test --locked -p rustok-rbac --test artifact_permission_outbox_sqlite
+          run_logged tenant-integrity-sqlite cargo test --locked -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite
+          run_logged upgrade-sqlite cargo test --locked -p rustok-rbac --test artifact_permission_upgrade_sqlite
+          run_logged migration-tail cargo test --locked -p rustok-migrations migrator_preserves_append_only_migration_tail
+          run_logged resolver-read-only cargo test --locked -p rustok-server --test rbac_permission_resolver_read_only_guard
+          run_logged auth-admin-noop cargo test --locked -p rustok-server --test rbac_auth_admin_effective_noop_guard
+          exit "$failed"
+      - name: Archive focused-test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rbac-core-focused-tests-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: evidence/rbac-exact-head/focused-tests
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  module-gates:
+    name: RBAC module validate and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact verification revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record exact-head provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/rbac-exact-head/module-gates
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "event=${GITHUB_EVENT_NAME}"
+            echo "ref=${GITHUB_REF}"
+            echo "expected_sha=$expected"
+            echo "actual_sha=$actual"
+            echo "cargo_profile_test_debug=${CARGO_PROFILE_TEST_DEBUG}"
+            echo "cargo_build_jobs=${CARGO_BUILD_JOBS}"
+            rustup show active-toolchain
+            rustc --version
+            cargo --version
+          } | tee evidence/rbac-exact-head/module-gates/metadata.txt
+      - name: Execute RBAC module gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          run_logged() {
+            local name="$1"
+            shift
+            echo "::group::$name"
+            set +e
+            "$@" 2>&1 | tee "evidence/rbac-exact-head/module-gates/${name}.log"
+            rc=${PIPESTATUS[0]}
+            set -e
+            echo "::endgroup::"
+            if [[ $rc -ne 0 ]]; then
+              echo "::error::$name failed with exit code $rc"
+              failed=1
+            fi
+          }
+          run_logged module-validate cargo xtask module validate rbac
+          run_logged module-test cargo xtask module test rbac
+          exit "$failed"
+      - name: Archive module evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rbac-core-module-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: evidence/rbac-exact-head/module-gates
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  gate:
+    name: RBAC Exact-Head Core Gate
+    if: ${{ !cancelled() }}
+    needs:
+      - format-source
+      - compile
+      - focused-tests
+      - module-gates
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require all core verification jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ needs.format-source.result }}" = "success"
+          test "${{ needs.compile.result }}" = "success"
+          test "${{ needs.focused-tests.result }}" = "success"
+          test "${{ needs.module-gates.result }}" = "success"
