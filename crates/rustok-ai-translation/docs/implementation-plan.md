@@ -1,5 +1,11 @@
 # rustok-ai-translation implementation plan
 
+## FFA/FBA status
+
+- FFA status: `not_started`
+- FBA status: `in_progress`
+- Structural shape: `no_ui_boundary`
+
 ## Current state
 
 - Status: `in_progress`.

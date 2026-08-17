@@ -11,7 +11,6 @@ use rustok_cart::{
     CartCheckoutSnapshotRequest,
 };
 use rustok_fulfillment::error::FulfillmentError;
-use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
@@ -110,12 +109,11 @@ impl CheckoutService {
     /// Override provider registries assembled by runtime composition.
     ///
     /// Payment side effects remain synchronous checkout dependencies. Fulfillment
-    /// providers are accepted for API compatibility, but label execution is owned by
-    /// the durable paid-order listener and recovery worker after payment is committed.
+    /// label execution is owned by the durable paid-order listener and recovery worker
+    /// after payment is committed.
     pub fn with_provider_registries(
         mut self,
         payment_provider_registry: PaymentProviderRegistry,
-        _fulfillment_provider_registry: FulfillmentProviderRegistry,
     ) -> Self {
         self.payment_provider_registry = payment_provider_registry;
         self

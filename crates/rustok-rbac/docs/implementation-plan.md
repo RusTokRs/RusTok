@@ -1,5 +1,15 @@
 # Implementation plan for `rustok-rbac`
 
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
+- Transport profile: temporary native-only; native/GraphQL admin parity is in progress.
+- FBA provider contract: `RbacPermissionDecisionPort` / `rbac.permission_decision.v1` in `crates/rustok-rbac/contracts/rbac-fba-registry.json`.
+- Static and runtime evidence: `crates/rustok-rbac/contracts/evidence/rbac-contract-test-static-matrix.json` and `crates/rustok-rbac/contracts/evidence/rbac-provider-runtime-order-smoke.json`.
+- Evidence: `scripts/verify/verify-rbac-admin-boundary.mjs` locks the admin boundary guardrail.
+
 ## Source of truth
 
 This is the canonical live RBAC implementation plan. It records source state, open

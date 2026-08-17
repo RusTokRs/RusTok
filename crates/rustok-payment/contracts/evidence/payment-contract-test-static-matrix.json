@@ -5,10 +5,14 @@
   "status": "static_matrix_locked",
   "generated_from": "crates/rustok-payment/contracts/payment-fba-registry.json",
   "runner": "scripts/verify/verify-ecommerce-fba-contract-evidence.mjs",
-  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1",
+  "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1+refund_creation.v1+provider_outcome.v1+stripe_runtime.v1",
   "profiles": [
     "in_process",
-    "remote_adapter_placeholder"
+    "remote_adapter_placeholder",
+    "provider_webhook_inbox",
+    "refund_creation_owner",
+    "provider_outcome_journal",
+    "deployment_stripe_runtime"
   ],
   "cases": [
     {
@@ -33,6 +37,71 @@
       "assertions": [
         "typed_port_error_mapping",
         "context_deadline_preserved"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "create_or_replay_refund",
+      "profiles": [
+        "refund_creation_owner"
+      ],
+      "assertions": [
+        "creation_identity_required",
+        "canonical_request_hash",
+        "same_key_same_payload_replayed",
+        "same_key_different_payload_rejected",
+        "concurrent_same_key_single_identity",
+        "identityless_database_insert_rejected"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "classify_provider_outcome",
+      "profiles": [
+        "provider_outcome_journal"
+      ],
+      "assertions": [
+        "unavailable_is_retryable",
+        "rejected_is_non_retryable",
+        "configuration_is_non_retryable",
+        "invalid_success_response_requires_reconciliation",
+        "unknown_outcome_requires_reconciliation",
+        "executing_can_transition_to_reconciliation_required",
+        "reconciliation_without_result_never_reexecutes_provider"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "compose_external_provider",
+      "profiles": [
+        "deployment_stripe_runtime"
+      ],
+      "assertions": [
+        "server_feature_is_opt_in",
+        "tenant_secret_refs_are_deployment_owned",
+        "raw_secrets_are_not_configured_or_persisted",
+        "duplicate_tenant_mapping_is_rejected",
+        "cross_tenant_secret_reference_reuse_is_rejected",
+        "resolver_aliases_are_process_owned",
+        "one_shared_registry_serves_all_transports"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "handle_webhook",
+      "profiles": [
+        "provider_webhook_inbox"
+      ],
+      "assertions": [
+        "signature_verified_before_inbox_insert",
+        "provider_verified_delivery_and_replay_identity",
+        "transport_identity_headers_are_optional_hints",
+        "raw_payload_not_persisted",
+        "delivery_and_idempotency_deduplicated",
+        "normalized_event_checkpointed_before_owner_apply",
+        "processing_lease_compare_and_set",
+        "dead_letter_excluded_from_automatic_retry",
+        "operator_replay_requires_normalized_checkpoint"
       ],
       "execution_status": "static_locked_runtime_pending"
     }

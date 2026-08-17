@@ -37,7 +37,7 @@ Where `RequestContext` is available, diagnostics retain:
 - channel-slug presence and length;
 - locale presence and length.
 
-The missing-runtime diagnostic uses the same bounded context shape. Tenant, channel, slug, and locale values are not logged. Request-context extraction failures cannot carry a correlation ID because extraction itself failed, so that mapper retains only owner operation, stable code, boundary, and Rust error type.
+The missing-runtime diagnostic uses the same bounded context shape. In all native diagnostic paths, tenant, channel, slug, and locale values are not logged. Request-context extraction failures cannot carry a correlation ID because extraction itself failed, so that mapper retains only owner operation, stable code, boundary, and Rust error type.
 
 ## Preserved behavior
 

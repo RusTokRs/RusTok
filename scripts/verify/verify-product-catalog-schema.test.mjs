@@ -47,6 +47,7 @@ const fixtureFiles = [
   'crates/rustok-commerce/src/graphql/mutations/catalog.rs',
   'crates/rustok-commerce/src/graphql/mod.rs',
   'crates/rustok-commerce/src/graphql/query.rs',
+  'crates/rustok-commerce/src/graphql/product_catalog.rs',
   'crates/rustok-product/docs/implementation-plan.md',
   'crates/rustok-product/README.md',
   'crates/rustok-product/docs/README.md',

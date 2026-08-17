@@ -10,6 +10,13 @@ last_reviewed: 2026-08-15
 
 # `rustok-forum` canonical implementation plan
 
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
+- Evidence: `scripts/verify/verify-forum-admin-boundary.mjs` locks the forum fast boundary guardrail, including category interactive drag-and-drop owner-command integration.
+
 ## Canonical-source policy
 
 This file is the single source of truth for Forum product scope, Forum-owned

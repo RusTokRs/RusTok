@@ -1,5 +1,12 @@
 # Implementation plan for `rustok-index`
 
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Structural shape: `core_transport_ui`
+- Transport profile: temporary native-only; native/GraphQL admin parity is in progress.
+
 ## Mission
 
 `rustok-index` is the platform-owned cross-module relational index and query engine.

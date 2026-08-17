@@ -312,8 +312,9 @@ and decision packets, not another production-consumer or provider-health archite
   source. The default-runtime lifecycle is removed and source-level cache invalidation/read boundaries
   are connected; executed Pages gate/sanitizer/rollback/repair/cache proof, accepted observed-health
   evidence, Forum runtime evidence/admission execution, observed Wave and rollout evidence remain open.
-- **Structural shape:** `core_transport_ui` for browser host and `core_transport` for capability,
-  properties and publish contracts.
+- FFA status: `not_started`
+- FBA status: `boundary_ready`
+- Structural shape: `no_ui_boundary`
 - **Evidence:**
   - `admin/src/provider_status.rs`;
   - `admin/src/transport/mod.rs`;

@@ -407,6 +407,7 @@ impl PaymentProviderRegistry {
             ));
         }
 
+        // Transport identity values are untrusted hints verified against the provider result.
         let delivery_hint = request.delivery_id.clone();
         let replay_hint = request.idempotency_key.clone();
         let result = self

@@ -68,7 +68,7 @@ jobs:
           set -euo pipefail
           container=$(docker ps --filter publish=5432 --format '{{.ID}}' | head -n 1)
           test -n "$container"
-          docker exec "$container" psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres <<SQL
+          docker exec -i "$container" psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres <<SQL
           CREATE ROLE ${RUSTOK_BROWSER_DATABASE_ROLE}
             LOGIN
             PASSWORD '${RUSTOK_BROWSER_DATABASE_PASSWORD}'
@@ -172,7 +172,7 @@ jobs:
           set -euo pipefail
           container=$(docker ps --filter publish=5432 --format '{{.ID}}' | head -n 1)
           if [[ -n "$container" ]]; then
-            docker exec "$container" psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres <<SQL
+            docker exec -i "$container" psql --set ON_ERROR_STOP=1 --username postgres --dbname postgres <<SQL
             DROP DATABASE IF EXISTS ${RUSTOK_BROWSER_DATABASE} WITH (FORCE);
             DROP ROLE IF EXISTS ${RUSTOK_BROWSER_DATABASE_ROLE};
           SQL

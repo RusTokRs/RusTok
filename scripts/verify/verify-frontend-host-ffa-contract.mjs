@@ -358,7 +358,7 @@ assertContains(
 
 for (const packageImport of [
   "../../packages/blog/src",
-  "../../packages/cache/src",
+  "@rustok/cache-admin",
   "../../packages/commerce/src",
   "../../packages/email/src",
   "@rustok/events-admin",

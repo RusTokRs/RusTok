@@ -73,7 +73,7 @@ It is important to distinguish:
 | `customer` | `rustok-customer` | — |
 | `product` | `rustok-product` | `taxonomy` |
 | `profiles` | `rustok-profiles` | `media`, `social_graph`, `taxonomy` |
-| `social_graph` | `rustok-social-graph` | `outbox` |
+| `social_graph` | `rustok-social-graph` | `index`, `outbox` |
 | `reactions` | `rustok-reactions` | `outbox` |
 | `groups` | `rustok-groups` | — |
 | `region` | `rustok-region` | — |
@@ -99,7 +99,7 @@ It is important to distinguish:
 | `navigation` | `rustok-navigation` | `channel`, `outbox` |
 | `page_builder` | `rustok-page-builder` | — |
 | `taxonomy` | `rustok-taxonomy` | `content`, `outbox` |
-| `media` | `rustok-media` | — |
+| `media` | `rustok-media` | `outbox` |
 | `translation` | `rustok-translation` | — |
 | `seo` | `rustok-seo` | `content` |
 | `workflow` | `rustok-workflow` | — |

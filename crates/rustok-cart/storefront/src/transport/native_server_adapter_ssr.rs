@@ -132,6 +132,7 @@ fn customer_error(
         owner = "rustok_customer",
         owner_operation,
         consumer = CART_STOREFRONT_NATIVE_OWNER,
+        correlation_id = ?request_context.map(|context| context.correlation_id),
         request_context_present = request_context.is_some(),
         request_tenant_id_non_nil = ?request_context.map(|context| !context.tenant_id.is_nil()),
         tenant_id_non_nil = !tenant_id.is_nil(),
@@ -244,10 +245,7 @@ fn cart_error(
     };
 
     let error_type = std::any::type_name_of_val(&error);
-    let correlation_id = format!(
-        "cart-storefront-native-{owner_operation}-{}",
-        Uuid::new_v4()
-    );
+    let correlation_id = request_context.map(|context| context.correlation_id);
     let request_context_present = request_context.is_some();
     let request_tenant_id_non_nil = request_context.map(|context| !context.tenant_id.is_nil());
     let tenant_id_non_nil = !tenant_id.is_nil();
@@ -342,10 +340,7 @@ fn pricing_error(
             | rustok_api::PortErrorKind::InvariantViolation
     );
     let error_type = std::any::type_name_of_val(&error);
-    let correlation_id = format!(
-        "cart-storefront-pricing-{owner_operation}-{}",
-        Uuid::new_v4()
-    );
+    let correlation_id = request_context.map(|context| context.correlation_id);
     let request_context_present = request_context.is_some();
     let request_tenant_id_non_nil = request_context.map(|context| !context.tenant_id.is_nil());
     let tenant_id_non_nil = !tenant_id.is_nil();

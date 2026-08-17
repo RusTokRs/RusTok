@@ -220,38 +220,38 @@ pub async fn delete_product() {}
 
 function commerceQuerySource() {
   return `
-use rustok_product::ProductCatalogSchemaService;
+use rustok_product::product_schema_read_port;
 
 pub struct CommerceQuery;
 
 impl CommerceQuery {
-    async fn product_attributes(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn catalog_categories(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn product_attribute_schemas(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn product_effective_form(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn product_attribute_values(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
+    async fn product_attributes(&self, locale: String) { let _service = product_schema_read_port(); }
+    async fn catalog_categories(&self, locale: String) { let _service = product_schema_read_port(); }
+    async fn product_attribute_schemas(&self, locale: String) { let _service = product_schema_read_port(); }
+    async fn product_effective_form(&self, locale: String) { let _service = product_schema_read_port(); }
+    async fn product_attribute_values(&self, locale: String) { let _service = product_schema_read_port(); }
 }
 `;
 }
 
 function commerceCatalogMutationSource() {
   return `
-use rustok_product::ProductCatalogSchemaService;
+use rustok_product::ProductCatalogSchemaWritePort;
 
 pub struct CommerceCatalogMutation;
 
 impl CommerceCatalogMutation {
-    async fn create_product_attribute(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn create_product_attribute_option(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn create_catalog_category(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn create_product_attribute_schema(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn create_product_attribute_schema_group(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn create_catalog_category_attribute_group(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn set_catalog_category_schema_mode(&self) { let _service = ProductCatalogSchemaService::new; }
-    async fn bind_product_attribute_schema_attribute(&self) { let _service = ProductCatalogSchemaService::new; }
-    async fn bind_catalog_category_attribute(&self) { let _service = ProductCatalogSchemaService::new; }
-    async fn save_product_attribute_values(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
-    async fn clear_detached_product_attribute_values(&self, locale: String) { let _service = ProductCatalogSchemaService::new; }
+    async fn create_product_attribute(&self, locale: String) { let _service: &dyn ProductCatalogSchemaWritePort; }
+    async fn create_product_attribute_option(&self, locale: String) { let _service: &dyn ProductCatalogSchemaWritePort; }
+    async fn create_catalog_category(&self, locale: String) { let _service: &dyn ProductCatalogSchemaWritePort; }
+    async fn create_product_attribute_schema(&self, locale: String) { let _service: &dyn ProductCatalogSchemaWritePort; }
+    async fn create_product_attribute_schema_group(&self, locale: String) { let _service: &dyn ProductCatalogSchemaWritePort; }
+    async fn create_catalog_category_attribute_group(&self, locale: String) { let _service: &dyn ProductCatalogSchemaWritePort; }
+    async fn set_catalog_category_schema_mode(&self) { let _service: &dyn ProductCatalogSchemaWritePort; }
+    async fn bind_product_attribute_schema_attribute(&self) { let _service: &dyn ProductCatalogSchemaWritePort; }
+    async fn bind_catalog_category_attribute(&self) { let _service: &dyn ProductCatalogSchemaWritePort; }
+    async fn save_product_attribute_values(&self, locale: String) { let _service: &dyn ProductCatalogSchemaWritePort; }
+    async fn clear_detached_product_attribute_values(&self, locale: String) { let _service: &dyn ProductCatalogSchemaWritePort; }
 }
 `;
 }

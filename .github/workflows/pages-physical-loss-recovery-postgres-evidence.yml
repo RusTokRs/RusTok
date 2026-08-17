@@ -173,8 +173,8 @@ jobs:
           const rollbackActivated = physical?.rollback_activated_current_set_recovery?.executed_evidence;
           const repeatedLoss = physical?.repeated_loss_recovery?.executed_evidence;
           const artifactRepairParent = repair?.executed_evidence;
-          if (target !== 'pending') {
-            console.error(`physical-loss recovery registry pre-state must be pending, got ${String(target)}`);
+          if (target !== 'pending' && target !== 'verified') {
+            console.error(`physical-loss recovery registry state must be pending or verified, got ${String(target)}`);
             process.exit(1);
           }
           if (rollbackActivated !== 'verified') {

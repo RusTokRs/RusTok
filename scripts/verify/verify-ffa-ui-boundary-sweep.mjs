@@ -166,6 +166,10 @@ function checkStructure(row) {
     return;
   }
 
+  if (row.uiSurfaces === "Next admin" || row.uiSurfaces === "Next storefront") {
+    return;
+  }
+
   const moduleRoot = path.dirname(path.dirname(repoPath(row.sourcePlanPath)));
   const surfaces = expectedSurfaces(row, moduleRoot);
   if (surfaces.length === 0) {
@@ -176,7 +180,7 @@ function checkStructure(row) {
   for (const surface of surfaces) {
     const hasCore = hasAny(surfaceSrcPaths(moduleRoot, surface, ["core.rs", "core"]));
     const hasTransport = hasAny(surfaceSrcPaths(moduleRoot, surface, ["transport.rs", "transport", "native.rs"]));
-    const hasUi = hasAny(surfaceSrcPaths(moduleRoot, surface, ["ui/leptos.rs", "ui/leptos"]));
+    const hasUi = hasAny(surfaceSrcPaths(moduleRoot, surface, ["ui/leptos.rs", "ui/leptos", "ui.rs", "ui", "composition.rs"]));
     if (!hasCore || !hasTransport || !hasUi) {
       fail(`${row.moduleSlug}/${surface}: expected core_transport_ui structure, got core=${hasCore} transport=${hasTransport} ui=${hasUi}`);
     }

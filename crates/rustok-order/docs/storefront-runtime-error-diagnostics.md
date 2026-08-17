@@ -18,7 +18,7 @@ Context extraction failures record only:
 - Order storefront owner and the exact extraction operation;
 - a stable internal code and native boundary.
 
-Complete context and runtime errors are not logged.
+In all diagnostic branches, complete context and runtime errors are not logged.
 
 When `complete_storefront_checkout_with_product_port` returns `StorefrontStagedCheckoutRuntimeError`, the native adapter records:
 
@@ -32,7 +32,7 @@ When `complete_storefront_checkout_with_product_port` returns `StorefrontStagedC
 - the stable public checkout code and retryability;
 - the stable internal code and native boundary.
 
-Tenant and request-context identity values are not logged. Channel IDs, channel slugs, locale text, idempotency keys, and complete framework or owner errors are absent from the mounted diagnostic events.
+Raw tenant and request-context identity values are not logged. Channel IDs, channel slugs, locale text, idempotency keys, and complete framework or owner errors are absent from the mounted diagnostic events.
 
 The returned `ServerFnError` remains exactly:
 

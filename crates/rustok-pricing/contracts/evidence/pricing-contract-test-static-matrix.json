@@ -34,6 +34,106 @@
         "context_deadline_preserved"
       ],
       "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "list_active_price_list_projections",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "read_admin_product_pricing_projection",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "read_storefront_product_pricing_projection",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "preview_variant_discount",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "upsert_variant_price",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "set_price_list_scope",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "apply_variant_discount",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
+      "operation": "set_price_list_percentage_rule",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved",
+        "write_idempotency_required"
+      ],
+      "execution_status": "static_locked_runtime_pending"
     }
   ],
   "fallback_smoke": {

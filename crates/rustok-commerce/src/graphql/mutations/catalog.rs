@@ -50,12 +50,12 @@ fn product_command_runtime(ctx: &Context<'_>) -> Result<ProductCatalogCommandRun
 
 fn product_command_context(
     ctx: &Context<'_>,
-    tenant_id: Uuid,
-    user_id: Uuid,
+    actor: (Uuid, Uuid),
     product_id: Option<Uuid>,
     idempotency_key: String,
     operation: &'static str,
 ) -> Result<PortContext> {
+    let (tenant_id, user_id) = actor;
     let caller_key = idempotency_key.trim();
     if caller_key.is_empty() {
         return Err(invalid_product_idempotency_key(
@@ -111,16 +111,14 @@ fn product_command_context(
 
 fn product_schema_write_context(
     ctx: &Context<'_>,
-    tenant_id: Uuid,
-    user_id: Uuid,
+    actor: (Uuid, Uuid),
     product_id: Option<Uuid>,
     idempotency_key: String,
     operation: &'static str,
 ) -> Result<PortContext> {
     product_command_context(
         ctx,
-        tenant_id,
-        user_id,
+        actor,
         product_id,
         idempotency_key,
         operation,
@@ -227,8 +225,7 @@ impl CommerceCatalogMutation {
         let domain_input = convert_create_product_input(input)?;
         let port_context = product_command_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             None,
             idempotency_key,
             "create_product",
@@ -290,8 +287,7 @@ impl CommerceCatalogMutation {
 
         let port_context = product_command_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             Some(id),
             idempotency_key,
             "update_product",
@@ -321,8 +317,7 @@ impl CommerceCatalogMutation {
 
         let port_context = product_command_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             Some(id),
             idempotency_key,
             "publish_product",
@@ -352,8 +347,7 @@ impl CommerceCatalogMutation {
 
         let port_context = product_command_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             Some(id),
             idempotency_key,
             "delete_product",
@@ -409,8 +403,7 @@ impl CommerceCatalogMutation {
         };
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             None,
             idempotency_key,
             "create_attribute",
@@ -450,8 +443,7 @@ impl CommerceCatalogMutation {
         };
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             None,
             idempotency_key,
             "create_attribute_option",
@@ -497,8 +489,7 @@ impl CommerceCatalogMutation {
         };
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             None,
             idempotency_key,
             "create_category",
@@ -535,8 +526,7 @@ impl CommerceCatalogMutation {
         };
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             None,
             idempotency_key,
             "create_schema",
@@ -574,8 +564,7 @@ impl CommerceCatalogMutation {
         };
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             None,
             idempotency_key,
             "create_schema_group",
@@ -615,8 +604,7 @@ impl CommerceCatalogMutation {
         };
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             None,
             idempotency_key,
             "create_category_group",
@@ -651,8 +639,7 @@ impl CommerceCatalogMutation {
         };
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             None,
             idempotency_key,
             "set_category_schema_mode",
@@ -692,8 +679,7 @@ impl CommerceCatalogMutation {
         };
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             None,
             idempotency_key,
             "bind_schema_attribute",
@@ -734,8 +720,7 @@ impl CommerceCatalogMutation {
         };
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             None,
             idempotency_key,
             "bind_category_attribute",
@@ -770,8 +755,7 @@ impl CommerceCatalogMutation {
             .collect::<Result<Vec<_>>>()?;
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             Some(product_id),
             idempotency_key,
             "save_product_attribute_values",
@@ -807,8 +791,7 @@ impl CommerceCatalogMutation {
         let (tenant_id, user_id) = product_mutation_actor(ctx)?;
         let port_context = product_schema_write_context(
             ctx,
-            tenant_id,
-            user_id,
+            (tenant_id, user_id),
             Some(product_id),
             idempotency_key,
             "clear_detached_product_attribute_values",

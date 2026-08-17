@@ -331,6 +331,7 @@ const createFixtureRoot = ({
   for (const sourcePath of [
     'crates/rustok-commerce/src/services/checkout.rs',
     'crates/rustok-commerce/src/services/payment_orchestration.rs',
+    'crates/rustok-commerce/src/services/journaled_payment_provider.rs',
   ]) {
     write(sourcePath, readFileSync(join(process.cwd(), ...sourcePath.split('/')), 'utf8'));
   }

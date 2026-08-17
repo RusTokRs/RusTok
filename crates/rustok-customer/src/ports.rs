@@ -89,6 +89,7 @@ impl CustomerReadPort for crate::CustomerService {
         request: CustomerProjectionRequest,
     ) -> Result<CustomerResponse, PortError> {
         let owner_operation = "read_customer_projection";
+        context.require_policy(PortCallPolicy::read())?;
         require_customer_read_policy(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         self.get_customer(tenant_id, request.customer_id)
@@ -102,6 +103,7 @@ impl CustomerReadPort for crate::CustomerService {
         request: CustomerUserProjectionRequest,
     ) -> Result<CustomerResponse, PortError> {
         let owner_operation = "read_customer_projection_by_user";
+        context.require_policy(PortCallPolicy::read())?;
         require_customer_read_policy(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         self.get_customer_by_user(tenant_id, request.user_id)
@@ -115,6 +117,7 @@ impl CustomerReadPort for crate::CustomerService {
         request: CustomerListProjectionRequest,
     ) -> Result<CustomerListProjectionResponse, PortError> {
         let owner_operation = "list_customer_projections";
+        context.require_policy(PortCallPolicy::read())?;
         require_customer_read_policy(&context, owner_operation)?;
         validate_customer_list_projection_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
@@ -138,6 +141,7 @@ impl CustomerReadPort for crate::CustomerService {
         request: CustomerProfileEnrichmentRequest,
     ) -> Result<Vec<CustomerProfileEnrichment>, PortError> {
         let owner_operation = "list_profile_enrichment";
+        context.require_policy(PortCallPolicy::read())?;
         require_customer_read_policy(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         crate::CustomerService::list_profile_enrichment(self, tenant_id, &request.user_ids)

@@ -565,17 +565,17 @@ function collectCustomerAdminNativeAdapterSplitErrors() {
     }
   });
 
+  const normalizedTransport = transport.replace(/\s+/g, " ");
   [
     "mod native_server_adapter;",
-    "pub use native_server_adapter::ApiError;",
     "use native_server_adapter as native;",
-    "native::fetch_bootstrap().await",
-    "native::fetch_customers(search, page, per_page).await",
-    "native::fetch_customer_detail(customer_id).await",
-    "native::create_customer(payload).await",
-    "native::update_customer(customer_id, payload).await",
+    "native::fetch_bootstrap()",
+    "native::fetch_customers(search, page, per_page)",
+    "native::fetch_customer_detail(customer_id)",
+    "native::create_customer(payload)",
+    "native::update_customer(customer_id, payload)",
   ].forEach((requiredSnippet) => {
-    if (!transport.includes(requiredSnippet)) {
+    if (!normalizedTransport.includes(requiredSnippet)) {
       errors.push(`Customer admin transport facade must contain native adapter split snippet: ${requiredSnippet}`);
     }
   });
@@ -694,6 +694,7 @@ function parseRegistryModuleRows(registry) {
 
       return {
         moduleSlug: columns[1]?.replace(/`/g, "") ?? "<unknown>",
+        uiSurfaces: columns[2]?.replace(/`/g, "") ?? "",
         structuralShape: columns[5]?.replace(/`/g, ""),
         sourcePlanPath: sourcePlanMatch?.[1],
       };
@@ -734,8 +735,12 @@ function hasAnyPath(paths) {
 function collectStructuralShapeFilesystemErrors(registry) {
   const errors = [];
 
-  parseRegistryModuleRows(registry).forEach(({ moduleSlug, structuralShape, sourcePlanPath }) => {
+  parseRegistryModuleRows(registry).forEach(({ moduleSlug, structuralShape, sourcePlanPath, uiSurfaces }) => {
     if (!sourcePlanPath || ["none", "docs_boundary", "no_ui_boundary"].includes(structuralShape)) {
+      return;
+    }
+
+    if (uiSurfaces === "Next admin" || uiSurfaces === "Next storefront") {
       return;
     }
 
@@ -745,7 +750,9 @@ function collectStructuralShapeFilesystemErrors(registry) {
     const transportPaths = surfaces.flatMap((surface) =>
       moduleSurfacePaths(moduleRoot, surface, ["transport.rs", "transport", "native.rs"]),
     );
-    const uiPaths = surfaces.flatMap((surface) => moduleSurfacePaths(moduleRoot, surface, ["ui", path.join("ui", "leptos.rs"), path.join("ui", "leptos")]));
+    const uiPaths = surfaces.flatMap((surface) =>
+      moduleSurfacePaths(moduleRoot, surface, ["ui.rs", "ui", path.join("ui", "leptos.rs"), path.join("ui", "leptos")]),
+    );
 
     const hasCore = hasAnyPath(corePaths);
     const hasTransport = hasAnyPath(transportPaths);

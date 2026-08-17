@@ -13,10 +13,10 @@
       "contract_version": "product.catalog_read.v1",
       "ports": ["ProductCatalogReadPort"],
       "operations": ["read_product_projection", "read_variant_product_projection", "list_published_products"],
-      "fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
-      "degraded_modes": ["use_cart_product_snapshot", "show_product_refresh_required", "skip_product_enrichment"],
-      "consumer_fallback_profiles": ["embedded_native", "graphql_checkout_compat", "graphql_storefront_compat"],
-      "consumer_degraded_modes": ["use_cart_product_snapshot", "show_product_refresh_required"]
+      "fallback_profiles": ["embedded_native"],
+      "degraded_modes": ["generate_from_prompt_only", "skip_catalog_enrichment", "require_operator_review"],
+      "consumer_fallback_profiles": ["embedded_native"],
+      "consumer_degraded_modes": []
     },
     {
       "provider_module": "pricing",

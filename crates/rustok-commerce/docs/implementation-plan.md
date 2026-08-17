@@ -2,6 +2,32 @@
 
 Last reviewed: 2026-08-08
 
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
+- Consumer registry: `crates/rustok-commerce/contracts/commerce-fba-registry.json`
+- Provider registries:
+  - `crates/rustok-payment/contracts/payment-fba-registry.json`
+  - `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`
+  - `crates/rustok-order/contracts/order-fba-registry.json`
+  - `crates/rustok-pricing/contracts/pricing-fba-registry.json`
+  - `crates/rustok-inventory/contracts/inventory-fba-registry.json`
+  - `crates/rustok-product/contracts/product-fba-registry.json`
+  - `crates/rustok-customer/contracts/customer-fba-registry.json`
+  - `crates/rustok-cart/contracts/cart-fba-registry.json`
+
+## Payment workstream
+
+- Payment storefront and webhook boundary is guarded by `scripts/verify/verify-payment-storefront-boundary.mjs`.
+- Durable webhook event ingress relies on signature-verified provider result identities instead of untrusted transport headers.
+- Refund creation identity and refund `creation_key` are guarded by `scripts/verify/verify-payment-refund-identity.mjs`.
+- Provider outcome lifecycle and error taxonomy are guarded by `scripts/verify/verify-payment-provider-outcome-contract.mjs`.
+- Stripe payment provider runtime attachment is guarded by `scripts/verify/verify-payment-stripe-runtime.mjs`.
+- Commerce storefront transport handoff and native adapter `storefront/src/transport/native_server_adapter.rs` are guarded by `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`.
+- - [x] Update the legacy GraphQL runtime parity refund mutation helper to pass explicit idempotency keys.
+
 ## Source of truth
 
 This file is the only human-maintained source of truth for ecommerce execution

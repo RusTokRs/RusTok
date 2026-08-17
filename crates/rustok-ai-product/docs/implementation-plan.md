@@ -59,8 +59,8 @@ their typed code and retryability while catalog enrichment is skipped. The
 production result remains review-required and non-persistent. On 2026-07-29 the
 repository maintainer-attested that
 `cargo test -p rustok-ai --features server --lib remote_product_` passed. The
-implementation agent did not independently execute it and raw logs were not
-retained. The registry keeps the base `source_complete_execution_pending`
+implementation agent did not independently execute it and raw logs were not retained.
+The registry keeps the base `source_complete_execution_pending`
 production status while `maintainer_harness_status` records the bounded harness
 result; authenticated separate-process Product provider execution remains open.
 

@@ -44,8 +44,8 @@ const plan = read(planPath);
 const packageJson = read(packagePath);
 
 for (const marker of [
-  'payment-stripe = ["mod-payment", "rustok-payment/stripe", "dep:rustok-secrets"]',
-  'rustok-secrets   = { workspace = true, optional = true }',
+  'payment-stripe = ["mod-payment", "rustok-payment/stripe"]',
+  'rustok-secrets.workspace = true',
 ]) {
   requireMarker(cargo, marker, `${cargoPath}: missing ${marker}`);
 }

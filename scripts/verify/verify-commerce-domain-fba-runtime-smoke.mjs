@@ -64,6 +64,7 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
   const graphqlMutationHelpersSource = read('crates/rustok-commerce/src/graphql/mutations/helpers.rs');
   const pricingQuerySource = read('crates/rustok-commerce/src/graphql/query.rs');
   const storefrontControllerSource = read('crates/rustok-commerce/src/controllers/store/mod.rs');
+  const storefrontLineItemResolutionSource = read('crates/rustok-commerce/src/controllers/store/line_item_resolution.rs');
   const storefrontCheckoutRuntimeSource = read('crates/rustok-commerce/src/storefront_checkout_runtime.rs');
 
   if (trace.schema_version !== 1) fail('commerce-domain invocation trace schema_version drift');
@@ -334,7 +335,7 @@ export function verifyCommerceDomainFbaRuntimeSmoke({ root = defaultRoot, module
     ['REST storefront repricing helper', storefrontControllerSource, 'reprice_storefront_cart_line_items_for_db'],
     [
       'REST storefront add-line-item helper',
-      storefrontControllerSource,
+      storefrontLineItemResolutionSource,
       'resolve_store_line_item_input',
       cartStorefrontRestSource,
       'add_cart_line_item',

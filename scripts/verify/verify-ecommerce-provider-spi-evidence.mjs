@@ -571,10 +571,10 @@ const verifyProviderSpiEvidence = ({
 
 export function verifyEcommerceProviderSpiEvidence({ root = defaultRoot, modules = defaultModules } = {}) {
   const commerceCheckoutSource = readText(root, 'crates/rustok-commerce/src/services/checkout.rs');
-  const commercePaymentOrchestrationSource = readText(
-    root,
-    'crates/rustok-commerce/src/services/payment_orchestration.rs',
-  );
+  const commercePaymentOrchestrationSource = [
+    readText(root, 'crates/rustok-commerce/src/services/payment_orchestration.rs'),
+    readText(root, 'crates/rustok-commerce/src/services/journaled_payment_provider.rs'),
+  ].join('\n');
 
   for (const module of modules) {
     const registryPath = `crates/rustok-${module}/contracts/${module}-fba-registry.json`;

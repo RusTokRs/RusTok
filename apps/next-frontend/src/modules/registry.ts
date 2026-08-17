@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { storefrontGraphql } from "@/shared/lib/graphql";
 
 export type StorefrontSlot = "home:afterHero";
 
@@ -8,6 +9,7 @@ export type StorefrontRenderContext = {
   enabledModules: string[];
   tenantSlug: string | null;
   tenantId: string | null;
+  graphql: typeof storefrontGraphql;
 };
 
 export type StorefrontModule = {

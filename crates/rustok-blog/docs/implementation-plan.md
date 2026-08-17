@@ -1,5 +1,11 @@
 # rustok-blog implementation plan
 
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
+
 ## Current state
 
 `rustok-blog` owns localized posts, Blog categories and tags, channel-aware

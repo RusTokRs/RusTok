@@ -3,6 +3,13 @@
 Date: 2026-08-08  
 Status: `in_progress / contribution-manifest-generation-source-ready / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / repeated-artifact-loss-recovery-source-ready / execution-rollout-pending`
 
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
+- Evidence: `scripts/verify/verify-pages-ui-boundary.mjs` locks the UI boundary; no legacy editor is retained.
+
 ## Scope
 
 Pages owns page identity, localization, document revisions, lifecycle, route history, immutable published bindings, artifact audit/rebuild/activation/rollback, caches, authenticated inline grants/save transport and the module-owned inline asset HTTP contract.

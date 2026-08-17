@@ -24,7 +24,7 @@ const createFixtureRoot = ({ mutateRegistry, mutateCommerceRegistry } = {}) => {
     schema_version: 1,
     module: moduleSlug,
     role: 'provider',
-    status: 'in_progress',
+    status: 'boundary_ready',
     contract_version: 'pricing.read_projection.v1',
     ports: [
       {

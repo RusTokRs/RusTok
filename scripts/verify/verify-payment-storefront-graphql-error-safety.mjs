@@ -103,7 +103,7 @@ for (const operation of operations) {
     block.indexOf(operation.nativeCall),
     block.indexOf('GraphqlCallContext::new('),
     block.indexOf(operation.graphqlCall),
-    block.indexOf('context.map_error(error)'),
+    block.indexOf('|error| context.map_error(error)'),
   ];
   if (!indexes.every((value, index) => value >= 0 && (index === 0 || indexes[index - 1] < value))) {
     failures.push(`${operation.label}: expected native closure then context -> GraphQL call -> mapping order`);
@@ -113,7 +113,7 @@ for (const operation of operations) {
 if (countText(transport, 'GraphqlCallContext::new(') !== 3) {
   failures.push('all three GraphQL public operations must construct a call context');
 }
-if (countText(transport, 'context.map_error(error)') !== 3) {
+if (countText(transport, '|error| context.map_error(error)') !== 3) {
   failures.push('all three GraphQL public operations must route errors through the safety policy');
 }
 if (countText(adapter, 'PaymentTransportError::Graphql(error.to_string())') !== 3) {

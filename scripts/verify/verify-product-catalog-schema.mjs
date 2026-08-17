@@ -74,6 +74,7 @@ const commerceSafeOrderHelpersPath =
 const commerceCatalogMutationPath = 'crates/rustok-commerce/src/graphql/mutations/catalog.rs';
 const commerceGraphqlModulePath = 'crates/rustok-commerce/src/graphql/mod.rs';
 const commerceGraphqlQueryPath = 'crates/rustok-commerce/src/graphql/query.rs';
+const commerceProductCatalogPath = 'crates/rustok-commerce/src/graphql/product_catalog.rs';
 
 const productMigration = read(productMigrationPath);
 const productMigrationsMod = read(productMigrationsModPath);
@@ -132,6 +133,7 @@ const commerceSafeOrderHelpers = read(commerceSafeOrderHelpersPath);
 const commerceCatalogMutation = read(commerceCatalogMutationPath);
 const commerceGraphqlModule = read(commerceGraphqlModulePath);
 const commerceGraphqlQuery = read(commerceGraphqlQueryPath);
+const commerceProductCatalog = read(commerceProductCatalogPath);
 const plan = read('crates/rustok-product/docs/implementation-plan.md');
 const docsReadme = read('crates/rustok-product/docs/README.md');
 const productReadme = read('crates/rustok-product/README.md');
@@ -576,7 +578,7 @@ for (const marker of [
 for (const marker of [
   'validate_product_shipping_profile_input(',
   'input.shipping_profile_slug.as_deref()',
-  '.publish_product(tenant_id, user_id, id)',
+  '.publish_product(port_context.clone(), id)',
   'PRODUCT_MODULE_SLUG as MODULE_SLUG',
   'product_mutation_actor(ctx)',
 ]) {
@@ -594,7 +596,7 @@ forbidSource(commerceCatalogMutation, 'tenant_id: Uuid', commerceCatalogMutation
 forbidSource(commerceCatalogMutation, 'user_id: Uuid', commerceCatalogMutationPath);
 for (const marker of [
   'struct ProductWriteTransaction',
-  'publish_in_tx(&self.transaction',
+  'publish_in_tx_with_envelope_id(&self.transaction',
   'async fn commit(self)',
 ]) {
   requireSource(productWriteTransaction, marker, productWriteTransactionPath);
@@ -613,19 +615,19 @@ for (const marker of [
 for (const marker of [
   'pub fn map_product_public_error(',
   '"PRODUCT_OPERATION_FAILED"',
-  '"product service operation failed"',
+  '"product service operation failed with bounded diagnostics"',
   'correlation_id',
 ]) {
   requireSource(productPublicError, marker, productPublicErrorPath);
 }
 for (const marker of [
-  'map_product_service_error(error, "product_catalog_mutation")',
-  'map_product_service_error(error, "product_query")',
+  'product_command_port_error(',
+  'product_catalog_port_error(',
 ]) {
   requireSource(
-    marker.includes('mutation') ? commerceCatalogMutation : commerceGraphqlQuery,
+    marker.includes('command') ? commerceCatalogMutation : commerceProductCatalog,
     marker,
-    marker.includes('mutation') ? commerceCatalogMutationPath : commerceGraphqlQueryPath,
+    marker.includes('command') ? commerceCatalogMutationPath : commerceProductCatalogPath,
   );
 }
 

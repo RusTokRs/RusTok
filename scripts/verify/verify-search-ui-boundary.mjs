@@ -17,7 +17,15 @@ function repoPath(relativePath) {
 }
 
 function readRepo(relativePath) {
-  return readFileSync(repoPath(relativePath), "utf8");
+  const content = readFileSync(repoPath(relativePath), "utf8");
+  if (relativePath.endsWith(".rs") && content.includes("include!(")) {
+    const dir = path.dirname(repoPath(relativePath));
+    return content.replace(/include!\("([^"]+)"\);/g, (_, incPath) => {
+      const fullIncPath = path.resolve(dir, incPath);
+      return existsSync(fullIncPath) ? readFileSync(fullIncPath, "utf8") : "";
+    });
+  }
+  return content;
 }
 
 function fail(message) {
@@ -605,7 +613,7 @@ function assertSearchUiCatalogTransportContract() {
 
   for (const marker of [
     "pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions}",
-    "pub use transport::fetch_catalog_search_options",
+    "pub use legacy_transport::*",
   ]) {
     assertContains(productAdminLib, marker, `${productAdminLibPath}: product Leptos metadata export marker missing ${marker}`);
   }
@@ -701,13 +709,14 @@ function assertSearchUiCatalogTransportContract() {
 
   for (const marker of [
     "async fn storefront_catalog_search_options",
-    'require_module_enabled(ctx, "product")',
+    "require_module_enabled(ctx, PRODUCT_MODULE_SLUG)",
     "require_storefront_channel_enabled",
-    "locale.trim().is_empty()",
+    "locale.is_empty()",
     '"locale is required"',
     "ctx.data::<TenantContext>()",
-    "list_categories(tenant.id, locale.trim())",
-    "list_attributes(tenant.id, locale.trim())",
+    "schema_read_port",
+    "list_categories(port_context",
+    "list_attributes(port_context",
     "attribute.is_filterable || attribute.is_sortable",
   ]) {
     assertContains(commerceQuery, marker, `${commerceQueryPath}: public storefront catalog metadata GraphQL marker missing ${marker}`);

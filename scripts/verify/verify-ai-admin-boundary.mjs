@@ -113,7 +113,7 @@ for (const marker of [
   "pub fn ai_host_runtime_from_context",
   "shared_get::<TransactionalEventBus>",
   "shared_get::<ModuleRegistry>",
-  "shared_get::<StorageService>",
+  "shared_get::<StorageRuntime>",
   "shared_get::<alloy::SharedAlloyRuntime>",
 ]) {
   assertContains(runtimeFactory, marker, `${runtimeFactoryPath}: AI-owned runtime factory must resolve ${marker}`);

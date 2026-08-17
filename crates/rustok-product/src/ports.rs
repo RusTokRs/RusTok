@@ -233,9 +233,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: ProductProjectionRequest,
     ) -> Result<ProductResponse, PortError> {
         let owner_operation = READ_PRODUCT_PROJECTION_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
         self.get_product_with_locale_fallback(
@@ -254,9 +252,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: VariantProductProjectionRequest,
     ) -> Result<ProductResponse, PortError> {
         let owner_operation = READ_VARIANT_PRODUCT_PROJECTION_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let variant = product_variant::Entity::find_by_id(request.variant_id)
             .filter(product_variant::Column::TenantId.eq(tenant_id))
@@ -284,9 +280,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
         request: PublishedProductsRequest,
     ) -> Result<StorefrontProductList, PortError> {
         let owner_operation = LIST_PUBLISHED_PRODUCTS_OPERATION;
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| product_context_error(&context, owner_operation, error))?;
+        context.require_policy(PortCallPolicy::read())?;
         validate_published_products_request(&context, owner_operation, &request)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());

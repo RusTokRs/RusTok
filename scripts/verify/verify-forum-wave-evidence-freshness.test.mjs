@@ -307,7 +307,7 @@ read_surfaces_guarantee = "forum_owned_list_read_topic_paths_stay_available_when
   writeFixture(
     root,
     "crates/rustok-forum/docs/implementation-plan.md",
-    "## Current state\n## FFA/FBA status\nPage Builder readiness\n## Open results\n",
+    "## Current state\n## FFA/FBA status\nPage Builder readiness\n## Immediate next action\n## Open results\n",
   );
   writeFixture(
     root,

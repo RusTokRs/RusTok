@@ -1,5 +1,11 @@
 # Implementation plan for `rustok-profiles`
 
+## FFA/FBA status
+
+- FFA status: `in_progress`
+- FBA status: `not_started`
+- Structural shape: `core_transport_ui`
+
 ## Current state
 
 `rustok-profiles` owns profile storage, translations, tags, handles, visibility

@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const script = path.resolve("scripts/verify/verify-region-storefront-boundary.mjs");
+const repoRoot = path.resolve(".");
 function put(root, file, content) {
   const target = path.join(root, file);
   mkdirSync(path.dirname(target), { recursive: true });
@@ -21,11 +22,12 @@ function fixture({ missingSelectedTransport = false, rawUi = false, leptosCore =
   const native = "native_server_adapter::fetch_regions";
   const graphql = "graphql_adapter::fetch_regions";
   put(root, "crates/rustok-region/storefront/src/transport/mod.rs", `mod graphql_adapter; mod native_server_adapter; UiTransportPath::NativeServer UiTransportPath::Graphql ${native} ${graphql} ${missingSelectedTransport ? "" : "execute_selected_transport"}`);
-  put(root, "crates/rustok-region/storefront/src/transport/native_server_adapter.rs", "fetch_storefront_regions_server HostRuntimeContext runtime_ctx.db_clone()");
+  put(root, "crates/rustok-region/storefront/src/transport/native_server_adapter.rs", readFileSync(path.join(repoRoot, "crates/rustok-region/storefront/src/transport/native_server_adapter.rs"), "utf8"));
   put(root, "crates/rustok-region/storefront/src/transport/graphql_adapter.rs", "fetch_storefront_regions_graphql");
   put(root, "crates/rustok-region/docs/implementation-plan.md", "verify-region-storefront-boundary.mjs");
   put(root, "docs/modules/registry.md", "verify-region-storefront-boundary.mjs");
-  put(root, "crates/rustok-region/storefront/Cargo.toml", "[package]\nname = \"rustok-region-storefront-fixture\"\nversion = \"0.1.0\"\n");
+  put(root, "crates/rustok-region/storefront/Cargo.toml", readFileSync(path.join(repoRoot, "crates/rustok-region/storefront/Cargo.toml"), "utf8"));
+  put(root, "crates/rustok-region/contracts/evidence/storefront-native-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/rustok-region/contracts/evidence/storefront-native-error-safety-source.json"), "utf8"));
   put(root, "package.json", JSON.stringify({ scripts: {
     "verify:region:storefront-boundary": "node verifier",
     "test:verify:region:storefront-boundary": "node tests",

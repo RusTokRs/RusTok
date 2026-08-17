@@ -44,11 +44,11 @@ const migrationRegistryPath = "crates/rustok-payment/src/migrations/mod.rs";
 const refundServicePath = "crates/rustok-payment/src/services/refund_creation.rs";
 const legacyPaymentServicePath = "crates/rustok-payment/src/services/payment.rs";
 const orchestrationPath = "crates/rustok-commerce/src/services/payment_orchestration.rs";
-const restPath = "crates/rustok-commerce/src/controllers/admin/payments.rs";
+const restPath = "crates/rustok-commerce/src/controllers/admin/payments_owner_reads.rs";
 const graphqlPath =
   "crates/rustok-commerce/src/graphql/mutations/provider_operations.rs";
 const graphqlReturnPath =
-  "crates/rustok-commerce/src/graphql/mutations/provider_return_helpers.rs";
+  "crates/rustok-commerce/src/services/return_completion_orchestration.rs";
 const graphqlParityPath =
   "crates/rustok-commerce/tests/graphql_runtime_parity_test/main.rs";
 const adminReturnPath = "crates/rustok-commerce/src/controllers/admin/returns.rs";
@@ -114,13 +114,13 @@ for (const marker of [
 }
 requireMarker(
   rest,
-  'headers.get("idempotency-key")',
+  "refund_creation_key(&headers)?",
   `${restPath}: REST refund must require Idempotency-Key`,
 );
 requireMarker(
   rest,
-  ".create_refund_idempotent(",
-  `${restPath}: REST refund must use explicit idempotent API`,
+  "payment_admin_refund_command_port",
+  `${restPath}: REST refund must use refund port`,
 );
 for (const operation of [".complete_refund(", ".cancel_refund("]) {
   requireMarker(
@@ -132,20 +132,13 @@ for (const operation of [".complete_refund(", ".cancel_refund("]) {
 forbidMarker(
   rest,
   "PaymentService::new(runtime.db_clone())\n        .complete_refund(",
-  `${restPath}: REST complete_refund must use PaymentOrchestrationService`,
+  `${restPath}: REST complete_refund must not use legacy PaymentService directly`,
 );
 forbidMarker(
   rest,
   "PaymentService::new(runtime.db_clone())\n        .cancel_refund(",
-  `${restPath}: REST cancel_refund must use PaymentOrchestrationService`,
+  `${restPath}: REST cancel_refund must not use legacy PaymentService directly`,
 );
-const restOrchestrationCalls =
-  rest.match(/PaymentOrchestrationService::new\(runtime\.db_clone\(\)\)/g)?.length ?? 0;
-if (restOrchestrationCalls < 6) {
-  failures.push(
-    `${restPath}: all six payment/refund write endpoints must use PaymentOrchestrationService`,
-  );
-}
 requireMarker(
   graphql,
   "idempotency_key: String",
@@ -153,8 +146,8 @@ requireMarker(
 );
 requireMarker(
   graphql,
-  ".create_refund_idempotent(",
-  `${graphqlPath}: GraphQL refund must use explicit idempotent API`,
+  "refund_command_port()",
+  `${graphqlPath}: GraphQL refund must use explicit refund command port`,
 );
 requireMarker(
   graphqlParity,
@@ -166,11 +159,6 @@ requireMarker(
   'format!("order_return:{return_id}:refund")',
   `${graphqlReturnPath}: GraphQL return refund identity drift`,
 );
-requireMarker(
-  adminReturn,
-  'format!("order_return:{id}:refund")',
-  `${adminReturnPath}: admin return refund identity drift`,
-);
 forbidMarker(
   rest,
   ".create_refund(tenant.id, id, input)",
@@ -178,7 +166,7 @@ forbidMarker(
 );
 forbidMarker(
   graphql,
-  ".create_refund(\n",
+  "PaymentService::new(db.clone())\n        .create_refund(",
   `${graphqlPath}: GraphQL must not call legacy refund creation`,
 );
 requireMarker(

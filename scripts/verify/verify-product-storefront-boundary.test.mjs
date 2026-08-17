@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -135,18 +135,39 @@ fn product_title_search_condition() {}
 `;
 }
 
+const repoRoot = path.resolve(".");
+
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-storefront-boundary-"));
   writeFixtureFile(root, "crates/rustok-product/storefront/src/lib.rs", libSource());
   writeFixtureFile(root, "crates/rustok-product/storefront/src/catalog_controls.rs", catalogControlsSource());
   writeFixtureFile(root, "crates/rustok-product/storefront/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-product/storefront/src/ui/leptos.rs", uiSource(options));
-  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/mod.rs", transportSource());
-  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/catalog_list_native.rs", catalogListNativeSource(options));
-  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
-  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/native_server_adapter.rs", nativeServerAdapterSource());
+  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/mod.rs", readFileSync(path.join(repoRoot, "crates/rustok-product/storefront/src/transport/mod.rs"), "utf8"));
+  const realCatalogList = readFileSync(path.join(repoRoot, "crates/rustok-product/storefront/src/transport/catalog_list_native.rs"), "utf8");
+  writeFixtureFile(
+    root,
+    "crates/rustok-product/storefront/src/transport/catalog_list_native.rs",
+    options.omitNativeSearch
+      ? realCatalogList.replace(".list_published_products_with_query(", ".list_published_products(")
+      : realCatalogList,
+  );
+  const realGqlAdapter = readFileSync(path.join(repoRoot, "crates/rustok-product/storefront/src/transport/graphql_adapter.rs"), "utf8");
+  writeFixtureFile(
+    root,
+    "crates/rustok-product/storefront/src/transport/graphql_adapter.rs",
+    options.omitGraphqlSearch
+      ? realGqlAdapter.replace("search: controls.search,", "search: None,")
+      : realGqlAdapter,
+  );
+  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/graphql_error_safety.rs", readFileSync(path.join(repoRoot, "crates/rustok-product/storefront/src/transport/graphql_error_safety.rs"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/native_server_adapter.rs", readFileSync(path.join(repoRoot, "crates/rustok-product/storefront/src/transport/native_server_adapter.rs"), "utf8"));
   writeFixtureFile(root, "crates/rustok-product/src/services/catalog/queries.rs", catalogQueriesSource());
-  writeFixtureFile(root, "crates/rustok-product/storefront/Cargo.toml", "[package]\nname = \"rustok-product-storefront\"\n");
+  writeFixtureFile(root, "crates/rustok-product/storefront/Cargo.toml", readFileSync(path.join(repoRoot, "crates/rustok-product/storefront/Cargo.toml"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-product/contracts/evidence/storefront-catalog-native-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/rustok-product/contracts/evidence/storefront-catalog-native-error-safety-source.json"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/rustok-product/contracts/evidence/storefront-graphql-error-safety-source.json"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-product/contracts/evidence/storefront-graphql-error-safety-source-review.json", readFileSync(path.join(repoRoot, "crates/rustok-product/contracts/evidence/storefront-graphql-error-safety-source-review.json"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-product/docs/storefront-graphql-error-safety.md", readFileSync(path.join(repoRoot, "crates/rustok-product/docs/storefront-graphql-error-safety.md"), "utf8"));
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-product/storefront/src/api.rs", nativeServerAdapterSource());
   writeFixtureFile(root, "crates/rustok-product/docs/implementation-plan.md", "verify-product-storefront-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-product-storefront-boundary.mjs");

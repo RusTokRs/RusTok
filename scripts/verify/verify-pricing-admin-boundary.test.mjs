@@ -2,12 +2,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const scriptPath = path.resolve("scripts/verify/verify-pricing-admin-boundary.mjs");
+const repoRoot = path.resolve(".");
 
 function writeFixtureFile(root, relativePath, content) {
   const filePath = path.join(root, relativePath);
@@ -33,19 +34,17 @@ pub fn PricingAdmin() {
   ${options.rawApiCall ? "let _ = api::fetch_bootstrap;" : ""}
 }
 `);
-  writeFixtureFile(root, "crates/rustok-pricing/admin/src/transport.rs", `
-mod native_server_adapter;
-pub async fn fetch_bootstrap() {
-  native_server_adapter::fetch_bootstrap().await;
-}
-`);
-  writeFixtureFile(root, "crates/rustok-pricing/admin/src/transport/native_server_adapter.rs", `
-pub enum ApiError { ServerFn(String) }
-#[server(prefix = "/api/fn", endpoint = "pricing/admin-bootstrap")]
-pub async fn fetch_bootstrap() {}
-`);
+  writeFixtureFile(root, "crates/rustok-pricing/admin/src/transport.rs", readFileSync(path.join(repoRoot, "crates/rustok-pricing/admin/src/transport.rs"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/admin/src/transport/graphql_adapter.rs", readFileSync(path.join(repoRoot, "crates/rustok-pricing/admin/src/transport/graphql_adapter.rs"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/admin/src/transport/graphql_error_safety.rs", readFileSync(path.join(repoRoot, "crates/rustok-pricing/admin/src/transport/graphql_error_safety.rs"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/admin/src/transport/native_server_adapter.rs", readFileSync(path.join(repoRoot, "crates/rustok-pricing/admin/src/transport/native_server_adapter.rs"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/admin/Cargo.toml", readFileSync(path.join(repoRoot, "crates/rustok-pricing/admin/Cargo.toml"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source.json"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source-review.json", readFileSync(path.join(repoRoot, "crates/rustok-pricing/contracts/evidence/admin-graphql-error-safety-source-review.json"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/docs/admin-graphql-error-safety.md", readFileSync(path.join(repoRoot, "crates/rustok-pricing/docs/admin-graphql-error-safety.md"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-commerce/docs/implementation-plan.md", readFileSync(path.join(repoRoot, "crates/rustok-commerce/docs/implementation-plan.md"), "utf8"));
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-pricing/admin/src/api.rs", "pub async fn fetch_bootstrap() {}\n");
-  writeFixtureFile(root, "crates/rustok-pricing/docs/implementation-plan.md", "verify-pricing-admin-boundary.mjs");
+  writeFixtureFile(root, "crates/rustok-pricing/docs/implementation-plan.md", "verify-pricing-admin-boundary.mjs\nadmin GraphQL public errors\n");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-pricing-admin-boundary.mjs");
   writeFixtureFile(root, "package.json", JSON.stringify({
     scripts: {

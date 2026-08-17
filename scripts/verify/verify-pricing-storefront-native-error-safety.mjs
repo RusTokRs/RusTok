@@ -98,7 +98,7 @@ for (const [value, label] of [
   ["Pricing storefront context is unavailable", "context unavailable public message"],
 ]) requireText(source, value, label);
 
-if (countText(source, "map_owner_runtime_error(") !== 7) {
+if (countText(source, "map_owner_runtime_error") !== 7) {
   failures.push("owner runtime mapper must cover six operations plus its definition");
 }
 if (countText(source, ".map_err(|err| ServerFnError::new(err.to_string()))?;") !== 2) {

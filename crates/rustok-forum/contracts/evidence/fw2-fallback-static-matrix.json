@@ -29,12 +29,12 @@
       "expected_http_class": "non_5xx",
       "fallback_semantics": "forum_widget_publish_feature_disabled_keep_forum_routes",
       "source_markers": [
-        "put(topics::update_topic)",
+        "put(content_commands::update_topic)",
         "delete(topics::delete_topic)",
-        "put(replies::update_reply)",
+        "put(content_commands::update_reply)",
         "delete(replies::delete_reply)",
-        "axum::routing::post(topics::mark_topic_solution)",
-        "axum::routing::delete(topics::clear_topic_solution)"
+        "axum::routing::post(moderation::mark_topic_solution)",
+        "axum::routing::delete(moderation::clear_topic_solution)"
       ]
     },
     {

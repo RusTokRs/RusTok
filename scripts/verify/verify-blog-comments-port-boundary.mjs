@@ -372,7 +372,7 @@ for (const marker of [
   'CACHE_PREFIX: &str = "blog-public-comments-snapshot-v1"',
   'SNAPSHOT_TTL: Duration = Duration::from_secs(15 * 60)',
   'MAX_SNAPSHOT_KEYS: u64 = 10_000',
-  'cache.backend(CACHE_PREFIX, SNAPSHOT_TTL, MAX_SNAPSHOT_KEYS)',
+  '.backend(CACHE_PREFIX, SNAPSHOT_TTL, MAX_SNAPSHOT_KEYS)',
   '.set_with_ttl(key, value, SNAPSHOT_TTL)',
   'ensure_cache_service(runtime_ctx)',
   'Arc<dyn PublicCommentsSnapshotStore>',

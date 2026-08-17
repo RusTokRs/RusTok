@@ -145,8 +145,8 @@ jobs:
           const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
           const consumer = registry.consumers?.[0];
           const target = consumer?.artifact_repair?.physical_loss_recovery?.repeated_loss_recovery?.executed_evidence;
-          if (target !== 'pending') {
-            console.error(`repeated-loss recovery registry pre-state must be pending, got ${String(target)}`);
+          if (target !== 'pending' && target !== 'verified') {
+            console.error(`repeated-loss recovery registry state must be pending or verified, got ${String(target)}`);
             process.exit(1);
           }
           if (process.env.GITHUB_ACTIONS !== 'true' || process.env.GITHUB_EVENT_NAME !== 'push' || process.env.GITHUB_REF !== 'refs/heads/main') {

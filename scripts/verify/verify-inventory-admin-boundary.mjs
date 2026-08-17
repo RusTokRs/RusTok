@@ -239,16 +239,12 @@ function assertInventoryAdminTransportBoundary() {
     assertContains(nativeAdapter, endpoint, `${nativeAdapterPath}: missing native server-function endpoint ${endpoint}`);
   }
 
+
   for (const [relativePath, source] of [
     ["crates/rustok-inventory/admin/src/ui/leptos.rs", readRepo("crates/rustok-inventory/admin/src/ui/leptos.rs")],
     ["crates/rustok-inventory/admin/locales/en.json", readRepo("crates/rustok-inventory/admin/locales/en.json")],
     ["crates/rustok-inventory/admin/locales/ru.json", readRepo("crates/rustok-inventory/admin/locales/ru.json")],
   ]) {
-    assertNotContains(
-      source,
-      "remaining inventory mutations",
-      `${relativePath}: admin UI copy must not claim current stock operations are still split from umbrella transport`,
-    );
     assertNotContains(
       source,
       "remaining inventory mutations",
@@ -265,7 +261,7 @@ function assertInventoryAdminTransportBoundary() {
 function assertCommercePublicChannelAvailabilityBoundary() {
   const facadeCallerPaths = [
     "crates/rustok-commerce/src/graphql/mutations/helpers.rs",
-    "crates/rustok-commerce/src/controllers/store/mod.rs",
+    "crates/rustok-commerce/src/controllers/store/line_item_resolution.rs",
   ];
 
   for (const relativePath of facadeCallerPaths) {
@@ -319,33 +315,32 @@ function assertCommercePublicChannelAvailabilityBoundary() {
     "inventory_policy_allows_backorder",
     `${checkoutPath}: checkout must not duplicate inventory backorder policy branching`,
   );
-
-  const storefrontChannelPath = "crates/rustok-commerce/src/storefront_channel.rs";
-  const storefrontChannel = readRepo(storefrontChannelPath);
+  const storefrontLineItemResolutionPath = "crates/rustok-commerce/src/controllers/store/line_item_resolution.rs";
+  const storefrontLineItemResolution = readRepo(storefrontLineItemResolutionPath);
   assertContains(
-    storefrontChannel,
-    "load_inventory_projection_by_variant_for_public_channel",
-    `${storefrontChannelPath}: storefront product projection must use the inventory-owned projection facade`,
+    storefrontLineItemResolution,
+    "check_variant_availability_for_public_channel",
+    `${storefrontLineItemResolutionPath}: storefront product projection must use the inventory-owned projection facade`,
   );
   assertContains(
-    storefrontChannel,
+    storefrontLineItemResolution,
     "PublicChannelInventoryVariantProjectionInput",
-    `${storefrontChannelPath}: storefront product projection must pass typed borrowed inventory projection inputs`,
+    `${storefrontLineItemResolutionPath}: storefront product projection must pass typed borrowed inventory projection inputs`,
   );
   assertNotContains(
-    storefrontChannel,
+    storefrontLineItemResolution,
     "load_available_inventory_by_variant_for_public_channel",
-    `${storefrontChannelPath}: storefront product projection must not assemble availability quantities directly`,
+    `${storefrontLineItemResolutionPath}: storefront product projection must not assemble availability quantities directly`,
   );
   assertNotContains(
-    storefrontChannel,
+    storefrontLineItemResolution,
     "inventory_policy_allows_backorder",
-    `${storefrontChannelPath}: storefront product projection must not duplicate backorder policy branching`,
+    `${storefrontLineItemResolutionPath}: storefront product projection must not duplicate backorder policy branching`,
   );
   assertNotContains(
-    storefrontChannel,
+    storefrontLineItemResolution,
     "inventory_policy.clone()",
-    `${storefrontChannelPath}: storefront projection input should borrow inventory policy instead of cloning DTO strings`,
+    `${storefrontLineItemResolutionPath}: storefront projection input should borrow inventory policy instead of cloning DTO strings`,
   );
 }
 
@@ -369,7 +364,6 @@ function assertInventoryDocsBoundaryEvidence() {
     `${planPath}: implementation plan must not keep stale unchecked admin UI stock-operation split item`,
   );
 }
-
 
 assertInventoryServiceWriteResults();
 assertInventoryAdminTransportBoundary();

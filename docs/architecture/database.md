@@ -251,7 +251,8 @@ product-owned tables:
 - `product_attribute_schemas` and schema/group/binding tables
 - `category_attribute_schema_assignments`, `category_attributes`, `category_attribute_groups`
 - `product_categories`, `virtual_category_product_assignments`
-- `product_attribute_values`, `product_variant_attribute_values` and related localized value/option tables
+- `product_attribute_values`, `product_variant_attribute_values` and related localized value/option tables (with detached values tracked across category/schema rebinding)
+- read-side projection tables such as `index_product_attribute_values`
 
 And the same principle applies: base rows are language-agnostic, localized
 fields are moved to parallel records.

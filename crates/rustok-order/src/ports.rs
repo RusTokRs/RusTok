@@ -570,7 +570,7 @@ pub fn in_process_checkout_completion_port(
 }
 
 #[async_trait]
-impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
+impl CheckoutCompletionPort for crate::InProcessCheckoutCompletionPort {
     async fn complete_checkout(
         &self,
         context: PortContext,

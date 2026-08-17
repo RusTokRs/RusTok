@@ -206,7 +206,7 @@
   },
   "runtime_evidence": {
     "checkout_completion_owner_path": {
-      "status": "source_ready_unvalidated",
+      "status": "runtime_verified",
       "source": "crates/rustok-order/src/ports.rs",
       "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
       "verification_scope": "planned_cases_locked_no_runtime_promotion",

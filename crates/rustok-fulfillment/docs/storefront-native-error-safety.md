@@ -27,7 +27,7 @@ Mounted tenant, authentication, optional request-context, and owner failures ret
 - channel-slug presence and length;
 - locale presence and length.
 
-The complete framework and owner errors are not logged. Tenant and request-context identity values are not logged: tenant UUID, channel UUID, channel slug, and locale remain outside structured diagnostic values.
+The complete framework and owner errors are not logged, and tenant and request-context identity values are not logged: tenant UUID, channel UUID, channel slug, and locale remain outside structured diagnostic values.
 
 Public `ServerFnError` messages remain static for missing runtime composition, tenant/authentication context extraction, and shipping-selection owner runtime failure. `RequestContext` remains optional for the owner call; failed extraction is recorded with the error type and bounded tenant/request-context facts and still results in `None`.
 

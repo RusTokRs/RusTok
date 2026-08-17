@@ -7,7 +7,7 @@
   "fallback_profiles": ["embedded_native", "graphql_compatibility", "cached_snapshot"],
   "degraded_modes": ["use_cart_channel_tax_provider_fallback", "hide_region_selector", "show_cached_region_snapshot"],
   "cases": [
-    { "operation": "read_region", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "validate_region_read_request(&request)?", "let result = match request.selector", ".map_err(map_region_error)?"] },
-    { "operation": "list_regions_for_tenant", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.list_regions(", ".map_err(map_region_error)"] }
+    { "operation": "read_region", "write": false, "source_order": ["require_region_read_policy(&context, owner_operation)?", "validate_region_read_request(&context, owner_operation, &request)?", "let result = match request.selector", "map_region_error(&context, owner_operation, error)"] },
+    { "operation": "list_regions_for_tenant", "write": false, "source_order": ["require_region_read_policy(&context, owner_operation)?", "self.list_regions(", "map_region_error(&context, owner_operation, error)"] }
   ]
 }

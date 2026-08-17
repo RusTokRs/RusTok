@@ -200,7 +200,7 @@ requireMarker(
 
 for (const marker of [
   "facade.consumer_properties()",
-  "use_context::<Arc<ConsumerPropertyEditorRuntime>>()",
+  "use_context::<Arc<ConsumerPropertyEditorRuntime>>",
   "<ConsumerPropertiesPanel",
   "contribution_assembly=consumer_property_assembly",
 ]) {

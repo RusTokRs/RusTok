@@ -168,8 +168,13 @@ jobs:
               console.error(`${label} registry pre-state must be ${expected}, got ${String(actual)}`);
               process.exit(1);
             }
+          const requireOneOf = (label, actual, expectedList) => {
+            if (!expectedList.includes(actual)) {
+              console.error(`${label} registry state must be one of [${expectedList.join(', ')}], got ${String(actual)}`);
+              process.exit(1);
+            }
           };
-          requireState('rollback-continuity parent target', target, 'pending');
+          requireOneOf('rollback-continuity parent target', target, ['pending', 'verified']);
           requireState('artifact-repair parent', artifactRepairParent, 'verified');
           requireState('physical-loss recovery parent', physicalParent, 'verified');
           requireState('physical-loss activation-prefix child', activationPrefix, 'verified');

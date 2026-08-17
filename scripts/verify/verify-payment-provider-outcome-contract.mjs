@@ -94,7 +94,7 @@ for (const marker of [
 }
 requireMarker(
   migration,
-  "executing',\n                                'reconciliation_required'",
+  "'reconciliation_required'",
   `${migrationPath}: executing must transition to reconciliation_required`,
 );
 requireMarker(

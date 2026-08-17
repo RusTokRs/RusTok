@@ -7,8 +7,8 @@
   "fallback_profiles": ["embedded_native"],
   "degraded_modes": ["generate_from_prompt_only", "skip_catalog_enrichment", "require_operator_review"],
   "cases": [
-    { "operation": "read_product_projection", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.get_product_with_locale_fallback(", ".map_err(product_error_to_port_error)"] },
-    { "operation": "read_variant_product_projection", "source_order": ["context.require_policy(PortCallPolicy::read())?", "product_variant::Entity::find_by_id(request.variant_id)", "self.get_product_with_locale_fallback(", ".map_err(product_error_to_port_error)"] },
-    { "operation": "list_published_products", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.list_published_products_with_locale_fallback(", ".map_err(product_error_to_port_error)"] }
+    { "operation": "read_product_projection", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.get_product_with_locale_fallback(", "product_error_to_port_error"] },
+    { "operation": "read_variant_product_projection", "source_order": ["context.require_policy(PortCallPolicy::read())?", "product_variant::Entity::find_by_id(request.variant_id)", "self.get_product_with_locale_fallback(", "product_error_to_port_error"] },
+    { "operation": "list_published_products", "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.list_published_products_with_locale_fallback(", "product_error_to_port_error"] }
   ]
 }

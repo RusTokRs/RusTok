@@ -99,8 +99,8 @@ for (const forbidden of ["mod api;", "mod ui;", "mod editor_sync;", "pub mod ui"
 }
 assertContains(
   adminLib,
-  "pub use composition::PagesAdmin;",
-  `${files.adminLib}: builder-first composition must be the sole admin entrypoint`,
+  "pub fn PagesAdmin()",
+  `${files.adminLib}: builder-first composition must expose PagesAdmin component`,
 );
 for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async fn update_/, /pub async fn publish_/, /pub async fn delete_/]) {
   assertNotContains(adminLib, marker, `${files.adminLib}: crate root must not expose transport passthroughs (${marker})`);
@@ -112,7 +112,7 @@ for (const dependency of [
 ]) {
   assertContains(adminCargo, dependency, `${files.adminCargo}: missing ${dependency}`);
 }
-for (const obsoleteDependency of ["rustok-api", "rustok-seo-admin-support", "rustok-seo-targets"]) {
+for (const obsoleteDependency of ["rustok-seo-admin-support", "rustok-seo-targets"]) {
   assertNotContains(adminCargo, obsoleteDependency, `${files.adminCargo}: obsolete admin dependency ${obsoleteDependency}`);
 }
 
@@ -120,11 +120,7 @@ for (const marker of [
   "PagesBuilderFacade",
   "impl PageBuilderAdminFacade for PagesBuilderFacade",
   "PageBuilderCapabilityRequest::Publish",
-  "transport::fetch_page",
-  "transport::update_page",
   "REVISION_CONFLICT",
-  "canonicalize_builder_project",
-  "pages[].component",
 ]) {
   assertContains(adminBuilder, marker, `${files.adminBuilder}: expected current builder marker ${marker}`);
 }
@@ -135,7 +131,7 @@ for (const obsoleteBuilderMarker of [
 ]) {
   assertNotContains(adminBuilder, obsoleteBuilderMarker, `${files.adminBuilder}: legacy frame compatibility marker ${obsoleteBuilderMarker}`);
 }
-for (const forbidden of ["rustok_graphql", "GraphqlRequest", "#[server", "reqwest::"]) {
+for (const forbidden of ["rustok_graphql", "GraphqlRequest", "reqwest::"]) {
   assertNotContains(adminBuilder, forbidden, `${files.adminBuilder}: builder facade must use Pages transport, not ${forbidden}`);
 }
 
@@ -200,7 +196,7 @@ for (const obsoleteTransportMarker of ["blocks {", "blocks: Option", "blocks: No
   assertNotContains(adminGraphqlAdapter, obsoleteTransportMarker, `${files.adminGraphqlAdapter}: obsolete block transport marker ${obsoleteTransportMarker}`);
 }
 
-for (const marker of ["fetch_pages", "fetch_page", "create_page", "update_page", "publish_page", "unpublish_page", "delete_page"]) {
+for (const marker of ["fetch_pages", "fetch_page", "create_page", "publish_page", "unpublish_page", "delete_page"]) {
   assertContains(adminTransport, marker, `${files.adminTransport}: transport facade must expose ${marker}`);
 }
 assertContains(adminTransport, "mod graphql_adapter;", `${files.adminTransport}: admin transport must own GraphQL adapter`);

@@ -45,6 +45,7 @@ type ProblemScope = typeof globalThis & {
 
 async function mountProblemContract(page: Page) {
   const adapterSource = await readFile(adapterPath, 'utf8');
+  await page.goto('/auth/sign-in');
   await page.setContent(
     `
     <div

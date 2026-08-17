@@ -65,8 +65,7 @@ maintainer executes the runner; PostgreSQL runtime proof remains open.
 
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Structural shape: owner-owned Leptos admin package mounted through
-  `rustok-module.toml`, with a sibling module-owned Next admin package.
+- Structural shape: `core_transport_ui`
 - Leptos uses native `#[server]` functions as its primary path and keeps GraphQL in
   parallel. The Next surface consumes the same GraphQL query and mutation.
 - The connector owns singleton settings persistence, bundled artifact availability,

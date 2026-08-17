@@ -26,7 +26,7 @@ function read(relativePath) {
     failures.push(`${relativePath}: must be a regular non-symlink file`);
     return "";
   }
-  return fs.readFileSync(file, "utf8");
+  return fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
 }
 
 function requireMarkers(relativePath, markers) {
@@ -45,7 +45,7 @@ function forbidMarkers(relativePath, markers) {
 }
 
 function actionReferences(relativePath) {
-  return [...read(relativePath).matchAll(/^\s*uses:\s*([^\s#]+)(?:\s+#.*)?\s*$/gm)].map(
+  return [...read(relativePath).matchAll(/^\s*(?:-\s*)?uses:\s*([^\s#]+)(?:\s+#.*)?\s*$/gm)].map(
     (match) => match[1],
   );
 }
@@ -162,8 +162,7 @@ requireMarkers("apps/server/config/browser-smoke.yaml", [
   "enabled: false\n      driver: memory",
   "search_indexing: false",
   "rate_limit:\n      enabled: false\n      backend: memory",
-  "transport: memory",
-  "relay_target: memory",
+  "delivery_profile: outbox",
   "email:\n      enabled: false\n      provider: none",
   "workflow_cron_enabled: false",
   "seo_bulk_enabled: false",
@@ -178,12 +177,12 @@ forbidMarkers("apps/server/config/browser-smoke.yaml", [
 ]);
 
 requireMarkers("apps/next-admin/playwright.rust-hosts.config.ts", [
-  'testDir: "./tests/rust-hosts"',
-  'baseURL: process.env.RUSTOK_BROWSER_BASE_URL || "http://127.0.0.1:5150"',
-  '"x-tenant-slug": process.env.RUSTOK_BROWSER_TENANT_SLUG || "default"',
-  'name: "rust-hosted-chromium"',
-  'trace: "retain-on-failure"',
-  'video: "retain-on-failure"',
+  "testDir: './tests/rust-hosts'",
+  "baseURL: process.env.RUSTOK_BROWSER_BASE_URL || 'http://127.0.0.1:5150'",
+  "'x-tenant-slug': process.env.RUSTOK_BROWSER_TENANT_SLUG || 'default'",
+  "name: 'rust-hosted-chromium'",
+  "trace: 'retain-on-failure'",
+  "video: 'retain-on-failure'",
 ]);
 
 requireMarkers("apps/next-admin/tests/rust-hosts/embedded-hosts.spec.ts", [
@@ -196,8 +195,8 @@ requireMarkers("apps/next-admin/tests/rust-hosts/embedded-hosts.spec.ts", [
   "style-src-attr 'unsafe-inline'",
   "<title>RusToK Storefront</title>",
   "<title>RusToK Admin</title>",
-  "expectNonceBackedElements(html, \"script\", 1)",
-  "expectNonceBackedElements(html, \"style\", 0)",
+  "expectNonceBackedElements(html, 'script', 1)",
+  "expectNonceBackedElements(html, 'style', 0)",
   "requestfailed",
   "pageerror",
 ]);
@@ -205,7 +204,7 @@ requireMarkers("apps/next-admin/tests/rust-hosts/embedded-hosts.spec.ts", [
 requireMarkers("scripts/build/build-embedded-admin.sh", [
   "--public-url",
   'TRUNK_BUILD_PUBLIC_URL="$public_url"',
-  "cargo install trunk --version 0.21.14 --locked",
+  'cargo install trunk --version "=0.21.14" --locked',
 ]);
 requireMarkers("apps/server/src/services/app_router.rs", [
   'router.nest("/admin", admin_router)',

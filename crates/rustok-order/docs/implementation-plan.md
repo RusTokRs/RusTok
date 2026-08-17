@@ -14,7 +14,7 @@ The post-order foundation includes returns and item validation plus a preview /
 apply / cancel order-change skeleton. It deliberately does not perform payment
 or fulfillment side effects. Checkout completion is owner-owned through
 `CheckoutCompletionPort`; the public GraphQL and native storefront paths use
-the same typed request/result contract.
+the same typed request/result contract and select transport via `execute_selected_transport`.
 
 Order owns `order_checkout_identities`, an immutable typed projection that binds
 a checkout operation to one order and, for live writes, one source cart plus

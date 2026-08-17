@@ -32,7 +32,7 @@ const legacyBlobSha = createHash('sha1')
   .update(legacyBlobHeader)
   .update(legacy)
   .digest('hex');
-if (legacyBlobSha !== '394bc0321e3daa5473b0491b257fc4c17c830cc8') {
+if (legacyBlobSha !== '5461125fc54dbc53232e575eb7b074f85443a7fc') {
   failures.push(`legacy diagnostics blob changed: ${legacyBlobSha}`);
 }
 

@@ -144,7 +144,7 @@ if (!hasConsumerManifestMarkers) {
 requireMarkers(moduleToml, ["contract_version", "builder_contract_version"], `${arg}: manifest`);
 const implementationPlanMarkers =
   arg === "pages"
-    ? ["## Current source state", "## Remaining Pages work: execution evidence only", "## Execution status"]
+    ? ["## Current state", "Remaining Pages work: execution evidence only", "## Execution status"]
     : ["## Current state", "## FFA/FBA status", "## Immediate next action"];
 requireMarkers(implPlan, implementationPlanMarkers, `${arg}: implementation-plan`);
 if (!implPlan.match(/FBA|page.builder|builder/mi)) {

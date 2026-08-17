@@ -2,12 +2,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const scriptPath = path.resolve("scripts/verify/verify-pricing-storefront-boundary.mjs");
+const repoRoot = path.resolve(".");
 
 function writeFixtureFile(root, relativePath, content) {
   const filePath = path.join(root, relativePath);
@@ -24,7 +25,8 @@ mod transport;
 mod ui;
 pub use ui::leptos::PricingView;
 `);
-  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/core.rs", `${options.includeLeptosCore ? "use leptos::prelude::*;" : ""}\npub struct StorefrontPricingQuery;\n`);
+  const realCore = readFileSync(path.join(repoRoot, "crates/rustok-pricing/storefront/src/core.rs"), "utf8");
+  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/core.rs", `${options.includeLeptosCore ? "use leptos::prelude::*;\n" : ""}${realCore}`);
   writeFixtureFile(root, "crates/rustok-pricing/storefront/src/ui/leptos.rs", `
 use crate::core;
 use crate::transport;
@@ -33,24 +35,21 @@ pub fn PricingView() {
   ${options.rawApiCall ? "let _ = api::fetch_storefront_pricing_graphql;" : ""}
 }
 `);
-  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/mod.rs", `
-mod graphql_adapter;
-mod native_server_adapter;
-pub async fn fetch_storefront_pricing() {}
-`);
-  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub async fn fetch_storefront_pricing_graphql() {}\n");
-  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs", `
-#[server(prefix = "/api/fn", endpoint = "pricing/storefront-data")]
-async fn storefront_pricing_native() {
-  expect_context::<HostRuntimeContext>();
-  runtime_ctx.shared_get::<TransactionalEventBus>();
-  runtime_ctx.db_clone();
-}
-`);
+  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/mod.rs", readFileSync(path.join(repoRoot, "crates/rustok-pricing/storefront/src/transport/mod.rs"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs", readFileSync(path.join(repoRoot, "crates/rustok-pricing/storefront/src/transport/graphql_adapter.rs"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/graphql_error_safety.rs", readFileSync(path.join(repoRoot, "crates/rustok-pricing/storefront/src/transport/graphql_error_safety.rs"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs", readFileSync(path.join(repoRoot, "crates/rustok-pricing/storefront/src/transport/native_server_adapter.rs"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-graphql/src/lib.rs", readFileSync(path.join(repoRoot, "crates/rustok-graphql/src/lib.rs"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/storefront/Cargo.toml", readFileSync(path.join(repoRoot, "crates/rustok-pricing/storefront/Cargo.toml"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source.json"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source-review.json", readFileSync(path.join(repoRoot, "crates/rustok-pricing/contracts/evidence/storefront-graphql-error-safety-source-review.json"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/contracts/evidence/storefront-native-error-safety-source.json", readFileSync(path.join(repoRoot, "crates/rustok-pricing/contracts/evidence/storefront-native-error-safety-source.json"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/docs/storefront-graphql-error-safety.md", readFileSync(path.join(repoRoot, "crates/rustok-pricing/docs/storefront-graphql-error-safety.md"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-pricing/docs/storefront-native-error-safety.md", readFileSync(path.join(repoRoot, "crates/rustok-pricing/docs/storefront-native-error-safety.md"), "utf8"));
+  writeFixtureFile(root, "crates/rustok-commerce/docs/implementation-plan.md", readFileSync(path.join(repoRoot, "crates/rustok-commerce/docs/implementation-plan.md"), "utf8"));
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-pricing/storefront/src/api.rs", "pub async fn fetch_storefront_pricing_graphql() {}\n");
   writeFixtureFile(root, "crates/rustok-pricing/docs/implementation-plan.md", "verify-pricing-storefront-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-pricing-storefront-boundary.mjs");
-  writeFixtureFile(root, "crates/rustok-pricing/storefront/Cargo.toml", "[package]\nname = \"rustok-pricing-storefront-fixture\"\nversion = \"0.1.0\"\n");
   writeFixtureFile(root, "package.json", JSON.stringify({
     scripts: {
       "verify:pricing:storefront-boundary": "node scripts/verify/verify-pricing-storefront-boundary.mjs",

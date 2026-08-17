@@ -74,7 +74,7 @@ for (const filePath of [canonicalUrlSelfTestPath, blogProjectionVerifierPath, bl
 const manifest = read('crates/rustok-search/rustok-module.toml');
 hasAll(manifest, ['[fba.provider]', 'registry = "contracts/search-fba-registry.json"', 'contract_version = "search.query.v1"'], 'manifest');
 const cargo = read('crates/rustok-search/Cargo.toml');
-hasAll(cargo, ['rustok-api.workspace = true'], 'Cargo.toml');
+hasAll(cargo, ['rustok-api'], 'Cargo.toml');
 const lib = read('crates/rustok-search/src/lib.rs');
 hasAll(lib, ['pub mod ports;', 'pub use ports::*;', 'canonical_search_result_url'], 'lib.rs');
 const source = read('crates/rustok-search/src/ports.rs');
@@ -185,7 +185,7 @@ for (const target of [
 const blogProjectionVerifier = read(blogProjectionVerifierPath);
 hasAll(blogProjectionVerifier, ['search-blog-projection-postgres-harness.json', 'targeted_missing_post_cleanup', 'module_toggle_cleanup_rebuild'], 'Blog projection verifier');
 const blogProjectionSelfTest = read(blogProjectionSelfTestPath);
-hasAll(blogProjectionSelfTest, ['passes canonical fixture', 'rejects hardcoded public source tables', 'rejects missing PostgreSQL harness'], 'Blog projection self-test');
+hasAll(blogProjectionSelfTest, ['accepts canonical owner-tag source', 'rejects metadata tags as Search projection source', 'rejects missing Taxonomy table availability gate'], 'Blog projection self-test');
 
 const plan = read('crates/rustok-search/docs/implementation-plan.md');
 hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json', 'whole-module extraction pilot', 'SearchEngine', '2026-07-16-media-search-extraction-boundaries.md', 'search-canonical-url-contract.json', 'single owner policy', 'no transport fallback', 'verify:search:canonical-url', 'test:verify:search:canonical-url', 'verify:search:blog-projection', 'test:verify:search:blog-projection'], 'local plan');

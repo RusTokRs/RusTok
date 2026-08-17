@@ -10,11 +10,12 @@ const root = configuredRoot
   : new URL('../../', import.meta.url);
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
+const normalizeWs = (str) => str.replace(/\s*\.\s*/g, '.').replace(/\s+/g, ' ');
 const requireText = (source, value, label) => {
-  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
+  if (!normalizeWs(source).includes(normalizeWs(value))) failures.push(`${label}: missing ${value}`);
 };
 const forbidText = (source, value, label) => {
-  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
+  if (normalizeWs(source).includes(normalizeWs(value))) failures.push(`${label}: forbidden ${value}`);
 };
 
 const applications = read('crates/rustok-seo/src/services/applications.rs');

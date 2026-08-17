@@ -1,5 +1,11 @@
 # rustok-search implementation plan
 
+## FFA/FBA status
+
+- FFA status: `phase_b_ready`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
+
 ## Current state
 
 `rustok-search` owns normalized search documents, PostgreSQL FTS, catalog, Blog,

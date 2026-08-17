@@ -7,7 +7,8 @@
   "contract_version": "product.catalog_read.v1",
   "profiles": [
     "in_process",
-    "remote_adapter_placeholder"
+    "remote_adapter_placeholder",
+    "grpc_loopback"
   ],
   "promotion_gate": "does_not_raise_boundary_ready_without_runtime_execution",
   "cases": [
@@ -16,11 +17,13 @@
       "execution_status": "static_locked_runtime_pending",
       "profiles": [
         "in_process",
-        "remote_adapter_placeholder"
+        "remote_adapter_placeholder",
+        "grpc_loopback"
       ],
       "assertions": [
         "typed_port_error_mapping",
-        "context_deadline_preserved"
+        "context_deadline_preserved",
+        "trusted_authority_replaces_actor"
       ]
     },
     {
@@ -28,12 +31,14 @@
       "execution_status": "static_locked_runtime_pending",
       "profiles": [
         "in_process",
-        "remote_adapter_placeholder"
+        "remote_adapter_placeholder",
+        "grpc_loopback"
       ],
       "assertions": [
         "typed_port_error_mapping",
         "context_deadline_preserved",
-        "variant_to_product_owner_resolution"
+        "variant_to_product_owner_resolution",
+        "trusted_authority_replaces_actor"
       ]
     },
     {
@@ -41,11 +46,13 @@
       "execution_status": "static_locked_runtime_pending",
       "profiles": [
         "in_process",
-        "remote_adapter_placeholder"
+        "remote_adapter_placeholder",
+        "grpc_loopback"
       ],
       "assertions": [
         "typed_port_error_mapping",
-        "context_deadline_preserved"
+        "context_deadline_preserved",
+        "trusted_authority_replaces_actor"
       ]
     }
   ],

@@ -156,6 +156,7 @@ export default async function StorefrontHome({
               enabledModules,
               tenantSlug,
               tenantId: getStorefrontTenantId(),
+              graphql: storefrontGraphql,
             })}
           </section>
         ))}

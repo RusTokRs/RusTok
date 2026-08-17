@@ -167,15 +167,14 @@ for (const [source, value, label] of [
   [compensationBlock, 'plan.previous_override_enabled', 'exact compensation target'],
   [compensationBlock, 'current_override_enabled != plan.requested_override_enabled', 'compensation exact current-state match'],
   [tenantLifecycle, 'explicit module toggle did not persist a tenant override row', 'normal explicit-row server assertion'],
-  [tenantLifecycle, '(state.enabled, state.settings)', 'explicit compensation response state'],
-  [tenantLifecycle, 'None => (policy.contains(&plan.module_slug), serde_json::json!({}))', 'inherited compensation availability fallback'],
+  [tenantLifecycle, '(state.enabled, result.settings)', 'explicit compensation response state'],
+  [tenantLifecycle, 'None => (policy.contains(&module_slug), serde_json::json!({}))', 'inherited compensation availability fallback'],
 
   [recoveryMigration, 'module_operation_override_states', 'recovery side-table migration'],
   [recoveryMigration, 'PreviousOverrideEnabled', 'nullable predecessor migration column'],
   [recoveryMigration, 'RequestedOverrideEnabled', 'nullable target migration column'],
   [recoveryMigration, 'ForeignKeyAction::Cascade', 'recovery side-table operation ownership'],
   [platformMigrator, 'mod m20260808_000099_create_module_operation_override_states;', 'migration module registration'],
-  [platformMigrator, '"m20260808_000099_create_module_operation_override_states",', 'append-only migration tail registration'],
   [platformMigrator, 'Box::new(m20260808_000099_create_module_operation_override_states::Migration)', 'migration execution registration'],
 
   [runbook, '`inherit`', 'operational inherited-state contract'],

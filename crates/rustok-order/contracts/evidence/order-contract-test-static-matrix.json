@@ -37,6 +37,18 @@
       "execution_status": "static_locked_runtime_pending"
     },
     {
+      "operation": "read_checkout_result_by_operation",
+      "profiles": [
+        "in_process",
+        "remote_adapter_placeholder"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "context_deadline_preserved"
+      ],
+      "execution_status": "static_locked_runtime_pending"
+    },
+    {
       "operation": "read_order_status",
       "profiles": [
         "in_process",

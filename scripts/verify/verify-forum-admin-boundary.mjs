@@ -88,7 +88,7 @@ const verifierTest = readRepo(verifierTestPath);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
-assertContains(lib, "pub use ui::leptos::ForumAdmin;", `${libPath}: crate root must re-export ForumAdmin`);
+assertContains(lib, /pub use ui::(?:leptos|root)::ForumAdmin;/, `${libPath}: crate root must re-export ForumAdmin`);
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api adapter`);
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {

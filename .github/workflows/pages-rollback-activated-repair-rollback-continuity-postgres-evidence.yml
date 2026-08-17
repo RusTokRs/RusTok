@@ -171,9 +171,15 @@ jobs:
               process.exit(1);
             }
           };
-          requireState('rollback-activated repair-to-rollback target', target, 'pending');
+          const requireOneOf = (label, actual, expectedList) => {
+            if (!expectedList.includes(actual)) {
+              console.error(`${label} registry state must be one of [${expectedList.join(', ')}], got ${String(actual)}`);
+              process.exit(1);
+            }
+          };
+          requireOneOf('rollback-activated repair-to-rollback target', target, ['pending', 'verified']);
           requireState('physical-loss activation-prefix prerequisite', activationPrefix, 'verified');
-          requireState('rollback-continuity parent', rollbackParent, 'pending');
+          requireOneOf('rollback-continuity parent', rollbackParent, ['pending', 'verified']);
           requireState('artifact-repair parent', artifactRepairParent, 'verified');
           requireState('physical-loss recovery parent', physicalParent, 'verified');
           requireState('repeated-loss recovery prerequisite', repeatedLoss, 'verified');

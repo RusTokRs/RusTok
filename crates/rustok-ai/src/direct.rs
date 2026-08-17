@@ -1395,11 +1395,12 @@ fn build_blog_draft_create_input(request: BlogDraftCreateRequest<'_>) -> AiResul
             "blog_draft policy must require draft review before persistence".to_string(),
         ));
     }
+    let body = request.body;
 
     Ok(CreatePostInput {
         locale: request.locale.to_string(),
         title: request.title.to_string(),
-        content: crate::rustok_blog::richtext::article_document_from_plain_text(request.body),
+        content: crate::rustok_blog::richtext::article_document_from_plain_text(body),
         excerpt: request.excerpt.map(ToString::to_string),
         slug: request.slug.map(ToString::to_string),
         publish: false,

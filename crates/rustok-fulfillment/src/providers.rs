@@ -169,6 +169,12 @@ impl FulfillmentProviderRegistry {
     ) -> FulfillmentResult<()> {
         registration.validate(expected_provider_id)?;
         let descriptor = provider.descriptor();
+        if descriptor.provider_id != registration.descriptor.provider_id {
+            return Err(FulfillmentError::Validation(format!(
+                "fulfillment provider adapter id `{}` does not match descriptor id `{}`",
+                descriptor.provider_id, registration.descriptor.provider_id
+            )));
+        }
         if descriptor != registration.descriptor {
             return Err(FulfillmentError::Validation(
                 "fulfillment provider adapter descriptor does not match registration descriptor"

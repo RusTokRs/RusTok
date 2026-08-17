@@ -259,7 +259,7 @@ for (const marker of [
   assertNotContains(graphqlAdapter, marker, `${graphqlAdapterPath}: new catalog attribute GraphQL adapter must not invent optional/fallback locale`);
 }
 for (const marker of [
-  "ProductCatalogSchemaService",
+  "product_schema_read_port",
   "async fn product_attributes(",
   "async fn catalog_categories(",
   "async fn product_attribute_schemas(",
@@ -270,7 +270,7 @@ for (const marker of [
   assertContains(commerceQuery, marker, `${commerceQueryPath}: server GraphQL query surface must expose category-bound catalog schema reads (${marker})`);
 }
 for (const marker of [
-  "ProductCatalogSchemaService",
+  "ProductCatalogSchemaWritePort",
   "async fn create_product_attribute(",
   "async fn create_product_attribute_option(",
   "async fn create_catalog_category(",

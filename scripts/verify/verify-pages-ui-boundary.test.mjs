@@ -21,7 +21,7 @@ mod builder;
 mod composition;
 mod core;
 mod transport;
-pub use composition::PagesAdmin;
+pub fn PagesAdmin() {}
 ${publicTransportPassthrough ? "pub async fn fetch_pages() {}" : ""}
 `;
 }

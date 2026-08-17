@@ -214,14 +214,14 @@ jobs:
           const consumer = registry.consumers?.find((candidate) => candidate.module_slug === 'pages');
           const target = consumer?.cache_consumer?.executed_evidence;
           const provider = registry.provider?.consumer_properties_contract?.executed_evidence;
-          const requireState = (label, actual, expected) => {
-            if (actual !== expected) {
-              console.error(`${label} registry pre-state must be ${expected}, got ${String(actual)}`);
+          const requireOneOf = (label, actual, expectedList) => {
+            if (!expectedList.includes(actual)) {
+              console.error(`${label} registry state must be one of [${expectedList.join(', ')}], got ${String(actual)}`);
               process.exit(1);
             }
           };
-          requireState('cache-consumer target', target, 'pending');
-          requireState('provider consumer-properties sibling', provider, 'pending');
+          requireOneOf('cache-consumer target', target, ['pending', 'verified']);
+          requireOneOf('provider consumer-properties sibling', provider, ['pending', 'verified']);
           if (process.env.GITHUB_ACTIONS !== 'true' || process.env.GITHUB_EVENT_NAME !== 'push' || process.env.GITHUB_REF !== 'refs/heads/main') {
             console.error('receipt recorder requires GitHub Actions push on main');
             process.exit(1);

@@ -101,6 +101,7 @@ fn map_module_availability_error<E: std::fmt::Display>(
         owner = MARKETPLACE_LISTING_ADMIN_NATIVE_OWNER,
         owner_operation = MARKETPLACE_LISTING_ADMIN_NATIVE_OPERATION,
         action = ?action,
+        correlation_id = %request.correlation_id,
         tenant_id = %tenant_id,
         channel_id = ?request.channel_id,
         channel_slug = ?request.channel_slug,

@@ -181,7 +181,7 @@ for (const marker of [
   "pub seller_id: Option<String>",
   "pub shipping_option_id: Option<String>",
   "pub async fn select_shipping_option(",
-  "build_shipping_selection_updates(&request)",
+  "pub fn build_shipping_selection_updates(",
 ]) requireText(fulfillmentTransport, marker, `${fulfillmentTransportPath}: owner request/plan`);
 for (const marker of [
   "SELECT_STOREFRONT_SHIPPING_OPTION_MUTATION",

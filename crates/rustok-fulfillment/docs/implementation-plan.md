@@ -11,7 +11,7 @@ fulfillment transport, selection materialization, carrier lifecycle persistence,
 or fulfillment recovery queries.
 
 The owner storefront handles seller-aware shipping selection through native and
-GraphQL transports. Selection identity is exactly `shipping_profile_slug +
+GraphQL transports selected via `execute_selected_transport`. Selection identity is exactly `shipping_profile_slug +
 seller_id`; legacy `seller_scope` is not accepted. Provider registry guards
 capability, health, unavailable mode, and degraded fallback before an adapter
 call, while `FulfillmentService` remains the lifecycle owner.
@@ -129,6 +129,8 @@ read diagnostic payloads remain separate open slices.
 - Source-ready internal read boundaries: `ShippingOptionReadPort`,
   `ShippingOptionAdminReadPort`, and `FulfillmentReadPort`; these are not new FBA
   provider contracts.
+- FFA admin guardrail evidence: `scripts/verify/verify-fulfillment-admin-boundary.mjs` locks the fulfillment fast boundary guardrail.
+- FFA storefront guardrail evidence: `scripts/verify/verify-fulfillment-storefront-boundary.mjs` locks the fulfillment storefront boundary guardrail.
 - Contract/provider evidence remains in the existing fulfillment evidence
   matrices and live-adapter files.
 - Shipping-selection diagnostic source evidence:

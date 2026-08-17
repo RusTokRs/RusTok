@@ -138,14 +138,9 @@
         "checkout_product_projection"
       ],
       "fallback_profiles": [
-        "embedded_native",
-        "graphql_checkout_compat",
-        "graphql_storefront_compat"
+        "embedded_native"
       ],
-      "degraded_modes": [
-        "use_cart_product_snapshot",
-        "show_product_refresh_required"
-      ]
+      "degraded_modes": []
     },
     {
       "module": "customer",

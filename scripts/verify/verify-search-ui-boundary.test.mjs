@@ -399,7 +399,7 @@ async fn product_admin_catalog_search_options_native(locale: String) {
 `);
   writeFixtureFile(root, "crates/rustok-product/admin/src/lib.rs", `
 pub use model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
-pub use transport::fetch_catalog_search_options;
+pub use legacy_transport::*;
 `);
   writeFixtureFile(root, "apps/admin/build.rs", `
 fn render(entry: Entry) {
@@ -419,18 +419,23 @@ fn compose() {
   let token = use_token();
   let tenant = use_tenant();
   if locale.trim().is_empty() { return; }
+  let _ = fetch_catalog_search_options;
   let _ = category_options=category_options;
   let _ = attribute_options=attribute_options;
 }
 `);
   writeFixtureFile(root, "crates/rustok-product/storefront/src/model.rs", `
-pub struct ProductCatalogSearchOption { pub value: String, pub label: String }
+pub struct ProductCatalogSearchOption {
+  pub value: String,
+  pub label: String,
+}
 pub struct ProductCatalogSearchOptions {
   pub category_options: Vec<ProductCatalogSearchOption>,
   pub attribute_options: Vec<ProductCatalogSearchOption>,
 }
 `);
   writeFixtureFile(root, "crates/rustok-product/storefront/src/transport/mod.rs", `
+use crate::model::{ProductCatalogSearchOption, ProductCatalogSearchOptions};
 pub async fn fetch_catalog_search_options(locale: String) {
   let native_locale = locale.clone();
   execute_selected_transport("product", selected_transport_path(), move || native_server_adapter::fetch_catalog_search_options(native_locale), move || graphql_adapter::fetch_catalog_search_options(locale))
@@ -460,12 +465,13 @@ pub use transport::fetch_catalog_search_options;
 `);
   writeFixtureFile(root, "crates/rustok-commerce/src/graphql/query.rs", `
 async fn storefront_catalog_search_options(ctx: Context, locale: String) {
-  require_module_enabled(ctx, "product");
+  require_module_enabled(ctx, PRODUCT_MODULE_SLUG);
   require_storefront_channel_enabled(ctx);
-  if locale.trim().is_empty() { return Err("locale is required"); }
+  if locale.is_empty() { return Err("locale is required"); }
   let tenant = ctx.data::<TenantContext>();
-  let _ = list_categories(tenant.id, locale.trim());
-  let _ = list_attributes(tenant.id, locale.trim());
+  let schema_read_port = ctx.data::<ProductCatalogSchemaReadPort>();
+  let _ = schema_read_port.list_categories(port_context, locale.trim());
+  let _ = schema_read_port.list_attributes(port_context, locale.trim());
   let _ = items.filter(|attribute| attribute.is_filterable || attribute.is_sortable);
 }
 `);

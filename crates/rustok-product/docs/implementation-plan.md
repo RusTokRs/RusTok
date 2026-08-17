@@ -131,8 +131,8 @@ Product runtime contract, commerce transport, and module metadata remain synchro
 The category-bound admin transport keeps native server functions as the
 internal path and parallel GraphQL operations for the public/headless path.
 The DB-level tenant consistency audit, `VARCHAR(32)` locale storage, catalog
-search-option discovery, detached-value marker contract, and no-compile schema
-guardrail are source-locked. The complete storefront/admin catalog-controls
+search-option discovery, detached-value marker contract, and
+no-compile schema guardrail are source-locked. The complete storefront/admin catalog-controls
 contract carries snake_case `search`, `category_id`, `sort_by`,
 `sort_direction`, and `attribute_filters` through typed UI state, native and
 GraphQL adapters, Product-owned request models, and shared server-side
@@ -286,7 +286,7 @@ rustok-pricing` dependency cycle.
 - [x] Lock a reproducible separate-process Product runtime evidence capture contract.
 - [ ] Execute the separate-process Product runtime capture and retain its sanitized evidence packet.
 - [ ] Execute the standalone PostgreSQL schema preflight and retain runtime logs.
-- [ ] Retain authenticated separate-process Commerce and AI business-request evidence.
+- [ ] Retain authenticated separate-process Commerce and AI end-to-end evidence.
 - [x] Connect storefront/admin UI controls to optional catalog filters/sorts.
 - [x] Connect storefront title search through typed UI state, native/GraphQL transports, and Product-owned server-side filtering.
 - [x] Connect storefront category and deterministic date sorting through typed UI state, native/GraphQL transports, and Product-owned server-side execution.

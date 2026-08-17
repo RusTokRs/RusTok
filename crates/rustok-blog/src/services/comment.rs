@@ -63,17 +63,20 @@ impl CommentService {
         self.ensure_public_post_visible(tenant_id, post_id, public_channel_slug)
             .await?;
 
-        self.create_validated_comment(tenant_id, security, post_id, input)
+        self.create_comment(tenant_id, security, post_id, input)
             .await
     }
 
-    async fn create_validated_comment(
+    #[instrument(skip(self, security, input))]
+    pub async fn create_comment(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         post_id: Uuid,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
+        self.ensure_post_exists(tenant_id, post_id).await?;
+
         if security.user_id.is_none() {
             return Err(BlogError::AuthorRequired);
         }

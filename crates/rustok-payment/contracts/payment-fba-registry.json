@@ -300,7 +300,7 @@
     },
     "lifecycle_owner_service": "PaymentService",
     "external_adapter_registration": {
-      "status": "source_implemented_not_compiled_or_executed",
+      "status": "planned_contract_locked",
       "registration_owner": "rustok-server",
       "registry_owner": "rustok-payment",
       "requires_descriptor_capability_match": true,

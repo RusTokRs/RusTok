@@ -80,6 +80,7 @@ impl PaymentCollectionPort for crate::PaymentService {
         request: PaymentCollectionCreateOrReuseRequest,
     ) -> Result<PaymentCollectionResponse, PortError> {
         let owner_operation = CREATE_OR_REUSE_COLLECTION_OPERATION;
+        context.require_write_semantics()?;
         require_payment_collection_write_admission(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
 
@@ -145,6 +146,7 @@ impl PaymentCollectionPort for crate::PaymentService {
         request: PaymentCollectionStatusRequest,
     ) -> Result<PaymentCollectionStatusSnapshot, PortError> {
         let owner_operation = READ_COLLECTION_STATUS_OPERATION;
+        context.require_policy(PortCallPolicy::read())?;
         require_payment_collection_read_admission(&context, owner_operation)?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let response = self
