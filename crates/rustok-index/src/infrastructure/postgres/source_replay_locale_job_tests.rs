@@ -190,9 +190,9 @@ async fn locale_jobs_are_distinct_from_schema_and_other_locales() {
     let locale_checkpoint = IndexReplayCheckpoint::new(
         IndexReplayCheckpointKey::for_locale(
             Uuid::parse_str(TENANT).unwrap(),
+            SOURCE,
             fixture.schema.reference.clone(),
             LocaleKey::new("de").unwrap(),
-            SOURCE,
         )
         .unwrap(),
         None,
