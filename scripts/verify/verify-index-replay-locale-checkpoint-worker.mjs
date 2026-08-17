@@ -58,7 +58,7 @@ if (adapter.includes('partition_key()') || adapter.includes('partition: Option')
 
 const packetPath = 'crates/rustok-index/src/infrastructure/postgres/source_replay_locale_job_tests.rs';
 requireMarkers(packetPath, [
-  'locale_jobs_and_checkpoints_are_distinct_from_schema_and_other_locales',
+  'locale_jobs_are_distinct_from_schema_and_other_locales',
   'IndexReplayCheckpointKey::new(',
   'IndexReplayCheckpointKey::for_locale(',
   'LocaleKey::new("EN-us")',
