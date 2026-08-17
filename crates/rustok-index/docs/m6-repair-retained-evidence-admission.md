@@ -119,8 +119,7 @@ cargo check -p rustok-index --all-targets
 git diff --check
 ```
 
-After a successful capture, review the redacted logs and packet before committing them. Do not hand
-edit the runtime packet or either retained log.
+After a successful capture, review the redacted logs and packet before committing them. Do not hand edit the runtime packet or either retained log.
 
 ## Deliberate limits
 

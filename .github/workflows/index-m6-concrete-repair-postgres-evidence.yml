@@ -1,0 +1,121 @@
+name: Index M6 Concrete Repair PostgreSQL Evidence
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-index/**"
+      - "scripts/evidence/capture-index-repair-postgres.mjs"
+      - "scripts/verify/verify-index-repair-retained-evidence.mjs"
+      - "scripts/verify/verify-index-repair-execution-postgres-harness.mjs"
+      - "scripts/verify/verify-index-query-contract.mjs"
+      - ".github/workflows/index-m6-concrete-repair-postgres-evidence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  RUSTOK_INDEX_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_index_repair_evidence
+
+jobs:
+  source-contract:
+    name: Concrete repair evidence source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - name: Verify retained evidence contract
+        run: node scripts/verify/verify-index-repair-retained-evidence.mjs
+      - name: Verify concrete repair PostgreSQL harness
+        run: node scripts/verify/verify-index-repair-execution-postgres-harness.mjs
+      - name: Verify Index query contract
+        run: node scripts/verify/verify-index-query-contract.mjs
+
+  postgres-evidence:
+    name: Concrete repair PostgreSQL retained evidence
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_index_repair_evidence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_index_repair_evidence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: index-m6-concrete-repair-postgres-evidence
+      - name: Execute contract commands with visible diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p rustok-index --test drift_repair_postgres_environment_test -- --nocapture --test-threads=1
+          cargo test -p rustok-index --test drift_repair_recovery_postgres_test -- --nocapture --test-threads=1
+          cargo test -p rustok-index --test drift_repair_concrete_execution_postgres_test -- --nocapture --test-threads=1
+      - name: Capture clean-commit retained evidence
+        run: node scripts/evidence/capture-index-repair-postgres.mjs
+      - name: Verify generated retained evidence
+        run: node scripts/verify/verify-index-repair-retained-evidence.mjs
+      - name: Archive retained evidence packet and redacted logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-m6-concrete-repair-postgres-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.json
+            crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stdout.log
+            crates/rustok-index/contracts/evidence/concrete-repair-postgres-execution.stderr.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+  gate:
+    name: M6 Concrete Repair PostgreSQL Evidence Gate
+    if: always()
+    needs:
+      - source-contract
+      - postgres-evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require source contract and PostgreSQL evidence
+        shell: bash
+        run: |
+          if [[ "${{ needs.source-contract.result }}" != "success" ]] || \
+             [[ "${{ needs.postgres-evidence.result }}" != "success" ]]; then
+            echo "::error::M6 concrete repair PostgreSQL evidence did not complete successfully."
+            exit 1
+          fi
