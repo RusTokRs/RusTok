@@ -171,6 +171,24 @@ async fn run_two_process_redis_scenario() -> TestResult<()> {
             )));
         }
 
+        // Permission-cache epochs are intentionally striped. The fast-user
+        // invalidation may therefore conservatively invalidate an unrelated
+        // restart-user snapshot when both keys share a stripe. Re-prime the
+        // outage-user snapshot after the fast-path evidence so the outage
+        // assertion always starts from an explicit process-cache allow.
+        let restart_user_rewarmed = RbacService::has_permission(
+            &db,
+            &tenant_id,
+            &restart_user_id,
+            &Permission::SETTINGS_MANAGE,
+        )
+        .await?;
+        if !restart_user_rewarmed {
+            return Err(test_error(
+                "restart user process-cache precondition was not restored before Redis outage",
+            ));
+        }
+
         stop_redis(&mut redis_process).await?;
 
         let mut second_mutator = spawn_mutator(

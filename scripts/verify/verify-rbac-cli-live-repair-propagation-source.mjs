@@ -13,6 +13,12 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const requireNormalizedText = (source, value, label) => {
+  if (!normalizeWhitespace(source).includes(normalizeWhitespace(value))) {
+    failures.push(`${label}: missing ${value}`);
+  }
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -186,19 +192,21 @@ for (const marker of [
   "same process identifier before and after repair",
   "source_ready_unvalidated",
   "live negative HTTP, GraphQL, WebSocket and native transport requests",
-]) requireText(sources.docs, marker, `${files.docs}: evidence boundary`);
+]) requireNormalizedText(sources.docs, marker, `${files.docs}: evidence boundary`);
 
 for (const marker of [
-  "### P0. Database concurrency and multi-replica recovery evidence",
-  "Exercise CLI system-role repair while live replicas are running",
+  "### P0 — runtime evidence",
+  "Execute #2856 Redis available/outage/restart recovery — PR #3579 run",
+  "Execute #2862 registered-CLI repair propagation — PR #3590 run",
+  "Retain one same-revision result set within documented bounds",
   "Status: `in_progress`",
-]) requireText(sources.plan, marker, `${files.plan}: owner gate`);
+]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
   "Release readiness: `not_assessed`",
-]) requireText(sources.master, marker, `${files.master}: active cursor`);
+]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
   console.error("RBAC CLI live repair propagation source verification failed:");
@@ -207,5 +215,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "✔ source-ready RBAC CLI repair harness runs the canonical CLI path in an independent process and requires two live DB-only replicas to recover through durable generation without restart while retaining all execution gates",
+  "✔ source-ready RBAC CLI repair harness remains strict while the owner handoff retains successful live registered-CLI propagation and keeps the broader component gates open",
 );

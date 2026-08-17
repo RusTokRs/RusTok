@@ -16,17 +16,31 @@ on:
       - "crates/rustok-api/src/**"
       - "crates/rustok-cache/Cargo.toml"
       - "crates/rustok-cache/src/**"
+      - "crates/rustok-cli/Cargo.toml"
+      - "crates/rustok-cli/src/**"
+      - "crates/rustok-cli/tests/rbac_live_repair_propagation.rs"
+      - "crates/rustok-cli-core/Cargo.toml"
+      - "crates/rustok-cli-core/src/**"
+      - "crates/rustok-cli-registry/Cargo.toml"
+      - "crates/rustok-cli-registry/src/**"
       - "crates/rustok-core/Cargo.toml"
       - "crates/rustok-core/src/**"
       - "crates/rustok-migrations/Cargo.toml"
       - "crates/rustok-migrations/src/**"
       - "crates/rustok-rbac/Cargo.toml"
       - "crates/rustok-rbac/src/**"
+      - "crates/rustok-rbac/cli/Cargo.toml"
+      - "crates/rustok-rbac/cli/src/**"
+      - "crates/rustok-runtime/Cargo.toml"
+      - "crates/rustok-runtime/src/**"
+      - "crates/rustok-telemetry/Cargo.toml"
+      - "crates/rustok-telemetry/src/**"
       - "crates/rustok-test-utils/Cargo.toml"
       - "crates/rustok-test-utils/src/**"
       - "scripts/verify/verify-rbac-postgres-concurrency-source.mjs"
       - "scripts/verify/verify-rbac-two-process-durable-recovery-source.mjs"
       - "scripts/verify/verify-rbac-two-process-redis-restart-source.mjs"
+      - "scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs"
       - ".github/workflows/rbac-runtime-evidence.yml"
   push:
     branches:
@@ -44,17 +58,31 @@ on:
       - "crates/rustok-api/src/**"
       - "crates/rustok-cache/Cargo.toml"
       - "crates/rustok-cache/src/**"
+      - "crates/rustok-cli/Cargo.toml"
+      - "crates/rustok-cli/src/**"
+      - "crates/rustok-cli/tests/rbac_live_repair_propagation.rs"
+      - "crates/rustok-cli-core/Cargo.toml"
+      - "crates/rustok-cli-core/src/**"
+      - "crates/rustok-cli-registry/Cargo.toml"
+      - "crates/rustok-cli-registry/src/**"
       - "crates/rustok-core/Cargo.toml"
       - "crates/rustok-core/src/**"
       - "crates/rustok-migrations/Cargo.toml"
       - "crates/rustok-migrations/src/**"
       - "crates/rustok-rbac/Cargo.toml"
       - "crates/rustok-rbac/src/**"
+      - "crates/rustok-rbac/cli/Cargo.toml"
+      - "crates/rustok-rbac/cli/src/**"
+      - "crates/rustok-runtime/Cargo.toml"
+      - "crates/rustok-runtime/src/**"
+      - "crates/rustok-telemetry/Cargo.toml"
+      - "crates/rustok-telemetry/src/**"
       - "crates/rustok-test-utils/Cargo.toml"
       - "crates/rustok-test-utils/src/**"
       - "scripts/verify/verify-rbac-postgres-concurrency-source.mjs"
       - "scripts/verify/verify-rbac-two-process-durable-recovery-source.mjs"
       - "scripts/verify/verify-rbac-two-process-redis-restart-source.mjs"
+      - "scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs"
       - ".github/workflows/rbac-runtime-evidence.yml"
 
 permissions:
@@ -100,6 +128,8 @@ jobs:
         run: node scripts/verify/verify-rbac-two-process-durable-recovery-source.mjs
       - name: Verify two-process Redis restart source contract
         run: node scripts/verify/verify-rbac-two-process-redis-restart-source.mjs
+      - name: Verify registered CLI repair propagation source contract
+        run: node scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs
 
   runtime-evidence:
     name: RBAC PostgreSQL runtime evidence
@@ -201,6 +231,15 @@ jobs:
             separate_process_redis_fast_path_survives_restart_and_recovers_missed_publication \
             -- --ignored --nocapture \
             2>&1 | tee evidence/rbac-runtime/two-process-redis-restart.log
+      - name: Execute RBAC registered CLI repair propagation evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-cli \
+            --test rbac_live_repair_propagation \
+            live_cli_system_role_repair_reaches_two_running_replicas_without_restart \
+            -- --ignored --nocapture \
+            2>&1 | tee evidence/rbac-runtime/cli-live-repair-propagation.log
       - name: Archive RBAC runtime evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

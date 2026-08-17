@@ -7,6 +7,10 @@ adds source coverage for the remaining P0 requirement to exercise canonical CLI
 system-role repair while multiple server replicas remain live. It does not
 advance the platform verification cursor or complete RBAC.
 
+The machine-readable source packet intentionally remains
+`source_ready_unvalidated`: retained runtime execution is recorded below rather
+than rewriting source-shape provenance after the fact.
+
 ## Topology
 
 The ignored integration test creates:
@@ -96,24 +100,56 @@ The integration harness does not:
 
 ## Evidence boundary
 
-No Rust test, source verifier, formatting, Cargo check, PostgreSQL execution,
-subprocess execution, workflow or CI check was run in the connector-only work
-unit that added this packet. Redis was neither configured nor executed by this
-source harness.
+The original source packet was added without Rust, PostgreSQL or subprocess
+execution and therefore keeps its `source_ready_unvalidated` status. That status
+is a source-provenance statement, not a claim that later retained execution is
+absent.
 
-The packet remains `source_ready_unvalidated`. It does not close:
+The retained execution below closes the focused #2862 runtime packet but does not
+close:
 
 - same-revision compile, lint, module validate or module test gates;
-- retained execution of the PostgreSQL concurrency harness;
 - retained execution of the incident trace packet;
-- retained execution of the Redis available, outage and restart harnesses;
 - live negative HTTP, GraphQL, WebSocket and native transport requests;
+- migration clean-apply, N-1, fixture and rollback proofs;
 - the complete `core/rbac` verification item.
+
+## Retained execution
+
+PR #3590 run `31867710098` executed the permanent `RBAC Runtime Evidence`
+workflow on exact head
+`552b57e65c976b6d606a360e0d3c0382eb48e4c8` with
+`CARGO_PROFILE_TEST_DEBUG=0`, PostgreSQL 16 and the repository-selected stable
+Rust toolchain (`rustc 1.97.1`, `cargo 1.97.1`). Artifact `9242803437` retains
+metadata and per-step logs; its workflow metadata records the same head SHA.
+
+The same-revision packet passed:
+
+- all four RBAC source-contract verifiers;
+- the mutation architecture guard;
+- PostgreSQL concurrency #2849;
+- independent-process durable-watchdog recovery #2853;
+- Redis available/outage/restart recovery #2856;
+- registered-CLI repair propagation #2862;
+- artifact archive and final RBAC evidence gate.
+
+The focused outer #2862 test passed 1/1 in 8.58 seconds. Its canonical CLI child
+completed successfully and both long-lived observer children completed without
+restart after watchdog recovery. Because the harness requires the same process
+identifier before and after repair, generation-one recovery, a
+`generation_advanced` full clear, Redis-unconfigured state, and final cached plus
+authoritative deny on both replicas before returning success, this retained pass
+is the required live propagation evidence rather than a source-only assertion.
+
+Two preceding PR-head attempts failed only in stale documentation/handoff source
+verifier markers and did not reach Rust execution. Those verifier regressions
+were corrected before the successful packet; no production RBAC/cache/CLI runtime
+semantics changed.
 
 ## Targeted execution
 
 ```bash
-cargo test -p rustok-cli \
+CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-cli \
   --test rbac_live_repair_propagation \
   live_cli_system_role_repair_reaches_two_running_replicas_without_restart \
   -- --ignored --nocapture

@@ -9,11 +9,14 @@ priorities, required evidence, and the current verification handoff.
 - `[ ]` means execution or promotion evidence remains required.
 - Source-ready is not compiled, migrated, transport-verified, or operationally verified.
 
-Last reconciled with `main`: 2026-08-14.
+Last reconciled with `main`: 2026-08-15.
 
 - Source baseline PR: #2980, merged as `f4d89c26f1a30079918660280150016930c837a4`.
 - Architecture-guard fix PR: #3563, merged as `eedd1954bf0db9920c7557b691863e316a00befa`.
 - Runtime-evidence PR: #3570, merged as `9d7a8d4790c66bbcee3479cb880dc2008e5765b4`.
+- Redis-restart evidence PR: #3579, merged as `6cb7d26734661b17f9b2ca8fead6e46c552bc3eb`.
+- Registered-CLI evidence work: PR #3590; retained exact-head execution run
+  `31867710098` at `552b57e65c976b6d606a360e0d3c0382eb48e4c8`.
 
 ## Ownership boundary
 
@@ -34,12 +37,19 @@ role-assignment authority.
 
 `cycle-001/core-rbac` remains `in_progress`.
 
-Active verification task (2026-08-14): `[in_progress]` continue the durable invalidation
-packet after merged PR #3570. Exact-head PR run `31836046621` retained successful
-`CARGO_PROFILE_TEST_DEBUG=0` architecture, PostgreSQL concurrency (#2849), and
-independent-process durable watchdog (#2853) evidence. The next runtime packet is Redis
-available/outage/restart recovery (#2856), followed by registered-CLI repair propagation
-(#2862) and the remaining exact-head/migration/transport/promotion gates.
+Active verification task (2026-08-15): `[in_progress]` generate and review the exact-head
+artifact event digest, then execute the remaining format/compile/focused-test/module and
+migration gates. Registered-CLI repair propagation (#2862) is now retained: PR #3590 run
+`31867710098` at `552b57e65c976b6d606a360e0d3c0382eb48e4c8` completed successfully
+with `CARGO_PROFILE_TEST_DEBUG=0`, PostgreSQL 16 and repository-selected stable Rust
+1.97.1. On that one exact head the source contract, mutation architecture guard,
+PostgreSQL concurrency (#2849), independent-process durable watchdog (#2853),
+two-process Redis available/outage/restart (#2856), registered-CLI repair propagation
+(#2862), artifact archive and final gate all passed. Artifact `9242803437` retains the
+packet. The source-only evidence JSON remains `source_ready_unvalidated`; retained
+runtime execution is recorded separately. Push-to-main run `31867361919` for merged
+#3579 was cancelled during the architecture-guard build by later workflow activity and
+is not counted as either a pass or a product failure.
 
 PR #2980 reconstructed the useful product changes from superseded draft #2870 on current
 `main`. The task-specific workflow and obsolete migration-tail repair path were excluded.
@@ -86,9 +96,9 @@ Merged source provides:
 - `P3=2`: compatibility wording and obsolete broad lint handling.
 
 All findings above are source-fixed in `main`; broad execution verification remains
-incomplete. The #2849 PostgreSQL concurrency and #2853 durable-watchdog runtime packets
-are now retained, but they do not by themselves verify every source finding or close the
-component.
+incomplete. The #2849 PostgreSQL concurrency, #2853 durable-watchdog, #2856 Redis
+restart, and #2862 registered-CLI runtime packets are retained on one same-revision
+packet, but they do not by themselves verify every source finding or close the component.
 
 ## FFA/FBA boundary
 
@@ -138,7 +148,7 @@ component.
 - [x] Enforce tenant-composite role/actor and exact definition/scope parents.
 - [x] Add SQLite integrity, upgrade, rollback, explicit-scope, and Outbox regressions.
 - [x] Add fail-closed source verifiers.
-- [ ] Generate and review the exact-head event digest.
+- [ ] Generate and review the exact-head event digest. — `in_progress`
 - [ ] Execute contract, owner transaction, SQLite, PostgreSQL, adapter, verifier,
   migration compatibility, rollback, and module gates.
 
@@ -165,15 +175,17 @@ component.
 - [x] Execute and retain #2849 PostgreSQL concurrency on the PR #3570 exact head.
 - [x] Execute and retain #2853 independent-process durable watchdog recovery on the
   PR #3570 exact head.
-- [ ] Execute and retain #2856 Redis available/outage/restart recovery.
-- [ ] Execute and retain #2862 registered-CLI repair propagation.
+- [x] Execute and retain #2856 Redis available/outage/restart recovery on the PR #3579
+  exact head.
+- [x] Execute and retain #2862 registered-CLI repair propagation — PR #3590 run
+  `31867710098`, 1/1 pass; artifact `9242803437`.
 - [ ] Execute and retain the incident packet from #2846.
 
 ## Remaining priorities
 
 ### P0 — exact-head verification
 
-- [ ] Generate and review the artifact event digest.
+- [ ] Generate and review the artifact event digest. — `in_progress`
 - [ ] Run formatting, Events/RBAC/Admin/server compilation, focused tests, verifiers,
   and module validate/test on the merged revision.
 - [ ] Run SQLite proofs and PostgreSQL clean apply, N-1 upgrade, integrity, locale,
@@ -185,10 +197,13 @@ component.
 - [x] Execute #2849 PostgreSQL concurrency — PR #3570 run `31836046621`, 3/3 pass.
 - [x] Execute #2853 independent-process watchdog recovery — PR #3570 run
   `31836046621`, 1/1 pass.
-- [ ] Execute #2856 Redis available/outage/restart recovery.
-- [ ] Execute #2862 registered-CLI repair propagation.
-- [ ] Retain one same-revision result set within documented bounds for all required
-  multi-replica packets.
+- [x] Execute #2856 Redis available/outage/restart recovery — PR #3579 run
+  `31842014975`, 1/1 pass; artifact `9235209675`.
+- [x] Execute #2862 registered-CLI repair propagation — PR #3590 run
+  `31867710098`, 1/1 pass; artifact `9242803437`.
+- [x] Retain one same-revision result set within documented bounds for all required
+  multi-replica packets — PR #3590 run `31867710098` at
+  `552b57e65c976b6d606a360e0d3c0382eb48e4c8`.
 
 ### P1 — operator parity and lifecycle
 
@@ -227,6 +242,9 @@ cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard
 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-server --test rbac_mutation_api_architecture_guard -- --nocapture
 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-server --test rbac_postgres_concurrency -- --ignored --nocapture --test-threads=1
 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-server --test rbac_two_process_durable_recovery separate_process_replica_recovers_missed_local_publication_from_durable_generation -- --ignored --nocapture
+CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-server --test rbac_two_process_redis_restart separate_process_redis_fast_path_survives_restart_and_recovers_missed_publication -- --ignored --nocapture
+CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-cli --test rbac_live_repair_propagation live_cli_system_role_repair_reaches_two_running_replicas_without_restart -- --ignored --nocapture
+node scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs
 node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs
 node scripts/verify/verify-rbac-artifact-permission-outbox.mjs
 node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs
@@ -246,18 +264,19 @@ exists.
 - Relation integrity requires retained SQLite and PostgreSQL execution.
 - Migration integrity requires immutable-prefix, clean apply, N-1 upgrade, fixture,
   downgrade identity, failure atomicity, and rollback evidence.
-- Durable invalidation requires retained PostgreSQL/watchdog/Redis/CLI evidence.
+- Durable invalidation requires retained PostgreSQL/watchdog/Redis/CLI evidence; the
+  four required runtime packets are now retained on one exact head.
 - FBA remains `boundary_ready`; FFA and `core/rbac` remain `in_progress`.
 
 ## Periodic release verification handoff
 
 - Cycle: `cycle-001`
 - Status: `in_progress`
-- Last verified at (UTC): `2026-08-14`.
-- Scope inspected: `merged mutation architecture guard fix #3563; permanent RBAC runtime-evidence gate and fixture/source-verifier corrections in #3570; exact-head PostgreSQL concurrency and independent-process durable-watchdog execution; current-main overlap before merge`.
-- Findings: `source baseline remains P0=0, P1=11, P2=1, P3=2 and is source-fixed. No new RBAC product-semantics defect was found. Runtime fixture defects found while obtaining evidence were stale source-verifier prose assumptions, migration-heavy top-level PostgreSQL fixture parallelism, and an overlong test tenant slug; each received a regression. #2849 PostgreSQL concurrency and #2853 durable-watchdog evidence are now retained. The component remains in_progress because #2856 Redis restart, #2862 CLI propagation and broader exact-head/migration/transport/promotion gates remain open.`
-- Fixed in this pass: `#3563 preserved exactly one production RbacService::replace_user_role call site while excluding only the auth_lifecycle #[cfg(test)] tail. #3570 added a permanent exact-SHA DEBUG=0 evidence workflow, made source verifiers robust to Markdown wrapping/current handoff markers, serialized only migration-heavy top-level PostgreSQL fixtures while preserving internal barriers, bounded the test tenant slug to the production varchar(64) contract, and records the repository-selected Rust toolchain instead of claiming a hard-coded version. No production RBAC runtime semantics changed.`
-- Remaining risks or blockers: `Redis available/outage/restart recovery (#2856), registered-CLI live repair propagation (#2862), incident/live transport evidence, broad exact-head format/compile/test/module gates, event digest, PostgreSQL migration/rollback proofs, native operator parity, and FFA promotion remain open. Push-to-main RBAC Runtime Evidence run 31838470559 on merge commit 9d7a8d4790c66bbcee3479cb880dc2008e5765b4 was queued when this handoff was written, so no merge-SHA pass is inferred yet.`
-- Evidence: `PR #3563 merged as eedd1954bf0db9920c7557b691863e316a00befa. PR #3570 merged normally as 9d7a8d4790c66bbcee3479cb880dc2008e5765b4. Exact-head PR run 31836046621 at b1ee738459afea328c644c10f60514f75bf96a87 completed successfully with CARGO_PROFILE_TEST_DEBUG=0, PostgreSQL 16, repository-selected stable Rust 1.97.1; source verifiers passed, architecture guard passed 6/6, PostgreSQL concurrency passed 3/3, durable watchdog passed 1/1, and final gate passed. Artifact 9233262963 retains exact-SHA provenance and per-step logs. No local Cargo pass is claimed because the agent environment has no Rust toolchain.`
-- Next action: `execute and retain #2856 two-process Redis available/outage/restart recovery, then #2862 registered-CLI repair propagation. Keep the verification cursor on cycle-001/core-rbac until all P0/P1 completion gates are closed.`
-- Resume command: `CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-server --test rbac_two_process_redis_restart separate_process_redis_fast_path_survives_restart_and_recovers_missed_publication -- --ignored --nocapture`
+- Last verified at (UTC): `2026-08-15`.
+- Scope inspected: `merged architecture/PostgreSQL/watchdog evidence from #3570; merged Redis available/outage/restart evidence from #3579; registered-CLI repair propagation #2862 through the canonical rustok-cli process; all four retained source contracts; current-main overlap in the shared RBAC evidence workflow`.
+- Findings: `source baseline remains P0=0, P1=11, P2=1, P3=2 and is source-fixed. No new RBAC product-semantics defect was found. Two verification-plumbing defects were reproduced and fixed before runtime execution: the retained #2853 verifier still required the obsolete unchecked #2856 marker, and the #2856 verifier bound its owner-plan marker to obsolete punctuation. The final same-revision packet proves #2849, #2853, #2856 and #2862 together. The component remains in_progress because exact-head event/compile/test/module/migration/transport/operator/promotion gates remain open.`
+- Fixed in this pass: `PR #3590 extends the permanent exact-SHA DEBUG=0 evidence workflow through registered-CLI repair propagation, aligns retained-evidence source verifiers with completed handoff state, records runtime execution separately from immutable source-only JSON, and carries forward the current-main pinned setup-node action revision. No production RBAC/cache/CLI runtime semantics changed.`
+- Remaining risks or blockers: `artifact event digest, broad exact-head format/compile/focused-test/module gates, SQLite/PostgreSQL migration and rollback proofs, incident/live negative transport evidence, native operator parity, and FFA promotion remain open. Push-to-main #3579 run 31867361919 was cancelled during architecture-guard compilation by later workflow activity and is not counted as a pass or product failure.`
+- Evidence: `PR #3570 merged as 9d7a8d4790c66bbcee3479cb880dc2008e5765b4. PR #3579 merged as 6cb7d26734661b17f9b2ca8fead6e46c552bc3eb. PR #3590 exact-head run 31867710098 at 552b57e65c976b6d606a360e0d3c0382eb48e4c8 completed successfully with CARGO_PROFILE_TEST_DEBUG=0, PostgreSQL 16, Redis 7.0.15 for the Redis packet, repository-selected rustc 1.97.1 and cargo 1.97.1. Source contracts, architecture guard, #2849 PostgreSQL concurrency, #2853 durable watchdog, #2856 Redis restart, #2862 registered-CLI repair, artifact archive and final gate all passed. The outer #2862 test passed 1/1 in 8.58 seconds; its two live observer children completed without restart and the canonical CLI child completed successfully. Artifact 9242803437 retains exact-SHA provenance and logs. No local Cargo pass is claimed because the agent environment has no Rust toolchain.`
+- Next action: `generate and review the exact-head RBAC artifact event digest, then execute the remaining focused compile/test/module and migration gates. Keep the verification cursor on cycle-001/core-rbac until all P0/P1 completion gates are closed.`
+- Resume command: `cargo run -p rustok-events --example event_contract_digests -- --write`

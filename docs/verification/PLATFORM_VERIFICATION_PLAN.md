@@ -33,34 +33,36 @@ that component's local `docs/implementation-plan.md`.
 - Current item: `core/rbac`
 - Next item: `core/rbac`
 - Started at (UTC): `2026-07-20`
-- Last handoff at (UTC): `2026-08-14`
+- Last handoff at (UTC): `2026-08-15`
 - Release readiness: `not_assessed`
 - Current RBAC revision: source baseline PR #2980 merged as
   `f4d89c26f1a30079918660280150016930c837a4`; architecture-guard fix PR #3563
   merged as `eedd1954bf0db9920c7557b691863e316a00befa`; runtime-evidence PR #3570
-  merged as `9d7a8d4790c66bbcee3479cb880dc2008e5765b4`.
+  merged as `9d7a8d4790c66bbcee3479cb880dc2008e5765b4`; Redis-restart evidence PR #3579
+  merged as `6cb7d26734661b17f9b2ca8fead6e46c552bc3eb`; registered-CLI evidence is
+  being retained by current PR #3590.
 - Current RBAC state: `P0=0, P1=11, P2=1, P3=2`; findings are source-fixed and
   broad execution verification remains incomplete, so `core/rbac` remains
   `in_progress`.
-- Current RBAC verification delta: exact-head PR #3570 run `31836046621` at
-  `b1ee738459afea328c644c10f60514f75bf96a87` completed successfully with
+- Current RBAC verification delta: PR #3590 exact-head run `31867710098` at
+  `552b57e65c976b6d606a360e0d3c0382eb48e4c8` completed successfully with
   `CARGO_PROFILE_TEST_DEBUG=0`, PostgreSQL 16 and repository-selected stable Rust
-  1.97.1. Source verifiers passed; the mutation architecture guard passed 6/6;
-  PostgreSQL concurrency packet #2849 passed 3/3; independent-process durable
-  watchdog packet #2853 passed 1/1; the final RBAC evidence gate passed. Artifact
-  `9233262963` retains provenance and per-step logs. Fixture regressions corrected
-  while obtaining this evidence were stale prose markers in source verifiers,
-  parallel full-schema fixture migrations that exhausted PostgreSQL shared lock
-  memory, and an overlong test tenant slug. No production RBAC runtime semantics
-  changed.
+  1.97.1. All four retained source contracts passed; the mutation architecture guard
+  passed; PostgreSQL concurrency packet #2849 passed 3/3; durable watchdog packet
+  #2853 passed 1/1; Redis available/outage/restart packet #2856 passed 1/1; CLI repair
+  propagation #2862 passed 1/1 through the registered `rustok-cli` path with two live
+  DB-only observers and no observer restart. Artifact `9242803437` retains exact-SHA
+  provenance and per-step logs, and the final RBAC evidence gate passed. Earlier
+  source-only attempts exposed two stale handoff verifier markers and never reached
+  Rust execution; both were corrected without production RBAC runtime changes.
 - RBAC evidence still required: generated event digest; exact-head format, compile,
-  remaining tests, verifiers, module gates, and Migration Compatibility; PostgreSQL
-  clean apply, N-1 upgrade, integrity and rollback; Redis available/outage/restart
-  packet #2856; CLI repair propagation #2862; incident/live negative transport
+  remaining tests, verifiers and module gates; Migration Compatibility plus PostgreSQL
+  clean apply, N-1 upgrade, integrity and rollback; incident/live negative transport
   evidence; native operator parity; FFA/FBA promotion evidence. Push-to-main RBAC
-  Runtime Evidence run `31838470559` on merge commit
-  `9d7a8d4790c66bbcee3479cb880dc2008e5765b4` was queued when this handoff was
-  written and is not counted as passed yet.
+  Runtime Evidence run `31867361919` on #3579 merge commit
+  `6cb7d26734661b17f9b2ca8fead6e46c552bc3eb` was cancelled during architecture-guard
+  compilation by later workflow activity and is not counted as a pass or product
+  failure.
 - Environment classification: no local Rust execution is available in the current agent
   environment. GitHub CI is the executable evidence surface; broad CI failures are not
   product findings until their diagnostics are attributable to the RBAC diff.
@@ -86,11 +88,13 @@ command and owner plan.
   consumer receipt, DLQ and replay ownership remain incomplete.
 - `core/tenant`: merged host authority corrections still lack same-SHA source/runtime,
   rotation/revocation, WebSocket, Iggy and multi-replica evidence.
-- `core/rbac`: PR #2980 source corrections, PR #3563 architecture-guard correction and
-  PR #3570 PostgreSQL/watchdog evidence infrastructure are merged. #2849 PostgreSQL
-  concurrency and #2853 independent-process durable-watchdog packets are retained, but
-  #2856 Redis restart, #2862 CLI propagation and broader exact-head/migration/transport/
-  promotion gates remain open.
+- `core/rbac`: PR #2980 source corrections, PR #3563 architecture-guard correction,
+  PR #3570 PostgreSQL/watchdog evidence infrastructure and PR #3579 Redis restart
+  evidence are merged. #2849 PostgreSQL concurrency, #2853 independent-process
+  durable-watchdog, #2856 Redis restart and #2862 registered-CLI propagation packets
+  are retained on one PR #3590 exact head, but broader exact-head event/compile/test/
+  module, migration/rollback, incident/transport, operator and promotion gates remain
+  open.
 - Infrastructure issue #2740: the Rust-host PostgreSQL fixture can report a missing
   `rustok_browser` role after a nominally successful setup step.
 
