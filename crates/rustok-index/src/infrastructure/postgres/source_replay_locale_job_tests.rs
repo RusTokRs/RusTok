@@ -186,8 +186,8 @@ async fn locale_jobs_are_distinct_from_schema_and_other_locales() {
                 == &json!({"contract": "index_replay_job_v2", "source_name": SOURCE, "locale": "de"})
     }));
 
-    // A complete schema-wide checkpoint must not satisfy a locale-scoped job.
-    let schema_checkpoint = IndexReplayCheckpoint::new(
+    // A different-locale checkpoint must not satisfy an en-US locale-scoped job.
+    let locale_checkpoint = IndexReplayCheckpoint::new(
         IndexReplayCheckpointKey::for_locale(
             Uuid::parse_str(TENANT).unwrap(),
             fixture.schema.reference.clone(),
@@ -201,7 +201,7 @@ async fn locale_jobs_are_distinct_from_schema_and_other_locales() {
     )
     .unwrap();
     PostgresIndexReplayCheckpointStore::new(fixture.db.clone(), schema_lease.clone())
-        .commit_replay_checkpoint(&schema_checkpoint)
+        .commit_replay_checkpoint(&locale_checkpoint)
         .await
         .unwrap();
     fixture.jobs.succeed(&schema_lease).await.unwrap();
