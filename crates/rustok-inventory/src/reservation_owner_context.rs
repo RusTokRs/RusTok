@@ -233,10 +233,8 @@ fn map_inventory_reservation_identity_local_port_error(
             "inventory.reservation_identity_conflict",
             "reservation id is bound to another external identity",
         ) if operation == RELEASE_OPERATION => "validate_release_external_identity",
-        (
-            "inventory.reservation_item_missing",
-            "reservation inventory item is missing",
-        ) if operation == RELEASE_OPERATION =>
+        ("inventory.reservation_item_missing", "reservation inventory item is missing")
+            if operation == RELEASE_OPERATION =>
         {
             "load_reservation_inventory_item"
         }
@@ -438,7 +436,7 @@ fn log_inventory_reservation_admission_rejection(
             error_kind = inventory_reservation_port_error_kind(&error.kind),
             retryable = error.retryable,
             boundary = INVENTORY_RESERVATION_BOUNDARY,
-            "inventory reservation owner admission failed with bounded diagnostics"
+            "inventory reservation owner admission was rejected with bounded diagnostics"
         );
     }
 }
@@ -447,8 +445,49 @@ fn parse_inventory_reservation_tenant_id(
     context: &PortContext,
     operation: &'static str,
 ) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| PortError::validation(
-        "inventory.tenant_id_invalid",
-        format!("inventory {operation} requires a valid tenant identifier"),
-    ))
+    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+        let error = PortError::validation(
+            "inventory.context_invalid",
+            "inventory request context is invalid",
+        );
+        log_inventory_reservation_tenant_rejection(context, operation, &error);
+        error
+    })
+}
+
+fn log_inventory_reservation_tenant_rejection(
+    context: &PortContext,
+    operation: &'static str,
+    error: &PortError,
+) {
+    let facts = inventory_reservation_context_facts(context);
+    tracing::warn!(
+        owner = INVENTORY_OWNER,
+        operation,
+        validation_phase = "tenant_id",
+        correlation_id = %context.correlation_id,
+        tenant_id_length = facts.tenant_id_length,
+        actor_kind = facts.actor_kind,
+        actor_id_length = facts.actor_id_length,
+        claim_count = facts.claim_count,
+        role_count = facts.role_count,
+        channel_present = facts.channel_present,
+        channel_length = ?facts.channel_length,
+        locale_length = facts.locale_length,
+        causation_id_present = facts.causation_id_present,
+        causation_id_length = ?facts.causation_id_length,
+        traceparent_present = facts.traceparent_present,
+        traceparent_length = ?facts.traceparent_length,
+        idempotency_key_present = facts.idempotency_key_present,
+        idempotency_key_length = ?facts.idempotency_key_length,
+        deadline_ms = ?facts.deadline_ms,
+        tenant_id_parse_failed = true,
+        code = %error.code,
+        error_message_present = !error.message.is_empty(),
+        error_message_length = error.message.chars().count(),
+        error_kind = inventory_reservation_port_error_kind(&error.kind),
+        retryable = error.retryable,
+        boundary = INVENTORY_RESERVATION_BOUNDARY,
+        "inventory reservation owner context validation was rejected with bounded diagnostics"
+    );
 }
