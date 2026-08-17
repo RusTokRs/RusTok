@@ -17,9 +17,7 @@ use rustok_api::{
     TenantContext, TenantContextExtension,
 };
 use rustok_cache::CacheService;
-use rustok_channel::{
-    BindChannelModuleInput, ChannelModule, ChannelResponse, ChannelService, CreateChannelInput,
-};
+use rustok_channel::{BindChannelModuleInput, ChannelResponse, ChannelService, CreateChannelInput};
 use rustok_core::events::EventHandler;
 use rustok_core::{EventTransport, MigrationSource, ReliabilityLevel, SecurityContext};
 use rustok_events::{DomainEvent, EventEnvelope};
@@ -425,12 +423,52 @@ async fn setup_db(tenant_id: Uuid) -> TestResult<DatabaseConnection> {
         .to_string(),
     ))
     .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE channels (\
+            id TEXT PRIMARY KEY NOT NULL, \
+            tenant_id TEXT NOT NULL, \
+            slug TEXT NOT NULL, \
+            name TEXT NOT NULL, \
+            is_active INTEGER NOT NULL, \
+            is_default INTEGER NOT NULL, \
+            status TEXT NOT NULL, \
+            settings TEXT NOT NULL, \
+            created_at TEXT NOT NULL, \
+            updated_at TEXT NOT NULL\
+        )"
+        .to_string(),
+    ))
+    .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE UNIQUE INDEX uq_channels_tenant_slug ON channels (tenant_id, slug)".to_string(),
+    ))
+    .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE channel_module_bindings (\
+            id TEXT PRIMARY KEY NOT NULL, \
+            channel_id TEXT NOT NULL, \
+            module_slug TEXT NOT NULL, \
+            is_enabled INTEGER NOT NULL, \
+            settings TEXT NOT NULL, \
+            created_at TEXT NOT NULL, \
+            updated_at TEXT NOT NULL\
+        )"
+        .to_string(),
+    ))
+    .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE UNIQUE INDEX uq_channel_module_binding ON channel_module_bindings (channel_id, module_slug)".to_string(),
+    ))
+    .await?;
 
     let manager = SchemaManager::new(&db);
     for migration in OutboxModule
         .migrations()
         .into_iter()
-        .chain(ChannelModule.migrations())
         .chain(PagesModule.migrations())
     {
         migration.up(&manager).await?;

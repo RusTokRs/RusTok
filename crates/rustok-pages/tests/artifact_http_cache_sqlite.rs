@@ -13,6 +13,7 @@ use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 use rustok_page_builder::static_landing::StaticLandingCompiler;
 use rustok_pages::entities::{
     page, page_body, page_published_landing_artifact, page_static_landing_artifact,
+    page_translation,
 };
 use rustok_pages::{
     PageCacheError, PageCacheGenerationSnapshot, PageCacheScope, PagesCacheReadPort,
@@ -293,6 +294,20 @@ async fn insert_published_artifact(db: &DatabaseConnection) -> TestResult<Artifa
         published_at: Set(Some(now)),
         archived_at: Set(None),
         version: Set(1),
+    }
+    .insert(db)
+    .await?;
+
+    page_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        page_id: Set(page_id),
+        tenant_id: Set(tenant_id),
+        locale: Set("en".to_string()),
+        title: Set("Cached landing".to_string()),
+        slug: Set("home".to_string()),
+        meta_title: Set(None),
+        meta_description: Set(Some("Pages artifact HTTP cache evidence".to_string())),
+        revision: Set(1),
     }
     .insert(db)
     .await?;

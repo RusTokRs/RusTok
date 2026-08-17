@@ -1,0 +1,80 @@
+{
+  "format": "pages_cache_consumer_execution_source_v1",
+  "status": "source_ready_main_execution_pending",
+  "scope": "pages_page_builder_cache_consumer",
+  "workflow": ".github/workflows/pages-cache-consumer-exact-main-evidence.yml",
+  "fresh_base": "db29e7e27f9f4a438774b5d0e7f10a35ec34bb62",
+  "purpose": "Execute the existing Pages cache-consumer source-ready packets on one exact source revision and retain a bounded exact-main receipt for a later separate canonical registry admission.",
+  "admission_boundary": {
+    "registry": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "target_json_pointer": "/consumers/0/cache_consumer/executed_evidence",
+    "target_pre_state": "pending",
+    "provider_consumer_properties_required_pre_state": "pending",
+    "separate_registry_admission_required": true,
+    "terminal_inventory_recompute_separate": true,
+    "pages_rollout_clearance_separate": true
+  },
+  "execution_packet": {
+    "cache_source_guard": true,
+    "postgres_publish_rollback": true,
+    "postgres_relay_restart": true,
+    "production_generation_gate": true,
+    "production_relay_native_route": true,
+    "native_storefront_cache": true,
+    "native_storefront_relay_continuity": true,
+    "artifact_http_cache": true,
+    "explicit_repair_cache_regression": true,
+    "cargo_checks": true
+  },
+  "required_source_files": [
+    "crates/rustok-pages/contracts/evidence/pages-cache-consumer-execution.json",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+    "crates/rustok-pages/src/cache_invalidation.rs",
+    "apps/server/src/services/pages_cache_invalidation.rs",
+    "apps/server/src/services/tenant_generation_delivery_gate.rs",
+    "apps/server/src/services/module_event_dispatcher.rs",
+    "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+    "crates/rustok-pages/src/controllers/mod.rs",
+    "crates/rustok-pages/tests/publish_rollback_outbox_cache_postgres.rs",
+    "crates/rustok-pages/tests/outbox_relay_restart_postgres.rs",
+    "crates/rustok-pages/tests/artifact_http_cache_sqlite.rs",
+    "crates/rustok-pages/tests/native_storefront_cache_contract.rs",
+    "crates/rustok-pages/tests/explicit_artifact_repair_cache_postgres.rs",
+    "crates/rustok-pages/storefront/tests/native_storefront_relay_continuity_sqlite.rs",
+    "apps/server/tests/pages_production_relay_native_route_sqlite.rs",
+    "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-publish-rollback-outbox-cache-postgres.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-outbox-relay-restart-postgres.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-production-relay-generation-gate.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-production-relay-native-route.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-cache.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-native-storefront-relay-continuity.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs",
+    "crates/rustok-pages/scripts/verify/verify-pages-explicit-artifact-repair-cache.mjs",
+    "docs/modules/pages-cache-consumer-exact-main-evidence-actualization-2026-08-15.md"
+  ],
+  "output": {
+    "format": "pages_cache_consumer_execution_v1",
+    "success_status": "cache_consumer_execution_passed_admission_pending",
+    "receipt_path": "evidence/pages-cache-consumer/receipt.json",
+    "maximum_bytes": 1048576,
+    "retention_days": 90
+  },
+  "privacy": {
+    "database_url_retained": false,
+    "tenant_identity_retained": false,
+    "raw_database_rows_retained": false,
+    "raw_event_payload_retained": false,
+    "raw_http_body_retained": false,
+    "credentials_retained": false
+  },
+  "non_claims": {
+    "registry_mutated": false,
+    "target_registry_verified": false,
+    "provider_consumer_properties_verified": false,
+    "terminal_inventory_complete": false,
+    "owner_platform_review_ready": false,
+    "pages_ffa_promoted": false,
+    "page_builder_fba_promoted": false
+  }
+}
