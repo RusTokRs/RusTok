@@ -48,7 +48,6 @@ fn map_tenant_context_error<E: std::fmt::Debug>(
             error = ?error,
             owner = PRODUCT_STOREFRONT_CATALOG_OWNER,
             owner_operation = PRODUCT_STOREFRONT_CATALOG_OPERATION,
-            correlation_id = %request_context.correlation_id,
             channel_id = ?request_context.channel_id,
             channel_slug = ?request_context.channel_slug,
             locale = %request_context.locale,

@@ -13,6 +13,7 @@ import {
 } from "@/shared/seo/metadata";
 import { getStorefrontTenantId } from "@/shared/api/modules";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
+import { storefrontGraphql } from "@/shared/lib/graphql";
 import { Button } from "@/shared/ui/base/button";
 
 const HOME_ROUTE = "/";

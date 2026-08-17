@@ -62,38 +62,36 @@ pub fn EmailSettingsPage() -> impl IntoView {
         }
     });
 
-    let save = {
-        move |_| {
-            let token_val = token.get();
-            let tenant_val = tenant.get();
-            let host = smtp_host.get();
-            let port = smtp_port.get();
-            let username = smtp_username.get();
-            let from = from_address.get();
+    let save = move || {
+        let token_val = token.get();
+        let tenant_val = tenant.get();
+        let host = smtp_host.get();
+        let port = smtp_port.get();
+        let username = smtp_username.get();
+        let from = from_address.get();
 
-            let port_num: u16 = port.parse().unwrap_or(587);
-            let settings = serde_json::json!({
-                "smtp_host": host,
-                "smtp_port": port_num,
-                "smtp_username": username,
-                "from_address": from,
-            });
+        let port_num: u16 = port.parse().unwrap_or(587);
+        let settings = serde_json::json!({
+            "smtp_host": host,
+            "smtp_port": port_num,
+            "smtp_username": username,
+            "from_address": from,
+        });
 
-            set_saving.set(true);
-            set_save_result.set(None);
+        set_saving.set(true);
+        set_save_result.set(None);
 
-            spawn_local(async move {
-                let result =
-                    transport::update_email_settings(token_val, tenant_val, settings.to_string())
-                        .await;
+        spawn_local(async move {
+            let result =
+                transport::update_email_settings(token_val, tenant_val, settings.to_string())
+                    .await;
 
-                match result {
-                    Ok(success) => set_save_result.set(Some(Ok(success))),
-                    Err(error) => set_save_result.set(Some(Err(error))),
-                }
-                set_saving.set(false);
-            });
-        }
+            match result {
+                Ok(success) => set_save_result.set(Some(Ok(success))),
+                Err(error) => set_save_result.set(Some(Err(error))),
+            }
+            set_saving.set(false);
+        });
     };
 
     view! {
@@ -161,7 +159,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
                                     }}
                                 </Show>
 
-                                <Button on_click=save disabled=saving.into()>
+                                <Button on_click=Callback::new(move |_| save()) disabled=Signal::derive(move || saving.get())>
                                     {move || if saving.get() {
                                         t_string!(i18n, email.saving).to_string()
                                     } else {

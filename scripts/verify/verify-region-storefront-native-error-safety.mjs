@@ -43,7 +43,6 @@ for (const [value, label] of [
   ["owner = REGION_STOREFRONT_NATIVE_OWNER", "owner diagnostics"],
   ['owner_operation = "storefront_regions"', "request operation diagnostics"],
   ['owner_operation = "list_regions"', "owner operation diagnostics"],
-  ["correlation_id = %request_context.correlation_id", "correlation diagnostics"],
   ["tenant_id = %tenant.id", "tenant diagnostics"],
   ["channel_id = ?request_context.channel_id", "channel id diagnostics"],
   ["channel_slug = ?request_context.channel_slug", "channel slug diagnostics"],
@@ -55,6 +54,11 @@ for (const [value, label] of [
   ['ServerFnError::new("Region storefront context is unavailable")', "context envelope"],
   ['ServerFnError::new("Storefront regions are temporarily unavailable")', "owner envelope"],
 ]) requireText(source, value, label);
+forbidText(
+  source,
+  "request_context.correlation_id",
+  "removed RequestContext correlation field",
+);
 
 for (const [value, label] of [
   ['endpoint = "region/storefront-data"', "endpoint"],

@@ -6,7 +6,7 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::ports_impl::{
+use crate::ports::{
     InventoryAvailabilityRequest, InventoryAvailabilitySnapshot, InventoryReservationPort,
     InventoryReservationReleaseRequest, InventoryReservationReleaseSnapshot,
     InventoryReservationRequest, InventoryReservationSnapshot,

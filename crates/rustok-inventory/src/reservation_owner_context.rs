@@ -5,7 +5,7 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::ports_impl::{
+use crate::ports::{
     InventoryIdentityReservationReleaseRequest, InventoryIdentityReservationReleaseSnapshot,
     InventoryIdentityReservationRequest, InventoryIdentityReservationSnapshot,
     InventoryReservationIdentityPort,
@@ -87,7 +87,7 @@ pub struct PersistentInventoryReservationIdentityPort {
 impl PersistentInventoryReservationIdentityPort {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            inner: Arc::new(crate::ports_impl::PersistentInventoryReservationIdentityPort::new(db)),
+            inner: Arc::new(crate::ports::PersistentInventoryReservationIdentityPort::new(db)),
         }
     }
 }
