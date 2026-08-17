@@ -47,7 +47,6 @@ const job = requireMarkers(jobPath, [
   'locale: Option<LocaleKey>',
   'pub(crate) fn for_locale(',
   'fn scope_kind(&self) ->',
-  'if self.locale.is_some() { "locale" } else { "schema" }',
   'LocaleScopeUnsupported(SchemaRef)',
   '"locale": locale.as_str()',
   'request.locale does not match locale_key',
@@ -55,9 +54,16 @@ const job = requireMarkers(jobPath, [
   'request.scope_kind().to_owned().into()',
   'locale_key IS NOT DISTINCT FROM',
   'locale_key IS {prefix}6',
-  'lease.locale',
   "partition_key = ''",
 ]);
+if (
+  !/fn scope_kind\(&self\) ->[\s\S]*?if self\.locale\.is_some\(\) \{\s*"locale"\s*\} else \{\s*"schema"\s*\}/.test(job)
+) {
+  fail(`${jobPath} must map locale-bearing replay jobs to locale scope and schema-wide jobs to schema scope`);
+}
+if (!/lease\s*\.locale/.test(job)) {
+  fail(`${jobPath} must bind replay completion to the lease locale`);
+}
 for (const forbidden of ['partition_key: Option', 'scope_kind = \'partition\'', 'targeted_rebuild', 'shadow_rebuild']) {
   if (job.includes(forbidden)) fail(`${jobPath} must not absorb partition/rebuild-mode semantics: ${forbidden}`);
 }
@@ -85,8 +91,8 @@ requireMarkers('crates/rustok-index/src/infrastructure/postgres/mod.rs', [
 requireMarkers('crates/rustok-index/docs/m6-locale-replay-job-scope.md', [
   'Status: `job_scope_source_complete_checkpoint_worker_pending`.',
   '`scope_kind = \'locale\'`',
-  '`index_replay_job_v1`',
-  '`index_replay_job_v2`',
+  '"contract":"index_replay_job_v1"',
+  '"contract":"index_replay_job_v2"',
   '`LocaleMode::None`',
   '`CheckpointMissing`',
   'constructor remains crate-private',
