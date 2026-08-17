@@ -5,8 +5,18 @@ const uiPath = 'crates/rustok-forum/admin/src/ui/leptos.rs';
 const transportPath = 'crates/rustok-forum/admin/src/transport/graphql_adapter.rs';
 const libPath = 'crates/rustok-forum/admin/src/lib.rs';
 const docsPath = 'crates/rustok-forum/docs/forum-28-admin-locale-switch-contract.md';
+const enLocalePath = 'crates/rustok-forum/admin/locales/en.json';
+const ruLocalePath = 'crates/rustok-forum/admin/locales/ru.json';
 
-for (const path of [policyPath, uiPath, transportPath, libPath, docsPath]) {
+for (const path of [
+  policyPath,
+  uiPath,
+  transportPath,
+  libPath,
+  docsPath,
+  enLocalePath,
+  ruLocalePath,
+]) {
   if (!fs.existsSync(path)) throw new Error(`missing ${path}`);
 }
 
@@ -15,12 +25,55 @@ const ui = fs.readFileSync(uiPath, 'utf8');
 const transport = fs.readFileSync(transportPath, 'utf8');
 const lib = fs.readFileSync(libPath, 'utf8');
 const docs = fs.readFileSync(docsPath, 'utf8');
+const enLocale = JSON.parse(fs.readFileSync(enLocalePath, 'utf8'));
+const ruLocale = JSON.parse(fs.readFileSync(ruLocalePath, 'utf8'));
 
 const requireAll = (source, markers, label) => {
   for (const marker of markers) {
     if (!source.includes(marker)) throw new Error(`${label}: missing ${marker}`);
   }
 };
+
+const enKeys = Object.keys(enLocale).sort();
+const ruKeys = Object.keys(ruLocale).sort();
+if (JSON.stringify(enKeys) !== JSON.stringify(ruKeys)) {
+  const missingInEn = ruKeys.filter((key) => !(key in enLocale));
+  const missingInRu = enKeys.filter((key) => !(key in ruLocale));
+  throw new Error(
+    `forum admin locale bundle key drift: missing in en=[${missingInEn.join(', ')}], missing in ru=[${missingInRu.join(', ')}]`,
+  );
+}
+
+const ownerCopyKeys = [
+  'forum.error.localeSwitchLoad',
+  'forum.error.localeSwitchDirty',
+  'forum.error.localeSwitchInvalid',
+  'forum.error.localeSwitchPending',
+  'forum.error.localeSwitchReplyDirty',
+  'forum.form.switchLocale',
+  'forum.form.localeHintCategory',
+  'forum.form.localeHintTopic',
+  'forum.error.replyRequired',
+  'forum.error.replyTopicRequired',
+  'forum.error.saveReply',
+  'forum.replies.body',
+  'forum.replies.bodyHint',
+  'forum.replies.submit',
+];
+
+for (const key of ownerCopyKeys) {
+  for (const [locale, bundle] of [
+    ['en', enLocale],
+    ['ru', ruLocale],
+  ]) {
+    if (typeof bundle[key] !== 'string' || bundle[key].trim() === '') {
+      throw new Error(`forum admin owner copy: ${locale} missing non-empty ${key}`);
+    }
+  }
+  if (ruLocale[key] === enLocale[key]) {
+    throw new Error(`forum admin owner copy: ru still falls back to English for ${key}`);
+  }
+}
 
 requireAll(lib, ['mod locale_switch;'], 'lib wiring');
 
@@ -76,7 +129,11 @@ requireAll(ui, [
   'topic_locale.get()',
   'on_locale_switch=switch_category_locale',
   'on_locale_switch=switch_topic_locale',
+  'forum.error.localeSwitchLoad',
+  'forum.error.localeSwitchDirty',
+  'forum.error.localeSwitchInvalid',
   'forum.error.localeSwitchPending',
+  'forum.error.localeSwitchReplyDirty',
 ], 'admin UI contract');
 
 if (ui.includes('on:input=move |ev| set_locale.set(event_target_value(&ev))')) {
