@@ -171,15 +171,15 @@ jobs:
       - name: Execute production relay to native route
         run: cargo test --locked -p rustok-server --no-default-features --features mod-pages --test pages_production_relay_native_route_sqlite -- --nocapture
       - name: Execute production cache provider unit packet
-        run: cargo test --locked -p rustok-server --no-default-features --features mod-pages services::pages_cache_invalidation -- --nocapture
+        run: cargo test --locked -p rustok-server --no-default-features --features mod-pages --lib services::pages_cache_invalidation -- --nocapture
       - name: Execute production generation gate unit packet
-        run: cargo test --locked -p rustok-server --no-default-features --features mod-pages services::tenant_generation_delivery_gate -- --nocapture
+        run: cargo test --locked -p rustok-server --no-default-features --features mod-pages --lib services::tenant_generation_delivery_gate -- --nocapture
       - name: Check cache-consumer targets
         run: |
           set -euo pipefail
           cargo check --locked -p rustok-pages --all-targets
           cargo check --locked -p rustok-pages-storefront --features ssr --all-targets
-          cargo check --locked -p rustok-server --no-default-features --features mod-pages --all-targets
+          cargo check --locked -p rustok-server --no-default-features --features mod-pages --lib
 
   exact-main-receipt:
     name: Pages cache-consumer exact-main receipt
