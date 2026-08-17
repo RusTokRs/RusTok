@@ -359,7 +359,7 @@
         ],
         "inline_publish_invalidation": false,
         "reader_failure_mode": "fail_open_to_owner_source_read",
-        "executed_evidence": "pending"
+        "executed_evidence": "verified"
       },
       "error_catalog": {
         "validation": "validation",
