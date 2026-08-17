@@ -21,7 +21,6 @@ server = [
   "dep:rustok-ai-product",
   "dep:rustok-ai-media",
   "dep:rustok-blog-owner",
-  "dep:rustok-commerce",
   "dep:rustok-core",
   "dep:rustok-media",
   "dep:rustok-mcp",
@@ -69,7 +68,6 @@ rustok-ai-media = { workspace = true, optional = true }
 rustok-ai-alloy.workspace = true
 rustok-api.workspace = true
 rustok-blog-owner = { package = "rustok-blog", path = "../rustok-blog", optional = true }
-rustok-commerce = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }
 rustok-mcp = { workspace = true, optional = true }

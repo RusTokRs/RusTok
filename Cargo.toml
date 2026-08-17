@@ -348,3 +348,9 @@ flex = { path = "crates/flex" }
 alloy = { path = "crates/alloy" }
 rustok-workflow = { path = "crates/rustok-workflow" }
 schemars = "1.2"
+
+[profile.dev]
+debug = 1
+
+[profile.test]
+debug = 1
