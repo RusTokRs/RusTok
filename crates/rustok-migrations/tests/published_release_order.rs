@@ -20,7 +20,9 @@ fn migrator_preserves_append_only_migration_tail() {
             names
                 .iter()
                 .position(|candidate| candidate == name)
-                .unwrap_or_else(|| panic!("published migration {name} is missing from the platform plan"))
+                .unwrap_or_else(|| {
+                    panic!("published migration {name} is missing from the platform plan")
+                })
         })
         .collect::<Vec<_>>();
 
