@@ -119,7 +119,6 @@ requireValue(
 const currentPendingPaths = collectPendingEvidence(fbaRegistry).sort();
 const expectedCurrentPaths = [
   "/provider/consumer_properties_contract/executed_evidence",
-  "/consumers/0/cache_consumer/executed_evidence",
 ].sort();
 requireValue(
   JSON.stringify(currentPendingPaths) === JSON.stringify(expectedCurrentPaths),
@@ -135,7 +134,7 @@ requireValue(
     source.page_builder_fba_inventory?.all_recursive_blocker_paths_must_be_zero_for_completion ===
       true &&
     source.page_builder_fba_inventory?.current_source_expected_to_have_blockers === true &&
-    source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 2 &&
+    source.page_builder_fba_inventory?.current_source_rechecked_blocker_count === 1 &&
     source.page_builder_fba_inventory?.pending_blockers_prevent_transport_verified === true,
   `${sourcePath}: Page Builder FBA inventory contract drifted`,
 );
@@ -260,12 +259,16 @@ for (const marker of [
 
 for (const marker of [
   "terminal-evidence-inventory-source-ready",
-  "2",
+  "9 → 8 → 7 → 6 → 5 → 4 → 3 → 2 → 1",
   "/provider/consumer_properties_contract/executed_evidence",
   "/consumers/0/artifact_repair/rollback_continuity/executed_evidence",
   "/consumers/0/cache_consumer/executed_evidence",
   "31898042165",
   "9250395203",
+  "32060695197",
+  "9298820347",
+  "#3626",
+  "967bbbfbebdf3bfcedef35745029b0149aa07321",
   "execution-rollout-pending",
   "terminal_evidence_inventory_incomplete",
   "terminal_evidence_inventory_complete_owner_platform_review_ready",
