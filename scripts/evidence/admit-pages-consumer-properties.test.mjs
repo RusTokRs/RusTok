@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -120,6 +121,10 @@ function expectReject(label, source, browser, deployment) {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function jsonSha256(document) {
+  return sha256(`${JSON.stringify(document, null, 2)}\n`);
 }
 
 function main() {
@@ -263,6 +268,10 @@ function main() {
       source_commit: head,
       deployment_image_digest: deploymentDigest,
       reviewed_at: new Date(0).toISOString(),
+      input_packet_sha256: {
+        source_receipt: jsonSha256(sourceReceipt),
+        browser_evidence: jsonSha256(browserPacket),
+      },
       review: {
         reviewer_id: "synthetic-reviewer",
         classification: "maintainer_reviewed_external_fact",
@@ -317,6 +326,15 @@ function main() {
     sourceRunDrift.workflow_evidence.source.run_id = "32170000000";
     expectReject("rejects source workflow run drift", sourceReceipt, browserPacket, sourceRunDrift);
 
+    const browserPacketHashDrift = clone(deploymentProvenance);
+    browserPacketHashDrift.input_packet_sha256.browser_evidence = "d".repeat(64);
+    expectReject(
+      "rejects browser packet hash drift",
+      sourceReceipt,
+      browserPacket,
+      browserPacketHashDrift,
+    );
+
     const cryptographicOverclaim = clone(deploymentProvenance);
     cryptographicOverclaim.binding.cryptographic_origin_to_repo_digest_binding = true;
     expectReject(
@@ -327,7 +345,7 @@ function main() {
     );
 
     console.log(
-      "[admit-pages-consumer-properties.test] PASS exact_lineage=accepted fail_closed_mutations=6",
+      "[admit-pages-consumer-properties.test] PASS exact_lineage=accepted fail_closed_mutations=7",
     );
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
