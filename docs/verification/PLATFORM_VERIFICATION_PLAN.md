@@ -33,7 +33,7 @@ that component's local `docs/implementation-plan.md`.
 - Current item: `core/rbac`
 - Next item: `core/rbac`
 - Started at (UTC): `2026-07-20`
-- Last handoff at (UTC): `2026-08-17`
+- Last handoff at (UTC): `2026-08-18`
 - Release readiness: `not_assessed`
 - Current RBAC revision: source baseline PR #2980 merged as
   `f4d89c26f1a30079918660280150016930c837a4`; architecture-guard fix PR #3563
@@ -41,10 +41,12 @@ that component's local `docs/implementation-plan.md`.
   merged as `9d7a8d4790c66bbcee3479cb880dc2008e5765b4`; Redis-restart evidence PR #3579
   merged as `6cb7d26734661b17f9b2ca8fead6e46c552bc3eb`; registered-CLI evidence PR #3590
   merged as `67ed475549598720486188f175fcfce0ab826a3b`; artifact-event-digest evidence PR
-  #3617 merged as `65a63a33d457ed5ff7c592f2c81b839cbf690d96`.
-- Current RBAC state: `P0=0, P1=11, P2=1, P3=2`; findings are source-fixed and
-  broad execution verification remains incomplete, so `core/rbac` remains
-  `in_progress`.
+  #3617 merged as `65a63a33d457ed5ff7c592f2c81b839cbf690d96`; published-migration-order
+  correction PR #3627 is open from current-main base
+  `9ed8c784406303e2f2b80cbfd808ab945fe16c51`.
+- Current RBAC state: `P0=0, P1=12, P2=1, P3=2`; findings 1-11 are source-fixed in
+  `main`, finding 12 is source-fixed in PR #3627 but remains unmerged/unverified, and
+  broad execution verification remains incomplete, so `core/rbac` remains `in_progress`.
 - Current RBAC verification delta: PR #3590 exact-head run `31885429843` at
   `06554657c50535204cdca7f7baf87c7b8d55ba65` completed successfully. All four retained
   source contracts passed; the mutation architecture guard passed; PostgreSQL concurrency
@@ -58,9 +60,16 @@ that component's local `docs/implementation-plan.md`.
   `65a63a33d457ed5ff7c592f2c81b839cbf690d96`; artifact `9298285369` records matching
   expected/actual SHA, Rust 1.97.1, generated digest file SHA-256
   `ca261acbf570615cb1ea180854a2d927aeca385db74917cbb487e0dfd9b730b9`, and a
-  zero-byte generated diff.
-- RBAC evidence still required: exact-head format, Events/RBAC/Admin/server compilation,
-  remaining focused tests, source verifiers and RBAC module gates; Migration Compatibility
+  zero-byte generated diff. Fresh RBAC Exact-Head Core Gates run `32062436923` then
+  passed exact-head compilation, focused Rust tests, and RBAC module validate/test but
+  failed the format/source job. Unrelated workspace rustfmt drift is not classified as
+  an RBAC defect. The source diagnostics exposed stale guard markers plus new P1 #12:
+  the dependency-sort migration refactor no longer encoded the published Forum -> Blog
+  -> RBAC cutover order. PR #3627 restores that order through canonical module-owned
+  `MigrationDependencyDescriptor` edges and adds a focused order regression without
+  restoring the removed append-only-tail wrapper.
+- RBAC evidence still required: PR #3627 exact-head/merge confirmation; exact-head format,
+  remaining source verifiers and any affected compile/module gates; Migration Compatibility
   plus PostgreSQL clean apply, N-1 upgrade, integrity and rollback; incident/live negative
   transport evidence; native operator parity; composed-host/degraded-path and FFA/FBA
   promotion evidence.
@@ -95,8 +104,10 @@ command and owner plan.
   digest evidence are merged. #2849 PostgreSQL concurrency, #2853 independent-process
   durable-watchdog, #2856 Redis restart and #2862 registered-CLI propagation are retained
   and merge-confirmed, and the event digest is generator-current on the #3617 merge SHA.
-  Broader exact-head compile/test/module, migration/rollback, incident/transport,
-  operator, composed-host/degraded-path, and promotion gates remain open.
+  Fresh exact-head run #32062436923 exposed P1 #12, a published migration-order regression;
+  PR #3627 source-fixes it through the canonical dependency graph but is not yet merged or
+  exact-head verified. Broader exact-head source/migration, incident/transport, operator,
+  composed-host/degraded-path, and promotion gates remain open.
 - Infrastructure issue #2740: the Rust-host PostgreSQL fixture can report a missing
   `rustok_browser` role after a nominally successful setup step.
 
