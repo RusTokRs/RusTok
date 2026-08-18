@@ -7,23 +7,25 @@ updates:
     open-pull-requests-limit: 5
     groups:
       all-updates:
-        update-types: ["major", "minor", "patch"]
+        patterns: ["*"]
   - package-ecosystem: "cargo"
-    directories:
-      - "/"
-      - "**/*"
+    directory: "/"
     schedule:
       interval: "daily"
       time: "04:00"
       timezone: "Europe/Minsk"
     open-pull-requests-limit: 50
     groups:
-      patch-updates:
+      all-updates:
         patterns: ["*"]
-        update-types: ["patch"]
-      minor-updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      all-updates:
         patterns: ["*"]
-        update-types: ["minor"]
   - package-ecosystem: "npm"
     directory: "/apps/next-frontend"
     schedule:
@@ -40,3 +42,20 @@ updates:
     groups:
       all-updates:
         patterns: ["*"]
+  - package-ecosystem: "npm"
+    directory: "/apps/admin"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      all-updates:
+        patterns: ["*"]
+  - package-ecosystem: "npm"
+    directory: "/apps/storefront"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      all-updates:
+        patterns: ["*"]
+

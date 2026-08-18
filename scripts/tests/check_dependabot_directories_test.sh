@@ -146,7 +146,31 @@ test_fails_when_config_is_missing() {
   pass "script fails with clear message when dependabot config is missing"
 }
 
+test_passes_for_workspace_root_directory() {
+  local tmp
+  tmp="$(mktemp -d "$TMPDIR_ROOT/workspace-test.XXXXXX")"
+  mkdir -p "$tmp/.github" "$tmp/apps/server" "$tmp/crates/rustok-core"
+  printf '[workspace]\n' > "$tmp/Cargo.toml"
+  printf '[package]\nname = "server"\nversion = "0.1.0"\n' > "$tmp/apps/server/Cargo.toml"
+  printf '[package]\nname = "rustok-core"\nversion = "0.1.0"\n' > "$tmp/crates/rustok-core/Cargo.toml"
+  cat > "$tmp/.github/dependabot.yml" <<'YAML'
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+YAML
+
+  local out_log="$tmp/check_dependabot_workspace.log"
+  python3 "$SCRIPT" --root "$tmp" --config "$tmp/.github/dependabot.yml" >"$out_log"
+  rg -q "All Dependabot update directories exist" "$out_log" \
+    || fail "expected workspace root directory to cover member manifests"
+  pass "script passes when workspace root is configured"
+}
+
 test_passes_for_existing_directories
+test_passes_for_workspace_root_directory
 test_passes_for_recursive_directories
 test_fails_when_cargo_manifest_is_not_covered
 test_fails_for_missing_directory

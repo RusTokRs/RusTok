@@ -78,6 +78,40 @@ class DependabotDirectoryCheckTests(unittest.TestCase):
             self.assertIn("Dependabot directories do not exist:", result.stderr)
             self.assertIn("/apps/mcp", result.stderr)
 
+    def test_accepts_workspace_root_coverage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "apps" / "server").mkdir(parents=True)
+            (root / "crates" / "rustok-core").mkdir(parents=True)
+            (root / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
+            (root / "apps" / "server" / "Cargo.toml").write_text(
+                "[package]\nname = \"server\"\nversion = \"0.1.0\"\n",
+                encoding="utf-8",
+            )
+            (root / "crates" / "rustok-core" / "Cargo.toml").write_text(
+                "[package]\nname = \"rustok-core\"\nversion = \"0.1.0\"\n",
+                encoding="utf-8",
+            )
+
+            config = root / ".github" / "dependabot.yml"
+            config.parent.mkdir(parents=True)
+            config.write_text(
+                textwrap.dedent(
+                    """
+                    version: 2
+                    updates:
+                      - package-ecosystem: "cargo"
+                        directory: "/"
+                    """
+                ).strip()
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_script(root, config)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("All Dependabot update directories exist.", result.stdout)
+
     def test_accepts_recursive_directory_patterns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)

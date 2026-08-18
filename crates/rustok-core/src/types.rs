@@ -24,6 +24,7 @@ pub enum UserRoleParseError {
     ToSchema,
 )]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
+#[serde(rename_all = "snake_case")]
 pub enum UserRole {
     #[sea_orm(string_value = "super_admin")]
     SuperAdmin,
@@ -106,6 +107,7 @@ impl FromStr for UserRole {
     ToSchema,
 )]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
+#[serde(rename_all = "snake_case")]
 pub enum UserStatus {
     #[sea_orm(string_value = "active")]
     #[default]

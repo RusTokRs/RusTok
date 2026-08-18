@@ -131,6 +131,17 @@ def cargo_manifests(root: pathlib.Path) -> list[pathlib.Path]:
     ]
 
 
+def is_cargo_workspace_root(path: pathlib.Path) -> bool:
+    manifest = path / "Cargo.toml"
+    if not manifest.is_file():
+        return False
+    try:
+        content = manifest.read_text(encoding="utf-8")
+        return "[workspace]" in content
+    except OSError:
+        return False
+
+
 def main() -> int:
     args = parse_args()
     root = args.root.resolve()
@@ -231,10 +242,24 @@ def main() -> int:
             print(f"  - {directory}", file=sys.stderr)
         return 1
 
+    configured_cargo_dirs = configured_directories.get("cargo", set())
+    cargo_workspace_roots = {
+        d for d in configured_cargo_dirs if is_cargo_workspace_root(d)
+    }
+
+    def is_manifest_covered(manifest: pathlib.Path) -> bool:
+        manifest_dir = manifest.parent.resolve()
+        if manifest_dir in configured_cargo_dirs:
+            return True
+        return any(
+            manifest_dir == ws_root or ws_root in manifest_dir.parents
+            for ws_root in cargo_workspace_roots
+        )
+
     uncovered_cargo_manifests = sorted(
         manifest.parent.relative_to(root).as_posix() or "/"
         for manifest in cargo_manifests(root)
-        if manifest.parent.resolve() not in configured_directories.get("cargo", set())
+        if not is_manifest_covered(manifest)
     )
     if uncovered_cargo_manifests:
         print(

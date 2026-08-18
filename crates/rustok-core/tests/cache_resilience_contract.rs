@@ -130,25 +130,40 @@ async fn circuit_breaker_manual_controls_reset_state_and_counters() {
 
 #[tokio::test]
 async fn circuit_breaker_limits_half_open_probe_requests() {
-    let breaker = CircuitBreaker::new(CircuitBreakerConfig {
+    let breaker = Arc::new(CircuitBreaker::new(CircuitBreakerConfig {
         failure_threshold: 1,
         success_threshold: 2,
         timeout: Duration::from_millis(1),
         half_open_max_requests: Some(1),
-    });
+    }));
 
     let _ = breaker.call(|| async { Err::<(), _>("boom") }).await;
     assert_eq!(breaker.get_state().await, CircuitState::Open);
 
     tokio::time::sleep(Duration::from_millis(5)).await;
 
-    let probe = breaker.call(|| async { Ok::<_, &str>(()) }).await;
-    assert!(probe.is_ok());
+    let probe_started = Arc::new(tokio::sync::Notify::new());
+    let probe_release = Arc::new(tokio::sync::Notify::new());
+    let b1 = Arc::clone(&breaker);
+    let s1 = Arc::clone(&probe_started);
+    let r1 = Arc::clone(&probe_release);
+    let in_flight = tokio::spawn(async move {
+        b1.call(|| async move {
+            s1.notify_one();
+            r1.notified().await;
+            Ok::<_, &str>(())
+        })
+        .await
+    });
+    probe_started.notified().await;
     assert_eq!(breaker.get_state().await, CircuitState::HalfOpen);
 
     let limited = breaker.call(|| async { Ok::<_, &str>(()) }).await;
     assert!(matches!(limited, Err(CircuitBreakerError::Open)));
     assert_eq!(breaker.stats().await.total_rejected, 1);
+
+    probe_release.notify_one();
+    assert!(in_flight.await.unwrap().is_ok());
 }
 
 #[tokio::test]
