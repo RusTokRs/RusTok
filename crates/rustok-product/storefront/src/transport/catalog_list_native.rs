@@ -188,10 +188,13 @@ async fn storefront_catalog_list_native(
             .map_err(|error| map_tenant_context_error(request_context.as_ref(), error))?;
         let requested_locale = crate::core::resolve_requested_locale(
             locale,
-            request_context.as_ref().map(|context| context.locale.as_str()),
+            request_context
+                .as_ref()
+                .map(|context| context.locale.as_str()),
             tenant.default_locale.as_str(),
         );
-        let public_channel_slug = request_context.as_ref()
+        let public_channel_slug = request_context
+            .as_ref()
             .and_then(|context| normalize_public_channel_slug(context.channel_slug.as_deref()));
         let list_query = StorefrontProductListQuery::try_from_transport_with_attribute_filters(
             search,

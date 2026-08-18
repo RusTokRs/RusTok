@@ -83,8 +83,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
 
         spawn_local(async move {
             let result =
-                transport::update_email_settings(token_val, tenant_val, settings.to_string())
-                    .await;
+                transport::update_email_settings(token_val, tenant_val, settings.to_string()).await;
 
             match result {
                 Ok(success) => set_save_result.set(Some(Ok(success))),

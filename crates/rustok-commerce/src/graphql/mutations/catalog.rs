@@ -116,13 +116,7 @@ fn product_schema_write_context(
     idempotency_key: String,
     operation: &'static str,
 ) -> Result<PortContext> {
-    product_command_context(
-        ctx,
-        actor,
-        product_id,
-        idempotency_key,
-        operation,
-    )
+    product_command_context(ctx, actor, product_id, idempotency_key, operation)
 }
 
 fn product_command_port_error(

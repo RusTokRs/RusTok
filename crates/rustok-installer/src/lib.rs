@@ -46,9 +46,9 @@ pub use preflight::{
     evaluate_preflight_with_deployment,
 };
 #[cfg(feature = "host-runtime")]
-pub use receipt::load_base_distribution_receipt;
-#[cfg(feature = "host-runtime")]
 pub use receipt::VerifiedInstallBaseDistributionReceipt;
+#[cfg(feature = "host-runtime")]
+pub use receipt::load_base_distribution_receipt;
 pub use receipt::{InstallReceipt, ReceiptError, ReceiptOutcome, checksum_json};
 #[cfg(feature = "host-runtime")]
 pub use rustok_runtime::{
