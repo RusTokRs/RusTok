@@ -1,6 +1,6 @@
 'use client';
 
-import type { Column, Table } from '@tanstack/react-table';
+import type { Column, ReactTable, RowData, StockFeatures } from '@tanstack/react-table';
 import * as React from 'react';
 
 import { DataTableDateFilter } from '@/widgets/data-table';
@@ -12,17 +12,17 @@ import { Input } from '@/shared/ui/shadcn/input';
 import { cn } from '@/shared/lib/utils';
 import { Cross2Icon } from '@radix-ui/react-icons';
 
-interface DataTableToolbarProps<TData> extends React.ComponentProps<'div'> {
-  table: Table<TData>;
+interface DataTableToolbarProps<TData extends RowData = any> extends React.ComponentProps<'div'> {
+  table: ReactTable<StockFeatures, TData>;
 }
 
-export function DataTableToolbar<TData>({
+export function DataTableToolbar<TData extends RowData = any>({
   table,
   children,
   className,
   ...props
 }: DataTableToolbarProps<TData>) {
-  const isFiltered = table.getState().columnFilters.length > 0;
+  const isFiltered = table.state.columnFilters.length > 0;
 
   const columns = React.useMemo(
     () => table.getAllColumns().filter((column) => column.getCanFilter()),
@@ -67,11 +67,11 @@ export function DataTableToolbar<TData>({
     </div>
   );
 }
-interface DataTableToolbarFilterProps<TData> {
-  column: Column<TData>;
+interface DataTableToolbarFilterProps<TData extends RowData = any> {
+  column: Column<StockFeatures, TData, unknown>;
 }
 
-function DataTableToolbarFilter<TData>({
+function DataTableToolbarFilter<TData extends RowData = any>({
   column
 }: DataTableToolbarFilterProps<TData>) {
   {

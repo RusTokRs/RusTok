@@ -1,22 +1,19 @@
 'use client';
 
 import {
+  type ColumnDef,
   type ColumnFiltersState,
+  type ColumnVisibilityState,
   type PaginationState,
+  type RowData,
   type RowSelectionState,
   type SortingState,
+  type StockFeatures,
   type TableOptions,
   type TableState,
   type Updater,
-  type VisibilityState,
-  getCoreRowModel,
-  getFacetedMinMaxValues,
-  getFacetedRowModel,
-  getFacetedUniqueValues,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable
+  stockFeatures,
+  useTable
 } from '@tanstack/react-table';
 import {
   type Parser,
@@ -40,19 +37,20 @@ const ARRAY_SEPARATOR = ',';
 const DEBOUNCE_MS = 300;
 const THROTTLE_MS = 50;
 
-interface UseDataTableProps<TData>
+interface UseDataTableProps<TData extends RowData = any>
   extends
     Omit<
-      TableOptions<TData>,
+      TableOptions<StockFeatures, TData>,
+      | 'features'
       | 'state'
       | 'pageCount'
-      | 'getCoreRowModel'
       | 'manualFiltering'
       | 'manualPagination'
       | 'manualSorting'
     >,
-    Required<Pick<TableOptions<TData>, 'pageCount'>> {
-  initialState?: Omit<Partial<TableState>, 'sorting'> & {
+    Required<Pick<TableOptions<StockFeatures, TData>, 'pageCount'>> {
+  columns: ColumnDef<StockFeatures, TData, any>[];
+  initialState?: Omit<Partial<TableState<StockFeatures>>, 'sorting'> & {
     sorting?: ExtendedColumnSort<TData>[];
   };
   history?: 'push' | 'replace';
@@ -65,7 +63,7 @@ interface UseDataTableProps<TData>
   startTransition?: React.TransitionStartFunction;
 }
 
-export function useDataTable<TData>(props: UseDataTableProps<TData>) {
+export function useDataTable<TData extends RowData = any>(props: UseDataTableProps<TData>) {
   const {
     columns,
     pageCount = -1,
@@ -108,7 +106,9 @@ export function useDataTable<TData>(props: UseDataTableProps<TData>) {
     initialState?.rowSelection ?? {}
   );
   const [columnVisibility, setColumnVisibility] =
-    React.useState<VisibilityState>(initialState?.columnVisibility ?? {});
+    React.useState<ColumnVisibilityState>(
+      initialState?.columnVisibility ?? {}
+    );
 
   const [page, setPage] = useQueryState(
     PAGE_KEY,
@@ -144,7 +144,7 @@ export function useDataTable<TData>(props: UseDataTableProps<TData>) {
 
   const columnIds = React.useMemo(() => {
     return new Set(
-      columns.map((column) => column.id).filter(Boolean) as string[]
+      columns.map((column: ColumnDef<StockFeatures, TData, any>) => column.id).filter(Boolean) as string[]
     );
   }, [columns]);
 
@@ -170,7 +170,7 @@ export function useDataTable<TData>(props: UseDataTableProps<TData>) {
   const filterableColumns = React.useMemo(() => {
     if (enableAdvancedFilter) return [];
 
-    return columns.filter((column) => column.enableColumnFilter);
+    return columns.filter((column: ColumnDef<StockFeatures, TData, any>) => column.enableColumnFilter);
   }, [columns, enableAdvancedFilter]);
 
   const filterParsers = React.useMemo(() => {
@@ -178,7 +178,7 @@ export function useDataTable<TData>(props: UseDataTableProps<TData>) {
 
     return filterableColumns.reduce<
       Record<string, Parser<string> | Parser<string[]>>
-    >((acc, column) => {
+    >((acc, column: ColumnDef<StockFeatures, TData, any>) => {
       if (column.meta?.options) {
         acc[column.id ?? ''] = parseAsArrayOf(
           parseAsString,
@@ -240,7 +240,7 @@ export function useDataTable<TData>(props: UseDataTableProps<TData>) {
         const filterUpdates = next.reduce<
           Record<string, string | string[] | null>
         >((acc, filter) => {
-          if (filterableColumns.find((column) => column.id === filter.id)) {
+          if (filterableColumns.find((column: ColumnDef<StockFeatures, TData, any>) => column.id === filter.id)) {
             acc[filter.id] = filter.value as string | string[];
           }
           return acc;
@@ -259,8 +259,9 @@ export function useDataTable<TData>(props: UseDataTableProps<TData>) {
     [debouncedSetFilterValues, filterableColumns, enableAdvancedFilter]
   );
 
-  const table = useReactTable({
+  const table = useTable({
     ...tableProps,
+    features: stockFeatures,
     columns,
     initialState,
     pageCount,
@@ -281,13 +282,6 @@ export function useDataTable<TData>(props: UseDataTableProps<TData>) {
     onSortingChange,
     onColumnFiltersChange,
     onColumnVisibilityChange: setColumnVisibility,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFacetedRowModel: getFacetedRowModel(),
-    getFacetedUniqueValues: getFacetedUniqueValues(),
-    getFacetedMinMaxValues: getFacetedMinMaxValues(),
     manualPagination: true,
     manualSorting: true,
     manualFiltering: true

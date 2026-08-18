@@ -1,6 +1,6 @@
 'use client';
 
-import type { Table } from '@tanstack/react-table';
+import type { ReactTable, RowData, StockFeatures } from '@tanstack/react-table';
 import { Settings2 } from 'lucide-react';
 
 import { Button } from '@/shared/ui/shadcn/button';
@@ -21,11 +21,11 @@ import { cn } from '@/shared/lib/utils';
 import * as React from 'react';
 import { CheckIcon, CaretSortIcon } from '@radix-ui/react-icons';
 
-interface DataTableViewOptionsProps<TData> {
-  table: Table<TData>;
+interface DataTableViewOptionsProps<TData extends RowData = any> {
+  table: ReactTable<StockFeatures, TData>;
 }
 
-export function DataTableViewOptions<TData>({
+export function DataTableViewOptions<TData extends RowData = any>({
   table
 }: DataTableViewOptionsProps<TData>) {
   const columns = React.useMemo(

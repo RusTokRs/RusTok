@@ -1,6 +1,6 @@
 'use client';
 
-import type { Column } from '@tanstack/react-table';
+import type { CellData, Column, RowData, StockFeatures } from '@tanstack/react-table';
 import { EyeOff } from 'lucide-react';
 
 import {
@@ -19,14 +19,17 @@ import {
 } from '@radix-ui/react-icons';
 
 interface DataTableColumnHeaderProps<
-  TData,
-  TValue
+  TData extends RowData = any,
+  TValue extends CellData = CellData
 > extends React.ComponentProps<typeof DropdownMenuTrigger> {
-  column: Column<TData, TValue>;
+  column: Column<StockFeatures, TData, TValue>;
   title: string;
 }
 
-export function DataTableColumnHeader<TData, TValue>({
+export function DataTableColumnHeader<
+  TData extends RowData = any,
+  TValue extends CellData = CellData
+>({
   column,
   title,
   className,

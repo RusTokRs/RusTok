@@ -1,4 +1,4 @@
-import { type Table as TanstackTable, flexRender } from '@tanstack/react-table';
+import { type ReactTable, type RowData, type StockFeatures, flexRender } from '@tanstack/react-table';
 import type * as React from 'react';
 
 import { DataTablePagination } from '@/widgets/data-table';
@@ -12,12 +12,12 @@ import {
 } from '@/widgets/data-table';
 import { ScrollArea, ScrollBar } from '@/shared/ui/shadcn/scroll-area';
 
-interface DataTableProps<TData> extends React.ComponentProps<'div'> {
-  table: TanstackTable<TData>;
+interface DataTableProps<TData extends RowData = any> extends React.ComponentProps<'div'> {
+  table: ReactTable<StockFeatures, TData>;
   actionBar?: React.ReactNode;
 }
 
-export function DataTable<TData>({
+export function DataTable<TData extends RowData = any>({
   table,
   actionBar,
   children

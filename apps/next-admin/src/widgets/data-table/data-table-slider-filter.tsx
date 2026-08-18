@@ -1,6 +1,6 @@
 'use client';
 
-import type { Column } from '@tanstack/react-table';
+import type { Column, RowData, StockFeatures } from '@tanstack/react-table';
 import * as React from 'react';
 
 import { Button } from '@/shared/ui/shadcn/button';
@@ -32,12 +32,12 @@ function getIsValidRange(value: unknown): value is RangeValue {
   );
 }
 
-interface DataTableSliderFilterProps<TData> {
-  column: Column<TData, unknown>;
+interface DataTableSliderFilterProps<TData extends RowData = any> {
+  column: Column<StockFeatures, TData, unknown>;
   title?: string;
 }
 
-export function DataTableSliderFilter<TData>({
+export function DataTableSliderFilter<TData extends RowData = any>({
   column,
   title
 }: DataTableSliderFilterProps<TData>) {

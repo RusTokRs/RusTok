@@ -2,7 +2,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { DataTableColumnHeader } from '@/components/ui/table/data-table-column-header';
-import { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, StockFeatures } from '@tanstack/react-table';
 import { Text, CircleDot } from 'lucide-react';
 import { CellAction } from './cell-action';
 import { STATUS_OPTIONS } from './options';
@@ -20,7 +20,7 @@ const statusLabel: Record<string, string> = {
   ARCHIVED: 'Archived'
 };
 
-export const columns: ColumnDef<PostSummary, any>[] = [
+export const columns: ColumnDef<StockFeatures, PostSummary, any>[] = [
   {
     id: 'title',
     accessorKey: 'title',

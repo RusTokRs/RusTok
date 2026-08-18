@@ -1,7 +1,7 @@
 'use client';
 
 import type { Option } from '@/types/data-table';
-import type { Column } from '@tanstack/react-table';
+import type { CellData, Column, RowData, StockFeatures } from '@tanstack/react-table';
 import { PlusCircle, XCircle } from 'lucide-react';
 
 import { Badge } from '@/shared/ui/shadcn/badge';
@@ -25,14 +25,20 @@ import { cn } from '@/shared/lib/utils';
 import * as React from 'react';
 import { CheckIcon } from '@radix-ui/react-icons';
 
-interface DataTableFacetedFilterProps<TData, TValue> {
-  column?: Column<TData, TValue>;
+interface DataTableFacetedFilterProps<
+  TData extends RowData = any,
+  TValue extends CellData = CellData
+> {
+  column?: Column<StockFeatures, TData, TValue>;
   title?: string;
   options: Option[];
   multiple?: boolean;
 }
 
-export function DataTableFacetedFilter<TData, TValue>({
+export function DataTableFacetedFilter<
+  TData extends RowData = any,
+  TValue extends CellData = CellData
+>({
   column,
   title,
   options,
