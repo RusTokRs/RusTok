@@ -5,7 +5,7 @@ Local smoke/contract tests for operational scripts.
 ## Running
 
 ```bash
-scripts/tests/check_dependabot_directories_test.sh
+python scripts/ci/test_check_dependabot_directories.py
 scripts/tests/check_lifecycle_runbook_doc_links_test.sh
 scripts/tests/auth_release_gate_test.sh
 scripts/tests/page_builder_fba_verify_test.sh
