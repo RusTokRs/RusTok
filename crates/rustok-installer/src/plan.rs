@@ -147,6 +147,26 @@ pub struct InstallComposition {
 
 /// Exact immutable distribution bundle selected by a trusted release owner.
 ///
+#[cfg(not(feature = "host-runtime"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallDistributionRole {
+    Monolith,
+    Api,
+    AdminSsr,
+    StorefrontSsr,
+    Worker,
+    Registry,
+}
+
+#[cfg(not(feature = "host-runtime"))]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InstallDistributionRoleArtifact {
+    pub role: InstallDistributionRole,
+    pub artifact_digest: String,
+}
+
 /// This identity is deliberately separate from [`InstallComposition`]. The
 /// composition proves that the executable host understands the selected
 /// module graph; this binding identifies the admitted bytes that deployment
@@ -159,11 +179,17 @@ pub struct InstallDistributionBinding {
     pub bundle_reference: String,
     pub bundle_root_digest: String,
     pub role_set_digest: String,
+    #[cfg(feature = "host-runtime")]
     pub roles: Vec<rustok_modules::ModuleStaticDistributionRoleArtifact>,
+    #[cfg(not(feature = "host-runtime"))]
+    pub roles: Vec<InstallDistributionRoleArtifact>,
     /// Present only for a fresh target whose trusted host verified the signed
     /// base receipt before the owner schema existed. Owner-ledger resolution
     /// leaves this empty.
+    #[cfg(feature = "host-runtime")]
     pub bootstrap_receipt: Option<Box<rustok_modules::ModuleStaticDistributionBootstrapReceipt>>,
+    #[cfg(not(feature = "host-runtime"))]
+    pub bootstrap_receipt: Option<Box<serde_json::Value>>,
 }
 
 impl InstallDistributionBinding {
@@ -194,13 +220,7 @@ impl InstallDistributionBinding {
                 "distribution bundle reference must be digest-pinned to its exact root".to_string(),
             );
         }
-        if self.roles.is_empty()
-            || rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&self.roles)
-                .map_err(|_| "distribution role artifacts are invalid".to_string())?
-                != self.role_set_digest
-        {
-            return Err("distribution role artifacts do not match the role-set digest".to_string());
-        }
+        #[cfg(feature = "host-runtime")]
         if self.bootstrap_receipt.as_ref().is_some_and(|receipt| {
             receipt.payload.preparation_id != self.preparation_id
                 || receipt.payload.distribution_release_id != self.distribution_release_id
@@ -213,6 +233,18 @@ impl InstallDistributionBinding {
             return Err(
                 "distribution binding does not match its signed bootstrap receipt".to_string(),
             );
+        }
+        #[cfg(feature = "host-runtime")]
+        if self.roles.is_empty()
+            || rustok_modules::ModuleStaticDistributionBuildEvidence::role_set_digest(&self.roles)
+                .map_err(|_| "distribution role artifacts are invalid".to_string())?
+                != self.role_set_digest
+        {
+            return Err("distribution role artifacts do not match the role-set digest".to_string());
+        }
+        #[cfg(not(feature = "host-runtime"))]
+        if self.roles.is_empty() {
+            return Err("distribution role artifacts must not be empty".to_string());
         }
         Ok(())
     }
@@ -300,6 +332,7 @@ impl InstallRole {
         }
     }
 
+    #[cfg(feature = "host-runtime")]
     pub const fn static_distribution_role(self) -> rustok_modules::ModuleStaticDistributionRole {
         match self {
             Self::Monolith => rustok_modules::ModuleStaticDistributionRole::Monolith,
@@ -308,6 +341,18 @@ impl InstallRole {
             Self::StorefrontSsr => rustok_modules::ModuleStaticDistributionRole::StorefrontSsr,
             Self::Worker => rustok_modules::ModuleStaticDistributionRole::Worker,
             Self::Registry => rustok_modules::ModuleStaticDistributionRole::Registry,
+        }
+    }
+
+    #[cfg(not(feature = "host-runtime"))]
+    pub const fn static_distribution_role(self) -> InstallDistributionRole {
+        match self {
+            Self::Monolith => InstallDistributionRole::Monolith,
+            Self::Api => InstallDistributionRole::Api,
+            Self::AdminSsr => InstallDistributionRole::AdminSsr,
+            Self::StorefrontSsr => InstallDistributionRole::StorefrontSsr,
+            Self::Worker => InstallDistributionRole::Worker,
+            Self::Registry => InstallDistributionRole::Registry,
         }
     }
 }
@@ -395,6 +440,7 @@ impl InstallTopology {
         }
         if let Some(distribution) = &self.distribution {
             distribution.validate()?;
+            #[cfg(feature = "host-runtime")]
             if let Some(receipt) = &distribution.bootstrap_receipt
                 && (receipt.payload.host_composition_revision != composition.revision
                     || receipt.payload.host_composition_hash != composition.hash)

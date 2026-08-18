@@ -35,7 +35,7 @@ jobs:
         run: |
           set +e
           {
-            rustfmt --edition 2021 \
+            rustfmt --edition 2024 \
               apps/server/src/middleware/channel.rs \
               apps/server/src/middleware/locale.rs \
               apps/server/src/services/cache_redis_status_monitor.rs \

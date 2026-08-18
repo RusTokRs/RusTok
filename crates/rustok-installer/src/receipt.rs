@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::{plan::InstallDistributionBinding, state::InstallStep};
+#[cfg(feature = "host-runtime")]
+use crate::plan::InstallDistributionBinding;
+use crate::state::InstallStep;
 
 #[cfg(feature = "host-runtime")]
 const MAX_BASE_DISTRIBUTION_RECEIPT_BYTES: u64 = 256 * 1024;
@@ -14,10 +16,12 @@ pub enum ReceiptError {
     Serialize(#[from] serde_json::Error),
     #[error("base-distribution receipt is invalid")]
     InvalidBaseDistributionReceipt,
+    #[cfg(feature = "host-runtime")]
     #[error("base-distribution receipt verification failed: {0}")]
     BaseDistributionVerification(
         #[from] rustok_modules::ModuleStaticDistributionBootstrapReceiptError,
     ),
+    #[cfg(feature = "host-runtime")]
     #[error("failed to read base-distribution receipt `{path}`: {source}")]
     BaseDistributionReceiptIo {
         path: String,
@@ -26,11 +30,13 @@ pub enum ReceiptError {
     },
 }
 
+#[cfg(feature = "host-runtime")]
 #[derive(Debug)]
 pub struct VerifiedInstallBaseDistributionReceipt {
     receipt: rustok_modules::VerifiedModuleStaticDistributionBootstrapReceipt,
 }
 
+#[cfg(feature = "host-runtime")]
 impl VerifiedInstallBaseDistributionReceipt {
     pub fn payload(&self) -> &rustok_modules::ModuleStaticDistributionBootstrapReceiptPayload {
         self.receipt.payload()

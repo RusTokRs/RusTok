@@ -51,7 +51,7 @@ jobs:
           shared-key: marketplace-listing-owner-outbox
       - name: Capture owner outbox rustfmt patch
         run: |
-          rustfmt --edition 2021 \
+          rustfmt --edition 2024 \
             apps/server/tests/marketplace_listing_boundary_guard.rs \
             apps/server/tests/marketplace_listing_event_contract_guard.rs \
             crates/rustok-marketplace-listing/src/command_receipts.rs \

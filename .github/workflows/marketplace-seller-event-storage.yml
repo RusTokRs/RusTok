@@ -37,7 +37,7 @@ jobs:
           shared-key: marketplace-seller-event-storage
       - name: Capture event storage rustfmt patch
         run: |
-          rustfmt --edition 2021 \
+          rustfmt --edition 2024 \
             crates/rustok-marketplace-seller/src/command_receipts.rs \
             crates/rustok-marketplace-seller/src/lib.rs \
             crates/rustok-marketplace-seller/src/ports.rs \

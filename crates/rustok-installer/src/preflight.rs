@@ -277,7 +277,7 @@ mod tests {
             .bind_composition("distribution@1".to_string(), "a".repeat(64))
             .bind_distribution(distributed_distribution());
 
-        let report = evaluate_preflight(&plan);
+        let report = evaluate_preflight_with_deployment(&plan, false);
 
         assert!(!report.passed());
         assert!(

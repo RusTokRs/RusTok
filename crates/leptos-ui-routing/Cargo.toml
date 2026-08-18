@@ -17,6 +17,8 @@ ssr = ["leptos/ssr"]
 rustok-ui-core.workspace = true
 leptos = { workspace = true, features = ["csr"] }
 leptos_router.workspace = true
-rustok-api = { workspace = true, default-features = false }
 
 serde_urlencoded.workspace = true
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["leptos_router"]

@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "server"), allow(dead_code))]
-
 pub const IMAGE_ASSET_TASK_SLUG: &str = "image_asset";
 pub const IMAGE_ASSET_TOOL_NAME: &str = "direct.media.generate_image";
 

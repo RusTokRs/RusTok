@@ -34,4 +34,4 @@ web-sys = { version = "0.3", features = ["Window", "Location"] }
 js-sys = { version = "0.3" }
 
 [package.metadata.cargo-udeps.ignore]
-normal = ["leptos_axum"]
+normal = ["leptos_axum", "leptos-use"]

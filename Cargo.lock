@@ -7331,7 +7331,6 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
  "leptos_router",
- "rustok-api",
  "rustok-ui-core",
  "serde_urlencoded",
 ]
@@ -12262,9 +12261,6 @@ dependencies = [
 [[package]]
 name = "rustok-ai-media"
 version = "0.1.0"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "rustok-ai-order"
