@@ -2,6 +2,24 @@
 
 Status: `source-ready / exact-main-rust-execution-pending / browser-evidence-pending`.
 
+## Recheck — 2026-08-18
+
+Rechecked from fresh `main@eee796fb81dbd893994e4bfa0f3364dd0bbf7d1d` after terminal inventory PR #3628 reduced the recursive Page Builder FBA blocker set to exactly one node:
+
+`/provider/consumer_properties_contract/executed_evidence`.
+
+The historical exact-main Rust/source receipt from workflow run `31702550557` on `a8bf89c642baa7d1e70bab8c3439fd5d19ed6d8f` remains useful lineage for the already-admitted nested Pages metadata-properties evidence, but it is not admissible for the current provider-level consumer-properties admission. Current `main` is an exact descendant and required receipt-bound source files have changed since that execution, including:
+
+- `.github/workflows/pages-consumer-properties-source-evidence.yml`;
+- `.github/workflows/pages-published-metadata-browser-evidence.yml`;
+- `apps/next-admin/playwright.pages-published-metadata.config.ts`;
+- `apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts`;
+- `apps/next-admin/tests/pages-published-metadata/global-setup.ts`.
+
+Therefore the provider target remains `pending` and requires a fresh exact-main Rust/source receipt. This tracked actualization is intentionally changed without runtime or registry mutation so that, after merge, the existing push-to-main `Pages Consumer Properties Source Evidence` workflow executes against the exact merged source and may retain the fresh bounded receipt.
+
+That fresh Rust/source receipt is still only one prerequisite. Provider admission additionally requires a successful retained published-metadata browser packet against the reviewed deployment plus reviewed deployment provenance and admissible source lineage. Until those browser/deployment requirements are present, neither the consumer-properties contract nor `/provider/consumer_properties_contract/executed_evidence` may be changed to `verified`, and terminal FBA inventory must remain `1` rather than being falsely promoted to `0`.
+
 ## Cursor
 
 After static sanitization evidence admission and terminal-inventory recomputation, the first remaining Page Builder FBA provider blocker is `/provider/consumer_properties_contract/executed_evidence`.
