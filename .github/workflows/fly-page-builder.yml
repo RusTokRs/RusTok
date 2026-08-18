@@ -16,6 +16,8 @@ on:
       - "apps/admin/Cargo.toml"
       - "apps/next-admin/packages/blog/**"
       - "apps/next-admin/src/app/dashboard/blog/**"
+      - "scripts/evidence/admit-pages-consumer-properties-provider*.mjs"
+      - "scripts/verify/verify-pages-consumer-properties-provider-admission.mjs"
       - "scripts/verify/verify-fly-*.mjs"
       - "scripts/verify/verify-pages-current-only.mjs"
       - ".github/workflows/fly-page-builder.yml"
@@ -33,6 +35,8 @@ on:
       - "apps/admin/Cargo.toml"
       - "apps/next-admin/packages/blog/**"
       - "apps/next-admin/src/app/dashboard/blog/**"
+      - "scripts/evidence/admit-pages-consumer-properties-provider*.mjs"
+      - "scripts/verify/verify-pages-consumer-properties-provider-admission.mjs"
       - "scripts/verify/verify-fly-*.mjs"
       - "scripts/verify/verify-pages-current-only.mjs"
       - ".github/workflows/fly-page-builder.yml"
@@ -164,3 +168,11 @@ jobs:
       - name: Verify capability denial response
         if: ${{ !cancelled() }}
         run: node scripts/verify/verify-fly-capability-denial-response.mjs
+
+      - name: Verify consumer-properties provider admission source
+        if: ${{ !cancelled() }}
+        run: node scripts/verify/verify-pages-consumer-properties-provider-admission.mjs
+
+      - name: Test consumer-properties provider admission fail-closed runner
+        if: ${{ !cancelled() }}
+        run: node --test scripts/evidence/admit-pages-consumer-properties-provider.test.mjs

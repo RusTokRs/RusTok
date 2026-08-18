@@ -1,0 +1,116 @@
+{
+  "format": "pages_consumer_properties_provider_admission_source_v1",
+  "status": "source_ready_maintainer_execution_pending",
+  "scope": "page_builder_provider_consumer_properties_execution_admission",
+  "purpose": "Fail closed while binding retained Rust/source execution, published-metadata browser execution, and reviewed live deployment identity before either consumer-properties executed-evidence node may be admitted.",
+  "rust_receipt_input": {
+    "source_contract": "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
+    "format": "pages_consumer_properties_source_execution_v1",
+    "required_status": "rust_source_execution_passed_browser_evidence_pending",
+    "source_commit_must_be_ancestor_of_checkout": true,
+    "retained_source_hashes_must_match_checkout": true,
+    "canonical_repository": "RusTokRs/RusTok",
+    "canonical_workflow": "Pages Consumer Properties Source Evidence",
+    "required_event": "push",
+    "required_branch": "main",
+    "all_commands_must_have_passed": true,
+    "target_prestate_must_still_be_pending": true
+  },
+  "browser_input": {
+    "source_contract": "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+    "format": "pages_published_metadata_browser_execution_v1",
+    "required_status": "browser_execution_passed_consumer_properties_admission_pending",
+    "source_commit_must_be_ancestor_of_checkout": true,
+    "retained_source_hashes_must_match_checkout": true,
+    "all_required_profiles_must_pass": true,
+    "critical_failures_must_be_zero": true,
+    "retained_secrets_must_be_false": true,
+    "metadata_values_retained_must_be_false": true
+  },
+  "deployment_identity_input": {
+    "source_contract": "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
+    "format": "page_builder_provider_health_deployment_identity_v1",
+    "required_status": "deployment_identity_verified_health_evaluation_pending",
+    "source_commit_must_equal_browser_source_commit": true,
+    "source_commit_must_be_ancestor_of_checkout": true,
+    "retained_source_hashes_must_match_checkout": true,
+    "deployment_digest_must_equal_browser_digest": true,
+    "inventory_complete_must_be_true": true,
+    "verified_target_count_must_equal_expected_target_count": true,
+    "all_targets_must_report_exact_source_commit": true,
+    "origin_to_repo_digest_binding": "maintainer_reviewed_external_fact",
+    "cryptographic_origin_to_repo_digest_binding_claimed": false
+  },
+  "lineage": {
+    "rust_source_commit_must_be_ancestor_of_browser_source_commit": true,
+    "browser_and_deployment_source_commit_must_match": true,
+    "browser_and_deployment_repo_digest_must_match": true,
+    "all_three_packet_source_sets_must_match_current_checkout": true,
+    "unrelated_descendant_commits_may_be_admitted_without_reexecution": true,
+    "required_source_drift_fails_closed": true
+  },
+  "targets": {
+    "consumer_contract": {
+      "path": "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
+      "json_pointer": "/executed_evidence",
+      "required_before": "pending",
+      "admitted_after": "verified"
+    },
+    "fba_registry": {
+      "path": "crates/rustok-page-builder/contracts/page-builder-fba-registry.json",
+      "json_pointer": "/provider/consumer_properties_contract/executed_evidence",
+      "required_before": "pending",
+      "admitted_after": "verified"
+    }
+  },
+  "runner": {
+    "path": "scripts/evidence/admit-pages-consumer-properties-provider.mjs",
+    "network_requests": false,
+    "browser_execution": false,
+    "cargo_execution": false,
+    "repository_mutation": false,
+    "registry_mutation": false,
+    "consumer_contract_mutation": false
+  },
+  "output": {
+    "format": "pages_consumer_properties_provider_admission_v1",
+    "status": "provider_consumer_properties_inputs_admitted_registry_update_pending",
+    "default_path": "target/pages-consumer-properties-provider-admission.json",
+    "atomic_replace": true,
+    "input_packet_byte_lengths_and_sha256_retained": true,
+    "raw_input_paths_retained": false,
+    "required_source_sha256_retained": true,
+    "cryptographic_origin_to_repo_digest_binding_claimed": false
+  },
+  "governance_boundary": {
+    "admission_packet_mutates_consumer_contract": false,
+    "admission_packet_mutates_fba_registry": false,
+    "separate_evidence_containing_update_required": true,
+    "terminal_inventory_must_be_recomputed_after_registry_update": true,
+    "pages_execution_rollout_marker_unchanged": true,
+    "terminal_inventory_complete_claimed": false,
+    "owner_approval_claimed": false,
+    "platform_approval_claimed": false,
+    "pages_ffa_promoted": false,
+    "page_builder_fba_promoted": false
+  },
+  "required_source_files": [
+    "crates/rustok-pages/contracts/evidence/pages-consumer-properties-provider-admission-source.json",
+    "scripts/evidence/admit-pages-consumer-properties-provider.mjs",
+    "scripts/evidence/admit-pages-consumer-properties-provider.test.mjs",
+    "scripts/verify/verify-pages-consumer-properties-provider-admission.mjs",
+    "docs/modules/pages-consumer-properties-provider-admission-actualization-2026-08-18.md",
+    ".github/workflows/fly-page-builder.yml",
+    "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json",
+    "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json",
+    "crates/rustok-page-builder/contracts/evidence/page-builder-provider-health-deployment-identity-source.json",
+    "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json",
+    "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+  ],
+  "next_cursor": {
+    "admission_runner": "source_ready_live_inputs_pending",
+    "consumer_contract_update": "blocked_on_live_admission_packet",
+    "fba_registry_update": "blocked_on_live_admission_packet",
+    "terminal_inventory_recompute": "blocked_on_separate_registry_update"
+  }
+}
