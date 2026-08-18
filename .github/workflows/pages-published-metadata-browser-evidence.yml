@@ -179,7 +179,35 @@ jobs:
     needs: browser-evidence
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      statuses: write
     steps:
+      - name: Publish reviewed browser evidence run index
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BROWSER_RESULT: ${{ needs.browser-evidence.result }}
+        run: |
+          set -euo pipefail
+          state="failure"
+          description="published metadata browser evidence failed"
+          if [[ "$BROWSER_RESULT" == "success" ]]; then
+            state="success"
+            description="browser packet retained; deployment provenance and admission pending"
+          fi
+          target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          payload=$(printf '{"state":"%s","target_url":"%s","description":"%s","context":"pages-published-metadata-browser-evidence-index"}' \
+            "$state" "$target_url" "$description")
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            --data "$payload" >/dev/null
+
       - name: Require browser evidence success
         env:
           BROWSER_RESULT: ${{ needs.browser-evidence.result }}

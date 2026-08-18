@@ -34,7 +34,16 @@
     "raw_external_inputs_masked": true,
     "artifact_contains_only_bounded_packet": true,
     "artifact_retention_days": 90,
-    "workflow_mutates_repository": false
+    "workflow_mutates_repository": false,
+    "run_index_status": {
+      "context": "pages-published-metadata-browser-evidence-index",
+      "ref": "refs/heads/main",
+      "permission": "statuses: write",
+      "target": "github_actions_run_url",
+      "repository_content_mutation": false,
+      "deployment_provenance_attestation": false,
+      "consumer_properties_admission": false
+    }
   },
   "deployment_identity": {
     "source_commit_verified_against_checkout_head": true,
