@@ -58,7 +58,7 @@ impl CachedRegistryCatalog {
     }
 }
 
-fn cached_registry_catalog_weight(key: &str, value: &Arc<CachedRegistryCatalog>) -> u32 {
+fn cached_registry_catalog_weight(key: &String, value: &Arc<CachedRegistryCatalog>) -> u32 {
     key.len()
         .saturating_add(value.encoded_bytes)
         .saturating_add(std::mem::size_of::<CachedRegistryCatalog>())
@@ -163,7 +163,7 @@ impl HardenedRegistryMarketplaceProvider {
         max_concurrent_fetches: usize,
     ) -> Self {
         let catalog_cache = Cache::<String, Arc<CachedRegistryCatalog>>::builder()
-            .weigher(|key, value| cached_registry_catalog_weight(key, value))
+            .weigher(cached_registry_catalog_weight)
             .max_capacity(cache_max_weight_bytes.max(1))
             .time_to_live(cache_ttl.max(Duration::from_millis(1)))
             .build();
@@ -703,6 +703,13 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::sync::{Notify, oneshot};
 
+    fn test_client() -> Client {
+        Client::builder()
+            .no_proxy()
+            .build()
+            .expect("test client should build")
+    }
+
     #[test]
     fn production_registry_url_requires_https_without_embedded_authority() {
         assert_eq!(
@@ -870,7 +877,7 @@ mod tests {
     fn provider_health_distinguishes_disabled_ready_and_degraded() {
         let disabled = HardenedRegistryMarketplaceProvider::new(
             None,
-            Client::new(),
+            test_client(),
             Duration::from_secs(60),
             1024,
             1024,
@@ -883,7 +890,7 @@ mod tests {
 
         let provider = HardenedRegistryMarketplaceProvider::new(
             Some("https://registry.example.test".to_string()),
-            Client::new(),
+            test_client(),
             Duration::from_secs(60),
             1024,
             1024,
@@ -919,7 +926,7 @@ mod tests {
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let provider = HardenedRegistryMarketplaceProvider::new(
             Some(format!("http://{address}")),
-            Client::new(),
+            test_client(),
             Duration::from_secs(60),
             1024,
             1024,
@@ -984,9 +991,10 @@ mod tests {
     fn cache_weight_tracks_payload_bytes() {
         let small = Arc::new(CachedRegistryCatalog::new(Vec::new(), 32));
         let large = Arc::new(CachedRegistryCatalog::new(Vec::new(), 4_096));
+        let key = "key".to_string();
         assert!(
-            cached_registry_catalog_weight("key", &large)
-                > cached_registry_catalog_weight("key", &small)
+            cached_registry_catalog_weight(&key, &large)
+                > cached_registry_catalog_weight(&key, &small)
         );
     }
 
@@ -1014,7 +1022,7 @@ mod tests {
 
         let provider = Arc::new(HardenedRegistryMarketplaceProvider::new(
             Some(format!("http://{address}")),
-            Client::new(),
+            test_client(),
             Duration::from_secs(60),
             1024 * 1024,
             1024 * 1024,
@@ -1084,7 +1092,7 @@ mod tests {
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let provider = Arc::new(HardenedRegistryMarketplaceProvider::new(
             Some(format!("http://{address}")),
-            Client::new(),
+            test_client(),
             Duration::from_secs(60),
             1024 * 1024,
             1024 * 1024,
@@ -1133,7 +1141,7 @@ mod tests {
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let provider = HardenedRegistryMarketplaceProvider::new(
             Some(format!("http://{address}")),
-            Client::new(),
+            test_client(),
             Duration::from_secs(60),
             1024 * 1024,
             128,

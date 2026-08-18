@@ -1,15 +1,13 @@
-import type { NextConfig } from 'next';
 import { withSentryConfig } from '@sentry/nextjs';
 import createNextIntlPlugin from 'next-intl/plugin';
-
-import path from 'path';
-import { fileURLToPath } from 'url';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Define the base Next.js configuration
-const baseConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const baseConfig = {
   // TypeScript 7 no longer exposes the legacy compiler API that Next uses
   // during `next build`; CI runs `npm run typecheck` as the canonical TS gate.
   typescript: {
