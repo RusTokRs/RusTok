@@ -6,9 +6,9 @@
     "tw:watch": "tailwindcss -i input.css -o dist/output.css --watch"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.3.0",
-    "autoprefixer": "^10.4.19",
-    "postcss": "^8.5.15",
+    "@tailwindcss/cli": "^4.3.3",
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.26",
     "tailwindcss": "^4.2.1"
   },
   "license": "BUSL-1.1"
