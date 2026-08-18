@@ -13,18 +13,6 @@ const requireAll = (file, markers) => {
   }
   return source;
 };
-const requireOrdered = (file, markers) => {
-  const source = load(file);
-  let cursor = -1;
-  for (const marker of markers) {
-    const index = source.indexOf(marker, cursor + 1);
-    if (index < 0) {
-      failures.push(`${file}: missing ordered marker ${marker}`);
-      return;
-    }
-    cursor = index;
-  }
-};
 const forbidAll = (file, markers) => {
   const source = load(file);
   for (const marker of markers) {
@@ -41,6 +29,9 @@ const cutoverMigration =
 const supersededMigration =
   "crates/rustok-rbac/src/m20260801_000001_enforce_artifact_permission_tenant_integrity.rs";
 const platformMigrator = "crates/rustok-migrations/src/lib.rs";
+const migrationCompatibilityWorkflow = ".github/workflows/migration-compatibility.yml";
+const migrationCompatibilityVerifier =
+  "scripts/verify/verify-migration-plan-compatibility.mjs";
 const owner = "crates/rustok-rbac/src/artifact_permission_assignment.rs";
 const catalog = "crates/rustok-rbac/src/artifact_permission_catalog.rs";
 const exports = "crates/rustok-rbac/src/lib.rs";
@@ -71,16 +62,31 @@ requireAll(exports, [
 ]);
 forbidAll(exports, ["m20260801_000001_enforce_artifact_permission_tenant_integrity"]);
 
+// The canonical planner may use dependency descriptors for real schema/data dependencies,
+// but already-published migration IDs remain an immutable prefix. Do not resurrect the
+// retired explicit tail helper or encode historical cross-module release order as a fake
+// dependency merely to reproduce an old source layout.
 requireAll(platformMigrator, [
-  "const APPEND_ONLY_MIGRATION_TAIL: &[&str]",
-  "move_migrations_to_append_only_tail(&mut all, APPEND_ONLY_MIGRATION_TAIL)",
-  "migrator_preserves_append_only_migration_tail",
+  "all.sort_by(|a, b| a.name().cmp(b.name()));",
+  "sort_migrations_by_dependencies(&mut all, &dependencies)",
+  "validate_migration_dependency_order(&all, &dependencies)",
 ]);
-requireOrdered(platformMigrator, [
-  '"m20260728_000001_create_consumer_poison_receipts"',
-  '"m20260803_000017_add_forum_topic_canonical_resolution"',
-  '"m20260803_000009_add_blog_comments_audit_canonical_handoff"',
-  '"m20260803_000001_canonicalize_artifact_permissions"',
+forbidAll(platformMigrator, [
+  "APPEND_ONLY_MIGRATION_TAIL",
+  "move_migrations_to_append_only_tail",
+]);
+requireAll(migrationCompatibilityWorkflow, [
+  "name: Migration Compatibility",
+  "name: Append-only migration plan",
+  "verify-migration-plan-compatibility.mjs",
+  "Export base migration plan",
+  "Export head migration plan",
+]);
+requireAll(migrationCompatibilityVerifier, [
+  "if (head.length < base.length)",
+  "if (base[index] !== head[index])",
+  "migration ${index + 1} changed from",
+  "migration history is append-only",
 ]);
 
 // Historical migration bodies are append-only and must retain the main-branch schema.

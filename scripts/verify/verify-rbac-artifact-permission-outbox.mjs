@@ -167,7 +167,7 @@ for (const marker of [
 
 for (const marker of [
   "ArtifactPermissionAssignmentScope",
-  "explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition",
+  "explicit_scope_mutation_remains_exact_for_corrupt_parallel_definitions",
   "grant explicit permission scope",
   "revoke explicit platform scope",
   "revoke explicit tenant scope",

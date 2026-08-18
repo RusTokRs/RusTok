@@ -197,7 +197,7 @@ for (const marker of [
 for (const marker of [
   "### P0 — runtime evidence",
   "Execute #2856 Redis available/outage/restart recovery — PR #3579 run",
-  "Execute #2862 registered-CLI repair propagation — PR #3590 run",
+  "Execute #2862 registered-CLI repair propagation — PR #3590 exact-head run",
   "Retain one same-revision result set within documented bounds",
   "Status: `in_progress`",
 ]) requireNormalizedText(sources.plan, marker, `${files.plan}: owner gate`);

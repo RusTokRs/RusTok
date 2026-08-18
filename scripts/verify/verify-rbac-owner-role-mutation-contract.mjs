@@ -227,9 +227,10 @@ for (const marker of [
 ]) requireText(sources.docs, marker, `${files.docs}: documented boundary`);
 
 for (const marker of [
-  "### P1. Module-owned operator role and permission flows",
-  "- [ ] Define the approved role/permission mutation contract",
-  "- [ ] Publish and verify the expected integration events",
+  "### P1 — operator parity and lifecycle",
+  "- [ ] Define custom-role and arbitrary permission mutation ownership.",
+  "- [ ] Route native operator management through owner policy without parallel writes.",
+  "- [ ] Identify idempotent, non-authoritative event consumers.",
 ]) requireText(sources.plan, marker, `${files.plan}: broader P1 remains open`);
 for (const marker of [
   "Current item: `core/rbac`",

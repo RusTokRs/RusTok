@@ -13,6 +13,15 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const requireNormalizedText = (source, value, label) => {
+  if (!normalizeWhitespace(source).includes(normalizeWhitespace(value))) {
+    failures.push(`${label}: missing ${value}`);
+  }
+};
+const requirePattern = (source, pattern, label) => {
+  if (!pattern.test(source)) failures.push(`${label}: missing ${pattern}`);
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -88,10 +97,16 @@ for (const marker of [
   "principal_kind: AuthPrincipalKind::Service",
 ]) requireText(sources.resolverTests, marker, `${files.resolverTests}: resolver regression`);
 
-for (const marker of [
+requireText(
+  sources.middleware,
   "AuthPrincipalContextExtension(",
-  "AuthPrincipalContext::new(current_user.principal_kind)",
-]) requireText(sources.middleware, marker, `${files.middleware}: HTTP/native propagation`);
+  `${files.middleware}: HTTP/native propagation`,
+);
+requirePattern(
+  sources.middleware,
+  /AuthPrincipalContext::new\(\s*current_user\.principal_kind\s*,?\s*\)/,
+  `${files.middleware}: HTTP/native propagation`,
+);
 
 for (const marker of [
   "AuthPrincipalContext::new(current_user.principal_kind)",
@@ -147,20 +162,19 @@ for (const [name, source] of [
 }
 
 for (const marker of [
-  "### P1. Explicit actor-kind contract",
-  "[x] Add an explicit actor/principal kind",
-  "[x] Preserve fail-closed compatibility",
-  "[x] Add boundary tests proving",
+  "### P0 — exact-head verification",
+  "Run formatting, Events/RBAC/Admin/server compilation, focused tests, verifiers",
+  "### P1 — operator parity and lifecycle",
   "Status: `in_progress`",
   "verify-rbac-explicit-principal-kind.mjs",
-]) requireText(sources.plan, marker, `${files.plan}: implementation handoff`);
+]) requireNormalizedText(sources.plan, marker, `${files.plan}: implementation handoff`);
 
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "`core/rbac` — `crates/rustok-rbac` — in_progress",
-  "explicit typed principal kind",
-]) requireText(sources.master, marker, `${files.master}: active cursor`);
+  "`core/rbac` remains `in_progress`",
+  "incident/live negative transport evidence",
+]) requireNormalizedText(sources.master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
   console.error("RBAC explicit principal-kind verification failed:");

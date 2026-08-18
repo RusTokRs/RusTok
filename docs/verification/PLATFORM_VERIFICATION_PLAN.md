@@ -33,7 +33,7 @@ that component's local `docs/implementation-plan.md`.
 - Current item: `core/rbac`
 - Next item: `core/rbac`
 - Started at (UTC): `2026-07-20`
-- Last handoff at (UTC): `2026-08-17`
+- Last handoff at (UTC): `2026-08-18`
 - Release readiness: `not_assessed`
 - Current RBAC revision: source baseline PR #2980 merged as
   `f4d89c26f1a30079918660280150016930c837a4`; architecture-guard fix PR #3563
@@ -41,10 +41,12 @@ that component's local `docs/implementation-plan.md`.
   merged as `9d7a8d4790c66bbcee3479cb880dc2008e5765b4`; Redis-restart evidence PR #3579
   merged as `6cb7d26734661b17f9b2ca8fead6e46c552bc3eb`; registered-CLI evidence PR #3590
   merged as `67ed475549598720486188f175fcfce0ab826a3b`; artifact-event-digest evidence PR
-  #3617 merged as `65a63a33d457ed5ff7c592f2c81b839cbf690d96`.
-- Current RBAC state: `P0=0, P1=11, P2=1, P3=2`; findings are source-fixed and
-  broad execution verification remains incomplete, so `core/rbac` remains
-  `in_progress`.
+  #3617 merged as `65a63a33d457ed5ff7c592f2c81b839cbf690d96`; source-verifier refresh PR #3629 is
+  open from fresh-main base `967bbbfbebdf3bfcedef35745029b0149aa07321`.
+- Current RBAC state: `P0=0, P1=11, P2=1, P3=2`; all product findings remain
+  source-fixed, PR #3629 corrects stale verification contracts without changing RBAC
+  runtime or migration semantics, and broad execution verification remains incomplete,
+  so `core/rbac` remains `in_progress`.
 - Current RBAC verification delta: PR #3590 exact-head run `31885429843` at
   `06554657c50535204cdca7f7baf87c7b8d55ba65` completed successfully. All four retained
   source contracts passed; the mutation architecture guard passed; PostgreSQL concurrency
@@ -58,15 +60,25 @@ that component's local `docs/implementation-plan.md`.
   `65a63a33d457ed5ff7c592f2c81b839cbf690d96`; artifact `9298285369` records matching
   expected/actual SHA, Rust 1.97.1, generated digest file SHA-256
   `ca261acbf570615cb1ea180854a2d927aeca385db74917cbb487e0dfd9b730b9`, and a
-  zero-byte generated diff.
-- RBAC evidence still required: exact-head format, Events/RBAC/Admin/server compilation,
-  remaining focused tests, source verifiers and RBAC module gates; Migration Compatibility
-  plus PostgreSQL clean apply, N-1 upgrade, integrity and rollback; incident/live negative
-  transport evidence; native operator parity; composed-host/degraded-path and FFA/FBA
-  promotion evidence.
+  zero-byte generated diff. The fresh exact-head core packet then passed RBAC compilation,
+  focused Rust tests, module validate/test, and the corrected mutation architecture guard.
+  PostgreSQL runs terminated during linking with `ld` killed by signal 9 under
+  `CARGO_PROFILE_TEST_DEBUG=0`; no runtime assertion executed, so this is runner/linker
+  pressure rather than a product defect. Migration Compatibility correctly rejected
+  superseded draft #3627 because its proposed dependency edges reordered the published
+  base prefix. Forum, Blog, and RBAC migration bodies operate on separate tables and
+  expose no cross-module schema/data dependency, so no forward remediation migration is
+  warranted for that historical release-order assumption.
+- RBAC evidence still required: PR #3629 exact-head source and merge confirmation;
+  exact-head format and any remaining affected compile/module gates; Migration
+  Compatibility plus PostgreSQL clean apply, N-1 upgrade, integrity and rollback;
+  incident/live negative transport evidence; native operator parity;
+  composed-host/degraded-path and FFA/FBA promotion evidence.
 - Environment classification: no local Rust execution is available in the current agent
   environment. GitHub CI is the executable evidence surface; broad CI failures are not
-  product findings until their diagnostics are attributable to the RBAC diff.
+  product findings until their diagnostics are attributable to the RBAC diff. Linker
+  signal-9/OOM-style termination is recorded as environment evidence unless a product
+  assertion or deterministic source failure precedes it.
 
 ## Carried release blockers
 
@@ -95,8 +107,11 @@ command and owner plan.
   digest evidence are merged. #2849 PostgreSQL concurrency, #2853 independent-process
   durable-watchdog, #2856 Redis restart and #2862 registered-CLI propagation are retained
   and merge-confirmed, and the event digest is generator-current on the #3617 merge SHA.
-  Broader exact-head compile/test/module, migration/rollback, incident/transport,
-  operator, composed-host/degraded-path, and promotion gates remain open.
+  PR #3629 refreshes stale RBAC source guards while preserving the migration plan. The
+  rejected #3627 migration reorder is not a product finding: the immutable-prefix gate
+  worked and source inspection found no Forum/Blog/RBAC schema/data dependency. Broader
+  exact-head source/migration, incident/live negative transport evidence, operator,
+  composed-host/degraded-path, and promotion gates remain open.
 - Infrastructure issue #2740: the Rust-host PostgreSQL fixture can report a missing
   `rustok_browser` role after a nominally successful setup step.
 

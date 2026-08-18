@@ -19,7 +19,7 @@ priorities, required evidence, and the current verification handoff.
 - `[ ]` means execution or promotion evidence remains required.
 - Source-ready is not compiled, migrated, transport-verified, or operationally verified.
 
-Last reconciled with `main`: 2026-08-17.
+Last reconciled with `main`: 2026-08-18.
 
 - Source baseline PR: #2980, merged as `f4d89c26f1a30079918660280150016930c837a4`.
 - Architecture-guard fix PR: #3563, merged as `eedd1954bf0db9920c7557b691863e316a00befa`.
@@ -31,6 +31,8 @@ Last reconciled with `main`: 2026-08-17.
 - Artifact-event-digest evidence PR: #3617, merged as
   `65a63a33d457ed5ff7c592f2c81b839cbf690d96`; merge-SHA digest run
   `32061362433`, artifact `9298285369`.
+- Source-verifier refresh PR: #3629, based on fresh `main`
+  `967bbbfbebdf3bfcedef35745029b0149aa07321`; merge and complete exact-head evidence are pending.
 
 ## Ownership boundary
 
@@ -41,8 +43,9 @@ repair, durable authorization generation storage, and RBAC integration contracts
 `apps/server` owns authenticated adapters, caller transaction orchestration, cache
 adapters, fast-path invalidation delivery, worker supervision, and process telemetry.
 `rustok-events` owns sealed event contracts. `rustok-outbox` owns durable transactional
-transport. `rustok-migrations` owns the immutable global migration prefix and explicit
-append-only release tail.
+transport. `rustok-migrations` owns the immutable published migration prefix and the
+canonical dependency-sorted planner; Migration Compatibility permits only appended
+migration IDs relative to the base revision.
 
 Claims, presentation roles, caches, projections, and consumers are never permission or
 role-assignment authority.
@@ -51,16 +54,23 @@ role-assignment authority.
 
 `cycle-001/core-rbac` remains `in_progress`.
 
-Active verification task (2026-08-17): `[in_progress]` execute the exact-head formatting,
-Events/RBAC/Admin/server compilation, focused-test, source-verifier, and RBAC module
-gates, then continue into the remaining migration gates. The artifact event digest is
-now retained on the merged revision: PR #3617 merge-SHA run `32061362433` at
-`65a63a33d457ed5ff7c592f2c81b839cbf690d96` completed successfully with
-`CARGO_PROFILE_TEST_DEBUG=0` and repository-selected Rust 1.97.1. Artifact `9298285369`
-records exact-SHA provenance, generator output, generated-file SHA-256
-`ca261acbf570615cb1ea180854a2d927aeca385db74917cbb487e0dfd9b730b9`, and a zero-byte
-`generated.diff`, proving the committed event-contract digest is generator-current on
-the merged revision.
+Active verification task (2026-08-18): `[in_progress]` finish the exact-head source and
+migration gates without advancing the cursor. The previously reported mutation
+architecture-guard failure is closed: the current guard excludes only the explicit
+`#[cfg(test)] mod tests` block and retained exact-head execution passes it. The fresh
+exact-head core packet also passed RBAC compilation, focused Rust tests, and module
+validate/test. PostgreSQL runtime diagnostics that ended during linking were classified
+as runner pressure because `ld` was killed by signal 9 with `CARGO_PROFILE_TEST_DEBUG=0`,
+before any RBAC runtime assertion executed.
+
+The migration-order hypothesis from superseded draft #3627 was rejected. Migration
+Compatibility correctly proved that the proposed dependency edges would reorder the
+already-published base prefix. Direct source inspection found no Forum, Blog, or RBAC
+schema/data reference that requires Forum -> Blog -> RBAC execution order: each migration
+owns separate tables. PR #3629 therefore carries only stale source-verifier corrections.
+The tenant-integrity guard now verifies the current canonical planner together with the
+strict base-prefix compatibility comparator and explicitly forbids resurrecting the
+retired `APPEND_ONLY_MIGRATION_TAIL` path.
 
 Registered-CLI repair propagation (#2862) is also retained through merge. PR #3590
 exact-head RBAC Runtime Evidence run `31885429843` at
@@ -95,8 +105,9 @@ Merged source provides:
    authority;
 10. downgrade checks that preserve exact scope identity or refuse the downgrade;
 11. explicit SQLite upgrade/downgrade transactions and failure-atomicity regressions;
-12. a global migration registry that preserves every current-main tail entry and appends
-    only `m20260803_000001_canonicalize_artifact_permissions`;
+12. a canonical global migration planner whose published base prefix is protected by
+    Migration Compatibility and whose dependency descriptors are reserved for real
+    schema/data dependencies;
 13. source guards and SQLite regressions for owner boundaries, exact scope, locale,
     tenant integrity, event atomicity, upgrade, rollback, and removed execution paths.
 
@@ -119,8 +130,10 @@ Merged source provides:
 - `P3=2`: compatibility wording and obsolete broad lint handling.
 
 All findings above are source-fixed in `main`; broad execution verification remains
-incomplete. The #2849 PostgreSQL concurrency, #2853 durable-watchdog, #2856 Redis
-restart, and #2862 registered-CLI runtime packets are retained on one same-revision
+incomplete. The migration-order experiment did not add a product finding because no
+cross-module schema/data dependency exists and the immutable-prefix gate correctly
+rejected the reorder. The #2849 PostgreSQL concurrency, #2853 durable-watchdog, #2856
+Redis restart, and #2862 registered-CLI runtime packets are retained on one same-revision
 packet and confirmed after merge, and the event-contract digest is generator-current on
 its merged revision. These results do not by themselves verify every source finding or
 close the component.
@@ -187,7 +200,8 @@ close the component.
 - [x] Refuse lossy downgrade of exact scope identity.
 - [x] Wrap SQLite upgrade and downgrade in explicit transactions.
 - [x] Register the PostgreSQL backfill fixture.
-- [x] Preserve the complete current-main tail and append only the RBAC cutover.
+- [x] Preserve the immutable published migration prefix and add no fake cross-module
+  dependency solely to recreate historical release order.
 - [ ] Execute Migration Compatibility, clean PostgreSQL apply, N-1 upgrade, fixture,
   rollback, and schema-contract checks on one exact head.
 
@@ -214,7 +228,8 @@ close the component.
 - [x] Generate and review the artifact event digest — PR #3617 merge-SHA run
   `32061362433`; artifact `9298285369`; exact merge SHA and zero generated diff retained.
 - [ ] Run formatting, Events/RBAC/Admin/server compilation, focused tests, verifiers,
-  and module validate/test on the merged revision. — `in_progress`
+  and module validate/test on the merged revision. — `in_progress`; PR #3629 refreshes
+  the stale source guards while preserving the migration plan.
 - [ ] Run SQLite proofs and PostgreSQL clean apply, N-1 upgrade, integrity, locale,
   explicit-scope, concurrency, and rollback scenarios.
 - [ ] Resolve every product failure before claiming verification.
@@ -264,7 +279,7 @@ cargo test -p rustok-events --test rbac_artifact_permission_contracts
 cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite
 cargo test -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite
 cargo test -p rustok-rbac --test artifact_permission_upgrade_sqlite
-cargo test -p rustok-migrations migrator_preserves_append_only_migration_tail
+node scripts/verify/verify-migration-plan-compatibility.mjs --self-test
 cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard
 cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard
 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-server --test rbac_mutation_api_architecture_guard -- --nocapture
@@ -303,11 +318,11 @@ exists.
 
 - Cycle: `cycle-001`
 - Status: `in_progress`
-- Last verified at (UTC): `2026-08-17`.
-- Scope inspected: `merged registered-CLI repair propagation and multi-replica RBAC runtime evidence from #3590; its push-to-main confirmation; generator-produced event-contract digest evidence from #3617; exact merge-SHA provenance and zero-diff review; current owner/master handoff state`.
-- Findings: `source baseline remains P0=0, P1=11, P2=1, P3=2 and is source-fixed. No new RBAC product-semantics defect was found. The #3590 merge revision confirms #2849, #2853, #2856 and #2862 under the permanent runtime workflow. The #3617 merge revision proves the committed event-contract digest is generator-current. The component remains in_progress because broad exact-head compile/test/module, migration/rollback, incident/transport, operator, and promotion gates remain open.`
-- Fixed in this pass: `PR #3590 was confirmed after merge by RBAC Runtime Evidence run 32004633206 and artifact 9280508296. PR #3617 added the permanent exact-SHA artifact-event-digest workflow and merged as 65a63a33d457ed5ff7c592f2c81b839cbf690d96; push run 32061362433 and artifact 9298285369 retain exact-SHA, toolchain, generated digest and zero-diff evidence. No production RBAC/event runtime semantics changed.`
-- Remaining risks or blockers: `broad exact-head formatting, Events/RBAC/Admin/server compilation, focused tests, source verifiers and module gates; SQLite/PostgreSQL migration and rollback proofs; incident/live negative transport evidence; native operator parity; composed-host/degraded-path evidence; and FFA/FBA promotion remain open.`
-- Evidence: `PR #3590 merged as 67ed475549598720486188f175fcfce0ab826a3b. Its exact-head run 31885429843 at 06554657c50535204cdca7f7baf87c7b8d55ba65 passed the four source contracts, architecture guard, #2849 PostgreSQL concurrency, #2853 durable watchdog, #2856 Redis restart, #2862 registered-CLI propagation, artifact archive and final gate. Push-to-main run 32004633206 succeeded on the merge SHA; artifact 9280508296 records CARGO_PROFILE_TEST_DEBUG=0, PostgreSQL 16, Redis 7.0.15 where applicable, and rustc/cargo 1.97.1. PR #3617 merged as 65a63a33d457ed5ff7c592f2c81b839cbf690d96. Its push-to-main RBAC Artifact Event Digest run 32061362433 succeeded; artifact 9298285369 records expected_sha=actual_sha=65a63a33d457ed5ff7c592f2c81b839cbf690d96, CARGO_PROFILE_TEST_DEBUG=0, rustc/cargo 1.97.1, generated file SHA-256 ca261acbf570615cb1ea180854a2d927aeca385db74917cbb487e0dfd9b730b9, and a zero-byte generated.diff. No local Cargo pass is claimed because the agent environment has no Rust toolchain.`
-- Next action: `execute and retain the exact-head formatting, Events/RBAC/Admin/server compilation, focused tests, source verifiers, and cargo xtask module validate/test rbac gates; classify every failure against the RBAC diff before moving into migration compatibility and PostgreSQL rollback evidence. Keep the verification cursor on cycle-001/core-rbac.`
-- Resume command: `cargo fmt --all -- --check`
+- Last verified at (UTC): `2026-08-18`.
+- Scope inspected: `fresh main 967bbbfbebdf3bfcedef35745029b0149aa07321; closed migration-order experiment #3627; Forum, Blog and RBAC migration bodies; canonical global migration planner and base-prefix compatibility policy; stale RBAC source guards; PR #3629 exact-head source/runtime/migration checks`.
+- Findings: `P0=0, P1=11, P2=1, P3=2. No new RBAC product-semantics defect was found. The migration-order hypothesis is not a P1: Forum, Blog and RBAC migrations operate on separate tables and expose no schema/data dependency, while Migration Compatibility correctly rejects reordering of the published base prefix. The PostgreSQL signal-9 link termination is environment/runner pressure, not an RBAC runtime failure.`
+- Fixed in this pass: `Closed unmergeable draft #3627. PR #3629 updates stale source guards to current regression names and handoffs, makes formatting-insensitive checks whitespace-stable where layout is non-semantic, and updates the tenant-integrity verifier to require the canonical dependency sorter plus strict append-only base-prefix comparator while forbidding the retired APPEND_ONLY_MIGRATION_TAIL path. No migration IDs, migration dependency edges, or RBAC runtime authorization semantics changed.`
+- Remaining risks or blockers: `PR #3629 exact-head completion and merge; broad workspace format contains unrelated drift outside this RBAC diff unless separately corrected on main; SQLite/PostgreSQL migration and rollback proofs; incident/live negative transport evidence; native operator parity; composed-host/degraded-path evidence; and FFA/FBA promotion remain open.`
+- Evidence: `The original mutation architecture guard is green on retained exact-head evidence after excluding only the explicit cfg(test) module. Earlier PostgreSQL diagnostics show ld killed by signal 9 with CARGO_PROFILE_TEST_DEBUG=0 before runtime assertions. Migration Compatibility rejected #3627 because its dependency edges changed the already-published prefix. Source inspection of m20260803_000017_add_forum_topic_canonical_resolution, m20260803_000009_add_blog_comments_audit_canonical_handoff and m20260803_000001_canonicalize_artifact_permissions found no cross-module table/schema dependency. PR #3629 started at 1e3b9caf7d7f73470700a5f0c181b8f12e1c0430 from fresh main 967bbbfbebdf3bfcedef35745029b0149aa07321; RBAC Runtime Evidence run 32130014973 already passed its evidence-source-contract job, and Migration Compatibility run 32130014947 passed infrastructure preflight while the append-only plan job proceeds. Complete PR evidence is not yet claimed.`
+- Next action: `finish PR #3629 exact-head source and Migration Compatibility checks, classify any remaining failures against the six-file guard diff, merge only with an unchanged migration plan and no attributable product failure, then continue the remaining SQLite/PostgreSQL clean-apply, N-1 upgrade, integrity, locale, explicit-scope and rollback gates. Keep the cursor on cycle-001/core-rbac.`
+- Resume command: `node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs && node scripts/verify/verify-rbac-artifact-permission-outbox.mjs && node scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs && node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs && node scripts/verify/verify-rbac-explicit-principal-kind.mjs && node scripts/verify/verify-rbac-invalidation-observability.mjs && node scripts/verify/verify-migration-plan-compatibility.mjs --self-test`
