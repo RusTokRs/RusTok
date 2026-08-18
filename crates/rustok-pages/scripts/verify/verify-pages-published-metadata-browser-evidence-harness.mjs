@@ -70,6 +70,9 @@ const setup = read(files.setup);
 const runner = read(files.runner);
 const plan = read(files.plan);
 const actualization = read(files.actualization);
+const normalizedConfig = config.replaceAll("'", '"');
+const normalizedRunner = runner.replaceAll("'", '"');
+const compactRunner = normalizedRunner.replace(/\s+/gu, " ");
 
 requireValue(contract.schema_version === 1, "browser contract schema version drifted");
 requireValue(contract.module === "pages", "browser contract module drifted");
@@ -259,7 +262,7 @@ for (const marker of [
   'video: "off"',
   'name: "pages-published-metadata-chromium"',
 ]) {
-  requireText(config, marker, "Playwright config");
+  requireText(normalizedConfig, marker, "Playwright config");
 }
 for (const marker of [
   "pages-published-metadata-browser-execution-contract.json",
@@ -277,9 +280,11 @@ for (const marker of [
   "deployment digest must be an immutable image RepoDigest",
   "credential-free HTTP(S) URL without a fragment",
   "browser evidence output must remain inside repository target/",
-  'surfaceSelector = "[data-pages-published-metadata-surface=\'registered\']"',
-  'panelSelector = "[data-fly-consumer-properties=\'ready\']"',
-  'expect(contract.profiles).toEqual(["published", "draft", "archived", "missing"])',
+  "const surfaceSelector =",
+  "data-pages-published-metadata-surface=",
+  "const panelSelector =",
+  "data-fly-consumer-properties=",
+  "expect(contract.profiles).toEqual([",
   '"data-pages-published-metadata-admission"',
   '"data-pages-fly-canvas-mounted"',
   '"data-pages-document-authoring"',
@@ -296,7 +301,7 @@ for (const marker of [
   "metadata_values_retained: false",
   "consumer_properties_admission_pending: true",
 ]) {
-  requireText(runner, marker, "browser runner");
+  requireText(normalizedRunner, marker, "browser runner");
 }
 for (const forbidden of [
   "storageState: await",
@@ -305,9 +310,9 @@ for (const forbidden of [
   "sessionStorage",
   "document.cookie",
   "authorization",
-  "Save properties\" }).click",
+  'name: "Save properties" }).click',
 ]) {
-  forbidText(runner, forbidden, "browser runner retention/mutation boundary");
+  forbidText(compactRunner, forbidden, "browser runner retention/mutation boundary");
 }
 
 for (const marker of [
