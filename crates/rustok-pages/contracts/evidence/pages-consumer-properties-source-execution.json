@@ -33,6 +33,16 @@
       "browser_execution_required_before_consumer_admission": true
     }
   },
+  "admission": {
+    "source_contract": "crates/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json",
+    "runner": "scripts/evidence/admit-pages-consumer-properties.mjs",
+    "source_verifier": "scripts/verify/verify-pages-consumer-properties-admission.mjs",
+    "synthetic_test": "scripts/evidence/admit-pages-consumer-properties.test.mjs",
+    "actualization": "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md",
+    "status": "source_ready_maintainer_evidence_pending",
+    "browser_and_deployment_required": true,
+    "repository_mutation": false
+  },
   "execution": {
     "workflow": ".github/workflows/pages-consumer-properties-source-evidence.yml",
     "recorder": "scripts/evidence/record-pages-consumer-properties-source-execution.mjs",
@@ -110,7 +120,12 @@
     "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs",
     "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs",
     "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs",
-    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs"
+    "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
+    "crates/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json",
+    "scripts/evidence/admit-pages-consumer-properties.mjs",
+    "scripts/verify/verify-pages-consumer-properties-admission.mjs",
+    "scripts/evidence/admit-pages-consumer-properties.test.mjs",
+    "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md"
   ],
   "governance_boundary": {
     "execution_packet_is_not_consumer_contract_update": true,
