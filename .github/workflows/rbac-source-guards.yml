@@ -4,7 +4,13 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - "crates/rustok-rbac/docs/**"
+      - "apps/server/**"
+      - "crates/rustok-api/**"
+      - "crates/rustok-cli/**"
+      - "crates/rustok-events/**"
+      - "crates/rustok-migrations/**"
+      - "crates/rustok-outbox/**"
+      - "crates/rustok-rbac/**"
       - "docs/verification/PLATFORM_VERIFICATION_PLAN.md"
       - "scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs"
       - "scripts/verify/verify-rbac-owner-role-mutation-contract.mjs"
@@ -17,7 +23,13 @@ on:
     branches:
       - main
     paths:
-      - "crates/rustok-rbac/docs/**"
+      - "apps/server/**"
+      - "crates/rustok-api/**"
+      - "crates/rustok-cli/**"
+      - "crates/rustok-events/**"
+      - "crates/rustok-migrations/**"
+      - "crates/rustok-outbox/**"
+      - "crates/rustok-rbac/**"
       - "docs/verification/PLATFORM_VERIFICATION_PLAN.md"
       - "scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs"
       - "scripts/verify/verify-rbac-owner-role-mutation-contract.mjs"
