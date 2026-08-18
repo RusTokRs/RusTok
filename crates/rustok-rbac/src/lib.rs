@@ -108,6 +108,7 @@ pub async fn apply_system_role_repair_in_transaction(
 
 use async_trait::async_trait;
 use rustok_api::{Permission, SharedTenantRbacCatalog};
+use rustok_core::MigrationDependencyDescriptor;
 use rustok_core::module::{
     HealthStatus, MigrationSource, ModuleKind, ModuleRuntimeExtensions, RusToKModule,
 };
@@ -125,6 +126,13 @@ impl MigrationSource for RbacModule {
             Box::new(m20260717_000001_artifact_role_permissions::Migration),
             Box::new(m20260803_000001_canonicalize_artifact_permissions::Migration),
         ]
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        vec![MigrationDependencyDescriptor::new(
+            "m20260803_000001_canonicalize_artifact_permissions",
+            vec!["m20260803_000009_add_blog_comments_audit_canonical_handoff"],
+        )]
     }
 }
 

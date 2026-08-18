@@ -40,6 +40,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             vec!["m20260329_000001_create_taxonomy_tables"],
         ),
         MigrationDependencyDescriptor::new(
+            "m20260803_000009_add_blog_comments_audit_canonical_handoff",
+            vec!["m20260803_000017_add_forum_topic_canonical_resolution"],
+        ),
+        MigrationDependencyDescriptor::new(
             "m20260803_000016_add_blog_category_translation_target_support",
             vec!["m20260803_000001_create_owner_operation_receipts"],
         ),

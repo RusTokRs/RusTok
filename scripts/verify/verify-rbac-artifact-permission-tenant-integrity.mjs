@@ -41,6 +41,9 @@ const cutoverMigration =
 const supersededMigration =
   "crates/rustok-rbac/src/m20260801_000001_enforce_artifact_permission_tenant_integrity.rs";
 const platformMigrator = "crates/rustok-migrations/src/lib.rs";
+const publishedOrderProof =
+  "crates/rustok-migrations/tests/published_release_order.rs";
+const blogMigrations = "crates/rustok-blog/src/migrations/mod.rs";
 const owner = "crates/rustok-rbac/src/artifact_permission_assignment.rs";
 const catalog = "crates/rustok-rbac/src/artifact_permission_catalog.rs";
 const exports = "crates/rustok-rbac/src/lib.rs";
@@ -68,15 +71,30 @@ requireAll(exports, [
   "m20260717_000001_artifact_role_permissions::Migration",
   "m20260803_000001_canonicalize_artifact_permissions::Migration",
   "ArtifactPermissionAssignmentScope",
+  "fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor>",
+  '"m20260803_000001_canonicalize_artifact_permissions"',
+  'vec!["m20260803_000009_add_blog_comments_audit_canonical_handoff"]',
 ]);
 forbidAll(exports, ["m20260801_000001_enforce_artifact_permission_tenant_integrity"]);
 
-requireAll(platformMigrator, [
-  "const APPEND_ONLY_MIGRATION_TAIL: &[&str]",
-  "move_migrations_to_append_only_tail(&mut all, APPEND_ONLY_MIGRATION_TAIL)",
-  "migrator_preserves_append_only_migration_tail",
+requireAll(blogMigrations, [
+  '"m20260803_000009_add_blog_comments_audit_canonical_handoff"',
+  'vec!["m20260803_000017_add_forum_topic_canonical_resolution"]',
 ]);
-requireOrdered(platformMigrator, [
+requireAll(platformMigrator, [
+  "all.sort_by(|a, b| a.name().cmp(b.name()));",
+  "sort_migrations_by_dependencies(&mut all, &dependencies)",
+  "validate_migration_dependency_order(&all, &dependencies)",
+]);
+forbidAll(platformMigrator, [
+  "APPEND_ONLY_MIGRATION_TAIL",
+  "move_migrations_to_append_only_tail",
+]);
+requireAll(publishedOrderProof, [
+  "migrator_preserves_append_only_migration_tail",
+  "published migration order changed",
+]);
+requireOrdered(publishedOrderProof, [
   '"m20260728_000001_create_consumer_poison_receipts"',
   '"m20260803_000017_add_forum_topic_canonical_resolution"',
   '"m20260803_000009_add_blog_comments_audit_canonical_handoff"',
