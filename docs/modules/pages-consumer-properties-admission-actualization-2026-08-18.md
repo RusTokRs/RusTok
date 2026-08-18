@@ -59,6 +59,7 @@ The reviewed packet binds:
   `pages-consumer-properties-source-evidence-index`;
 - the successful browser workflow run id and
   `pages-published-metadata-browser-evidence-index`;
+- the exact SHA-256 of the supplied Rust/source receipt and browser packet bytes;
 - a bounded reviewer/operator id.
 
 The packet must explicitly retain:
@@ -113,6 +114,7 @@ exact-checkout chain and verifies fail-closed rejection for:
 - a failed browser observation;
 - reviewed route-hash drift;
 - source workflow run-id drift;
+- browser packet byte-hash drift;
 - an invalid cryptographic deployment overclaim.
 
 The static source guard is:
