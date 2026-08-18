@@ -141,6 +141,8 @@ requireValue(
     admission.deployment_provenance_input?.profile_url_sha256_must_equal_browser_packet === true &&
     admission.deployment_provenance_input?.source_workflow_run_id_must_equal_source_receipt ===
       true &&
+    admission.deployment_provenance_input?.input_packet_sha256_must_equal_supplied_packets ===
+      true &&
     admission.deployment_provenance_input?.source_workflow_index_context ===
       "pages-consumer-properties-source-evidence-index" &&
     admission.deployment_provenance_input?.browser_workflow_index_context ===
@@ -288,6 +290,7 @@ for (const marker of [
   "deployment provenance RepoDigest differs from browser packet",
   "deployment provenance route hashes differ from browser packet",
   "deployment provenance workflow index review drifted",
+  "deployment provenance packet hashes differ from supplied inputs",
   "cryptographic_origin_to_repo_digest_binding !== false",
   "consumer properties contract is no longer in the pending admission state",
   "Page Builder FBA consumer-properties evidence is no longer pending",
@@ -318,6 +321,7 @@ for (const marker of [
   "rejects failed browser observation",
   "rejects route provenance drift",
   "rejects source workflow run drift",
+  "rejects browser packet hash drift",
   "rejects cryptographic deployment overclaim",
 ]) {
   requireText(test, marker, files.test);
