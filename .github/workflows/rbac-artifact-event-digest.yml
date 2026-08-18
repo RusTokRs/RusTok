@@ -1,0 +1,100 @@
+name: RBAC Artifact Event Digest
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-events/Cargo.toml"
+      - "crates/rustok-events/src/**"
+      - "crates/rustok-events/examples/event_contract_digests.rs"
+      - "crates/rustok-events/contracts/event-contract-digests.json"
+      - ".github/workflows/rbac-artifact-event-digest.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/rustok-events/Cargo.toml"
+      - "crates/rustok-events/src/**"
+      - "crates/rustok-events/examples/event_contract_digests.rs"
+      - "crates/rustok-events/contracts/event-contract-digests.json"
+      - ".github/workflows/rbac-artifact-event-digest.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  digest:
+    name: Generate and review artifact event digest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact verification revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Record exact-head provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/rbac-artifact-event-digest
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "event=${GITHUB_EVENT_NAME}"
+            echo "ref=${GITHUB_REF}"
+            echo "expected_sha=$expected"
+            echo "actual_sha=$actual"
+            echo "cargo_profile_test_debug=${CARGO_PROFILE_TEST_DEBUG}"
+            rustup show active-toolchain
+            rustc --version
+            cargo --version
+          } | tee evidence/rbac-artifact-event-digest/metadata.txt
+
+      - name: Generate canonical event contract digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp crates/rustok-events/contracts/event-contract-digests.json \
+            evidence/rbac-artifact-event-digest/committed-event-contract-digests.json
+          cargo run --locked -p rustok-events --example event_contract_digests -- --write \
+            2>&1 | tee evidence/rbac-artifact-event-digest/generator.log
+          cp crates/rustok-events/contracts/event-contract-digests.json \
+            evidence/rbac-artifact-event-digest/generated-event-contract-digests.json
+          sha256sum crates/rustok-events/contracts/event-contract-digests.json \
+            | tee evidence/rbac-artifact-event-digest/generated-file-sha256.txt
+          git diff -- crates/rustok-events/contracts/event-contract-digests.json \
+            | tee evidence/rbac-artifact-event-digest/generated.diff
+          if ! git diff --quiet -- crates/rustok-events/contracts/event-contract-digests.json; then
+            echo "::error::Committed event contract digest is stale; commit the generator-produced delta."
+            exit 1
+          fi
+
+      - name: Archive artifact event digest evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rbac-artifact-event-digest-${{ github.run_id }}-${{ github.sha }}
+          path: evidence/rbac-artifact-event-digest
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9

@@ -66,6 +66,14 @@ This slice does not:
 - claim owner/platform readiness;
 - promote Pages FFA or Page Builder FBA.
 
+## Harness-isolation revalidation — 2026-08-17
+
+PR #3622 isolated the `rustok-server` evidence invocations from unrelated default features while preserving the explicit production relay integration target, both Pages-owned server unit packets, and the Pages/Page Builder feature graph. Its PR-triggered `Pages Cache Consumer Exact-Main Evidence` preflight and gate passed after the isolation.
+
+The squash merge is `main@5aaf1c336e9fafffa58faffb92b82c235e2d494b`. Because the workflow file itself is intentionally absent from `push/main.paths`, that workflow-only merge cannot create an exact-main receipt. This documentation actualization is intentionally limited to an already tracked evidence path so that its later `push/main` merge re-executes the same bounded packet on the post-harness source. Until that push/main run succeeds and its artifact is retained, registry admission remains pending.
+
+No runtime, registry, provider, rollout, readiness, FFA, FBA, or terminal-inventory claim is made by this documentation-only trigger slice.
+
 ## Next cursor
 
 Only after a successful retained exact-main receipt for the merged source, create a separate registry admission PR for `/consumers/0/cache_consumer/executed_evidence: pending -> verified`. Then re-read the canonical registry and, if the provider node is the only remaining blocker, recompute terminal inventory `2 -> 1` in another PR.
