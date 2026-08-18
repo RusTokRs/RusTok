@@ -322,6 +322,7 @@ function validateSourceReceipt(input, contract, sourceContract, head, targets) {
   const registrySpec = contract.target_preconditions.fba_registry;
   if (
     consumerTarget.path !== consumerSpec.path ||
+    consumerTarget.status_before !== consumerSpec.required_status ||
     consumerTarget.sha256 !== targets.consumer.sha256 ||
     consumerTarget.json_pointer !== consumerSpec.executed_evidence_json_pointer ||
     consumerTarget.before !== consumerSpec.required_before_value
@@ -330,6 +331,7 @@ function validateSourceReceipt(input, contract, sourceContract, head, targets) {
   }
   if (
     registryTarget.path !== registrySpec.path ||
+    registryTarget.status_before !== registrySpec.required_status ||
     registryTarget.sha256 !== targets.registry.sha256 ||
     registryTarget.json_pointer !== registrySpec.executed_evidence_json_pointer ||
     registryTarget.before !== registrySpec.required_before_value
@@ -441,7 +443,15 @@ function validateBrowserPacket(input, contract, browserContract, head) {
   return { deploymentDigest, routeHashes };
 }
 
-function validateDeploymentProvenance(input, contract, head, sourceReceipt, browser) {
+function validateDeploymentProvenance(
+  input,
+  contract,
+  head,
+  sourceReceipt,
+  browser,
+  sourceInput,
+  browserInput,
+) {
   const document = input.document;
   const specification = objectValue(
     contract.deployment_provenance_input,
@@ -460,6 +470,19 @@ function validateDeploymentProvenance(input, contract, head, sourceReceipt, brow
     fail("deployment provenance RepoDigest differs from browser packet");
   }
   canonicalIso(document.reviewed_at, "deployment provenance reviewed_at");
+
+  const packetHashes = objectValue(
+    document.input_packet_sha256,
+    "deployment provenance input packet hashes",
+  );
+  if (
+    canonicalSha256(packetHashes.source_receipt, "reviewed source receipt sha256") !==
+      sourceInput.sha256 ||
+    canonicalSha256(packetHashes.browser_evidence, "reviewed browser evidence sha256") !==
+      browserInput.sha256
+  ) {
+    fail("deployment provenance packet hashes differ from supplied inputs");
+  }
 
   const review = objectValue(document.review, "deployment provenance review");
   if (
@@ -575,6 +598,8 @@ function main() {
     head,
     sourceReceipt,
     browser,
+    sourceInput,
+    browserInput,
   );
 
   const output = {
