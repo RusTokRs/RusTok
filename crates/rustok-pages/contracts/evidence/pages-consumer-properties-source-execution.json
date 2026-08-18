@@ -37,6 +37,17 @@
     "workflow": ".github/workflows/pages-consumer-properties-source-evidence.yml",
     "recorder": "scripts/evidence/record-pages-consumer-properties-source-execution.mjs",
     "source_verifier": "scripts/verify/verify-pages-consumer-properties-source-execution.mjs",
+    "validation_events": [
+      "pull_request",
+      "push",
+      "workflow_dispatch"
+    ],
+    "receipt_events": [
+      "push",
+      "workflow_dispatch"
+    ],
+    "receipt_ref_name": "main",
+    "pull_request_receipt": "skipped",
     "test_list_command": "cargo test --locked -p rustok-pages-admin --lib -- --list",
     "required_test_name_fragments": [
       "standalone_metadata::tests::published_page_admits_registered_metadata_surface",
@@ -49,6 +60,7 @@
       "node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs",
       "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs",
       "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs",
+      "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
       "node scripts/verify/verify-pages-consumer-properties-source-execution.mjs"
     ],
     "test_commands": [
@@ -61,7 +73,17 @@
     "artifact_retention_days": 90,
     "network_runtime_under_test_required": false,
     "database_required": false,
-    "browser_required": false
+    "browser_required": false,
+    "run_index_status": {
+      "context": "pages-consumer-properties-source-evidence-index",
+      "events": [
+        "push",
+        "workflow_dispatch"
+      ],
+      "permission": "statuses: write",
+      "target": "github_actions_run_url",
+      "repository_content_mutation": false
+    }
   },
   "output": {
     "format": "pages_consumer_properties_source_execution_v1",
@@ -100,6 +122,7 @@
     "execution_packet_does_not_promote_ffa_or_fba": true,
     "consumer_and_registry_pending_values_require_later_evidence_containing_pr": true,
     "later_admission_must_bind_exact_rust_receipt_browser_packet_and_source_lineage": true,
+    "run_index_mutates_commit_status_only": true,
     "cryptographic_ci_attestation_claimed": false
   },
   "non_claims": {
@@ -114,7 +137,7 @@
     "page_builder_fba_promoted": false
   },
   "next_cursor": {
-    "rust_source_execution": "await_completed_successful_main_push_run_and_retained_artifact",
+    "rust_source_execution": "await_completed_successful_exact_main_push_or_dispatch_run_and_retained_artifact",
     "browser_execution": "maintainer_external_fixture_execution_pending",
     "consumer_properties_admission": "blocked_until_rust_and_browser_packets_are_both_admissible"
   }

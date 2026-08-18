@@ -169,6 +169,7 @@ const expectedVerifiers = [
   "node crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs",
   "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs",
   "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs",
+  "node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs",
   "node scripts/verify/verify-pages-consumer-properties-source-execution.mjs",
 ];
 requireValue(
@@ -176,6 +177,12 @@ requireValue(
     contract.execution?.recorder === files.recorder &&
     contract.execution?.source_verifier ===
       "scripts/verify/verify-pages-consumer-properties-source-execution.mjs" &&
+    JSON.stringify(contract.execution?.validation_events) ===
+      JSON.stringify(["pull_request", "push", "workflow_dispatch"]) &&
+    JSON.stringify(contract.execution?.receipt_events) ===
+      JSON.stringify(["push", "workflow_dispatch"]) &&
+    contract.execution?.receipt_ref_name === "main" &&
+    contract.execution?.pull_request_receipt === "skipped" &&
     contract.execution?.test_list_command ===
       "cargo test --locked -p rustok-pages-admin --lib -- --list" &&
     JSON.stringify(contract.execution?.verifier_commands) === JSON.stringify(expectedVerifiers) &&
@@ -187,6 +194,16 @@ requireValue(
     contract.execution?.database_required === false &&
     contract.execution?.browser_required === false,
   `${files.contract}: execution definition drifted`,
+);
+requireValue(
+  contract.execution?.run_index_status?.context ===
+      "pages-consumer-properties-source-evidence-index" &&
+    JSON.stringify(contract.execution?.run_index_status?.events) ===
+      JSON.stringify(["push", "workflow_dispatch"]) &&
+    contract.execution?.run_index_status?.permission === "statuses: write" &&
+    contract.execution?.run_index_status?.target === "github_actions_run_url" &&
+    contract.execution?.run_index_status?.repository_content_mutation === false,
+  `${files.contract}: run index status boundary drifted`,
 );
 requireValue(
   contract.output?.format === "pages_consumer_properties_source_execution_v1" &&
@@ -206,6 +223,7 @@ for (const key of [
   "execution_packet_does_not_promote_ffa_or_fba",
   "consumer_and_registry_pending_values_require_later_evidence_containing_pr",
   "later_admission_must_bind_exact_rust_receipt_browser_packet_and_source_lineage",
+  "run_index_mutates_commit_status_only",
 ]) {
   requireValue(contract.governance_boundary?.[key] === true, `${files.contract}: ${key} must be true`);
 }
@@ -221,7 +239,9 @@ for (const marker of [
   'process.env.GITHUB_ACTIONS !== "true"',
   "GITHUB_SHA does not equal checkout HEAD",
   'workflow !== "Pages Consumer Properties Source Evidence"',
-  'eventName !== "push" || refName !== "main"',
+  'const RECEIPT_EVENTS = new Set(["push", "workflow_dispatch"]);',
+  '!RECEIPT_EVENTS.has(eventName) || refName !== "main"',
+  "only an exact main push or main workflow dispatch may mint a source execution receipt",
   "consumer properties executed_evidence is no longer pending",
   "FBA consumer-properties executed_evidence is no longer pending",
   "all_commands_passed: true",
@@ -251,11 +271,16 @@ for (const forbidden of [
 
 for (const marker of [
   "name: Pages Consumer Properties Source Evidence",
+  "workflow_dispatch:",
+  "pull_request:",
   "push:",
   "branches:",
   "- main",
+  "Require canonical main manual dispatch",
+  'test "$GITHUB_REF" = "refs/heads/main"',
   "permissions:",
   "contents: read",
+  "statuses: write",
   "persist-credentials: false",
   ...expectedVerifiers,
   "cargo test --locked -p rustok-pages-admin --lib -- --list",
@@ -266,9 +291,14 @@ for (const marker of [
   ...expectedTests,
   "cargo check --locked -p rustok-pages-admin --all-targets",
   "node scripts/evidence/record-pages-consumer-properties-source-execution.mjs",
+  "if: github.event_name != 'pull_request'",
   "actions/upload-artifact@v7",
   "retention-days: 90",
   "name: Consumer Properties Source Evidence Gate",
+  "Publish exact-main evidence run index",
+  "pages-consumer-properties-source-evidence-index",
+  'target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"',
+  '"https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}"',
 ]) {
   requireText(workflow, marker, files.workflow);
 }
@@ -279,8 +309,6 @@ for (const forbidden of [
   "git push",
   "git commit",
   "gh pr",
-  "workflow_dispatch:",
-  "pull_request:",
 ]) {
   forbidText(workflow, forbidden, files.workflow);
 }
@@ -319,12 +347,14 @@ for (const marker of [
   "four focused Rust regressions",
   "does not execute Chromium",
   "consumer properties executed evidence remains `pending`",
+  "manual exact-main revalidation",
+  "pages-consumer-properties-source-evidence-index",
 ]) {
   requireText(actualization, marker, files.actualization);
 }
 requireValue(
   contract.next_cursor?.rust_source_execution ===
-      "await_completed_successful_main_push_run_and_retained_artifact" &&
+      "await_completed_successful_exact_main_push_or_dispatch_run_and_retained_artifact" &&
     contract.next_cursor?.browser_execution ===
       "maintainer_external_fixture_execution_pending" &&
     contract.next_cursor?.consumer_properties_admission ===
@@ -339,5 +369,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "[verify-pages-consumer-properties-source-execution] PASS rust_source=ready exact_main_execution=pending browser_evidence=pending consumer_admission=blocked",
+  "[verify-pages-consumer-properties-source-execution] PASS rust_source=ready exact_main_execution=pending browser_evidence=pending consumer_admission=blocked lifecycle=observable",
 );
