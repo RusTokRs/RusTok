@@ -101,6 +101,17 @@ requireValue(
     contract.workflow_execution?.workflow_mutates_repository === false,
   "browser workflow execution controls drifted",
 );
+requireValue(
+  contract.workflow_execution?.run_index_status?.context ===
+      "pages-published-metadata-browser-evidence-index" &&
+    contract.workflow_execution?.run_index_status?.ref === "refs/heads/main" &&
+    contract.workflow_execution?.run_index_status?.permission === "statuses: write" &&
+    contract.workflow_execution?.run_index_status?.target === "github_actions_run_url" &&
+    contract.workflow_execution?.run_index_status?.repository_content_mutation === false &&
+    contract.workflow_execution?.run_index_status?.deployment_provenance_attestation === false &&
+    contract.workflow_execution?.run_index_status?.consumer_properties_admission === false,
+  "browser workflow run index boundary drifted",
+);
 for (const required of [files.workflow, verifier]) {
   requireValue(
     Array.isArray(contract.required_source_files) &&
@@ -149,6 +160,7 @@ for (const marker of [
   "reviewed_deployment_identity:",
   "permissions:",
   "contents: read",
+  "statuses: write",
   "environment: pages-published-metadata-browser-evidence",
   'test "$GITHUB_REF" = "refs/heads/main"',
   'test "$SOURCE_COMMIT" = "$GITHUB_SHA"',
@@ -177,6 +189,11 @@ for (const marker of [
   "target/pages-published-metadata-browser-evidence.json",
   "retention-days: 90",
   "name: Published Metadata Browser Evidence Gate",
+  "Publish reviewed browser evidence run index",
+  "if: github.ref == 'refs/heads/main'",
+  "pages-published-metadata-browser-evidence-index",
+  'target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"',
+  '"https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}"',
   'test "$BROWSER_RESULT" = "success"',
   'rm -f -- "$RUSTOK_PAGES_PUBLISHED_METADATA_EDITOR_STORAGE_STATE"',
 ]) {
@@ -221,6 +238,15 @@ requireOrderedMarkers(
   ],
   "bounded packet must be verified before archive",
 );
+requireOrderedMarkers(
+  workflow,
+  [
+    "Archive bounded browser evidence",
+    "Publish reviewed browser evidence run index",
+    "Require browser evidence success",
+  ],
+  "browser run index gate ordering",
+);
 
 for (const marker of [
   "dispatch-only workflow",
@@ -241,5 +267,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "[verify-pages-published-metadata-browser-execution-workflow] PASS dispatch_only=true reviewed_deployment_required=true protected_storage_state=true browser_execution=pending",
+  "[verify-pages-published-metadata-browser-execution-workflow] PASS dispatch_only=true reviewed_deployment_required=true protected_storage_state=true run_index=ready browser_execution=pending",
 );
