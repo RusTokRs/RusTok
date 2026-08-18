@@ -558,7 +558,7 @@ async fn stream_with<M: CompletionModel>(
                 continue;
             }
             let arguments = serde_json::from_str(&arguments)
-                .unwrap_or_else(|_| serde_json::Value::String(arguments));
+                .unwrap_or(serde_json::Value::String(arguments));
             emitter.emit_tool_call(ToolCall {
                 id,
                 name,

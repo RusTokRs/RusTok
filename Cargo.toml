@@ -350,13 +350,13 @@ rustok-workflow = { path = "crates/rustok-workflow" }
 schemars = "1.2"
 
 [profile.dev]
-debug = 1
+debug = 0
 
 [profile.dev.package."*"]
 debug = 0
 
 [profile.test]
-debug = 1
+debug = 0
 
 [profile.test.package."*"]
 debug = 0
