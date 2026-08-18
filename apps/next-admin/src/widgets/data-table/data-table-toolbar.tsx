@@ -1,6 +1,11 @@
 'use client';
 
-import type { Column, ReactTable, RowData, StockFeatures } from '@tanstack/react-table';
+import type {
+  Column,
+  ReactTable,
+  RowData,
+  StockFeatures
+} from '@tanstack/react-table';
 import * as React from 'react';
 
 import { DataTableDateFilter } from '@/widgets/data-table';
@@ -12,7 +17,9 @@ import { Input } from '@/shared/ui/shadcn/input';
 import { cn } from '@/shared/lib/utils';
 import { Cross2Icon } from '@radix-ui/react-icons';
 
-interface DataTableToolbarProps<TData extends RowData = any> extends React.ComponentProps<'div'> {
+interface DataTableToolbarProps<
+  TData extends RowData = any
+> extends React.ComponentProps<'div'> {
   table: ReactTable<StockFeatures, TData>;
 }
 

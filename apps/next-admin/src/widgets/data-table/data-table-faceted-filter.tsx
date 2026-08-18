@@ -1,7 +1,12 @@
 'use client';
 
 import type { Option } from '@/types/data-table';
-import type { CellData, Column, RowData, StockFeatures } from '@tanstack/react-table';
+import type {
+  CellData,
+  Column,
+  RowData,
+  StockFeatures
+} from '@tanstack/react-table';
 import { PlusCircle, XCircle } from 'lucide-react';
 
 import { Badge } from '@/shared/ui/shadcn/badge';

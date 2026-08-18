@@ -63,7 +63,9 @@ interface UseDataTableProps<TData extends RowData = any>
   startTransition?: React.TransitionStartFunction;
 }
 
-export function useDataTable<TData extends RowData = any>(props: UseDataTableProps<TData>) {
+export function useDataTable<TData extends RowData = any>(
+  props: UseDataTableProps<TData>
+) {
   const {
     columns,
     pageCount = -1,
@@ -106,9 +108,7 @@ export function useDataTable<TData extends RowData = any>(props: UseDataTablePro
     initialState?.rowSelection ?? {}
   );
   const [columnVisibility, setColumnVisibility] =
-    React.useState<ColumnVisibilityState>(
-      initialState?.columnVisibility ?? {}
-    );
+    React.useState<ColumnVisibilityState>(initialState?.columnVisibility ?? {});
 
   const [page, setPage] = useQueryState(
     PAGE_KEY,
@@ -144,7 +144,9 @@ export function useDataTable<TData extends RowData = any>(props: UseDataTablePro
 
   const columnIds = React.useMemo(() => {
     return new Set(
-      columns.map((column: ColumnDef<StockFeatures, TData, any>) => column.id).filter(Boolean) as string[]
+      columns
+        .map((column: ColumnDef<StockFeatures, TData, any>) => column.id)
+        .filter(Boolean) as string[]
     );
   }, [columns]);
 
@@ -170,7 +172,10 @@ export function useDataTable<TData extends RowData = any>(props: UseDataTablePro
   const filterableColumns = React.useMemo(() => {
     if (enableAdvancedFilter) return [];
 
-    return columns.filter((column: ColumnDef<StockFeatures, TData, any>) => column.enableColumnFilter);
+    return columns.filter(
+      (column: ColumnDef<StockFeatures, TData, any>) =>
+        column.enableColumnFilter
+    );
   }, [columns, enableAdvancedFilter]);
 
   const filterParsers = React.useMemo(() => {
@@ -240,7 +245,12 @@ export function useDataTable<TData extends RowData = any>(props: UseDataTablePro
         const filterUpdates = next.reduce<
           Record<string, string | string[] | null>
         >((acc, filter) => {
-          if (filterableColumns.find((column: ColumnDef<StockFeatures, TData, any>) => column.id === filter.id)) {
+          if (
+            filterableColumns.find(
+              (column: ColumnDef<StockFeatures, TData, any>) =>
+                column.id === filter.id
+            )
+          ) {
             acc[filter.id] = filter.value as string | string[];
           }
           return acc;

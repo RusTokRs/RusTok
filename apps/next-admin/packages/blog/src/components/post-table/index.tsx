@@ -3,20 +3,27 @@
 import { DataTable } from '@/components/ui/table/data-table';
 import { DataTableToolbar } from '@/components/ui/table/data-table-toolbar';
 import { useDataTable } from '@/shared/hooks/use-data-table';
-import type { CellData, ColumnDef, RowData, StockFeatures } from '@tanstack/react-table';
+import type {
+  CellData,
+  ColumnDef,
+  RowData,
+  StockFeatures
+} from '@tanstack/react-table';
 import { parseAsInteger, useQueryState } from 'nuqs';
 
-interface PostTableParams<TData extends RowData = any, TValue extends CellData = any> {
+interface PostTableParams<
+  TData extends RowData = any,
+  TValue extends CellData = any
+> {
   data: TData[];
   totalItems: number;
   columns: ColumnDef<StockFeatures, TData, TValue>[];
 }
 
-export function PostTable<TData extends RowData = any, TValue extends CellData = any>({
-  data,
-  totalItems,
-  columns
-}: PostTableParams<TData, TValue>) {
+export function PostTable<
+  TData extends RowData = any,
+  TValue extends CellData = any
+>({ data, totalItems, columns }: PostTableParams<TData, TValue>) {
   const [pageSize] = useQueryState('perPage', parseAsInteger.withDefault(20));
   const pageCount = Math.ceil(totalItems / pageSize);
 

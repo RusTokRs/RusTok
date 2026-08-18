@@ -1,4 +1,5 @@
 #![cfg(feature = "mod-groups")]
+#![recursion_limit = "512"]
 
 use std::time::Duration;
 

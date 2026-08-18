@@ -10,7 +10,7 @@ import type {
   RowData,
   StockFeatures,
   Table as TanStackTable,
-  TableFeatures,
+  TableFeatures
 } from '@tanstack/react-table';
 
 declare module '@tanstack/table-core' {
@@ -47,11 +47,26 @@ declare module '@tanstack/react-table' {
   }
 }
 
-export type AppTable<TData extends RowData = any> = TanStackTable<StockFeatures, TData>;
-export type AppColumn<TData extends RowData = any, TValue = unknown> = TanStackColumn<StockFeatures, TData, TValue>;
-export type AppRow<TData extends RowData = any> = TanStackRow<StockFeatures, TData>;
-export type AppHeader<TData extends RowData = any, TValue = unknown> = TanStackHeader<StockFeatures, TData, TValue>;
-export type AppColumnDef<TData extends RowData = any, TValue = unknown> = TanStackColumnDef<StockFeatures, TData, TValue>;
+export type AppTable<TData extends RowData = any> = TanStackTable<
+  StockFeatures,
+  TData
+>;
+export type AppColumn<
+  TData extends RowData = any,
+  TValue = unknown
+> = TanStackColumn<StockFeatures, TData, TValue>;
+export type AppRow<TData extends RowData = any> = TanStackRow<
+  StockFeatures,
+  TData
+>;
+export type AppHeader<
+  TData extends RowData = any,
+  TValue = unknown
+> = TanStackHeader<StockFeatures, TData, TValue>;
+export type AppColumnDef<
+  TData extends RowData = any,
+  TValue = unknown
+> = TanStackColumnDef<StockFeatures, TData, TValue>;
 
 export interface Option {
   label: string;

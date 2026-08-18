@@ -1,6 +1,11 @@
 'use client';
 
-import type { CellData, Column, RowData, StockFeatures } from '@tanstack/react-table';
+import type {
+  CellData,
+  Column,
+  RowData,
+  StockFeatures
+} from '@tanstack/react-table';
 import { EyeOff } from 'lucide-react';
 
 import {

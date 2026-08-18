@@ -12,7 +12,9 @@ import {
 import { cn } from '@/shared/lib/utils';
 import { ChevronLeftIcon, ChevronRightIcon } from '@radix-ui/react-icons';
 
-interface DataTablePaginationProps<TData extends RowData = any> extends React.ComponentProps<'div'> {
+interface DataTablePaginationProps<
+  TData extends RowData = any
+> extends React.ComponentProps<'div'> {
   table: ReactTable<StockFeatures, TData>;
   pageSizeOptions?: number[];
 }
@@ -63,8 +65,7 @@ export function DataTablePagination<TData extends RowData = any>({
           </Select>
         </div>
         <div className='flex items-center justify-center text-sm font-medium'>
-          Page {table.state.pagination.pageIndex + 1} of{' '}
-          {table.getPageCount()}
+          Page {table.state.pagination.pageIndex + 1} of {table.getPageCount()}
         </div>
         <div className='flex items-center space-x-2'>
           <Button
