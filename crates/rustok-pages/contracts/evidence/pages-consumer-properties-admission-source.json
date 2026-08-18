@@ -52,7 +52,8 @@
     "reviewer_id_pattern": "^[A-Za-z0-9._-]{1,64}$",
     "raw_profile_urls_retained_must_be_false": true,
     "credentials_retained_must_be_false": true,
-    "cryptographic_signature_present_must_be_false": true
+    "cryptographic_signature_present_must_be_false": true,
+    "input_packet_sha256_must_equal_supplied_packets": true
   },
   "target_preconditions": {
     "consumer_contract": {
