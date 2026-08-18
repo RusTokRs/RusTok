@@ -1,7 +1,34 @@
 name: Pages Consumer Properties Source Evidence
 
 on:
+  workflow_dispatch:
   push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/pages-consumer-properties-source-evidence.yml"
+      - ".github/workflows/pages-published-metadata-browser-evidence.yml"
+      - "scripts/evidence/record-pages-consumer-properties-source-execution.mjs"
+      - "scripts/verify/verify-pages-consumer-properties-source-execution.mjs"
+      - "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md"
+      - "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json"
+      - "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json"
+      - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
+      - "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-published-metadata-surface-source.json"
+      - "crates/rustok-pages/contracts/evidence/pages-published-metadata-browser-execution-contract.json"
+      - "crates/rustok-pages/admin/src/metadata_properties.rs"
+      - "crates/rustok-pages/admin/src/model.rs"
+      - "crates/rustok-pages/admin/src/standalone_metadata.rs"
+      - "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-surface.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs"
+      - "crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs"
+      - "apps/next-admin/playwright.pages-published-metadata.config.ts"
+      - "apps/next-admin/tests/pages-published-metadata/**"
+  pull_request:
     branches:
       - main
     paths:
@@ -41,6 +68,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require canonical main manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -102,8 +136,10 @@ jobs:
       - name: Check Pages admin all targets
         run: cargo check --locked -p rustok-pages-admin --all-targets
       - name: Record bounded Rust source receipt
+        if: github.event_name != 'pull_request'
         run: node scripts/evidence/record-pages-consumer-properties-source-execution.mjs
       - name: Archive consumer properties source evidence
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: pages-consumer-properties-source-${{ github.run_id }}-${{ github.sha }}
@@ -120,7 +156,36 @@ jobs:
       - execution-evidence
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      statuses: write
     steps:
+      - name: Publish exact-main evidence run index
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RESULT: ${{ needs.source-contract.result }}
+          EXECUTION_RESULT: ${{ needs.execution-evidence.result }}
+        run: |
+          set -euo pipefail
+          state="failure"
+          description="consumer-properties Rust/source evidence failed"
+          if [[ "$SOURCE_RESULT" == "success" && "$EXECUTION_RESULT" == "success" ]]; then
+            state="success"
+            description="Rust/source receipt retained; browser evidence pending"
+          fi
+          target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          payload=$(printf '{"state":"%s","target_url":"%s","description":"%s","context":"pages-consumer-properties-source-evidence-index"}' \
+            "$state" "$target_url" "$description")
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            --data "$payload" >/dev/null
+
       - name: Require source and execution success
         env:
           SOURCE_RESULT: ${{ needs.source-contract.result }}

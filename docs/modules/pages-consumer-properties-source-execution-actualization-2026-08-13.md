@@ -16,9 +16,23 @@ The historical exact-main Rust/source receipt from workflow run `31702550557` on
 - `apps/next-admin/tests/pages-published-metadata/browser-evidence.spec.ts`;
 - `apps/next-admin/tests/pages-published-metadata/global-setup.ts`.
 
-Therefore the provider target remains `pending` and requires a fresh exact-main Rust/source receipt. This tracked actualization is intentionally changed without runtime or registry mutation so that, after merge, the existing push-to-main `Pages Consumer Properties Source Evidence` workflow executes against the exact merged source and may retain the fresh bounded receipt.
+Therefore the provider target remains `pending` and requires a fresh exact-main Rust/source receipt. The 2026-08-18 revalidation merge intentionally changed this tracked actualization without runtime or registry mutation so the existing push-to-main `Pages Consumer Properties Source Evidence` workflow could execute against the exact merged source and retain a fresh bounded receipt.
 
 That fresh Rust/source receipt is still only one prerequisite. Provider admission additionally requires a successful retained published-metadata browser packet against the reviewed deployment plus reviewed deployment provenance and admissible source lineage. Until those browser/deployment requirements are present, neither the consumer-properties contract nor `/provider/consumer_properties_contract/executed_evidence` may be changed to `verified`, and terminal FBA inventory must remain `1` rather than being falsely promoted to `0`.
+
+## Lifecycle hardening — 2026-08-18
+
+The exact-main source workflow is now made directly re-runnable and observable instead of requiring another receipt-bound touch commit whenever maintainers need a fresh source receipt.
+
+- `pull_request` against `main` executes the source guards, test inventory, four focused Rust regressions and Cargo check, but deliberately skips receipt generation and artifact upload;
+- `push` to `main` keeps the existing receipt path;
+- `workflow_dispatch` provides manual exact-main revalidation without changing repository source;
+- the recorder still refuses any receipt unless the checkout equals `GITHUB_SHA`, the repository/workflow identities are canonical, the event is `push` or `workflow_dispatch`, the ref is `main`, and both consumer-properties evidence targets remain `pending`;
+- manual dispatch from a non-main ref fails before Cargo execution;
+- after a push/main or dispatch/main run, the gate publishes the commit-status context `pages-consumer-properties-source-evidence-index` pointing at the exact GitHub Actions run;
+- that status is an evidence discovery index only: it mutates commit status metadata, not repository content, the consumer contract or the FBA registry.
+
+This fixes the previous observability loop: the exact-main `run_id` can be recovered from the commit status and then used to inspect jobs and the retained artifact without manufacturing another documentation change. It does not weaken browser/deployment admission and does not promote any evidence state.
 
 ## Cursor
 
@@ -34,15 +48,17 @@ The workflow is:
 
 `.github/workflows/pages-consumer-properties-source-evidence.yml`
 
-It is push-main only and read-only. A branch or local run cannot mint the retained receipt. The recorder requires:
+The workflow is read-only with respect to repository contents. PR runs validate the exact PR source but cannot mint the retained receipt. Receipt creation is limited to exact `main` runs from either a normal push or manual exact-main revalidation through `workflow_dispatch`. The recorder requires:
 
 - `GITHUB_ACTIONS=true`;
 - `GITHUB_SHA` equal to checkout `HEAD`;
 - canonical repository `RusTokRs/RusTok`;
 - workflow name `Pages Consumer Properties Source Evidence`;
-- event `push`;
+- event `push` or `workflow_dispatch`;
 - branch `main`;
 - both the consumer contract and FBA consumer-properties nodes still `pending`.
+
+The gate may write only the bounded GitHub commit-status index `pages-consumer-properties-source-evidence-index`; it has no repository-content write permission.
 
 ## Source gates
 
@@ -52,9 +68,10 @@ Before Cargo execution, the workflow runs the current source guards for:
 2. metadata revision/isolation;
 3. selected published metadata surface;
 4. the retained published metadata browser harness;
-5. this exact-main execution source contract.
+5. the published metadata browser execution workflow;
+6. this exact-main execution source contract.
 
-The browser-harness verifier proves only source readiness. It does not execute a browser.
+The browser-harness and browser-workflow verifiers prove only source readiness. They do not execute a browser.
 
 ## Focused Rust execution
 
@@ -69,12 +86,12 @@ It then executes all four focused tests and `cargo check --locked -p rustok-page
 
 ## Retained receipt
 
-Only after all source verifiers, test inventory, four focused Rust regressions and Cargo check pass may the recorder write:
+Only after all source verifiers, test inventory, four focused Rust regressions and Cargo check pass may an exact-main push/dispatch recorder write:
 
 - format `pages_consumer_properties_source_execution_v1`;
 - status `rust_source_execution_passed_browser_evidence_pending`.
 
-The receipt retains exact source commit, GitHub run identity, hashes of the consumer contract and FBA registry pre-state, the exact pending JSON pointers, and SHA-256 hashes for every required source file.
+The receipt retains exact source commit, GitHub run identity including the real event name, hashes of the consumer contract and FBA registry pre-state, the exact pending JSON pointers, and SHA-256 hashes for every required source file.
 
 The receipt does not embed raw test logs, credentials, cookies, tenant identity, GraphQL/browser payloads or metadata values.
 

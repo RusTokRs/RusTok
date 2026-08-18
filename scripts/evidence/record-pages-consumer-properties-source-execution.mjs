@@ -21,6 +21,7 @@ const contractPath =
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/u;
 const INTEGER_PATTERN = /^[1-9][0-9]*$/u;
+const RECEIPT_EVENTS = new Set(["push", "workflow_dispatch"]);
 
 function fail(message) {
   throw new Error(`Pages consumer-properties source execution recorder failed: ${message}`);
@@ -155,8 +156,8 @@ function main() {
   const refName = requiredEnv("GITHUB_REF_NAME");
   if (repository !== "RusTokRs/RusTok") fail("execution repository is not canonical");
   if (workflow !== "Pages Consumer Properties Source Evidence") fail("execution workflow identity drifted");
-  if (eventName !== "push" || refName !== "main") {
-    fail("only an exact main push may mint a source execution receipt");
+  if (!RECEIPT_EVENTS.has(eventName) || refName !== "main") {
+    fail("only an exact main push or main workflow dispatch may mint a source execution receipt");
   }
 
   const consumer = repoJson(contract.consumer_contract.path, "consumer properties contract");
