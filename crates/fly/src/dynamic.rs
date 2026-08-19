@@ -725,11 +725,15 @@ fn interpolate_value(value: &mut Value, context: &Value) {
 
 fn exact_template_path(value: &str) -> Option<&str> {
     let trimmed = value.trim();
-    trimmed
+    let inner = trimmed
         .strip_prefix("{{")
         .and_then(|value| value.strip_suffix("}}"))
         .map(str::trim)
-        .filter(|value| !value.is_empty())
+        .filter(|value| !value.is_empty())?;
+    if inner.contains("{{") || inner.contains("}}") {
+        return None;
+    }
+    Some(inner)
 }
 
 fn interpolate_text(value: &str, context: &Value) -> String {

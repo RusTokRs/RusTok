@@ -27,7 +27,7 @@
       "browser_roundtrip": true,
       "current_runtime": true,
       "purpose": "Real GrapesJS browser normalization and bidirectional reload baseline",
-      "grapesjs_version": "0.23.2",
+      "grapesjs_version": "0.23.5",
       "grapesjs_preset_webpage_version": "1.0.3",
       "browser": "chromium 149.0.7827.55",
       "capture_commit": "31b1c27a0ce5f2650341cfee742dd4986216881f",

@@ -109,24 +109,15 @@ fn first_frame_has_runtime_scaffold(frames: Option<&Value>) -> bool {
 }
 
 fn synchronize_first_frame(frames: &mut Option<Value>, component: Value) {
-    match frames {
-        Some(Value::Array(frames)) => {
-            if frames.is_empty() {
-                frames.push(Value::Object(Map::from_iter([(
-                    "component".to_string(),
-                    component,
-                )])));
-            } else if let Some(frame) = frames.first_mut().and_then(Value::as_object_mut) {
-                frame.insert("component".to_string(), component);
-            }
-        }
-        Some(Value::Null) | None => {
-            *frames = Some(Value::Array(vec![Value::Object(Map::from_iter([(
+    if let Some(Value::Array(frames)) = frames {
+        if frames.is_empty() {
+            frames.push(Value::Object(Map::from_iter([(
                 "component".to_string(),
                 component,
-            )]))]));
+            )])));
+        } else if let Some(frame) = frames.first_mut().and_then(Value::as_object_mut) {
+            frame.insert("component".to_string(), component);
         }
-        Some(_) => {}
     }
 }
 

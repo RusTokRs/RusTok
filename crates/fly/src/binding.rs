@@ -219,7 +219,7 @@ pub fn validate_binding_definitions(document: &ProjectDocument) -> Vec<Validatio
         if !document.contains_component(&binding.component_id) {
             diagnostics.push(binding_diagnostic(
                 ValidationSeverity::Error,
-                "runtime_binding_component_missing",
+                "runtime_binding_target_missing",
                 format!(
                     "runtime binding `{}` targets missing component `{}`",
                     binding.id, binding.component_id

@@ -46,21 +46,21 @@
     "runtime_commit": "a4cd8b03239c2070f695d11557573cc865799200",
     "validated_through_commit": "a4cd8b03239c2070f695d11557573cc865799200",
     "git_objects": {
-      "Cargo.toml": "5584d287e21ef6b5cd5d2080e500f7b7555a77b8",
-      "Cargo.lock": "fb1f881ecf36169a64c4e5dc4654a8a103f1ae3c",
+      "Cargo.toml": "8bcb232e00e7ef89cfe468262dbbc30cafaa203b",
+      "Cargo.lock": "793fbdde9a0eb1585b6859ff978168ba6950673a",
       "crates/rustok-core/Cargo.toml": "69acba7cf0a6f8b118e23bad3f3c822cc0a13231",
-      "crates/rustok-core/src": "6860a4a096eb6f1131f866449b974469cf379c2a",
+      "crates/rustok-core/src": "5646d4bfd1809e68f512c43e3210cfdaaecd26e9",
       "crates/rustok-migrations/Cargo.toml": "038cacf3c2d3b24d75cd0bc524ba1bbade8514fe",
-      "crates/rustok-migrations/src": "8edfb14687890ead3e20e0da67eb091faf8f3d70",
+      "crates/rustok-migrations/src": "020849b6baa0e3a7f6dddee28a1d8662adac97e4",
       "crates/rustok-outbox/Cargo.toml": "adcdca31ec764c3955212943163ba586855dd917",
       "crates/rustok-outbox/src": "525ecf9cb0d77e3fcce2f7e6e40390f6622608ff",
       "crates/rustok-taxonomy/Cargo.toml": "0441c8785f1f6c62596441f9a98c1aed57fa0775",
       "crates/rustok-taxonomy/src": "e513bfc13e1e76c289f216bd26b7c3c6976921a7",
-      "crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs": "b62692c109d715a4b7d67d2b3467cc502e3d50aa",
+      "crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs": "5fc31718590e9b9c18c7b1601fbad63d62a1939b",
       "crates/rustok-taxonomy/tests/translation_target_postgres.rs": "6f62da2b1b400723fbcbc8135210771606e37bac",
       "crates/rustok-translation-targets/Cargo.toml": "7cdc77394d05244ca3f4fa41971c58bf0f39e3d3",
       "crates/rustok-translation-targets/src": "a52cc4fb614cc6cc9ab5ee18fdcfab0746a968e8",
-      ".github/workflows/taxonomy-postgres-evidence.yml": "6747d6ac906f45f050be51d22e10caa76698dfd5"
+      ".github/workflows/taxonomy-postgres-evidence.yml": "3591c9b9c43aef8305baed357ffa6ec857bc3a89"
     }
   },
   "production_contract": {

@@ -77,7 +77,12 @@ rustup target add wasm32-unknown-unknown
 npm ci --prefix "$repo_root/apps/admin" --no-audit --no-fund
 rm -rf "$repo_root/apps/admin/dist"
 
-trunk_args=(build --release)
+trunk_args=(
+  --no-default-features
+  --features hydrate
+  build
+  --release
+)
 trunk_env=(env -u RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN)
 if [[ $pages_inline_edit_launch -eq 1 ]]; then
   trunk_args=(

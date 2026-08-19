@@ -47,10 +47,10 @@
     "runtime_commit": "a4cd8b03239c2070f695d11557573cc865799200",
     "validated_through_commit": "a4cd8b03239c2070f695d11557573cc865799200",
     "git_objects": {
-      "Cargo.toml": "e0feff98623ec4fb07faa68b569d5802f65549da",
-      "Cargo.lock": "f2c9aea5ed7a4fcc8c301e4a703c7ca4987b4dc6",
+      "Cargo.toml": "8bcb232e00e7ef89cfe468262dbbc30cafaa203b",
+      "Cargo.lock": "793fbdde9a0eb1585b6859ff978168ba6950673a",
       "crates/rustok-core/Cargo.toml": "69acba7cf0a6f8b118e23bad3f3c822cc0a13231",
-      "crates/rustok-core/src": "80e45f6acae80742e2d76e46716eaa0c45485698",
+      "crates/rustok-core/src": "5646d4bfd1809e68f512c43e3210cfdaaecd26e9",
       "crates/rustok-migrations/Cargo.toml": "038cacf3c2d3b24d75cd0bc524ba1bbade8514fe",
       "crates/rustok-migrations/src": "020849b6baa0e3a7f6dddee28a1d8662adac97e4",
       "crates/rustok-outbox/Cargo.toml": "adcdca31ec764c3955212943163ba586855dd917",

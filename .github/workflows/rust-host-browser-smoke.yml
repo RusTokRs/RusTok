@@ -83,7 +83,7 @@ jobs:
       - name: Apply migrations and preserve browser database
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/browser-migrations
-          RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+          RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://${{ env.RUSTOK_BROWSER_DATABASE_ROLE }}:${{ env.RUSTOK_BROWSER_DATABASE_PASSWORD }}@127.0.0.1:5432/postgres
           RUSTOK_MIGRATION_SMOKE_DB_NAME: ${{ env.RUSTOK_BROWSER_DATABASE }}
           RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
           RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
