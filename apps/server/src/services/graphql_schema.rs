@@ -53,7 +53,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         } else {
             host_runtime
         };
-    #[cfg(feature = "mod-media")]
+    #[cfg(any(feature = "mod-media", feature = "mod-translation"))]
     let host_runtime = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() {
         host_runtime.with_shared_value(storage)
     } else {
