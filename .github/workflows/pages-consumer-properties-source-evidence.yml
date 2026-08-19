@@ -10,8 +10,13 @@ on:
       - ".github/workflows/pages-published-metadata-browser-evidence.yml"
       - "scripts/evidence/record-pages-consumer-properties-source-execution.mjs"
       - "scripts/verify/verify-pages-consumer-properties-source-execution.mjs"
+      - "scripts/evidence/admit-pages-consumer-properties.mjs"
+      - "scripts/evidence/admit-pages-consumer-properties.test.mjs"
+      - "scripts/verify/verify-pages-consumer-properties-admission.mjs"
       - "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md"
+      - "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md"
       - "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json"
+      - "crates/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json"
       - "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json"
       - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
       - "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
@@ -36,8 +41,13 @@ on:
       - ".github/workflows/pages-published-metadata-browser-evidence.yml"
       - "scripts/evidence/record-pages-consumer-properties-source-execution.mjs"
       - "scripts/verify/verify-pages-consumer-properties-source-execution.mjs"
+      - "scripts/evidence/admit-pages-consumer-properties.mjs"
+      - "scripts/evidence/admit-pages-consumer-properties.test.mjs"
+      - "scripts/verify/verify-pages-consumer-properties-admission.mjs"
       - "docs/modules/pages-consumer-properties-source-execution-actualization-2026-08-13.md"
+      - "docs/modules/pages-consumer-properties-admission-actualization-2026-08-18.md"
       - "crates/rustok-pages/contracts/evidence/pages-consumer-properties-source-execution.json"
+      - "crates/rustok-pages/contracts/evidence/pages-consumer-properties-admission-source.json"
       - "crates/rustok-page-builder/contracts/page-builder-consumer-properties.json"
       - "crates/rustok-page-builder/contracts/page-builder-fba-registry.json"
       - "crates/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json"
@@ -91,6 +101,10 @@ jobs:
         run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-evidence-harness.mjs
       - name: Verify published metadata browser workflow source
         run: node crates/rustok-pages/scripts/verify/verify-pages-published-metadata-browser-execution-workflow.mjs
+      - name: Verify consumer properties admission source
+        run: node scripts/verify/verify-pages-consumer-properties-admission.mjs
+      - name: Exercise consumer properties admission fail-closed synthetic coverage
+        run: node scripts/evidence/admit-pages-consumer-properties.test.mjs
       - name: Verify exact-main source execution contract
         run: node scripts/verify/verify-pages-consumer-properties-source-execution.mjs
 
