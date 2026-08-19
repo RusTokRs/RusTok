@@ -353,10 +353,12 @@ schemars = "1.2"
 debug = 0
 
 [profile.dev.package."*"]
+opt-level = 1
 debug = 0
 
 [profile.test]
 debug = 0
 
 [profile.test.package."*"]
+opt-level = 1
 debug = 0

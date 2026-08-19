@@ -46,7 +46,7 @@
     "runtime_commit": "a4cd8b03239c2070f695d11557573cc865799200",
     "validated_through_commit": "a4cd8b03239c2070f695d11557573cc865799200",
     "git_objects": {
-      "Cargo.toml": "8bcb232e00e7ef89cfe468262dbbc30cafaa203b",
+      "Cargo.toml": "69ce6062ba6e8ca403c1ac7381a1b6cdf39a4a68",
       "Cargo.lock": "793fbdde9a0eb1585b6859ff978168ba6950673a",
       "crates/rustok-core/Cargo.toml": "69acba7cf0a6f8b118e23bad3f3c822cc0a13231",
       "crates/rustok-core/src": "5646d4bfd1809e68f512c43e3210cfdaaecd26e9",
