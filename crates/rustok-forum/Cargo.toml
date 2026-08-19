@@ -34,6 +34,7 @@ rustok-outbox.workspace = true
 rustok-profiles.workspace = true
 rustok-reactions-api = { path = "../rustok-reactions-api" }
 rustok-seo-targets.workspace = true
+rustok-translation-targets.workspace = true
 rustok-media.workspace = true
 rustok-taxonomy.workspace = true
 rustok-web.workspace = true
