@@ -54,11 +54,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
             host_runtime
         };
     #[cfg(any(feature = "mod-media", feature = "mod-translation"))]
-    let host_runtime = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() {
-        host_runtime.with_shared_value(storage)
-    } else {
-        host_runtime
-    };
+    let host_runtime = attach_storage_runtime(host_runtime, ctx);
     #[cfg(feature = "mod-alloy")]
     let host_runtime = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
         let storage = ctx
@@ -111,6 +107,18 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     ctx.shared_insert(SharedGraphqlSchema(schema.clone()));
 
     schema
+}
+
+#[cfg(any(feature = "mod-media", feature = "mod-translation"))]
+fn attach_storage_runtime(
+    host_runtime: rustok_api::HostRuntimeContext,
+    ctx: &ServerRuntimeContext,
+) -> rustok_api::HostRuntimeContext {
+    if let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() {
+        host_runtime.with_shared_value(storage)
+    } else {
+        host_runtime
+    }
 }
 
 fn stop_handle_from_context(ctx: &ServerRuntimeContext) -> StopHandle {
@@ -190,4 +198,43 @@ fn storage_from_ctx(ctx: &ServerRuntimeContext) -> rustok_storage::StorageRuntim
     .expect("create fallback local storage runtime");
     ctx.shared_insert(fallback.clone());
     fallback
+}
+
+#[cfg(all(test, feature = "mod-translation"))]
+mod translation_storage_tests {
+    use super::attach_storage_runtime;
+    use crate::common::settings::RustokSettings;
+    use crate::services::server_runtime_context::ServerRuntimeContext;
+    use rustok_api::HostRuntimeContext;
+    use sea_orm::Database;
+
+    #[tokio::test]
+    async fn translation_graphql_host_receives_initialized_storage_runtime() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect Translation GraphQL storage evidence database");
+        let ctx = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
+        let storage = rustok_storage::StorageRuntime::local(&rustok_storage::LocalStorageConfig {
+            base_dir: std::env::temp_dir()
+                .join(format!(
+                    "rustok-translation-graphql-storage-{}",
+                    uuid::Uuid::new_v4()
+                ))
+                .to_string_lossy()
+                .into_owned(),
+            base_url: "/translation-artifacts".to_string(),
+            fsync: false,
+        })
+        .expect("create Translation GraphQL storage runtime");
+        ctx.shared_insert(storage);
+
+        let host_runtime = attach_storage_runtime(HostRuntimeContext::new(db), &ctx);
+
+        assert!(
+            host_runtime
+                .shared_get::<rustok_storage::StorageRuntime>()
+                .is_some(),
+            "mod-translation GraphQL host must receive the initialized StorageRuntime"
+        );
+    }
 }
