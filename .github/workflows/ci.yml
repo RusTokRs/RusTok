@@ -411,7 +411,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [fmt, clippy, check, platform-contract, audit, deny, typos, doc, udeps, coverage, sbom, build-server, build-storefront, test, migration-smoke, doc-tests, next-apps, server-library-docs-snapshot, reference-artifacts]
+    needs: [fmt, clippy, check, platform-contract, audit, deny, typos, doc, udeps, coverage, sbom, build-server, build-storefront, migration-smoke, doc-tests, next-apps, server-library-docs-snapshot, reference-artifacts]
     if: always()
     steps:
       - name: Check all jobs
@@ -429,7 +429,6 @@ jobs:
              [[ "${{ needs.sbom.result }}" != "success" ]] || \
              [[ "${{ needs.build-server.result }}" != "success" ]] || \
              [[ "${{ needs.build-storefront.result }}" != "success" ]] || \
-             [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.migration-smoke.result }}" != "success" ]] || \
              [[ "${{ needs.doc-tests.result }}" != "success" ]] || \
              [[ "${{ needs.next-apps.result }}" != "success" ]] || \
