@@ -70,6 +70,21 @@ function currentCommit() {
   return commit;
 }
 
+function requireCommitAncestor(ancestor, descendant) {
+  const result = spawnSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    shell: false,
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.error) fail(`source receipt ancestry lookup failed: ${result.error.message}`);
+  if (result.status !== 0) {
+    fail(
+      "source execution receipt source_commit is not a locally verifiable ancestor of checkout HEAD",
+    );
+  }
+}
+
 function parseArguments(argv) {
   const options = {};
   const allowed = new Set([
@@ -296,9 +311,8 @@ function validateSourceReceipt(input, contract, sourceContract, head, targets) {
   if (document.format !== specification.format || document.status !== specification.required_status) {
     fail("source execution receipt format/status drifted");
   }
-  if (canonicalCommit(document.source_commit, "source receipt source_commit") !== head) {
-    fail("source execution receipt source_commit does not equal checkout HEAD");
-  }
+  const sourceCommit = canonicalCommit(document.source_commit, "source receipt source_commit");
+  requireCommitAncestor(sourceCommit, head);
 
   const provenance = objectValue(document.provenance, "source receipt provenance");
   if (
@@ -366,9 +380,9 @@ function validateSourceReceipt(input, contract, sourceContract, head, targets) {
     if (governance[key] !== false) fail(`source receipt governance ${key} must remain false`);
   }
   if (governance.later_admission_must_bind_rust_browser_and_source_lineage !== true) {
-    fail("source receipt no longer requires later exact-source admission");
+    fail("source receipt no longer requires later source-lineage admission");
   }
-  return { runId };
+  return { runId, sourceCommit };
 }
 
 function expectedPublishedFacts() {
@@ -476,10 +490,8 @@ function validateDeploymentProvenance(
     "deployment provenance input packet hashes",
   );
   if (
-    canonicalSha256(packetHashes.source_receipt, "reviewed source receipt sha256") !==
-      sourceInput.sha256 ||
-    canonicalSha256(packetHashes.browser_evidence, "reviewed browser evidence sha256") !==
-      browserInput.sha256
+    canonicalSha256(packetHashes.source_receipt, "reviewed source receipt sha256") !== sourceInput.sha256 ||
+    canonicalSha256(packetHashes.browser_evidence, "reviewed browser evidence sha256") !== browserInput.sha256
   ) {
     fail("deployment provenance packet hashes differ from supplied inputs");
   }
@@ -505,11 +517,14 @@ function validateDeploymentProvenance(
   if (
     sourceWorkflow.context !== specification.source_workflow_index_context ||
     canonicalRunId(sourceWorkflow.run_id, "reviewed source workflow run id") !== sourceReceipt.runId ||
+    canonicalCommit(sourceWorkflow.source_commit, "reviewed source workflow source_commit") !==
+      sourceReceipt.sourceCommit ||
     sourceWorkflow.status !== "success" ||
     browserWorkflow.context !== specification.browser_workflow_index_context ||
     !canonicalRunId(browserWorkflow.run_id, "reviewed browser workflow run id") ||
+    canonicalCommit(browserWorkflow.source_commit, "reviewed browser workflow source_commit") !== head ||
     browserWorkflow.status !== "success" ||
-    workflow.exact_commit_statuses_reviewed !== true
+    workflow.exact_bound_commit_statuses_reviewed !== true
   ) {
     fail("deployment provenance workflow index review drifted");
   }
@@ -607,16 +622,20 @@ function main() {
     status: contract.output.status,
     admitted_at: new Date().toISOString(),
     source_commit: head,
+    source_receipt_commit: sourceReceipt.sourceCommit,
+    browser_deployment_source_commit: head,
     deployment_image_digest: browser.deploymentDigest,
     workflow_evidence: {
       source: {
         context: contract.source_execution_input.run_index_context,
         run_id: sourceReceipt.runId,
+        source_commit: sourceReceipt.sourceCommit,
         reviewed_status: "success",
       },
       browser: {
         context: contract.browser_input.run_index_context,
         run_id: deployment.browserRunId,
+        source_commit: head,
         reviewed_status: "success",
       },
       review_classification: "maintainer_reviewed_external_fact",
@@ -630,12 +649,14 @@ function main() {
     },
     source_files: sourceHashes(contract),
     admission: {
-      exact_source_commit_bound: true,
+      source_receipt_ancestor_lineage_bound: true,
+      source_receipt_required_sources_equal_current_checkout: true,
+      browser_and_deployment_exact_source_commit_bound: true,
       exact_deployment_digest_bound: true,
       source_receipt_bound: true,
       browser_packet_bound: true,
       deployment_provenance_bound: true,
-      source_and_browser_indexes_reviewed: true,
+      source_and_browser_indexes_reviewed_on_bound_commits: true,
       no_source_drift_at_admission: true,
       registry_update_ready_for_later_evidence_containing_pr: true,
     },
@@ -662,7 +683,7 @@ function main() {
 
   writeAtomic(outputPath(contract, options["--output"]), output);
   console.log(
-    `[admit-pages-consumer-properties] PASS source=${head} source_run=${sourceReceipt.runId} browser_run=${deployment.browserRunId} registry_update=pending`,
+    `[admit-pages-consumer-properties] PASS checkout=${head} source_receipt=${sourceReceipt.sourceCommit} source_run=${sourceReceipt.runId} browser_run=${deployment.browserRunId} registry_update=pending`,
   );
 }
 
