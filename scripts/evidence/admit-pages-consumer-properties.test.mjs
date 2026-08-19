@@ -95,7 +95,7 @@ function runAdmission(source, browser, deployment, outputName) {
   return { result, outputPath };
 }
 
-function expectPass(label, source, browser, deployment) {
+function expectPass(label, source, browser, deployment, expectedSourceCommit) {
   const { result, outputPath } = runAdmission(source, browser, deployment, label);
   if (result.status !== 0) {
     fail(`${label} unexpectedly failed: ${result.stderr || result.stdout}`);
@@ -104,6 +104,11 @@ function expectPass(label, source, browser, deployment) {
   if (
     output.format !== "pages_consumer_properties_admission_v1" ||
     output.status !== "consumer_properties_execution_evidence_admitted_registry_update_pending" ||
+    output.source_receipt_commit !== expectedSourceCommit ||
+    output.browser_deployment_source_commit !== currentCommit() ||
+    output.admission?.source_receipt_ancestor_lineage_bound !== true ||
+    output.admission?.source_receipt_required_sources_equal_current_checkout !== true ||
+    output.admission?.browser_and_deployment_exact_source_commit_bound !== true ||
     output.admission?.registry_update_ready_for_later_evidence_containing_pr !== true ||
     output.boundaries?.consumer_contract_mutated !== false ||
     output.boundaries?.fba_registry_mutated !== false ||
@@ -125,6 +130,11 @@ function clone(value) {
 
 function jsonSha256(document) {
   return sha256(`${JSON.stringify(document, null, 2)}\n`);
+}
+
+function refreshPacketHashes(deployment, source, browser) {
+  deployment.input_packet_sha256.source_receipt = jsonSha256(source);
+  deployment.input_packet_sha256.browser_evidence = jsonSha256(browser);
 }
 
 function main() {
@@ -153,7 +163,7 @@ function main() {
       provenance: {
         repository: "RusTokRs/RusTok",
         workflow: "Pages Consumer Properties Source Evidence",
-        run_id: "32170986733",
+        run_id: "32177516104",
         run_attempt: "1",
         event_name: "push",
         head_branch: "main",
@@ -285,15 +295,17 @@ function main() {
       workflow_evidence: {
         source: {
           context: "pages-consumer-properties-source-evidence-index",
-          run_id: "32170986733",
+          run_id: "32177516104",
+          source_commit: head,
           status: "success",
         },
         browser: {
           context: "pages-published-metadata-browser-evidence-index",
           run_id: "32179999999",
+          source_commit: head,
           status: "success",
         },
-        exact_commit_statuses_reviewed: true,
+        exact_bound_commit_statuses_reviewed: true,
       },
       profile_url_sha256: routeHashes,
       binding: {
@@ -304,11 +316,32 @@ function main() {
       },
     };
 
-    expectPass("accepts exact source lineage", sourceReceipt, browserPacket, deploymentProvenance);
+    expectPass("accepts exact head as valid ancestor lineage", sourceReceipt, browserPacket, deploymentProvenance, head);
 
-    const sourceDrift = clone(sourceReceipt);
-    sourceDrift.source_commit = "b".repeat(40);
-    expectReject("rejects source commit drift", sourceDrift, browserPacket, deploymentProvenance);
+    const nonAncestor = clone(sourceReceipt);
+    nonAncestor.source_commit = "b".repeat(40);
+    const nonAncestorProvenance = clone(deploymentProvenance);
+    nonAncestorProvenance.workflow_evidence.source.source_commit = nonAncestor.source_commit;
+    refreshPacketHashes(nonAncestorProvenance, nonAncestor, browserPacket);
+    expectReject("rejects non ancestor source receipt", nonAncestor, browserPacket, nonAncestorProvenance);
+
+    const staleSourceHash = clone(sourceReceipt);
+    const stalePath = Object.keys(staleSourceHash.source_sha256)[0];
+    staleSourceHash.source_sha256[stalePath] = "c".repeat(64);
+    const staleSourceProvenance = clone(deploymentProvenance);
+    refreshPacketHashes(staleSourceProvenance, staleSourceHash, browserPacket);
+    expectReject("rejects stale source receipt hash", staleSourceHash, browserPacket, staleSourceProvenance);
+
+    const browserCommitDrift = clone(browserPacket);
+    browserCommitDrift.source_commit = "d".repeat(40);
+    const browserCommitProvenance = clone(deploymentProvenance);
+    refreshPacketHashes(browserCommitProvenance, sourceReceipt, browserCommitDrift);
+    expectReject(
+      "rejects browser checkout commit drift",
+      sourceReceipt,
+      browserCommitDrift,
+      browserCommitProvenance,
+    );
 
     const digestDrift = clone(deploymentProvenance);
     digestDrift.deployment_image_digest = `ghcr.io/rustokrs/rustok@sha256:${"b".repeat(64)}`;
@@ -316,18 +349,34 @@ function main() {
 
     const failedBrowser = clone(browserPacket);
     failedBrowser.observations.published.passed = false;
-    expectReject("rejects failed browser observation", sourceReceipt, failedBrowser, deploymentProvenance);
+    const failedBrowserProvenance = clone(deploymentProvenance);
+    refreshPacketHashes(failedBrowserProvenance, sourceReceipt, failedBrowser);
+    expectReject(
+      "rejects failed browser observation",
+      sourceReceipt,
+      failedBrowser,
+      failedBrowserProvenance,
+    );
 
     const routeDrift = clone(deploymentProvenance);
-    routeDrift.profile_url_sha256.published = "c".repeat(64);
+    routeDrift.profile_url_sha256.published = "e".repeat(64);
     expectReject("rejects route provenance drift", sourceReceipt, browserPacket, routeDrift);
 
     const sourceRunDrift = clone(deploymentProvenance);
     sourceRunDrift.workflow_evidence.source.run_id = "32170000000";
     expectReject("rejects source workflow run drift", sourceReceipt, browserPacket, sourceRunDrift);
 
+    const sourceCommitReviewDrift = clone(deploymentProvenance);
+    sourceCommitReviewDrift.workflow_evidence.source.source_commit = "f".repeat(40);
+    expectReject(
+      "rejects source workflow commit review drift",
+      sourceReceipt,
+      browserPacket,
+      sourceCommitReviewDrift,
+    );
+
     const browserPacketHashDrift = clone(deploymentProvenance);
-    browserPacketHashDrift.input_packet_sha256.browser_evidence = "d".repeat(64);
+    browserPacketHashDrift.input_packet_sha256.browser_evidence = "a".repeat(64);
     expectReject(
       "rejects browser packet hash drift",
       sourceReceipt,
@@ -345,7 +394,7 @@ function main() {
     );
 
     console.log(
-      "[admit-pages-consumer-properties.test] PASS exact_lineage=accepted fail_closed_mutations=7",
+      "[admit-pages-consumer-properties.test] PASS ancestor_or_equal_lineage=accepted fail_closed_mutations=10",
     );
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
