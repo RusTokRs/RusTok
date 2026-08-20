@@ -83,6 +83,14 @@ impl CategoryProjectionOwnerService {
         .insert(&txn)
         .await?;
 
+        super::category_translation_evidence::record_category_translation_change_in_tx(
+            &txn,
+            tenant_id,
+            id,
+            "create",
+            rustok_translation_targets::TranslationResourceLifecycle::Active,
+        )
+        .await?;
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,
@@ -103,6 +111,8 @@ impl CategoryProjectionOwnerService {
     ) -> ForumResult<CategoryResponse> {
         enforce_scope(&security, Resource::ForumCategories, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
+        let translation_requested =
+            input.name.is_some() || input.slug.is_some() || input.description.is_some();
         let txn = self.db.begin().await?;
         let category = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
@@ -220,6 +230,16 @@ impl CategoryProjectionOwnerService {
             }
         }
 
+        if translation_requested {
+            super::category_translation_evidence::record_category_translation_change_in_tx(
+                &txn,
+                tenant_id,
+                category_id,
+                "update",
+                rustok_translation_targets::TranslationResourceLifecycle::Active,
+            )
+            .await?;
+        }
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,
@@ -247,6 +267,14 @@ impl CategoryProjectionOwnerService {
             .await?
             .ok_or(ForumError::CategoryNotFound(category_id))?;
 
+        super::category_translation_evidence::record_category_translation_change_in_tx(
+            &txn,
+            tenant_id,
+            category_id,
+            "delete",
+            rustok_translation_targets::TranslationResourceLifecycle::Deleted,
+        )
+        .await?;
         forum_category_translation::Entity::delete_many()
             .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_category_translation::Column::CategoryId.eq(category_id))
