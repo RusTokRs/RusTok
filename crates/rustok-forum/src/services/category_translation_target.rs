@@ -210,6 +210,9 @@ impl ForumCategoryTranslationTargetProvider {
                     .filter(TranslationColumn::TenantId.eq(tenant_id))
                     .filter(TranslationColumn::CategoryId.eq(category_id))
                     .filter(TranslationColumn::Locale.eq(request.target_locale.as_str()))
+                    .filter(TranslationColumn::Name.eq(existing_target.name.clone()))
+                    .filter(TranslationColumn::Slug.eq(existing_target.slug.clone()))
+                    .filter(TranslationColumn::Description.eq(existing_target.description.clone()))
                     .exec(txn)
                     .await
                     .map_err(forum_database_error_to_port_error)?;
@@ -235,7 +238,7 @@ impl ForumCategoryTranslationTargetProvider {
                 )
                 .await
                 .map_err(forum_error_to_port_error)?;
-                crate::entities::forum_category_translation::ActiveModel {
+                let inserted = crate::entities::forum_category_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     category_id: Set(category_id),
                     tenant_id: Set(tenant_id),
@@ -245,8 +248,17 @@ impl ForumCategoryTranslationTargetProvider {
                     description: Set(target.description),
                 }
                 .insert(txn)
-                .await
-                .map_err(forum_database_error_to_port_error)?
+                .await;
+                match inserted {
+                    Ok(model) => model,
+                    Err(error) if is_unique_constraint(&error) => {
+                        return Err(PortError::conflict(
+                            "forum.translation_owner_conflict",
+                            "Forum target locale was created before translation apply could commit",
+                        ));
+                    }
+                    Err(error) => return Err(forum_database_error_to_port_error(error)),
+                }
             }
         };
 
@@ -711,6 +723,13 @@ fn translation_revision(translation: &TranslationModel) -> OpaqueRevision {
         .expect("Forum category translation model must serialize for optimistic revision");
     OpaqueRevision::new(field_hash(&payload))
         .expect("SHA-256 Forum translation revision must satisfy the opaque revision contract")
+}
+
+fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
+    matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    )
 }
 
 fn forum_category_not_found(category_id: Uuid) -> PortError {
