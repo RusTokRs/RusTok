@@ -79,7 +79,7 @@ impl ForumCategoryTranslationTargetProvider {
             .order_by_desc(change_row::Column::Id)
             .one(&self.db)
             .await
-            .map_err(super::category_translation_target::forum_database_error_to_port_error)?
+            .map_err(forum_database_error_to_port_error)?
             .map(|change| {
                 OpaqueCursor::new(change.id.to_string()).map_err(|error| {
                     PortError::invariant_violation(
@@ -108,7 +108,7 @@ impl ForumCategoryTranslationTargetProvider {
             .order_by_asc(CategoryColumn::Id)
             .all(&self.db)
             .await
-            .map_err(super::category_translation_target::forum_database_error_to_port_error)?;
+            .map_err(forum_database_error_to_port_error)?;
         let category_ids = categories
             .iter()
             .map(|category| category.id)
@@ -122,7 +122,7 @@ impl ForumCategoryTranslationTargetProvider {
                 .filter(TranslationColumn::Locale.eq(request.target_locale.as_str()))
                 .all(&self.db)
                 .await
-                .map_err(super::category_translation_target::forum_database_error_to_port_error)?
+                .map_err(forum_database_error_to_port_error)?
         };
         let targets = targets
             .into_iter()
@@ -306,4 +306,11 @@ fn authorize(context: &PortContext, action: Action) -> Result<SecurityContext, P
         ));
     }
     Ok(security)
+}
+
+fn forum_database_error_to_port_error(_error: sea_orm::DbErr) -> PortError {
+    PortError::unavailable(
+        "forum.translation_owner_unavailable",
+        "Forum translation storage is unavailable",
+    )
 }
