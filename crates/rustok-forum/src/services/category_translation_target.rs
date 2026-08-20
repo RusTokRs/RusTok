@@ -137,28 +137,30 @@ impl ForumCategoryTranslationTargetProvider {
             .ok_or_else(|| forum_category_not_found(category_id))?;
         ensure_category_is_active_in_tx(txn, tenant_id, category_id).await?;
 
-        let source = TranslationEntity::find()
+        let mut translations = TranslationEntity::find()
             .filter(TranslationColumn::TenantId.eq(tenant_id))
             .filter(TranslationColumn::CategoryId.eq(category_id))
-            .filter(TranslationColumn::Locale.eq(request.source_locale.as_str()))
-            .one(txn)
+            .order_by_asc(TranslationColumn::Locale)
+            .order_by_asc(TranslationColumn::Id)
+            .all(txn)
             .await
-            .map_err(forum_database_error_to_port_error)?
+            .map_err(forum_database_error_to_port_error)?;
+        let source = translations
+            .iter()
+            .find(|translation| translation.locale == request.source_locale.as_str())
+            .cloned()
             .ok_or_else(|| {
                 PortError::not_found(
                     "forum.translation_source_not_found",
                     "Exact source Forum category translation was not found",
                 )
             })?;
-        let existing_target = TranslationEntity::find()
-            .filter(TranslationColumn::TenantId.eq(tenant_id))
-            .filter(TranslationColumn::CategoryId.eq(category_id))
-            .filter(TranslationColumn::Locale.eq(request.target_locale.as_str()))
-            .one(txn)
-            .await
-            .map_err(forum_database_error_to_port_error)?;
+        let existing_target = translations
+            .iter()
+            .find(|translation| translation.locale == request.target_locale.as_str())
+            .cloned();
 
-        let live_resource_revision = category_revision(&category);
+        let live_resource_revision = category_revision(&category, &translations);
         let live_source_revision = translation_revision(&source);
         let live_target_revision = existing_target.as_ref().map(translation_revision);
         if request.expected_resource_revision != live_resource_revision
@@ -261,6 +263,14 @@ impl ForumCategoryTranslationTargetProvider {
                 }
             }
         };
+        if let Some(position) = translations
+            .iter()
+            .position(|translation| translation.id == applied_target.id)
+        {
+            translations[position] = applied_target.clone();
+        } else {
+            translations.push(applied_target.clone());
+        }
 
         publish_forum_projection_scope_direct_in_tx(txn, tenant_id, actor_id)
             .await
@@ -271,7 +281,7 @@ impl ForumCategoryTranslationTargetProvider {
             ..category
         };
         Ok((
-            category_revision(&applied_category),
+            category_revision(&applied_category, &translations),
             translation_revision(&applied_target),
         ))
     }
@@ -604,7 +614,7 @@ fn summary_from_models(
         identity: forum_category_identity(category.id),
         display_label: source.name.clone(),
         lifecycle: TranslationResourceLifecycle::Active,
-        resource_revision: category_revision(category),
+        resource_revision: category_revision(category, translations),
         exact_locales,
     })
 }
@@ -711,9 +721,20 @@ fn merged_target(
     Ok(MergedTarget { name, description })
 }
 
-fn category_revision(category: &CategoryModel) -> OpaqueRevision {
-    let payload = serde_json::to_string(&(category.tenant_id, category.id, &category.created_at))
-        .expect("Forum category identity must serialize for optimistic revision");
+fn category_revision(category: &CategoryModel, translations: &[TranslationModel]) -> OpaqueRevision {
+    let mut normalized_translations = translations.to_vec();
+    normalized_translations.sort_by(|left, right| {
+        left.locale
+            .cmp(&right.locale)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    let payload = serde_json::to_string(&(
+        category.tenant_id,
+        category.id,
+        category.created_at,
+        normalized_translations,
+    ))
+    .expect("Forum category Translation state must serialize for optimistic revision");
     OpaqueRevision::new(field_hash(&payload))
         .expect("SHA-256 Forum category revision must satisfy the opaque revision contract")
 }
@@ -813,6 +834,15 @@ mod tests {
             created_at: now,
             updated_at: now,
         };
+        let translation = TranslationModel {
+            id: Uuid::new_v4(),
+            category_id: original.id,
+            tenant_id: original.tenant_id,
+            locale: "en".to_string(),
+            name: "General".to_string(),
+            slug: "general".to_string(),
+            description: Some("General discussion".to_string()),
+        };
         let mut changed = original.clone();
         changed.parent_id = Some(Uuid::new_v4());
         changed.position = 7;
@@ -823,7 +853,59 @@ mod tests {
         changed.reply_count = 99;
         changed.updated_at += chrono::Duration::seconds(1);
 
-        assert_eq!(category_revision(&original), category_revision(&changed));
+        assert_eq!(
+            category_revision(&original, std::slice::from_ref(&translation)),
+            category_revision(&changed, std::slice::from_ref(&translation))
+        );
+    }
+
+    #[test]
+    fn category_revision_tracks_locale_state_and_is_order_stable() {
+        let now = chrono::Utc::now().fixed_offset();
+        let category = CategoryModel {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            parent_id: None,
+            position: 0,
+            icon: None,
+            color: None,
+            moderated: false,
+            topic_count: 0,
+            reply_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        let en = TranslationModel {
+            id: Uuid::new_v4(),
+            category_id: category.id,
+            tenant_id: category.tenant_id,
+            locale: "en".to_string(),
+            name: "General".to_string(),
+            slug: "general".to_string(),
+            description: Some("General discussion".to_string()),
+        };
+        let de = TranslationModel {
+            id: Uuid::new_v4(),
+            category_id: category.id,
+            tenant_id: category.tenant_id,
+            locale: "de".to_string(),
+            name: "Allgemein".to_string(),
+            slug: "allgemein".to_string(),
+            description: Some("Allgemeine Diskussion".to_string()),
+        };
+        let changed_en = TranslationModel {
+            description: Some("Updated discussion".to_string()),
+            ..en.clone()
+        };
+
+        assert_eq!(
+            category_revision(&category, &[en.clone(), de.clone()]),
+            category_revision(&category, &[de.clone(), en.clone()])
+        );
+        assert_ne!(
+            category_revision(&category, &[en.clone(), de.clone()]),
+            category_revision(&category, &[changed_en, de])
+        );
     }
 
     #[test]
