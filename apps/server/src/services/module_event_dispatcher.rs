@@ -288,6 +288,18 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             })?;
     }
 
+    #[cfg(feature = "mod-forum")]
+    {
+        let provider =
+            rustok_forum::services::ForumCategoryTranslationTargetProvider::new(db.clone());
+        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "Forum category translation target provider registration failed: {error}"
+                ))
+            })?;
+    }
+
     #[cfg(feature = "mod-fulfillment")]
     {
         let fulfillment_registry = runtime_ctx
@@ -599,6 +611,14 @@ mod tests {
                 .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "pages"
                         && descriptor.resource_kind.as_str() == "page_metadata"
+                }))
+        );
+        #[cfg(feature = "mod-forum")]
+        assert!(
+            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
+                    descriptor.owner_slug.as_str() == "forum"
+                        && descriptor.resource_kind.as_str() == "category"
                 }))
         );
         #[cfg(feature = "mod-forum")]
