@@ -16,9 +16,7 @@ use crate::{
     ForumError,
     entities::{
         forum_category::{Column as CategoryColumn, Entity as CategoryEntity},
-        forum_category_translation::{
-            Column as TranslationColumn, Entity as TranslationEntity,
-        },
+        forum_category_translation::{Column as TranslationColumn, Entity as TranslationEntity},
     },
 };
 
@@ -119,12 +117,13 @@ pub(super) async fn read_category_translation_changes(
     let changes = rows
         .into_iter()
         .map(|change| {
-            let resource_revision = OpaqueRevision::new(change.resource_revision).map_err(|error| {
-                PortError::invariant_violation(
-                    "forum.translation_change_revision_invalid",
-                    error.to_string(),
-                )
-            })?;
+            let resource_revision =
+                OpaqueRevision::new(change.resource_revision).map_err(|error| {
+                    PortError::invariant_violation(
+                        "forum.translation_change_revision_invalid",
+                        error.to_string(),
+                    )
+                })?;
             let lifecycle = parse_lifecycle(&change.lifecycle)?;
             Ok(TranslationTargetChange {
                 identity: forum_category_identity(change.resource_id),
