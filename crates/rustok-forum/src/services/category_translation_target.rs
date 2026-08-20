@@ -721,7 +721,10 @@ fn merged_target(
     Ok(MergedTarget { name, description })
 }
 
-fn category_revision(category: &CategoryModel, translations: &[TranslationModel]) -> OpaqueRevision {
+fn category_revision(
+    category: &CategoryModel,
+    translations: &[TranslationModel],
+) -> OpaqueRevision {
     let mut normalized_translations = translations.to_vec();
     normalized_translations.sort_by(|left, right| {
         left.locale
