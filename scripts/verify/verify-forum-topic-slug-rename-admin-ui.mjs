@@ -29,6 +29,7 @@ const paths = {
   nextIndex: "apps/next-admin/packages/forum/src/index.ts",
   nextNav: "apps/next-admin/packages/forum/src/nav.ts",
   nextPage: "apps/next-admin/src/app/dashboard/forum/rename-slug/page.tsx",
+  nextAr: "apps/next-admin/packages/forum/src/locales/ar.json",
   nextEn: "apps/next-admin/packages/forum/src/locales/en.json",
   nextRu: "apps/next-admin/packages/forum/src/locales/ru.json",
 };
@@ -65,6 +66,7 @@ const nextUi = read(paths.nextUi);
 const nextIndex = read(paths.nextIndex);
 const nextNav = read(paths.nextNav);
 const nextPage = read(paths.nextPage);
+const nextAr = JSON.parse(read(paths.nextAr));
 const nextEn = JSON.parse(read(paths.nextEn));
 const nextRu = JSON.parse(read(paths.nextRu));
 
@@ -243,6 +245,11 @@ includesAll(
     "receipt.canonical.path",
     "receipt.aliasId",
     "receipt.changed",
+    "import ar from '../locales/ar.json';",
+    "if (normalizedLocale.startsWith('ar')) return ar;",
+    "data-forum-route-identifier=''",
+    "dir='ltr'",
+    "spellCheck={false}",
   ],
   "Next slug rename UI",
 );
@@ -291,6 +298,11 @@ excludesAll(
   "Next host composition page",
 );
 
+assert.deepEqual(
+  Object.keys(nextAr).sort(),
+  Object.keys(nextEn).sort(),
+  "Arabic Next Forum copy key set must match English",
+);
 for (const key of [
   "renameTitle",
   "renameSubtitle",
@@ -303,6 +315,7 @@ for (const key of [
   "renamePreviousPath",
   "renameCanonicalPath",
 ]) {
+  assert.equal(typeof nextAr[key], "string", `Arabic Next copy missing ${key}`);
   assert.equal(typeof nextEn[key], "string", `English Next copy missing ${key}`);
   assert.equal(typeof nextRu[key], "string", `Russian Next copy missing ${key}`);
 }
