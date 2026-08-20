@@ -712,12 +712,8 @@ fn merged_target(
 }
 
 fn category_revision(category: &CategoryModel) -> OpaqueRevision {
-    let payload = serde_json::to_string(&(
-        category.tenant_id,
-        category.id,
-        &category.created_at,
-    ))
-    .expect("Forum category identity must serialize for optimistic revision");
+    let payload = serde_json::to_string(&(category.tenant_id, category.id, &category.created_at))
+        .expect("Forum category identity must serialize for optimistic revision");
     OpaqueRevision::new(field_hash(&payload))
         .expect("SHA-256 Forum category revision must satisfy the opaque revision contract")
 }
