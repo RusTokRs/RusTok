@@ -43,10 +43,8 @@ async fn setup() -> (
         find_migration("m20260713_000008_require_fulfillment_before_order_delivery");
     let fulfillment_shipping =
         find_migration("m20260713_000007_consume_inventory_on_fulfillment_shipping");
-    let order_delivery =
-        find_migration("m20260713_000006_consume_inventory_on_order_delivery");
-    let reservation =
-        find_migration("m20260713_000005_reserve_inventory_on_order_confirmation");
+    let order_delivery = find_migration("m20260713_000006_consume_inventory_on_order_delivery");
+    let reservation = find_migration("m20260713_000005_reserve_inventory_on_order_confirmation");
     reservation
         .up(&manager)
         .await

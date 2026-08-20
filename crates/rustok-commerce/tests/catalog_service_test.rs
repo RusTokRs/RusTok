@@ -938,11 +938,7 @@ async fn test_product_with_metadata() {
     let actor_id = Uuid::new_v4();
 
     let mut input = create_test_product_input();
-    input.tags = vec![
-        "new".to_string(),
-        "sale".to_string(),
-        "popular".to_string(),
-    ];
+    input.tags = vec!["new".to_string(), "sale".to_string(), "popular".to_string()];
     input.metadata = serde_json::json!({
         "featured": true,
         "color": "blue",

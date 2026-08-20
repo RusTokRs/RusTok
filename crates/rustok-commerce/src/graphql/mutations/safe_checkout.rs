@@ -30,7 +30,11 @@ mod checkout_boundary {
         }
     }
 
-    fn public_graphql_error(message: impl Into<String>, code: &'static str, retryable: bool) -> Error {
+    fn public_graphql_error(
+        message: impl Into<String>,
+        code: &'static str,
+        retryable: bool,
+    ) -> Error {
         Error::new(message).extend_with(|_, extensions| {
             extensions.set("code", code);
             extensions.set("retryable", retryable);

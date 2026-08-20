@@ -2,8 +2,7 @@
 fn implementation_plan_tracks_contract_test_coverage() {
     let plan = include_str!("../docs/implementation-plan.md");
     assert!(
-        plan.contains("checkout admission")
-            && plan.contains("targeted regression tests"),
+        plan.contains("checkout admission") && plan.contains("targeted regression tests"),
         "main ecommerce plan must include targeted contract and recovery test coverage"
     );
 }
@@ -12,9 +11,7 @@ fn implementation_plan_tracks_contract_test_coverage() {
 fn implementation_plan_tracks_checkout_guardrail_visibility() {
     let plan = include_str!("../docs/implementation-plan.md");
     assert!(
-        plan.contains("kill-point")
-            && plan.contains("restart")
-            && plan.contains("contention"),
+        plan.contains("kill-point") && plan.contains("restart") && plan.contains("contention"),
         "main ecommerce plan must keep staged-checkout guardrail visibility markers"
     );
 }

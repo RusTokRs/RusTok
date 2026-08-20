@@ -300,13 +300,8 @@ pub async fn list_fulfillments(
     )?;
 
     let pagination = params.pagination.unwrap_or_default();
-    let read_context = admin_fulfillment_read_context(
-        &tenant,
-        &auth,
-        &request_context,
-        None,
-        "list_fulfillments",
-    );
+    let read_context =
+        admin_fulfillment_read_context(&tenant, &auth, &request_context, None, "list_fulfillments");
     let page = runtime
         .fulfillment_read_port()
         .list_fulfillment_projections(
