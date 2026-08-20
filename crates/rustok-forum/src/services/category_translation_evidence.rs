@@ -1,18 +1,29 @@
 use chrono::Utc;
-use rustok_core::generate_id;
+use rustok_api::PortError;
 use rustok_translation_targets::{
     OpaqueCursor, OpaqueRevision, TranslationResourceLifecycle, TranslationTargetChange,
     TranslationTargetChangePage, TranslationTargetChangesRequest,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
+    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use uuid::Uuid;
 
-use super::{
-    CategoryColumn, CategoryEntity, ForumError, PortError, TRANSLATION_RESOURCE_KIND,
-    TranslationColumn, TranslationEntity, category_revision, forum_category_identity,
+use crate::{
+    ForumError,
+    entities::{
+        forum_category::{Column as CategoryColumn, Entity as CategoryEntity},
+        forum_category_translation::{
+            Column as TranslationColumn, Entity as TranslationEntity,
+        },
+    },
+};
+
+use super::category_translation_target::{
+    TRANSLATION_RESOURCE_KIND, category_revision, forum_category_identity,
     forum_database_error_to_port_error,
 };
 
@@ -24,8 +35,8 @@ mod change_row {
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
     #[sea_orm(table_name = "forum_translation_changes")]
     pub struct Model {
-        #[sea_orm(primary_key, auto_increment = false)]
-        pub id: Uuid,
+        #[sea_orm(primary_key)]
+        pub id: i64,
         pub tenant_id: Uuid,
         pub resource_kind: String,
         pub resource_id: Uuid,
@@ -63,7 +74,7 @@ pub(super) async fn record_category_translation_change_in_tx(
     let resource_revision = category_revision(&category, &translations);
 
     change_row::ActiveModel {
-        id: Set(generate_id()),
+        id: NotSet,
         tenant_id: Set(tenant_id),
         resource_kind: Set(TRANSLATION_RESOURCE_KIND.to_string()),
         resource_id: Set(category_id),
@@ -86,14 +97,7 @@ pub(super) async fn read_category_translation_changes(
     let after = request
         .after
         .as_ref()
-        .map(|cursor| {
-            Uuid::parse_str(cursor.as_str()).map_err(|_| {
-                PortError::validation(
-                    "forum.translation_change_cursor_invalid",
-                    "Forum category translation change cursor must be a change UUID",
-                )
-            })
-        })
+        .map(|cursor| parse_change_cursor(cursor.as_str()))
         .transpose()?;
 
     let mut query = change_row::Entity::find()
@@ -110,7 +114,7 @@ pub(super) async fn read_category_translation_changes(
         .map_err(forum_database_error_to_port_error)?;
     let next_cursor = rows.last().map(|change| {
         OpaqueCursor::new(change.id.to_string())
-            .expect("Forum change ULID-backed UUID must satisfy the opaque cursor contract")
+            .expect("Forum change sequence must satisfy the opaque cursor contract")
     });
     let changes = rows
         .into_iter()
@@ -134,6 +138,16 @@ pub(super) async fn read_category_translation_changes(
         changes,
         next_cursor,
     })
+}
+
+fn parse_change_cursor(value: &str) -> Result<i64, PortError> {
+    match value.parse::<i64>() {
+        Ok(cursor) if cursor > 0 => Ok(cursor),
+        _ => Err(PortError::validation(
+            "forum.translation_change_cursor_invalid",
+            "Forum category translation change cursor must be a positive sequence",
+        )),
+    }
 }
 
 fn lifecycle_name(lifecycle: TranslationResourceLifecycle) -> &'static str {
@@ -172,5 +186,12 @@ mod tests {
         ] {
             assert_eq!(parse_lifecycle(lifecycle_name(lifecycle)), Ok(lifecycle));
         }
+    }
+
+    #[test]
+    fn change_cursor_requires_positive_sequence() {
+        assert_eq!(parse_change_cursor("17").expect("cursor"), 17);
+        assert!(parse_change_cursor("0").is_err());
+        assert!(parse_change_cursor("not-a-sequence").is_err());
     }
 }
