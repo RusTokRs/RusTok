@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use leptos::prelude::*;
+use rustok_api::normalize_locale_tag;
 use rustok_ui_core::UiRouteContext;
 
 use crate::{i18n::t, model::ForumMemberCard};
@@ -40,6 +41,7 @@ fn ForumMemberCardBadge(card: ForumMemberCard) -> AnyView {
     let initials = profile_initials(&card);
     let display_name = card.profile.display_name.clone();
     let handle = card.profile.handle.clone();
+    let profile_locale = profile_text_locale(card.profile.preferred_locale.as_deref());
     let avatar_alt = display_name.clone();
 
     view! {
@@ -49,12 +51,20 @@ fn ForumMemberCardBadge(card: ForumMemberCard) -> AnyView {
                 aria-label=avatar_alt
                 class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary"
             >
-                <span aria-hidden="true">{initials}</span>
+                <span aria-hidden="true" lang=profile_locale.clone() dir="auto">{initials}</span>
             </div>
             <div class="min-w-0">
                 <div class="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                    <span class="truncate text-xs font-semibold text-foreground">{display_name}</span>
-                    <span class="truncate text-[11px] text-muted-foreground">{format!("@{handle}")}</span>
+                    <span
+                        class="truncate text-xs font-semibold text-foreground"
+                        lang=profile_locale
+                        dir="auto"
+                    >
+                        {display_name}
+                    </span>
+                    <span class="truncate text-[11px] text-muted-foreground" dir="ltr">
+                        {format!("@{handle}")}
+                    </span>
                 </div>
                 <div class="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
                     <span>{format!("{} {topics_label}", card.forum_stats.topic_count)}</span>
@@ -65,6 +75,12 @@ fn ForumMemberCardBadge(card: ForumMemberCard) -> AnyView {
         </div>
     }
     .into_any()
+}
+
+fn profile_text_locale(preferred_locale: Option<&str>) -> String {
+    preferred_locale
+        .and_then(normalize_locale_tag)
+        .unwrap_or_else(|| "und".to_string())
 }
 
 fn profile_initials(card: &ForumMemberCard) -> String {
@@ -84,5 +100,22 @@ fn profile_initials(card: &ForumMemberCard) -> String {
             .unwrap_or_else(|| "?".to_string())
     } else {
         initials.to_uppercase()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::profile_text_locale;
+
+    #[test]
+    fn profile_text_locale_normalizes_preferred_locale() {
+        assert_eq!(profile_text_locale(Some(" ar_sa ")), "ar-SA");
+        assert_eq!(profile_text_locale(Some("he")), "he");
+    }
+
+    #[test]
+    fn profile_text_locale_falls_back_when_profile_locale_is_missing_or_invalid() {
+        assert_eq!(profile_text_locale(None), "und");
+        assert_eq!(profile_text_locale(Some("not a locale")), "und");
     }
 }
