@@ -41,6 +41,7 @@ mod category_search_scope {
     include!("category_search_scope.rs");
 }
 mod category_topic_create_audience;
+mod category_translation_evidence;
 mod category_translation_target;
 mod category_tree {
     include!("category_tree.rs");
