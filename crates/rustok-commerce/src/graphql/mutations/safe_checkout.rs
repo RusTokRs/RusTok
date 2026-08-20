@@ -18,7 +18,7 @@ mod checkout_boundary {
     pub(crate) enum BoundaryError {
         Graphql(Error),
         Public {
-            message: &'static str,
+            message: String,
             code: &'static str,
             retryable: bool,
         },
@@ -30,7 +30,7 @@ mod checkout_boundary {
         }
     }
 
-    fn public_graphql_error(message: &'static str, code: &'static str, retryable: bool) -> Error {
+    fn public_graphql_error(message: impl Into<String>, code: &'static str, retryable: bool) -> Error {
         Error::new(message).extend_with(|_, extensions| {
             extensions.set("code", code);
             extensions.set("retryable", retryable);
@@ -39,31 +39,40 @@ mod checkout_boundary {
 
     fn commerce_error_envelope(
         error: &CommerceError,
-    ) -> (&'static str, &'static str, bool, &'static str) {
+    ) -> (String, &'static str, bool, &'static str) {
         match error {
-            CommerceError::Validation(_)
-            | CommerceError::InvalidPrice(_)
+            CommerceError::Validation(detail) => (
+                if detail.is_empty() {
+                    "Shipping profile request is invalid".to_string()
+                } else {
+                    detail.clone()
+                },
+                "SHIPPING_PROFILE_REQUEST_INVALID",
+                false,
+                "validation",
+            ),
+            CommerceError::InvalidPrice(_)
             | CommerceError::InvalidOptionCombination
             | CommerceError::NoVariants => (
-                "Shipping profile request is invalid",
+                "Shipping profile request is invalid".to_string(),
                 "SHIPPING_PROFILE_REQUEST_INVALID",
                 false,
                 "validation",
             ),
             CommerceError::ShippingProfileNotFound(_) => (
-                "Shipping profile was not found",
+                "Shipping profile was not found".to_string(),
                 "SHIPPING_PROFILE_NOT_FOUND",
                 false,
                 "not_found",
             ),
             CommerceError::DuplicateShippingProfileSlug(_) => (
-                "Shipping profile conflicts with the current state",
+                "Shipping profile conflicts with the current state".to_string(),
                 "SHIPPING_PROFILE_STATE_CONFLICT",
                 false,
                 "conflict",
             ),
             CommerceError::Database(_) => (
-                "Shipping profile service is temporarily unavailable",
+                "Shipping profile service is temporarily unavailable".to_string(),
                 "SHIPPING_PROFILE_TEMPORARILY_UNAVAILABLE",
                 true,
                 "database",
@@ -76,7 +85,7 @@ mod checkout_boundary {
             | CommerceError::CannotDeletePublished
             | CommerceError::Rich(_)
             | CommerceError::Core(_) => (
-                "Shipping profile operation could not be completed safely",
+                "Shipping profile operation could not be completed safely".to_string(),
                 "SHIPPING_PROFILE_OPERATION_FAILED",
                 false,
                 "unexpected_owner_error",
@@ -86,28 +95,32 @@ mod checkout_boundary {
 
     fn shipping_option_port_error_envelope(
         error: &PortError,
-    ) -> (&'static str, &'static str, bool, &'static str) {
+    ) -> (String, &'static str, bool, &'static str) {
         match &error.kind {
             PortErrorKind::Validation => (
-                "Shipping option request is invalid",
+                if error.message.is_empty() {
+                    "Shipping option request is invalid".to_string()
+                } else {
+                    error.message.clone()
+                },
                 "SHIPPING_OPTION_REQUEST_INVALID",
                 false,
                 "validation",
             ),
             PortErrorKind::NotFound if error.code == "fulfillment.shipping_option_not_found" => (
-                "Shipping option was not found",
+                "Shipping option was not found".to_string(),
                 "SHIPPING_OPTION_NOT_FOUND",
                 false,
                 "not_found",
             ),
             PortErrorKind::Conflict => (
-                "Shipping option operation conflicts with the current state",
+                "Shipping option operation conflicts with the current state".to_string(),
                 "SHIPPING_OPTION_STATE_CONFLICT",
                 false,
                 "conflict",
             ),
             PortErrorKind::Unavailable | PortErrorKind::Timeout => (
-                "Shipping option service is temporarily unavailable",
+                "Shipping option service is temporarily unavailable".to_string(),
                 "SHIPPING_OPTION_TEMPORARILY_UNAVAILABLE",
                 true,
                 "temporarily_unavailable",
@@ -115,7 +128,7 @@ mod checkout_boundary {
             PortErrorKind::NotFound
             | PortErrorKind::Forbidden
             | PortErrorKind::InvariantViolation => (
-                "Shipping option operation could not be completed safely",
+                "Shipping option operation could not be completed safely".to_string(),
                 "SHIPPING_OPTION_OPERATION_FAILED",
                 false,
                 "unexpected_owner_error",

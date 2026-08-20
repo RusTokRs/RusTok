@@ -957,7 +957,7 @@ fn pricing_error_to_port_error(
                 false,
             )
         }
-        CommerceError::InvalidPrice(_) | CommerceError::Validation(_) => {
+        CommerceError::InvalidPrice(detail) => {
             log_pricing_port_failure(
                 context,
                 operation,
@@ -965,7 +965,17 @@ fn pricing_error_to_port_error(
                 &error_facts,
                 false,
             );
-            PortError::validation("pricing.validation", "pricing request is invalid")
+            PortError::validation("pricing.validation", detail)
+        }
+        CommerceError::Validation(detail) => {
+            log_pricing_port_failure(
+                context,
+                operation,
+                "pricing.validation",
+                &error_facts,
+                false,
+            );
+            PortError::validation("pricing.validation", detail)
         }
         CommerceError::InsufficientInventory { .. } => {
             log_pricing_port_failure(

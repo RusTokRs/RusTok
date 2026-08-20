@@ -4,7 +4,7 @@ use rustok_cart::{CartService, in_process_cart_checkout_port};
 use rustok_commerce::{
     BeginCheckoutOperation, CheckoutCompensationSweepService, CheckoutOperationJournal,
 };
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator;
 use rustok_payment::dto::CreatePaymentCollectionInput;
 use rustok_payment::{BeginProviderOperation, PaymentProviderOperationJournal, PaymentService};
 use rustok_test_utils::{db::setup_test_db_with_migrations, mock_transactional_event_bus};
@@ -15,7 +15,7 @@ const RECONCILIATION_REQUIRED: &str = "reconciliation_required";
 
 #[tokio::test]
 async fn manual_checkout_reconciliation_is_terminal_and_blocks_provider_execution() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let event_bus = mock_transactional_event_bus();
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();

@@ -439,12 +439,14 @@ async fn shared_redis_timeout<T, F>(timeout: Duration, future: F) -> rustok_core
 where
     F: std::future::Future<Output = rustok_core::Result<T>>,
 {
-    tokio::time::timeout(timeout, future).await.map_err(|_| {
-        rustok_core::Error::Cache(format!(
-            "shared Redis cache operation timed out after {} ms",
-            timeout.as_millis()
-        ))
-    })?
+    let timeout_message = format!(
+        "shared Redis cache operation timed out after {} ms",
+        timeout.as_millis()
+    );
+    match tokio::time::timeout(timeout, future).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(_)) | Err(_) => Err(rustok_core::Error::Cache(timeout_message)),
+    }
 }
 
 #[cfg(feature = "redis-cache")]

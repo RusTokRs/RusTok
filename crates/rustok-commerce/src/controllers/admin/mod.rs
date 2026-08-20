@@ -303,7 +303,12 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
         .route(
             "/fulfillments",
-            axum::routing::post(fulfillments::create_fulfillment),
+            axum::routing::get(fulfillments::list_fulfillments)
+                .post(fulfillments::create_fulfillment),
+        )
+        .route(
+            "/fulfillments/{id}",
+            axum::routing::get(fulfillments::show_fulfillment),
         )
         .route(
             "/fulfillments/{id}/ship",

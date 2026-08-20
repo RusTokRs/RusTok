@@ -92,6 +92,9 @@ async fn evicted_local_entry_cannot_be_revived_by_compare_and_set() {
 
     let (evicted_key, evicted_value) = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
+            // Each get() call triggers moka's internal maintenance cycle, which flushes
+            // pending eviction tasks. After the eviction propagates, stats().entries drops
+            // to 1 and one of the get() calls returns None.
             let first_value = backend.get(first.0).await.unwrap();
             let second_value = backend.get(second.0).await.unwrap();
             match (first_value, second_value) {
@@ -102,7 +105,12 @@ async fn evicted_local_entry_cannot_be_revived_by_compare_and_set() {
         }
     })
     .await
-    .expect("entry-count cache did not evict either key");
+    .expect("capacity-one cache retained both entries");
+
+    // Verify the eviction is visible through the observable stats API.
+    while backend.stats().entries > 1 {
+        tokio::task::yield_now().await;
+    }
 
     assert_eq!(
         backend

@@ -15,13 +15,14 @@ async fn setup() -> (DatabaseConnection, PaymentService) {
     support::ensure_payment_schema(&db).await;
 
     let manager = SchemaManager::new(&db);
-    let mut registered = migrations::migrations();
-    let lifecycle = registered
-        .pop()
-        .expect("payment lifecycle serialization migration should be registered last");
-    let state_guards = registered
-        .pop()
-        .expect("payment state invariant migration should precede lifecycle serialization");
+    let lifecycle = migrations::migrations()
+        .into_iter()
+        .find(|m| m.name() == "m20260713_000109_serialize_payment_lifecycle")
+        .expect("payment lifecycle serialization migration should exist");
+    let state_guards = migrations::migrations()
+        .into_iter()
+        .find(|m| m.name() == "m20260713_000108_enforce_payment_state_invariants")
+        .expect("payment state invariant migration should exist");
 
     state_guards
         .up(&manager)

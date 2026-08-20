@@ -15,8 +15,9 @@ async fn setup() -> (sea_orm::DatabaseConnection, OrderService) {
 
     let manager = SchemaManager::new(&db);
     let lifecycle = migrations::migrations()
-        .pop()
-        .expect("order lifecycle serialization migration should be registered last");
+        .into_iter()
+        .find(|m| m.name() == "m20260713_000115_serialize_order_lifecycle")
+        .expect("order lifecycle serialization migration should exist");
     lifecycle
         .up(&manager)
         .await

@@ -7,6 +7,18 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_database_backend() == DatabaseBackend::Sqlite {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    r#"
+                    ALTER TABLE products ADD COLUMN primary_category_id TEXT;
+                    ALTER TABLE product_translations ADD COLUMN tenant_id TEXT;
+                    "#,
+                )
+                .await?;
+            return Ok(());
+        }
         if manager.get_database_backend() != DatabaseBackend::Postgres {
             return Ok(());
         }

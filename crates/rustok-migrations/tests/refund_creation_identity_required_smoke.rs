@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator;
 use rustok_payment::entities::refund;
 use rustok_payment::{
     AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput, PaymentService,
@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn refund_insert_without_creation_identity_is_rejected_by_schema() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let tenant_id = Uuid::new_v4();
     let payment = PaymentService::new(db.clone());
     let collection = payment

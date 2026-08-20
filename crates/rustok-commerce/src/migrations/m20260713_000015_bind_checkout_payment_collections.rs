@@ -141,7 +141,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 SELECT CASE WHEN NOT EXISTS (
                     SELECT 1
                     FROM checkout_operations co
-                    WHERE co.id = json_extract(NEW.metadata, '$.checkout.operation_id')
+                    WHERE (co.id = json_extract(NEW.metadata, '$.checkout.operation_id')
+                        OR lower(hex(co.id)) = lower(replace(json_extract(NEW.metadata, '$.checkout.operation_id'), '-', '')))
                       AND co.tenant_id = NEW.tenant_id
                       AND co.cart_id IS NEW.cart_id
                       AND co.order_id IS NEW.order_id
@@ -151,7 +152,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 UPDATE checkout_operations
                 SET payment_collection_id = NEW.id,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = json_extract(NEW.metadata, '$.checkout.operation_id')
+                WHERE (id = json_extract(NEW.metadata, '$.checkout.operation_id')
+                    OR lower(hex(id)) = lower(replace(json_extract(NEW.metadata, '$.checkout.operation_id'), '-', '')))
                   AND tenant_id = NEW.tenant_id
                   AND (payment_collection_id IS NULL OR payment_collection_id = NEW.id);
             END;
@@ -164,7 +166,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 SELECT CASE WHEN NOT EXISTS (
                     SELECT 1
                     FROM checkout_operations co
-                    WHERE co.id = json_extract(NEW.metadata, '$.checkout.operation_id')
+                    WHERE (co.id = json_extract(NEW.metadata, '$.checkout.operation_id')
+                        OR lower(hex(co.id)) = lower(replace(json_extract(NEW.metadata, '$.checkout.operation_id'), '-', '')))
                       AND co.tenant_id = NEW.tenant_id
                       AND co.cart_id IS NEW.cart_id
                       AND co.order_id IS NEW.order_id
@@ -174,7 +177,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 UPDATE checkout_operations
                 SET payment_collection_id = NEW.id,
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = json_extract(NEW.metadata, '$.checkout.operation_id')
+                WHERE (id = json_extract(NEW.metadata, '$.checkout.operation_id')
+                    OR lower(hex(id)) = lower(replace(json_extract(NEW.metadata, '$.checkout.operation_id'), '-', '')))
                   AND tenant_id = NEW.tenant_id
                   AND (payment_collection_id IS NULL OR payment_collection_id = NEW.id);
             END;

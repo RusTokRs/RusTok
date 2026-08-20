@@ -114,7 +114,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     SELECT 1
                     FROM payment_collections pc
                     JOIN checkout_operations co
-                      ON co.id = json_extract(pc.metadata, '$.checkout.operation_id')
+                      ON (co.id = json_extract(pc.metadata, '$.checkout.operation_id')
+                          OR lower(hex(co.id)) = lower(replace(json_extract(pc.metadata, '$.checkout.operation_id'), '-', '')))
                      AND co.tenant_id = pc.tenant_id
                     WHERE pc.id = NEW.payment_collection_id
                       AND pc.tenant_id = NEW.tenant_id

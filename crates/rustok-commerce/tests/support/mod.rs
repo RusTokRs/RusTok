@@ -29,7 +29,10 @@ use rustok_product::entities::{
     product_variant, variant_translation,
 };
 use rustok_region::entities::{region, region_country_tax_policy, region_translation};
-use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
+use rustok_taxonomy::entities::{
+    taxonomy_term, taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation,
+    translation_change,
+};
 use rustok_tenant::entities::tenant_module;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, Schema, Statement};
 
@@ -70,6 +73,18 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(taxonomy_term_alias::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(taxonomy_term_route_key::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(translation_change::Entity),
     )
     .await;
     create_entity_table(

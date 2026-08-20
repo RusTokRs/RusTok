@@ -95,32 +95,36 @@ fn pricing_port_graphql_error(
     let (code, message, retryable) = match &error.kind {
         PortErrorKind::Validation => (
             "PRICING_REQUEST_INVALID",
-            "Pricing request is invalid",
+            if error.message.is_empty() {
+                "Pricing request is invalid".to_string()
+            } else {
+                error.message.clone()
+            },
             false,
         ),
         PortErrorKind::NotFound => (
             "PRICING_RESOURCE_NOT_FOUND",
-            "Pricing resource was not found",
+            "Pricing resource was not found".to_string(),
             false,
         ),
         PortErrorKind::Conflict => (
             "PRICING_STATE_CONFLICT",
-            "Pricing operation conflicts with the current state",
+            "Pricing operation conflicts with the current state".to_string(),
             false,
         ),
         PortErrorKind::Forbidden => (
             "PRICING_ACCESS_DENIED",
-            "Pricing operation is not permitted",
+            "Pricing operation is not permitted".to_string(),
             false,
         ),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             "PRICING_TEMPORARILY_UNAVAILABLE",
-            "Pricing is temporarily unavailable",
+            "Pricing is temporarily unavailable".to_string(),
             true,
         ),
         PortErrorKind::InvariantViolation => (
             "PRICING_OPERATION_FAILED",
-            "Pricing operation could not be completed safely",
+            "Pricing operation could not be completed safely".to_string(),
             false,
         ),
     };

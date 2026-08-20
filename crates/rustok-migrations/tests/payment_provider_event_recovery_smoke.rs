@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator;
 use rustok_payment::providers::PaymentProviderWebhookResult;
 use rustok_payment::{
     PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED, PaymentProviderEventApplier,
@@ -32,7 +32,7 @@ impl PaymentProviderEventApplier for AcceptingApplier {
 
 #[tokio::test]
 async fn recovery_worker_applies_verified_normalized_event_without_provider_reparse() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let tenant_id = Uuid::new_v4();
     let journal = PaymentProviderEventJournal::new(db.clone());
     let event = journal
@@ -85,7 +85,7 @@ async fn recovery_worker_applies_verified_normalized_event_without_provider_repa
 
 #[tokio::test]
 async fn recovery_worker_dead_letters_legacy_event_without_normalized_checkpoint() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let tenant_id = Uuid::new_v4();
     let journal = PaymentProviderEventJournal::new(db.clone());
     let event = journal

@@ -33,19 +33,20 @@ async fn setup() -> (
     support::ensure_commerce_schema(&db).await;
 
     let manager = SchemaManager::new(&db);
-    let mut registered = commerce_migrations::migrations();
-    let delivery_guard = registered
-        .pop()
-        .expect("fulfillment delivery guard should be registered last");
-    let fulfillment_shipping = registered
-        .pop()
-        .expect("fulfillment shipping consumption should precede delivery guard");
-    let order_delivery = registered
-        .pop()
-        .expect("order delivery consumption should precede fulfillment shipping");
-    let reservation = registered
-        .pop()
-        .expect("order confirmation reservation should precede consumption");
+    let find_migration = |name: &str| {
+        commerce_migrations::migrations()
+            .into_iter()
+            .find(|m| m.name() == name)
+            .unwrap_or_else(|| panic!("migration {name} should exist"))
+    };
+    let delivery_guard =
+        find_migration("m20260713_000008_require_fulfillment_before_order_delivery");
+    let fulfillment_shipping =
+        find_migration("m20260713_000007_consume_inventory_on_fulfillment_shipping");
+    let order_delivery =
+        find_migration("m20260713_000006_consume_inventory_on_order_delivery");
+    let reservation =
+        find_migration("m20260713_000005_reserve_inventory_on_order_confirmation");
     reservation
         .up(&manager)
         .await
@@ -56,8 +57,9 @@ async fn setup() -> (
         .expect("order inventory delivery consumption should install on SQLite");
 
     let fulfillment_progress = fulfillment_migrations::migrations()
-        .pop()
-        .expect("fulfillment progress serialization migration should be registered last");
+        .into_iter()
+        .find(|m| m.name() == "m20260713_000110_serialize_fulfillment_progress")
+        .expect("fulfillment progress serialization migration should exist");
     fulfillment_progress
         .up(&manager)
         .await

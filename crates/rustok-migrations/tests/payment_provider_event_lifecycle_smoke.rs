@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator;
 use rustok_payment::dto::CreatePaymentCollectionInput;
 use rustok_payment::providers::PaymentProviderWebhookResult;
 use rustok_payment::{
@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn normalized_payment_webhooks_apply_authorize_and_capture_once() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let tenant_id = Uuid::new_v4();
     let service = PaymentService::new(db.clone());
     let collection = service
@@ -107,7 +107,7 @@ async fn normalized_payment_webhooks_apply_authorize_and_capture_once() {
 
 #[tokio::test]
 async fn normalized_payment_webhook_rejects_currency_mismatch_before_mutation() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let tenant_id = Uuid::new_v4();
     let service = PaymentService::new(db.clone());
     let collection = service

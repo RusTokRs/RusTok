@@ -41,17 +41,24 @@ struct ShippingOptionFailure {
     profile_slug_length: Option<usize>,
     option_currency_code_length: Option<usize>,
     owner_error: Option<PortError>,
+    message: Option<String>,
 }
 
 impl ShippingOptionFailure {
     fn multiple_delivery_groups(shipping_option_id: Uuid) -> Self {
-        Self::local(
-            ShippingOptionFailureKind::MultipleDeliveryGroups,
-            "validate_single_delivery_group",
-            "shipping_selection.multiple_delivery_groups",
-            "validation",
-            Some(shipping_option_id),
-        )
+        Self {
+            message: Some(
+                "selectedShippingOptionId can only be used for carts with a single delivery group"
+                    .to_string(),
+            ),
+            ..Self::local(
+                ShippingOptionFailureKind::MultipleDeliveryGroups,
+                "validate_single_delivery_group",
+                "shipping_selection.multiple_delivery_groups",
+                "validation",
+                Some(shipping_option_id),
+            )
+        }
     }
 
     fn owner(shipping_option_id: Uuid, error: PortError) -> Self {
@@ -79,12 +86,20 @@ impl ShippingOptionFailure {
             profile_slug_length: None,
             option_currency_code_length: None,
             owner_error: Some(error),
+            message: None,
         }
     }
 
-    fn currency_mismatch(shipping_option_id: Uuid, option_currency_code_length: usize) -> Self {
+    fn currency_mismatch(
+        shipping_option_id: Uuid,
+        option_currency: &str,
+        expected_currency: &str,
+    ) -> Self {
         Self {
-            option_currency_code_length: Some(option_currency_code_length),
+            option_currency_code_length: Some(option_currency.chars().count()),
+            message: Some(format!(
+                "Shipping option {shipping_option_id} uses currency {option_currency}, expected {expected_currency}"
+            )),
             ..Self::local(
                 ShippingOptionFailureKind::CurrencyMismatch,
                 "validate_currency",
@@ -96,18 +111,26 @@ impl ShippingOptionFailure {
     }
 
     fn channel_unavailable(shipping_option_id: Uuid) -> Self {
-        Self::local(
-            ShippingOptionFailureKind::ChannelUnavailable,
-            "validate_channel_visibility",
-            "shipping_selection.channel_unavailable",
-            "validation",
-            Some(shipping_option_id),
-        )
+        Self {
+            message: Some(format!(
+                "Shipping option {shipping_option_id} is not available for the current channel"
+            )),
+            ..Self::local(
+                ShippingOptionFailureKind::ChannelUnavailable,
+                "validate_channel_visibility",
+                "shipping_selection.channel_unavailable",
+                "validation",
+                Some(shipping_option_id),
+            )
+        }
     }
 
-    fn profile_incompatible(shipping_option_id: Uuid, profile_slug_length: usize) -> Self {
+    fn profile_incompatible(shipping_option_id: Uuid, profile_slug: &str) -> Self {
         Self {
-            profile_slug_length: Some(profile_slug_length),
+            profile_slug_length: Some(profile_slug.chars().count()),
+            message: Some(format!(
+                "Shipping option {shipping_option_id} is not compatible with shipping profile {profile_slug}"
+            )),
             ..Self::local(
                 ShippingOptionFailureKind::ProfileIncompatible,
                 "validate_shipping_profile",
@@ -136,6 +159,7 @@ impl ShippingOptionFailure {
             profile_slug_length: None,
             option_currency_code_length: None,
             owner_error: None,
+            message: None,
         }
     }
 
@@ -152,8 +176,8 @@ impl ShippingOptionFailure {
     }
 }
 
-fn public_graphql_error() -> async_graphql::Error {
-    async_graphql::Error::new("Selected shipping option is invalid").extend_with(|_, extensions| {
+fn public_graphql_error(message: impl Into<String>) -> async_graphql::Error {
+    async_graphql::Error::new(message).extend_with(|_, extensions| {
         extensions.set("code", "SHIPPING_OPTION_INVALID");
         extensions.set("retryable", false);
     })
@@ -238,7 +262,14 @@ fn shipping_option_graphql_error(
         );
     }
 
-    public_graphql_error()
+    let message = failure.message.unwrap_or_else(|| {
+        failure
+            .owner_error
+            .as_ref()
+            .map(|e| e.message.clone())
+            .unwrap_or_else(|| "Selected shipping option is invalid".to_string())
+    });
+    public_graphql_error(message)
 }
 
 fn current_shipping_selections(
@@ -356,7 +387,8 @@ pub(crate) async fn validate_selected_shipping_option(
             return Err(shipping_option_graphql_error(
                 ShippingOptionFailure::currency_mismatch(
                     option.id,
-                    option.currency_code.chars().count(),
+                    &option.currency_code,
+                    currency_code,
                 ),
                 &owner_context,
                 cart.id,
@@ -389,7 +421,7 @@ pub(crate) async fn validate_selected_shipping_option(
             return Err(shipping_option_graphql_error(
                 ShippingOptionFailure::profile_incompatible(
                     option.id,
-                    selection.shipping_profile_slug.chars().count(),
+                    &selection.shipping_profile_slug,
                 ),
                 &owner_context,
                 cart.id,

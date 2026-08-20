@@ -572,25 +572,25 @@ async fn admin_graphql_rejects_unknown_shipping_profile_references() {
     let product_response = schema
         .execute(Request::new(
             r#"
-            mutation {{
+            mutation {
               createProduct(
                 idempotencyKey: "unknown-shipping-profile-product"
-                input: {{
-                  translations: [{{
+                input: {
+                  translations: [{
                     locale: "en"
                     title: "Shipping Profile Product"
                     handle: "shipping-profile-product"
-                  }}]
-                  variants: [{{
+                  }]
+                  variants: [{
                     sku: "PROFILE-SKU-1"
-                    prices: [{{ currencyCode: "EUR", amount: "19.99" }}]
-                  }}]
+                    prices: [{ currencyCode: "EUR", amount: "19.99" }]
+                  }]
                   shippingProfileSlug: "missing-profile"
-                }}
-              ) {{
+                }
+              ) {
                 id
-              }}
-            }}
+              }
+            }
             "#
             .to_string(),
         ))

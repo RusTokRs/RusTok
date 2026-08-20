@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator;
 use rustok_payment::providers::{PaymentProviderRegistry, PaymentProviderWebhookResult};
 use rustok_payment::{
     CheckpointProviderEvent, FailProviderEvent, PROVIDER_EVENT_DEAD_LETTER,
@@ -33,7 +33,7 @@ impl PaymentProviderEventApplier for AcceptingApplier {
 
 #[tokio::test]
 async fn operator_replay_uses_verified_normalized_checkpoint_without_raw_payload() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let tenant_id = Uuid::new_v4();
     let journal = PaymentProviderEventJournal::new(db.clone());
     let received = journal

@@ -427,7 +427,7 @@ fn tax_request_error(
         boundary = TAX_CALCULATION_PORT_BOUNDARY,
         "tax request validation failed"
     );
-    PortError::validation(code, "tax request is invalid")
+    PortError::validation(code, detail)
 }
 
 fn tax_result_error(
@@ -463,7 +463,7 @@ fn tax_result_error(
         boundary = TAX_CALCULATION_PORT_BOUNDARY,
         "tax provider result violated the owner contract"
     );
-    PortError::invariant_violation(code, "tax calculation result is invalid")
+    PortError::invariant_violation(code, detail)
 }
 
 fn tax_error_to_port_error(
@@ -499,7 +499,7 @@ fn tax_error_to_port_error(
                 boundary = TAX_CALCULATION_PORT_BOUNDARY,
                 "tax owner validation failed"
             );
-            PortError::validation("tax.validation", "tax request is invalid")
+            PortError::validation("tax.validation", message)
         }
     }
 }

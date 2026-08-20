@@ -207,10 +207,18 @@ fn host_runtime(
     #[cfg(feature = "marketplace-financial")]
     let host = host.with_shared_value(MarketplaceFinancialRuntime::in_process(db.clone()));
     host.with_shared_value(CommerceShippingOptionReadRuntime::in_process(db.clone()))
+        .with_shared_value(rustok_fulfillment::ShippingOptionAdminCommandRuntime::in_process(db.clone()))
         .with_shared_value(CommerceFulfillmentLifecycleReadRuntime::new(
             fulfillment_port,
         ))
-        .with_shared_value(CommerceOrderReadRuntime::in_process(db.clone(), event_bus))
+        .with_shared_value(CommerceOrderReadRuntime::in_process(db.clone(), event_bus.clone()))
+        .with_shared_value(rustok_order::OrderAdminCommandRuntime::in_process(db.clone(), event_bus.clone()))
+        .with_shared_value(rustok_order::OrderPostOrderCommandRuntime::in_process(db.clone(), event_bus.clone()))
+        .with_shared_value(rustok_payment::PaymentOrderReadRuntime::in_process(db.clone()))
+        .with_shared_value(rustok_payment::PaymentCartReadRuntime::in_process(db.clone()))
+        .with_shared_value(rustok_payment::PaymentCollectionRuntime::in_process(db.clone()))
+        .with_shared_value(rustok_product::ProductCatalogReadRuntime::in_process(db.clone(), event_bus.clone()))
+        .with_shared_value(rustok_product::ProductCatalogCommandRuntime::in_process(db.clone(), event_bus))
 }
 
 fn graphql_schema(

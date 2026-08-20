@@ -120,7 +120,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 SELECT CASE WHEN NOT EXISTS (
                     SELECT 1
                     FROM fulfillment_provider_operations
-                    WHERE id = json_extract(NEW.metadata, '$.provider_operation.id')
+                    WHERE (id = json_extract(NEW.metadata, '$.provider_operation.id')
+                        OR lower(hex(id)) = lower(replace(json_extract(NEW.metadata, '$.provider_operation.id'), '-', '')))
                       AND tenant_id = NEW.tenant_id
                       AND fulfillment_id = NEW.id
                       AND status IN ('provider_succeeded', 'reconciliation_required', 'committed')
@@ -139,7 +140,8 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                     error_message = NULL,
                     updated_at = CURRENT_TIMESTAMP,
                     committed_at = COALESCE(committed_at, CURRENT_TIMESTAMP)
-                WHERE id = json_extract(NEW.metadata, '$.provider_operation.id')
+                WHERE (id = json_extract(NEW.metadata, '$.provider_operation.id')
+                    OR lower(hex(id)) = lower(replace(json_extract(NEW.metadata, '$.provider_operation.id'), '-', '')))
                   AND tenant_id = NEW.tenant_id
                   AND fulfillment_id = NEW.id
                   AND status IN ('provider_succeeded', 'reconciliation_required');

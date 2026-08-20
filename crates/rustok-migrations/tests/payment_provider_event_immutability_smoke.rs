@@ -1,4 +1,4 @@
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator;
 use rustok_payment::{PaymentProviderEventJournal, ReceiveProviderEvent, VerifiedProviderEvent};
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use sea_orm_migration::sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
@@ -6,8 +6,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 #[tokio::test]
-async fn normalized_provider_event_facts_are_immutable_even_through_direct_sql() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+async fn sqlite_trigger_rejects_mutations_to_immutable_provider_event_fields() {
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let tenant_id = Uuid::new_v4();
     let event = PaymentProviderEventJournal::new(db.clone())
         .receive_verified(

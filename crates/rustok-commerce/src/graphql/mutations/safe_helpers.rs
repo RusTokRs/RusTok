@@ -129,7 +129,7 @@ fn optional_text_shape(value: Option<&str>) -> &'static str {
 }
 
 fn public_graphql_error(
-    message: &'static str,
+    message: impl Into<String>,
     code: &'static str,
     retryable: bool,
 ) -> async_graphql::Error {
@@ -358,12 +358,17 @@ fn legacy_graphql_error(
     tenant_id: Uuid,
     resource_id: Option<Uuid>,
     operation: &'static str,
-    message: &'static str,
+    default_message: &'static str,
     code: &'static str,
     retryable: bool,
 ) -> async_graphql::Error {
     let tenant_id_shape = uuid_shape(tenant_id);
     let resource_id_shape = optional_uuid_shape(resource_id);
+    let message = if error.message.is_empty() {
+        default_message.to_string()
+    } else {
+        error.message.clone()
+    };
     let error = StorefrontLegacyGraphqlDiagnosticError::from(error);
 
     tracing::error!(

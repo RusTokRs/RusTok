@@ -79,7 +79,7 @@ impl<'a> ShippingProfileGraphqlErrorContext<'a> {
 }
 
 fn public_graphql_error(
-    message: &'static str,
+    message: impl Into<String>,
     code: &'static str,
     retryable: bool,
 ) -> async_graphql::Error {
@@ -182,28 +182,32 @@ fn storefront_order_read_context(
 fn shipping_profile_graphql_error_policy(
     context: &mut ShippingProfileGraphqlErrorContext<'_>,
     error: &CommerceError,
-) -> StorefrontGraphqlPolicy {
+) -> (String, &'static str, bool, &'static str) {
     match error {
-        CommerceError::Validation(_) => (
-            "Shipping profile request is invalid",
+        CommerceError::Validation(detail) => (
+            if detail.is_empty() {
+                "Shipping profile request is invalid".to_string()
+            } else {
+                detail.clone()
+            },
             "SHIPPING_PROFILE_REQUEST_INVALID",
             false,
             "validation",
         ),
         CommerceError::InvalidPrice(_) => (
-            "Shipping profile request is invalid",
+            "Shipping profile request is invalid".to_string(),
             "SHIPPING_PROFILE_REQUEST_INVALID",
             false,
             "invalid_price",
         ),
         CommerceError::InvalidOptionCombination => (
-            "Shipping profile request is invalid",
+            "Shipping profile request is invalid".to_string(),
             "SHIPPING_PROFILE_REQUEST_INVALID",
             false,
             "invalid_option_combination",
         ),
         CommerceError::NoVariants => (
-            "Shipping profile request is invalid",
+            "Shipping profile request is invalid".to_string(),
             "SHIPPING_PROFILE_REQUEST_INVALID",
             false,
             "no_variants",
@@ -211,20 +215,20 @@ fn shipping_profile_graphql_error_policy(
         CommerceError::ShippingProfileNotFound(shipping_profile_id) => {
             context.shipping_profile_id = Some(*shipping_profile_id);
             (
-                "Shipping profile was not found",
+                "Shipping profile was not found".to_string(),
                 "SHIPPING_PROFILE_NOT_FOUND",
                 false,
                 "shipping_profile_not_found",
             )
         }
         CommerceError::DuplicateShippingProfileSlug(_) => (
-            "Shipping profile conflicts with the current state",
+            "Shipping profile conflicts with the current state".to_string(),
             "SHIPPING_PROFILE_STATE_CONFLICT",
             false,
             "duplicate_shipping_profile_slug",
         ),
         CommerceError::Database(_) => (
-            "Shipping profile service is temporarily unavailable",
+            "Shipping profile service is temporarily unavailable".to_string(),
             "SHIPPING_PROFILE_TEMPORARILY_UNAVAILABLE",
             true,
             "database",
@@ -237,7 +241,7 @@ fn shipping_profile_graphql_error_policy(
         | CommerceError::CannotDeletePublished
         | CommerceError::Rich(_)
         | CommerceError::Core(_) => (
-            "Shipping profile operation could not be completed safely",
+            "Shipping profile operation could not be completed safely".to_string(),
             "SHIPPING_PROFILE_OPERATION_FAILED",
             false,
             "unexpected_owner_error",

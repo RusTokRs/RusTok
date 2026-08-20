@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
 use rustok_api::{
@@ -8,13 +8,18 @@ use rustok_api::{
     TenantContext,
 };
 use rustok_fulfillment::{
-    CancelAdminFulfillmentRequest, DeliverAdminFulfillmentRequest, ReopenAdminFulfillmentRequest,
-    ReshipAdminFulfillmentRequest, ShipAdminFulfillmentRequest,
+    CancelAdminFulfillmentRequest, DeliverAdminFulfillmentRequest,
+    ListFulfillmentProjectionsRequest, ReadFulfillmentProjectionRequest,
+    ReopenAdminFulfillmentRequest, ReshipAdminFulfillmentRequest, ShipAdminFulfillmentRequest,
 };
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-use super::{super::CommerceHttpRuntime, super::common::ensure_permissions};
+use super::{
+    super::CommerceHttpRuntime,
+    super::common::{PaginatedResponse, ensure_permissions},
+    ListFulfillmentsParams,
+};
 use crate::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, DeliverFulfillmentInput, FulfillmentResponse,
     ReopenFulfillmentInput, ReshipFulfillmentInput, ShipFulfillmentInput,
@@ -220,6 +225,173 @@ fn map_fulfillment_create_error(
         "commerce admin fulfillment cross-owner create failed"
     );
     HttpError::new(status, code, message)
+}
+
+fn admin_fulfillment_read_context(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    request_context: &RequestContext,
+    fulfillment_id: Option<Uuid>,
+    operation: &'static str,
+) -> PortContext {
+    let resource_id = fulfillment_id.unwrap_or(tenant.id);
+    let context = PortContext::new(
+        tenant.id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        request_context.locale.as_str(),
+        format!("commerce-admin-fulfillment:{operation}:{resource_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    match request_context.channel_slug.as_deref() {
+        Some(channel) => context.with_channel(channel),
+        None => context,
+    }
+}
+
+fn map_fulfillment_read_error(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    fulfillment_id: Option<Uuid>,
+    operation: &'static str,
+    context: &PortContext,
+    error: PortError,
+) -> HttpError {
+    let (status, code, message, error_kind) = fulfillment_command_error_policy(&error);
+    tracing::error!(
+        owner = ADMIN_FULFILLMENT_COMMAND_OWNER,
+        tenant_id_non_nil = !tenant_id.is_nil(),
+        actor_id_non_nil = !actor_id.is_nil(),
+        fulfillment_id_present = fulfillment_id.is_some(),
+        operation,
+        correlation_id = %context.correlation_id,
+        internal_code = %error.code,
+        retryable = error.retryable,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = ADMIN_FULFILLMENT_COMMAND_BOUNDARY,
+        "commerce admin fulfillment owner read failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+/// List admin fulfillments
+#[utoipa::path(
+    get,
+    path = "/admin/fulfillments",
+    tag = "admin",
+    params(ListFulfillmentsParams),
+    responses(
+        (status = 200, description = "Fulfillments", body = PaginatedResponse<FulfillmentResponse>),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn list_fulfillments(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Query(params): Query<ListFulfillmentsParams>,
+) -> HttpResult<Json<PaginatedResponse<FulfillmentResponse>>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_READ],
+        "Permission denied: fulfillments:read required",
+    )?;
+
+    let pagination = params.pagination.unwrap_or_default();
+    let read_context = admin_fulfillment_read_context(
+        &tenant,
+        &auth,
+        &request_context,
+        None,
+        "list_fulfillments",
+    );
+    let page = runtime
+        .fulfillment_read_port()
+        .list_fulfillment_projections(
+            read_context.clone(),
+            ListFulfillmentProjectionsRequest {
+                page: pagination.page,
+                per_page: pagination.limit(),
+                status: params.status,
+                order_id: params.order_id,
+                customer_id: params.customer_id,
+            },
+        )
+        .await
+        .map_err(|error| {
+            map_fulfillment_read_error(
+                tenant.id,
+                auth.user_id,
+                None,
+                "list_fulfillments",
+                &read_context,
+                error,
+            )
+        })?;
+
+    Ok(Json(PaginatedResponse {
+        data: page.items,
+        meta: super::super::common::PaginationMeta::new(
+            pagination.page,
+            pagination.limit(),
+            page.total,
+        ),
+    }))
+}
+
+/// Show admin fulfillment
+#[utoipa::path(
+    get,
+    path = "/admin/fulfillments/{id}",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    responses(
+        (status = 200, description = "Fulfillment details", body = FulfillmentResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Fulfillment not found")
+    )
+)]
+pub async fn show_fulfillment(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<Json<FulfillmentResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_READ],
+        "Permission denied: fulfillments:read required",
+    )?;
+
+    let read_context = admin_fulfillment_read_context(
+        &tenant,
+        &auth,
+        &request_context,
+        Some(id),
+        "get_fulfillment",
+    );
+    let fulfillment = runtime
+        .fulfillment_read_port()
+        .read_fulfillment_projection(
+            read_context.clone(),
+            ReadFulfillmentProjectionRequest { fulfillment_id: id },
+        )
+        .await
+        .map_err(|error| {
+            map_fulfillment_read_error(
+                tenant.id,
+                auth.user_id,
+                Some(id),
+                "get_fulfillment",
+                &read_context,
+                error,
+            )
+        })?;
+
+    Ok(Json(fulfillment))
 }
 
 #[utoipa::path(

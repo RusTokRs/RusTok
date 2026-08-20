@@ -22,37 +22,41 @@ pub(crate) fn product_catalog_port_error(
     let (code, message, retryable, error_kind) = match &error.kind {
         PortErrorKind::Validation => (
             "PRODUCT_VALIDATION",
-            "Product request is invalid",
+            if error.message.is_empty() {
+                "Product request is invalid".to_string()
+            } else {
+                error.message.clone()
+            },
             false,
             "validation",
         ),
         PortErrorKind::NotFound => (
             "PRODUCT_NOT_FOUND",
-            "Product was not found",
+            "Product was not found".to_string(),
             false,
             "not_found",
         ),
         PortErrorKind::Conflict => (
             "PRODUCT_OPERATION_FAILED",
-            "Product operation could not be completed safely",
+            "Product operation could not be completed safely".to_string(),
             false,
             "conflict",
         ),
         PortErrorKind::Forbidden => (
             "PRODUCT_ACCESS_DENIED",
-            "Product operation is not permitted",
+            "Product operation is not permitted".to_string(),
             false,
             "forbidden",
         ),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => (
             "PRODUCT_TEMPORARILY_UNAVAILABLE",
-            "Product data is temporarily unavailable",
+            "Product data is temporarily unavailable".to_string(),
             true,
             "unavailable",
         ),
         PortErrorKind::InvariantViolation => (
             "PRODUCT_OPERATION_FAILED",
-            "Product operation could not be completed safely",
+            "Product operation could not be completed safely".to_string(),
             false,
             "invariant_violation",
         ),

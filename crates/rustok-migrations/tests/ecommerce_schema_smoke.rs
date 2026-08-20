@@ -1,4 +1,4 @@
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator;
 
 use rust_decimal::Decimal;
 use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
@@ -55,7 +55,7 @@ async fn load_sqlite_tables(db: &DatabaseConnection) -> BTreeSet<String> {
 
 #[tokio::test]
 async fn pricing_service_supports_decimal_prices_on_migrated_schema() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let event_bus = mock_transactional_event_bus();
     let catalog = CatalogService::new(db.clone(), event_bus.clone());
     let pricing = PricingService::new(db.clone(), event_bus);
@@ -91,7 +91,7 @@ async fn pricing_service_supports_decimal_prices_on_migrated_schema() {
 
 #[tokio::test]
 async fn region_and_store_context_services_resolve_currency_and_locales_on_migrated_schema() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let region_service = RegionService::new(db.clone());
     let context_service = StoreContextService::new(
         db.clone(),
@@ -99,6 +99,7 @@ async fn region_and_store_context_services_resolve_currency_and_locales_on_migra
     );
     let tenant_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
+    seed_tenant_locale(&db, tenant_id, "en", true).await;
     seed_tenant_locale(&db, tenant_id, "de", false).await;
 
     let region = region_service
@@ -141,7 +142,7 @@ async fn region_and_store_context_services_resolve_currency_and_locales_on_migra
 
 #[tokio::test]
 async fn cart_service_supports_cart_lifecycle_on_migrated_schema() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let service = CartService::new(db);
     let tenant_id = Uuid::new_v4();
 
@@ -169,7 +170,7 @@ async fn cart_service_supports_cart_lifecycle_on_migrated_schema() {
 
 #[tokio::test]
 async fn customer_service_supports_storefront_customer_boundary_on_migrated_schema() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let service = CustomerService::new(db);
     let tenant_id = Uuid::new_v4();
 
@@ -204,7 +205,7 @@ async fn customer_service_supports_storefront_customer_boundary_on_migrated_sche
 
 #[tokio::test]
 async fn payment_services_support_collection_and_idempotent_refund_on_migrated_schema() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let payment = PaymentService::new(db.clone());
     let refund_creation = PaymentRefundCreationService::new(db);
     let tenant_id = Uuid::new_v4();
@@ -284,9 +285,17 @@ async fn payment_services_support_collection_and_idempotent_refund_on_migrated_s
 
 #[tokio::test]
 async fn fulfillment_service_supports_shipping_and_delivery_on_migrated_schema() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
-    let service = FulfillmentService::new(db);
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
+    let service = FulfillmentService::new(db.clone());
+    let order_service = OrderService::new(db.clone(), mock_transactional_event_bus());
     let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let order = order_service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order service should create order for fulfillment smoke");
 
     let option = service
         .create_shipping_option(tenant_id, create_shipping_option_input())
@@ -296,7 +305,7 @@ async fn fulfillment_service_supports_shipping_and_delivery_on_migrated_schema()
         .create_fulfillment(
             tenant_id,
             CreateFulfillmentInput {
-                order_id: Uuid::new_v4(),
+                order_id: order.id,
                 shipping_option_id: Some(option.id),
                 customer_id: Some(Uuid::new_v4()),
                 carrier: None,
@@ -337,7 +346,7 @@ async fn fulfillment_service_supports_shipping_and_delivery_on_migrated_schema()
 
 #[tokio::test]
 async fn inventory_service_supports_normalized_inventory_on_migrated_schema() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let event_bus = mock_transactional_event_bus();
     let catalog = CatalogService::new(db.clone(), event_bus.clone());
     let inventory = InventoryService::new(db.clone(), event_bus);
@@ -396,7 +405,7 @@ async fn inventory_service_supports_normalized_inventory_on_migrated_schema() {
 
 #[tokio::test]
 async fn order_service_supports_order_lifecycle_on_migrated_schema() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let service = OrderService::new(db.clone(), mock_transactional_event_bus());
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -446,7 +455,7 @@ async fn order_service_supports_order_lifecycle_on_migrated_schema() {
 
 #[tokio::test]
 async fn ecommerce_migrations_create_expected_tables() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let tables = load_sqlite_tables(&db).await;
 
     for table in [
@@ -489,7 +498,7 @@ async fn ecommerce_migrations_create_expected_tables() {
 
 #[tokio::test]
 async fn catalog_service_supports_multilingual_catalog_data_on_migrated_schema() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let service = CatalogService::new(db.clone(), mock_transactional_event_bus());
     let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
@@ -631,8 +640,8 @@ fn create_order_input() -> CreateOrderInput {
         shipping_total: Decimal::ZERO,
         line_items: vec![
             CreateOrderLineItemInput {
-                product_id: Some(Uuid::new_v4()),
-                variant_id: Some(Uuid::new_v4()),
+                product_id: None,
+                variant_id: None,
                 shipping_profile_slug: "default".to_string(),
                 seller_id: None,
                 sku: Some(format!("ORD-SKU-{}", Uuid::new_v4())),

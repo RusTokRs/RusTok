@@ -13,8 +13,9 @@ async fn setup() -> (sea_orm::DatabaseConnection, CartService) {
 
     let manager = SchemaManager::new(&db);
     let lifecycle = migrations::migrations()
-        .pop()
-        .expect("cart lifecycle serialization migration should be registered last");
+        .into_iter()
+        .find(|m| m.name() == "m20260713_000114_serialize_cart_lifecycle")
+        .expect("cart lifecycle serialization migration should exist");
     lifecycle
         .up(&manager)
         .await

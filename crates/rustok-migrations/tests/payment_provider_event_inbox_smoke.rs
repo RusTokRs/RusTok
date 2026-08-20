@@ -1,4 +1,4 @@
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator;
 use rustok_payment::{
     CompleteProviderEvent, FailProviderEvent, PROVIDER_EVENT_FAILED, PROVIDER_EVENT_PROCESSED,
     PROVIDER_EVENT_PROCESSING, PROVIDER_EVENT_RECEIVED, PaymentProviderEventJournal,
@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn verified_normalized_facts_are_durable_before_processing_claim() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let journal = PaymentProviderEventJournal::new(db);
     let tenant_id = Uuid::new_v4();
     let collection_id = Uuid::new_v4();
@@ -58,7 +58,7 @@ async fn verified_normalized_facts_are_durable_before_processing_claim() {
 
 #[tokio::test]
 async fn provider_event_inbox_deduplicates_and_replays_with_leases() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let journal = PaymentProviderEventJournal::new(db);
     let tenant_id = Uuid::new_v4();
     let request = ReceiveProviderEvent {

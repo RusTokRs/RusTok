@@ -17,8 +17,9 @@ async fn setup() -> (sea_orm::DatabaseConnection, FulfillmentService) {
 
     let manager = SchemaManager::new(&db);
     let serialization = migrations::migrations()
-        .pop()
-        .expect("fulfillment progress serialization migration should be registered last");
+        .into_iter()
+        .find(|m| m.name() == "m20260713_000110_serialize_fulfillment_progress")
+        .expect("fulfillment progress serialization migration should exist");
     serialization
         .up(&manager)
         .await

@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator;
 use rustok_payment::{
     BeginProviderOperation, CreatePaymentCollectionInput, PROVIDER_OPERATION_COMMITTED,
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PaymentProviderOperationJournal, PaymentService,
@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn uncertain_executing_provider_operation_requires_reconciliation_without_reclaim() {
-    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let db = setup_test_db_with_migrations::<SqliteTestMigrator>().await;
     let tenant_id = Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
 
