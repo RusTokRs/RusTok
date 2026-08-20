@@ -21,8 +21,10 @@ use rustok_translation_targets::{
     validate_translation_apply_context, validate_translation_read_context,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait,
+    ActiveValue::Set,
+    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, TransactionTrait,
     sea_query::{Expr, Query, SelectStatement},
 };
 use uuid::Uuid;
@@ -176,16 +178,13 @@ impl ForumCategoryTranslationTargetProvider {
             ));
         }
 
-        let previous_updated_at = category.updated_at.clone();
+        let previous_updated_at = category.updated_at;
         let mut next_updated_at = Utc::now().fixed_offset();
         if next_updated_at <= previous_updated_at {
-            next_updated_at = previous_updated_at.clone() + chrono::Duration::microseconds(1);
+            next_updated_at = previous_updated_at + chrono::Duration::microseconds(1);
         }
         let category_update = CategoryEntity::update_many()
-            .col_expr(
-                CategoryColumn::UpdatedAt,
-                Expr::value(next_updated_at.clone()),
-            )
+            .col_expr(CategoryColumn::UpdatedAt, Expr::value(next_updated_at))
             .filter(CategoryColumn::Id.eq(category_id))
             .filter(CategoryColumn::TenantId.eq(tenant_id))
             .filter(CategoryColumn::UpdatedAt.eq(previous_updated_at))
@@ -661,22 +660,24 @@ fn translation_fields(
         ),
     ]
     .into_iter()
-    .map(|(key, source_value, target_value, required)| TranslationFieldSnapshot {
-        descriptor: TranslationFieldDescriptor {
-            key: FieldKey::new(key).expect("static Forum field key must satisfy the contract"),
-            profile: TranslationValueProfile::PlainText,
-            strategy: TranslationStrategy::Translate,
-            classification: TranslationDataClassification::Public,
-            required,
-            ai_export_allowed: true,
-            max_characters: None,
-            preserves_whitespace: false,
+    .map(
+        |(key, source_value, target_value, required)| TranslationFieldSnapshot {
+            descriptor: TranslationFieldDescriptor {
+                key: FieldKey::new(key).expect("static Forum field key must satisfy the contract"),
+                profile: TranslationValueProfile::PlainText,
+                strategy: TranslationStrategy::Translate,
+                classification: TranslationDataClassification::Public,
+                required,
+                ai_export_allowed: true,
+                max_characters: None,
+                preserves_whitespace: false,
+            },
+            source_value: source_value.to_string(),
+            exact_target_value: target_value.map(str::to_string),
+            source_hash: field_hash(source_value),
+            protected_tokens: Vec::new(),
         },
-        source_value: source_value.to_string(),
-        exact_target_value: target_value.map(str::to_string),
-        source_hash: field_hash(source_value),
-        protected_tokens: Vec::new(),
-    })
+    )
     .collect()
 }
 
@@ -725,10 +726,12 @@ fn forum_database_error_to_port_error(error: sea_orm::DbErr) -> PortError {
 
 fn forum_error_to_port_error(error: ForumError) -> PortError {
     match error {
-        ForumError::CategoryNotFound(_) | ForumError::CategoryRouteNotFound => PortError::not_found(
-            "forum.translation_resource_not_found",
-            "Forum category translation resource was not found",
-        ),
+        ForumError::CategoryNotFound(_) | ForumError::CategoryRouteNotFound => {
+            PortError::not_found(
+                "forum.translation_resource_not_found",
+                "Forum category translation resource was not found",
+            )
+        }
         ForumError::RelationRevisionConflict | ForumError::CategoryRouteResolutionConflict => {
             PortError::conflict(
                 "forum.translation_owner_conflict",
@@ -790,6 +793,9 @@ mod tests {
             slug: "general-chat".to_string(),
             ..original.clone()
         };
-        assert_ne!(translation_revision(&original), translation_revision(&changed));
+        assert_ne!(
+            translation_revision(&original),
+            translation_revision(&changed)
+        );
     }
 }
