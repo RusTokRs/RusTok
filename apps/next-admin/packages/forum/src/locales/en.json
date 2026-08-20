@@ -17,6 +17,8 @@
   "success": "Topics merged",
   "failure": "Topic merge failed",
   "notEnough": "At least two active topics are required.",
+  "operation": "Operation",
+  "event": "Event",
   "movedReplies": "Moved replies",
   "resultingReplies": "Resulting published replies",
   "renameTitle": "Rename topic route",
