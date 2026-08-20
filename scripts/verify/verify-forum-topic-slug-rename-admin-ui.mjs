@@ -170,6 +170,11 @@ includesAll(
     "receipt.canonical.path",
     "receipt.alias_id",
     "receipt.changed",
+    'data-forum-route-identifier=""',
+    'dir="ltr"',
+    'spellcheck="false"',
+    '<dd dir="ltr" class="break-all font-mono text-xs">{receipt.previous_path}</dd>',
+    '<dd dir="ltr" class="break-all font-mono text-xs">{receipt.canonical.path}</dd>',
   ],
   "Leptos slug rename UI",
 );
