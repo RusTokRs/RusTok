@@ -79,6 +79,15 @@ impl CategoryService {
         .insert(txn)
         .await?;
 
+        super::category_translation_evidence::record_category_translation_change_in_tx(
+            txn,
+            tenant_id,
+            record.id,
+            "import",
+            rustok_translation_targets::TranslationResourceLifecycle::Active,
+        )
+        .await?;
+
         Ok(())
     }
 }
