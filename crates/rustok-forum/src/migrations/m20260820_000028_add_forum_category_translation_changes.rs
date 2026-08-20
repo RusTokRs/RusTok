@@ -13,8 +13,9 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(ForumTranslationChanges::Id)
-                            .uuid()
+                            .big_integer()
                             .not_null()
+                            .auto_increment()
                             .primary_key(),
                     )
                     .col(
