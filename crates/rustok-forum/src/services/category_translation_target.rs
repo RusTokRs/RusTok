@@ -712,8 +712,12 @@ fn merged_target(
 }
 
 fn category_revision(category: &CategoryModel) -> OpaqueRevision {
-    let payload = serde_json::to_string(category)
-        .expect("Forum category model must serialize for optimistic revision");
+    let payload = serde_json::to_string(&(
+        category.tenant_id,
+        category.id,
+        &category.created_at,
+    ))
+    .expect("Forum category identity must serialize for optimistic revision");
     OpaqueRevision::new(field_hash(&payload))
         .expect("SHA-256 Forum category revision must satisfy the opaque revision contract")
 }
@@ -795,6 +799,35 @@ mod tests {
                 .capabilities
                 .contains(&TranslationTargetCapability::ChangeCursor)
         );
+    }
+
+    #[test]
+    fn category_revision_ignores_operational_category_updates() {
+        let now = chrono::Utc::now().fixed_offset();
+        let original = CategoryModel {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            parent_id: None,
+            position: 0,
+            icon: None,
+            color: None,
+            moderated: false,
+            topic_count: 0,
+            reply_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        let mut changed = original.clone();
+        changed.parent_id = Some(Uuid::new_v4());
+        changed.position = 7;
+        changed.icon = Some("messages-square".to_string());
+        changed.color = Some("#0EA5E9".to_string());
+        changed.moderated = true;
+        changed.topic_count = 42;
+        changed.reply_count = 99;
+        changed.updated_at += chrono::Duration::seconds(1);
+
+        assert_eq!(category_revision(&original), category_revision(&changed));
     }
 
     #[test]
