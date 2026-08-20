@@ -12,7 +12,8 @@ use rustok_translation_targets::{
     TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
         contract_validation_error, decode_application_receipt, field_hash, merged_patch_values,
         normalize_optional_target_value, read_request_from_patch, required_target_value,
@@ -48,7 +49,7 @@ use super::{
 };
 
 const TRANSLATION_OWNER_SLUG: &str = "forum";
-const TRANSLATION_RESOURCE_KIND: &str = "category";
+pub(super) const TRANSLATION_RESOURCE_KIND: &str = "category";
 const OPERATION_APPLY_PATCH: &str = "translation_target_apply_patch";
 
 #[derive(Clone)]
@@ -80,6 +81,7 @@ impl ForumCategoryTranslationTargetProvider {
                 TranslationTargetCapability::ReadExactResource,
                 TranslationTargetCapability::ValidatePatch,
                 TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
             ]),
             read_permission_floor: BTreeSet::from(["forum_categories:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["forum_categories:update".to_string()]),
@@ -275,6 +277,15 @@ impl ForumCategoryTranslationTargetProvider {
         publish_forum_projection_scope_direct_in_tx(txn, tenant_id, actor_id)
             .await
             .map_err(forum_error_to_port_error)?;
+        super::category_translation_evidence::record_category_translation_change_in_tx(
+            txn,
+            tenant_id,
+            category_id,
+            OPERATION_APPLY_PATCH,
+            TranslationResourceLifecycle::Active,
+        )
+        .await
+        .map_err(forum_error_to_port_error)?;
 
         let applied_category = CategoryModel {
             updated_at: next_updated_at,
@@ -501,6 +512,25 @@ impl TranslationTargetProvider for ForumCategoryTranslationTargetProvider {
         }
         result
     }
+
+    async fn read_changes(
+        &self,
+        context: PortContext,
+        request: TranslationTargetChangesRequest,
+    ) -> Result<TranslationTargetChangePage, PortError> {
+        validate_translation_read_context(&context)?;
+        authorize(&context, Action::Read)?;
+        request
+            .validate()
+            .map_err(|error| contract_validation_error(error.to_string()))?;
+        let tenant_id = parse_tenant_id(&context)?;
+        super::category_translation_evidence::read_category_translation_changes(
+            &self.db,
+            tenant_id,
+            &request,
+        )
+        .await
+    }
 }
 
 fn archived_category_ids_subquery(tenant_id: Uuid) -> SelectStatement {
@@ -651,7 +681,7 @@ fn snapshot_from_models(
     Ok(snapshot)
 }
 
-fn forum_category_identity(category_id: Uuid) -> TranslationResourceIdentity {
+pub(super) fn forum_category_identity(category_id: Uuid) -> TranslationResourceIdentity {
     TranslationResourceIdentity {
         owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
             .expect("static Forum owner slug must satisfy the target contract"),
@@ -721,7 +751,7 @@ fn merged_target(
     Ok(MergedTarget { name, description })
 }
 
-fn category_revision(
+pub(super) fn category_revision(
     category: &CategoryModel,
     translations: &[TranslationModel],
 ) -> OpaqueRevision {
@@ -763,7 +793,7 @@ fn forum_category_not_found(category_id: Uuid) -> PortError {
     )
 }
 
-fn forum_database_error_to_port_error(error: sea_orm::DbErr) -> PortError {
+pub(super) fn forum_database_error_to_port_error(error: sea_orm::DbErr) -> PortError {
     forum_error_to_port_error(ForumError::Database(error))
 }
 
@@ -805,7 +835,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn descriptor_exposes_plain_text_owner_capabilities_without_change_cursor() {
+    fn descriptor_exposes_plain_text_owner_capabilities_with_change_cursor() {
         let descriptor = ForumCategoryTranslationTargetProvider::descriptor_value();
         assert_eq!(descriptor.owner_slug.as_str(), "forum");
         assert_eq!(descriptor.resource_kind.as_str(), "category");
@@ -815,7 +845,7 @@ mod tests {
                 .contains(&TranslationTargetCapability::ApplyPatch)
         );
         assert!(
-            !descriptor
+            descriptor
                 .capabilities
                 .contains(&TranslationTargetCapability::ChangeCursor)
         );
