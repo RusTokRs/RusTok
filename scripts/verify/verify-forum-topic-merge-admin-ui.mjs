@@ -29,6 +29,7 @@ const paths = {
   nextNav: "apps/next-admin/packages/forum/src/nav.ts",
   nextPage: "apps/next-admin/src/app/dashboard/forum/merge/page.tsx",
   nextProxy: "apps/next-admin/src/app/api/rustok/graphql/route.ts",
+  nextAr: "apps/next-admin/packages/forum/src/locales/ar.json",
   nextEn: "apps/next-admin/packages/forum/src/locales/en.json",
   nextRu: "apps/next-admin/packages/forum/src/locales/ru.json",
 };
@@ -62,6 +63,7 @@ const nextUi = read(paths.nextUi);
 const nextNav = read(paths.nextNav);
 const nextPage = read(paths.nextPage);
 const nextProxy = read(paths.nextProxy);
+const nextAr = JSON.parse(read(paths.nextAr));
 const nextEn = JSON.parse(read(paths.nextEn));
 const nextRu = JSON.parse(read(paths.nextRu));
 
@@ -241,9 +243,16 @@ includesAll(
     "mergeForumTopics",
     "router.refresh()",
     "forumTopicMergeNeedsSolutionChoice",
+    "import ar from '../locales/ar.json';",
+    "if (normalizedLocale.startsWith('ar')) return ar;",
+    "{copy.operation}",
+    "{copy.event}",
+    "dir='ltr'",
   ],
   "Next merge UI",
 );
+assert.ok(!nextUi.includes("<p className='font-medium'>Operation</p>"));
+assert.ok(!nextUi.includes("<p className='font-medium'>Event</p>"));
 assert.ok(!nextUi.includes("fetch("));
 assert.ok(!nextUi.includes("gqlOpts?: GqlOpts"));
 includesAll(
@@ -272,8 +281,24 @@ includesAll(
   ],
   "Next authenticated GraphQL proxy",
 );
+assert.deepEqual(
+  Object.keys(nextAr).sort(),
+  Object.keys(nextEn).sort(),
+  "Arabic Next Forum copy key set must match English",
+);
+assert.deepEqual(
+  Object.keys(nextRu).sort(),
+  Object.keys(nextEn).sort(),
+  "Russian Next Forum copy key set must match English",
+);
+assert.equal(nextAr.title, "دمج مواضيع المنتدى");
 assert.equal(nextEn.title, "Merge forum topics");
 assert.equal(nextRu.title, "Объединение тем форума");
+for (const key of ["operation", "event"]) {
+  assert.equal(typeof nextAr[key], "string", `Arabic Next copy missing ${key}`);
+  assert.equal(typeof nextEn[key], "string", `English Next copy missing ${key}`);
+  assert.equal(typeof nextRu[key], "string", `Russian Next copy missing ${key}`);
+}
 
 includesAll(
   docs,
