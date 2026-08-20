@@ -525,9 +525,7 @@ impl TranslationTargetProvider for ForumCategoryTranslationTargetProvider {
             .map_err(|error| contract_validation_error(error.to_string()))?;
         let tenant_id = parse_tenant_id(&context)?;
         super::category_translation_evidence::read_category_translation_changes(
-            &self.db,
-            tenant_id,
-            &request,
+            &self.db, tenant_id, &request,
         )
         .await
     }
