@@ -162,10 +162,10 @@ pub fn ForumTopicSlugRenameAdmin() -> impl IntoView {
                     <article class="rounded-[1.75rem] border border-emerald-500/30 bg-emerald-500/10 p-5 text-sm">
                         <h2 class="font-semibold text-foreground">{status}</h2>
                         <dl class="mt-3 grid gap-3 text-muted-foreground sm:grid-cols-2">
-                            <div><dt class="font-medium text-foreground">"Previous path"</dt><dd class="break-all font-mono text-xs">{receipt.previous_path}</dd></div>
-                            <div><dt class="font-medium text-foreground">"Canonical path"</dt><dd class="break-all font-mono text-xs">{receipt.canonical.path}</dd></div>
-                            <div><dt class="font-medium text-foreground">"Locale"</dt><dd>{receipt.locale}</dd></div>
-                            <div><dt class="font-medium text-foreground">"Alias"</dt><dd class="break-all font-mono text-xs">{receipt.alias_id.unwrap_or_else(|| "—".to_string())}</dd></div>
+                            <div><dt class="font-medium text-foreground">"Previous path"</dt><dd dir="ltr" class="break-all font-mono text-xs">{receipt.previous_path}</dd></div>
+                            <div><dt class="font-medium text-foreground">"Canonical path"</dt><dd dir="ltr" class="break-all font-mono text-xs">{receipt.canonical.path}</dd></div>
+                            <div><dt class="font-medium text-foreground">"Locale"</dt><dd dir="ltr">{receipt.locale}</dd></div>
+                            <div><dt class="font-medium text-foreground">"Alias"</dt><dd dir="ltr" class="break-all font-mono text-xs">{receipt.alias_id.unwrap_or_else(|| "—".to_string())}</dd></div>
                         </dl>
                     </article>
                 }
@@ -214,8 +214,11 @@ pub fn ForumTopicSlugRenameAdmin() -> impl IntoView {
                     <label class="mt-6 block space-y-2 text-sm font-medium text-foreground">
                         <span class="block">{slug_label}</span>
                         <input
+                            data-forum-route-identifier=""
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm"
                             maxlength=255
+                            dir="ltr"
+                            spellcheck="false"
                             prop:value=move || slug.get()
                             on:input=move |event| {
                                 set_slug.set(event_target_value(&event));
