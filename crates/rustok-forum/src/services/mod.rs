@@ -271,7 +271,7 @@ pub use subscription::SubscriptionService;
 pub use topic::MAX_FORUM_TOPIC_TAGS;
 pub use topic_audience::{
     ForumTopicAudiencePolicy,
-    ForumCategoryAudiencePolicyOwnerService as ForumCategoryAudiencePolicyService,
+    ForumTopicAudiencePolicyOwnerService as ForumTopicAudiencePolicyService,
     SetForumTopicAudiencePolicyInput,
 };
 pub use topic_audience_list::{ForumTopicAudienceListService, ForumTopicAudiencePage};
