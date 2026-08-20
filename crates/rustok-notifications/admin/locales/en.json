@@ -1,0 +1,11 @@
+{
+  "notifications.badge": "notifications",
+  "notifications.title": "Notifications",
+  "notifications.subtitle": "The semantic source registry is available. Inbox persistence and delivery operations are not enabled yet.",
+  "notifications.sourceRegistry": "Source registry",
+  "notifications.persistence": "Persistence",
+  "notifications.delivery": "Delivery",
+  "notifications.status.ready": "Ready",
+  "notifications.status.unavailable": "Unavailable",
+  "notifications.status.planned": "Planned"
+}

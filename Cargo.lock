@@ -14437,6 +14437,8 @@ name = "rustok-notifications-admin"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.20",
+ "rustok-ui-core",
+ "rustok-ui-i18n-leptos",
  "serde",
 ]
 

@@ -1,4 +1,4 @@
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator as Migrator;
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::MigratorTrait;

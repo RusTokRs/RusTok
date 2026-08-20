@@ -8,7 +8,7 @@ use axum::{
     routing::get,
 };
 use rustok_channel::{ChannelService, CreateChannelInput, entities::channel};
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator as Migrator;
 use rustok_server::{
     common::settings::RustokSettings,
     context::{OptionalChannel, TenantContext, TenantContextExtension},

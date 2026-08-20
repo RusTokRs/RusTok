@@ -3,7 +3,7 @@ use std::time::Duration;
 use chrono::Utc;
 use rustok_api::Permission;
 use rustok_core::{UserRole, UserStatus};
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator as Migrator;
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_server::common::settings::RustokSettings;
 use rustok_server::models::_entities::user_roles;

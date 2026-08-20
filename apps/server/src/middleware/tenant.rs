@@ -453,6 +453,7 @@ where
 
 impl TenantCacheInfrastructure {
     async fn new(cache_service: &CacheService) -> Self {
+        let _ = crate::services::tenant_cache_generation::bind_tenant_backend_generations();
         let ttl = CacheTtlPolicy::deterministic_jitter(
             TENANT_CACHE_TTL,
             TENANT_CACHE_JITTER_PERCENT,
@@ -617,6 +618,10 @@ pub async fn init_tenant_cache_infrastructure(
     ctx: &ServerRuntimeContext,
     cache_service: &CacheService,
 ) {
+    if !ctx.shared_contains::<CacheService>() {
+        ctx.shared_insert(cache_service.clone());
+    }
+
     if ctx.shared_contains::<Arc<TenantCacheInfrastructure>>() {
         return;
     }

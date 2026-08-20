@@ -1,0 +1,11 @@
+{
+  "notifications.badge": "уведомления",
+  "notifications.title": "Уведомления",
+  "notifications.subtitle": "Семантический реестр источников доступен. Сохранение входящих и операции доставки еще не включены.",
+  "notifications.sourceRegistry": "Реестр источников",
+  "notifications.persistence": "Хранилище",
+  "notifications.delivery": "Доставка",
+  "notifications.status.ready": "Готово",
+  "notifications.status.unavailable": "Недоступно",
+  "notifications.status.planned": "Запланировано"
+}

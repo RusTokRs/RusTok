@@ -6,7 +6,7 @@ use axum::{
     routing::get,
 };
 use rustok_cache::CacheService;
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator as Migrator;
 use rustok_server::{
     common::settings::{RustokSettings, TenantResolutionMode},
     extractors::tenant::CurrentTenant,

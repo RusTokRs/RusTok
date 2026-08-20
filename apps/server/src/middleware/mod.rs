@@ -42,6 +42,11 @@ pub mod tenant {
         cache_service: &CacheService,
     ) {
         super::tenant_runtime::init_tenant_cache_infrastructure(ctx, cache_service).await;
+        let _ = crate::services::tenant_cache_generation::start_tenant_cache_generation_listener(
+            ctx,
+            cache_service.clone(),
+        )
+        .await;
         crate::services::tenant_locale_generation::start_tenant_locale_generation_listener(
             ctx,
             cache_service.clone(),
@@ -87,7 +92,12 @@ pub mod tenant {
             .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
             .await
         {
-            Ok(generation) => generation,
+            Ok(generation) => {
+                let _ = crate::services::tenant_cache_generation::observe_tenant_backend_generation(
+                    generation.generation,
+                );
+                generation
+            }
             Err(error) => {
                 tracing::warn!(%error, cause, "Tenant cache generation rotation failed");
                 return;

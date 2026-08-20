@@ -1,4 +1,5 @@
 pub mod core;
+mod i18n;
 mod transport;
 pub mod ui;
 

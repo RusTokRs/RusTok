@@ -7,7 +7,7 @@ use std::time::Duration;
 use rustok_cache::CacheService;
 use rustok_core::events::{EventHandler, ReliabilityLevel};
 use rustok_events::{DomainEvent, EventEnvelope};
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator as Migrator;
 use rustok_outbox::SysEvents;
 use rustok_outbox::entity::SysEventStatus;
 use rustok_pages::{

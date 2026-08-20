@@ -5,7 +5,7 @@ use rustok_installer::{
     SeedPrincipalPort, SeedProfile, SeedUserRequest, TenantBootstrap,
 };
 use rustok_installer_persistence::SeaOrmInstallerBootstrapPorts;
-use rustok_migrations::Migrator;
+use rustok_migrations::SqliteTestMigrator as Migrator;
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use uuid::Uuid;

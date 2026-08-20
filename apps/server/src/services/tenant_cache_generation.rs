@@ -31,7 +31,7 @@ const LISTENER_RESTART_DELAY: Duration = Duration::from_secs(1);
 const GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs(30);
 const PREFLIGHT_GENERATION: u64 = 1;
 
-fn bind_tenant_backend_generations() -> Result<()> {
+pub(crate) fn bind_tenant_backend_generations() -> Result<()> {
     bind_cache_backend_generation_aliases(
         TENANT_CACHE_BACKEND_PREFIX,
         &[
@@ -43,7 +43,7 @@ fn bind_tenant_backend_generations() -> Result<()> {
     Ok(())
 }
 
-fn observe_tenant_backend_generation(generation: u64) -> Result<()> {
+pub(crate) fn observe_tenant_backend_generation(generation: u64) -> Result<()> {
     // A concurrent durable reconciliation may already have advanced the shared state beyond this
     // event. Treat that specific regression as a safe superseded no-op; all other failures remain
     // fail-closed. The physical prefixes alias this one canonical state.
