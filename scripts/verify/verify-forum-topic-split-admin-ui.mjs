@@ -96,6 +96,18 @@ for (const marker of [
 ]) {
   assert.ok(rustUi.includes(marker), `missing Leptos marker: ${marker}`);
 }
+for (const marker of [
+  'use rustok_api::normalize_locale_tag;',
+  'fn forum_topic_split_content_lang(locale: &str) -> String',
+  'lang=move || forum_topic_split_content_lang(target_locale.get().as_str())',
+  'dir="auto"',
+  'dir="ltr"',
+  'spellcheck="false"',
+  'split_target_content_lang_uses_shared_locale_normalization',
+  'split_target_content_lang_fails_closed_for_invalid_locale'
+]) {
+  assert.ok(rustUi.includes(marker), `missing split bidi marker: ${marker}`);
+}
 assert.ok(rustRoot.includes('subpath_matches("split")'));
 assert.ok(rustRoot.includes('<ForumTopicSplitAdmin />'));
 

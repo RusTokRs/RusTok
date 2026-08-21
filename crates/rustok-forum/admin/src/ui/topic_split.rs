@@ -2,6 +2,7 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_api::normalize_locale_tag;
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
@@ -11,6 +12,10 @@ use crate::topic_split_model::{
     forum_topic_split_reply_label, new_forum_topic_split_identity,
 };
 use crate::transport;
+
+fn forum_topic_split_content_lang(locale: &str) -> String {
+    normalize_locale_tag(locale).unwrap_or_else(|| "und".to_string())
+}
 
 #[component]
 pub fn ForumTopicSplitAdmin() -> impl IntoView {
@@ -267,26 +272,47 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
                     <div class="grid gap-5 md:grid-cols-2">
                         <label class="space-y-2 text-sm font-medium text-foreground">
                             <span class="block">{locale_label}</span>
-                            <input class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm" maxlength=64 prop:value=move || target_locale.get() on:input=move |event| {
-                                set_target_locale.set(event_target_value(&event));
-                                rotate_command_identity(set_identity, set_receipt, set_error, source_topic_id.get_untracked().as_str());
-                            } />
+                            <input
+                                class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm"
+                                maxlength=64
+                                dir="ltr"
+                                spellcheck="false"
+                                prop:value=move || target_locale.get()
+                                on:input=move |event| {
+                                    set_target_locale.set(event_target_value(&event));
+                                    rotate_command_identity(set_identity, set_receipt, set_error, source_topic_id.get_untracked().as_str());
+                                }
+                            />
                         </label>
                         <label class="space-y-2 text-sm font-medium text-foreground">
                             <span class="block">{slug_label}</span>
-                            <input class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm" maxlength=255 prop:value=move || target_slug.get() on:input=move |event| {
-                                set_target_slug.set(event_target_value(&event));
-                                rotate_command_identity(set_identity, set_receipt, set_error, source_topic_id.get_untracked().as_str());
-                            } />
+                            <input
+                                class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm"
+                                maxlength=255
+                                dir="ltr"
+                                spellcheck="false"
+                                prop:value=move || target_slug.get()
+                                on:input=move |event| {
+                                    set_target_slug.set(event_target_value(&event));
+                                    rotate_command_identity(set_identity, set_receipt, set_error, source_topic_id.get_untracked().as_str());
+                                }
+                            />
                         </label>
                     </div>
 
                     <label class="block space-y-2 text-sm font-medium text-foreground">
                         <span class="block">{target_title_label}</span>
-                        <input class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm" maxlength=500 prop:value=move || target_title.get() on:input=move |event| {
-                            set_target_title.set(event_target_value(&event));
-                            rotate_command_identity(set_identity, set_receipt, set_error, source_topic_id.get_untracked().as_str());
-                        } />
+                        <input
+                            class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm"
+                            maxlength=500
+                            lang=move || forum_topic_split_content_lang(target_locale.get().as_str())
+                            dir="auto"
+                            prop:value=move || target_title.get()
+                            on:input=move |event| {
+                                set_target_title.set(event_target_value(&event));
+                                rotate_command_identity(set_identity, set_receipt, set_error, source_topic_id.get_untracked().as_str());
+                            }
+                        />
                     </label>
 
                     <label class="block space-y-2 text-sm font-medium text-foreground">
@@ -322,4 +348,20 @@ fn rotate_command_identity(
     set_identity.set(new_forum_topic_split_identity(source_topic_id));
     set_receipt.set(None);
     set_error.set(None);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::forum_topic_split_content_lang;
+
+    #[test]
+    fn split_target_content_lang_uses_shared_locale_normalization() {
+        assert_eq!(forum_topic_split_content_lang("ar_sa"), "ar-SA");
+        assert_eq!(forum_topic_split_content_lang("pt_br"), "pt-BR");
+    }
+
+    #[test]
+    fn split_target_content_lang_fails_closed_for_invalid_locale() {
+        assert_eq!(forum_topic_split_content_lang("not a locale"), "und");
+    }
 }

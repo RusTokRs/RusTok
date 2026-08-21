@@ -1,4 +1,4 @@
-use rustok_api::RichTextDocument;
+use rustok_api::{RichTextDocument, normalize_locale_tag};
 
 use crate::core::{CategoryFormSnapshot, TopicFormSnapshot};
 use crate::model::{CategoryDetail, TopicDetail};
@@ -95,11 +95,18 @@ pub fn topic_target_form(detail: &TopicDetail) -> TopicFormSnapshot {
 }
 
 pub fn locale_candidate_matches_active(candidate: &str, active: &str) -> bool {
-    candidate.trim().eq_ignore_ascii_case(active.trim())
+    normalized_locales_match(candidate, active)
 }
 
 fn detail_is_fallback(requested_locale: &str, effective_locale: &str) -> bool {
-    !effective_locale.eq_ignore_ascii_case(requested_locale)
+    !normalized_locales_match(requested_locale, effective_locale)
+}
+
+fn normalized_locales_match(left: &str, right: &str) -> bool {
+    match (normalize_locale_tag(left), normalize_locale_tag(right)) {
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
 }
 
 fn normalize_tag_labels(tags: Vec<String>) -> Vec<String> {
@@ -114,20 +121,22 @@ fn locale_switch_decision(
     requested_locale: &str,
     is_clean: bool,
 ) -> ForumAdminLocaleSwitchDecision {
-    let requested_locale = requested_locale.trim();
-    if requested_locale.is_empty() {
+    let Some(current_locale) = normalize_locale_tag(current_locale) else {
         return ForumAdminLocaleSwitchDecision::Invalid;
-    }
-    if requested_locale.eq_ignore_ascii_case(current_locale.trim()) {
+    };
+    let Some(requested_locale) = normalize_locale_tag(requested_locale) else {
+        return ForumAdminLocaleSwitchDecision::Invalid;
+    };
+    if requested_locale == current_locale {
         return ForumAdminLocaleSwitchDecision::Noop {
-            locale: current_locale.trim().to_string(),
+            locale: current_locale,
         };
     }
     if !is_clean {
         return ForumAdminLocaleSwitchDecision::BlockedDirty;
     }
     ForumAdminLocaleSwitchDecision::Reload {
-        locale: requested_locale.to_string(),
+        locale: requested_locale,
     }
 }
 
@@ -242,6 +251,17 @@ mod tests {
     }
 
     #[test]
+    fn clean_existing_category_canonicalizes_target_locale() {
+        let current = category("en");
+        assert_eq!(
+            category_locale_switch_decision(&current, Some(&current), " pt_br "),
+            ForumAdminLocaleSwitchDecision::Reload {
+                locale: "pt-BR".to_string()
+            }
+        );
+    }
+
+    #[test]
     fn dirty_existing_category_blocks_locale_switch() {
         let persisted = category("en");
         let mut current = persisted.clone();
@@ -310,20 +330,25 @@ mod tests {
     }
 
     #[test]
-    fn locale_candidate_is_trimmed_and_same_locale_is_a_noop() {
-        let current = category("en");
+    fn locale_candidate_is_canonicalized_and_same_locale_is_a_noop() {
+        let current = category("pt-BR");
         assert_eq!(
-            category_locale_switch_decision(&current, Some(&current), " EN "),
+            category_locale_switch_decision(&current, Some(&current), " pt_br "),
             ForumAdminLocaleSwitchDecision::Noop {
-                locale: "en".to_string()
+                locale: "pt-BR".to_string()
             }
         );
         assert_eq!(
             category_locale_switch_decision(&current, Some(&current), "   "),
             ForumAdminLocaleSwitchDecision::Invalid
         );
-        assert!(locale_candidate_matches_active(" EN ", "en"));
-        assert!(!locale_candidate_matches_active("de", "en"));
+        assert_eq!(
+            category_locale_switch_decision(&current, Some(&current), "not a locale"),
+            ForumAdminLocaleSwitchDecision::Invalid
+        );
+        assert!(locale_candidate_matches_active(" PT_br ", "pt-BR"));
+        assert!(!locale_candidate_matches_active("de", "pt-BR"));
+        assert!(!locale_candidate_matches_active("bad locale", "bad locale"));
     }
 
     #[test]
@@ -367,6 +392,16 @@ mod tests {
         assert!(detail.body.html.is_empty());
         assert!(detail.body_plain_text.is_empty());
         assert!(detail.tags.is_empty());
+    }
+
+    #[test]
+    fn canonical_equivalent_locale_detail_is_not_scrubbed() {
+        let detail = topic_detail("pt_br", "pt-BR");
+        let exact = topic_detail_for_editor(detail);
+        assert_eq!(exact.title, "Welcome");
+        assert_eq!(exact.slug, "welcome");
+        assert_eq!(exact.body_plain_text, "Hello");
+        assert_eq!(exact.tags, vec!["intro".to_string(), "news".to_string()]);
     }
 
     #[test]

@@ -16,10 +16,18 @@ import {
   forumTopicSlugRenameCandidateLabel,
   type ForumTopicSlugRenameReceipt
 } from '../core/topic-slug-rename';
+import ar from '../locales/ar.json';
 import en from '../locales/en.json';
 import ru from '../locales/ru.json';
 
 type ClientGqlOpts = Pick<GqlOpts, 'tenantId' | 'tenantSlug'>;
+
+function forumTopicSlugRenameCopy(locale: string) {
+  const normalizedLocale = locale.toLowerCase();
+  if (normalizedLocale.startsWith('ar')) return ar;
+  if (normalizedLocale.startsWith('ru')) return ru;
+  return en;
+}
 
 export function ForumTopicSlugRename({
   topics,
@@ -29,7 +37,7 @@ export function ForumTopicSlugRename({
   gqlOpts?: ClientGqlOpts;
 }) {
   const locale = useLocale();
-  const copy = locale.toLowerCase().startsWith('ru') ? ru : en;
+  const copy = forumTopicSlugRenameCopy(locale);
   const router = useRouter();
   const [topicId, setTopicId] = useState('');
   const [slug, setSlug] = useState('');
@@ -104,8 +112,11 @@ export function ForumTopicSlugRename({
               <label className='block space-y-2 text-sm font-medium'>
                 <span className='block'>{copy.renameSlug}</span>
                 <input
+                  data-forum-route-identifier=''
                   className='bg-background w-full rounded-md border px-3 py-2'
                   maxLength={255}
+                  dir='ltr'
+                  spellCheck={false}
                   value={slug}
                   onChange={(event) => {
                     setSlug(event.target.value);
@@ -140,23 +151,32 @@ export function ForumTopicSlugRename({
           <CardContent className='grid gap-3 text-sm sm:grid-cols-2'>
             <div>
               <p className='font-medium'>{copy.renamePreviousPath}</p>
-              <p className='text-muted-foreground font-mono text-xs break-all'>
+              <p
+                dir='ltr'
+                className='text-muted-foreground font-mono text-xs break-all'
+              >
                 {receipt.previousPath}
               </p>
             </div>
             <div>
               <p className='font-medium'>{copy.renameCanonicalPath}</p>
-              <p className='text-muted-foreground font-mono text-xs break-all'>
+              <p
+                dir='ltr'
+                className='text-muted-foreground font-mono text-xs break-all'
+              >
                 {receipt.canonical.path}
               </p>
             </div>
             <div>
               <p className='font-medium'>{copy.renameLocale}</p>
-              <p>{receipt.locale}</p>
+              <p dir='ltr'>{receipt.locale}</p>
             </div>
             <div>
               <p className='font-medium'>{copy.renameAlias}</p>
-              <p className='text-muted-foreground font-mono text-xs break-all'>
+              <p
+                dir='ltr'
+                className='text-muted-foreground font-mono text-xs break-all'
+              >
                 {receipt.aliasId ?? '—'}
               </p>
             </div>

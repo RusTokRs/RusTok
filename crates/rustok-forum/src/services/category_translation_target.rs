@@ -12,7 +12,8 @@ use rustok_translation_targets::{
     TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, TranslationValueProfile,
     provider_support::{
         contract_validation_error, decode_application_receipt, field_hash, merged_patch_values,
         normalize_optional_target_value, read_request_from_patch, required_target_value,
@@ -48,7 +49,7 @@ use super::{
 };
 
 const TRANSLATION_OWNER_SLUG: &str = "forum";
-const TRANSLATION_RESOURCE_KIND: &str = "category";
+pub(super) const TRANSLATION_RESOURCE_KIND: &str = "category";
 const OPERATION_APPLY_PATCH: &str = "translation_target_apply_patch";
 
 #[derive(Clone)]
@@ -80,6 +81,7 @@ impl ForumCategoryTranslationTargetProvider {
                 TranslationTargetCapability::ReadExactResource,
                 TranslationTargetCapability::ValidatePatch,
                 TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
             ]),
             read_permission_floor: BTreeSet::from(["forum_categories:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["forum_categories:update".to_string()]),
@@ -137,28 +139,30 @@ impl ForumCategoryTranslationTargetProvider {
             .ok_or_else(|| forum_category_not_found(category_id))?;
         ensure_category_is_active_in_tx(txn, tenant_id, category_id).await?;
 
-        let source = TranslationEntity::find()
+        let mut translations = TranslationEntity::find()
             .filter(TranslationColumn::TenantId.eq(tenant_id))
             .filter(TranslationColumn::CategoryId.eq(category_id))
-            .filter(TranslationColumn::Locale.eq(request.source_locale.as_str()))
-            .one(txn)
+            .order_by_asc(TranslationColumn::Locale)
+            .order_by_asc(TranslationColumn::Id)
+            .all(txn)
             .await
-            .map_err(forum_database_error_to_port_error)?
+            .map_err(forum_database_error_to_port_error)?;
+        let source = translations
+            .iter()
+            .find(|translation| translation.locale == request.source_locale.as_str())
+            .cloned()
             .ok_or_else(|| {
                 PortError::not_found(
                     "forum.translation_source_not_found",
                     "Exact source Forum category translation was not found",
                 )
             })?;
-        let existing_target = TranslationEntity::find()
-            .filter(TranslationColumn::TenantId.eq(tenant_id))
-            .filter(TranslationColumn::CategoryId.eq(category_id))
-            .filter(TranslationColumn::Locale.eq(request.target_locale.as_str()))
-            .one(txn)
-            .await
-            .map_err(forum_database_error_to_port_error)?;
+        let existing_target = translations
+            .iter()
+            .find(|translation| translation.locale == request.target_locale.as_str())
+            .cloned();
 
-        let live_resource_revision = category_revision(&category);
+        let live_resource_revision = category_revision(&category, &translations);
         let live_source_revision = translation_revision(&source);
         let live_target_revision = existing_target.as_ref().map(translation_revision);
         if request.expected_resource_revision != live_resource_revision
@@ -261,17 +265,34 @@ impl ForumCategoryTranslationTargetProvider {
                 }
             }
         };
+        if let Some(position) = translations
+            .iter()
+            .position(|translation| translation.id == applied_target.id)
+        {
+            translations[position] = applied_target.clone();
+        } else {
+            translations.push(applied_target.clone());
+        }
 
         publish_forum_projection_scope_direct_in_tx(txn, tenant_id, actor_id)
             .await
             .map_err(forum_error_to_port_error)?;
+        super::category_translation_evidence::record_category_translation_change_in_tx(
+            txn,
+            tenant_id,
+            category_id,
+            OPERATION_APPLY_PATCH,
+            TranslationResourceLifecycle::Active,
+        )
+        .await
+        .map_err(forum_error_to_port_error)?;
 
         let applied_category = CategoryModel {
             updated_at: next_updated_at,
             ..category
         };
         Ok((
-            category_revision(&applied_category),
+            category_revision(&applied_category, &translations),
             translation_revision(&applied_target),
         ))
     }
@@ -491,6 +512,23 @@ impl TranslationTargetProvider for ForumCategoryTranslationTargetProvider {
         }
         result
     }
+
+    async fn read_changes(
+        &self,
+        context: PortContext,
+        request: TranslationTargetChangesRequest,
+    ) -> Result<TranslationTargetChangePage, PortError> {
+        validate_translation_read_context(&context)?;
+        authorize(&context, Action::Read)?;
+        request
+            .validate()
+            .map_err(|error| contract_validation_error(error.to_string()))?;
+        let tenant_id = parse_tenant_id(&context)?;
+        super::category_translation_evidence::read_category_translation_changes(
+            &self.db, tenant_id, &request,
+        )
+        .await
+    }
 }
 
 fn archived_category_ids_subquery(tenant_id: Uuid) -> SelectStatement {
@@ -604,7 +642,7 @@ fn summary_from_models(
         identity: forum_category_identity(category.id),
         display_label: source.name.clone(),
         lifecycle: TranslationResourceLifecycle::Active,
-        resource_revision: category_revision(category),
+        resource_revision: category_revision(category, translations),
         exact_locales,
     })
 }
@@ -641,7 +679,7 @@ fn snapshot_from_models(
     Ok(snapshot)
 }
 
-fn forum_category_identity(category_id: Uuid) -> TranslationResourceIdentity {
+pub(super) fn forum_category_identity(category_id: Uuid) -> TranslationResourceIdentity {
     TranslationResourceIdentity {
         owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
             .expect("static Forum owner slug must satisfy the target contract"),
@@ -711,9 +749,23 @@ fn merged_target(
     Ok(MergedTarget { name, description })
 }
 
-fn category_revision(category: &CategoryModel) -> OpaqueRevision {
-    let payload = serde_json::to_string(category)
-        .expect("Forum category model must serialize for optimistic revision");
+pub(super) fn category_revision(
+    category: &CategoryModel,
+    translations: &[TranslationModel],
+) -> OpaqueRevision {
+    let mut normalized_translations = translations.to_vec();
+    normalized_translations.sort_by(|left, right| {
+        left.locale
+            .cmp(&right.locale)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    let payload = serde_json::to_string(&(
+        category.tenant_id,
+        category.id,
+        category.created_at,
+        normalized_translations,
+    ))
+    .expect("Forum category Translation state must serialize for optimistic revision");
     OpaqueRevision::new(field_hash(&payload))
         .expect("SHA-256 Forum category revision must satisfy the opaque revision contract")
 }
@@ -739,7 +791,7 @@ fn forum_category_not_found(category_id: Uuid) -> PortError {
     )
 }
 
-fn forum_database_error_to_port_error(error: sea_orm::DbErr) -> PortError {
+pub(super) fn forum_database_error_to_port_error(error: sea_orm::DbErr) -> PortError {
     forum_error_to_port_error(ForumError::Database(error))
 }
 
@@ -781,7 +833,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn descriptor_exposes_plain_text_owner_capabilities_without_change_cursor() {
+    fn descriptor_exposes_plain_text_owner_capabilities_with_change_cursor() {
         let descriptor = ForumCategoryTranslationTargetProvider::descriptor_value();
         assert_eq!(descriptor.owner_slug.as_str(), "forum");
         assert_eq!(descriptor.resource_kind.as_str(), "category");
@@ -791,9 +843,99 @@ mod tests {
                 .contains(&TranslationTargetCapability::ApplyPatch)
         );
         assert!(
-            !descriptor
+            descriptor
                 .capabilities
                 .contains(&TranslationTargetCapability::ChangeCursor)
+        );
+    }
+
+    #[test]
+    fn category_revision_ignores_operational_category_updates() {
+        let now = chrono::Utc::now().fixed_offset();
+        let original = CategoryModel {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            parent_id: None,
+            position: 0,
+            icon: None,
+            color: None,
+            moderated: false,
+            topic_count: 0,
+            reply_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        let translation = TranslationModel {
+            id: Uuid::new_v4(),
+            category_id: original.id,
+            tenant_id: original.tenant_id,
+            locale: "en".to_string(),
+            name: "General".to_string(),
+            slug: "general".to_string(),
+            description: Some("General discussion".to_string()),
+        };
+        let mut changed = original.clone();
+        changed.parent_id = Some(Uuid::new_v4());
+        changed.position = 7;
+        changed.icon = Some("messages-square".to_string());
+        changed.color = Some("#0EA5E9".to_string());
+        changed.moderated = true;
+        changed.topic_count = 42;
+        changed.reply_count = 99;
+        changed.updated_at += chrono::Duration::seconds(1);
+
+        assert_eq!(
+            category_revision(&original, std::slice::from_ref(&translation)),
+            category_revision(&changed, std::slice::from_ref(&translation))
+        );
+    }
+
+    #[test]
+    fn category_revision_tracks_locale_state_and_is_order_stable() {
+        let now = chrono::Utc::now().fixed_offset();
+        let category = CategoryModel {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            parent_id: None,
+            position: 0,
+            icon: None,
+            color: None,
+            moderated: false,
+            topic_count: 0,
+            reply_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        let en = TranslationModel {
+            id: Uuid::new_v4(),
+            category_id: category.id,
+            tenant_id: category.tenant_id,
+            locale: "en".to_string(),
+            name: "General".to_string(),
+            slug: "general".to_string(),
+            description: Some("General discussion".to_string()),
+        };
+        let de = TranslationModel {
+            id: Uuid::new_v4(),
+            category_id: category.id,
+            tenant_id: category.tenant_id,
+            locale: "de".to_string(),
+            name: "Allgemein".to_string(),
+            slug: "allgemein".to_string(),
+            description: Some("Allgemeine Diskussion".to_string()),
+        };
+        let changed_en = TranslationModel {
+            description: Some("Updated discussion".to_string()),
+            ..en.clone()
+        };
+
+        assert_eq!(
+            category_revision(&category, &[en.clone(), de.clone()]),
+            category_revision(&category, &[de.clone(), en.clone()])
+        );
+        assert_ne!(
+            category_revision(&category, &[en.clone(), de.clone()]),
+            category_revision(&category, &[changed_en, de])
         );
     }
 

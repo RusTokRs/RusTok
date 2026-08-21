@@ -19,10 +19,18 @@ import {
   type ForumTopicMergeReceipt,
   type ForumTopicMergeWinner
 } from '../core/topic-merge';
+import ar from '../locales/ar.json';
 import en from '../locales/en.json';
 import ru from '../locales/ru.json';
 
 type ClientGqlOpts = Pick<GqlOpts, 'tenantId' | 'tenantSlug'>;
+
+function forumTopicMergeCopy(locale: string) {
+  const normalizedLocale = locale.toLowerCase();
+  if (normalizedLocale.startsWith('ar')) return ar;
+  if (normalizedLocale.startsWith('ru')) return ru;
+  return en;
+}
 
 export function ForumTopicMerge({
   topics,
@@ -32,7 +40,7 @@ export function ForumTopicMerge({
   gqlOpts?: ClientGqlOpts;
 }) {
   const locale = useLocale();
-  const copy = locale.toLowerCase().startsWith('ru') ? ru : en;
+  const copy = forumTopicMergeCopy(locale);
   const router = useRouter();
   const [sourceTopicId, setSourceTopicId] = useState('');
   const [targetTopicId, setTargetTopicId] = useState('');
@@ -216,7 +224,9 @@ export function ForumTopicMerge({
               <p className='text-muted-foreground text-xs font-semibold tracking-wider uppercase'>
                 {copy.retryIdentity}
               </p>
-              <p className='mt-3 font-mono text-xs break-all'>{operationId}</p>
+              <p dir='ltr' className='mt-3 font-mono text-xs break-all'>
+                {operationId}
+              </p>
               <p className='text-muted-foreground mt-4 text-xs leading-5'>
                 {copy.retryHint}
               </p>
@@ -235,14 +245,20 @@ export function ForumTopicMerge({
           </CardHeader>
           <CardContent className='grid gap-3 text-sm sm:grid-cols-2'>
             <div>
-              <p className='font-medium'>Operation</p>
-              <p className='text-muted-foreground font-mono text-xs break-all'>
+              <p className='font-medium'>{copy.operation}</p>
+              <p
+                dir='ltr'
+                className='text-muted-foreground font-mono text-xs break-all'
+              >
                 {receipt.operationId}
               </p>
             </div>
             <div>
-              <p className='font-medium'>Event</p>
-              <p className='text-muted-foreground font-mono text-xs break-all'>
+              <p className='font-medium'>{copy.event}</p>
+              <p
+                dir='ltr'
+                className='text-muted-foreground font-mono text-xs break-all'
+              >
                 {receipt.eventId}
               </p>
             </div>
