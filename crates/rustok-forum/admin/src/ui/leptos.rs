@@ -1199,7 +1199,6 @@ fn CategoriesPage(
     on_reset: Callback<()>,
 ) -> impl IntoView {
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let host_locale_for_seo = ui_locale.clone().unwrap_or_default();
     let placeholders = forum_admin_placeholder_policy(locale.get_untracked().as_str());
     let switch_locale_label = t(
         ui_locale.as_deref(),
@@ -1571,10 +1570,7 @@ fn CategoriesPage(
                     <SeoEntityPanel
                         target_kind=SeoTargetSlug::new(seo_builtin_slug::FORUM_CATEGORY).expect("builtin SEO target slug")
                         target_id=Signal::derive(move || editing_id.get())
-                        locale=Signal::derive({
-                            let host_locale_for_seo = host_locale_for_seo.clone();
-                            move || host_locale_for_seo.clone()
-                        })
+                        locale=Signal::derive(move || locale.get())
                         show_control_plane_widgets=true
                         panel_title={
                             let category_seo_copy = category_seo_copy.clone();
@@ -1624,7 +1620,6 @@ fn TopicsPage(
     on_reset: Callback<()>,
 ) -> impl IntoView {
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
-    let host_locale_for_seo = ui_locale.clone().unwrap_or_default();
     let placeholders = forum_admin_placeholder_policy(locale.get_untracked().as_str());
     let switch_locale_label = t(
         ui_locale.as_deref(),
@@ -2081,10 +2076,7 @@ fn TopicsPage(
                 <SeoEntityPanel
                     target_kind=SeoTargetSlug::new(seo_builtin_slug::FORUM_TOPIC).expect("builtin SEO target slug")
                     target_id=Signal::derive(move || editing_id.get())
-                    locale=Signal::derive({
-                        let host_locale_for_seo = host_locale_for_seo.clone();
-                        move || host_locale_for_seo.clone()
-                    })
+                    locale=Signal::derive(move || locale.get())
                     show_control_plane_widgets=true
                     panel_title={
                         let topic_seo_copy = topic_seo_copy.clone();
