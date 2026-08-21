@@ -3,7 +3,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::RichTextDocument;
+use rustok_api::{RichTextDocument, normalize_locale_tag};
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::UiRouteContext;
@@ -61,7 +61,11 @@ pub fn ForumAdmin() -> impl IntoView {
     let query_writer = use_route_query_writer();
     let token = use_token();
     let tenant = use_tenant();
-    let default_locale = route_context.locale.clone().unwrap_or_default();
+    let default_locale = route_context
+        .locale
+        .as_deref()
+        .and_then(normalize_locale_tag)
+        .unwrap_or_default();
     let is_categories_page = route_context.subpath_matches("categories");
     let header_labels = ForumAdminHeaderLabels {
         badge: t(ui_locale.as_deref(), "forum.badge", "forum control room"),
@@ -1452,11 +1456,13 @@ fn CategoriesPage(
                             </span>
                         })}
                 </div>
-                <form class="mt-6 space-y-4" on:submit=on_submit>
+                <form class="mt-6 space-y-4" lang=move || locale.get() on:submit=on_submit>
                     <FieldShell label=category_form_labels.locale_label.clone() hint=category_form_labels.locale_hint.clone()>
                         <div class="flex gap-2">
                             <input
                                 class="min-w-0 flex-1 rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
+                                dir="ltr"
+                                spellcheck="false"
                                 prop:value=move || locale_input.get()
                                 on:input=move |ev| set_locale_input.set(event_target_value(&ev))
                                 placeholder=placeholders.locale.clone()
@@ -1474,7 +1480,9 @@ fn CategoriesPage(
                     </FieldShell>
                     <FieldShell label=category_form_labels.name_label.clone() hint=category_form_labels.name_hint.clone()>
                         <input
+                            data-forum-target-localized=""
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
+                            dir="auto"
                             prop:value=move || name.get()
                             on:input=move |ev| set_name.set(event_target_value(&ev))
                             placeholder=placeholders.category_name.clone()
@@ -1482,7 +1490,10 @@ fn CategoriesPage(
                     </FieldShell>
                     <FieldShell label=category_form_labels.slug_label.clone() hint=category_form_labels.slug_hint.clone()>
                         <input
+                            data-forum-route-identifier=""
                             class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
+                            dir="ltr"
+                            spellcheck="false"
                             prop:value=move || slug.get()
                             on:input=move |ev| set_slug.set(event_target_value(&ev))
                             placeholder=placeholders.category_slug.clone()
@@ -1490,7 +1501,9 @@ fn CategoriesPage(
                     </FieldShell>
                     <FieldShell label=category_form_labels.description_label.clone() hint=category_form_labels.description_hint.clone()>
                         <textarea
+                            data-forum-target-localized=""
                             class="min-h-24 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
+                            dir="auto"
                             prop:value=move || description.get()
                             on:input=move |ev| set_description.set(event_target_value(&ev))
                             placeholder=placeholders.category_description.clone()
@@ -1906,11 +1919,13 @@ fn TopicsPage(
                             })}
                     </div>
 
-                    <form class="mt-6 space-y-4" on:submit=on_submit>
+                    <form class="mt-6 space-y-4" lang=move || locale.get() on:submit=on_submit>
                         <FieldShell label=topic_form_labels.locale_label.clone() hint=topic_form_labels.locale_hint.clone()>
                             <div class="flex gap-2">
                                 <input
                                     class="min-w-0 flex-1 rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
+                                    dir="ltr"
+                                    spellcheck="false"
                                     prop:value=move || locale_input.get()
                                     on:input=move |ev| set_locale_input.set(event_target_value(&ev))
                                     placeholder=placeholders.locale.clone()
@@ -1952,7 +1967,9 @@ fn TopicsPage(
                         </FieldShell>
                         <FieldShell label=topic_form_labels.title_label.clone() hint=topic_form_labels.title_hint.clone()>
                             <input
+                                data-forum-target-localized=""
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
+                                dir="auto"
                                 prop:value=move || title.get()
                                 on:input=move |ev| set_title.set(event_target_value(&ev))
                                 placeholder=placeholders.topic_title.clone()
@@ -1960,7 +1977,10 @@ fn TopicsPage(
                         </FieldShell>
                         <FieldShell label=topic_form_labels.slug_label.clone() hint=topic_form_labels.slug_hint.clone()>
                             <input
+                                data-forum-route-identifier=""
                                 class="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono text-sm outline-none transition focus:border-primary"
+                                dir="ltr"
+                                spellcheck="false"
                                 prop:value=move || slug.get()
                                 on:input=move |ev| set_slug.set(event_target_value(&ev))
                                 placeholder=placeholders.topic_slug.clone()
@@ -1969,7 +1989,9 @@ fn TopicsPage(
                         <div>
                             <FieldShell label=topic_form_labels.tags_label.clone() hint=topic_form_labels.tags_hint.clone()>
                                 <input
+                                    data-forum-target-localized=""
                                     class="w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
+                                    dir="auto"
                                     prop:value=move || tags.get()
                                     on:input=move |ev| set_tags.set(event_target_value(&ev))
                                     placeholder=placeholders.topic_tags.clone()
