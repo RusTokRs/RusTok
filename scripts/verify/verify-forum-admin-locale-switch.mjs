@@ -157,6 +157,9 @@ if (ui.includes('on:input=move |ev| set_locale.set(event_target_value(&ev))')) {
 if (ui.includes('set_locale: WriteSignal<String>')) {
   throw new Error('page locale field must use a candidate signal plus explicit switch callback');
 }
+if (ui.includes('host_locale_for_seo')) {
+  throw new Error('Forum SEO record locale must follow the active content locale, not the host UI locale');
+}
 
 const categoryInput = ui.indexOf('fn CategoriesPage(');
 const topicInput = ui.indexOf('fn TopicsPage(');
@@ -172,6 +175,7 @@ for (const [page, source] of [['category', categoryPage], ['topic', topicPage]])
     'set_locale_input.set(event_target_value(&ev))',
     'on_locale_switch.run(locale_input.get_untracked())',
     'forum.form.switchLocale',
+    'locale=Signal::derive(move || locale.get())',
   ], `${page} locale control`);
 }
 
