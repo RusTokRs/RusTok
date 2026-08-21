@@ -428,6 +428,25 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   - installation revision;
   - tenant settings revision;
   - build attempt/revision.
+  Publish-request work is in progress: its durable row now begins at revision
+  `1`, owner-derived REST, GraphQL, and native-admin status projections expose
+  that value. Reject, request-changes, hold, resume, final-publication,
+  artifact-attach, validation-enqueue, and validation-worker result commands
+  compare it atomically with their state transition before advancing it. A
+  claimed validation work item carries the observed request revision; the
+  owner therefore rejects a delayed running-job result, while an exact
+  terminal redelivery remains idempotent. Platform-build, external-prebuilt,
+  and Alloy-authored staging commands now use the same request CAS and return
+  the resulting owner revision. Generic, build-service, and platform-admission
+  evidence commands now use the same CAS: a newly recorded immutable fact
+  advances the aggregate, while an exact replay returns the locked revision.
+  The platform evidence producer chains the source, build-evidence, and
+  admission revisions. Manual validation-stage reports/requeues use the same
+  CAS. Remote claim and expired-lease requeue advance the aggregate, and the
+  claim carries the resulting revision which a terminal result must present.
+  Heartbeat only renews an existing operational lease. All current
+  request-state and validation-stage transitions now use the compare-and-swap
+  contract.
 - [ ] Define actor, tenant, trace, idempotency, and correlation context required
   by every command.
 - [ ] Document GraphQL/native compatibility policy and versioning rules.
@@ -2839,11 +2858,13 @@ multi-node reconciliation path consumed by those transports.
   preloads an operation for tenant authorization or reloads its plan after the
   command.
 - [x] Route GraphQL platform-native install, uninstall, and upgrade through one
-  typed composition adapter. Resolvers provide only authenticated actor,
-  revision, and requested module change; the adapter obtains the durable
-  snapshot, applies the static host-manifest adapter, then invokes the
-  owner-controlled composition-CAS/build transaction. Resolvers no longer
-  load, mutate, validate, serialize, or hash a manifest directly. The
+  typed composition adapter. Resolvers derive authenticated tenant, actor, and
+  permission, require revision and idempotency inputs, and provide only that
+  context plus the requested module change. The owner admits the command before
+  the adapter obtains the durable snapshot or applies the static host-manifest
+  adapter, then controls the composition-CAS/build/receipt transaction.
+  Resolvers no longer load, mutate, validate, serialize, or hash a manifest
+  directly. The
   `installedModules` query also consumes the adapter's owner-backed installed
   projection rather than inspecting the manifest in GraphQL.
 - [x] Move remote validation lease observability behind the registry owner. The
@@ -2950,7 +2971,69 @@ multi-node reconciliation path consumed by those transports.
   maps only that category to its envelope status, preserves the owner detail
   where safe, and keeps `not_found` detail content-free; it no longer contains
   a parallel lifecycle-error taxonomy.
-- [ ] Require typed actor, tenant, permission, idempotency, and revision inputs.
+- [x] Require typed actor, tenant, permission, idempotency, and revision inputs.
+  The canonical static-module lifecycle target is the owner-owned
+  `module_static_tenant_lifecycle` aggregate from
+  [ADR 2026-08-20](../../DECISIONS/2026-08-20-static-module-lifecycle-revision.md):
+  it has revision `0` for inherited/default state, is distinct from the
+  `tenant_modules` override projection, and accepts a write only after exact
+  idempotency admission, expected-revision CAS, and an execution claim. The
+  claim covers pre/post hooks as well as the transaction that commits override
+  or settings state; different commands fail closed while it is held. Toggle,
+  normalized settings, post-hook retry, and compensation carry the same
+  authenticated actor/tenant/idempotency/revision context, expose the resulting
+  revision through owner snapshots and GraphQL, and use the same aggregate.
+  Hook operations retain `module_operations` for recovery evidence, while
+  settings retain an exact result in the shared owner-operation receipt ledger.
+  `moduleRegistry.lifecycleRevision` and `tenantModules.revision` expose the
+  aggregate read model; `toggleModule`, `updateModuleSettings`,
+  `compareAndSwapModuleSettings`, post-hook retry, and compensation require a
+  non-nil idempotency UUID plus a non-negative expected revision. The settings
+  owner completes its receipt in the same transaction as normalized settings,
+  aggregate advancement, and claim release; exact replays return the retained
+  result, while retained terminal failures replay their original typed outcome:
+  reviewed-snapshot conflict, disabled-module validation, revision conflict,
+  idempotency conflict, or active-operation failure. Admin and Next Admin
+  forward the owner revision and refresh it from every mutation result; settings
+  writes have no native/server-function fallback.
+- [x] Static-composition GraphQL mutations derive tenant, actor, and
+  `modules:manage` permission from the authenticated context, require a
+  non-nil idempotency UUID and positive expected revision, and never accept
+  caller-controlled actor text. The composition owner admits the canonical
+  command before the host reads or adapts a manifest, scopes the durable receipt
+  to the tenant and owner operation, completes it in the same transaction as
+  composition CAS and build enqueue, and replays the original immutable build
+  after later composition changes. The admin fetches only the owner revision,
+  forwards it with a fresh UUID, and does not calculate a manifest hash or parse
+  build execution identity. Broader typed-context coverage remains open under
+  the aggregate item.
+- [x] Artifact tenant-lifecycle GraphQL derives tenant, actor, and
+  `modules:manage` permission from authenticated context and exposes the
+  owner-issued lifecycle snapshot for one admitted Optional installation. The
+  snapshot returns inherited enabled intent as revision `0` with expected
+  revision `1`; explicit intent returns its current revision. The single
+  enablement mutation requires installation UUID, boolean intent, positive CAS
+  revision, reason, and idempotency UUID, then delegates to the existing
+  owner-held revision-CAS/exact-replay/audit/outbox transaction. Owner conflict
+  and storage details are not exposed through GraphQL. Broader typed-context
+  coverage remains open under the aggregate item.
+- [x] Static module-lifecycle GraphQL toggle derives tenant, actor, and
+  `modules:manage` permission from authenticated context and requires a
+  non-nil idempotency UUID plus a non-negative aggregate revision. Its
+  owner-only `ModuleLifecycleToggleCommand`
+  rejects nil command identity, binds correlation to the idempotency key, and
+  admits the durable receipt before evaluating a no-op transition. A no-op
+  therefore persists explicit intent and returns the committed original
+  operation on an exact retry; a divergent reuse maps to non-retryable
+  `IDEMPOTENCY_CONFLICT`. It uses the same aggregate as settings and recovery.
+- [x] Static lifecycle recovery GraphQL mutations derive tenant, actor, and
+  `modules:manage` permission from authenticated context and require non-nil
+  idempotency UUIDs plus a non-negative aggregate revision. Retry and
+  compensation now enter the owner only through
+  `ModuleLifecycleRecoveryCommand`; it rejects nil identity, derives persisted
+  actor text from the actor UUID, and cannot accept transport-controlled actor
+  labels or correlation. It claims the same aggregate before hook dispatch and
+  releases it on every terminal path, including configuration failure.
 - [x] Keep subscriptions/build events as transport adapters over owner events.
   Build completion contains build facts only. Static admission, rollout,
   activation, and recovery events come exclusively from `rustok-modules` and
@@ -2980,19 +3063,34 @@ Compile-time module-owned Leptos/Next/Flutter packages cannot be the normal UI
 delivery mechanism for a runtime-installed artifact. The marketplace therefore
 uses an explicit UI trust boundary.
 
-- [ ] The current marketplace contract requires host-rendered declarative
-  contributions for settings,
-  commands/actions, status, help, navigation metadata, tables/forms supported
-  by the shared UI schema, and result/error presentation.
-- [ ] Define one framework-neutral UI contribution schema and validate it with
-  bundled JSON Schema. Leptos, Next, and Flutter hosts adapt the same contract;
-  modules do not publish host-specific query/i18n/auth behavior.
+- [x] The current marketplace contract requires host-rendered declarative
+  contributions for settings, commands/actions, status, help, navigation
+  metadata, tables/forms supported by the shared UI schema, and storefront
+  slots. `ArtifactUiContribution` now uses a typed surface/content vocabulary,
+  rather than arbitrary JSON or executable host metadata; result/error
+  presentation remains a host responsibility over canonical binding outcomes.
+- [x] Define one framework-neutral UI contribution schema and validate it with
+  bundled JSON Schema. `rustok-modules/contracts/ui-contribution.schema.json`
+  is validated at descriptor admission in addition to strict typed decoding.
+  The contract has no component source, markup, CSS, URL, iframe, query,
+  authentication, or module-controlled locale fallback field. Leptos, Next,
+  and Flutter hosts must adapt that one contract rather than receive
+  host-specific artifacts.
 - [ ] Bind every action to an admitted runtime binding, permission, input/output
-  schema, confirmation/destructive flag, idempotency, and audit policy.
+  schema, confirmation/destructive flag, idempotency, and audit policy. The
+  descriptor contract now rejects an action/form unless it references the exact
+  admitted `Command` binding with the same module-owned permission, bundled
+  input/output schemas, required idempotency, a consistent destructive
+  confirmation, and required audit policy. Host action transport and durable
+  execution-audit consumption remain to be wired.
 - [ ] Resolve route, navigation, child-page, and storefront slot collisions in
   the owner control plane before activation.
 - [ ] Use the host-provided effective locale and signed/admitted localization
-  catalogs; reject module-owned locale fallback chains and unsafe markup.
+  catalogs; reject module-owned locale fallback chains and unsafe markup. The
+  admitted contract now has digest-verified, bounded plain-text catalogs with
+  an identical key set per declared locale and exact-locale lookup only; unsafe
+  markup is rejected. Host locale-context integration and rendering remain
+  open.
 - [ ] If custom untrusted web UI is introduced, run it from an isolated origin in
   a sandboxed iframe with strict CSP and a versioned, origin-checked,
   schema-validated message SDK. Do not provide platform cookies, bearer tokens,

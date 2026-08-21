@@ -7,6 +7,7 @@ use rustok_modules::{
     ModuleLifecycleDbWriterError, TenantModuleOverrideSnapshot,
 };
 use sea_orm::{DatabaseConnection, DbErr};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct EffectiveModulePolicySnapshot {
@@ -123,6 +124,28 @@ impl EffectiveModulePolicyService {
         ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
             .tenant_override_snapshots(tenant_id, limit)
+            .await
+            .map_err(map_effective_policy_error)
+    }
+
+    /// Returns owner-issued static lifecycle revisions for the compiled
+    /// registry in one query. The read leaves inherited/default state
+    /// unmaterialized and reports revision zero for it.
+    pub async fn static_lifecycle_snapshots(
+        db: &DatabaseConnection,
+        registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
+        module_slugs: impl IntoIterator<Item = String>,
+    ) -> Result<
+        BTreeMap<String, rustok_modules::StaticTenantLifecycleSnapshot>,
+        PlatformCompositionError,
+    > {
+        let manifest = PlatformCompositionService::active_manifest(db).await?;
+        let co_requisites = ManifestManager::module_policy_corequisites(&manifest)?;
+        ModuleControlPlane::new(db.clone())
+            .lifecycle(registry, manifest.settings.default_enabled)
+            .with_corequisites(co_requisites)
+            .static_lifecycle_snapshots(tenant_id, module_slugs)
             .await
             .map_err(map_effective_policy_error)
     }

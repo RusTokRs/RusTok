@@ -309,6 +309,7 @@ fn map_governance_lifecycle_snapshot(
                 |request| -> Result<RegistryPublishRequestLifecycle, ServerFnError> {
                     Ok(RegistryPublishRequestLifecycle {
                         id: request.id,
+                        revision: request.revision,
                         status: request.status,
                         requested_by: required_principal_label(
                             &request.requested_by_principal,
@@ -622,13 +623,37 @@ pub async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnEr
         let registry = expect_context::<ModuleRegistry>();
         let enabled_modules =
             effective_enabled_modules_native(&app_ctx.db, &registry, tenant.id).await?;
+        let registry_modules = registry.list();
+        let lifecycle = rustok_modules::ModuleControlPlane::new(app_ctx.db.clone()).lifecycle(
+            &registry,
+            active_runtime_platform_snapshot(&app_ctx.db)
+                .await?
+                .manifest
+                .settings
+                .default_enabled,
+        );
+        let lifecycle_revisions = lifecycle
+            .static_lifecycle_snapshots(
+                tenant.id,
+                registry_modules
+                    .iter()
+                    .map(|module| module.slug().to_string()),
+            )
+            .await
+            .map_err(|err| server_error(err.to_string()))?;
 
-        Ok(registry
-            .list()
+        Ok(registry_modules
             .into_iter()
             .map(|module| {
                 let metadata = module_runtime_metadata(module.slug());
-                ModuleInfo {
+                let lifecycle_revision = i64::try_from(
+                    lifecycle_revisions
+                        .get(module.slug())
+                        .map(|snapshot| snapshot.revision)
+                        .unwrap_or(0),
+                )
+                .map_err(|_| server_error("module lifecycle revision exceeds API range"))?;
+                Ok(ModuleInfo {
                     module_slug: module.slug().to_string(),
                     name: module.name().to_string(),
                     description: module.description().to_string(),
@@ -645,6 +670,7 @@ pub async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnEr
                         .collect(),
                     enabled: registry.is_core(module.slug())
                         || enabled_modules.contains(module.slug()),
+                    lifecycle_revision,
                     ownership: metadata
                         .map(|metadata| metadata.ownership.to_string())
                         .unwrap_or_else(|| "third_party".to_string()),
@@ -672,9 +698,9 @@ pub async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnEr
                                 .collect()
                         })
                         .unwrap_or_default(),
-                }
+                })
             })
-            .collect())
+            .collect::<Result<Vec<_>, ServerFnError>>()?)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -729,23 +755,37 @@ pub async fn list_tenant_modules_native() -> Result<Vec<TenantModule>, ServerFnE
             .await?
             .manifest;
 
-        rustok_modules::ModuleControlPlane::new(app_ctx.db)
-            .effective_policy(&registry, manifest.settings.default_enabled)
+        let lifecycle = rustok_modules::ModuleControlPlane::new(app_ctx.db)
+            .lifecycle(&registry, manifest.settings.default_enabled);
+        let overrides = lifecycle
             .tenant_override_snapshots(tenant.id, 100)
             .await
-            .map(|modules| {
-                let mut modules = modules
-                    .into_iter()
-                    .map(|module| TenantModule {
-                        module_slug: module.module_slug,
-                        enabled: module.enabled,
-                        settings: module.settings.to_string(),
-                    })
-                    .collect::<Vec<_>>();
-                modules.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
-                modules
+            .map_err(|err| server_error(err.to_string()))?;
+        let lifecycle_revisions = lifecycle
+            .static_lifecycle_snapshots(
+                tenant.id,
+                overrides.iter().map(|module| module.module_slug.clone()),
+            )
+            .await
+            .map_err(|err| server_error(err.to_string()))?;
+        let mut modules = overrides
+            .into_iter()
+            .map(|module| {
+                let revision = lifecycle_revisions
+                    .get(&module.module_slug)
+                    .map(|snapshot| snapshot.revision)
+                    .unwrap_or(0);
+                Ok(TenantModule {
+                    module_slug: module.module_slug,
+                    enabled: module.enabled,
+                    settings: module.settings.to_string(),
+                    revision: i64::try_from(revision)
+                        .map_err(|_| server_error("module lifecycle revision exceeds API range"))?,
+                })
             })
-            .map_err(|err| server_error(err.to_string()))
+            .collect::<Result<Vec<_>, ServerFnError>>()?;
+        modules.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
+        Ok(modules)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -906,66 +946,6 @@ pub async fn build_history_native(limit: i32, offset: i32) -> Result<Vec<BuildJo
         let _ = (limit, offset);
         Err(ServerFnError::new(
             "admin/build-history requires the `ssr` feature",
-        ))
-    }
-}
-
-#[server(prefix = "/api/fn", endpoint = "admin/update-module-settings")]
-pub async fn update_module_settings_native(
-    module_slug: String,
-    settings: String,
-) -> Result<TenantModule, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use crate::app::modules::module_runtime_metadata;
-        use leptos::prelude::expect_context;
-        use rustok_api::Permission;
-        use rustok_api::has_any_effective_permission;
-        use rustok_core::ModuleRegistry;
-
-        let (app_ctx, auth, tenant) = modules_server_context().await?;
-
-        if !has_any_effective_permission(&auth.permissions, &[Permission::MODULES_MANAGE]) {
-            return Err(ServerFnError::new("modules:manage required"));
-        }
-
-        let registry = expect_context::<ModuleRegistry>();
-        if registry.get(&module_slug).is_none() {
-            return Err(server_error("Unknown module"));
-        }
-
-        let raw_settings: serde_json::Value = serde_json::from_str(&settings)
-            .map_err(|err| server_error(format!("invalid module settings JSON: {err}")))?;
-        let metadata = module_runtime_metadata(&module_slug)
-            .ok_or_else(|| server_error("Unknown module settings schema"))?;
-        let schema: std::collections::HashMap<String, rustok_modules::ModuleSettingSpec> =
-            serde_json::from_str(metadata.settings_schema_json)
-                .map_err(|err| server_error(format!("invalid compiled settings schema: {err}")))?;
-        let normalized_settings =
-            rustok_modules::normalize_module_settings(&module_slug, &schema, raw_settings)
-                .map_err(|err| server_error(err.to_string()))?;
-        let snapshot = active_runtime_platform_snapshot(&app_ctx.db).await?;
-        let record = rustok_modules::ModuleControlPlane::new(app_ctx.db)
-            .lifecycle(&registry, snapshot.manifest.settings.default_enabled)
-            .persist_static_normalized_settings(
-                tenant.id,
-                &module_slug,
-                normalized_settings.clone(),
-            )
-            .await
-            .map_err(|err| server_error(err.to_string()))?;
-
-        Ok(TenantModule {
-            module_slug,
-            enabled: record.enabled,
-            settings: normalized_settings.to_string(),
-        })
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = (module_slug, settings);
-        Err(ServerFnError::new(
-            "admin/update-module-settings requires the `ssr` feature",
         ))
     }
 }

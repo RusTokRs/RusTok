@@ -648,6 +648,22 @@ pub struct ArtifactTenantEnableResult {
     pub revision: u64,
 }
 
+/// Owner-issued tenant lifecycle state for one admitted Optional artifact.
+///
+/// `revision` is zero only when no explicit tenant intent has been persisted.
+/// In that inherited state, callers must submit `expected_revision` (one) for
+/// the first enable or disable command. Once an explicit intent exists, both
+/// values are the same and the returned revision is the next command's CAS
+/// precondition.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactTenantLifecycleSnapshot {
+    pub installation_id: Uuid,
+    pub tenant_id: Uuid,
+    pub enabled: bool,
+    pub revision: u64,
+    pub expected_revision: u64,
+}
+
 #[derive(Debug)]
 struct ArtifactTenantLifecycleCommand {
     installation_id: Uuid,
@@ -1910,6 +1926,126 @@ impl SeaOrmArtifactInstallationStore {
         self.set_artifact_tenant_enabled(request.into())
             .await
             .map(|revision| ArtifactTenantDisableResult { revision })
+    }
+
+    /// Returns the tenant-specific intent and its next exact CAS precondition
+    /// for one admitted Optional artifact. Absence of a row intentionally
+    /// means inherited enabled intent, not an implicit persisted selection.
+    pub async fn artifact_tenant_lifecycle_snapshot(
+        &self,
+        installation_id: Uuid,
+        tenant_id: Uuid,
+    ) -> Result<ArtifactTenantLifecycleSnapshot, ModuleInstallationError> {
+        if installation_id.is_nil() || tenant_id.is_nil() {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "artifact tenant lifecycle snapshot requires non-nil installation and tenant identities"
+                    .into(),
+            ));
+        }
+
+        let scope = ModuleInstallationScope::Tenant { tenant_id };
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        configure_rls_scope(&transaction, &scope).await?;
+        let backend = transaction.get_database_backend();
+        let placeholders = match backend {
+            DbBackend::Postgres => ("$1", "$2"),
+            _ => ("?1", "?2"),
+        };
+        let tenant_scope = match backend {
+            DbBackend::Postgres => {
+                "installation.scope_kind = 'platform' OR \
+                 (installation.scope_kind = 'tenant' AND installation.tenant_id = $2)"
+            }
+            _ => {
+                "installation.scope_kind = 'platform' OR \
+                 (installation.scope_kind = 'tenant' AND installation.tenant_id = ?2)"
+            }
+        };
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT CAST(installation.descriptor AS TEXT) AS descriptor, \
+                            lifecycle.enabled, lifecycle.revision \
+                     FROM module_artifact_installations installation \
+                     JOIN module_artifact_admissions admission \
+                       ON admission.installation_id = installation.installation_id \
+                     LEFT JOIN module_artifact_tenant_lifecycle lifecycle \
+                       ON lifecycle.installation_id = installation.installation_id \
+                      AND lifecycle.tenant_id = {} \
+                     WHERE installation.installation_id = {} \
+                       AND ({tenant_scope}) \
+                       AND admission.status IN ('admitted', 'installed', 'active', 'inactive', 'rolled_back') \
+                       AND NOT EXISTS ( \
+                           SELECT 1 \
+                           FROM module_artifact_uninstall_operations uninstall \
+                           WHERE uninstall.installation_id = installation.installation_id \
+                       )",
+                    placeholders.1, placeholders.0,
+                ),
+                vec![
+                    uuid_value(installation_id, backend),
+                    uuid_value(tenant_id, backend),
+                ],
+            ))
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?
+            .ok_or_else(|| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "artifact is unavailable in the requested tenant scope".into(),
+                )
+            })?;
+
+        let descriptor: ModuleArtifactDescriptor = serde_json::from_str(
+            &row.try_get::<String>("", "descriptor")
+                .map_err(|error| ModuleInstallationError::Store(error.to_string()))?,
+        )
+        .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        if descriptor.module_kind != ArtifactModuleKind::Optional {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "tenant lifecycle changes are allowed only for Optional artifacts".into(),
+            ));
+        }
+
+        let enabled = match row.try_get::<Option<bool>>("", "enabled") {
+            Ok(Some(enabled)) => enabled,
+            Ok(None) => true,
+            Err(error) => {
+                return Err(ModuleInstallationError::Store(error.to_string()));
+            }
+        };
+        let persisted_revision: Option<i64> = row
+            .try_get("", "revision")
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+        let revision = match persisted_revision {
+            Some(revision) => u64::try_from(revision).map_err(|_| {
+                ModuleInstallationError::AdmissionRevisionConflict(
+                    "tenant lifecycle revision is outside the supported range".into(),
+                )
+            })?,
+            None => 0,
+        };
+        if persisted_revision.is_some() && revision == 0 {
+            return Err(ModuleInstallationError::AdmissionRevisionConflict(
+                "tenant lifecycle revision is outside the supported range".into(),
+            ));
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
+
+        Ok(ArtifactTenantLifecycleSnapshot {
+            installation_id,
+            tenant_id,
+            enabled,
+            revision,
+            expected_revision: revision.max(1),
+        })
     }
 
     /// Restores an Optional artifact's tenant intent through the same
@@ -4695,6 +4831,7 @@ mod tests {
                 schema_documents: Vec::new(),
                 settings_schema_digest: None,
                 data_schema_digest: None,
+                localization_catalogs: Vec::new(),
                 ui_contributions: Vec::new(),
                 persistence_contract: None,
             },
@@ -5332,6 +5469,19 @@ mod tests {
             reason: "disable tenant intent".to_string(),
             idempotency_key: Uuid::new_v4(),
         };
+        let inherited_tenant_intent = store
+            .artifact_tenant_lifecycle_snapshot(installed.installation_id, tenant_id)
+            .await
+            .expect("load inherited tenant lifecycle state");
+        assert!(inherited_tenant_intent.enabled);
+        assert_eq!(inherited_tenant_intent.revision, 0);
+        assert_eq!(inherited_tenant_intent.expected_revision, 1);
+        assert!(matches!(
+            store
+                .artifact_tenant_lifecycle_snapshot(installed.installation_id, Uuid::new_v4())
+                .await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
         assert_eq!(
             store
                 .disable_artifact_for_tenant(tenant_disable.clone())
@@ -5358,6 +5508,13 @@ mod tests {
                 .revision,
             1
         );
+        let disabled_tenant_intent = store
+            .artifact_tenant_lifecycle_snapshot(installed.installation_id, tenant_id)
+            .await
+            .expect("load disabled tenant lifecycle state");
+        assert!(!disabled_tenant_intent.enabled);
+        assert_eq!(disabled_tenant_intent.revision, 1);
+        assert_eq!(disabled_tenant_intent.expected_revision, 1);
         assert!(matches!(
             store
                 .enable_artifact_for_tenant(ArtifactTenantEnableRequest {
@@ -5395,6 +5552,13 @@ mod tests {
                 .revision,
             2
         );
+        let enabled_tenant_intent = store
+            .artifact_tenant_lifecycle_snapshot(installed.installation_id, tenant_id)
+            .await
+            .expect("load enabled tenant lifecycle state");
+        assert!(enabled_tenant_intent.enabled);
+        assert_eq!(enabled_tenant_intent.revision, 2);
+        assert_eq!(enabled_tenant_intent.expected_revision, 2);
         let tenant_disable_outbox = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,

@@ -1,13 +1,15 @@
-use sea_orm::{DatabaseConnection, DbErr};
+use sea_orm::DatabaseConnection;
 
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ModuleControlPlane, ModuleLifecycleDbWriterError, ModuleOperationStoreError,
+    ModuleControlPlane, ModuleLifecycleDbWriterError, ModuleLifecycleSettingsCommand,
     normalize_module_settings,
 };
 
 use crate::modules::{ManifestManager, map_module_settings_validation_error};
-use crate::services::module_lifecycle::{ModuleLifecycleStateSnapshot, UpdateModuleSettingsError};
+use crate::services::module_lifecycle::{
+    ModuleLifecycleStateSnapshot, UpdateModuleSettingsError, map_lifecycle_writer_settings_error,
+};
 use crate::services::platform_composition::PlatformCompositionService;
 
 /// Server-owned boundary for applying one previously reviewed module-rollout
@@ -28,6 +30,9 @@ impl ModuleRolloutPromotionSettingsService {
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
+        actor_id: uuid::Uuid,
+        idempotency_key: uuid::Uuid,
+        expected_revision: u64,
         module_slug: &str,
         expected_enabled: bool,
         expected_settings: serde_json::Value,
@@ -66,81 +71,37 @@ impl ModuleRolloutPromotionSettingsService {
         let settings = normalize(settings)?;
 
         let state = writer
-            .persist_static_normalized_settings_if_current(
+            .update_static_normalized_settings(ModuleLifecycleSettingsCommand {
                 tenant_id,
-                module_slug,
-                expected_enabled,
-                expected_settings,
+                module_slug: module_slug.to_string(),
                 settings,
-            )
-            .await
-            .map_err(map_lifecycle_writer_settings_error)?;
+                actor_id,
+                idempotency_key,
+                expected_revision,
+                expected_enabled: Some(expected_enabled),
+                expected_settings: Some(expected_settings),
+            })
+            .await;
 
-        Ok(match state {
-            Some(state) => {
-                ModuleRolloutPromotionSettingsOutcome::Updated(ModuleLifecycleStateSnapshot {
+        match state {
+            Ok(state) => Ok(ModuleRolloutPromotionSettingsOutcome::Updated(
+                ModuleLifecycleStateSnapshot {
                     module_slug: state.module_slug,
                     enabled: state.enabled,
                     settings: state.settings,
                     operation_id: None,
-                })
+                    revision: state.revision,
+                },
+            )),
+            Err(ModuleLifecycleDbWriterError::SettingsSnapshotConflict) => {
+                Ok(ModuleRolloutPromotionSettingsOutcome::Conflict)
             }
-            None => ModuleRolloutPromotionSettingsOutcome::Conflict,
-        })
-    }
-}
-
-fn map_lifecycle_writer_settings_error(
-    error: ModuleLifecycleDbWriterError,
-) -> UpdateModuleSettingsError {
-    match error {
-        ModuleLifecycleDbWriterError::UnknownModule(_) => UpdateModuleSettingsError::UnknownModule,
-        ModuleLifecycleDbWriterError::ArtifactSettings {
-            module_slug,
-            reason,
-        } => UpdateModuleSettingsError::Validation(format!(
-            "artifact settings for `{module_slug}`: {reason}"
-        )),
-        ModuleLifecycleDbWriterError::Settings(error) => map_module_settings_store_error(error),
-        ModuleLifecycleDbWriterError::Database(error) => {
-            UpdateModuleSettingsError::Database(DbErr::Custom(error))
+            Err(error) => match map_lifecycle_writer_settings_error(error) {
+                UpdateModuleSettingsError::SettingsSnapshotConflict => {
+                    Ok(ModuleRolloutPromotionSettingsOutcome::Conflict)
+                }
+                error => Err(error),
+            },
         }
-        ModuleLifecycleDbWriterError::Configuration(error) => {
-            UpdateModuleSettingsError::Policy(error)
-        }
-        ModuleLifecycleDbWriterError::Definition(error) => {
-            UpdateModuleSettingsError::Policy(error.to_string())
-        }
-        ModuleLifecycleDbWriterError::Policy(error) => {
-            UpdateModuleSettingsError::Policy(error.to_string())
-        }
-        ModuleLifecycleDbWriterError::Lifecycle(error) => {
-            UpdateModuleSettingsError::Policy(error.to_string())
-        }
-        ModuleLifecycleDbWriterError::Recovery(error) => {
-            UpdateModuleSettingsError::Policy(error.to_string())
-        }
-        ModuleLifecycleDbWriterError::PolicyTransition(error) => {
-            UpdateModuleSettingsError::Policy(error)
-        }
-        error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
-            UpdateModuleSettingsError::Policy(error.to_string())
-        }
-    }
-}
-
-fn map_module_settings_store_error(error: ModuleOperationStoreError) -> UpdateModuleSettingsError {
-    match error {
-        ModuleOperationStoreError::ModuleNotEnabled(module_slug) => {
-            UpdateModuleSettingsError::ModuleNotEnabled(module_slug)
-        }
-        ModuleOperationStoreError::Database(error) => {
-            UpdateModuleSettingsError::Database(DbErr::Custom(error))
-        }
-        ModuleOperationStoreError::IdempotencyConflict
-        | ModuleOperationStoreError::MissingIdempotencyKey => UpdateModuleSettingsError::Policy(
-            "unexpected lifecycle idempotency error during reviewed settings persistence"
-                .to_string(),
-        ),
     }
 }

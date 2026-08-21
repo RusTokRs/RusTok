@@ -14,6 +14,15 @@ canonical sequence is maintained in the
 Server work for that plan is:
 
 - mount the `rustok-modules` facade through authenticated tenant/actor contexts;
+- expose static module lifecycle toggles only through the owner typed command:
+  GraphQL derives tenant, actor, and `modules:manage`, requires a UUID
+  idempotency key plus a non-negative aggregate revision, and leaves journal
+  correlation/replay/no-op receipt handling to the owner. Static toggles,
+  normalized settings, retry, and compensation share the owner lifecycle
+  aggregate and its fail-closed execution claim;
+- expose artifact tenant lifecycle only through the owner-issued GraphQL snapshot
+  and revision-CAS mutation; transport derives tenant/actor/permission and does
+  not read lifecycle, admission, or outbox tables directly;
 - supply database, OCI, trust, events, audit, clock, and other infrastructure
   adapters; module-build scheduling and execution run in their separate
   dispatcher and worker deployments;

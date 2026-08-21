@@ -138,6 +138,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Architecture and Foundation
 
+- [ADR: Static module lifecycle revision aggregate](../DECISIONS/2026-08-20-static-module-lifecycle-revision.md) — one durable revision and execution claim for static enablement, settings, and lifecycle recovery.
 - [ADR: Shared retention policy](../DECISIONS/2026-08-15-shared-retention-policy.md) — closed owner lifecycle, deadline, and legal-hold vocabulary for retained evidence.
 - [ADR: Durable module node reconciliation ledger](../DECISIONS/2026-08-14-module-node-reconciliation-ledger.md) — owner-selected dynamic artifact/sandbox assignments, durable node observations, and fail-closed convergence.
 - [ADR: Module release rollback safety](../DECISIONS/2026-08-06-module-release-rollback-safety.md) — canonical artifact planes, complete static role bundles, dynamic installation recovery, safe automatic deployment recovery, and controlled data handling.

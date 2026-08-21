@@ -117,9 +117,11 @@ Remaining:
   bounded depth, and cycle rejection;
 - release staging is host-composed on REST and GraphQL: both transports require
   `scripts:manage` and `modules:manage`, verify authenticated-tenant/request-
-  tenant equality, pin the expected script revision, and delegate marketplace
-  writes to `rustok-modules`. Typed owner not-found and idempotency-conflict
-  outcomes remain distinct transport errors;
+  tenant equality, pin both the expected script revision and the separate
+  owner-issued publish-request aggregate revision, then delegate marketplace
+  writes to `rustok-modules`. The owner returns the resulting request revision;
+  typed not-found, stale-revision, and idempotency-conflict outcomes remain
+  distinct transport errors;
 - untrusted marketplace/source/log/MCP content needs explicit prompt-injection
   and tool-policy isolation.
 - execution history persists and exposes the exact source revision/digest,
@@ -218,15 +220,16 @@ Remaining:
   and returns `NotFound`. Host HTTP and
   GraphQL derive a `scripts.manage` actor from authentication; build-command
   idempotency remains pending. Release staging now requires the current Alloy
-  revision and its latest approved review, then uses an owner-owned
+  revision, the current owner-issued publish-request revision, and its latest
+  approved review, then uses an owner-owned
   `rustok-modules` Alloy-authored stage with an idempotency key bound to the
   immutable source and review evidence. The uploaded workspace checksum must
   equal the reviewed source digest. Owner artifact upload now accepts only the
   bounded workspace representation for `alloy_authored` requests. Authenticated
   HTTP and GraphQL release-stage adapters derive the actor from host auth,
-  require the current revision and module authority, and delegate idempotent
-  staging to the owner service; final marketplace promotion remains an owner
-  governance operation.
+  require both revisions and module authority, and delegate idempotent staging
+  to the owner service; final marketplace promotion remains an owner governance
+  operation.
 - Published Rhai packages retain canonical workspace bytes and use the
   workspace OCI media type. Admission persists that exact media type and the
   artifact runtime reuses it from durable admission state, so multi-file

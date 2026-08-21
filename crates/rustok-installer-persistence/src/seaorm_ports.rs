@@ -9,7 +9,7 @@ use rustok_installer::{
     SeedIdentityPort, SeedModulePort, SeedPrincipalPort, SeedProfile, SeedRolePort, SeedTenant,
     SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest,
 };
-use rustok_modules::ModuleControlPlane;
+use rustok_modules::{ModuleControlPlane, ModuleLifecycleToggleCommand};
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_tenant::{
     CreateTenantInput, PortActor, PortContext, TenantReadPort, TenantReadRequest,
@@ -78,6 +78,20 @@ fn deterministic_bootstrap_idempotency_key(instance_id: Uuid, release_id: Uuid) 
     bytes.copy_from_slice(&digest[..16]);
     // Mark the deterministic identity as RFC 9562 custom version 8 rather
     // than allowing random-looking bytes to escape into the operation ledger.
+    bytes[6] = (bytes[6] & 0x0f) | 0x80;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Uuid::from_bytes(bytes)
+}
+
+fn deterministic_seed_identity(domain: &str, value: &str) -> Uuid {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rustok:installer:seed:");
+    hasher.update(domain.as_bytes());
+    hasher.update([0]);
+    hasher.update(value.as_bytes());
+    let digest = hasher.finalize();
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
     bytes[6] = (bytes[6] & 0x0f) | 0x80;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     Uuid::from_bytes(bytes)
@@ -490,9 +504,27 @@ impl SeedModulePort for SeaOrmInstallerBootstrapPorts<'_> {
         enabled: bool,
         actor: &str,
     ) -> Result<(), SeedExecutionError> {
-        ModuleControlPlane::new(self.db.clone())
-            .lifecycle(self.registry, self.defaults.clone())
-            .toggle(tenant_id, module_slug, enabled, Some(actor.to_string()))
+        let actor_id = deterministic_seed_identity("actor", actor);
+        let idempotency_key = deterministic_seed_identity(
+            "module-toggle",
+            &format!("{tenant_id}/{module_slug}/{enabled}/{actor}"),
+        );
+        let lifecycle = ModuleControlPlane::new(self.db.clone())
+            .lifecycle(self.registry, self.defaults.clone());
+        let expected_revision = lifecycle
+            .static_lifecycle_snapshot(tenant_id, module_slug)
+            .await
+            .map_err(|error| SeedExecutionError::Dependency(error.to_string()))?
+            .revision;
+        lifecycle
+            .toggle(ModuleLifecycleToggleCommand {
+                tenant_id,
+                module_slug: module_slug.to_string(),
+                enabled,
+                actor_id,
+                idempotency_key,
+                expected_revision,
+            })
             .await
             .map(|_| ())
             .map_err(seed_error)

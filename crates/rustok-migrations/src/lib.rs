@@ -42,10 +42,8 @@ mod m20260412_000002_split_registry_localized_metadata;
 mod m20260419_000001_normalize_registry_governance_event_payloads;
 mod m20260426_000001_create_install_sessions;
 mod m20260501_000001_create_platform_composition_state;
-mod m20260522_000001_add_module_operation_correlation_id;
 mod m20260717_000001_create_registry_publication_evidence;
 mod m20260717_000003_add_registry_artifact_origin_and_external_staging;
-mod m20260718_000001_add_module_operation_idempotency_key;
 mod m20260718_000002_add_registry_publication_idempotency;
 mod m20260723_000001_create_event_delivery_settings;
 mod m20260803_000001_create_owner_operation_receipts;
@@ -504,12 +502,6 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_iggy_connector::migrations::migrations());
         all.push(Box::new(
             m20260501_000001_create_platform_composition_state::Migration,
-        ));
-        all.push(Box::new(
-            m20260522_000001_add_module_operation_correlation_id::Migration,
-        ));
-        all.push(Box::new(
-            m20260718_000001_add_module_operation_idempotency_key::Migration,
         ));
         all.push(Box::new(
             m20260718_000002_add_registry_publication_idempotency::Migration,

@@ -11,7 +11,8 @@ use crate::{
     ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationJournal,
     ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
     ModuleOperationStatus, ModulePolicyRevisionTransition, ModuleToggleValidationError,
-    TenantModuleStateRecord, TenantModuleStateStore, validate_module_toggle,
+    StaticTenantLifecycleStore, StaticTenantLifecycleStoreError, TenantModuleStateRecord,
+    TenantModuleStateStore, validate_module_toggle,
 };
 
 #[derive(Clone, Debug)]
@@ -24,6 +25,13 @@ pub struct ModuleLifecycleToggleRequest {
     pub requested_by: Option<String>,
     pub correlation_id: Option<String>,
     pub idempotency_key: Option<uuid::Uuid>,
+    /// Static native lifecycle commands must echo the owner-issued aggregate
+    /// revision. Dynamic artifact lifecycle uses a separate aggregate and
+    /// leaves this field absent.
+    pub expected_revision: Option<u64>,
+    /// Selects the static native lifecycle aggregate rather than the separate
+    /// admitted-artifact tenant lifecycle owner.
+    pub static_lifecycle: bool,
     /// Canonical serving availability, including co-requisite constraints.
     pub effective_enabled_modules: HashSet<String>,
     /// Ordinary dependency-order selection used only to validate sequential
@@ -47,6 +55,9 @@ pub struct ModuleLifecycleToggleResult {
     pub state: Option<TenantModuleStateRecord>,
     pub override_enabled: Option<bool>,
     pub operation_id: Option<uuid::Uuid>,
+    /// Current static lifecycle aggregate revision after the operation. It is
+    /// absent only for non-static lifecycle dispatch.
+    pub revision: Option<u64>,
     /// Exact settings supplied to lifecycle hooks and retained by the current
     /// explicit state. Host transports return this owner-issued fact instead
     /// of rereading the tenant-module persistence model.
@@ -65,8 +76,22 @@ pub enum ModuleLifecycleExecutionError {
     PostHook(String),
     #[error("module lifecycle idempotency key must not be nil")]
     InvalidIdempotencyKey,
+    #[error("module lifecycle actor and tenant identities must not be nil")]
+    InvalidCommandIdentity,
     #[error("module lifecycle idempotency key was reused for a different command")]
     IdempotencyConflict,
+    #[error("static module lifecycle command requires an expected revision")]
+    MissingExpectedRevision,
+    #[error(
+        "static module lifecycle revision conflict for `{module_slug}`: expected {expected}, current {current}"
+    )]
+    RevisionConflict {
+        module_slug: String,
+        expected: u64,
+        current: u64,
+    },
+    #[error("static module lifecycle operation is already active for `{module_slug}")]
+    OperationInProgress { module_slug: String },
     #[error("module effective-policy transition could not be published: {0}")]
     PolicyTransition(String),
 }
@@ -94,8 +119,10 @@ pub async fn execute_module_toggle(
         correlation_id: request
             .correlation_id
             .clone()
+            .or_else(|| request.idempotency_key.map(|key| key.to_string()))
             .unwrap_or_else(|| infrastructure.new_id().to_string()),
         idempotency_key: request.idempotency_key,
+        expected_revision: request.expected_revision,
     };
     if operation_request.idempotency_key.is_some()
         && let Some(existing) =
@@ -111,30 +138,11 @@ pub async fn execute_module_toggle(
         &request.module_slug,
         request.enabled,
     )?;
-    if previous_effective_enabled == request.enabled && request.policy_transition.is_none() {
-        let state = apply_tenant_override_enabled(
-            db,
-            request.tenant_id,
-            &request.module_slug,
-            request.requested_override_enabled,
-        )
-        .await
-        .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
-        return Ok(ModuleLifecycleToggleResult {
-            module_slug: request.module_slug.clone(),
-            state,
-            override_enabled: request.requested_override_enabled,
-            operation_id: None,
-            settings,
-        });
-    }
-
     if request.policy_transition.is_some() && policy_transition_coordinator.is_none() {
         return Err(ModuleLifecycleExecutionError::PolicyTransition(
             "publisher is required for an effective-policy transition".to_string(),
         ));
     }
-
     let operation = if operation_request.idempotency_key.is_some() {
         match ModuleOperationJournal::record_idempotent(db, operation_request.clone())
             .await
@@ -155,17 +163,144 @@ pub async fn execute_module_toggle(
             }
         }
     } else {
-        ModuleOperationJournal::record(db, operation_request)
+        ModuleOperationJournal::record(db, operation_request.clone())
             .await
             .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?
     };
-    record_override_state_or_fail(
+    let static_lifecycle = if request.static_lifecycle {
+        let expected_revision = request
+            .expected_revision
+            .ok_or(ModuleLifecycleExecutionError::MissingExpectedRevision)?;
+        let idempotency_key = operation_request
+            .idempotency_key
+            .ok_or(ModuleLifecycleExecutionError::InvalidIdempotencyKey)?;
+        if let Err(error) = StaticTenantLifecycleStore::claim(
+            db,
+            request.tenant_id,
+            &request.module_slug,
+            expected_revision,
+            idempotency_key,
+        )
+        .await
+        {
+            let message = format!("aggregate-claim: {error}");
+            ModuleOperationJournal::mark_failed(db, operation.id, &message)
+                .await
+                .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+            return Err(map_static_lifecycle_store_error(error));
+        }
+        Some((expected_revision, idempotency_key))
+    } else {
+        None
+    };
+    if let Err(error) = record_override_state_or_fail(
         db,
         operation.id,
         request.previous_override_enabled,
         request.requested_override_enabled,
     )
-    .await?;
+    .await
+    {
+        if let Some((_, idempotency_key)) = static_lifecycle {
+            let _ = StaticTenantLifecycleStore::release(
+                db,
+                request.tenant_id,
+                &request.module_slug,
+                idempotency_key,
+            )
+            .await;
+        }
+        return Err(error);
+    }
+
+    if previous_effective_enabled == request.enabled && request.policy_transition.is_none() {
+        let tenant_id = request.tenant_id;
+        let module_slug = request.module_slug.clone();
+        let requested_override_enabled = request.requested_override_enabled;
+        let static_lifecycle = static_lifecycle;
+        let state = match db
+            .transaction::<_, Option<TenantModuleStateRecord>, ModuleLifecycleExecutionError>(
+                |transaction| {
+                    Box::pin(async move {
+                        let state = apply_tenant_override_enabled(
+                            transaction,
+                            tenant_id,
+                            &module_slug,
+                            requested_override_enabled,
+                        )
+                        .await
+                        .map_err(|error| {
+                            ModuleLifecycleExecutionError::Persistence(error.to_string())
+                        })?;
+                        ModuleOperationJournal::mark_committed(transaction, operation.id)
+                            .await
+                            .map_err(|error| {
+                                ModuleLifecycleExecutionError::Persistence(error.to_string())
+                            })?;
+                        if let Some((expected_revision, idempotency_key)) = static_lifecycle {
+                            StaticTenantLifecycleStore::advance(
+                                transaction,
+                                tenant_id,
+                                &module_slug,
+                                expected_revision,
+                                idempotency_key,
+                            )
+                            .await
+                            .map_err(map_static_lifecycle_store_error)?;
+                            StaticTenantLifecycleStore::release(
+                                transaction,
+                                tenant_id,
+                                &module_slug,
+                                idempotency_key,
+                            )
+                            .await
+                            .map_err(map_static_lifecycle_store_error)?;
+                        }
+                        Ok(state)
+                    })
+                },
+            )
+            .await
+        {
+            Ok(state) => state,
+            Err(error) => {
+                let error = transaction_error(error);
+                let journal_message = format!("state-commit: {error}");
+                ModuleOperationJournal::mark_failed(db, operation.id, &journal_message)
+                    .await
+                    .map_err(|error| {
+                        ModuleLifecycleExecutionError::Persistence(error.to_string())
+                    })?;
+                if let Some((_, idempotency_key)) = static_lifecycle {
+                    let _ = StaticTenantLifecycleStore::release(
+                        db,
+                        request.tenant_id,
+                        &request.module_slug,
+                        idempotency_key,
+                    )
+                    .await;
+                }
+                return Err(error);
+            }
+        };
+        return Ok(ModuleLifecycleToggleResult {
+            module_slug: request.module_slug.clone(),
+            state,
+            override_enabled: request.requested_override_enabled,
+            operation_id: Some(operation.id),
+            revision: static_lifecycle
+                .map(|(expected_revision, _)| {
+                    expected_revision.checked_add(1).ok_or_else(|| {
+                        ModuleLifecycleExecutionError::Persistence(
+                            "static module lifecycle revision overflow".to_string(),
+                        )
+                    })
+                })
+                .transpose()?,
+            settings,
+        });
+    }
+
     ModuleOperationJournal::mark_running(db, operation.id)
         .await
         .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
@@ -189,6 +324,16 @@ pub async fn execute_module_toggle(
         ModuleOperationJournal::mark_failed(db, operation.id, &message)
             .await
             .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+        if let Some((_, idempotency_key)) = static_lifecycle {
+            StaticTenantLifecycleStore::release(
+                db,
+                request.tenant_id,
+                &request.module_slug,
+                idempotency_key,
+            )
+            .await
+            .map_err(map_static_lifecycle_store_error)?;
+        }
         return Err(ModuleLifecycleExecutionError::PreHook(message));
     }
 
@@ -231,6 +376,17 @@ pub async fn execute_module_toggle(
                                 ModuleLifecycleExecutionError::PolicyTransition(error.to_string())
                             })?;
                     }
+                    if let Some((expected_revision, idempotency_key)) = static_lifecycle {
+                        StaticTenantLifecycleStore::advance(
+                            transaction,
+                            tenant_id,
+                            &module_slug,
+                            expected_revision,
+                            idempotency_key,
+                        )
+                        .await
+                        .map_err(map_static_lifecycle_store_error)?;
+                    }
                     Ok(state)
                 })
             },
@@ -239,16 +395,20 @@ pub async fn execute_module_toggle(
     {
         Ok(state) => state,
         Err(error) => {
-            let error = match error {
-                sea_orm::TransactionError::Connection(error) => {
-                    ModuleLifecycleExecutionError::Persistence(error.to_string())
-                }
-                sea_orm::TransactionError::Transaction(error) => error,
-            };
+            let error = transaction_error(error);
             let journal_message = format!("state-commit: {error}");
             ModuleOperationJournal::mark_failed(db, operation.id, &journal_message)
                 .await
                 .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+            if let Some((_, idempotency_key)) = static_lifecycle {
+                let _ = StaticTenantLifecycleStore::release(
+                    db,
+                    request.tenant_id,
+                    &request.module_slug,
+                    idempotency_key,
+                )
+                .await;
+            }
             return Err(error);
         }
     };
@@ -273,7 +433,28 @@ pub async fn execute_module_toggle(
         ModuleOperationJournal::mark_failed(db, operation.id, &journal_message)
             .await
             .map_err(|error| ModuleLifecycleExecutionError::Persistence(error.to_string()))?;
+        if let Some((_, idempotency_key)) = static_lifecycle {
+            StaticTenantLifecycleStore::release(
+                db,
+                request.tenant_id,
+                &request.module_slug,
+                idempotency_key,
+            )
+            .await
+            .map_err(map_static_lifecycle_store_error)?;
+        }
         return Err(ModuleLifecycleExecutionError::PostHook(message));
+    }
+
+    if let Some((_, idempotency_key)) = static_lifecycle {
+        StaticTenantLifecycleStore::release(
+            db,
+            request.tenant_id,
+            &request.module_slug,
+            idempotency_key,
+        )
+        .await
+        .map_err(map_static_lifecycle_store_error)?;
     }
 
     Ok(ModuleLifecycleToggleResult {
@@ -281,6 +462,15 @@ pub async fn execute_module_toggle(
         state,
         override_enabled: request.requested_override_enabled,
         operation_id: Some(operation.id),
+        revision: static_lifecycle
+            .map(|(expected_revision, _)| {
+                expected_revision.checked_add(1).ok_or_else(|| {
+                    ModuleLifecycleExecutionError::Persistence(
+                        "static module lifecycle revision overflow".to_string(),
+                    )
+                })
+            })
+            .transpose()?,
         settings,
     })
 }
@@ -319,6 +509,45 @@ fn map_idempotency_store_error(
     }
 }
 
+fn map_static_lifecycle_store_error(
+    error: StaticTenantLifecycleStoreError,
+) -> ModuleLifecycleExecutionError {
+    match error {
+        StaticTenantLifecycleStoreError::RevisionConflict {
+            module_slug,
+            expected,
+            current,
+        } => ModuleLifecycleExecutionError::RevisionConflict {
+            module_slug,
+            expected,
+            current,
+        },
+        StaticTenantLifecycleStoreError::OperationInProgress { module_slug } => {
+            ModuleLifecycleExecutionError::OperationInProgress { module_slug }
+        }
+        StaticTenantLifecycleStoreError::RevisionOverflow(module_slug) => {
+            ModuleLifecycleExecutionError::Persistence(format!(
+                "static module lifecycle revision overflow for `{module_slug}`"
+            ))
+        }
+        StaticTenantLifecycleStoreError::Database(error)
+        | StaticTenantLifecycleStoreError::InconsistentState(error) => {
+            ModuleLifecycleExecutionError::Persistence(error)
+        }
+    }
+}
+
+fn transaction_error(
+    error: sea_orm::TransactionError<ModuleLifecycleExecutionError>,
+) -> ModuleLifecycleExecutionError {
+    match error {
+        sea_orm::TransactionError::Connection(error) => {
+            ModuleLifecycleExecutionError::Persistence(error.to_string())
+        }
+        sea_orm::TransactionError::Transaction(error) => error,
+    }
+}
+
 async fn replay_lifecycle_operation(
     db: &DatabaseConnection,
     request: &ModuleOperationRequest,
@@ -347,6 +576,20 @@ async fn replay_lifecycle_operation(
                 state,
                 override_enabled,
                 operation_id: Some(operation.id),
+                revision: if request.expected_revision.is_some() {
+                    Some(
+                        StaticTenantLifecycleStore::snapshot(
+                            db,
+                            request.tenant_id,
+                            &request.module_slug,
+                        )
+                        .await
+                        .map_err(map_static_lifecycle_store_error)?
+                        .revision,
+                    )
+                } else {
+                    None
+                },
                 settings,
             })
         }
@@ -426,6 +669,7 @@ mod tests {
                     requested_by TEXT, \
                     correlation_id TEXT, \
                     idempotency_key TEXT, \
+                    expected_revision INTEGER, \
                     error_message TEXT, \
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
@@ -449,6 +693,102 @@ mod tests {
         database
     }
 
+    async fn journal_and_state_database() -> DatabaseConnection {
+        let database = journal_only_database().await;
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE tenant_modules (\
+                    id TEXT PRIMARY KEY NOT NULL, \
+                    tenant_id TEXT NOT NULL, \
+                    module_slug TEXT NOT NULL, \
+                    enabled BOOLEAN NOT NULL, \
+                    settings TEXT NOT NULL DEFAULT '{}', \
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                    UNIQUE (tenant_id, module_slug)\
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("tenant module state table");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE module_static_tenant_lifecycle (\
+                    tenant_id TEXT NOT NULL, \
+                    module_slug TEXT NOT NULL, \
+                    revision INTEGER NOT NULL, \
+                    active_idempotency_key TEXT, \
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                    PRIMARY KEY (tenant_id, module_slug)\
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("static lifecycle aggregate table");
+        database
+    }
+
+    #[tokio::test]
+    async fn idempotent_no_op_toggle_replays_one_journaled_operation() {
+        let database = journal_and_state_database().await;
+        let registry = ModuleRegistry::new().register(OptionalModule);
+        let catalog = ModuleDefinitionCatalog::from_static_registry(&registry).expect("catalog");
+        let dispatcher = ModuleExecutionDispatcher::new(&catalog, &registry);
+        let tenant_id = uuid::Uuid::new_v4();
+        let idempotency_key = uuid::Uuid::new_v4();
+        let request = ModuleLifecycleToggleRequest {
+            tenant_id,
+            module_slug: "optional-test".to_string(),
+            enabled: true,
+            requested_by: Some("operator".to_string()),
+            correlation_id: None,
+            idempotency_key: Some(idempotency_key),
+            expected_revision: Some(0),
+            static_lifecycle: true,
+            effective_enabled_modules: HashSet::from(["optional-test".to_string()]),
+            ordering_enabled_modules: HashSet::new(),
+            previous_override_enabled: None,
+            requested_override_enabled: Some(true),
+            current_settings: serde_json::json!({}),
+            policy_transition: None,
+        };
+
+        let first = execute_module_toggle(
+            &ControlPlaneInfrastructure::default(),
+            &database,
+            &dispatcher,
+            None,
+            request.clone(),
+        )
+        .await
+        .expect("first no-op command");
+        let replay = execute_module_toggle(
+            &ControlPlaneInfrastructure::default(),
+            &database,
+            &dispatcher,
+            None,
+            request,
+        )
+        .await
+        .expect("exact retry replays");
+
+        assert_eq!(first.operation_id, replay.operation_id);
+        let row = database
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM module_operations WHERE tenant_id = ?1 AND idempotency_key = ?2",
+                vec![tenant_id.into(), idempotency_key.into()],
+            ))
+            .await
+            .expect("journal count query")
+            .expect("journal count row");
+        let count: i64 = row.try_get("", "count").expect("journal count");
+        assert_eq!(count, 1);
+    }
+
     #[tokio::test]
     async fn state_commit_failure_marks_running_operation_as_failed() {
         let database = journal_only_database().await;
@@ -469,6 +809,8 @@ mod tests {
                 requested_by: Some("test".to_string()),
                 correlation_id: None,
                 idempotency_key: None,
+                expected_revision: None,
+                static_lifecycle: false,
                 effective_enabled_modules: HashSet::new(),
                 ordering_enabled_modules: HashSet::new(),
                 previous_override_enabled: None,

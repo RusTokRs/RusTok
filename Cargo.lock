@@ -13400,6 +13400,7 @@ dependencies = [
  "rustok-seo-targets",
  "rustok-taxonomy",
  "rustok-telemetry",
+ "rustok-translation-targets",
  "rustok-web",
  "sea-orm",
  "sea-orm-migration",

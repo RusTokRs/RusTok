@@ -2,13 +2,16 @@ use rustok_build::NoopBuildEventPublisher;
 use rustok_build::build::Entity as BuildEntity;
 use rustok_core::ModuleRegistry;
 use rustok_modules::ModuleCompositionError;
+use rustok_outbox::SysEventsMigration;
 use rustok_server::modules::{ManifestDiff, ManifestModuleSpec, ModulesManifest};
 use rustok_server::services::platform_composition::{
     PlatformCompositionBuildCommand, PlatformCompositionBuildError,
     PlatformCompositionBuildService, PlatformCompositionService,
 };
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, Statement};
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use std::sync::Arc;
+use uuid::Uuid;
 
 async fn setup_db(include_builds: bool) -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:")
@@ -32,6 +35,11 @@ async fn setup_db(include_builds: bool) -> DatabaseConnection {
     .await
     .expect("create platform_state");
 
+    SysEventsMigration
+        .up(&SchemaManager::new(&db))
+        .await
+        .expect("create owner operation receipt table");
+
     if include_builds {
         db.execute(Statement::from_string(
             DbBackend::Sqlite,
@@ -43,7 +51,7 @@ async fn setup_db(include_builds: bool) -> DatabaseConnection {
                 progress INTEGER NOT NULL,
                 profile TEXT NOT NULL,
                 manifest_ref TEXT NOT NULL,
-                manifest_hash TEXT NOT NULL UNIQUE,
+                manifest_hash TEXT NOT NULL,
                 manifest_revision INTEGER NOT NULL,
                 manifest_snapshot TEXT NOT NULL,
                 modules_delta TEXT NULL,
@@ -65,6 +73,23 @@ async fn setup_db(include_builds: bool) -> DatabaseConnection {
     db
 }
 
+fn build_command(
+    expected_revision: i64,
+    manifest: ModulesManifest,
+    manifest_diff: ManifestDiff,
+    reason: &str,
+) -> PlatformCompositionBuildCommand {
+    PlatformCompositionBuildCommand {
+        tenant_id: Uuid::new_v4(),
+        actor_id: Uuid::new_v4(),
+        idempotency_key: Uuid::new_v4(),
+        expected_revision,
+        manifest,
+        manifest_diff,
+        reason: reason.to_string(),
+    }
+}
+
 async fn enqueue_default_manifest(
     db: &DatabaseConnection,
 ) -> rustok_server::services::platform_composition::PlatformCompositionBuildResult {
@@ -80,13 +105,12 @@ async fn enqueue_default_manifest(
         db,
         publisher,
         &registry,
-        PlatformCompositionBuildCommand {
-            expected_revision: Some(seeded.revision),
+        build_command(
+            seeded.revision,
             manifest,
-            manifest_diff: ManifestDiff::default(),
-            requested_by: "test-admin".to_string(),
-            reason: "success case".to_string(),
-        },
+            ManifestDiff::default(),
+            "success case",
+        ),
     )
     .await
     .expect("build request should succeed")
@@ -146,18 +170,18 @@ async fn stale_revision_does_not_enqueue_build() {
     let seeded = PlatformCompositionService::active_snapshot(&db)
         .await
         .expect("seed active snapshot");
+    let advanced = enqueue_default_manifest(&db).await;
 
     let err = match PlatformCompositionBuildService::update_manifest_and_request_build(
         &db,
         publisher,
         &registry,
-        PlatformCompositionBuildCommand {
-            expected_revision: Some(seeded.revision - 1),
+        build_command(
+            seeded.revision,
             manifest,
-            manifest_diff: ManifestDiff::default(),
-            requested_by: "test-admin".to_string(),
-            reason: "stale revision case".to_string(),
-        },
+            ManifestDiff::default(),
+            "stale revision case",
+        ),
     )
     .await
     {
@@ -177,12 +201,13 @@ async fn stale_revision_does_not_enqueue_build() {
     let state_after = PlatformCompositionService::active_snapshot(&db)
         .await
         .expect("load state after stale revision");
-    assert_eq!(state_after.revision, seeded.revision);
+    assert_eq!(state_after.revision, advanced.snapshot.revision);
 
     let builds = BuildEntity::find().all(&db).await.expect("list builds");
-    assert!(
-        builds.is_empty(),
-        "no build should be enqueued on stale CAS"
+    assert_eq!(
+        builds.len(),
+        1,
+        "the stale command must not enqueue a build after the prior revision advanced"
     );
 }
 
@@ -201,13 +226,12 @@ async fn build_insert_error_rolls_back_platform_revision() {
         &db,
         publisher,
         &registry,
-        PlatformCompositionBuildCommand {
-            expected_revision: Some(seeded.revision),
+        build_command(
+            seeded.revision,
             manifest,
-            manifest_diff: ManifestDiff::default(),
-            requested_by: "test-admin".to_string(),
-            reason: "missing builds table".to_string(),
-        },
+            ManifestDiff::default(),
+            "missing builds table",
+        ),
     )
     .await
     {
@@ -249,13 +273,12 @@ async fn manifest_validation_error_does_not_update_state_or_enqueue_build() {
         &db,
         publisher,
         &registry,
-        PlatformCompositionBuildCommand {
-            expected_revision: Some(seeded.revision),
-            manifest: invalid_manifest,
-            manifest_diff: ManifestDiff::default(),
-            requested_by: "test-admin".to_string(),
-            reason: "invalid manifest should fail validation".to_string(),
-        },
+        build_command(
+            seeded.revision,
+            invalid_manifest,
+            ManifestDiff::default(),
+            "invalid manifest should fail validation",
+        ),
     )
     .await
     {
@@ -272,66 +295,6 @@ async fn manifest_validation_error_does_not_update_state_or_enqueue_build() {
 
     assert_snapshot_unchanged(&db, &seeded, "manifest validation failure (build path)").await;
     assert_no_builds_enqueued(&db, "manifest validation failure (build path)").await;
-}
-
-#[tokio::test]
-async fn update_manifest_validation_error_does_not_update_platform_state() {
-    let db = setup_db(true).await;
-    let registry = ModuleRegistry::new();
-
-    let seeded = PlatformCompositionService::active_snapshot(&db)
-        .await
-        .expect("seed active snapshot");
-
-    let invalid_manifest = invalid_manifest_with_missing_dependency();
-
-    let err = PlatformCompositionService::update_manifest(
-        &db,
-        &registry,
-        Some(seeded.revision),
-        invalid_manifest,
-        Some("test-admin".to_string()),
-    )
-    .await
-    .expect_err("manifest validation should fail before platform state update");
-
-    assert!(matches!(
-        err,
-        rustok_server::services::platform_composition::PlatformCompositionError::Manifest(_)
-    ));
-
-    assert_snapshot_unchanged(&db, &seeded, "manifest validation failure (update path)").await;
-    assert_no_builds_enqueued(&db, "manifest validation failure (update path)").await;
-}
-
-#[tokio::test]
-async fn update_manifest_stale_revision_conflict_does_not_update_platform_state() {
-    let db = setup_db(true).await;
-    let registry = ModuleRegistry::new();
-
-    let seeded = PlatformCompositionService::active_snapshot(&db)
-        .await
-        .expect("seed active snapshot");
-
-    let err = PlatformCompositionService::update_manifest(
-        &db,
-        &registry,
-        Some(seeded.revision - 1),
-        ModulesManifest::default(),
-        Some("test-admin".to_string()),
-    )
-    .await
-    .expect_err("stale revision must fail with conflict");
-
-    assert!(matches!(
-        err,
-        rustok_server::services::platform_composition::PlatformCompositionError::Owner(
-            ModuleCompositionError::RevisionConflict { .. }
-        )
-    ));
-
-    assert_snapshot_unchanged(&db, &seeded, "stale revision conflict (update path)").await;
-    assert_no_builds_enqueued(&db, "stale revision conflict (update path)").await;
 }
 
 #[tokio::test]
@@ -356,17 +319,83 @@ async fn successful_enqueue_sets_manifest_ref_to_platform_state_revision() {
 }
 
 #[tokio::test]
-async fn successful_enqueue_keeps_hash_parity_between_snapshot_and_build() {
+async fn exact_idempotency_retry_replays_original_build_after_composition_changes() {
     let db = setup_db(true).await;
-    let result = enqueue_default_manifest(&db).await;
+    let registry = ModuleRegistry::new();
+    let publisher = Arc::new(NoopBuildEventPublisher);
+    let seeded = PlatformCompositionService::active_snapshot(&db)
+        .await
+        .expect("seed active snapshot");
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let idempotency_key = Uuid::new_v4();
 
-    let expected_hash = PlatformCompositionService::manifest_hash(&result.snapshot.manifest);
-    assert_eq!(result.snapshot.manifest_hash, expected_hash);
-    assert_eq!(result.build.manifest_hash, expected_hash);
+    let first = PlatformCompositionBuildService::update_manifest_and_request_build(
+        &db,
+        publisher.clone(),
+        &registry,
+        PlatformCompositionBuildCommand {
+            tenant_id,
+            actor_id,
+            idempotency_key,
+            expected_revision: seeded.revision,
+            manifest: ModulesManifest::default(),
+            manifest_diff: ManifestDiff::default(),
+            reason: "exact retry".to_string(),
+        },
+    )
+    .await
+    .expect("first build request succeeds");
+
+    let replay = PlatformCompositionBuildService::update_manifest_and_request_build(
+        &db,
+        publisher,
+        &registry,
+        PlatformCompositionBuildCommand {
+            tenant_id,
+            actor_id,
+            idempotency_key,
+            expected_revision: seeded.revision,
+            manifest: ModulesManifest::default(),
+            manifest_diff: ManifestDiff::default(),
+            reason: "exact retry".to_string(),
+        },
+    )
+    .await
+    .expect("exact retry succeeds after the revision advances");
+
+    assert!(!first.replayed);
+    assert!(replay.replayed);
+    assert_eq!(replay.snapshot.revision, first.snapshot.revision);
+    assert_eq!(replay.build.id, first.build.id);
+    assert_eq!(
+        BuildEntity::find()
+            .all(&db)
+            .await
+            .expect("list persisted builds")
+            .len(),
+        1,
+        "an exact retry must not enqueue another immutable build"
+    );
 }
 
 #[tokio::test]
-async fn successful_enqueue_keeps_manifest_snapshot_parity_with_hash() {
+async fn successful_enqueue_keeps_canonical_composition_digest_with_its_snapshot() {
+    let db = setup_db(true).await;
+    let result = enqueue_default_manifest(&db).await;
+
+    let expected_hash = PlatformCompositionService::manifest_hash(&result.snapshot.manifest)
+        .expect("serialize manifest for hash comparison");
+    assert_eq!(result.snapshot.manifest_hash, expected_hash);
+    assert_eq!(
+        result.build.manifest_snapshot,
+        PlatformCompositionService::manifest_snapshot_json(&result.snapshot.manifest)
+            .expect("serialize manifest for snapshot comparison")
+    );
+}
+
+#[tokio::test]
+async fn build_request_identity_is_distinct_from_the_composition_digest() {
     let db = setup_db(true).await;
     let result = enqueue_default_manifest(&db).await;
 
@@ -377,8 +406,11 @@ async fn successful_enqueue_keeps_manifest_snapshot_parity_with_hash() {
     assert_eq!(persisted_snapshot, expected_snapshot);
 
     let expected_hash = rustok_api::manifest_hash::hash_manifest_snapshot(&persisted_snapshot);
-    assert_eq!(result.build.manifest_hash, expected_hash);
     assert_eq!(result.snapshot.manifest_hash, expected_hash);
+    assert_ne!(
+        result.build.manifest_hash, expected_hash,
+        "the build identity covers the complete immutable execution request"
+    );
 }
 
 #[tokio::test]

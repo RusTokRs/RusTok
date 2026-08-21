@@ -126,6 +126,9 @@ for (const environment of [
 }
 requireValue(
   contract.mutation?.expected_enabled === true &&
+    contract.mutation?.expected_lifecycle_revision ===
+      "exact current Pages static lifecycle aggregate revision" &&
+    contract.mutation?.idempotency_key === "fresh UUID for each mutation attempt" &&
     contract.mutation?.cas_conflict_code === "MODULE_SETTINGS_SNAPSHOT_CONFLICT" &&
     contract.mutation?.cas_conflict_requires_rereview === true &&
     contract.mutation?.already_at_target_is_not_new_execution_evidence === true &&
@@ -136,6 +139,7 @@ requireValue(
 for (const key of [
   "attempt_on_confirmed_mutation_postcondition_failure",
   "expected_settings_must_equal_confirmed_applied_settings",
+  "expected_lifecycle_revision_must_equal_confirmed_applied_revision",
   "restore_settings_must_equal_original_snapshot",
   "rollback_cas_conflict_requires_manual_reconciliation",
   "ambiguous_transport_outcome_must_not_auto_rollback",
@@ -230,13 +234,14 @@ for (const marker of [
   "ModuleRolloutPromotionSettingsService",
   "update_if_current",
   "ModuleRolloutPromotionSettingsOutcome::Conflict",
-  "persist_static_normalized_settings_if_current",
+  "update_static_normalized_settings",
+  "ModuleLifecycleSettingsCommand",
 ]) requireText(service, marker, servicePath);
-requireText(lifecycle, "persist_static_normalized_settings_if_current", lifecyclePath);
+requireText(lifecycle, "update_static_normalized_settings", lifecyclePath);
 for (const marker of [
-  "persist_settings_if_current",
-  "expected_enabled",
-  "expected_settings",
+  "StaticTenantLifecycleStore",
+  "active_idempotency_key",
+  "expected_revision",
 ]) requireText(store, marker, storePath);
 for (const marker of [
   "page_builder_rollout_snapshot",

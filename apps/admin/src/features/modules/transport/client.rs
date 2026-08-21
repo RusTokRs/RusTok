@@ -2,8 +2,8 @@ use leptos::prelude::*;
 use rustok_ui_transport::UiTransportPath;
 
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
-    TenantModule, ToggleModuleResult,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot, ModuleInfo,
+    ModuleOperationRecoveryPlan, TenantModule, ToggleModuleResult,
 };
 use crate::shared::api::{ApiError, map_server_fn_error, request};
 
@@ -88,6 +88,24 @@ pub async fn fetch_installed_modules(
             Ok(response.installed_modules)
         }
     }
+}
+
+/// Reads the immutable revision that every static module-set mutation must
+/// present for optimistic concurrency. Static composition writes stay on the
+/// public GraphQL path, including SSR hosts, so headless callers share the
+/// exact same owner contract.
+pub async fn fetch_module_composition_snapshot(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<ModuleCompositionSnapshot, ApiError> {
+    let response: ModuleCompositionSnapshotResponse = request(
+        MODULE_COMPOSITION_SNAPSHOT_QUERY,
+        serde_json::json!({}),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.module_composition_snapshot)
 }
 
 pub async fn fetch_tenant_modules(
@@ -252,6 +270,8 @@ pub async fn fetch_build_history(
 pub async fn toggle_module(
     module_slug: String,
     enabled: bool,
+    expected_revision: i64,
+    idempotency_key: String,
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<ToggleModuleResult, ApiError> {
@@ -260,6 +280,8 @@ pub async fn toggle_module(
         ToggleModuleVariables {
             module_slug,
             enabled,
+            expected_revision,
+            idempotency_key,
         },
         token,
         tenant_slug,
@@ -301,12 +323,18 @@ pub async fn failed_module_operation_recovery_plans(
 
 pub async fn retry_failed_module_operation_post_hook(
     operation_id: String,
+    idempotency_key: String,
+    expected_revision: i64,
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<ModuleOperationRecoveryPlan, ApiError> {
     let response: RetryFailedModuleOperationPostHookResponse = request(
         RETRY_FAILED_MODULE_OPERATION_POST_HOOK_MUTATION,
-        ModuleOperationRecoveryPlanVariables { operation_id },
+        ModuleOperationRecoveryMutationVariables {
+            operation_id,
+            idempotency_key,
+            expected_revision,
+        },
         token,
         tenant_slug,
     )
@@ -316,12 +344,18 @@ pub async fn retry_failed_module_operation_post_hook(
 
 pub async fn compensate_failed_module_operation(
     operation_id: String,
+    idempotency_key: String,
+    expected_revision: i64,
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<TenantModule, ApiError> {
     let response: CompensateFailedModuleOperationResponse = request(
         COMPENSATE_FAILED_MODULE_OPERATION_MUTATION,
-        ModuleOperationRecoveryPlanVariables { operation_id },
+        ModuleOperationRecoveryMutationVariables {
+            operation_id,
+            idempotency_key,
+            expected_revision,
+        },
         token,
         tenant_slug,
     )
@@ -332,38 +366,42 @@ pub async fn compensate_failed_module_operation(
 pub async fn update_module_settings(
     module_slug: String,
     settings: String,
+    expected_revision: i64,
+    idempotency_key: String,
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<TenantModule, ApiError> {
-    match selected_transport_path() {
-        UiTransportPath::NativeServer => update_module_settings_native(module_slug, settings)
-            .await
-            .map_err(map_server_fn_error),
-        UiTransportPath::Graphql => {
-            let response: UpdateModuleSettingsResponse = request(
-                UPDATE_MODULE_SETTINGS_MUTATION,
-                UpdateModuleSettingsVariables {
-                    module_slug,
-                    settings,
-                },
-                token,
-                tenant_slug,
-            )
-            .await?;
-            Ok(response.update_module_settings)
-        }
-    }
+    let response: UpdateModuleSettingsResponse = request(
+        UPDATE_MODULE_SETTINGS_MUTATION,
+        UpdateModuleSettingsVariables {
+            module_slug,
+            settings,
+            expected_revision,
+            idempotency_key,
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.update_module_settings)
 }
 
 pub async fn install_module(
     slug: String,
     version: String,
+    expected_revision: i64,
+    idempotency_key: String,
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<BuildJob, ApiError> {
     let response: InstallModuleResponse = request(
         INSTALL_MODULE_MUTATION,
-        InstallModuleVariables { slug, version },
+        InstallModuleVariables {
+            slug,
+            version,
+            expected_revision,
+            idempotency_key,
+        },
         token,
         tenant_slug,
     )
@@ -373,12 +411,18 @@ pub async fn install_module(
 
 pub async fn uninstall_module(
     slug: String,
+    expected_revision: i64,
+    idempotency_key: String,
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<BuildJob, ApiError> {
     let response: UninstallModuleResponse = request(
         UNINSTALL_MODULE_MUTATION,
-        UninstallModuleVariables { slug },
+        UninstallModuleVariables {
+            slug,
+            expected_revision,
+            idempotency_key,
+        },
         token,
         tenant_slug,
     )
@@ -389,12 +433,19 @@ pub async fn uninstall_module(
 pub async fn upgrade_module(
     slug: String,
     version: String,
+    expected_revision: i64,
+    idempotency_key: String,
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<BuildJob, ApiError> {
     let response: UpgradeModuleResponse = request(
         UPGRADE_MODULE_MUTATION,
-        UpgradeModuleVariables { slug, version },
+        UpgradeModuleVariables {
+            slug,
+            version,
+            expected_revision,
+            idempotency_key,
+        },
         token,
         tenant_slug,
     )

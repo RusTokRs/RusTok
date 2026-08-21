@@ -595,6 +595,7 @@ pub struct RunWorkspaceTestInput {
 pub struct StageReleaseInput {
     pub expected_version: u32,
     pub publish_request_id: String,
+    pub expected_publish_request_revision: i64,
     pub artifact_digest: String,
     pub idempotency_key: Uuid,
 }
@@ -617,6 +618,7 @@ pub struct ImportPublishedReleaseInput {
 pub struct GqlStageRelease {
     pub staging_id: String,
     pub created: bool,
+    pub request_revision: i64,
 }
 
 #[derive(SimpleObject)]

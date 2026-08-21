@@ -1,3 +1,4 @@
+mod artifact_tenant_lifecycle;
 #[cfg(feature = "mod-blog")]
 pub mod blog_rate_limit;
 pub mod dashboard_security;

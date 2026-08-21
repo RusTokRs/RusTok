@@ -70,10 +70,70 @@ impl MigrationTrait for Migration {
                     .unique()
                     .to_owned(),
             )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(ModuleStaticTenantLifecycle::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(ModuleStaticTenantLifecycle::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ModuleStaticTenantLifecycle::ModuleSlug)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(ModuleStaticTenantLifecycle::Revision)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(ColumnDef::new(ModuleStaticTenantLifecycle::ActiveIdempotencyKey).uuid())
+                    .col(
+                        ColumnDef::new(ModuleStaticTenantLifecycle::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(ModuleStaticTenantLifecycle::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .primary_key(
+                        Index::create()
+                            .col(ModuleStaticTenantLifecycle::TenantId)
+                            .col(ModuleStaticTenantLifecycle::ModuleSlug),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_module_static_tenant_lifecycle_tenant_id")
+                            .from(
+                                ModuleStaticTenantLifecycle::Table,
+                                ModuleStaticTenantLifecycle::TenantId,
+                            )
+                            .to(Tenants::Table, Tenants::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
             .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ModuleStaticTenantLifecycle::Table)
+                    .to_owned(),
+            )
+            .await?;
         manager
             .drop_table(Table::drop().table(TenantModules::Table).to_owned())
             .await
@@ -88,6 +148,17 @@ pub enum TenantModules {
     ModuleSlug,
     Enabled,
     Settings,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum ModuleStaticTenantLifecycle {
+    Table,
+    TenantId,
+    ModuleSlug,
+    Revision,
+    ActiveIdempotencyKey,
     CreatedAt,
     UpdatedAt,
 }

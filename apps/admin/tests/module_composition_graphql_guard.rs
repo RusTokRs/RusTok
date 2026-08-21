@@ -117,7 +117,7 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
         "pub async fn install_module(",
         "INSTALL_MODULE_MUTATION",
         "InstallModuleVariables {",
-        &["slug", "version"],
+        &["slug", "version", "expected_revision", "idempotency_key"],
         "Ok(response.install_module)",
     );
     assert_graphql_only_helper(
@@ -125,7 +125,7 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
         "pub async fn uninstall_module(",
         "UNINSTALL_MODULE_MUTATION",
         "UninstallModuleVariables {",
-        &["slug"],
+        &["slug", "expected_revision", "idempotency_key"],
         "Ok(response.uninstall_module)",
     );
     assert_graphql_only_helper(
@@ -133,7 +133,7 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
         "pub async fn upgrade_module(",
         "UPGRADE_MODULE_MUTATION",
         "UpgradeModuleVariables {",
-        &["slug", "version"],
+        &["slug", "version", "expected_revision", "idempotency_key"],
         "Ok(response.upgrade_module)",
     );
     assert_graphql_only_helper(
@@ -141,9 +141,61 @@ fn module_composition_helpers_use_graphql_contract_payloads() {
         "pub async fn toggle_module(",
         "TOGGLE_MODULE_MUTATION",
         "ToggleModuleVariables {",
-        &["module_slug", "enabled"],
+        &[
+            "module_slug",
+            "enabled",
+            "expected_revision",
+            "idempotency_key",
+        ],
         "Ok(response.toggle_module)",
     );
+}
+
+#[test]
+fn module_settings_helper_uses_the_owner_graphql_contract() {
+    let client = read_client_content();
+    let transport = read_transport_content();
+    let mutation = extract_const_string_literal(
+        &transport,
+        "pub const UPDATE_MODULE_SETTINGS_MUTATION: &str = \"",
+    )
+    .expect("update module settings mutation declaration");
+    let helper = extract_function_block(&client, "pub async fn update_module_settings(")
+        .expect("update_module_settings helper signature");
+
+    for required in [
+        "mutation UpdateModuleSettings($moduleSlug: String!, $settings: String!, $expectedRevision: Int!, $idempotencyKey: UUID!)",
+        "updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey)",
+        "revision",
+    ] {
+        assert!(
+            mutation.contains(required),
+            "module settings mutation must retain owner contract fragment `{required}`"
+        );
+    }
+    assert_graphql_only_helper(
+        &client,
+        "pub async fn update_module_settings(",
+        "UPDATE_MODULE_SETTINGS_MUTATION",
+        "UpdateModuleSettingsVariables {",
+        &[
+            "module_slug",
+            "settings",
+            "expected_revision",
+            "idempotency_key",
+        ],
+        "Ok(response.update_module_settings)",
+    );
+    for forbidden in [
+        "update_module_settings_native(",
+        "selected_transport_path()",
+        "combine_native_and_graphql_error",
+    ] {
+        assert!(
+            !helper.contains(forbidden),
+            "module settings write must not reintroduce a local fallback `{forbidden}`"
+        );
+    }
 }
 
 #[test]
@@ -338,16 +390,10 @@ fn module_composition_helpers_do_not_parse_lifecycle_operation_status_taxonomy()
 }
 
 #[test]
-fn module_composition_helpers_do_not_parse_manifest_ref_or_revision_contract() {
+fn module_composition_helpers_do_not_parse_manifest_ref_or_build_revision_output_contract() {
     let content = read_client_content();
 
-    let manifest_contract_fragments = [
-        "manifest_ref",
-        "platform_state:",
-        "manifest_revision",
-        "expected_revision",
-        "revision",
-    ];
+    let manifest_contract_fragments = ["manifest_ref", "platform_state:", "manifest_revision"];
 
     for signature in [
         "pub async fn install_module(",
@@ -361,7 +407,7 @@ fn module_composition_helpers_do_not_parse_manifest_ref_or_revision_contract() {
         for fragment in manifest_contract_fragments {
             assert!(
                 !helper_body.contains(fragment),
-                "{signature} must not parse server-owned manifest contract fragment `{fragment}`"
+                "{signature} must not parse server-owned build output contract fragment `{fragment}`"
             );
         }
     }
@@ -376,7 +422,6 @@ fn module_composition_helpers_do_not_branch_on_control_plane_error_taxonomy() {
         "VALIDATION",
         "INTERNAL",
         "stale revision",
-        "expected_revision",
         "ApiError::BadRequest",
         "ApiError::ServerError",
     ];
@@ -775,7 +820,7 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "TOGGLE_MODULE_MUTATION",
             ],
             variables_literal: "InstallModuleVariables {",
-            variable_fields: &["slug", "version"],
+            variable_fields: &["slug", "version", "expected_revision", "idempotency_key"],
             request_context_fields: &["token", "tenant_slug"],
         },
         Case {
@@ -789,7 +834,7 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "TOGGLE_MODULE_MUTATION",
             ],
             variables_literal: "UninstallModuleVariables {",
-            variable_fields: &["slug"],
+            variable_fields: &["slug", "expected_revision", "idempotency_key"],
             request_context_fields: &["token", "tenant_slug"],
         },
         Case {
@@ -803,7 +848,7 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "TOGGLE_MODULE_MUTATION",
             ],
             variables_literal: "UpgradeModuleVariables {",
-            variable_fields: &["slug", "version"],
+            variable_fields: &["slug", "version", "expected_revision", "idempotency_key"],
             request_context_fields: &["token", "tenant_slug"],
         },
         Case {
@@ -817,7 +862,12 @@ fn module_composition_helpers_preserve_canonical_graphql_contract_matrix() {
                 "UPGRADE_MODULE_MUTATION",
             ],
             variables_literal: "ToggleModuleVariables {",
-            variable_fields: &["module_slug", "enabled"],
+            variable_fields: &[
+                "module_slug",
+                "enabled",
+                "expected_revision",
+                "idempotency_key",
+            ],
             request_context_fields: &["token", "tenant_slug"],
         },
     ];
@@ -984,8 +1034,10 @@ fn module_graphql_mutation_constants_have_stable_operation_shapes() {
         (
             "pub const TOGGLE_MODULE_MUTATION: &str = \"",
             &[
-                "mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!)",
-                "toggleModule(moduleSlug: $moduleSlug, enabled: $enabled)",
+                "mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!, $expectedRevision: Int!, $idempotencyKey: UUID!)",
+                "toggleModule(moduleSlug: $moduleSlug, enabled: $enabled, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey)",
+                "expectedRevision",
+                "idempotencyKey",
                 "moduleSlug",
                 "enabled",
                 "settings",
@@ -1120,9 +1172,9 @@ fn module_recovery_helpers_use_canonical_graphql_surface() {
         "pub const FAILED_MODULE_OPERATION_RECOVERY_PLANS_QUERY",
         "failedModuleOperationRecoveryPlans(moduleSlug: $moduleSlug, limit: $limit)",
         "pub const RETRY_FAILED_MODULE_OPERATION_POST_HOOK_MUTATION",
-        "retryFailedModuleOperationPostHook(operationId: $operationId)",
+        "retryFailedModuleOperationPostHook(operationId: $operationId, idempotencyKey: $idempotencyKey, expectedRevision: $expectedRevision)",
         "pub const COMPENSATE_FAILED_MODULE_OPERATION_MUTATION",
-        "compensateFailedModuleOperation(operationId: $operationId)",
+        "compensateFailedModuleOperation(operationId: $operationId, idempotencyKey: $idempotencyKey, expectedRevision: $expectedRevision)",
         "pub async fn module_operation_recovery_plan(",
         "pub async fn failed_module_operation_recovery_plans(",
         "pub async fn retry_failed_module_operation_post_hook(",
@@ -1321,17 +1373,18 @@ fn lifecycle_runtime_and_journal_parity_contract_is_shared_across_surfaces() {
     for lifecycle_test in [
         "successful_toggle_writes_committed_module_operation",
         "successful_toggle_with_actor_persists_requested_by",
-        "toggle_without_actor_records_null_requested_by",
+        "toggle_records_authenticated_actor_identity",
         "hook_failure_with_actor_records_failed_operation_with_actor",
-        "hook_failure_without_actor_records_failed_operation_with_null_actor",
+        "hook_failure_records_failed_operation_with_authenticated_actor",
         "post_enable_failure_keeps_committed_state_and_marks_failed_operation",
         "post_disable_failure_keeps_committed_state_and_marks_failed_operation",
         "dependency_validation_failure_does_not_create_journal_row",
         "dependent_validation_failure_does_not_create_journal_row",
         "unknown_module_failure_does_not_create_journal_row",
         "core_module_disable_failure_does_not_create_journal_row",
-        "repeated_explicit_disable_does_not_create_an_extra_journal_row",
-        "noop_enable_for_already_enabled_module_does_not_create_extra_journal_row",
+        "repeated_explicit_disable_records_a_distinct_no_op_receipt",
+        "noop_enable_for_already_enabled_module_records_a_receipt",
+        "successful_enable_and_idempotent_retry",
     ] {
         assert!(
             lifecycle_tests.contains(lifecycle_test),
@@ -1406,12 +1459,16 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
 
     let server_hash_helper = extract_function_block(
         &server_composition,
-        "pub fn manifest_hash(manifest: &ModulesManifest) -> String",
+        "pub fn manifest_hash(manifest: &ModulesManifest) -> Result<String, PlatformCompositionError>",
     )
     .expect("server manifest_hash helper should exist");
     assert!(
-        server_hash_helper.contains("hash_manifest(manifest)"),
-        "server composition hashing must use the shared typed hash helper"
+        server_hash_helper.contains("Self::manifest_snapshot_json("),
+        "server composition hashing must serialize through the canonical snapshot contract"
+    );
+    assert!(
+        server_hash_helper.contains("hash_manifest_snapshot(&"),
+        "server composition hashing must use the canonical snapshot digest"
     );
 
     for mutation_decl in [
@@ -1463,8 +1520,8 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
         "PlatformCompositionBuildService::apply_module_mutation_and_request_build(",
         "format!(\"platform_state:{}\", result.snapshot.revision)",
         "assert_eq!(result.build.manifest_revision, result.snapshot.revision)",
-        "successful_enqueue_keeps_hash_parity_between_snapshot_and_build",
-        "successful_enqueue_keeps_manifest_snapshot_parity_with_hash",
+        "successful_enqueue_keeps_canonical_composition_digest_with_its_snapshot",
+        "build_request_identity_is_distinct_from_the_composition_digest",
         "same_manifest_keeps_hash_and_snapshot_stable_across_revisions",
     ] {
         let haystack = if server_fragment
@@ -1481,6 +1538,7 @@ fn manifest_hash_ref_revision_contract_is_shared_across_surfaces() {
     }
     for owner_fragment in [
         "ModuleControlPlane::new(db.clone())",
+        ".admit_build_operation::<Build, _>(",
         ".replace_active_snapshot_and_enqueue(",
     ] {
         assert!(

@@ -142,6 +142,7 @@ where
         self.governance
             .stage_alloy_authored(ModuleAlloyAuthoredStageCommand {
                 request_id: command.publish_request_id,
+                expected_revision: command.expected_publish_request_revision,
                 alloy_tenant_id: source.tenant_id,
                 alloy_script_id: source.script_id,
                 artifact_digest: command.artifact_digest,
@@ -216,6 +217,7 @@ mod tests {
             Ok(ModuleAlloyAuthoredStageResult {
                 staging_id: "rpas_test".to_string(),
                 created: true,
+                request_revision: 2,
             })
         }
     }
@@ -289,6 +291,7 @@ mod tests {
                 script_id: script.id,
                 expected_revision: script.version,
                 publish_request_id: "request-imported-fork".to_string(),
+                expected_publish_request_revision: 1,
                 artifact_digest: source_digest,
                 actor_id: "publisher".to_string(),
                 idempotency_key: Uuid::new_v4(),

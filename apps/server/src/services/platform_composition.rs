@@ -1,19 +1,20 @@
-use rustok_api::manifest_hash::{
-    canonical_manifest_snapshot_json, hash_manifest, hash_manifest_snapshot,
-};
-use rustok_core::ModuleRegistry;
+use rustok_api::manifest_hash::{canonical_manifest_snapshot_json, hash_manifest_snapshot};
 use sea_orm::{DatabaseConnection, DatabaseTransaction, DbErr};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::modules::{
     InstalledManifestModule, ManifestDiff, ManifestError, ManifestManager, ModulesManifest,
 };
+use rustok_api::PortError;
 use rustok_build::build::Model as Build;
 use rustok_build::{BuildEventPublisher, BuildRequest, BuildService};
 use rustok_modules::{
-    ModuleCompositionBuildEnqueuer, ModuleCompositionError, ModuleCompositionSnapshot,
-    ModuleCompositionUpdate, ModuleControlPlane, ModuleDefinitionError,
+    ModuleCompositionBuildAdmission, ModuleCompositionBuildEnqueueResult,
+    ModuleCompositionBuildEnqueuer, ModuleCompositionBuildLease, ModuleCompositionError,
+    ModuleCompositionOperation, ModuleCompositionSnapshot, ModuleCompositionUpdate,
+    ModuleControlPlane, ModuleDefinitionError, SeaOrmModuleCompositionService,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,12 +55,13 @@ pub enum PlatformCompositionBuildError {
 pub struct PlatformCompositionBuildResult {
     pub snapshot: PlatformCompositionSnapshot,
     pub build: Build,
+    pub replayed: bool,
 }
 
 /// Host-authenticated intent to change the active platform-native module set.
 /// The composition adapter obtains the durable snapshot, applies the static
 /// manifest adapter, and delegates the revision-guarded write to the owner.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum PlatformCompositionModuleChange {
     Install {
         module_slug: String,
@@ -79,19 +81,32 @@ pub enum PlatformCompositionModuleChange {
 /// and composition owner respectively.
 #[derive(Debug, Clone)]
 pub struct PlatformCompositionModuleMutation {
-    pub expected_revision: Option<i64>,
-    pub requested_by: String,
+    pub tenant_id: Uuid,
+    pub actor_id: Uuid,
+    pub idempotency_key: Uuid,
+    pub expected_revision: i64,
     pub change: PlatformCompositionModuleChange,
 }
 
 pub struct PlatformCompositionBuildService;
 
 pub struct PlatformCompositionBuildCommand {
-    pub expected_revision: Option<i64>,
+    pub tenant_id: Uuid,
+    pub actor_id: Uuid,
+    pub idempotency_key: Uuid,
+    pub expected_revision: i64,
     pub manifest: ModulesManifest,
     pub manifest_diff: ManifestDiff,
-    pub requested_by: String,
     pub reason: String,
+}
+
+#[derive(Serialize)]
+struct PlatformCompositionBuildReceiptRequest<'a> {
+    actor_id: Uuid,
+    expected_revision: i64,
+    manifest: &'a ModulesManifest,
+    manifest_changes: &'a [String],
+    reason: &'a str,
 }
 
 struct ServerCompositionBuildEnqueuer {
@@ -168,27 +183,6 @@ impl PlatformCompositionService {
         Ok(ManifestManager::installed_modules(&manifest))
     }
 
-    pub async fn update_manifest(
-        db: &DatabaseConnection,
-        registry: &ModuleRegistry,
-        expected_revision: Option<i64>,
-        manifest: ModulesManifest,
-        updated_by: Option<String>,
-    ) -> Result<PlatformCompositionSnapshot, PlatformCompositionError> {
-        ManifestManager::validate_with_registry(&manifest, registry)?;
-
-        let manifest_json = Self::manifest_snapshot_json(&manifest)?;
-        let snapshot = ModuleControlPlane::new(db.clone())
-            .composition()
-            .replace_active_snapshot(ModuleCompositionUpdate {
-                expected_revision,
-                manifest: manifest_json,
-                updated_by,
-            })
-            .await?;
-        Self::snapshot_from_owner(snapshot)
-    }
-
     pub fn manifest_snapshot_json(
         manifest: &ModulesManifest,
     ) -> Result<serde_json::Value, PlatformCompositionError> {
@@ -196,8 +190,10 @@ impl PlatformCompositionService {
             .map_err(|err| PlatformCompositionError::Serialize(err.to_string()))
     }
 
-    pub fn manifest_hash(manifest: &ModulesManifest) -> String {
-        hash_manifest(manifest).unwrap_or_else(|_| hash_manifest_snapshot(&serde_json::Value::Null))
+    pub fn manifest_hash(manifest: &ModulesManifest) -> Result<String, PlatformCompositionError> {
+        Ok(hash_manifest_snapshot(&Self::manifest_snapshot_json(
+            manifest,
+        )?))
     }
 
     fn snapshot_from_owner(
@@ -237,6 +233,68 @@ impl PlatformCompositionBuildService {
         registry: &rustok_core::ModuleRegistry,
         mutation: PlatformCompositionModuleMutation,
     ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
+        let operation = ModuleCompositionOperation {
+            tenant_id: mutation.tenant_id,
+            actor_id: mutation.actor_id,
+            idempotency_key: mutation.idempotency_key,
+            expected_revision: mutation.expected_revision,
+        };
+        let owner = ModuleControlPlane::new(db.clone()).composition();
+        let lease = match owner
+            .admit_build_operation::<Build, _>(&operation, &mutation.change)
+            .await
+            .map_err(PlatformCompositionError::from)?
+        {
+            ModuleCompositionBuildAdmission::Replay(result) => {
+                return Self::finalize_build_request(event_publisher, result).await;
+            }
+            ModuleCompositionBuildAdmission::Run(lease) => lease,
+        };
+
+        let command = match Self::adapt_module_mutation(db, mutation).await {
+            Ok(command) => command,
+            Err(error) => return Self::fail_admitted_operation(&owner, lease, error).await,
+        };
+        Self::run_admitted_build(db, event_publisher, registry, &owner, lease, command).await
+    }
+
+    pub async fn update_manifest_and_request_build(
+        db: &DatabaseConnection,
+        event_publisher: std::sync::Arc<dyn BuildEventPublisher>,
+        registry: &rustok_core::ModuleRegistry,
+        command: PlatformCompositionBuildCommand,
+    ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
+        let operation = ModuleCompositionOperation {
+            tenant_id: command.tenant_id,
+            actor_id: command.actor_id,
+            idempotency_key: command.idempotency_key,
+            expected_revision: command.expected_revision,
+        };
+        let receipt_request = PlatformCompositionBuildReceiptRequest {
+            actor_id: command.actor_id,
+            expected_revision: command.expected_revision,
+            manifest: &command.manifest,
+            manifest_changes: &command.manifest_diff.changes,
+            reason: &command.reason,
+        };
+        let owner = ModuleControlPlane::new(db.clone()).composition();
+        let lease = match owner
+            .admit_build_operation::<Build, _>(&operation, &receipt_request)
+            .await
+            .map_err(PlatformCompositionError::from)?
+        {
+            ModuleCompositionBuildAdmission::Replay(result) => {
+                return Self::finalize_build_request(event_publisher, result).await;
+            }
+            ModuleCompositionBuildAdmission::Run(lease) => lease,
+        };
+        Self::run_admitted_build(db, event_publisher, registry, &owner, lease, command).await
+    }
+
+    async fn adapt_module_mutation(
+        db: &DatabaseConnection,
+        mutation: PlatformCompositionModuleMutation,
+    ) -> Result<PlatformCompositionBuildCommand, PlatformCompositionBuildError> {
         let snapshot = PlatformCompositionService::active_snapshot(db).await?;
         let mut manifest = snapshot.manifest;
         let (manifest_diff, reason) = match mutation.change {
@@ -262,54 +320,84 @@ impl PlatformCompositionBuildService {
                 format!("upgrade module {module_slug}"),
             ),
         };
-        let command = PlatformCompositionBuildCommand {
-            expected_revision: Some(mutation.expected_revision.unwrap_or(snapshot.revision)),
+        Ok(PlatformCompositionBuildCommand {
+            tenant_id: mutation.tenant_id,
+            actor_id: mutation.actor_id,
+            idempotency_key: mutation.idempotency_key,
+            expected_revision: mutation.expected_revision,
             manifest,
             manifest_diff,
-            requested_by: mutation.requested_by,
             reason,
-        };
-        Self::update_manifest_and_request_build(db, event_publisher, registry, command).await
+        })
     }
 
-    pub async fn update_manifest_and_request_build(
-        db: &DatabaseConnection,
+    async fn run_admitted_build(
+        _db: &DatabaseConnection,
         event_publisher: std::sync::Arc<dyn BuildEventPublisher>,
         registry: &rustok_core::ModuleRegistry,
+        owner: &SeaOrmModuleCompositionService,
+        lease: ModuleCompositionBuildLease,
         command: PlatformCompositionBuildCommand,
     ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
         let PlatformCompositionBuildCommand {
+            tenant_id,
+            actor_id,
+            idempotency_key,
             expected_revision,
             manifest,
             manifest_diff,
-            requested_by,
             reason,
         } = command;
-        ManifestManager::validate_with_registry(&manifest, registry)
-            .map_err(PlatformCompositionError::from)?;
-        let manifest_json = PlatformCompositionService::manifest_snapshot_json(&manifest)?;
+        let prepared = (|| -> Result<serde_json::Value, PlatformCompositionError> {
+            ManifestManager::validate(&manifest)?;
+            ManifestManager::validate_deployment_selection(&manifest)?;
+            ManifestManager::validate_with_registry(&manifest, registry)?;
+            PlatformCompositionService::manifest_snapshot_json(&manifest)
+        })();
+        let manifest_json = match prepared {
+            Ok(manifest_json) => manifest_json,
+            Err(error) => {
+                return Self::fail_admitted_operation(owner, lease, error.into()).await;
+            }
+        };
         let enqueuer = ServerCompositionBuildEnqueuer {
             manifest,
             manifest_diff,
-            requested_by: requested_by.clone(),
+            requested_by: actor_id.to_string(),
             reason,
         };
-        let (owner_snapshot, build) = ModuleControlPlane::new(db.clone())
-            .composition()
+        let owner_result = owner
             .replace_active_snapshot_and_enqueue(
                 ModuleCompositionUpdate {
-                    expected_revision,
+                    operation: ModuleCompositionOperation {
+                        tenant_id,
+                        actor_id,
+                        idempotency_key,
+                        expected_revision,
+                    },
                     manifest: manifest_json,
-                    updated_by: Some(requested_by),
                 },
                 &enqueuer,
+                lease,
             )
             .await
             .map_err(PlatformCompositionError::from)?;
+        Self::finalize_build_request(event_publisher, owner_result).await
+    }
+
+    async fn finalize_build_request(
+        event_publisher: std::sync::Arc<dyn BuildEventPublisher>,
+        owner_result: ModuleCompositionBuildEnqueueResult<Build>,
+    ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
         let result = PlatformCompositionBuildResult {
-            snapshot: PlatformCompositionService::snapshot_from_owner(owner_snapshot)?,
-            build,
+            snapshot: PlatformCompositionService::snapshot_from_owner(owner_result.snapshot)?,
+            build: owner_result.output,
+            replayed: owner_result.replayed,
         };
+        // Build persistence is owner-transactional, while hub and bus delivery
+        // are intentionally at-least-once notifications. Re-emitting on a
+        // terminal replay repairs a prior post-commit delivery failure without
+        // queueing another immutable build record.
         event_publisher
             .publish(rustok_build::BuildEvent::BuildRequested {
                 build_id: result.build.id,
@@ -318,6 +406,43 @@ impl PlatformCompositionBuildService {
             .await
             .map_err(|error| PlatformCompositionBuildError::Build(error.to_string()))?;
         Ok(result)
+    }
+
+    async fn fail_admitted_operation(
+        owner: &SeaOrmModuleCompositionService,
+        lease: ModuleCompositionBuildLease,
+        error: PlatformCompositionBuildError,
+    ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
+        let terminal_error = composition_operation_failure(&error);
+        owner
+            .fail_build_operation(lease, &terminal_error)
+            .await
+            .map_err(PlatformCompositionError::from)?;
+        Err(error)
+    }
+}
+
+fn composition_operation_failure(error: &PlatformCompositionBuildError) -> PortError {
+    match error {
+        PlatformCompositionBuildError::Composition(PlatformCompositionError::Manifest(_))
+        | PlatformCompositionBuildError::Composition(PlatformCompositionError::Definition(_)) => {
+            PortError::validation("modules.composition_invalid_mutation", error.to_string())
+        }
+        PlatformCompositionBuildError::Composition(
+            PlatformCompositionError::RevisionConflict { .. },
+        ) => PortError::conflict("modules.composition_revision_conflict", error.to_string()),
+        PlatformCompositionBuildError::Build(_)
+        | PlatformCompositionBuildError::Composition(PlatformCompositionError::Database(_))
+        | PlatformCompositionBuildError::Composition(PlatformCompositionError::EffectivePolicy(
+            _,
+        ))
+        | PlatformCompositionBuildError::Composition(PlatformCompositionError::Owner(_)) => {
+            PortError::unavailable("modules.composition_unavailable", error.to_string())
+        }
+        PlatformCompositionBuildError::Composition(PlatformCompositionError::Serialize(_))
+        | PlatformCompositionBuildError::Composition(PlatformCompositionError::Deserialize(_)) => {
+            PortError::invariant_violation("modules.composition_invariant", error.to_string())
+        }
     }
 }
 

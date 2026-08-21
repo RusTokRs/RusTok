@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   lstatSync,
@@ -31,9 +31,9 @@ const REPO_DIGEST_PATTERN = /^[^@\s]+@sha256:[0-9a-f]{64}$/u;
 const CONFLICT_CODE = "MODULE_SETTINGS_SNAPSHOT_CONFLICT";
 
 const tenantModulesQuery =
-  "query FfaFbaPromotionTenantModules($limit: Int) { tenantModules(limit: $limit) { moduleSlug enabled settings } }";
+  "query FfaFbaPromotionTenantModules($limit: Int) { tenantModules(limit: $limit) { moduleSlug enabled settings revision } }";
 const casMutation =
-  "mutation FfaFbaPromotionSettings($moduleSlug: String!, $expectedEnabled: Boolean!, $expectedSettings: String!, $settings: String!) { compareAndSwapModuleSettings(moduleSlug: $moduleSlug, expectedEnabled: $expectedEnabled, expectedSettings: $expectedSettings, settings: $settings) { moduleSlug enabled settings } }";
+  "mutation FfaFbaPromotionSettings($moduleSlug: String!, $expectedEnabled: Boolean!, $expectedSettings: String!, $settings: String!, $expectedRevision: Int!, $idempotencyKey: UUID!) { compareAndSwapModuleSettings(moduleSlug: $moduleSlug, expectedEnabled: $expectedEnabled, expectedSettings: $expectedSettings, settings: $settings, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) { moduleSlug enabled settings revision } }";
 const rolloutSnapshotQuery =
   "query FfaFbaPromotionRolloutSnapshot { pageBuilderRolloutSnapshot { tenantSlug builderEnabled previewEnabled propertiesEnabled publishEnabled providerHealthObserved } }";
 
@@ -555,13 +555,23 @@ async function loadPagesModule(target) {
   if (pages === undefined || pages.enabled !== true) {
     fail("Pages module must be enabled for FFA/FBA control-plane promotion");
   }
+  if (!Number.isSafeInteger(pages.revision) || pages.revision < 0) {
+    fail("Pages module must return a non-negative lifecycle revision");
+  }
   return {
     settings: parseSettings(pages.settings, "Pages module settings"),
+    revision: pages.revision,
     response: result.response,
   };
 }
 
-async function compareAndSwapPagesSettings(target, expectedSettings, settings, label) {
+async function compareAndSwapPagesSettings(
+  target,
+  expectedRevision,
+  expectedSettings,
+  settings,
+  label,
+) {
   const result = await graphqlRequest(
     target,
     casMutation,
@@ -570,6 +580,8 @@ async function compareAndSwapPagesSettings(target, expectedSettings, settings, l
       expectedEnabled: true,
       expectedSettings: JSON.stringify(expectedSettings),
       settings: JSON.stringify(settings),
+      expectedRevision,
+      idempotencyKey: randomUUID(),
     },
     label,
     true,
@@ -578,13 +590,16 @@ async function compareAndSwapPagesSettings(target, expectedSettings, settings, l
   if (module.moduleSlug !== "pages" || module.enabled !== true) {
     throw new MutationOutcomeAmbiguousError(`${label} returned the wrong module identity`, result.response);
   }
+  if (!Number.isSafeInteger(module.revision) || module.revision < 0) {
+    throw new MutationOutcomeAmbiguousError(`${label} returned an invalid lifecycle revision`, result.response);
+  }
   let returnedSettings;
   try {
     returnedSettings = parseSettings(module.settings, `${label} returned settings`);
   } catch (error) {
     throw new MutationOutcomeAmbiguousError(error.message, result.response);
   }
-  return { settings: returnedSettings, response: result.response };
+  return { settings: returnedSettings, revision: module.revision, response: result.response };
 }
 
 async function verifyPromotedPostcondition(target, appliedSettings) {
@@ -759,6 +774,7 @@ async function main() {
   try {
     applied = await compareAndSwapPagesSettings(
       target,
+      before.revision,
       before.settings,
       requested,
       "compareAndSwapModuleSettings promotion",
@@ -815,6 +831,7 @@ async function main() {
     try {
       rollback = await compareAndSwapPagesSettings(
         target,
+        applied.revision,
         applied.settings,
         before.settings,
         "compareAndSwapModuleSettings promotion rollback",

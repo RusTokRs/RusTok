@@ -87,6 +87,7 @@ pub struct RunWorkspaceTestRequest {
 pub struct StageReleaseRequest {
     pub expected_version: u32,
     pub publish_request_id: String,
+    pub expected_publish_request_revision: i64,
     pub artifact_digest: String,
     pub idempotency_key: Uuid,
 }
@@ -289,6 +290,7 @@ impl From<TestRun> for TestRunResponse {
 pub struct StageReleaseResponse {
     pub staging_id: String,
     pub created: bool,
+    pub request_revision: i64,
 }
 
 #[derive(Debug, Serialize)]

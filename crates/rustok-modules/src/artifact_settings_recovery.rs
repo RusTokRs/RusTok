@@ -3928,6 +3928,7 @@ mod tests {
             }],
             settings_schema_digest: Some(schema_digest),
             data_schema_digest: None,
+            localization_catalogs: Vec::new(),
             ui_contributions: Vec::new(),
             persistence_contract: None,
         }

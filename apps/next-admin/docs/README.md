@@ -52,6 +52,11 @@ Local documentation for `apps/next-admin`.
 - the host module operator page reads `marketplaceRegistryFreshness` through
   `src/shared/api/modules.ts` and renders the same minimized operator evidence
   as Leptos; it does not read aggregate readiness or registry endpoints;
+- the shared module-toggle helper sends the owner-issued lifecycle revision with
+  a fresh UUID idempotency key and replaces its revision from the mutation
+  result; tenant, actor, permission, correlation, replay, and lifecycle error
+  semantics remain authenticated server and owner responsibilities rather than
+  Next-local state;
 - code must go through canonical FSD paths and shared package boundaries.
 
 ## Ownership contract for module UI

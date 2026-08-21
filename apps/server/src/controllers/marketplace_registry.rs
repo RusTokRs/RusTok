@@ -325,6 +325,7 @@ async fn publish_status(
     Ok(Json(RegistryPublishStatusResponse {
         schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
         request_id: snapshot.request.id,
+        revision: snapshot.request.revision,
         slug: snapshot.request.slug,
         version: snapshot.request.version,
         status: snapshot.request.status,
@@ -1667,6 +1668,7 @@ async fn complete_remote_validation_stage(
         ctx.db(),
         &claim_id,
         &runner_id,
+        request.expected_request_revision,
         RemoteTerminalOutcome::Passed,
         request.detail.as_deref(),
         request.reason_code.as_deref(),
@@ -1724,6 +1726,7 @@ async fn fail_remote_validation_stage(
         ctx.db(),
         &claim_id,
         &runner_id,
+        request.expected_request_revision,
         RemoteTerminalOutcome::Failed,
         request.detail.as_deref(),
         request.reason_code.as_deref(),
@@ -2600,6 +2603,7 @@ fn runner_claim_payload(
     RegistryRunnerClaimPayload {
         claim_id: claim.claim_id,
         request_id: claim.request_id,
+        request_revision: claim.request_revision,
         slug: claim.slug,
         version: claim.version,
         stage_key: claim.stage_key,

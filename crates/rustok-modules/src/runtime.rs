@@ -622,6 +622,7 @@ mod tests {
                 schema_documents: vec![input_schema, output_schema],
                 settings_schema_digest: None,
                 data_schema_digest: None,
+                localization_catalogs: Vec::new(),
                 ui_contributions: Vec::new(),
                 persistence_contract: None,
             },

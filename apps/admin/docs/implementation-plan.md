@@ -41,6 +41,23 @@ same owner catalog facade. Both native and GraphQL paths require
 success, and consecutive failures without learning endpoint or remote error
 details.
 
+Static composition install, uninstall, and upgrade use GraphQL only. The host
+reads the owner-issued composition revision, passes it as a required optimistic
+precondition with a fresh UUID idempotency key, and relies on authenticated
+server context for tenant, actor, and permission. It has no local manifest,
+hash, build-plan, retry, or fallback implementation; terminal owner receipt
+replay returns the original build after a later composition change.
+
+Static lifecycle enablement uses the same GraphQL-only ownership boundary. The
+host sends a fresh UUID idempotency key but never supplies tenant, actor,
+permission, correlation, or `requested_by` text; the server derives those facts
+from authentication and the owner journals exact replay, including an explicit
+no-op intent. Static lifecycle revision CAS across enablement and settings is
+still unfinished and must not be represented as composition-revision parity.
+Post-hook retry and compensation use the same typed GraphQL boundary with a
+fresh UUID idempotency key per user action; the host does not provide actor
+display text or lifecycle correlation.
+
 ## Active Work
 
 - Keep host FFA guardrails current in `scripts/verify/verify-frontend-host-ffa-contract.mjs`.

@@ -201,6 +201,7 @@ pub struct ModuleOwnerBindCommand {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModulePublishRequestRejectCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub actor_principal: serde_json::Value,
     pub reason: String,
     pub reason_code: String,
@@ -211,6 +212,7 @@ pub struct ModulePublishRequestRejectCommand {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModulePublishRequestChangesCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub actor_principal: serde_json::Value,
     pub reason: String,
     pub reason_code: String,
@@ -220,6 +222,7 @@ pub struct ModulePublishRequestChangesCommand {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModulePublishRequestHoldCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub actor_principal: serde_json::Value,
     pub reason: String,
     pub reason_code: String,
@@ -228,6 +231,7 @@ pub struct ModulePublishRequestHoldCommand {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModulePublishRequestResumeCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub actor_principal: serde_json::Value,
     pub reason: String,
     pub reason_code: String,
@@ -247,6 +251,7 @@ pub struct ModulePublishApprovalOverride {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModulePublishRequestPublicationCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     /// Stable external command identity for exactly-once final publication.
     pub idempotency_key: Uuid,
     pub actor_principal: serde_json::Value,
@@ -261,6 +266,9 @@ pub struct ModulePublishRequestPublicationCommand {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleValidationStageReportCommand {
     pub request_id: String,
+    /// Revision observed from the authorized publish-request snapshot before
+    /// the manual stage transition.
+    pub expected_revision: i64,
     pub stage_key: String,
     pub status: String,
     pub actor_principal: serde_json::Value,
@@ -290,6 +298,9 @@ pub struct ModuleRemoteValidationHeartbeatCommand {
 pub struct ModuleRemoteValidationTerminalCommand {
     pub claim_id: String,
     pub runner_id: String,
+    /// Revision issued with the remote claim. A terminal result cannot apply
+    /// after another request-level transition has superseded that lease.
+    pub expected_request_revision: i64,
     pub outcome: ModuleRemoteValidationTerminalOutcome,
     /// Untrusted runner output. The owner never persists or emits this value.
     pub detail: Option<String>,
@@ -320,6 +331,9 @@ pub struct ModuleRemoteValidationClaimCommand {
 pub struct ModuleRemoteValidationClaim {
     pub claim_id: String,
     pub request_id: String,
+    /// Aggregate revision after the claim transitioned its stage to running.
+    /// The runner returns this value with its terminal outcome.
+    pub request_revision: i64,
     pub slug: String,
     pub version: String,
     pub stage_key: String,
@@ -348,6 +362,7 @@ pub struct ModuleRemoteValidationRunnerSnapshot {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleValidationJobEnqueueCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub actor_principal: serde_json::Value,
     pub allow_rejected_retry: bool,
 }
@@ -383,6 +398,9 @@ pub struct ModuleGovernanceOwnerSnapshot {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleGovernanceRequestSnapshot {
     pub id: String,
+    /// Monotonically increasing aggregate revision. Every owner mutation of
+    /// this request advances it in the same transaction as the state change.
+    pub revision: i64,
     pub slug: String,
     pub version: String,
     pub status: String,
@@ -581,6 +599,10 @@ pub struct ModuleValidationJobClaimCommand {
 pub struct ModuleValidationJobWorkItem {
     pub validation_job_id: String,
     pub request_id: String,
+    /// Publish-request revision observed when this exact job was claimed.
+    /// The worker must return it so a delayed result cannot overwrite a later
+    /// moderator or publisher transition.
+    pub expected_request_revision: i64,
     pub slug: String,
     pub version: String,
     pub crate_name: String,
@@ -637,6 +659,10 @@ pub enum ModuleValidationJobResultOutcome {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleValidationJobResultCommand {
     pub validation_job_id: String,
+    /// Immutable request revision carried from the worker lease. Exact
+    /// terminal redelivery remains idempotent; a running job must match it
+    /// before the owner accepts its result.
+    pub expected_request_revision: i64,
     pub actor_principal: serde_json::Value,
     pub outcome: ModuleValidationJobResultOutcome,
     pub warnings: Vec<String>,
@@ -745,6 +771,7 @@ pub enum ModuleExternalSourceEvidence {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleExternalPrebuiltStageCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub artifact_digest: String,
     pub source_evidence: ModuleExternalSourceEvidence,
     pub provenance_reference: String,
@@ -764,6 +791,8 @@ pub struct ModuleExternalPrebuiltStageCommand {
 pub struct ModuleExternalPrebuiltStageResult {
     pub staging_id: String,
     pub created: bool,
+    /// Current publish-request aggregate revision after this command.
+    pub request_revision: i64,
 }
 
 /// Owner-authenticated immutable staging of a reviewed Alloy source revision.
@@ -772,6 +801,7 @@ pub struct ModuleExternalPrebuiltStageResult {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleAlloyAuthoredStageCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub alloy_tenant_id: Uuid,
     pub alloy_script_id: Uuid,
     pub artifact_digest: String,
@@ -799,6 +829,8 @@ pub struct ModuleAlloyAuthoredStageCommand {
 pub struct ModuleAlloyAuthoredStageResult {
     pub staging_id: String,
     pub created: bool,
+    /// Current publish-request aggregate revision after this command.
+    pub request_revision: i64,
 }
 
 /// Metadata of bytes that a host has hashed before asking the owner for an
@@ -807,6 +839,7 @@ pub struct ModuleAlloyAuthoredStageResult {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModulePublishArtifactAttachCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub actor_principal: serde_json::Value,
     /// An authenticated host fact. It narrows the owner authorization decision
     /// but never replaces owner binding or requester identity checks.
@@ -862,6 +895,10 @@ impl ModulePublicationEvidenceAuthority {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModulePublicationEvidenceCommand {
     pub request_id: String,
+    /// Revision of the publish-request aggregate observed before recording a
+    /// new immutable fact. An exact evidence replay is accepted independently
+    /// of this value and returns the currently locked aggregate revision.
+    pub expected_revision: i64,
     pub authority: ModulePublicationEvidenceAuthority,
     pub subject_digest_sha256: String,
     pub evidence_reference: String,
@@ -874,6 +911,9 @@ pub struct ModulePublicationEvidenceCommand {
 pub struct ModulePublicationEvidenceResult {
     pub evidence_id: String,
     pub recorded: bool,
+    /// Current publish-request aggregate revision. A newly recorded fact
+    /// advances it once; an exact idempotent replay returns it unchanged.
+    pub request_revision: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -909,6 +949,7 @@ pub struct ModulePublishedRhaiWorkspace {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleBuildServiceAttestationCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub receipt: ModuleBuildPublicationReceipt,
     pub issuer_identity: String,
     pub policy_revision: String,
@@ -921,6 +962,7 @@ pub struct ModuleBuildServiceAttestationCommand {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModulePlatformAdmissionCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub registry_id: String,
     pub reference: OciArtifactReference,
     pub descriptor: crate::ModuleArtifactDescriptor,
@@ -934,6 +976,7 @@ pub struct ModulePlatformAdmissionCommand {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModulePublishPlatformBuildStageCommand {
     pub request_id: String,
+    pub expected_revision: i64,
     pub tenant_id: Uuid,
     pub build_request_id: Uuid,
     pub idempotency_key: Uuid,
@@ -947,6 +990,10 @@ pub struct ModulePublishPlatformBuildStageCommand {
 pub struct ModulePublishPlatformBuildStageResult {
     pub staging_id: String,
     pub created: bool,
+    /// Current aggregate revision after this staging command. An exact
+    /// idempotent replay returns the current locked revision without another
+    /// aggregate transition.
+    pub request_revision: i64,
 }
 
 /// Owner-reloaded immutable platform build selected for publication evidence.
@@ -956,6 +1003,9 @@ pub struct ModulePublishPlatformBuildStageResult {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModulePlatformPublicationSource {
     pub request_id: String,
+    /// Revision captured with the source facts. The evidence producer must
+    /// present it when it records the build-service attestation.
+    pub request_revision: i64,
     pub tenant_id: Uuid,
     pub build_request_id: Uuid,
     pub slug: String,
@@ -998,6 +1048,7 @@ impl ModuleOwnerBindCommand {
 impl ModulePublishRequestRejectCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
             || self.request_id.len() > MAX_PUBLICATION_REQUEST_ID_BYTES
             || self.request_id.chars().any(char::is_control)
             || self.reason.trim().is_empty()
@@ -1019,6 +1070,7 @@ impl ModulePublishRequestRejectCommand {
 impl ModulePublishRequestChangesCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
             || self.reason.trim().is_empty()
             || self.actor_principal.is_null()
         {
@@ -1038,6 +1090,7 @@ impl ModulePublishRequestChangesCommand {
 impl ModulePublishRequestHoldCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
             || self.reason.trim().is_empty()
             || self.actor_principal.is_null()
         {
@@ -1055,6 +1108,7 @@ impl ModulePublishRequestHoldCommand {
 impl ModulePublishRequestResumeCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
             || self.reason.trim().is_empty()
             || self.actor_principal.is_null()
         {
@@ -1074,6 +1128,7 @@ impl ModulePublishRequestResumeCommand {
 impl ModulePublishRequestPublicationCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
             || self.idempotency_key.is_nil()
             || !self.actor_principal.is_object()
             || !self.publisher_principal.is_object()
@@ -1116,6 +1171,7 @@ impl ModuleValidationStageReportCommand {
 
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
             || self.stage_key.trim().is_empty()
             || !self.actor_principal.is_object()
             || !matches!(
@@ -1150,7 +1206,10 @@ impl ModuleRemoteValidationHeartbeatCommand {
 
 impl ModuleRemoteValidationTerminalCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
-        if self.claim_id.trim().is_empty() || self.runner_id.trim().is_empty() {
+        if self.claim_id.trim().is_empty()
+            || self.runner_id.trim().is_empty()
+            || self.expected_request_revision < 1
+        {
             return Err(ModuleGovernanceError::InvalidRemoteValidationLeaseCommand);
         }
         if let Some(reason_code) = &self.reason_code
@@ -1192,7 +1251,10 @@ impl ModuleRemoteValidationClaimCommand {
 
 impl ModuleValidationJobEnqueueCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
-        if self.request_id.trim().is_empty() || !self.actor_principal.is_object() {
+        if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
+            || !self.actor_principal.is_object()
+        {
             return Err(ModuleGovernanceError::InvalidValidationJobEnqueueCommand);
         }
         Ok(())
@@ -1211,6 +1273,7 @@ impl ModuleValidationJobClaimCommand {
 impl ModuleValidationJobResultCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.validation_job_id.trim().is_empty()
+            || self.expected_request_revision < 1
             || !self.actor_principal.is_object()
             || !self.automated_checks.is_array()
             || self
@@ -1309,6 +1372,7 @@ impl ModulePublishRequestCreateCommand {
 impl ModuleExternalPrebuiltStageCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
             || receipt_digest_sha256(&self.artifact_digest).is_err()
             || receipt_digest_sha256(&self.provenance_digest).is_err()
             || self.idempotency_key.is_nil()
@@ -1364,6 +1428,7 @@ impl ModuleExternalPrebuiltStageCommand {
 impl ModuleAlloyAuthoredStageCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
             || self.alloy_tenant_id.is_nil()
             || self.alloy_script_id.is_nil()
             || receipt_digest_sha256(&self.artifact_digest).is_err()
@@ -1403,6 +1468,7 @@ impl ModuleAlloyAuthoredStageCommand {
 impl ModulePublishArtifactAttachCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
             || !is_sha256_hex(&self.checksum_sha256)
             || self.artifact_size < 0
             || self.content_type.trim().is_empty()
@@ -1424,6 +1490,9 @@ impl ModulePublicationEvidenceCommand {
         ) {
             return Err(ModuleGovernanceError::PublicationEvidenceAuthorityReserved);
         }
+        if self.expected_revision < 1 {
+            return Err(ModuleGovernanceError::InvalidPublicationEvidenceCommand);
+        }
         validate_publication_evidence_fields(
             &self.request_id,
             &self.subject_digest_sha256,
@@ -1437,7 +1506,9 @@ impl ModulePublicationEvidenceCommand {
 
 impl ModuleBuildServiceAttestationCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
-        if self.receipt.signature_authority != ModuleBuildSignatureAuthority::BuildService {
+        if self.expected_revision < 1
+            || self.receipt.signature_authority != ModuleBuildSignatureAuthority::BuildService
+        {
             return Err(ModuleGovernanceError::InvalidBuildServiceAttestationCommand);
         }
         let references = [
@@ -1471,6 +1542,7 @@ impl ModuleBuildServiceAttestationCommand {
     ) -> Result<ModulePublicationEvidenceCommand, ModuleGovernanceError> {
         Ok(ModulePublicationEvidenceCommand {
             request_id: self.request_id.clone(),
+            expected_revision: self.expected_revision,
             authority: ModulePublicationEvidenceAuthority::BuildServiceAttestation,
             subject_digest_sha256: receipt_subject_digest_sha256(&self.receipt)?.to_string(),
             evidence_reference: format!("oci://{}", self.receipt.signature_manifest.canonical()),
@@ -1483,8 +1555,9 @@ impl ModuleBuildServiceAttestationCommand {
 
 impl ModulePlatformAdmissionCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
-        if crate::normalize_module_registry_id(&self.registry_id).as_deref()
-            != Some(self.registry_id.as_str())
+        if self.expected_revision < 1
+            || crate::normalize_module_registry_id(&self.registry_id).as_deref()
+                != Some(self.registry_id.as_str())
         {
             return Err(ModuleGovernanceError::InvalidPlatformAdmissionCommand);
         }
@@ -1534,6 +1607,7 @@ impl ModulePlatformAdmissionCommand {
         .map_err(|_| ModuleGovernanceError::InvalidPlatformAdmissionCommand)?;
         Ok(ModulePublicationEvidenceCommand {
             request_id: self.request_id.clone(),
+            expected_revision: self.expected_revision,
             authority: ModulePublicationEvidenceAuthority::PlatformAdmission,
             subject_digest_sha256: subject_digest_sha256.to_string(),
             evidence_reference: platform_admission_evidence_reference(
@@ -1550,6 +1624,7 @@ impl ModulePlatformAdmissionCommand {
 impl ModulePublishPlatformBuildStageCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
         if self.request_id.trim().is_empty()
+            || self.expected_revision < 1
             || self.tenant_id.is_nil()
             || self.build_request_id.is_nil()
             || self.idempotency_key.is_nil()
@@ -1726,7 +1801,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT id, slug, version, status, artifact_origin, \
+                    "SELECT id, revision, slug, version, status, artifact_origin, \
                             CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
                             CAST(publisher_principal AS TEXT) AS publisher_principal, \
                             CAST(approved_by_principal AS TEXT) AS approved_by_principal, \
@@ -1960,7 +2035,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, id, version, status, artifact_origin, \
+                    "SELECT slug, id, revision, version, status, artifact_origin, \
                             CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
                             CAST(publisher_principal AS TEXT) AS publisher_principal, \
                             CAST(approved_by_principal AS TEXT) AS approved_by_principal, \
@@ -2133,6 +2208,12 @@ impl SeaOrmModuleGovernanceService {
             if !can_manage {
                 return Err(ModuleGovernanceError::PublishRequestArtifactUploadUnauthorized);
             }
+            if command.expected_revision != snapshot.request.revision {
+                return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                    expected: command.expected_revision,
+                    current: snapshot.request.revision,
+                });
+            }
             return Ok(ModuleGovernancePublishArtifactUploadSlot {
                 request_id: snapshot.request.id,
                 artifact_storage_key,
@@ -2295,7 +2376,7 @@ impl SeaOrmModuleGovernanceService {
         let now = database_now(backend);
         let request = tx.query_one(Statement::from_sql_and_values(
             backend,
-            format!("SELECT slug, version, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, CAST(validation_warnings AS TEXT) AS validation_warnings, CAST(requested_by_principal AS TEXT) AS requested_by_principal FROM registry_publish_requests WHERE id = {}", mark(1)),
+            format!("SELECT slug, version, revision, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, CAST(validation_warnings AS TEXT) AS validation_warnings, CAST(requested_by_principal AS TEXT) AS requested_by_principal FROM registry_publish_requests WHERE id = {}", mark(1)),
             vec![command.request_id.clone().into()],
         )).await.map_err(store_error)?.ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
         let status: String = request.try_get("", "status").map_err(store_error)?;
@@ -2335,6 +2416,13 @@ impl SeaOrmModuleGovernanceService {
                 status,
             ));
         }
+        let current_revision: i64 = request.try_get("", "revision").map_err(store_error)?;
+        if command.expected_revision != current_revision {
+            return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: command.expected_revision,
+                current: current_revision,
+            });
+        }
         let slug: String = request.try_get("", "slug").map_err(store_error)?;
         let version: String = request.try_get("", "version").map_err(store_error)?;
         let previous_storage_key = existing_storage_key;
@@ -2370,11 +2458,20 @@ impl SeaOrmModuleGovernanceService {
             warnings.push(format!("Artifact was uploaded by '{actor}' for publish request originally created by '{requested_by_label}'."));
         }
         let warnings = dedupe_validation_messages(warnings);
-        tx.execute(Statement::from_sql_and_values(
+        let request_updated = tx.execute(Statement::from_sql_and_values(
             backend,
-            format!("UPDATE registry_publish_requests SET status = 'submitted', artifact_storage_key = {}, artifact_checksum_sha256 = {}, artifact_size = {}, artifact_content_type = {}, submitted_at = {now}, validation_warnings = {}, validation_errors = {}, approved_by_principal = NULL, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = NULL, approved_at = NULL, published_at = NULL, updated_at = {now} WHERE id = {} AND status IN ('draft', 'changes_requested')", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7)),
-            vec![artifact_storage_key.clone().into(), command.checksum_sha256.clone().into(), command.artifact_size.into(), command.content_type.clone().into(), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), command.request_id.clone().into()],
+            format!("UPDATE registry_publish_requests SET status = 'submitted', artifact_storage_key = {}, artifact_checksum_sha256 = {}, artifact_size = {}, artifact_content_type = {}, submitted_at = {now}, validation_warnings = {}, validation_errors = {}, approved_by_principal = NULL, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = NULL, approved_at = NULL, published_at = NULL, revision = revision + 1, updated_at = {now} WHERE id = {} AND status IN ('draft', 'changes_requested') AND revision = {}", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8)),
+            vec![artifact_storage_key.clone().into(), command.checksum_sha256.clone().into(), command.artifact_size.into(), command.content_type.clone().into(), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), command.request_id.clone().into(), command.expected_revision.into()],
         )).await.map_err(store_error)?;
+        if request_updated.rows_affected() != 1 {
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
+        }
         if reuploaded {
             for table in ["registry_validation_stages", "registry_validation_jobs"] {
                 tx.execute(Statement::from_sql_and_values(
@@ -2469,7 +2566,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, version, status, artifact_origin, artifact_checksum_sha256, \
+                    "SELECT slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
                             CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
                             CAST(publisher_principal AS TEXT) AS publisher_principal \
                      FROM registry_publish_requests WHERE id = {}{request_lock}",
@@ -2483,6 +2580,7 @@ impl SeaOrmModuleGovernanceService {
         let slug: String = request.try_get("", "slug").map_err(store_error)?;
         let version: String = request.try_get("", "version").map_err(store_error)?;
         let status: String = request.try_get("", "status").map_err(store_error)?;
+        let request_revision: i64 = request.try_get("", "revision").map_err(store_error)?;
         let artifact_origin: String = request
             .try_get("", "artifact_origin")
             .map_err(store_error)?;
@@ -2625,7 +2723,33 @@ impl SeaOrmModuleGovernanceService {
             return Ok(ModulePublishPlatformBuildStageResult {
                 staging_id: existing_id,
                 created: false,
+                request_revision,
             });
+        }
+        let request_updated = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
+                     WHERE id = {} AND revision = {}",
+                    mark(1),
+                    mark(2),
+                ),
+                vec![
+                    command.request_id.clone().into(),
+                    command.expected_revision.into(),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if request_updated.rows_affected() != 1 {
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
         }
         for stage in PLATFORM_BUILT_FOLLOW_UP_STAGES {
             pass_owner_evidence_validation_stage(
@@ -2680,6 +2804,7 @@ impl SeaOrmModuleGovernanceService {
         Ok(ModulePublishPlatformBuildStageResult {
             staging_id,
             created: true,
+            request_revision: request_revision + 1,
         })
     }
 
@@ -2701,7 +2826,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT request.slug, request.version, request.status, request.artifact_origin, \
+                    "SELECT request.slug, request.version, request.revision, request.status, request.artifact_origin, \
                      CAST(stage.tenant_id AS TEXT) AS tenant_id, \
                      CAST(stage.build_request_id AS TEXT) AS build_request_id, \
                      stage.source_reference, stage.source_digest, stage.component_digest, \
@@ -2752,6 +2877,7 @@ impl SeaOrmModuleGovernanceService {
             .ok_or(ModuleGovernanceError::PlatformPublicationEvidenceSourceUnavailable)?;
         let slug: String = row.try_get("", "slug").map_err(store_error)?;
         let version: String = row.try_get("", "version").map_err(store_error)?;
+        let request_revision: i64 = row.try_get("", "revision").map_err(store_error)?;
         let staged_source_reference: String =
             row.try_get("", "source_reference").map_err(store_error)?;
         let staged_source_digest: String = row.try_get("", "source_digest").map_err(store_error)?;
@@ -2785,6 +2911,7 @@ impl SeaOrmModuleGovernanceService {
         }
         Ok(ModulePlatformPublicationSource {
             request_id: request_id.to_string(),
+            request_revision,
             tenant_id,
             build_request_id,
             slug,
@@ -2833,7 +2960,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, status, artifact_origin, artifact_checksum_sha256 \
+                    "SELECT slug, revision, status, artifact_origin, artifact_checksum_sha256 \
                      FROM registry_publish_requests WHERE id = {}{request_lock}",
                     mark(1),
                 ),
@@ -2844,6 +2971,7 @@ impl SeaOrmModuleGovernanceService {
             .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
         let slug: String = request.try_get("", "slug").map_err(store_error)?;
         let status: String = request.try_get("", "status").map_err(store_error)?;
+        let request_revision: i64 = request.try_get("", "revision").map_err(store_error)?;
         let artifact_origin: String = request
             .try_get("", "artifact_origin")
             .map_err(store_error)?;
@@ -3002,7 +3130,33 @@ impl SeaOrmModuleGovernanceService {
             return Ok(ModuleExternalPrebuiltStageResult {
                 staging_id: existing_id,
                 created: false,
+                request_revision,
             });
+        }
+        let request_updated = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
+                     WHERE id = {} AND revision = {}",
+                    mark(1),
+                    mark(2),
+                ),
+                vec![
+                    command.request_id.clone().into(),
+                    command.expected_revision.into(),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if request_updated.rows_affected() != 1 {
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
         }
         tx.execute(Statement::from_sql_and_values(
             backend,
@@ -3046,6 +3200,7 @@ impl SeaOrmModuleGovernanceService {
         Ok(ModuleExternalPrebuiltStageResult {
             staging_id,
             created: true,
+            request_revision: request_revision + 1,
         })
     }
 
@@ -3071,7 +3226,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, version, status, artifact_origin, artifact_checksum_sha256 \
+                    "SELECT slug, version, revision, status, artifact_origin, artifact_checksum_sha256 \
                      FROM registry_publish_requests WHERE id = {}{request_lock}",
                     mark(1),
                 ),
@@ -3083,6 +3238,7 @@ impl SeaOrmModuleGovernanceService {
         let slug: String = request.try_get("", "slug").map_err(store_error)?;
         let version: String = request.try_get("", "version").map_err(store_error)?;
         let status: String = request.try_get("", "status").map_err(store_error)?;
+        let request_revision: i64 = request.try_get("", "revision").map_err(store_error)?;
         let artifact_origin: String = request
             .try_get("", "artifact_origin")
             .map_err(store_error)?;
@@ -3305,7 +3461,33 @@ impl SeaOrmModuleGovernanceService {
             return Ok(ModuleAlloyAuthoredStageResult {
                 staging_id: existing_id,
                 created: false,
+                request_revision,
             });
+        }
+        let request_updated = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
+                     WHERE id = {} AND revision = {}",
+                    mark(1),
+                    mark(2),
+                ),
+                vec![
+                    command.request_id.clone().into(),
+                    command.expected_revision.into(),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if request_updated.rows_affected() != 1 {
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
         }
         tx.execute(Statement::from_sql_and_values(
             backend,
@@ -3357,6 +3539,7 @@ impl SeaOrmModuleGovernanceService {
         Ok(ModuleAlloyAuthoredStageResult {
             staging_id,
             created: true,
+            request_revision: request_revision + 1,
         })
     }
 
@@ -3432,7 +3615,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, version, status, artifact_origin FROM registry_publish_requests WHERE id = {}{request_lock}",
+                    "SELECT slug, version, revision, status, artifact_origin FROM registry_publish_requests WHERE id = {}{request_lock}",
                     mark(1),
                 ),
                 vec![command.request_id.clone().into()],
@@ -3442,6 +3625,7 @@ impl SeaOrmModuleGovernanceService {
             .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
         let slug: String = request.try_get("", "slug").map_err(store_error)?;
         let version: String = request.try_get("", "version").map_err(store_error)?;
+        let request_revision: i64 = request.try_get("", "revision").map_err(store_error)?;
         let status: String = request.try_get("", "status").map_err(store_error)?;
         let artifact_origin: String = request
             .try_get("", "artifact_origin")
@@ -3551,7 +3735,33 @@ impl SeaOrmModuleGovernanceService {
             return Ok(ModulePublicationEvidenceResult {
                 evidence_id,
                 recorded: false,
+                request_revision,
             });
+        }
+        let request_updated = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
+                     WHERE id = {} AND revision = {}",
+                    mark(1),
+                    mark(2),
+                ),
+                vec![
+                    command.request_id.clone().into(),
+                    command.expected_revision.into(),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if request_updated.rows_affected() != 1 {
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
         }
         tx.execute(Statement::from_sql_and_values(
             backend,
@@ -3604,6 +3814,7 @@ impl SeaOrmModuleGovernanceService {
         Ok(ModulePublicationEvidenceResult {
             evidence_id,
             recorded: true,
+            request_revision: request_revision + 1,
         })
     }
 
@@ -3994,7 +4205,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, version, status, CAST(validation_errors AS TEXT) AS validation_errors \
+                    "SELECT slug, version, revision, status, CAST(validation_errors AS TEXT) AS validation_errors \
                      FROM registry_publish_requests WHERE id = {}",
                     mark(1)
                 ),
@@ -4012,6 +4223,15 @@ impl SeaOrmModuleGovernanceService {
         let status: String = request
             .try_get("", "status")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let current_revision: i64 = request
+            .try_get("", "revision")
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if command.expected_revision != current_revision {
+            return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: command.expected_revision,
+                current: current_revision,
+            });
+        }
         if matches!(status.as_str(), "published" | "rejected" | "on_hold") {
             return Err(ModuleGovernanceError::PublishRequestCannotBeRejected(
                 status,
@@ -4049,23 +4269,32 @@ impl SeaOrmModuleGovernanceService {
                 format!(
                     "UPDATE registry_publish_requests \
                      SET status = 'rejected', rejected_by_principal = {}, rejection_reason = {}, \
-                         validation_errors = {}, updated_at = {now} WHERE id = {}",
+                     validation_errors = {}, revision = revision + 1, updated_at = {now} \
+                     WHERE id = {} AND revision = {}",
                     mark(1),
                     mark(2),
                     mark(3),
                     mark(4),
+                    mark(5),
                 ),
                 vec![
                     Value::Json(Some(Box::new(command.actor_principal.clone()))),
                     command.reason.clone().into(),
                     Value::Json(Some(Box::new(validation_errors.clone()))),
                     command.request_id.clone().into(),
+                    command.expected_revision.into(),
                 ],
             ))
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if update.rows_affected() != 1 {
-            return Err(ModuleGovernanceError::PublishRequestNotFound);
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
         }
         tx.execute(Statement::from_sql_and_values(
             backend,
@@ -4131,7 +4360,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, version, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
+                    "SELECT slug, version, revision, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
                      FROM registry_publish_requests WHERE id = {}",
                     mark(1)
                 ),
@@ -4149,6 +4378,15 @@ impl SeaOrmModuleGovernanceService {
         let status: String = request
             .try_get("", "status")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let current_revision: i64 = request
+            .try_get("", "revision")
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if command.expected_revision != current_revision {
+            return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: command.expected_revision,
+                current: current_revision,
+            });
+        }
         if status != "approved" {
             return Err(ModuleGovernanceError::PublishRequestCannotRequestChanges(
                 status,
@@ -4167,23 +4405,32 @@ impl SeaOrmModuleGovernanceService {
                     "UPDATE registry_publish_requests \
                      SET status = 'changes_requested', changes_requested_by_principal = {}, \
                          changes_requested_reason = {}, changes_requested_reason_code = {}, \
-                         changes_requested_at = {now}, updated_at = {now} WHERE id = {}",
+                         changes_requested_at = {now}, revision = revision + 1, updated_at = {now} \
+                     WHERE id = {} AND revision = {}",
                     mark(1),
                     mark(2),
                     mark(3),
                     mark(4),
+                    mark(5),
                 ),
                 vec![
                     Value::Json(Some(Box::new(command.actor_principal.clone()))),
                     command.reason.clone().into(),
                     command.reason_code.clone().into(),
                     command.request_id.clone().into(),
+                    command.expected_revision.into(),
                 ],
             ))
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if update.rows_affected() != 1 {
-            return Err(ModuleGovernanceError::PublishRequestNotFound);
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
         }
         tx.execute(Statement::from_sql_and_values(
             backend,
@@ -4250,7 +4497,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, version, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
+                    "SELECT slug, version, revision, status, CAST(publisher_principal AS TEXT) AS publisher_principal \
                      FROM registry_publish_requests WHERE id = {}",
                     mark(1)
                 ),
@@ -4268,6 +4515,15 @@ impl SeaOrmModuleGovernanceService {
         let previous_status: String = request
             .try_get("", "status")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let current_revision: i64 = request
+            .try_get("", "revision")
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if command.expected_revision != current_revision {
+            return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: command.expected_revision,
+                current: current_revision,
+            });
+        }
         if !matches!(
             previous_status.as_str(),
             "submitted" | "approved" | "changes_requested"
@@ -4289,12 +4545,14 @@ impl SeaOrmModuleGovernanceService {
                     "UPDATE registry_publish_requests \
                      SET status = 'on_hold', held_by_principal = {}, held_reason = {}, \
                          held_reason_code = {}, held_at = {now}, held_from_status = {}, \
-                         updated_at = {now} WHERE id = {}",
+                         revision = revision + 1, updated_at = {now} \
+                     WHERE id = {} AND revision = {}",
                     mark(1),
                     mark(2),
                     mark(3),
                     mark(4),
                     mark(5),
+                    mark(6),
                 ),
                 vec![
                     Value::Json(Some(Box::new(command.actor_principal.clone()))),
@@ -4302,12 +4560,19 @@ impl SeaOrmModuleGovernanceService {
                     command.reason_code.clone().into(),
                     previous_status.clone().into(),
                     command.request_id.clone().into(),
+                    command.expected_revision.into(),
                 ],
             ))
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if update.rows_affected() != 1 {
-            return Err(ModuleGovernanceError::PublishRequestNotFound);
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
         }
         tx.execute(Statement::from_sql_and_values(
             backend,
@@ -4369,7 +4634,7 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
-        let request = tx.query_one(Statement::from_sql_and_values(backend, format!("SELECT slug, version, status, artifact_origin, held_from_status, CAST(publisher_principal AS TEXT) AS publisher_principal FROM registry_publish_requests WHERE id = {}", mark(1)), vec![command.request_id.clone().into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        let request = tx.query_one(Statement::from_sql_and_values(backend, format!("SELECT slug, version, revision, status, artifact_origin, held_from_status, CAST(publisher_principal AS TEXT) AS publisher_principal FROM registry_publish_requests WHERE id = {}", mark(1)), vec![command.request_id.clone().into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
         let slug: String = request
             .try_get("", "slug")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -4379,6 +4644,15 @@ impl SeaOrmModuleGovernanceService {
         let status: String = request
             .try_get("", "status")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let current_revision: i64 = request
+            .try_get("", "revision")
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if command.expected_revision != current_revision {
+            return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: command.expected_revision,
+                current: current_revision,
+            });
+        }
         let artifact_origin: String = request
             .try_get("", "artifact_origin")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -4401,9 +4675,15 @@ impl SeaOrmModuleGovernanceService {
             .map(|value| serde_json::from_str(&value))
             .transpose()
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-        let update = tx.execute(Statement::from_sql_and_values(backend, format!("UPDATE registry_publish_requests SET status = {}, updated_at = {now} WHERE id = {}", mark(1), mark(2)), vec![resumed_status.clone().into(), command.request_id.clone().into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let update = tx.execute(Statement::from_sql_and_values(backend, format!("UPDATE registry_publish_requests SET status = {}, revision = revision + 1, updated_at = {now} WHERE id = {} AND revision = {}", mark(1), mark(2), mark(3)), vec![resumed_status.clone().into(), command.request_id.clone().into(), command.expected_revision.into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if update.rows_affected() != 1 {
-            return Err(ModuleGovernanceError::PublishRequestNotFound);
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
         }
         tx.execute(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, 'request_resumed', {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)), vec![self.infrastructure.prefixed_id("rge").into(), slug.into(), command.request_id.clone().into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(publisher.map(Box::new)), Value::Json(Some(Box::new(serde_json::json!({"version": version, "status": resumed_status.clone(), "resumed_from_hold": true, "resumed_to_status": resumed_status, "reason": command.reason, "reason_code": command.reason_code}))))])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if resumed_status == "approved" {
@@ -4458,12 +4738,18 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
+        let request_lock = if backend == sea_orm::DbBackend::Postgres {
+            " FOR UPDATE"
+        } else {
+            ""
+        };
         let request = tx
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, version, status, artifact_origin FROM registry_publish_requests WHERE id = {}",
-                    mark(1)
+                    "SELECT slug, version, revision, status, artifact_origin \
+                     FROM registry_publish_requests WHERE id = {}{request_lock}",
+                    mark(1),
                 ),
                 vec![command.request_id.clone().into()],
             ))
@@ -4476,6 +4762,15 @@ impl SeaOrmModuleGovernanceService {
         let version: String = request
             .try_get("", "version")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let current_revision: i64 = request
+            .try_get("", "revision")
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if command.expected_revision != current_revision {
+            return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: command.expected_revision,
+                current: current_revision,
+            });
+        }
         let request_status: String = request
             .try_get("", "status")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -4644,6 +4939,32 @@ impl SeaOrmModuleGovernanceService {
             (stage_id, attempt_number, queue_reason, event_type)
         };
 
+        let request_updated = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
+                     WHERE id = {} AND revision = {}",
+                    mark(1),
+                    mark(2),
+                ),
+                vec![
+                    command.request_id.clone().into(),
+                    command.expected_revision.into(),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if request_updated.rows_affected() != 1 {
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
+        }
+
         let mut stage_details = serde_json::json!({
             "stage_id": stage_id,
             "stage_key": command.stage_key,
@@ -4759,7 +5080,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT id, slug, version, status, artifact_origin FROM registry_publish_requests WHERE id = {}",
+                    "SELECT id, slug, version, revision, status, artifact_origin FROM registry_publish_requests WHERE id = {}",
                     mark(1)
                 ),
                 vec![command.request_id.clone().into()],
@@ -4779,6 +5100,15 @@ impl SeaOrmModuleGovernanceService {
         let status: String = request
             .try_get("", "status")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let current_revision: i64 = request
+            .try_get("", "revision")
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if command.expected_revision != current_revision {
+            return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: command.expected_revision,
+                current: current_revision,
+            });
+        }
         let artifact_origin = ModulePublicationArtifactOrigin::parse(
             &request
                 .try_get::<String>("", "artifact_origin")
@@ -4884,11 +5214,20 @@ impl SeaOrmModuleGovernanceService {
             "initial_validation"
         };
         if status != "validating" {
-            tx.execute(Statement::from_sql_and_values(
+            let request_updated = tx.execute(Statement::from_sql_and_values(
                 backend,
-                format!("UPDATE registry_publish_requests SET status = 'validating', validation_errors = {}, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = NULL, updated_at = {now} WHERE id = {}", mark(1), mark(2)),
-                vec![Value::Json(Some(Box::new(serde_json::json!([])))), request_id.clone().into()],
+                format!("UPDATE registry_publish_requests SET status = 'validating', validation_errors = {}, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = NULL, revision = revision + 1, updated_at = {now} WHERE id = {} AND revision = {}", mark(1), mark(2), mark(3)),
+                vec![Value::Json(Some(Box::new(serde_json::json!([])))), request_id.clone().into(), command.expected_revision.into()],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            if request_updated.rows_affected() != 1 {
+                return Err(publish_request_revision_conflict(
+                    &tx,
+                    backend,
+                    &command.request_id,
+                    command.expected_revision,
+                )
+                .await?);
+            }
         }
         let attempt = tx.query_one(Statement::from_sql_and_values(
             backend,
@@ -4964,7 +5303,7 @@ impl SeaOrmModuleGovernanceService {
         };
         let Some(job) = tx.query_one(Statement::from_sql_and_values(
             backend,
-            format!("SELECT j.status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.crate_name, r.ownership, r.trust_level, r.license, r.entry_type, r.artifact_origin, r.marketplace, r.ui_packages, r.validation_warnings, r.status AS request_status, r.artifact_storage_key, r.artifact_checksum_sha256, r.artifact_size, r.artifact_content_type, t.name AS module_name, t.description AS module_description FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id LEFT JOIN registry_publish_request_translations t ON t.request_id = r.id AND t.locale = r.default_locale WHERE j.id = {}", mark(1)),
+            format!("SELECT j.status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.revision AS request_revision, r.crate_name, r.ownership, r.trust_level, r.license, r.entry_type, r.artifact_origin, r.marketplace, r.ui_packages, r.validation_warnings, r.status AS request_status, r.artifact_storage_key, r.artifact_checksum_sha256, r.artifact_size, r.artifact_content_type, t.name AS module_name, t.description AS module_description FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id LEFT JOIN registry_publish_request_translations t ON t.request_id = r.id AND t.locale = r.default_locale WHERE j.id = {}", mark(1)),
             vec![command.validation_job_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))? else {
             return Ok(None);
@@ -4993,6 +5332,9 @@ impl SeaOrmModuleGovernanceService {
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let request_status: String = job
             .try_get("", "request_status")
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let request_revision: i64 = job
+            .try_get("", "request_revision")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         let attempt_number: i32 = job
             .try_get("", "attempt_number")
@@ -5036,6 +5378,7 @@ impl SeaOrmModuleGovernanceService {
                 Ok(ModuleValidationJobWorkItem {
                     validation_job_id: command.validation_job_id.clone(),
                     request_id: request_id.clone(),
+                    expected_request_revision: request_revision,
                     slug: slug.clone(),
                     version: version.clone(),
                     crate_name,
@@ -5073,6 +5416,7 @@ impl SeaOrmModuleGovernanceService {
                     InvalidValidationWorkItem {
                         command: &command,
                         request_id: &request_id,
+                        expected_request_revision: request_revision,
                         slug: &slug,
                         version: &version,
                         attempt_number,
@@ -5180,7 +5524,7 @@ impl SeaOrmModuleGovernanceService {
         };
         let job = tx.query_one(Statement::from_sql_and_values(
             backend,
-            format!("SELECT j.status AS job_status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.artifact_origin, r.status AS request_status FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id WHERE j.id = {}", mark(1)),
+            format!("SELECT j.status AS job_status, j.request_id, j.attempt_number, j.queue_reason, r.slug, r.version, r.artifact_origin, r.status AS request_status, r.revision AS request_revision FROM registry_validation_jobs j JOIN registry_publish_requests r ON r.id = j.request_id WHERE j.id = {}", mark(1)),
             vec![command.validation_job_id.clone().into()],
         )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or(ModuleGovernanceError::ValidationJobNotFound)?;
         let job_status: String = job
@@ -5232,6 +5576,15 @@ impl SeaOrmModuleGovernanceService {
                 request_status,
             ));
         }
+        let current_revision: i64 = job
+            .try_get("", "request_revision")
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if command.expected_request_revision != current_revision {
+            return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: command.expected_request_revision,
+                current: current_revision,
+            });
+        }
 
         let warnings = dedupe_validation_messages(command.warnings);
         let errors = dedupe_validation_messages(command.errors);
@@ -5240,19 +5593,23 @@ impl SeaOrmModuleGovernanceService {
         let request_updated = match command.outcome {
             ModuleValidationJobResultOutcome::Passed => tx.execute(Statement::from_sql_and_values(
                 backend,
-                format!("UPDATE registry_publish_requests SET status = 'approved', validation_warnings = {}, validation_errors = {}, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = {now}, approved_by_principal = {}, approved_at = {now}, updated_at = {now} WHERE id = {} AND status = 'validating'", mark(1), mark(2), mark(3), mark(4)),
-                vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), Value::Json(Some(Box::new(command.actor_principal.clone()))), request_id.clone().into()],
+                format!("UPDATE registry_publish_requests SET status = 'approved', validation_warnings = {}, validation_errors = {}, rejected_by_principal = NULL, rejection_reason = NULL, validated_at = {now}, approved_by_principal = {}, approved_at = {now}, revision = revision + 1, updated_at = {now} WHERE id = {} AND status = 'validating' AND revision = {}", mark(1), mark(2), mark(3), mark(4), mark(5)),
+                vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([])))), Value::Json(Some(Box::new(command.actor_principal.clone()))), request_id.clone().into(), command.expected_request_revision.into()],
             )),
             ModuleValidationJobResultOutcome::Failed => tx.execute(Statement::from_sql_and_values(
                 backend,
-                format!("UPDATE registry_publish_requests SET status = 'rejected', validation_warnings = {}, validation_errors = {}, rejected_by_principal = {}, rejection_reason = {}, validated_at = {now}, approved_by_principal = NULL, approved_at = NULL, published_at = NULL, updated_at = {now} WHERE id = {} AND status = 'validating'", mark(1), mark(2), mark(3), mark(4), mark(5)),
-                vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!(errors.clone())))), Value::Json(Some(Box::new(command.actor_principal.clone()))), last_error.clone().into(), request_id.clone().into()],
+                format!("UPDATE registry_publish_requests SET status = 'rejected', validation_warnings = {}, validation_errors = {}, rejected_by_principal = {}, rejection_reason = {}, validated_at = {now}, approved_by_principal = NULL, approved_at = NULL, published_at = NULL, revision = revision + 1, updated_at = {now} WHERE id = {} AND status = 'validating' AND revision = {}", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)),
+                vec![Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!(errors.clone())))), Value::Json(Some(Box::new(command.actor_principal.clone()))), last_error.clone().into(), request_id.clone().into(), command.expected_request_revision.into()],
             )),
         }.await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
         if request_updated.rows_affected() != 1 {
-            return Err(ModuleGovernanceError::ValidationJobRequestStateMismatch(
-                "concurrently changed".to_string(),
-            ));
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &request_id,
+                command.expected_request_revision,
+            )
+            .await?);
         }
         let job_updated = tx.execute(Statement::from_sql_and_values(
             backend,
@@ -5666,7 +6023,8 @@ impl SeaOrmModuleGovernanceService {
                     tx_backend,
                     format!(
                         "SELECT s.stage_key, s.status, s.claim_id, s.claimed_by, s.attempt_number, \
-                         s.queue_reason, r.id AS request_id, r.slug, r.version, r.status AS request_status, \
+                         s.queue_reason, r.id AS request_id, r.revision AS request_revision, \
+                         r.slug, r.version, r.status AS request_status, \
                          r.crate_name, r.artifact_storage_key, r.artifact_checksum_sha256 \
                          FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id \
                          WHERE s.id = {}",
@@ -5719,6 +6077,9 @@ impl SeaOrmModuleGovernanceService {
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             let request_id: String = stage
                 .try_get("", "request_id")
+                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            let request_revision: i64 = stage
+                .try_get("", "request_revision")
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             let slug: String = stage
                 .try_get("", "slug")
@@ -5791,6 +6152,23 @@ impl SeaOrmModuleGovernanceService {
                     .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
                 continue;
             }
+            let request_updated = tx
+                .execute(Statement::from_sql_and_values(
+                    tx_backend,
+                    format!(
+                        "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {tx_now} \
+                         WHERE id = {} AND revision = {}",
+                        tx_mark(1),
+                        tx_mark(2),
+                    ),
+                    vec![request_id.clone().into(), request_revision.into()],
+                ))
+                .await
+                .map_err(store_error)?;
+            if request_updated.rows_affected() != 1 {
+                tx.rollback().await.map_err(store_error)?;
+                continue;
+            }
             let actor = serde_json::json!({"kind":"remote_runner","id":command.runner_id.trim()});
             let details = serde_json::json!({
                 "stage_id": stage_id,
@@ -5831,6 +6209,7 @@ impl SeaOrmModuleGovernanceService {
             return Ok(Some(ModuleRemoteValidationClaim {
                 claim_id,
                 request_id,
+                request_revision: request_revision + 1,
                 slug,
                 version,
                 stage_key: stage_key.clone(),
@@ -5966,7 +6345,7 @@ impl SeaOrmModuleGovernanceService {
             };
             let Some(stage) = tx.query_one(Statement::from_sql_and_values(
                 backend,
-                format!("SELECT s.stage_key, s.attempt_number, s.queue_reason, s.claim_id, s.claimed_by, r.id AS request_id, r.slug, r.version, r.status AS request_status FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.id = {}", mark(1)),
+                format!("SELECT s.stage_key, s.attempt_number, s.queue_reason, s.claim_id, s.claimed_by, r.id AS request_id, r.revision AS request_revision, r.slug, r.version, r.status AS request_status FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.id = {}", mark(1)),
                 vec![stage_id.clone().into()],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))? else {
                 tx.rollback().await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -5989,6 +6368,9 @@ impl SeaOrmModuleGovernanceService {
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             let request_id: String = stage
                 .try_get("", "request_id")
+                .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            let request_revision: i64 = stage
+                .try_get("", "request_revision")
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
             let slug: String = stage
                 .try_get("", "slug")
@@ -6030,6 +6412,23 @@ impl SeaOrmModuleGovernanceService {
                 format!("INSERT INTO registry_validation_stages (id, request_id, slug, version, stage_key, status, triggered_by, queue_reason, attempt_number, detail, started_at, finished_at, last_error, claim_id, claimed_by, claim_expires_at, last_heartbeat_at, runner_kind, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, 'queued', 'system:registry-runner-reaper', 'remote_lease_expired', {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'remote', {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7)),
                 vec![queued_id.clone().into(), request_id.clone().into(), slug.clone().into(), version.clone().into(), stage_key.clone().into(), next_attempt.into(), queued_detail.clone().into()],
             )).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+            let request_updated = tx
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
+                         WHERE id = {} AND revision = {}",
+                        mark(1),
+                        mark(2),
+                    ),
+                    vec![request_id.clone().into(), request_revision.into()],
+                ))
+                .await
+                .map_err(store_error)?;
+            if request_updated.rows_affected() != 1 {
+                tx.rollback().await.map_err(store_error)?;
+                continue;
+            }
             let actor = serde_json::json!({"kind":"system","id":"registry-runner-reaper"});
             let events = [
                 (
@@ -6086,7 +6485,7 @@ impl SeaOrmModuleGovernanceService {
             "datetime('now')"
         };
         let row = tx.query_one(Statement::from_sql_and_values(backend, format!(
-            "SELECT s.id, s.stage_key, s.status, s.claimed_by, s.runner_kind, s.attempt_number, s.queue_reason, r.id AS request_id, r.slug, r.version, r.status AS request_status \
+            "SELECT s.id, s.stage_key, s.status, s.claimed_by, s.runner_kind, s.attempt_number, s.queue_reason, r.id AS request_id, r.revision AS request_revision, r.slug, r.version, r.status AS request_status \
              FROM registry_validation_stages s JOIN registry_publish_requests r ON r.id = s.request_id WHERE s.claim_id = {}", mark(1)), vec![command.claim_id.clone().into()]))
             .await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?
             .ok_or(ModuleGovernanceError::RemoteValidationLeaseNotFound)?;
@@ -6121,6 +6520,15 @@ impl SeaOrmModuleGovernanceService {
         let request_id: String = row
             .try_get("", "request_id")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let request_revision: i64 = row
+            .try_get("", "request_revision")
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if command.expected_request_revision != request_revision {
+            return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: command.expected_request_revision,
+                current: request_revision,
+            });
+        }
         let version: String = row
             .try_get("", "version")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -6205,6 +6613,31 @@ impl SeaOrmModuleGovernanceService {
                 ));
             }
             return Err(ModuleGovernanceError::RemoteValidationLeaseExpired);
+        }
+        let request_updated = tx
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE registry_publish_requests SET revision = revision + 1, updated_at = {now} \
+                     WHERE id = {} AND revision = {}",
+                    mark(1),
+                    mark(2),
+                ),
+                vec![
+                    request_id.clone().into(),
+                    command.expected_request_revision.into(),
+                ],
+            ))
+            .await
+            .map_err(store_error)?;
+        if request_updated.rows_affected() != 1 {
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &request_id,
+                command.expected_request_revision,
+            )
+            .await?);
         }
         let actor = serde_json::json!({"kind":"remote_runner","id":command.runner_id});
         for (event_type, details) in [
@@ -6379,7 +6812,7 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT slug, version, crate_name, default_locale, ownership, trust_level, license, \
+                    "SELECT slug, version, revision, crate_name, default_locale, ownership, trust_level, license, \
                      entry_type, CAST(marketplace AS TEXT) AS marketplace, \
                      CAST(ui_packages AS TEXT) AS ui_packages, status, artifact_storage_key, \
                      artifact_checksum_sha256, artifact_size, artifact_origin \
@@ -6400,6 +6833,15 @@ impl SeaOrmModuleGovernanceService {
         let status: String = request
             .try_get("", "status")
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        let current_revision: i64 = request
+            .try_get("", "revision")
+            .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if command.expected_revision != current_revision {
+            return Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: command.expected_revision,
+                current: current_revision,
+            });
+        }
         if status == "published" {
             let release_exists = tx
                 .query_one(Statement::from_sql_and_values(
@@ -6723,6 +7165,7 @@ impl SeaOrmModuleGovernanceService {
 
         let marketplace_approval = ModulePublicationEvidenceCommand {
             request_id: command.request_id.clone(),
+            expected_revision: command.expected_revision,
             authority: ModulePublicationEvidenceAuthority::MarketplaceApproval,
             subject_digest_sha256: checksum_sha256.clone(),
             evidence_reference: format!(
@@ -7128,20 +7571,31 @@ impl SeaOrmModuleGovernanceService {
         .await
         .map_err(store_error)?;
 
-        tx.execute(Statement::from_sql_and_values(
+        let request_updated = tx.execute(Statement::from_sql_and_values(
             backend,
             format!(
                 "UPDATE registry_publish_requests SET status = 'published', approved_by_principal = {}, \
-                 approved_at = {now}, published_at = {now}, updated_at = {now} WHERE id = {}",
-                mark(1), mark(2),
+                 approved_at = {now}, published_at = {now}, revision = revision + 1, updated_at = {now} \
+                 WHERE id = {} AND revision = {}",
+                mark(1), mark(2), mark(3),
             ),
             vec![
                 Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 command.request_id.clone().into(),
+                command.expected_revision.into(),
             ],
         ))
         .await
         .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        if request_updated.rows_affected() != 1 {
+            return Err(publish_request_revision_conflict(
+                &tx,
+                backend,
+                &command.request_id,
+                command.expected_revision,
+            )
+            .await?);
+        }
         tx.execute(Statement::from_sql_and_values(
             backend,
             format!(
@@ -7919,6 +8373,7 @@ async fn reconcile_alloy_authored_security_stage(
 struct InvalidValidationWorkItem<'a> {
     command: &'a ModuleValidationJobClaimCommand,
     request_id: &'a str,
+    expected_request_revision: i64,
     slug: &'a str,
     version: &'a str,
     attempt_number: i32,
@@ -7934,6 +8389,7 @@ async fn terminalize_invalid_validation_work_item(
     let InvalidValidationWorkItem {
         command,
         request_id,
+        expected_request_revision,
         slug,
         version,
         attempt_number,
@@ -7960,26 +8416,32 @@ async fn terminalize_invalid_validation_work_item(
                  SET status = 'rejected', validation_errors = {}, \
                      rejected_by_principal = {}, rejection_reason = {}, \
                      validated_at = {now}, approved_by_principal = NULL, \
-                     approved_at = NULL, published_at = NULL, updated_at = {now} \
-                 WHERE id = {} AND status = 'validating'",
+                     approved_at = NULL, published_at = NULL, revision = revision + 1, updated_at = {now} \
+                 WHERE id = {} AND status = 'validating' AND revision = {}",
                 mark(1),
                 mark(2),
                 mark(3),
                 mark(4),
+                mark(5),
             ),
             vec![
                 Value::Json(Some(Box::new(errors.clone()))),
                 Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 VALIDATION_WORK_ITEM_INVALID_ERROR.to_string().into(),
                 request_id.to_string().into(),
+                expected_request_revision.into(),
             ],
         ))
         .await
         .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
     if request_updated.rows_affected() != 1 {
-        return Err(ModuleGovernanceError::ValidationJobRequestStateMismatch(
-            "concurrently changed".to_string(),
-        ));
+        return Err(publish_request_revision_conflict(
+            tx,
+            backend,
+            request_id,
+            expected_request_revision,
+        )
+        .await?);
     }
     let job_updated = tx
         .execute(Statement::from_sql_and_values(
@@ -8183,6 +8645,7 @@ fn map_governance_request_row(
     Ok(GovernanceRequestRow {
         snapshot: ModuleGovernanceRequestSnapshot {
             id: required_column(row, "id")?,
+            revision: required_column(row, "revision")?,
             slug: required_column(row, "slug")?,
             version: required_column(row, "version")?,
             status: required_column(row, "status")?,
@@ -9025,6 +9488,38 @@ where
     T: sea_orm::TryGetable,
 {
     row.try_get("", column).map_err(store_error)
+}
+
+async fn current_publish_request_revision(
+    transaction: &DatabaseTransaction,
+    backend: DbBackend,
+    request_id: &str,
+) -> Result<i64, ModuleGovernanceError> {
+    transaction
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT revision FROM registry_publish_requests WHERE id = {}",
+                placeholder(backend, 1),
+            ),
+            vec![request_id.to_string().into()],
+        ))
+        .await
+        .map_err(store_error)?
+        .ok_or(ModuleGovernanceError::PublishRequestNotFound)
+        .and_then(|row| required_column(&row, "revision"))
+}
+
+async fn publish_request_revision_conflict(
+    transaction: &DatabaseTransaction,
+    backend: DbBackend,
+    request_id: &str,
+    expected_revision: i64,
+) -> Result<ModuleGovernanceError, ModuleGovernanceError> {
+    Ok(ModuleGovernanceError::PublishRequestRevisionConflict {
+        expected: expected_revision,
+        current: current_publish_request_revision(transaction, backend, request_id).await?,
+    })
 }
 
 fn optional_column<T>(row: &QueryResult, column: &str) -> Result<Option<T>, ModuleGovernanceError>
@@ -10120,6 +10615,8 @@ pub enum ModuleGovernanceError {
     PublishRequestExternalPrebuiltStagingUnauthorized,
     #[error("published release `{slug}@{version}` already exists")]
     PublishRequestReleaseAlreadyActive { slug: String, version: String },
+    #[error("registry publish request revision conflict: expected {expected}, current {current}")]
+    PublishRequestRevisionConflict { expected: i64, current: i64 },
     #[error("registry publish request in status `{0}` cannot be rejected")]
     PublishRequestCannotBeRejected(String),
     #[error("registry publish request in status `{0}` cannot request changes")]
@@ -10290,6 +10787,7 @@ impl ModuleGovernanceError {
             | Self::PublishRequestCreationConflict
             | Self::PlatformPublicationEvidenceSourceUnavailable
             | Self::PublishRequestReleaseAlreadyActive { .. }
+            | Self::PublishRequestRevisionConflict { .. }
             | Self::PublishRequestCannotBeRejected(_)
             | Self::PublishRequestCannotRequestChanges(_)
             | Self::PublishRequestCannotBeHeld(_)
@@ -10443,6 +10941,7 @@ mod tests {
     ) -> ModuleGovernanceRequestSnapshot {
         ModuleGovernanceRequestSnapshot {
             id: "request-1".to_string(),
+            revision: 1,
             slug: "sample_module".to_string(),
             version: "1.0.0".to_string(),
             status: status.to_string(),
@@ -10778,7 +11277,7 @@ mod tests {
         .to_string();
         for statement in [
             "CREATE TABLE registry_publish_requests (\
-                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, artifact_origin TEXT NOT NULL,\
+                id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 1, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL, artifact_origin TEXT NOT NULL,\
                 requested_by_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
                 approved_by_principal TEXT NULL, rejected_by_principal TEXT NULL, rejection_reason TEXT NULL,\
                 changes_requested_by_principal TEXT NULL, changes_requested_reason TEXT NULL,\
@@ -10948,12 +11447,22 @@ mod tests {
         let checksum = "a".repeat(64);
         let upload = ModulePublishArtifactAttachCommand {
             request_id: "request-1".to_string(),
+            expected_revision: 1,
             actor_principal: owner_actor.principal.clone(),
             actor_can_manage_modules: false,
             checksum_sha256: checksum.clone(),
             artifact_size: 7,
             content_type: "application/wasm".to_string(),
         };
+        let mut stale_upload = upload.clone();
+        stale_upload.expected_revision = 2;
+        assert_eq!(
+            service.prepare_publish_artifact_upload(&stale_upload).await,
+            Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: 2,
+                current: 1,
+            })
+        );
         let slot = service
             .prepare_publish_artifact_upload(&upload)
             .await
@@ -11010,7 +11519,7 @@ mod tests {
             .execute(Statement::from_string(
                 DbBackend::Sqlite,
                 "CREATE TABLE registry_publish_requests (\
-                    id TEXT PRIMARY KEY, artifact_storage_key TEXT NULL, artifact_content_type TEXT NULL\
+                    id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 1, artifact_storage_key TEXT NULL, artifact_content_type TEXT NULL\
                  )"
                 .to_string(),
             ))
@@ -11086,6 +11595,7 @@ mod tests {
     fn alloy_stage_requires_fixed_zero_grant_sandbox_evidence() {
         let mut command = ModuleAlloyAuthoredStageCommand {
             request_id: "request-alloy".into(),
+            expected_revision: 1,
             alloy_tenant_id: Uuid::new_v4(),
             alloy_script_id: Uuid::new_v4(),
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
@@ -11137,7 +11647,7 @@ mod tests {
             .expect("database");
         for statement in [
             "CREATE TABLE registry_publish_requests (\
-                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
+                id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 1, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
                 artifact_origin TEXT NOT NULL, artifact_checksum_sha256 TEXT NULL, submitted_at TEXT NULL\
              )",
             "CREATE TABLE registry_publish_alloy_staging (\
@@ -11206,6 +11716,7 @@ mod tests {
         service
             .stage_alloy_authored(ModuleAlloyAuthoredStageCommand {
                 request_id: "request-fork".to_string(),
+                expected_revision: 1,
                 alloy_tenant_id: Uuid::new_v4(),
                 alloy_script_id: Uuid::new_v4(),
                 artifact_digest: format!("sha256:{}", "b".repeat(64)),
@@ -11246,6 +11757,7 @@ mod tests {
             schema_documents: Vec::new(),
             settings_schema_digest: None,
             data_schema_digest: None,
+            localization_catalogs: Vec::new(),
             ui_contributions: Vec::new(),
             persistence_contract: None,
         };
@@ -11386,7 +11898,7 @@ mod tests {
             .expect("database");
         for statement in [
             "CREATE TABLE registry_publish_requests (\
-                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
+                id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 1, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
                 artifact_origin TEXT NOT NULL, artifact_checksum_sha256 TEXT NULL, submitted_at TEXT NULL\
              )",
             "CREATE TABLE registry_publish_external_staging (\
@@ -11502,7 +12014,7 @@ mod tests {
             .expect("database");
         for statement in [
             "CREATE TABLE registry_publish_requests (\
-                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
+                id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 1, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
                 artifact_origin TEXT NOT NULL, artifact_checksum_sha256 TEXT NULL, submitted_at TEXT NULL\
              )",
             "CREATE TABLE registry_publish_alloy_staging (\
@@ -11693,6 +12205,7 @@ mod tests {
     fn publication_contract_requires_structured_principals_and_reviewed_override() {
         let command = ModulePublishRequestPublicationCommand {
             request_id: "request-1".to_string(),
+            expected_revision: 1,
             idempotency_key: Uuid::new_v4(),
             actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
             publisher_principal: serde_json::json!("publisher"),
@@ -11713,6 +12226,7 @@ mod tests {
     fn external_evidence_cannot_claim_marketplace_approval_or_noncanonical_subjects() {
         let marketplace = ModulePublicationEvidenceCommand {
             request_id: "request-1".to_string(),
+            expected_revision: 1,
             authority: ModulePublicationEvidenceAuthority::MarketplaceApproval,
             subject_digest_sha256: "a".repeat(64),
             evidence_reference: "registry://publish-requests/request-1/marketplace-approval"
@@ -11739,6 +12253,7 @@ mod tests {
         assert!(matches!(
             ModulePublishArtifactAttachCommand {
                 request_id: "request-1".to_string(),
+                expected_revision: 1,
                 actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
                 actor_can_manage_modules: false,
                 checksum_sha256: "SHA256:ABC".to_string(),
@@ -11754,6 +12269,7 @@ mod tests {
     fn external_prebuilt_stage_requires_explicit_source_evidence() {
         let command = ModuleExternalPrebuiltStageCommand {
             request_id: "request-1".to_string(),
+            expected_revision: 1,
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
             source_evidence: ModuleExternalSourceEvidence::Unavailable {
                 reason_code: "source_unavailable".to_string(),
@@ -11791,6 +12307,7 @@ mod tests {
         let service = SeaOrmModuleGovernanceService::new(database);
         let command = ModuleExternalPrebuiltStageCommand {
             request_id: "request-1".to_string(),
+            expected_revision: 1,
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
             source_evidence: ModuleExternalSourceEvidence::Unavailable {
                 reason_code: "source_unavailable".to_string(),
@@ -11831,6 +12348,7 @@ mod tests {
         assert!(matches!(
             ModuleValidationJobEnqueueCommand {
                 request_id: " ".to_string(),
+                expected_revision: 1,
                 actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
                 allow_rejected_retry: false,
             }
@@ -11840,6 +12358,7 @@ mod tests {
         assert!(matches!(
             ModuleValidationJobEnqueueCommand {
                 request_id: "request-1".to_string(),
+                expected_revision: 1,
                 actor_principal: serde_json::json!("operator"),
                 allow_rejected_retry: false,
             }
@@ -11852,6 +12371,7 @@ mod tests {
     fn validation_stage_report_normalizes_transport_values_inside_owner() {
         let command = ModuleValidationStageReportCommand {
             request_id: " request-1 ".to_string(),
+            expected_revision: 1,
             stage_key: " TARGETED_TESTS ".to_string(),
             status: " PASSED ".to_string(),
             actor_principal: serde_json::json!({ "kind": "user", "id": "reviewer" }),
@@ -11873,6 +12393,7 @@ mod tests {
         assert!(matches!(
             ModuleValidationJobResultCommand {
                 validation_job_id: "job-1".to_string(),
+                expected_request_revision: 1,
                 actor_principal: actor_principal.clone(),
                 outcome: ModuleValidationJobResultOutcome::Passed,
                 warnings: Vec::new(),
@@ -11885,6 +12406,7 @@ mod tests {
         assert!(matches!(
             ModuleValidationJobResultCommand {
                 validation_job_id: "job-1".to_string(),
+                expected_request_revision: 1,
                 actor_principal,
                 outcome: ModuleValidationJobResultOutcome::Failed,
                 warnings: Vec::new(),
@@ -11894,6 +12416,116 @@ mod tests {
             .validate(),
             Err(ModuleGovernanceError::InvalidValidationJobResultCommand)
         ));
+    }
+
+    #[tokio::test]
+    async fn validation_worker_result_uses_claimed_request_revision_and_keeps_terminal_replay() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_publish_requests (\
+                id TEXT PRIMARY KEY, revision INTEGER NOT NULL, slug TEXT NOT NULL, version TEXT NOT NULL,\
+                artifact_origin TEXT NOT NULL, status TEXT NOT NULL, validation_warnings TEXT NOT NULL,\
+                validation_errors TEXT NOT NULL, rejected_by_principal TEXT NULL, rejection_reason TEXT NULL,\
+                validated_at TEXT NULL, approved_by_principal TEXT NULL, approved_at TEXT NULL,\
+                published_at TEXT NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_validation_jobs (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, status TEXT NOT NULL,\
+                attempt_number INTEGER NOT NULL, queue_reason TEXT NOT NULL, finished_at TEXT NULL,\
+                last_error TEXT NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_governance_events (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL,\
+                event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
+                details TEXT NOT NULL, created_at TEXT NOT NULL\
+             )",
+            "INSERT INTO registry_publish_requests (\
+                id, revision, slug, version, artifact_origin, status, validation_warnings,\
+                validation_errors, updated_at\
+             ) VALUES (\
+                'request-1', 4, 'sample_module', '1.0.0', 'external_prebuilt', 'validating',\
+                '[]', '[]', datetime('now')\
+             )",
+            "INSERT INTO registry_validation_jobs (\
+                id, request_id, status, attempt_number, queue_reason, updated_at\
+             ) VALUES (\
+                'job-1', 'request-1', 'running', 1, 'initial_validation', datetime('now')\
+             )",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("schema or fixture");
+        }
+
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let failed_result = ModuleValidationJobResultCommand {
+            validation_job_id: "job-1".to_string(),
+            expected_request_revision: 4,
+            actor_principal: serde_json::json!({ "kind": "service", "id": "worker" }),
+            outcome: ModuleValidationJobResultOutcome::Failed,
+            warnings: Vec::new(),
+            errors: vec!["artifact validation failed".to_string()],
+            automated_checks: serde_json::json!([{"check":"artifact_contract","status":"failed"}]),
+        };
+        let mut stale_result = failed_result.clone();
+        stale_result.expected_request_revision = 3;
+        assert_eq!(
+            service.apply_validation_job_result(stale_result).await,
+            Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: 3,
+                current: 4,
+            })
+        );
+
+        assert_eq!(
+            service
+                .apply_validation_job_result(failed_result.clone())
+                .await,
+            Ok("request-1".to_string())
+        );
+        assert_eq!(
+            service.apply_validation_job_result(failed_result).await,
+            Ok("request-1".to_string())
+        );
+        let request = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT status, revision FROM registry_publish_requests WHERE id = 'request-1'"
+                    .to_string(),
+            ))
+            .await
+            .expect("request query")
+            .expect("request row");
+        assert_eq!(
+            request
+                .try_get::<String>("", "status")
+                .expect("request status"),
+            "rejected"
+        );
+        assert_eq!(
+            request
+                .try_get::<i64>("", "revision")
+                .expect("request revision"),
+            5
+        );
+        let job = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT status FROM registry_validation_jobs WHERE id = 'job-1'".to_string(),
+            ))
+            .await
+            .expect("job query")
+            .expect("job row");
+        assert_eq!(
+            job.try_get::<String>("", "status").expect("job status"),
+            "failed"
+        );
     }
 
     #[test]
@@ -11911,6 +12543,7 @@ mod tests {
             ModuleRemoteValidationTerminalCommand {
                 claim_id: "claim-1".to_string(),
                 runner_id: "runner-1".to_string(),
+                expected_request_revision: 1,
                 outcome: ModuleRemoteValidationTerminalOutcome::Passed,
                 detail: None,
                 reason_code: Some("unknown".to_string()),
@@ -11953,6 +12586,109 @@ mod tests {
             .expect("owner snapshot");
         assert_eq!(snapshot.active_claims, 3);
         assert_eq!(snapshot.expired_claims, 1);
+    }
+
+    #[tokio::test]
+    async fn remote_validation_claim_and_terminal_result_advance_the_request_revision() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_publish_requests (\
+                id TEXT PRIMARY KEY, revision INTEGER NOT NULL, slug TEXT NOT NULL, version TEXT NOT NULL,\
+                status TEXT NOT NULL, crate_name TEXT NOT NULL, artifact_storage_key TEXT NULL,\
+                artifact_checksum_sha256 TEXT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+             )",
+            "CREATE TABLE registry_validation_stages (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, slug TEXT NOT NULL, version TEXT NOT NULL,\
+                stage_key TEXT NOT NULL, status TEXT NOT NULL, triggered_by TEXT NOT NULL,\
+                queue_reason TEXT NOT NULL, attempt_number INTEGER NOT NULL, detail TEXT NOT NULL,\
+                started_at TEXT NULL, finished_at TEXT NULL, last_error TEXT NULL, claim_id TEXT NULL,\
+                claimed_by TEXT NULL, claim_expires_at TEXT NULL, last_heartbeat_at TEXT NULL,\
+                runner_kind TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
+             )",
+            "CREATE TABLE registry_governance_events (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL,\
+                event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
+                details TEXT NOT NULL, created_at TEXT NOT NULL\
+             )",
+            "INSERT INTO registry_publish_requests \
+             (id, revision, slug, version, status, crate_name, artifact_storage_key, artifact_checksum_sha256) \
+             VALUES ('request-1', 5, 'sample_module', '1.0.0', 'approved', 'sample_module', \
+                     'artifacts/sha256/sample', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')",
+            "INSERT INTO registry_validation_stages \
+             (id, request_id, slug, version, stage_key, status, triggered_by, queue_reason, \
+              attempt_number, detail, runner_kind) \
+             VALUES ('stage-1', 'request-1', 'sample_module', '1.0.0', 'compile_smoke', 'queued', \
+                     'system', 'initial_validation', 1, 'Queued.', 'remote')",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("schema or fixture");
+        }
+
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let claim = service
+            .claim_remote_validation_stage(ModuleRemoteValidationClaimCommand {
+                runner_id: "runner-1".to_string(),
+                supported_stages: vec!["compile_smoke".to_string()],
+                lease_ttl_ms: 60_000,
+            })
+            .await
+            .expect("claim remote stage")
+            .expect("remote claim");
+        assert_eq!(claim.request_revision, 6);
+
+        let stale_result = service
+            .complete_remote_validation_stage(ModuleRemoteValidationTerminalCommand {
+                claim_id: claim.claim_id.clone(),
+                runner_id: "runner-1".to_string(),
+                expected_request_revision: 5,
+                outcome: ModuleRemoteValidationTerminalOutcome::Passed,
+                detail: None,
+                reason_code: Some("local_runner_passed".to_string()),
+            })
+            .await;
+        assert!(matches!(
+            stale_result,
+            Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: 5,
+                current: 6,
+            })
+        ));
+
+        let terminal = service
+            .complete_remote_validation_stage(ModuleRemoteValidationTerminalCommand {
+                claim_id: claim.claim_id,
+                runner_id: "runner-1".to_string(),
+                expected_request_revision: 6,
+                outcome: ModuleRemoteValidationTerminalOutcome::Passed,
+                detail: None,
+                reason_code: Some("local_runner_passed".to_string()),
+            })
+            .await
+            .expect("complete remote stage");
+        assert_eq!(terminal.status, "passed");
+
+        let request = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT revision FROM registry_publish_requests WHERE id = 'request-1'".to_string(),
+            ))
+            .await
+            .expect("publish request query")
+            .expect("publish request");
+        assert_eq!(
+            request
+                .try_get::<i64>("", "revision")
+                .expect("publish request revision"),
+            7
+        );
     }
 
     #[test]
@@ -12103,6 +12839,7 @@ mod tests {
             schema_documents: Vec::new(),
             settings_schema_digest: None,
             data_schema_digest: None,
+            localization_catalogs: Vec::new(),
             ui_contributions: Vec::new(),
             persistence_contract: None,
         };
@@ -12466,7 +13203,7 @@ mod tests {
             .expect("database");
         for statement in [
             "CREATE TABLE registry_publish_requests (\
-                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
+                id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 1, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
                 artifact_origin TEXT NOT NULL,\
                 publisher_principal TEXT NULL, held_by_principal TEXT NULL, held_reason TEXT NULL,\
                 held_reason_code TEXT NULL, held_at TEXT NULL, held_from_status TEXT NULL, updated_at TEXT NOT NULL\
@@ -12492,9 +13229,25 @@ mod tests {
                 .expect("schema or fixture");
         }
         let service = SeaOrmModuleGovernanceService::new(database.clone());
+        assert_eq!(
+            service
+                .hold_publish_request(ModulePublishRequestHoldCommand {
+                    request_id: "request-1".to_string(),
+                    expected_revision: 2,
+                    actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+                    reason: "release window".to_string(),
+                    reason_code: "release_window".to_string(),
+                })
+                .await,
+            Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: 2,
+                current: 1,
+            })
+        );
         service
             .hold_publish_request(ModulePublishRequestHoldCommand {
                 request_id: "request-1".to_string(),
+                expected_revision: 1,
                 actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
                 reason: "release window".to_string(),
                 reason_code: "release_window".to_string(),
@@ -12504,6 +13257,7 @@ mod tests {
         service
             .resume_publish_request(ModulePublishRequestResumeCommand {
                 request_id: "request-1".to_string(),
+                expected_revision: 2,
                 actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
                 reason: "window closed".to_string(),
                 reason_code: "review_complete".to_string(),
@@ -12556,7 +13310,7 @@ mod tests {
             .expect("database");
         for statement in [
             "CREATE TABLE registry_publish_requests (\
-                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, crate_name TEXT NOT NULL,\
+                id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 1, slug TEXT NOT NULL, version TEXT NOT NULL, crate_name TEXT NOT NULL,\
                 default_locale TEXT NOT NULL, ownership TEXT NOT NULL, trust_level TEXT NOT NULL,\
                 license TEXT NOT NULL, entry_type TEXT NULL, artifact_origin TEXT NOT NULL, marketplace TEXT NOT NULL, ui_packages TEXT NOT NULL,\
                 status TEXT NOT NULL, artifact_storage_key TEXT NULL, artifact_checksum_sha256 TEXT NULL,\
@@ -12645,6 +13399,7 @@ mod tests {
 
         let command = ModulePublishRequestPublicationCommand {
             request_id: "request-1".to_string(),
+            expected_revision: 1,
             idempotency_key: Uuid::new_v4(),
             actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
             publisher_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
@@ -12846,6 +13601,7 @@ mod tests {
             schema_documents: Vec::new(),
             settings_schema_digest: None,
             data_schema_digest: None,
+            localization_catalogs: Vec::new(),
             ui_contributions: Vec::new(),
             persistence_contract: None,
         };
@@ -13081,8 +13837,9 @@ mod tests {
             .expect("database");
         for statement in [
             "CREATE TABLE registry_publish_requests (\
-                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL,\
-                artifact_origin TEXT NOT NULL, status TEXT NOT NULL\
+                id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 1, slug TEXT NOT NULL, version TEXT NOT NULL,\
+                artifact_origin TEXT NOT NULL, status TEXT NOT NULL,\
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
              )",
             "CREATE TABLE registry_publication_evidence (\
                 id TEXT PRIMARY KEY, request_id TEXT NOT NULL, authority TEXT NOT NULL,\
@@ -13120,6 +13877,7 @@ mod tests {
 
         let command = ModulePublicationEvidenceCommand {
             request_id: "request-1".to_string(),
+            expected_revision: 1,
             authority: ModulePublicationEvidenceAuthority::AuthorSignature,
             subject_digest_sha256: "a".repeat(64),
             evidence_reference: "oci://registry.example/modules/sample@sha256:author-signature"
@@ -13133,6 +13891,20 @@ mod tests {
             .record_publication_evidence(command.clone())
             .await
             .expect("record evidence");
+        let stale_new_evidence = ModulePublicationEvidenceCommand {
+            evidence_reference:
+                "oci://registry.example/modules/sample@sha256:second-author-signature".to_string(),
+            ..command.clone()
+        };
+        assert!(matches!(
+            service
+                .record_publication_evidence(stale_new_evidence)
+                .await,
+            Err(ModuleGovernanceError::PublishRequestRevisionConflict {
+                expected: 1,
+                current: 2,
+            })
+        ));
         let repeated = service
             .record_publication_evidence(command)
             .await
@@ -13144,6 +13916,7 @@ mod tests {
         };
         let build_command = ModuleBuildServiceAttestationCommand {
             request_id: "request-1".to_string(),
+            expected_revision: first.request_revision,
             receipt: ModuleBuildPublicationReceipt {
                 artifact: reference('a'),
                 sbom_referrer: reference('b'),
@@ -13161,6 +13934,7 @@ mod tests {
             .expect("record build evidence");
         let platform_admission = ModulePlatformAdmissionCommand {
             request_id: "request-1".to_string(),
+            expected_revision: build.request_revision,
             registry_id: "local".to_string(),
             reference: reference('a'),
             descriptor: crate::ModuleArtifactDescriptor {
@@ -13181,6 +13955,7 @@ mod tests {
                 schema_documents: Vec::new(),
                 settings_schema_digest: None,
                 data_schema_digest: None,
+                localization_catalogs: Vec::new(),
                 ui_contributions: Vec::new(),
                 persistence_contract: None,
             },
@@ -13252,12 +14027,31 @@ mod tests {
         assert!(first.recorded);
         assert!(!repeated.recorded);
         assert_eq!(first.evidence_id, repeated.evidence_id);
+        assert_eq!(first.request_revision, 2);
+        assert_eq!(repeated.request_revision, 2);
         assert!(build.recorded);
         assert_ne!(first.evidence_id, build.evidence_id);
+        assert_eq!(build.request_revision, 3);
         assert!(admission.recorded);
         assert!(!repeated_admission.recorded);
         assert_eq!(admission.evidence_id, repeated_admission.evidence_id);
         assert_ne!(build.evidence_id, admission.evidence_id);
+        assert_eq!(admission.request_revision, 4);
+        assert_eq!(repeated_admission.request_revision, 4);
+        let request_revision = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT revision FROM registry_publish_requests WHERE id = 'request-1'".to_string(),
+            ))
+            .await
+            .expect("publish request query")
+            .expect("publish request");
+        assert_eq!(
+            request_revision
+                .try_get::<i64>("", "revision")
+                .expect("publish request revision"),
+            4
+        );
         let evidence = database
             .query_all(Statement::from_string(
                 DbBackend::Sqlite,

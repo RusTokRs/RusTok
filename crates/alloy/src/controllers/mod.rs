@@ -756,6 +756,7 @@ pub async fn stage_release(
             script_id: id,
             expected_revision: request.expected_version,
             publish_request_id: request.publish_request_id,
+            expected_publish_request_revision: request.expected_publish_request_revision,
             artifact_digest: request.artifact_digest,
             actor_id,
             idempotency_key: request.idempotency_key,
@@ -765,6 +766,7 @@ pub async fn stage_release(
     Ok(Json(StageReleaseResponse {
         staging_id: result.staging_id,
         created: result.created,
+        request_revision: result.request_revision,
     }))
 }
 

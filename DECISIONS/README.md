@@ -14,6 +14,7 @@ column identifies the current canonical decision.
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [2026-08-20](./2026-08-20-static-module-lifecycle-revision.md) | Static module lifecycle revision aggregate | Accepted |
 | [2026-08-15](./2026-08-15-shared-retention-policy.md) | Shared retention policy | Accepted |
 | [2026-08-14](./2026-08-14-module-node-reconciliation-ledger.md) | Durable module node reconciliation ledger | Accepted |
 | [2026-08-06](./2026-08-06-module-release-rollback-safety.md) | Module release rollback safety | Accepted |

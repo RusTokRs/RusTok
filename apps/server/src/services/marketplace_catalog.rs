@@ -591,6 +591,9 @@ pub struct RegistryPublishStatusResponse {
     #[serde(default = "default_registry_mutation_schema_version")]
     pub schema_version: u32,
     pub request_id: String,
+    /// Monotonically increasing publish-request aggregate revision for a
+    /// subsequent compare-and-swap mutation.
+    pub revision: i64,
     pub slug: String,
     pub version: String,
     pub status: String,
@@ -783,6 +786,8 @@ pub struct RegistryRunnerCompletionRequest {
     #[serde(default = "default_registry_mutation_schema_version")]
     pub schema_version: u32,
     pub runner_id: String,
+    #[serde(rename = "expectedRequestRevision")]
+    pub expected_request_revision: i64,
     pub detail: Option<String>,
     pub reason_code: Option<String>,
 }
@@ -799,6 +804,8 @@ pub struct RegistryRunnerClaimPayload {
     pub claim_id: String,
     #[serde(rename = "requestId")]
     pub request_id: String,
+    #[serde(rename = "requestRevision")]
+    pub request_revision: i64,
     pub slug: String,
     pub version: String,
     #[serde(rename = "stageKey")]
@@ -1179,6 +1186,27 @@ mod tests {
             }));
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn remote_terminal_requires_the_revision_issued_with_its_claim() {
+        let terminal =
+            serde_json::from_value::<RegistryRunnerCompletionRequest>(serde_json::json!({
+                "runner_id": "runner-1",
+                "expectedRequestRevision": 6,
+                "detail": null,
+                "reason_code": "local_runner_passed",
+            }))
+            .expect("terminal request");
+        assert_eq!(terminal.expected_request_revision, 6);
+
+        let missing_revision =
+            serde_json::from_value::<RegistryRunnerCompletionRequest>(serde_json::json!({
+                "runner_id": "runner-1",
+                "detail": null,
+                "reason_code": "local_runner_passed",
+            }));
+        assert!(missing_revision.is_err());
     }
 
     struct TestProvider {

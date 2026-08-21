@@ -396,6 +396,7 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
         let actor_principal = author_principal(&command.context.actor_id);
         let artifact_command = ModulePublishArtifactAttachCommand {
             request_id: request_id.clone(),
+            expected_revision: 1,
             actor_principal: actor_principal.clone(),
             actor_can_manage_modules: false,
             checksum_sha256: bundle_checksum_sha256.clone(),
@@ -426,6 +427,7 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
             .governance
             .stage_platform_build(ModulePublishPlatformBuildStageCommand {
                 request_id: request_id.clone(),
+                expected_revision: 2,
                 tenant_id,
                 build_request_id: command.build_request_id,
                 idempotency_key,
@@ -437,6 +439,7 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
             .governance
             .enqueue_validation_job(ModuleValidationJobEnqueueCommand {
                 request_id: request_id.clone(),
+                expected_revision: stage.request_revision,
                 actor_principal,
                 allow_rejected_retry: false,
             })

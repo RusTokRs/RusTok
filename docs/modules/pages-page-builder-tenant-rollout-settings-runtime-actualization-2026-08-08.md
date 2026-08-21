@@ -37,14 +37,14 @@ Browser-supplied rollout flags are not accepted.
 
 ## Promotion-safe settings write transport
 
-The canonical unconditional `updateModuleSettings` command remains the ordinary tenant settings editor contract, including its Core-row upsert semantics. Reviewed rollout automation uses a separate conditional command because it has different write semantics rather than a compatibility version of the same command.
+The canonical `updateModuleSettings` command is the ordinary tenant settings editor contract, including its Core-row upsert semantics. It requires the current static lifecycle revision and an idempotency key. Reviewed rollout automation uses the same owner operation with an additional reviewed-snapshot assertion; it is a distinct approval workflow, not a second persistence path.
 
 `compareAndSwapModuleSettings` is mounted into the assembled server GraphQL mutation root through `ModuleSettingsCasMutation`. It:
 
 - requires the routed authenticated tenant and `modules:manage`;
-- accepts the exact reviewed `expectedEnabled` bit and full `expectedSettings` JSON together with the proposed settings JSON;
+- accepts the exact reviewed `expectedEnabled` bit, full `expectedSettings` JSON, current `expectedRevision`, a fresh `idempotencyKey`, and the proposed settings JSON;
 - normalizes both expected and proposed settings through the active module settings schema;
-- delegates to `ModuleRolloutPromotionSettingsService` and the lifecycle-owner/store CAS introduced by the promotion-safety chain;
+- delegates to `ModuleRolloutPromotionSettingsService` and the lifecycle owner, which atomically stores the owner receipt, aggregate claim, settings write, and revision advance;
 - returns `MODULE_SETTINGS_SNAPSHOT_CONFLICT` with `requires_rereview=true` when either enablement or settings changed since review;
 - never treats a caller-supplied approval boolean, reviewer id, or evidence path as review authority.
 
@@ -60,16 +60,16 @@ The operator requires both `modules:manage` for the settings CAS and `pages:read
 
 The runner:
 
-1. reads the current enabled Pages row through `tenantModules`;
+1. reads the current enabled Pages row and its lifecycle revision through `tenantModules`;
 2. clones the complete current settings document;
 3. changes only the four Page Builder rollout booleans to the reviewed `all_on` profile and preserves every other setting;
-4. calls `compareAndSwapModuleSettings` with the exact current enabled/settings snapshot;
+4. calls `compareAndSwapModuleSettings` with the exact current enabled/settings snapshot, lifecycle revision, and a fresh idempotency key;
 5. verifies the returned settings through a fresh `tenantModules` read and verifies all four flags through `pageBuilderRolloutSnapshot`;
 6. retains only bounded response and semantic hashes, never raw settings or credentials.
 
 A `MODULE_SETTINGS_SNAPSHOT_CONFLICT` is terminal for that review and requires a new read and new review. It is never converted into an unconditional overwrite.
 
-If the mutation is confirmed but the postcondition fails, the runner attempts one CAS rollback whose expected settings are the confirmed applied snapshot and whose restore target is the exact original snapshot. Confirmed rollback still fails the promotion execution and records `control_plane_change_postcondition_failed_rolled_back`. Rollback conflict or ambiguity records manual reconciliation.
+If the mutation is confirmed but the postcondition fails, the runner attempts one CAS rollback whose expected settings and lifecycle revision are the confirmed applied snapshot and whose restore target is the exact original snapshot. Confirmed rollback still fails the promotion execution and records `control_plane_change_postcondition_failed_rolled_back`. Rollback conflict or ambiguity records manual reconciliation.
 
 If the initial mutation outcome is ambiguous, the runner deliberately does **not** attempt rollback because it cannot safely know whether the write committed; it records `control_plane_change_requires_manual_reconciliation`.
 

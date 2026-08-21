@@ -27,6 +27,9 @@ pub struct AlloyReleaseStageCommand {
     pub script_id: ScriptId,
     pub expected_revision: u32,
     pub publish_request_id: String,
+    /// Optimistic concurrency precondition for the owner-owned marketplace
+    /// request. It is separate from the Alloy source revision above.
+    pub expected_publish_request_revision: i64,
     pub artifact_digest: String,
     pub actor_id: String,
     pub idempotency_key: Uuid,
@@ -37,6 +40,7 @@ impl AlloyReleaseStageCommand {
         if self.script_id.is_nil()
             || self.expected_revision == 0
             || self.publish_request_id.trim().is_empty()
+            || self.expected_publish_request_revision < 1
             || self.publish_request_id.len() > MAX_RELEASE_REQUEST_ID_LENGTH
             || self.publish_request_id.chars().any(char::is_control)
             || !is_prefixed_sha256_digest(&self.artifact_digest)
@@ -115,6 +119,7 @@ mod tests {
             script_id: Uuid::new_v4(),
             expected_revision: 1,
             publish_request_id: "rpr_example".to_string(),
+            expected_publish_request_revision: 1,
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
             actor_id: "operator".to_string(),
             idempotency_key: Uuid::new_v4(),
@@ -124,6 +129,9 @@ mod tests {
         let mut invalid = command;
         invalid.expected_revision = 0;
         assert_eq!(invalid.validate(), Err(AlloyReleaseError::InvalidCommand));
+        invalid.expected_revision = 1;
+        invalid.expected_publish_request_revision = 0;
+        assert_eq!(invalid.validate(), Err(AlloyReleaseError::InvalidCommand));
     }
 
     #[test]
@@ -132,6 +140,7 @@ mod tests {
             script_id: Uuid::new_v4(),
             expected_revision: 1,
             publish_request_id: "rpr_example".to_string(),
+            expected_publish_request_revision: 1,
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
             actor_id: "operator".to_string(),
             idempotency_key: Uuid::new_v4(),

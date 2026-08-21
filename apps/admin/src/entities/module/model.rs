@@ -165,6 +165,8 @@ pub struct ModuleInfo {
     pub kind: String,
     pub dependencies: Vec<String>,
     pub enabled: bool,
+    #[serde(rename = "lifecycleRevision")]
+    pub lifecycle_revision: i64,
     pub ownership: String,
     #[serde(rename = "trustLevel")]
     pub trust_level: String,
@@ -197,12 +199,20 @@ pub struct InstalledModule {
     pub dependencies: Vec<String>,
 }
 
+/// Immutable platform composition concurrency token exposed by the module
+/// control-plane transport. Static module-set writes must echo this revision.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ModuleCompositionSnapshot {
+    pub revision: i64,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct TenantModule {
     #[serde(rename = "moduleSlug")]
     pub module_slug: String,
     pub enabled: bool,
     pub settings: String,
+    pub revision: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -407,6 +417,7 @@ pub struct RegistryValidationStageLifecycle {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryPublishRequestLifecycle {
     pub id: String,
+    pub revision: i64,
     pub status: String,
     #[serde(rename = "requestedBy")]
     #[serde(deserialize_with = "deserialize_registry_principal_label")]
@@ -530,6 +541,7 @@ pub struct ToggleModuleResult {
     pub module_slug: String,
     pub enabled: bool,
     pub settings: String,
+    pub revision: i64,
 }
 
 #[cfg(test)]

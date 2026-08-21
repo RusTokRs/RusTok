@@ -22,6 +22,7 @@ fn map_owner_request_snapshot(
 ) -> RegistryPublishRequestSnapshot {
     RegistryPublishRequestSnapshot {
         id: request.id,
+        revision: request.revision,
         slug: request.slug,
         version: request.version,
         status: request.status,

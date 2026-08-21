@@ -14,6 +14,7 @@ pub struct Model {
     pub requested_by: Option<String>,
     pub correlation_id: Option<String>,
     pub idempotency_key: Option<Uuid>,
+    pub expected_revision: Option<i64>,
     pub error_message: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

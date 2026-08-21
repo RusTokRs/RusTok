@@ -43,6 +43,7 @@ pub async fn finish_remote_validation_stage_atomic(
     db: &DatabaseConnection,
     claim_id: &str,
     runner_id: &str,
+    expected_request_revision: i64,
     outcome: RemoteTerminalOutcome,
     detail: Option<&str>,
     reason_code: Option<&str>,
@@ -52,6 +53,7 @@ pub async fn finish_remote_validation_stage_atomic(
         .complete_remote_validation_stage(ModuleRemoteValidationTerminalCommand {
             claim_id: claim_id.to_string(),
             runner_id: runner_id.to_string(),
+            expected_request_revision,
             outcome: match outcome {
                 RemoteTerminalOutcome::Passed => ModuleRemoteValidationTerminalOutcome::Passed,
                 RemoteTerminalOutcome::Failed => ModuleRemoteValidationTerminalOutcome::Failed,

@@ -21,7 +21,8 @@ around the owner contracts.
   registry at runtime.
 - Enforce descriptor-only brokered persistence; marketplace artifacts cannot
   declare SQL, native migrations, storage paths, or host handles.
-- Restrict marketplace UI contributions to host-rendered declarative metadata;
+- Restrict marketplace UI contributions to a bundled-schema-validated,
+  host-rendered declarative contract with exact-locale plain-text catalogs;
   native UI packages remain static-promotion-only.
 - Define the owner ports for marketplace publication, installation, activation,
   rollback and policy.

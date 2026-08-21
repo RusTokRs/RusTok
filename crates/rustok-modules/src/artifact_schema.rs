@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use jsonschema::{Draft, PatternOptions, Validator};
@@ -8,6 +8,33 @@ use serde_json::Value;
 
 const MAX_ARTIFACT_SCHEMA_VALIDATORS: usize = 128;
 const MAX_ARTIFACT_SCHEMA_REGEX_BYTES: usize = 64 * 1024;
+const UI_CONTRIBUTION_SCHEMA: &str = include_str!("../contracts/ui-contribution.schema.json");
+
+/// Validates one host-rendered artifact UI contribution against the immutable
+/// framework-neutral schema bundled with the modules owner. This schema is
+/// intentionally separate from descriptor-bundled schemas: it is a platform
+/// protocol, not artifact-controlled executable input.
+pub(crate) fn validates_ui_contribution(value: &Value) -> bool {
+    static VALIDATOR: OnceLock<Validator> = OnceLock::new();
+
+    VALIDATOR
+        .get_or_init(|| {
+            let schema = serde_json::from_str(UI_CONTRIBUTION_SCHEMA)
+                .expect("the bundled UI contribution schema must be valid JSON");
+            jsonschema::options()
+                .with_draft(Draft::Draft202012)
+                .should_validate_formats(true)
+                .should_ignore_unknown_formats(false)
+                .with_pattern_options(
+                    PatternOptions::regex()
+                        .size_limit(MAX_ARTIFACT_SCHEMA_REGEX_BYTES)
+                        .dfa_size_limit(MAX_ARTIFACT_SCHEMA_REGEX_BYTES),
+                )
+                .build(&schema)
+                .expect("the bundled UI contribution schema must compile")
+        })
+        .is_valid(value)
+}
 
 /// Content-free failure taxonomy for validation against an admitted artifact
 /// schema. Callers add their own binding/settings context without exposing the

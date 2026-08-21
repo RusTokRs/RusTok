@@ -90,6 +90,9 @@ pub struct ModulePostHookRetryRequest {
     pub operation_id: uuid::Uuid,
     pub requested_by: Option<String>,
     pub idempotency_key: uuid::Uuid,
+    /// Revision reviewed by the actor before retrying a static lifecycle
+    /// operation. Dynamic artifact recovery deliberately leaves this absent.
+    pub expected_revision: Option<u64>,
     /// Exact persisted tenant override after the original state commit.
     /// `None` means that no explicit tenant override row exists.
     pub current_override_enabled: Option<bool>,
@@ -100,10 +103,16 @@ pub struct ModulePostHookRetryRequest {
 pub enum ModuleOperationRecoveryError {
     #[error("module operation not found")]
     OperationNotFound,
+    #[error("module recovery command identity must not be nil")]
+    InvalidCommandIdentity,
     #[error("module operation idempotency key must not be nil")]
     InvalidIdempotencyKey,
     #[error("module operation idempotency key was reused for a different command")]
     IdempotencyConflict,
+    #[error("module lifecycle revision conflict: expected {expected}, current {current}")]
+    RevisionConflict { expected: u64, current: u64 },
+    #[error("module lifecycle operation is already active")]
+    OperationInProgress,
     #[error("module operation is not retryable: {0}")]
     NotRetryable(String),
     #[error(
@@ -161,6 +170,7 @@ fn retry_operation_request(
     plan: &ModuleOperationRecoveryPlan,
     requested_by: Option<String>,
     idempotency_key: uuid::Uuid,
+    expected_revision: Option<u64>,
 ) -> ModuleOperationRequest {
     ModuleOperationRequest {
         tenant_id: plan.tenant_id,
@@ -170,6 +180,7 @@ fn retry_operation_request(
         requested_by,
         correlation_id: plan.operation_id.to_string(),
         idempotency_key: Some(idempotency_key),
+        expected_revision,
     }
 }
 
@@ -182,8 +193,12 @@ pub(crate) async fn retry_failed_post_hook_operation(
         return Err(ModuleOperationRecoveryError::InvalidIdempotencyKey);
     }
     let plan = module_operation_recovery_plan(db, request.operation_id).await?;
-    let journal_request =
-        retry_operation_request(&plan, request.requested_by.clone(), request.idempotency_key);
+    let journal_request = retry_operation_request(
+        &plan,
+        request.requested_by.clone(),
+        request.idempotency_key,
+        request.expected_revision,
+    );
     if let Some(operation) = ModuleOperationJournal::replay_idempotent(db, &journal_request)
         .await
         .map_err(|error| match error {
@@ -422,6 +437,7 @@ mod tests {
             requested_by: Some("operator".to_string()),
             correlation_id: Some(Uuid::new_v4().to_string()),
             idempotency_key: None,
+            expected_revision: None,
             error_message: error_message.map(str::to_string),
             created_at: Utc::now(),
         }
@@ -498,10 +514,15 @@ mod tests {
             snapshot(Some("post-hook: timeout")),
             Some(override_state()),
         );
-        let request =
-            retry_operation_request(&plan, Some("retry-operator".to_string()), Uuid::new_v4());
+        let request = retry_operation_request(
+            &plan,
+            Some("retry-operator".to_string()),
+            Uuid::new_v4(),
+            Some(4),
+        );
 
         assert_eq!(request.requested_enabled, plan.requested_enabled);
+        assert_eq!(request.expected_revision, Some(4));
         assert_eq!(
             request.previous_effective_enabled,
             plan.previous_effective_enabled

@@ -237,6 +237,7 @@ impl RegistryValidationWorker {
         self.service
             .apply_validation_job_result(ModuleValidationJobResultCommand {
                 validation_job_id: validation_job_id.clone(),
+                expected_request_revision: work_item.expected_request_revision,
                 actor_principal: self.actor_principal.clone(),
                 outcome,
                 warnings,
@@ -280,6 +281,7 @@ impl RegistryValidationWorker {
                         self.service
                             .apply_validation_job_result(ModuleValidationJobResultCommand {
                                 validation_job_id: work_item.validation_job_id.clone(),
+                                expected_request_revision: work_item.expected_request_revision,
                                 actor_principal: self.actor_principal.clone(),
                                 outcome: ModuleValidationJobResultOutcome::Failed,
                                 warnings: work_item.existing_warnings.clone(),

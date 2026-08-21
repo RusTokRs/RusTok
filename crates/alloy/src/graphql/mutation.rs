@@ -365,6 +365,7 @@ impl AlloyMutation {
             script_id: id,
             expected_revision: input.expected_version,
             publish_request_id: input.publish_request_id,
+            expected_publish_request_revision: input.expected_publish_request_revision,
             artifact_digest: input.artifact_digest,
             actor_id: auth.user_id.to_string(),
             idempotency_key: input.idempotency_key,
@@ -374,6 +375,7 @@ impl AlloyMutation {
         Ok(GqlStageRelease {
             staging_id: result.staging_id,
             created: result.created,
+            request_revision: result.request_revision,
         })
     }
 

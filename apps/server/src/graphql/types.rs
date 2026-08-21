@@ -178,6 +178,18 @@ pub struct TenantModule {
     pub module_slug: String,
     pub enabled: bool,
     pub settings: String,
+    pub revision: i64,
+}
+
+/// Tenant-specific availability intent for one admitted artifact installation.
+/// `expected_revision` is the only revision value accepted by the next
+/// enablement command; it is one when no explicit intent has been persisted.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactTenantLifecycle {
+    pub installation_id: Uuid,
+    pub enabled: bool,
+    pub revision: i64,
+    pub expected_revision: i64,
 }
 
 #[derive(SimpleObject, Clone)]
@@ -226,6 +238,14 @@ pub struct InstalledModule {
     pub path: Option<String>,
     pub required: bool,
     pub dependencies: Vec<String>,
+}
+
+/// Minimal immutable composition version exposed to control-plane clients for
+/// mandatory optimistic-concurrency inputs. The manifest remains owner-owned
+/// and is deliberately not duplicated on this transport object.
+#[derive(SimpleObject, Clone)]
+pub struct ModuleCompositionSnapshot {
+    pub revision: i64,
 }
 
 impl From<&InstalledManifestModule> for InstalledModule {
@@ -283,6 +303,7 @@ impl From<RegistryPrincipalRef> for RegistryPrincipal {
 #[derive(SimpleObject, Clone)]
 pub struct RegistryPublishRequestLifecycle {
     pub id: String,
+    pub revision: i64,
     pub status: String,
     pub requested_by: RegistryPrincipal,
     pub publisher: Option<RegistryPrincipal>,
@@ -786,6 +807,7 @@ pub struct ModuleRegistryItem {
     pub version: String,
     pub kind: String,
     pub enabled: bool,
+    pub lifecycle_revision: i64,
     pub dependencies: Vec<String>,
     pub ownership: String,
     pub trust_level: String,

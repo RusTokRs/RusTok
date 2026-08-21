@@ -1152,6 +1152,7 @@ mod tests {
             }],
             settings_schema_digest: None,
             data_schema_digest: Some(schema_digest.clone()),
+            localization_catalogs: Vec::new(),
             ui_contributions: Vec::new(),
             persistence_contract: Some(ArtifactPersistenceContract {
                 revision: 7,

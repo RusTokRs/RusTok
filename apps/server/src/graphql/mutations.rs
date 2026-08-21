@@ -3,9 +3,10 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Qu
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
+use crate::graphql::artifact_tenant_lifecycle::map_artifact_tenant_lifecycle_error;
 use crate::graphql::types::{
-    BuildJob, CreateUserInput, DeleteUserPayload, ModuleOperationRecoveryPlan, TenantModule,
-    UpdateUserInput, User,
+    ArtifactTenantLifecycle, BuildJob, CreateUserInput, DeleteUserPayload,
+    ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput, User,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
@@ -30,15 +31,18 @@ use crate::services::platform_composition::{
 };
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use rustok_api::Permission;
 use rustok_api::graphql::GraphQLError;
+use rustok_api::{Permission, PortError, PortErrorKind};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationRuntime, UserMutationRecord,
 };
 use rustok_build::EventBusBuildEventPublisher;
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
-use rustok_modules::ModuleCompositionError;
+use rustok_modules::{
+    ArtifactTenantDisableRequest, ArtifactTenantEnableRequest, ModuleCompositionError,
+    ModuleControlPlane,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -331,6 +335,35 @@ fn map_platform_composition_build_error(error: PlatformCompositionBuildError) ->
 
 fn map_toggle_module_error(error: ToggleModuleError) -> FieldError {
     match error {
+        ToggleModuleError::InvalidCommandIdentity => <FieldError as GraphQLError>::bad_user_input(
+            "Module lifecycle command identity is invalid",
+        ),
+        ToggleModuleError::InvalidIdempotencyKey => <FieldError as GraphQLError>::bad_user_input(
+            "Module lifecycle idempotency key is invalid",
+        ),
+        ToggleModuleError::IdempotencyConflict => {
+            FieldError::new("Module lifecycle idempotency key was reused for a different command")
+                .extend_with(|_, ext| {
+                    ext.set("code", "IDEMPOTENCY_CONFLICT");
+                    ext.set("retryable_issue", false);
+                })
+        }
+        ToggleModuleError::RevisionConflict { expected, current } => FieldError::new(format!(
+            "Static module lifecycle changed since revision {expected}; current revision is {current}",
+        ))
+        .extend_with(|_, ext| {
+            ext.set("code", "REVISION_CONFLICT");
+            ext.set("retryable_issue", false);
+            ext.set("expected_revision", expected);
+            ext.set("current_revision", current);
+        }),
+        ToggleModuleError::OperationInProgress => {
+            FieldError::new("A static module lifecycle operation is already active")
+                .extend_with(|_, ext| {
+                    ext.set("code", "MODULE_LIFECYCLE_OPERATION_IN_PROGRESS");
+                    ext.set("retryable_issue", false);
+                })
+        }
         ToggleModuleError::UnknownModule => {
             <FieldError as GraphQLError>::bad_user_input(TOGGLE_ERR_UNKNOWN_MODULE)
         }
@@ -371,6 +404,11 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
         ModuleOperationRecoveryError::OperationNotFound => {
             <FieldError as GraphQLError>::bad_user_input("Module operation not found")
         }
+        ModuleOperationRecoveryError::InvalidCommandIdentity => {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Module recovery command identity is invalid",
+            )
+        }
         ModuleOperationRecoveryError::InvalidIdempotencyKey => {
             <FieldError as GraphQLError>::bad_user_input(
                 "Module operation idempotency key is invalid",
@@ -408,6 +446,24 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             ext.set("code", "IDEMPOTENCY_CONFLICT");
             ext.set("retryable_issue", false);
         }),
+        ModuleOperationRecoveryError::RevisionConflict { expected, current } => FieldError::new(
+            format!(
+                "Static module lifecycle changed since revision {expected}; current revision is {current}",
+            ),
+        )
+        .extend_with(|_, ext| {
+            ext.set("code", "REVISION_CONFLICT");
+            ext.set("retryable_issue", false);
+            ext.set("expected_revision", expected);
+            ext.set("current_revision", current);
+        }),
+        ModuleOperationRecoveryError::OperationInProgress => {
+            FieldError::new("A static module lifecycle operation is already active")
+                .extend_with(|_, ext| {
+                    ext.set("code", "MODULE_LIFECYCLE_OPERATION_IN_PROGRESS");
+                    ext.set("retryable_issue", false);
+                })
+        }
         ModuleOperationRecoveryError::Database(err) => {
             <FieldError as GraphQLError>::internal_error(&err.to_string())
         }
@@ -427,8 +483,35 @@ fn map_platform_composition_error(error: PlatformCompositionError) -> FieldError
         }) => <FieldError as GraphQLError>::bad_user_input(&format!(
             "Platform composition revision conflict: expected {expected}, current {current}"
         )),
+        PlatformCompositionError::Owner(ModuleCompositionError::OperationReceipt(error)) => {
+            map_composition_operation_receipt_error(error)
+        }
+        other @ (PlatformCompositionError::Owner(
+            ModuleCompositionError::InvalidExpectedRevision,
+        )
+        | PlatformCompositionError::Owner(
+            ModuleCompositionError::InvalidOperationIdentity { .. },
+        )) => <FieldError as GraphQLError>::bad_user_input(&other.to_string()),
         PlatformCompositionError::Manifest(error) => map_manifest_error(error),
         other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+    }
+}
+
+fn map_composition_operation_receipt_error(error: PortError) -> FieldError {
+    match error.kind {
+        PortErrorKind::Validation | PortErrorKind::Conflict => {
+            <FieldError as GraphQLError>::bad_user_input(&error.message)
+        }
+        PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(&error.message),
+        PortErrorKind::Forbidden => <FieldError as GraphQLError>::permission_denied(&error.message),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => {
+            <FieldError as GraphQLError>::internal_error(
+                "Module composition service is temporarily unavailable",
+            )
+        }
+        PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
+            "Module composition operation requires operator review",
+        ),
     }
 }
 
@@ -555,7 +638,8 @@ impl RootMutation {
         ctx: &Context<'_>,
         slug: String,
         version: String,
-        expected_revision: Option<i64>,
+        expected_revision: i64,
+        idempotency_key: Uuid,
     ) -> Result<BuildJob> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
@@ -566,8 +650,10 @@ impl RootMutation {
             tenant.id,
             registry,
             PlatformCompositionModuleMutation {
+                tenant_id: tenant.id,
+                actor_id: auth.user_id,
+                idempotency_key,
                 expected_revision,
-                requested_by: auth.user_id.to_string(),
                 change: PlatformCompositionModuleChange::Install {
                     module_slug: slug,
                     version,
@@ -581,7 +667,8 @@ impl RootMutation {
         &self,
         ctx: &Context<'_>,
         slug: String,
-        expected_revision: Option<i64>,
+        expected_revision: i64,
+        idempotency_key: Uuid,
     ) -> Result<BuildJob> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
@@ -592,8 +679,10 @@ impl RootMutation {
             tenant.id,
             registry,
             PlatformCompositionModuleMutation {
+                tenant_id: tenant.id,
+                actor_id: auth.user_id,
+                idempotency_key,
                 expected_revision,
-                requested_by: auth.user_id.to_string(),
                 change: PlatformCompositionModuleChange::Uninstall { module_slug: slug },
             },
         )
@@ -605,7 +694,8 @@ impl RootMutation {
         ctx: &Context<'_>,
         slug: String,
         version: String,
-        expected_revision: Option<i64>,
+        expected_revision: i64,
+        idempotency_key: Uuid,
     ) -> Result<BuildJob> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
@@ -616,8 +706,10 @@ impl RootMutation {
             tenant.id,
             registry,
             PlatformCompositionModuleMutation {
+                tenant_id: tenant.id,
+                actor_id: auth.user_id,
+                idempotency_key,
                 expected_revision,
-                requested_by: auth.user_id.to_string(),
                 change: PlatformCompositionModuleChange::Upgrade {
                     module_slug: slug,
                     version,
@@ -632,34 +724,37 @@ impl RootMutation {
         ctx: &Context<'_>,
         module_slug: String,
         enabled: bool,
+        expected_revision: i64,
+        idempotency_key: Uuid,
     ) -> Result<TenantModule> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
-
-        let can_manage_modules =
-            RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
-                .await
-                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        if !can_manage_modules {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: modules:manage required",
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if idempotency_key.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module lifecycle idempotency key must not be nil",
             ));
         }
-
+        if expected_revision < 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision must not be negative",
+            ));
+        }
+        let expected_revision = u64::try_from(expected_revision).map_err(|_| {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision is outside the supported range",
+            )
+        })?;
+        let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let module = ModuleLifecycleService::toggle_module_with_actor(
+        let module = ModuleLifecycleService::toggle_module(
             db,
             registry,
             tenant.id,
             &module_slug,
             enabled,
-            Some(auth.user_id.to_string()),
+            auth.user_id,
+            idempotency_key,
+            expected_revision,
         )
         .await
         .map_err(map_toggle_module_error)?;
@@ -668,6 +763,77 @@ impl RootMutation {
             module_slug: module.module_slug,
             enabled: module.enabled,
             settings: module.settings.to_string(),
+            revision: i64::try_from(module.revision).map_err(|_| {
+                <FieldError as GraphQLError>::internal_error(
+                    "Static module lifecycle revision is outside the GraphQL range",
+                )
+            })?,
+        })
+    }
+
+    async fn set_artifact_tenant_enabled(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+        enabled: bool,
+        expected_revision: i64,
+        reason: String,
+        idempotency_key: Uuid,
+    ) -> Result<ArtifactTenantLifecycle> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if installation_id.is_nil() || idempotency_key.is_nil() || expected_revision <= 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Artifact tenant lifecycle requires non-nil installation and idempotency identities plus a positive expected revision",
+            ));
+        }
+        if reason.trim().is_empty() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Artifact tenant lifecycle requires a non-empty reason",
+            ));
+        }
+        let expected_revision = u64::try_from(expected_revision).map_err(|_| {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Artifact tenant lifecycle revision is outside the supported range",
+            )
+        })?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let installation = ModuleControlPlane::new(db.clone()).installation();
+        let revision = if enabled {
+            installation
+                .enable_artifact_for_tenant(ArtifactTenantEnableRequest {
+                    installation_id,
+                    tenant_id: tenant.id,
+                    expected_revision,
+                    actor_id: auth.user_id,
+                    reason,
+                    idempotency_key,
+                })
+                .await
+                .map(|result| result.revision)
+        } else {
+            installation
+                .disable_artifact_for_tenant(ArtifactTenantDisableRequest {
+                    installation_id,
+                    tenant_id: tenant.id,
+                    expected_revision,
+                    actor_id: auth.user_id,
+                    reason,
+                    idempotency_key,
+                })
+                .await
+                .map(|result| result.revision)
+        }
+        .map_err(map_artifact_tenant_lifecycle_error)?;
+        let revision = i64::try_from(revision).map_err(|_| {
+            <FieldError as GraphQLError>::internal_error(
+                "Artifact tenant lifecycle revision is outside the GraphQL range",
+            )
+        })?;
+        Ok(ArtifactTenantLifecycle {
+            installation_id,
+            enabled,
+            revision,
+            expected_revision: revision,
         })
     }
 
@@ -676,8 +842,19 @@ impl RootMutation {
         ctx: &Context<'_>,
         operation_id: Uuid,
         idempotency_key: Uuid,
+        expected_revision: i64,
     ) -> Result<ModuleOperationRecoveryPlan> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if expected_revision < 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision must not be negative",
+            ));
+        }
+        let expected_revision = u64::try_from(expected_revision).map_err(|_| {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision is outside the supported range",
+            )
+        })?;
         let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
@@ -686,8 +863,9 @@ impl RootMutation {
             registry,
             tenant.id,
             operation_id,
-            Some(auth.user_id.to_string()),
+            auth.user_id,
             idempotency_key,
+            expected_revision,
         )
         .await
         .map_err(map_module_operation_recovery_error)?;
@@ -700,8 +878,19 @@ impl RootMutation {
         ctx: &Context<'_>,
         operation_id: Uuid,
         idempotency_key: Uuid,
+        expected_revision: i64,
     ) -> Result<TenantModule> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if expected_revision < 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision must not be negative",
+            ));
+        }
+        let expected_revision = u64::try_from(expected_revision).map_err(|_| {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision is outside the supported range",
+            )
+        })?;
         let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
@@ -710,8 +899,9 @@ impl RootMutation {
             registry,
             tenant.id,
             operation_id,
-            Some(auth.user_id.to_string()),
+            auth.user_id,
             idempotency_key,
+            expected_revision,
         )
         .await
         .map_err(map_module_operation_recovery_error)?;
@@ -720,6 +910,11 @@ impl RootMutation {
             module_slug: module.module_slug,
             enabled: module.enabled,
             settings: module.settings.to_string(),
+            revision: i64::try_from(module.revision).map_err(|_| {
+                <FieldError as GraphQLError>::internal_error(
+                    "Static module lifecycle revision is outside the GraphQL range",
+                )
+            })?,
         })
     }
 
@@ -728,8 +923,25 @@ impl RootMutation {
         ctx: &Context<'_>,
         module_slug: String,
         settings: String,
+        expected_revision: i64,
+        idempotency_key: Uuid,
     ) -> Result<TenantModule> {
-        let (_, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        if idempotency_key.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Module settings idempotency key must not be nil",
+            ));
+        }
+        if expected_revision < 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision must not be negative",
+            ));
+        }
+        let expected_revision = u64::try_from(expected_revision).map_err(|_| {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Static module lifecycle revision is outside the supported range",
+            )
+        })?;
         let db = ctx.data::<DatabaseConnection>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
@@ -742,18 +954,76 @@ impl RootMutation {
             tenant.id,
             &module_slug,
             settings_json,
+            auth.user_id,
+            idempotency_key,
+            expected_revision,
         )
         .await
         .map_err(|err| match err {
             UpdateModuleSettingsError::UnknownModule => FieldError::new("Unknown module"),
-            UpdateModuleSettingsError::ModuleNotEnabled(module_slug) => FieldError::new(format!(
-                "Module is not enabled for this tenant: {}",
-                module_slug
-            )),
-            UpdateModuleSettingsError::InvalidSettings => {
-                FieldError::new("Module settings must be a JSON object")
+            UpdateModuleSettingsError::ModuleNotEnabled(_) => {
+                <FieldError as GraphQLError>::bad_user_input(
+                    "Module is not enabled for this tenant",
+                )
             }
-            UpdateModuleSettingsError::Validation(message) => FieldError::new(message),
+            UpdateModuleSettingsError::InvalidSettings => {
+                <FieldError as GraphQLError>::bad_user_input(
+                    "Module settings must be a JSON object",
+                )
+            }
+            UpdateModuleSettingsError::Validation(message) => {
+                <FieldError as GraphQLError>::bad_user_input(&message)
+            }
+            UpdateModuleSettingsError::IdempotencyConflict => FieldError::new(
+                "Module settings idempotency key was reused for a different command",
+            )
+            .extend_with(|_, extensions| {
+                extensions.set("code", "IDEMPOTENCY_CONFLICT");
+                extensions.set("retryable_issue", false);
+            }),
+            UpdateModuleSettingsError::SettingsSnapshotConflict => FieldError::new(
+                "Module settings changed since the reviewed snapshot",
+            )
+            .extend_with(|_, extensions| {
+                extensions.set("code", "MODULE_SETTINGS_SNAPSHOT_CONFLICT");
+                extensions.set("retryable_issue", false);
+                extensions.set("requires_rereview", true);
+            }),
+            UpdateModuleSettingsError::ModuleNotEnabledRecorded => {
+                <FieldError as GraphQLError>::bad_user_input(
+                    "Module is not enabled for this tenant",
+                )
+            }
+            UpdateModuleSettingsError::RevisionConflict { expected, current } => {
+                FieldError::new(format!(
+                    "Module lifecycle revision conflict: expected {expected}, current {current}"
+                ))
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "REVISION_CONFLICT");
+                    extensions.set(
+                        "expected_revision",
+                        i64::try_from(expected).unwrap_or(i64::MAX),
+                    );
+                    extensions.set(
+                        "current_revision",
+                        i64::try_from(current).unwrap_or(i64::MAX),
+                    );
+                })
+            }
+            UpdateModuleSettingsError::RevisionConflictRecorded => FieldError::new(
+                "Module lifecycle revision changed; reload the current module state",
+            )
+            .extend_with(|_, extensions| {
+                extensions.set("code", "REVISION_CONFLICT");
+                extensions.set("retryable_issue", false);
+                extensions.set("requires_reload", true);
+            }),
+            UpdateModuleSettingsError::OperationInProgress => FieldError::new(
+                "Module lifecycle operation is already active",
+            )
+            .extend_with(|_, extensions| {
+                extensions.set("code", "MODULE_LIFECYCLE_OPERATION_IN_PROGRESS");
+            }),
             UpdateModuleSettingsError::Manifest(err) => map_manifest_error(err),
             UpdateModuleSettingsError::Policy(err) => {
                 <FieldError as GraphQLError>::internal_error(&err)
@@ -767,6 +1037,11 @@ impl RootMutation {
             module_slug: module.module_slug,
             enabled: module.enabled,
             settings: module.settings.to_string(),
+            revision: i64::try_from(module.revision).map_err(|_| {
+                <FieldError as GraphQLError>::internal_error(
+                    "Static module lifecycle revision is outside the GraphQL range",
+                )
+            })?,
         })
     }
 }
@@ -774,13 +1049,14 @@ impl RootMutation {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthLifecycleError, ManifestError, PlatformCompositionBuildError, PlatformCompositionError,
-        TOGGLE_ERR_UNKNOWN_MODULE, ToggleModuleError, map_create_user_error, map_manifest_error,
-        map_platform_composition_build_error, map_platform_composition_error,
-        map_toggle_module_error, prepare_user_custom_fields_write,
+        AuthLifecycleError, ManifestError, ModuleCompositionError, PlatformCompositionBuildError,
+        PlatformCompositionError, TOGGLE_ERR_UNKNOWN_MODULE, ToggleModuleError,
+        map_create_user_error, map_manifest_error, map_platform_composition_build_error,
+        map_platform_composition_error, map_toggle_module_error, prepare_user_custom_fields_write,
         toggle_err_core_module_cannot_be_disabled, toggle_err_has_dependents,
         toggle_err_hook_failed, toggle_err_missing_dependencies, validate_custom_fields,
     };
+    use crate::graphql::artifact_tenant_lifecycle::map_artifact_tenant_lifecycle_error;
     use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
     use async_graphql::ErrorExtensions;
     use rustok_migrations::SqliteTestMigrator as Migrator;
@@ -855,6 +1131,21 @@ mod tests {
         assert!(!policy_err.message.is_empty());
     }
 
+    #[test]
+    fn artifact_tenant_lifecycle_conflicts_are_sanitized_and_non_retryable() {
+        let mapped = map_artifact_tenant_lifecycle_error(
+            rustok_modules::ModuleInstallationError::AdmissionRevisionConflict(
+                "tenant lifecycle revision is stale".to_string(),
+            ),
+        );
+        assert_eq!(
+            error_code(&mapped),
+            Some("ARTIFACT_TENANT_LIFECYCLE_CONFLICT".to_string())
+        );
+        assert_eq!(extension_bool(&mapped, "retryable_issue"), Some(false));
+        assert!(!mapped.message.contains("stale"));
+    }
+
     fn error_code(error: &async_graphql::Error) -> Option<String> {
         error
             .extensions
@@ -894,6 +1185,26 @@ mod tests {
 
     fn toggle_error_contract_cases() -> Vec<ToggleCase> {
         vec![
+            ToggleCase {
+                error: ToggleModuleError::InvalidCommandIdentity,
+                expected_message: "Module lifecycle command identity is invalid".to_string(),
+                expected_code: Some("BAD_USER_INPUT"),
+                case_name: "invalid-command-identity",
+            },
+            ToggleCase {
+                error: ToggleModuleError::InvalidIdempotencyKey,
+                expected_message: "Module lifecycle idempotency key is invalid".to_string(),
+                expected_code: Some("BAD_USER_INPUT"),
+                case_name: "invalid-idempotency-key",
+            },
+            ToggleCase {
+                error: ToggleModuleError::IdempotencyConflict,
+                expected_message:
+                    "Module lifecycle idempotency key was reused for a different command"
+                        .to_string(),
+                expected_code: Some("IDEMPOTENCY_CONFLICT"),
+                case_name: "idempotency-conflict",
+            },
             ToggleCase {
                 error: ToggleModuleError::UnknownModule,
                 expected_message: TOGGLE_ERR_UNKNOWN_MODULE.to_string(),
@@ -966,16 +1277,25 @@ mod tests {
             .collect()
     }
 
+    fn toggle_idempotency_conflict_cases() -> Vec<ToggleCase> {
+        toggle_error_contract_cases()
+            .into_iter()
+            .filter(|case| case.expected_code == Some("IDEMPOTENCY_CONFLICT"))
+            .collect()
+    }
+
     #[test]
     fn toggle_error_taxonomy_partitions_are_disjoint_and_complete() {
         let all = toggle_error_contract_cases();
         let user = toggle_user_input_error_cases();
         let internal = toggle_internal_error_cases();
+        let hook = toggle_hook_failed_cases();
+        let idempotency_conflict = toggle_idempotency_conflict_cases();
 
         assert_eq!(
             all.len(),
-            user.len() + internal.len(),
-            "toggle taxonomy partition drifted: user + internal cases must cover all cases exactly"
+            user.len() + internal.len() + hook.len() + idempotency_conflict.len(),
+            "toggle taxonomy partition drifted: categories must cover all cases exactly"
         );
 
         for user_case in &user {
@@ -993,6 +1313,7 @@ mod tests {
                 case.expected_code == Some("BAD_USER_INPUT")
                     || case.expected_code == Some("MODULE_HOOK_FAILED")
                     || case.expected_code == Some("INTERNAL_ERROR")
+                    || case.expected_code == Some("IDEMPOTENCY_CONFLICT")
             }),
             "toggle taxonomy contains unsupported error code category"
         );
@@ -1043,6 +1364,20 @@ mod tests {
                 "toggle hook-failed taxonomy must map to MODULE_HOOK_FAILED code for case: {}",
                 case.case_name
             );
+        }
+    }
+
+    #[test]
+    fn toggle_idempotency_conflicts_are_non_retryable() {
+        for case in toggle_idempotency_conflict_cases() {
+            let gql = map_toggle_module_error(case.error).extend();
+            assert_eq!(
+                error_code(&gql).as_deref(),
+                Some("IDEMPOTENCY_CONFLICT"),
+                "toggle idempotency conflict code drifted for case: {}",
+                case.case_name
+            );
+            assert_eq!(extension_bool(&gql, "retryable_issue"), Some(false));
         }
     }
 
@@ -1309,6 +1644,27 @@ mod tests {
                 exact_message: Some(
                     "Platform composition revision conflict: expected 11, current 13",
                 ),
+            },
+            Case {
+                name: "owner rejects a non-positive expected revision",
+                error: PlatformCompositionBuildError::Composition(PlatformCompositionError::Owner(
+                    ModuleCompositionError::InvalidExpectedRevision,
+                )),
+                expected_code: "BAD_USER_INPUT",
+                expected_message_fragment: "positive expected revision",
+                exact_message: None,
+            },
+            Case {
+                name: "terminal owner validation receipt",
+                error: PlatformCompositionBuildError::Composition(PlatformCompositionError::Owner(
+                    ModuleCompositionError::OperationReceipt(rustok_api::PortError::validation(
+                        "modules.composition_invalid_mutation",
+                        "module selection is invalid",
+                    )),
+                )),
+                expected_code: "BAD_USER_INPUT",
+                expected_message_fragment: "module selection is invalid",
+                exact_message: None,
             },
         ];
 

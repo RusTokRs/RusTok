@@ -14,11 +14,12 @@ use uuid::Uuid;
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
+use crate::graphql::artifact_tenant_lifecycle::map_artifact_tenant_lifecycle_error;
 use crate::graphql::types::{
-    ActivityItem, ActivityUser, BuildJob, DashboardStats, InstalledModule, MarketplaceModule,
-    MarketplaceModuleVersion, MarketplaceRegistryFreshness, ModuleOperationRecoveryPlan,
-    ModuleRegistryItem, ModuleSettingField, Tenant, TenantModule, User, UserConnection, UserEdge,
-    UsersFilter,
+    ActivityItem, ActivityUser, ArtifactTenantLifecycle, BuildJob, DashboardStats, InstalledModule,
+    MarketplaceModule, MarketplaceModuleVersion, MarketplaceRegistryFreshness,
+    ModuleCompositionSnapshot, ModuleOperationRecoveryPlan, ModuleRegistryItem, ModuleSettingField,
+    Tenant, TenantModule, User, UserConnection, UserEdge, UsersFilter,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
@@ -34,6 +35,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
 use rustok_api::graphql::{PageInfo, PaginationInput, encode_cursor};
 use rustok_build::SharedBuildControl;
+use rustok_modules::ModuleControlPlane;
 
 fn build_control_from_context(ctx: &Context<'_>) -> Result<SharedBuildControl> {
     ctx.data::<ServerRuntimeContext>()?
@@ -184,6 +186,7 @@ fn registry_module_lifecycle_from_snapshot(
         latest_request: snapshot.latest_request.map(|request| {
             crate::graphql::types::RegistryPublishRequestLifecycle {
                 id: request.id,
+                revision: request.revision,
                 status: request.status,
                 requested_by: RegistryPrincipalRef::from_json_value(
                     &request.requested_by_principal,
@@ -348,6 +351,11 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
         ModuleOperationRecoveryError::OperationNotFound => {
             <FieldError as GraphQLError>::bad_user_input("Module operation not found")
         }
+        ModuleOperationRecoveryError::InvalidCommandIdentity => {
+            <FieldError as GraphQLError>::bad_user_input(
+                "Module recovery command identity is invalid",
+            )
+        }
         ModuleOperationRecoveryError::InvalidIdempotencyKey => {
             <FieldError as GraphQLError>::bad_user_input(
                 "Module operation idempotency key is invalid",
@@ -385,6 +393,24 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
             ext.set("code", "IDEMPOTENCY_CONFLICT");
             ext.set("retryable_issue", false);
         }),
+        ModuleOperationRecoveryError::RevisionConflict { expected, current } => FieldError::new(
+            format!(
+                "Static module lifecycle changed since revision {expected}; current revision is {current}",
+            ),
+        )
+        .extend_with(|_, ext| {
+            ext.set("code", "REVISION_CONFLICT");
+            ext.set("retryable_issue", false);
+            ext.set("expected_revision", expected);
+            ext.set("current_revision", current);
+        }),
+        ModuleOperationRecoveryError::OperationInProgress => {
+            FieldError::new("A static module lifecycle operation is already active")
+                .extend_with(|_, ext| {
+                    ext.set("code", "MODULE_LIFECYCLE_OPERATION_IN_PROGRESS");
+                    ext.set("retryable_issue", false);
+                })
+        }
         ModuleOperationRecoveryError::Database(err) => {
             <FieldError as GraphQLError>::internal_error(&err.to_string())
         }
@@ -554,15 +580,37 @@ impl RootQuery {
             .await
             .map_err(|err| err.to_string())?;
         let enabled_set: HashSet<String> = enabled_modules.into_iter().collect();
+        let registry_modules = registry.list().into_iter().take(limit).collect::<Vec<_>>();
+        let lifecycle_revisions = EffectiveModulePolicyService::static_lifecycle_snapshots(
+            db,
+            registry,
+            tenant.id,
+            registry_modules
+                .iter()
+                .map(|module| module.slug().to_string()),
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
-        let modules = registry
-            .list()
+        let modules = registry_modules
             .into_iter()
-            .take(limit)
             .map(|module| {
                 let catalog_entry = catalog_by_slug.get(module.slug());
+                let lifecycle_revision = lifecycle_revisions
+                    .get(module.slug())
+                    .map(|snapshot| snapshot.revision)
+                    .ok_or_else(|| {
+                        <FieldError as GraphQLError>::internal_error(
+                            "missing static module lifecycle revision",
+                        )
+                    })?;
+                let lifecycle_revision = i64::try_from(lifecycle_revision).map_err(|_| {
+                    <FieldError as GraphQLError>::internal_error(
+                        "static module lifecycle revision is outside the GraphQL range",
+                    )
+                })?;
 
-                ModuleRegistryItem {
+                Ok(ModuleRegistryItem {
                     module_slug: module.slug().to_string(),
                     name: module.name().to_string(),
                     description: module.description().to_string(),
@@ -573,6 +621,7 @@ impl RootQuery {
                         "optional".to_string()
                     },
                     enabled: registry.is_core(module.slug()) || enabled_set.contains(module.slug()),
+                    lifecycle_revision,
                     dependencies: module
                         .dependencies()
                         .iter()
@@ -598,9 +647,9 @@ impl RootQuery {
                     settings_schema: catalog_entry
                         .map(|entry| owner_settings_schema_fields(entry.settings_schema.clone()))
                         .unwrap_or_default(),
-                }
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
         metrics::record_read_path_budget(
             "graphql",
@@ -635,15 +684,38 @@ impl RootQuery {
         )
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let lifecycle_revisions = EffectiveModulePolicyService::static_lifecycle_snapshots(
+            db,
+            registry,
+            tenant.id,
+            modules.iter().map(|module| module.module_slug.clone()),
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
         let modules = modules
             .into_iter()
-            .map(|module| TenantModule {
-                module_slug: module.module_slug,
-                enabled: module.enabled,
-                settings: module.settings.to_string(),
+            .map(|module| {
+                let revision = lifecycle_revisions
+                    .get(&module.module_slug)
+                    .map(|snapshot| snapshot.revision)
+                    .ok_or_else(|| {
+                        <FieldError as GraphQLError>::internal_error(
+                            "missing static module lifecycle revision",
+                        )
+                    })?;
+                Ok(TenantModule {
+                    module_slug: module.module_slug,
+                    enabled: module.enabled,
+                    settings: module.settings.to_string(),
+                    revision: i64::try_from(revision).map_err(|_| {
+                        <FieldError as GraphQLError>::internal_error(
+                            "static module lifecycle revision is outside the GraphQL range",
+                        )
+                    })?,
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
         metrics::record_read_path_budget(
             "graphql",
@@ -654,6 +726,41 @@ impl RootQuery {
         );
 
         Ok(modules)
+    }
+
+    /// Returns only the owner-issued tenant intent facts required to submit a
+    /// revision-CAS artifact enablement command. The artifact descriptor,
+    /// admission evidence, and owner tables remain private.
+    async fn artifact_tenant_lifecycle(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+    ) -> Result<ArtifactTenantLifecycle> {
+        ensure_modules_read_permission(ctx).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let lifecycle = ModuleControlPlane::new(db.clone())
+            .installation()
+            .artifact_tenant_lifecycle_snapshot(installation_id, tenant.id)
+            .await
+            .map_err(map_artifact_tenant_lifecycle_error)?;
+
+        let revision = i64::try_from(lifecycle.revision).map_err(|_| {
+            <FieldError as GraphQLError>::internal_error(
+                "Artifact tenant lifecycle revision is outside the GraphQL range",
+            )
+        })?;
+        let expected_revision = i64::try_from(lifecycle.expected_revision).map_err(|_| {
+            <FieldError as GraphQLError>::internal_error(
+                "Artifact tenant lifecycle revision is outside the GraphQL range",
+            )
+        })?;
+        Ok(ArtifactTenantLifecycle {
+            installation_id: lifecycle.installation_id,
+            enabled: lifecycle.enabled,
+            revision,
+            expected_revision,
+        })
     }
 
     async fn installed_modules(
@@ -685,7 +792,26 @@ impl RootQuery {
         Ok(modules)
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// Returns the immutable composition revision needed by every static
+    /// module-set mutation. The manifest itself stays behind the owner facade.
+    async fn module_composition_snapshot(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<ModuleCompositionSnapshot> {
+        ensure_modules_read_permission(ctx).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let snapshot = PlatformCompositionService::active_snapshot(db)
+            .await
+            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+        Ok(ModuleCompositionSnapshot {
+            revision: snapshot.revision,
+        })
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the public GraphQL marketplace contract exposes independent filter arguments"
+    )]
     async fn marketplace(
         &self,
         ctx: &Context<'_>,

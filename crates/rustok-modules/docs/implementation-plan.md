@@ -70,6 +70,11 @@ Still outside the owner boundary:
   marketplace-approval, or platform-admission authority; recording one fact
   never implies another. A domain-separated evidence digest and database
   uniqueness constraint make duplicate concurrent delivery idempotent. A
+  new evidence fact carries the observed positive request revision and advances
+  that aggregate through the same transaction; an exact evidence replay returns
+  the currently locked revision without another transition. The platform
+  evidence producer carries the source revision into the build-service fact and
+  then carries that result revision into platform admission.
   marketplace approval cannot enter through the generic evidence command: the
   owner emits it only in the atomic final-publication transaction for the
   canonical staged artifact SHA-256. A build-service attestation also bypasses
@@ -89,6 +94,24 @@ Still outside the owner boundary:
   must carry the same non-nil external idempotency UUID and immutable command
   fingerprint recorded with the durable release, otherwise it fails closed.
   The exact replay returns without another release, evidence, or audit event.
+  Publish requests now carry one durable positive aggregate revision. The
+  owner exposes it through status snapshots and advances it in the same
+  transaction as every current request-state transition. Reject,
+  request-changes, hold, resume, final-publication, artifact-attach, and
+  validation-enqueue commands carry the revision observed by the authorized
+  host snapshot; their SQL updates compare it before mutating state and return
+  a typed current-versus-expected conflict on staleness. A validation-worker
+  lease carries that same revision, so its result cannot overwrite a later
+  request transition, while an exact terminal redelivery remains idempotent.
+  Platform-build, external-prebuilt, and Alloy-authored staging use the same
+  request CAS and return the resulting owner revision for the next command.
+  Manual validation-stage reports and requeues use the same CAS. Remote claim
+  and expired-lease requeue advance the request revision inside their owner
+  transactions; the claim returns that revision and a terminal runner result
+  must present it before its stage transition can commit. Lease heartbeat only
+  extends the already-issued operational lease and does not change stage
+  lifecycle state. Every current request-state and validation-stage transition
+  is therefore revisioned.
   A yank changes only the release lifecycle and records its reason;
   immutable release storage identity remains unchanged while new resolution
   excludes the yanked release. Reupload advances the staged-artifact timestamp,
@@ -127,9 +150,12 @@ Still outside the owner boundary:
   observations: the owner discards them and persists only stable content-free
   stage and retry diagnostics;
 - manual validation-stage reports and requeues now use the owner transaction
-  for request-state gating, stage transition rules, attempt creation, and stage
-  plus follow-up audit facts. Remote lease claim, heartbeat, terminal
-  completion, expired-lease requeue, validation-job enqueue, job claim,
+  for request-state gating, stage transition rules, attempt creation, stage
+  plus follow-up audit facts, and the observed request revision. Remote lease
+  claim, terminal completion, and expired-lease requeue advance that same
+  aggregate; a claim returns its post-transition revision and the runner must
+  return it with the terminal result. Heartbeat only renews the operational
+  lease. Validation-job enqueue, job claim,
   stale-job recovery, and worker retry telemetry and result materialization now
   use owner transactions. A later authorized enqueue marks a validation job
   still running after 15 minutes as failed with the stable
@@ -205,15 +231,32 @@ Important intermediate limitations that must not be mistaken for the target:
 - the default `ModuleLifecycleDbWriter` host adapter still materializes its
   catalog from the compile-time `rustok_core::ModuleRegistry`; host composition
   must supply durable catalog loading before artifact-only modules reach that
-  adapter. Server lifecycle transports now supply only the active distribution
-  defaults and actor identity to this writer for toggle, post-hook retry, and
-  compensation. Compensation returns the exact owner-issued module identity,
-  so the server cannot preflight a recovery plan to reconstruct its response.
+  adapter. A static toggle enters this writer only as a
+  `ModuleLifecycleToggleCommand` carrying authenticated tenant and actor UUIDs
+  plus a non-nil idempotency UUID; it accepts neither caller-controlled display
+  identity nor correlation. The canonical correlation derives from the
+  idempotency key, and the journal admits an exact replay before evaluating a
+  no-op so explicit intent and its committed receipt remain durable.
+  Post-hook retry and compensation enter only as a
+  `ModuleLifecycleRecoveryCommand` carrying tenant, operation, actor, and
+  idempotency UUIDs; the owner derives persisted actor text from that UUID.
+  Server lifecycle transports otherwise supply only the active distribution
+  defaults. Compensation returns the exact owner-issued module identity, so the
+  server cannot preflight a recovery plan to reconstruct its response.
   For settings, the server supplies only the host-resolved schema and
   owner-normalized JSON; the writer derives active identity, Core status,
   effective enablement, persisted enablement, and settings facts. Lifecycle
   command responses map those owner-issued facts directly and never reload
-  `tenant_modules` or `module_operations` server models after the command;
+  `tenant_modules` or `module_operations` server models after the command.
+  The owner now applies one `module_static_tenant_lifecycle` aggregate to
+  static toggles, normalized settings, post-hook retry, and compensation:
+  every command is tenant/actor/idempotency/revision bound, claims the
+  aggregate before work, advances its revision only in the durable state
+  transaction, and releases the claim on all terminal paths. Settings complete
+  an exact owner-operation receipt in that same transaction. A replay of a
+  terminal settings failure preserves its typed snapshot, disabled-module, or
+  revision conflict rather than collapsing into a generic host error, while
+  hook recovery retains its `module_operations` evidence;
 - artifact lifecycle dispatch requires a configured
   `ArtifactLifecycleExecutor`; production host wiring for that executor remains
   to be supplied;
@@ -494,12 +537,30 @@ by registry transports. The HTTP adapter maps only that owner contract to an
 HTTP envelope, keeps not-found detail content-free, and no longer maintains a
 parallel lifecycle-error taxonomy.
 
-GraphQL platform-native install, uninstall, and upgrade mutations now provide
-only the authenticated actor, optional revision, and requested module change to
-one platform composition adapter. That host adapter loads the durable snapshot,
-applies the static-manifest adapter, and calls the owner-controlled
-CAS/build transaction. No GraphQL resolver loads, mutates, validates,
-serializes, or hashes a composition manifest directly.
+GraphQL platform-native install, uninstall, and upgrade mutations now derive
+tenant, actor, and `modules:manage` permission from authenticated context and
+provide a non-nil idempotency UUID, a positive expected revision, and the
+requested module change to one platform composition adapter. The owner rejects
+nil identities and non-positive revisions before receipt admission, admits the
+canonical command before the host reads the durable snapshot, then atomically
+commits the composition CAS, build enqueue, and terminal owner-operation
+receipt. An exact retry replays the original immutable build after later
+composition changes; at-least-once build notification is re-emitted without
+another build record. The admin obtains only the owner-issued composition
+revision and forwards it with a UUID; it neither calculates a manifest hash nor
+parses the build execution identity. No GraphQL resolver loads, mutates,
+validates, serializes, or hashes a composition manifest directly.
+
+The artifact tenant-lifecycle owner now exposes a bounded snapshot for one
+admitted Optional installation and tenant. It returns inherited enabled intent
+as revision `0` with next expected revision `1`, while an explicit state returns
+its current revision as the next CAS precondition. GraphQL maps this owner
+snapshot and a single `setArtifactTenantEnabled` mutation: authenticated tenant,
+actor, and `modules:manage` permission are derived at the transport boundary;
+the caller supplies only installation identity, enablement, positive expected
+revision, reason, and UUID idempotency key. The mutation delegates to the
+existing revision-CAS/exact-replay/audit/outbox owner transaction and returns no
+admission, storage, or raw conflict internals.
 
 Platform active-build/history reads are host-composed through the read-only
 `rustok_build::SharedBuildControl`. The duplicate build-owned release table,
@@ -571,11 +632,20 @@ Unknown descriptor fields are rejected during decode, so marketplace artifacts
 cannot smuggle SQL, native migrations, object-store paths, or host handles into
 the control plane.
 
-Dynamic artifact UI is also strict and declarative: only `admin_settings` and
-`admin_actions` metadata surfaces are accepted, with immutable localization and
-a module-owned permission. A descriptor cannot include executable component
-source, a URL, an iframe, or a native frontend package. Action binding and host
-presentation details remain the separate Phase 7 contract.
+Dynamic artifact UI is strict and declarative. The bundled
+`contracts/ui-contribution.schema.json` plus typed descriptor contract admit
+only host-rendered `admin_settings`, `admin_actions`, `admin_status`,
+`admin_help`, `admin_navigation`, `admin_table`, `admin_form`, and
+`storefront_slot` surfaces. Contributions have no executable component source,
+HTML/markup, CSS, URL, iframe, query, authentication behavior, locale fallback,
+or native frontend package. They use a digest-verified, bounded plain-text
+localization catalog; every declared locale carries the same key set and lookup
+is exact, leaving locale selection entirely to the host. Actions/forms must
+reference the exact admitted `Command` binding, with the same module-owned RBAC
+permission, bundled input/output schemas, required idempotency, explicit
+confirmation/destructive parity, and a required audit policy. Route/slot
+collision resolution, durable UI activation, host renderers, and action
+transport remain the Phase 7 owner integration work.
 
 `SeaOrmArtifactInstallationStore` now implements the production
 `ArtifactInstallationResolver` port. It resolves only an active, non-uninstalled
@@ -1148,10 +1218,14 @@ were intentionally not run.
   claims are closed before reuse and completion replay requires the identical
   command digest. None of these services can compile, mutate active composition,
   activate a release, or load native code.
-- The owner now runs platform composition snapshot/bootstrap/revision-CAS and
-  atomic build-request creation. The server validates its typed host manifest,
+- The owner now runs platform composition snapshot/bootstrap/revision-CAS,
+  receipt admission/completion, and atomic build-request creation. The server
+  performs full typed-manifest, deployment-selection, and registry validation,
   supplies the build-record adapter, and publishes the build notification only
-  after the owner transaction commits.
+  after the owner transaction commits. The platform-state digest is the
+  canonical composition snapshot identity; the build record stores the distinct
+  immutable execution-request identity that also binds that composition digest,
+  deployment profile, and execution plan.
 - Move registry governance, publication stages, releases, ownership, holds,
   approvals, rejection, yanking, and event taxonomy.
   `registry_publication_evidence` is the authority-separated immutable ledger
@@ -1849,6 +1923,26 @@ projection cannot report the release-safety target as available before the
 corresponding runtime verification gates pass.
 
 ## Verification
+
+### 2026-08-20 typed static lifecycle command slice
+
+- Static tenant lifecycle toggle now requires the owner-only
+  `ModuleLifecycleToggleCommand`; the authenticated transport supplies tenant
+  and actor UUIDs plus an idempotency UUID, and no-op intent receives its own
+  committed journal receipt. An exact key replay returns that receipt, while a
+  divergent key reuse is non-retryable.
+- Post-hook retry and compensation now require
+  `ModuleLifecycleRecoveryCommand`. The owner rejects nil tenant, operation,
+  actor, or idempotency identities, derives audit actor text from the actor UUID,
+  and does not accept transport-controlled actor labels. Admin transport and UI
+  send a fresh idempotency UUID for both recovery mutations.
+- Focused verification passed: the owner no-op replay unit test; the complete
+  19-test `rustok-server` lifecycle integration target; the 34-test
+  `rustok-admin` module-composition GraphQL guard; and the 9-test server
+  lifecycle-bypass guard. The checks emitted existing Windows linker messages,
+  Cargo's admin output-name collision warning, and the existing
+  `proc-macro-error2` future-incompatibility warning. No workspace-wide compile
+  or test suite is claimed.
 
 ### 2026-08-09 lifecycle owner-result slice
 

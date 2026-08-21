@@ -166,6 +166,7 @@ async fn handle_claim(ctx: &ServerRuntimeContext, lease_ttl_ms: u64, bytes: &[u8
         claim: claim.map(|claim| RegistryRunnerClaimPayload {
             claim_id: claim.claim_id,
             request_id: claim.request_id,
+            request_revision: claim.request_revision,
             slug: claim.slug,
             version: claim.version,
             stage_key: claim.stage_key,
@@ -241,6 +242,7 @@ async fn handle_terminal(
         ctx.db(),
         claim_id,
         &input.runner_id,
+        input.expected_request_revision,
         outcome,
         input.detail.as_deref(),
         input.reason_code.as_deref(),

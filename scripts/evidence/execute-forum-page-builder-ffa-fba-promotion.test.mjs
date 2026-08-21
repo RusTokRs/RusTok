@@ -186,6 +186,7 @@ function conflictEnvelope() {
 async function startGraphqlServer(scenario, initial = initialSettings()) {
   const state = {
     settings: structuredClone(initial),
+    revision: 1,
     original: structuredClone(initial),
     mutationCount: 0,
     requestCount: 0,
@@ -219,6 +220,7 @@ async function startGraphqlServer(scenario, initial = initialSettings()) {
                 moduleSlug: "pages",
                 enabled: true,
                 settings: JSON.stringify(state.settings),
+                revision: state.revision,
               },
             ],
           },
@@ -230,6 +232,8 @@ async function startGraphqlServer(scenario, initial = initialSettings()) {
         state.mutationCount += 1;
         assert.equal(variables.moduleSlug, "pages");
         assert.equal(variables.expectedEnabled, true);
+        assert.equal(variables.expectedRevision, state.revision);
+        assert.match(variables.idempotencyKey, /^[0-9a-f-]{36}$/u);
         const expected = JSON.parse(variables.expectedSettings);
         const requested = JSON.parse(variables.settings);
 
@@ -260,12 +264,14 @@ async function startGraphqlServer(scenario, initial = initialSettings()) {
         }
 
         state.settings = structuredClone(requested);
+        state.revision += 1;
         sendJson(response, {
           data: {
             compareAndSwapModuleSettings: {
               moduleSlug: "pages",
               enabled: true,
               settings: JSON.stringify(state.settings),
+              revision: state.revision,
             },
           },
         });

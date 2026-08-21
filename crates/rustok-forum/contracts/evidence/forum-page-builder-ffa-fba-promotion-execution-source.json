@@ -47,6 +47,8 @@
   "mutation": {
     "expected_enabled": true,
     "expected_settings": "exact full current Pages tenant-module settings snapshot",
+    "expected_lifecycle_revision": "exact current Pages static lifecycle aggregate revision",
+    "idempotency_key": "fresh UUID for each mutation attempt",
     "desired_flags": {
       "builder_enabled": true,
       "preview_enabled": true,
@@ -68,6 +70,7 @@
     "attempt_on_confirmed_mutation_postcondition_failure": true,
     "write_operation": "compareAndSwapModuleSettings",
     "expected_settings_must_equal_confirmed_applied_settings": true,
+    "expected_lifecycle_revision_must_equal_confirmed_applied_revision": true,
     "restore_settings_must_equal_original_snapshot": true,
     "rollback_cas_conflict_requires_manual_reconciliation": true,
     "ambiguous_transport_outcome_must_not_auto_rollback": true,

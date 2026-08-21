@@ -3,7 +3,8 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use serde::{Deserialize, Serialize};
 
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, TenantModule,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot, ModuleInfo,
+    TenantModule,
 };
 use crate::features::modules::components::ModulesList;
 use crate::features::modules::transport;
@@ -28,6 +29,7 @@ struct ModulesPageData {
     modules: Vec<ModuleInfo>,
     marketplace_modules: Vec<MarketplaceModule>,
     marketplace_registry_freshness: Vec<rustok_api::MarketplaceRegistryFreshness>,
+    composition_snapshot: Option<ModuleCompositionSnapshot>,
     installed_modules: Vec<InstalledModule>,
     tenant_modules: Vec<TenantModule>,
     active_build: Option<BuildJob>,
@@ -67,6 +69,12 @@ pub fn Modules() -> impl IntoView {
             )
             .await
             .unwrap_or_default();
+            let composition_snapshot = transport::fetch_module_composition_snapshot(
+                token_value.clone(),
+                tenant_value.clone(),
+            )
+            .await
+            .ok();
             let installed_modules =
                 transport::fetch_installed_modules(token_value.clone(), tenant_value.clone())
                     .await
@@ -87,6 +95,7 @@ pub fn Modules() -> impl IntoView {
                 modules,
                 marketplace_modules,
                 marketplace_registry_freshness,
+                composition_snapshot,
                 installed_modules,
                 tenant_modules,
                 active_build,
@@ -134,6 +143,7 @@ pub fn Modules() -> impl IntoView {
                                         modules=data.modules
                                         marketplace_modules=data.marketplace_modules
                                         marketplace_registry_freshness=data.marketplace_registry_freshness
+                                        composition_snapshot=data.composition_snapshot
                                         installed_modules=data.installed_modules
                                         tenant_modules=data.tenant_modules
                                         active_build=data.active_build

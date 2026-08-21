@@ -253,6 +253,7 @@ impl ModulePlatformPublicationEvidenceProducer {
             .owner
             .record_build_service_attestation(ModuleBuildServiceAttestationCommand {
                 request_id: source.request_id.clone(),
+                expected_revision: source.request_revision,
                 receipt: source.receipt,
                 issuer_identity: command.build_service_issuer_identity,
                 policy_revision: command.build_service_policy_revision,
@@ -264,6 +265,7 @@ impl ModulePlatformPublicationEvidenceProducer {
             .owner
             .record_platform_admission(ModulePlatformAdmissionCommand {
                 request_id: source.request_id,
+                expected_revision: build_service_attestation.request_revision,
                 registry_id: command.registry_id,
                 reference: package.reference,
                 descriptor: package.descriptor,
@@ -325,6 +327,7 @@ mod tests {
             schema_documents: Vec::new(),
             settings_schema_digest: None,
             data_schema_digest: None,
+            localization_catalogs: Vec::new(),
             ui_contributions: Vec::new(),
             persistence_contract: None,
         }
@@ -349,10 +352,12 @@ mod tests {
             &self,
             command: ModuleBuildServiceAttestationCommand,
         ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
+            let request_revision = command.expected_revision + 1;
             self.build.lock().expect("build records").push(command);
             Ok(ModulePublicationEvidenceResult {
                 evidence_id: "build-evidence".to_string(),
                 recorded: true,
+                request_revision,
             })
         }
 
@@ -360,6 +365,7 @@ mod tests {
             &self,
             command: ModulePlatformAdmissionCommand,
         ) -> Result<ModulePublicationEvidenceResult, ModuleGovernanceError> {
+            let request_revision = command.expected_revision + 1;
             self.admission
                 .lock()
                 .expect("admission records")
@@ -367,6 +373,7 @@ mod tests {
             Ok(ModulePublicationEvidenceResult {
                 evidence_id: "platform-evidence".to_string(),
                 recorded: true,
+                request_revision,
             })
         }
     }
@@ -465,6 +472,7 @@ mod tests {
         let owner = Arc::new(Owner {
             source: ModulePlatformPublicationSource {
                 request_id: "request-1".to_string(),
+                request_revision: 1,
                 tenant_id: uuid::Uuid::new_v4(),
                 build_request_id: uuid::Uuid::new_v4(),
                 slug: descriptor.slug.clone(),
@@ -495,10 +503,12 @@ mod tests {
         let build = owner.build.lock().expect("build records");
         assert_eq!(build.len(), 1);
         assert_eq!(build[0].receipt, receipt);
+        assert_eq!(build[0].expected_revision, 1);
         let admission = owner.admission.lock().expect("admission records");
         assert_eq!(admission.len(), 1);
         assert_eq!(admission[0].descriptor, descriptor);
         assert_eq!(admission[0].reference, receipt.artifact);
+        assert_eq!(admission[0].expected_revision, 2);
         assert_eq!(admission[0].evidence.trust_policy_revision, 7);
         assert_eq!(admission[0].evidence.capability_policy_revision, 9);
     }
@@ -517,6 +527,7 @@ mod tests {
         let owner = Arc::new(Owner {
             source: ModulePlatformPublicationSource {
                 request_id: "request-1".to_string(),
+                request_revision: 1,
                 tenant_id: uuid::Uuid::new_v4(),
                 build_request_id: uuid::Uuid::new_v4(),
                 slug: descriptor.slug.clone(),

@@ -148,6 +148,7 @@ function catalogEntryToModuleInfo(module: MarketplaceModule): ModuleInfo {
     kind: module.kind,
     dependencies: module.dependencies,
     enabled: false,
+    lifecycleRevision: 0,
     ownership: module.ownership,
     trustLevel: module.trustLevel,
     recommendedAdminSurfaces: module.recommendedAdminSurfaces,
@@ -533,13 +534,29 @@ export function ModulesList({
   };
 
   const handleToggle = async (slug: string, enabled: boolean) => {
+    const module = modules.find((candidate) => candidate.moduleSlug === slug);
+    if (!module) {
+      toast.error(t('error.load'));
+      return;
+    }
     setLoading(slug);
     try {
-      const updated = await toggleModule(slug, enabled, apiOpts);
+      const idempotencyKey = crypto.randomUUID();
+      const updated = await toggleModule(
+        slug,
+        enabled,
+        module.lifecycleRevision,
+        idempotencyKey,
+        apiOpts
+      );
       setModules((prev) =>
         prev.map((module) =>
           module.moduleSlug === slug
-            ? { ...module, enabled: updated.enabled }
+            ? {
+                ...module,
+                enabled: updated.enabled,
+                lifecycleRevision: updated.lifecycleRevision
+              }
             : module
         )
       );

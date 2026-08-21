@@ -137,6 +137,7 @@ pub struct RegistryValidationStageReportResult {
 pub struct RegistryRemoteValidationClaim {
     pub claim_id: String,
     pub request_id: String,
+    pub request_revision: i64,
     pub slug: String,
     pub version: String,
     pub stage_key: String,
@@ -155,6 +156,7 @@ pub struct RegistryRemoteValidationClaim {
 #[derive(Debug, Clone)]
 pub struct RegistryPublishRequestSnapshot {
     pub id: String,
+    pub revision: i64,
     pub slug: String,
     pub version: String,
     pub status: String,

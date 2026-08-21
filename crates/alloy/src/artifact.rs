@@ -133,6 +133,7 @@ pub fn stage_rhai_module_release(
         schema_documents: Vec::new(),
         settings_schema_digest: None,
         data_schema_digest: None,
+        localization_catalogs: Vec::new(),
         ui_contributions: Vec::new(),
         persistence_contract: None,
     };

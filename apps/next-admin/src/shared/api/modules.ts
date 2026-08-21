@@ -8,6 +8,7 @@ export interface ModuleInfo {
   kind: 'core' | 'optional';
   dependencies: string[];
   enabled: boolean;
+  lifecycleRevision: number;
   ownership: string;
   trustLevel: string;
   recommendedAdminSurfaces: string[];
@@ -130,6 +131,7 @@ query ModuleRegistry {
     kind
     dependencies
     enabled
+    lifecycleRevision
     ownership
     trustLevel
     recommendedAdminSurfaces
@@ -267,11 +269,12 @@ ${BUILD_JOB_FIELDS}
 `;
 
 const TOGGLE_MODULE_MUTATION = `
-mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!) {
-  toggleModule(moduleSlug: $moduleSlug, enabled: $enabled) {
+mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!, $expectedRevision: Int!, $idempotencyKey: UUID!) {
+  toggleModule(moduleSlug: $moduleSlug, enabled: $enabled, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey) {
     moduleSlug
     enabled
     settings
+    revision
   }
 }
 `;
@@ -337,6 +340,7 @@ interface ToggleModuleResponse {
     moduleSlug: string;
     enabled: boolean;
     settings: string;
+    revision: number;
   };
 }
 
@@ -494,14 +498,21 @@ export async function getBuildOrchestrationSnapshot(
 export async function toggleModule(
   slug: string,
   enabled: boolean,
+  expectedRevision: number,
+  idempotencyKey: string,
   opts: GqlOpts = {}
 ): Promise<ModuleInfo> {
   const data = await graphqlRequest<
-    { moduleSlug: string; enabled: boolean },
+    {
+      moduleSlug: string;
+      enabled: boolean;
+      expectedRevision: number;
+      idempotencyKey: string;
+    },
     ToggleModuleResponse
   >(
     TOGGLE_MODULE_MUTATION,
-    { moduleSlug: slug, enabled },
+    { moduleSlug: slug, enabled, expectedRevision, idempotencyKey },
     opts.token,
     opts.tenantSlug
   );
@@ -514,6 +525,7 @@ export async function toggleModule(
     kind: 'optional',
     dependencies: [],
     enabled: data.toggleModule.enabled,
+    lifecycleRevision: data.toggleModule.revision,
     ownership: 'first_party',
     trustLevel: 'verified',
     recommendedAdminSurfaces: ['leptos-admin'],

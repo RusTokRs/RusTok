@@ -4,7 +4,10 @@ use cron::Schedule;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashSet, str::FromStr};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    str::FromStr,
+};
 use thiserror::Error;
 
 use rustok_api::{
@@ -13,7 +16,7 @@ use rustok_api::{
 };
 use rustok_sandbox::{CapabilityName, RHAI_SOURCE_MEDIA_TYPE, SandboxExecutorKind};
 
-use crate::build::ModuleBuildRequest;
+use crate::{artifact_schema::validates_ui_contribution, build::ModuleBuildRequest};
 
 /// The current immutable descriptor contract. Schema documents are bundled in
 /// v4 so no admission or execution path needs to resolve schemas from a
@@ -26,8 +29,12 @@ pub const MAX_MODULE_ARTIFACT_SOURCE_MANIFEST_BYTES: usize = 256 * 1024;
 
 const MAX_SCHEMA_DOCUMENTS: usize = 32;
 const MAX_SCHEMA_DOCUMENT_BYTES: usize = 64 * 1024;
+const MAX_LOCALIZATION_CATALOGS: usize = 8;
+const MAX_LOCALIZATION_LOCALES: usize = 8;
+const MAX_LOCALIZATION_MESSAGES: usize = 256;
+const MAX_LOCALIZATION_MESSAGE_BYTES: usize = 4 * 1024;
+const MAX_UI_CONTRIBUTIONS: usize = 32;
 const JSON_SCHEMA_DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
-const ARTIFACT_UI_CONTRIBUTION_SURFACES: &[&str] = &["admin_settings", "admin_actions"];
 
 /// Stable OCI layer media type for immutable Rhai source artifacts.
 pub const MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE: &str = RHAI_SOURCE_MEDIA_TYPE;
@@ -168,6 +175,8 @@ pub struct ModuleArtifactDescriptor {
     #[serde(default)]
     pub data_schema_digest: Option<String>,
     #[serde(default)]
+    pub localization_catalogs: Vec<ArtifactLocalizationCatalog>,
+    #[serde(default)]
     pub ui_contributions: Vec<ArtifactUiContribution>,
     #[serde(default)]
     pub persistence_contract: Option<ArtifactPersistenceContract>,
@@ -218,15 +227,195 @@ pub struct ArtifactSchemaDocument {
     pub document: Value,
 }
 
+/// Immutable plain-text localization catalog admitted with an artifact
+/// descriptor. Hosts select one effective locale; this contract deliberately
+/// has no artifact-controlled fallback chain, markup, or rendering behavior.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactLocalizationCatalog {
+    pub digest: String,
+    pub messages: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+impl ArtifactLocalizationCatalog {
+    /// Resolves only the exact host-selected locale. Hosts must not substitute
+    /// a module-provided fallback locale when this lookup misses.
+    pub fn message(&self, locale: &str, key: &str) -> Option<&str> {
+        self.messages
+            .get(locale)
+            .and_then(|messages| messages.get(key))
+            .map(String::as_str)
+    }
+
+    fn validate(&self) -> bool {
+        if !valid_digest(&self.digest)
+            || self.digest
+                != canonical_schema_digest(
+                    &serde_json::to_value(&self.messages)
+                        .expect("localization catalog serialization must be infallible"),
+                )
+            || self.messages.is_empty()
+            || self.messages.len() > MAX_LOCALIZATION_LOCALES
+        {
+            return false;
+        }
+
+        let mut expected_keys = None::<BTreeSet<&str>>;
+        for (locale, messages) in &self.messages {
+            if !is_valid_locale_tag(locale)
+                || messages.is_empty()
+                || messages.len() > MAX_LOCALIZATION_MESSAGES
+                || messages.iter().any(|(key, value)| {
+                    !valid_localization_key(key) || !valid_localization_message(value)
+                })
+            {
+                return false;
+            }
+            let keys = messages.keys().map(String::as_str).collect::<BTreeSet<_>>();
+            if expected_keys
+                .as_ref()
+                .is_some_and(|expected| expected != &keys)
+            {
+                return false;
+            }
+            expected_keys = Some(keys);
+        }
+        true
+    }
+
+    fn contains_key_for_every_locale(&self, key: &str) -> bool {
+        self.messages
+            .values()
+            .all(|messages| messages.contains_key(key))
+    }
+}
+
+/// Host surface on which one declarative contribution may render. The values
+/// name a platform presentation slot, never a host package, URL, iframe, or
+/// executable component.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactUiSurface {
+    AdminSettings,
+    AdminActions,
+    AdminStatus,
+    AdminHelp,
+    AdminNavigation,
+    AdminTable,
+    AdminForm,
+    StorefrontSlot,
+}
+
+/// User confirmation required before an action/form dispatches its admitted
+/// runtime binding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactUiActionConfirmation {
+    None,
+    Acknowledge,
+    Destructive,
+}
+
+/// Every declarative action is audit-required. This explicit protocol field
+/// prevents an artifact from opting a host action out of durable evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactUiAuditPolicy {
+    Required,
+}
+
+/// Framework-neutral content that a host may render from shared primitives.
+/// It contains no component source, HTML, CSS, URL, query, locale fallback,
+/// authentication behavior, or direct host API request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ArtifactUiContributionContent {
+    Settings {
+        title_key: String,
+        settings_schema_digest: String,
+    },
+    Action {
+        title_key: String,
+        binding_id: String,
+        confirmation: ArtifactUiActionConfirmation,
+        destructive: bool,
+        audit_policy: ArtifactUiAuditPolicy,
+    },
+    Status {
+        title_key: String,
+        status_key: String,
+    },
+    Help {
+        title_key: String,
+        body_key: String,
+    },
+    Navigation {
+        title_key: String,
+        route: String,
+    },
+    Table {
+        title_key: String,
+        schema_digest: String,
+    },
+    Form {
+        title_key: String,
+        binding_id: String,
+        confirmation: ArtifactUiActionConfirmation,
+        destructive: bool,
+        audit_policy: ArtifactUiAuditPolicy,
+    },
+    StorefrontSlot {
+        title_key: String,
+        slot: String,
+    },
+}
+
+impl ArtifactUiContributionContent {
+    fn expected_surface(&self) -> ArtifactUiSurface {
+        match self {
+            Self::Settings { .. } => ArtifactUiSurface::AdminSettings,
+            Self::Action { .. } => ArtifactUiSurface::AdminActions,
+            Self::Status { .. } => ArtifactUiSurface::AdminStatus,
+            Self::Help { .. } => ArtifactUiSurface::AdminHelp,
+            Self::Navigation { .. } => ArtifactUiSurface::AdminNavigation,
+            Self::Table { .. } => ArtifactUiSurface::AdminTable,
+            Self::Form { .. } => ArtifactUiSurface::AdminForm,
+            Self::StorefrontSlot { .. } => ArtifactUiSurface::StorefrontSlot,
+        }
+    }
+
+    fn localization_keys(&self) -> Vec<&str> {
+        match self {
+            Self::Settings { title_key, .. }
+            | Self::Action { title_key, .. }
+            | Self::Status { title_key, .. }
+            | Self::Help { title_key, .. }
+            | Self::Navigation { title_key, .. }
+            | Self::Table { title_key, .. }
+            | Self::Form { title_key, .. }
+            | Self::StorefrontSlot { title_key, .. } => {
+                let mut keys = vec![title_key.as_str()];
+                match self {
+                    Self::Status { status_key, .. } => keys.push(status_key),
+                    Self::Help { body_key, .. } => keys.push(body_key),
+                    _ => {}
+                }
+                keys
+            }
+        }
+    }
+}
+
 /// Host-rendered declarative contribution. It is metadata only: marketplace
 /// artifacts never inject executable UI code into a host process.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactUiContribution {
     pub id: String,
-    pub surface: String,
+    pub surface: ArtifactUiSurface,
     pub localization_digest: String,
     pub permission: String,
+    pub content: ArtifactUiContributionContent,
 }
 
 /// Metadata for brokered namespaced data only. It never carries SQL, DDL, or
@@ -580,15 +769,41 @@ impl ModuleArtifactDescriptor {
                 return Err(ModuleArtifactError::MissingSchemaDocument(selector.clone()));
             }
         }
+        if self.localization_catalogs.len() > MAX_LOCALIZATION_CATALOGS {
+            return Err(ModuleArtifactError::TooManyLocalizationCatalogs);
+        }
+        for (index, catalog) in self.localization_catalogs.iter().enumerate() {
+            if !catalog.validate() {
+                return Err(ModuleArtifactError::InvalidLocalizationCatalog(
+                    catalog.digest.clone(),
+                ));
+            }
+            if self.localization_catalogs[..index]
+                .iter()
+                .any(|previous| previous.digest == catalog.digest)
+            {
+                return Err(ModuleArtifactError::DuplicateLocalizationCatalog(
+                    catalog.digest.clone(),
+                ));
+            }
+        }
+        if self.ui_contributions.len() > MAX_UI_CONTRIBUTIONS {
+            return Err(ModuleArtifactError::TooManyUiContributions);
+        }
+        let mut navigation_routes = HashSet::new();
+        let mut storefront_slots = HashSet::new();
         for (index, contribution) in self.ui_contributions.iter().enumerate() {
-            if contribution.id.trim().is_empty()
-                || !valid_artifact_ui_contribution_surface(&contribution.surface)
+            if !is_valid_module_slug(&contribution.id)
                 || !valid_digest(&contribution.localization_digest)
+                || contribution.surface != contribution.content.expected_surface()
                 || !contribution.permission.starts_with(&permission_prefix)
                 || !self
                     .permissions
                     .iter()
                     .any(|permission| permission.key == contribution.permission)
+                || !serde_json::to_value(contribution)
+                    .ok()
+                    .is_some_and(|value| validates_ui_contribution(&value))
             {
                 return Err(ModuleArtifactError::InvalidUiContribution(
                     contribution.id.clone(),
@@ -601,6 +816,93 @@ impl ModuleArtifactDescriptor {
                 return Err(ModuleArtifactError::DuplicateUiContribution(
                     contribution.id.clone(),
                 ));
+            }
+            let catalog = self
+                .localization_catalogs
+                .iter()
+                .find(|catalog| catalog.digest == contribution.localization_digest)
+                .ok_or_else(|| {
+                    ModuleArtifactError::MissingLocalizationCatalog(
+                        contribution.localization_digest.clone(),
+                    )
+                })?;
+            if contribution
+                .content
+                .localization_keys()
+                .iter()
+                .any(|key| !catalog.contains_key_for_every_locale(key))
+            {
+                return Err(ModuleArtifactError::InvalidUiContribution(
+                    contribution.id.clone(),
+                ));
+            }
+            match &contribution.content {
+                ArtifactUiContributionContent::Settings {
+                    settings_schema_digest,
+                    ..
+                } => {
+                    if self.settings_schema_digest.as_deref() != Some(settings_schema_digest)
+                        || !schema_digests.contains(settings_schema_digest)
+                    {
+                        return Err(ModuleArtifactError::InvalidUiContribution(
+                            contribution.id.clone(),
+                        ));
+                    }
+                }
+                ArtifactUiContributionContent::Action {
+                    binding_id,
+                    confirmation,
+                    destructive,
+                    audit_policy,
+                    ..
+                }
+                | ArtifactUiContributionContent::Form {
+                    binding_id,
+                    confirmation,
+                    destructive,
+                    audit_policy,
+                    ..
+                } => {
+                    let binding = self
+                        .bindings
+                        .iter()
+                        .find(|binding| binding.id == *binding_id);
+                    if binding.is_none_or(|binding| {
+                        binding.kind != ModuleRuntimeBindingKind::Command
+                            || binding.permission != contribution.permission
+                            || binding.idempotency != ModuleBindingIdempotency::Required
+                            || *audit_policy != ArtifactUiAuditPolicy::Required
+                            || (*destructive
+                                != (*confirmation == ArtifactUiActionConfirmation::Destructive))
+                    }) {
+                        return Err(ModuleArtifactError::InvalidUiContribution(
+                            contribution.id.clone(),
+                        ));
+                    }
+                }
+                ArtifactUiContributionContent::Table { schema_digest, .. } => {
+                    if !valid_digest(schema_digest) || !schema_digests.contains(schema_digest) {
+                        return Err(ModuleArtifactError::InvalidUiContribution(
+                            contribution.id.clone(),
+                        ));
+                    }
+                }
+                ArtifactUiContributionContent::Navigation { route, .. } => {
+                    if !valid_ui_route(route) || !navigation_routes.insert(route.as_str()) {
+                        return Err(ModuleArtifactError::InvalidUiContribution(
+                            contribution.id.clone(),
+                        ));
+                    }
+                }
+                ArtifactUiContributionContent::StorefrontSlot { slot, .. } => {
+                    if !is_valid_module_slug(slot) || !storefront_slots.insert(slot.as_str()) {
+                        return Err(ModuleArtifactError::InvalidUiContribution(
+                            contribution.id.clone(),
+                        ));
+                    }
+                }
+                ArtifactUiContributionContent::Status { .. }
+                | ArtifactUiContributionContent::Help { .. } => {}
             }
         }
         if let Some(contract) = &self.persistence_contract {
@@ -936,6 +1238,16 @@ pub enum ModuleArtifactError {
     InvalidUiContribution(String),
     #[error("artifact UI contribution `{0}` is declared more than once")]
     DuplicateUiContribution(String),
+    #[error("artifact descriptor exceeds the localization-catalog limit")]
+    TooManyLocalizationCatalogs,
+    #[error("artifact localization catalog `{0}` is invalid")]
+    InvalidLocalizationCatalog(String),
+    #[error("artifact localization catalog `{0}` is declared more than once")]
+    DuplicateLocalizationCatalog(String),
+    #[error("artifact UI contribution references unknown localization catalog `{0}`")]
+    MissingLocalizationCatalog(String),
+    #[error("artifact descriptor exceeds the UI-contribution limit")]
+    TooManyUiContributions,
     #[error("artifact persistence contract must declare a sha256 schema digest")]
     InvalidPersistenceContract,
     #[error("forked artifact slug must remain `{expected}`, received `{received}`")]
@@ -975,8 +1287,39 @@ pub(crate) fn valid_event_topic(value: &str) -> bool {
     })
 }
 
-fn valid_artifact_ui_contribution_surface(value: &str) -> bool {
-    ARTIFACT_UI_CONTRIBUTION_SURFACES.contains(&value)
+fn valid_localization_key(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment.len() <= 48
+                && segment
+                    .bytes()
+                    .enumerate()
+                    .all(|(index, byte)| match index {
+                        0 => byte.is_ascii_lowercase(),
+                        _ => byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_',
+                    })
+        })
+}
+
+fn valid_localization_message(value: &str) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= MAX_LOCALIZATION_MESSAGE_BYTES
+        && value
+            .chars()
+            .all(|character| !character.is_control() && !matches!(character, '<' | '>'))
+}
+
+fn valid_ui_route(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-' | b'/')
+        })
+        && value
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
 }
 
 /// Matches one admitted exact or terminal-wildcard subscription against an
@@ -1126,6 +1469,22 @@ mod tests {
         }
     }
 
+    fn localization_catalog(messages: &[(&str, &str)]) -> ArtifactLocalizationCatalog {
+        let messages = BTreeMap::from([(
+            "en".to_string(),
+            messages
+                .iter()
+                .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+                .collect(),
+        )]);
+        ArtifactLocalizationCatalog {
+            digest: canonical_schema_digest(
+                &serde_json::to_value(&messages).expect("localization catalog serializes"),
+            ),
+            messages,
+        }
+    }
+
     fn descriptor(
         kind: ArtifactPayloadKind,
         version: &str,
@@ -1149,6 +1508,7 @@ mod tests {
             schema_documents: Vec::new(),
             settings_schema_digest: None,
             data_schema_digest: None,
+            localization_catalogs: Vec::new(),
             ui_contributions: Vec::new(),
             persistence_contract: None,
         }
@@ -1461,11 +1821,17 @@ mod tests {
     #[test]
     fn ui_contribution_requires_module_owned_permission() {
         let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        let catalog = localization_catalog(&[("status.title", "Settings")]);
+        descriptor.localization_catalogs = vec![catalog.clone()];
         descriptor.ui_contributions = vec![ArtifactUiContribution {
             id: "settings".to_string(),
-            surface: "admin_settings".to_string(),
-            localization_digest: digest('b'),
+            surface: ArtifactUiSurface::AdminStatus,
+            localization_digest: catalog.digest,
             permission: "other_module.settings.manage".to_string(),
+            content: ArtifactUiContributionContent::Status {
+                title_key: "status.title".to_string(),
+                status_key: "status.title".to_string(),
+            },
         }];
         assert!(matches!(
             descriptor.validate(),
@@ -1480,18 +1846,24 @@ mod tests {
             key: "sample_module.settings.manage".to_string(),
             localizations: vec![permission_localization("Manage settings")],
         }];
+        let catalog = localization_catalog(&[("status.title", "Status")]);
+        descriptor.localization_catalogs = vec![catalog.clone()];
         descriptor.ui_contributions = vec![ArtifactUiContribution {
             id: "custom".to_string(),
-            surface: "custom_iframe".to_string(),
-            localization_digest: digest('b'),
+            surface: ArtifactUiSurface::AdminSettings,
+            localization_digest: catalog.digest,
             permission: "sample_module.settings.manage".to_string(),
+            content: ArtifactUiContributionContent::Status {
+                title_key: "status.title".to_string(),
+                status_key: "status.title".to_string(),
+            },
         }];
         assert!(matches!(
             descriptor.validate(),
             Err(ModuleArtifactError::InvalidUiContribution(_))
         ));
 
-        descriptor.ui_contributions[0].surface = "admin_settings".to_string();
+        descriptor.ui_contributions[0].surface = ArtifactUiSurface::AdminStatus;
         let mut descriptor_value = serde_json::to_value(descriptor).expect("descriptor serializes");
         descriptor_value
             .get_mut("ui_contributions")
@@ -1504,6 +1876,117 @@ mod tests {
                 serde_json::json!("https://untrusted.example/module-ui"),
             );
         assert!(serde_json::from_value::<ModuleArtifactDescriptor>(descriptor_value).is_err());
+    }
+
+    #[test]
+    fn declarative_actions_bind_exact_admitted_command_contracts() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        let input = schema_document("command_input");
+        let output = schema_document("command_output");
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.commands.execute".to_string(),
+            localizations: vec![permission_localization("Execute command")],
+        }];
+        descriptor.bindings = vec![ModuleRuntimeBinding {
+            id: "execute".to_string(),
+            kind: ModuleRuntimeBindingKind::Command,
+            entrypoint: "commands.execute".to_string(),
+            input_schema_digest: input.digest.clone(),
+            output_schema_digest: output.digest.clone(),
+            permission: "sample_module.commands.execute".to_string(),
+            idempotency: ModuleBindingIdempotency::Required,
+            limit_profile: "command".to_string(),
+            capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: None,
+        }];
+        descriptor.schema_documents = vec![input, output];
+        let catalog = localization_catalog(&[("action.execute", "Execute")]);
+        descriptor.localization_catalogs = vec![catalog.clone()];
+        descriptor.ui_contributions = vec![ArtifactUiContribution {
+            id: "execute".to_string(),
+            surface: ArtifactUiSurface::AdminActions,
+            localization_digest: catalog.digest.clone(),
+            permission: "sample_module.commands.execute".to_string(),
+            content: ArtifactUiContributionContent::Action {
+                title_key: "action.execute".to_string(),
+                binding_id: "execute".to_string(),
+                confirmation: ArtifactUiActionConfirmation::Destructive,
+                destructive: true,
+                audit_policy: ArtifactUiAuditPolicy::Required,
+            },
+        }];
+
+        descriptor.validate().expect("valid declarative action");
+        assert_eq!(catalog.message("en", "action.execute"), Some("Execute"));
+        assert_eq!(catalog.message("ru", "action.execute"), None);
+
+        descriptor.bindings[0].idempotency = ModuleBindingIdempotency::BestEffort;
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidUiContribution(_))
+        ));
+
+        descriptor.bindings[0].idempotency = ModuleBindingIdempotency::Required;
+        let ArtifactUiContributionContent::Action { confirmation, .. } =
+            &mut descriptor.ui_contributions[0].content
+        else {
+            panic!("fixture must contain an action contribution");
+        };
+        *confirmation = ArtifactUiActionConfirmation::Acknowledge;
+        assert!(matches!(
+            descriptor.validate(),
+            Err(ModuleArtifactError::InvalidUiContribution(_))
+        ));
+    }
+
+    #[test]
+    fn ui_contribution_schema_and_catalog_reject_unsafe_or_partial_contracts() {
+        let catalog = localization_catalog(&[
+            ("help.title", "Help"),
+            ("help.body", "Use the module controls."),
+        ]);
+        let contribution = ArtifactUiContribution {
+            id: "help".to_string(),
+            surface: ArtifactUiSurface::AdminHelp,
+            localization_digest: catalog.digest.clone(),
+            permission: "sample_module.settings.manage".to_string(),
+            content: ArtifactUiContributionContent::Help {
+                title_key: "help.title".to_string(),
+                body_key: "help.body".to_string(),
+            },
+        };
+        let mut encoded = serde_json::to_value(&contribution).expect("contribution serializes");
+        encoded["content"]["iframe_url"] =
+            Value::String("https://untrusted.example/module-ui".to_string());
+        assert!(!validates_ui_contribution(&encoded));
+
+        let mut partial_catalog = catalog.clone();
+        partial_catalog.messages.insert(
+            "ru".to_string(),
+            BTreeMap::from([("help.title".to_string(), "Help".to_string())]),
+        );
+        partial_catalog.digest = canonical_schema_digest(
+            &serde_json::to_value(&partial_catalog.messages)
+                .expect("localization catalog serializes"),
+        );
+        assert!(!partial_catalog.validate());
+
+        let mut unsafe_catalog = catalog;
+        unsafe_catalog
+            .messages
+            .get_mut("en")
+            .expect("English catalog")
+            .insert(
+                "help.body".to_string(),
+                "<script>unsafe</script>".to_string(),
+            );
+        unsafe_catalog.digest = canonical_schema_digest(
+            &serde_json::to_value(&unsafe_catalog.messages)
+                .expect("localization catalog serializes"),
+        );
+        assert!(!unsafe_catalog.validate());
     }
 
     #[test]
@@ -1533,11 +2016,17 @@ mod tests {
             key: "sample_module.settings.manage".to_string(),
             localizations: vec![permission_localization("Manage settings")],
         }];
+        let catalog = localization_catalog(&[("status.title", "Settings")]);
+        descriptor.localization_catalogs = vec![catalog.clone()];
         descriptor.ui_contributions = vec![ArtifactUiContribution {
             id: "settings".to_string(),
-            surface: "admin_settings".to_string(),
-            localization_digest: digest('d'),
+            surface: ArtifactUiSurface::AdminStatus,
+            localization_digest: catalog.digest,
             permission: "sample_module.settings.read".to_string(),
+            content: ArtifactUiContributionContent::Status {
+                title_key: "status.title".to_string(),
+                status_key: "status.title".to_string(),
+            },
         }];
         assert!(matches!(
             descriptor.validate(),

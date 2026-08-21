@@ -57,16 +57,16 @@ Target credentials and routing identity come only from bounded environment value
 
 The reviewed tenant change is deliberately narrow:
 
-1. read the enabled `pages` row through `tenantModules`;
+1. read the enabled `pages` row and its static lifecycle revision through `tenantModules`;
 2. retain only semantic hashes of the full current settings and target origin/tenant identity;
 3. deep-clone the complete settings document and change only `builder.enabled`, `builder.preview.enabled`, `builder.properties.enabled` and `builder.publish.enabled` to the reviewed `all_on` profile;
 4. preserve every non-Builder and unknown-to-the-runner setting exactly;
-5. call only `compareAndSwapModuleSettings` with `expectedEnabled=true` and the exact full pre-write settings snapshot;
+5. call only `compareAndSwapModuleSettings` with `expectedEnabled=true`, the exact full pre-write settings snapshot, its current lifecycle revision, and a fresh idempotency key;
 6. verify the returned applied settings through a fresh `tenantModules` read and verify the four authoritative flags through `pageBuilderRolloutSnapshot`.
 
 The ordinary unconditional `updateModuleSettings` command is not an execution fallback. A `MODULE_SETTINGS_SNAPSHOT_CONFLICT` with `requires_rereview=true` produces `control_plane_change_snapshot_conflict_rereview_required`, performs no rollback and requires a fresh read plus a fresh promotion review. This prevents a stale approval from overwriting a newer settings or enablement decision.
 
-Rollback is also CAS-only. It is attempted only when the promotion mutation is **confirmed** but the authoritative postcondition fails. Rollback expects the exact confirmed applied settings and restores the exact original snapshot. A confirmed restore produces `control_plane_change_postcondition_failed_rolled_back` and the execution still fails because the promoted state did not remain active. A rollback conflict or ambiguous rollback outcome produces `control_plane_change_requires_manual_reconciliation`.
+Rollback is also CAS-only. It is attempted only when the promotion mutation is **confirmed** but the authoritative postcondition fails. Rollback expects the exact confirmed applied settings and lifecycle revision, then restores the exact original snapshot with a fresh idempotency key. A confirmed restore produces `control_plane_change_postcondition_failed_rolled_back` and the execution still fails because the promoted state did not remain active. A rollback conflict or ambiguous rollback outcome produces `control_plane_change_requires_manual_reconciliation`.
 
 An ambiguous initial mutation outcome — transport failure, non-200 response, malformed response or non-conflict GraphQL error — is never followed by an automatic rollback because the runner cannot safely know whether the write committed. It emits a bounded manual-reconciliation receipt instead.
 

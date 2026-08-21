@@ -34,6 +34,7 @@ fn adapt_claim(claim: ModuleRemoteValidationClaim) -> RegistryRemoteValidationCl
         ),
         claim_id: claim.claim_id,
         request_id: claim.request_id,
+        request_revision: claim.request_revision,
         slug: claim.slug,
         version: claim.version,
         stage_key: claim.stage_key,

@@ -98,9 +98,9 @@ fn graphql_mutations_do_not_reintroduce_duplicate_platform_composition_mapping_t
 
     let expected_unique_tests = [
         "fn platform_composition_error_maps_revision_conflict_with_expected_and_current()",
-        "fn platform_composition_build_error_maps_build_failures_to_internal_error()",
-        "fn platform_composition_build_error_maps_manifest_validation_to_user_facing_message()",
-        "fn platform_composition_build_error_maps_revision_conflict_to_conflict_message()",
+        "fn platform_composition_error_matrix_preserves_taxonomy_for_internal_and_user_paths()",
+        "fn platform_composition_build_error_matrix_preserves_message_and_code_contract()",
+        "fn platform_composition_build_error_mapping_never_mentions_partial_rollback()",
     ];
 
     for signature in expected_unique_tests {
@@ -175,18 +175,18 @@ fn lifecycle_hook_phases_adr_is_linked_from_indexes_and_backlog() {
         .and_then(Path::parent)
         .expect("workspace root");
 
-    let adr_path = "DECISIONS/2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md";
+    let adr_file = "2026-05-22-module-lifecycle-hook-phases-and-retry-contract.md";
     let decisions_readme = fs::read_to_string(repo_root.join("DECISIONS/README.md"))
         .expect("DECISIONS/README.md should be readable");
     let docs_index = fs::read_to_string(repo_root.join("docs/index.md"))
         .expect("docs/index.md should be readable");
     assert!(
-        decisions_readme.contains(adr_path),
-        "ADR index must link lifecycle hook phases ADR: {adr_path}"
+        decisions_readme.contains(adr_file),
+        "ADR index must link lifecycle hook phases ADR: {adr_file}"
     );
     assert!(
-        docs_index.contains(adr_path),
-        "docs/index.md must link lifecycle hook phases ADR: {adr_path}"
+        docs_index.contains(adr_file),
+        "docs/index.md must link lifecycle hook phases ADR: {adr_file}"
     );
 }
 
@@ -203,7 +203,7 @@ fn control_plane_lifecycle_docs_capture_final_parity_contract() {
     let admin_docs = fs::read_to_string(repo_root.join("apps/admin/docs/README.md"))
         .expect("apps/admin docs should be readable");
     for required in [
-        "ModuleLifecycleService::toggle_module_with_actor()",
+        "ModuleLifecycleService::toggle_module()",
         "BAD_USER_INPUT",
         "MODULE_HOOK_FAILED",
         "INTERNAL_ERROR",
@@ -217,9 +217,9 @@ fn control_plane_lifecycle_docs_capture_final_parity_contract() {
 
     for required in [
         "validated/running/committed/failed",
-        "GraphQL mapper",
-        "journal/recovery metadata",
-        "admin/SSR clients не должны remap",
+        "GraphQL maps canonical lifecycle/recovery facts",
+        "module_operations",
+        "admin/SSR clients must not remap",
     ] {
         assert!(
             server_docs.contains(required),
@@ -248,34 +248,39 @@ fn lifecycle_operation_status_model_is_exposed_through_recovery_surface() {
         .parent()
         .and_then(Path::parent)
         .expect("workspace root");
-    let service_rs = repo_root.join("apps/server/src/services/module_lifecycle.rs");
     let types_rs = repo_root.join("apps/server/src/graphql/types.rs");
     let queries_rs = repo_root.join("apps/server/src/graphql/queries.rs");
     let mutations_rs = repo_root.join("apps/server/src/graphql/mutations.rs");
-    let admin_api_rs = repo_root.join("apps/admin/src/features/modules/api.rs");
-    let service = fs::read_to_string(&service_rs).expect("module_lifecycle.rs should be readable");
+    let operation_store_rs = repo_root.join("crates/rustok-modules/src/operation_store.rs");
+    let lifecycle_writer_rs = repo_root.join("crates/rustok-modules/src/lifecycle_writer.rs");
+    let admin_api_rs = repo_root.join("apps/admin/src/features/modules/transport/types.rs");
     let types = fs::read_to_string(&types_rs).expect("graphql/types.rs should be readable");
     let queries = fs::read_to_string(&queries_rs).expect("graphql/queries.rs should be readable");
     let mutations =
         fs::read_to_string(&mutations_rs).expect("graphql/mutations.rs should be readable");
-    let admin_api = fs::read_to_string(&admin_api_rs).expect("admin module api should be readable");
+    let operation_store =
+        fs::read_to_string(&operation_store_rs).expect("owner operation store should be readable");
+    let lifecycle_writer = fs::read_to_string(&lifecycle_writer_rs)
+        .expect("owner lifecycle writer should be readable");
+    let admin_api =
+        fs::read_to_string(&admin_api_rs).expect("admin module transport should be readable");
 
     for required in [
         "Validated",
         "Running",
         "Committed",
         "Failed",
-        "ModuleOperationStatus::Validated",
+        "ModuleOperationStatus::Validated.as_str()",
         "ModuleOperationStatus::Running",
         "ModuleOperationStatus::Committed",
         "ModuleOperationStatus::Failed",
-        "active.status = sea_orm::ActiveValue::Set(ModuleOperationStatus::Running.into())",
-        "active.status = sea_orm::ActiveValue::Set(ModuleOperationStatus::Committed.into())",
-        "active.status = sea_orm::ActiveValue::Set(ModuleOperationStatus::Failed.into())",
+        "pub async fn mark_running",
+        "pub async fn mark_committed",
+        "pub async fn mark_failed",
     ] {
         assert!(
-            service.contains(required),
-            "lifecycle service must preserve explicit operation status fragment `{required}`"
+            operation_store.contains(required),
+            "owner operation store must preserve explicit operation status fragment `{required}`"
         );
     }
 
@@ -305,19 +310,20 @@ fn lifecycle_operation_status_model_is_exposed_through_recovery_surface() {
     for service_fragment in [
         "if plan.issue != ModuleOperationIssue::PostHookFailed",
         "ModuleOperationRecoveryError::NotRetryable",
-        "current_enabled != plan.requested_enabled",
-        "plan.previous_effective_enabled",
+        "current_override_enabled != plan.requested_override_enabled",
+        "plan.previous_override_enabled",
     ] {
         assert!(
-            service.contains(service_fragment),
+            lifecycle_writer.contains(service_fragment),
             "compensation must be limited to failed committed post-hook operations and restore previous state via `{service_fragment}`"
         );
     }
 
     for admin_fragment in [
         "status issue retryable recommendedAction correlationId requestedBy errorMessage",
-        "retryFailedModuleOperationPostHook(operationId: $operationId)",
-        "compensateFailedModuleOperation(operationId: $operationId)",
+        "retryFailedModuleOperationPostHook(operationId: $operationId, idempotencyKey: $idempotencyKey, expectedRevision: $expectedRevision)",
+        "compensateFailedModuleOperation(operationId: $operationId, idempotencyKey: $idempotencyKey, expectedRevision: $expectedRevision)",
+        "updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings, expectedRevision: $expectedRevision, idempotencyKey: $idempotencyKey)",
     ] {
         assert!(
             admin_api.contains(admin_fragment),
@@ -397,6 +403,9 @@ fn toggle_graphql_error_mapper_preserves_expected_variant_contract() {
     .expect("toggle mapper should exist");
 
     let expected_branches = [
+        "ToggleModuleError::InvalidCommandIdentity",
+        "ToggleModuleError::InvalidIdempotencyKey",
+        "ToggleModuleError::IdempotencyConflict",
         "ToggleModuleError::UnknownModule",
         "ToggleModuleError::CoreModuleCannotBeDisabled(",
         "ToggleModuleError::MissingDependencies(",

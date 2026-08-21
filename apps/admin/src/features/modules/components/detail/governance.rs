@@ -2543,6 +2543,7 @@ mod tests {
     fn sample_request(status: &str, publisher: Option<&str>) -> RegistryPublishRequestLifecycle {
         RegistryPublishRequestLifecycle {
             id: "req_123".to_string(),
+            revision: 1,
             status: status.to_string(),
             requested_by: "user:requester".to_string(),
             publisher: publisher.map(str::to_string),

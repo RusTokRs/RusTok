@@ -1,9 +1,11 @@
 use sea_orm::{DatabaseConnection, DbErr};
 use thiserror::Error;
 
+use rustok_api::PortError;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
     ModuleControlPlane, ModuleLifecycleDbWriterError, ModuleLifecycleExecutionError,
+    ModuleLifecycleRecoveryCommand, ModuleLifecycleSettingsCommand, ModuleLifecycleToggleCommand,
     ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
     ModuleOperationStoreError, ModuleToggleValidationError, normalize_module_settings,
 };
@@ -19,12 +21,15 @@ pub struct ModuleLifecycleStateSnapshot {
     pub enabled: bool,
     pub settings: serde_json::Value,
     pub operation_id: Option<uuid::Uuid>,
+    pub revision: u64,
 }
 
 #[derive(Debug, Error)]
 pub enum ModuleOperationRecoveryError {
     #[error("Module operation not found")]
     OperationNotFound,
+    #[error("Module recovery command identity is invalid")]
+    InvalidCommandIdentity,
     #[error("Module operation idempotency key is invalid")]
     InvalidIdempotencyKey,
     #[error("Module operation is not retryable: {0}")]
@@ -40,6 +45,10 @@ pub enum ModuleOperationRecoveryError {
     PostHookFailed(String),
     #[error("Module operation idempotency key was reused for a different command")]
     IdempotencyConflict,
+    #[error("Module lifecycle revision conflict: expected {expected}, current {current}")]
+    RevisionConflict { expected: u64, current: u64 },
+    #[error("Module lifecycle operation is already active")]
+    OperationInProgress,
     #[error("Database error: {0}")]
     Database(#[from] DbErr),
     #[error("Platform module policy error: {0}")]
@@ -50,6 +59,16 @@ pub enum ModuleOperationRecoveryError {
 
 #[derive(Debug, Error)]
 pub enum ToggleModuleError {
+    #[error("Module lifecycle command identity is invalid")]
+    InvalidCommandIdentity,
+    #[error("Module lifecycle idempotency key is invalid")]
+    InvalidIdempotencyKey,
+    #[error("Module lifecycle idempotency key was reused for a different command")]
+    IdempotencyConflict,
+    #[error("Module lifecycle revision conflict: expected {expected}, current {current}")]
+    RevisionConflict { expected: u64, current: u64 },
+    #[error("Module lifecycle operation is already active")]
+    OperationInProgress,
     #[error("Unknown module")]
     UnknownModule,
     /// Core modules are part of the platform kernel and can never be disabled.
@@ -78,6 +97,18 @@ pub enum UpdateModuleSettingsError {
     ModuleNotEnabled(String),
     #[error("Module settings must be a JSON object")]
     InvalidSettings,
+    #[error("Module settings idempotency key was reused for a different command")]
+    IdempotencyConflict,
+    #[error("Module settings changed since the reviewed snapshot")]
+    SettingsSnapshotConflict,
+    #[error("Module is not enabled for this tenant")]
+    ModuleNotEnabledRecorded,
+    #[error("Module lifecycle revision conflict: expected {expected}, current {current}")]
+    RevisionConflict { expected: u64, current: u64 },
+    #[error("Module lifecycle revision changed; reload the current module state")]
+    RevisionConflictRecorded,
+    #[error("Module lifecycle operation is already active")]
+    OperationInProgress,
     #[error("{0}")]
     Validation(String),
     #[error("{0}")]
@@ -95,17 +126,9 @@ impl ModuleLifecycleService {
         tenant_id: uuid::Uuid,
         module_slug: &str,
         enabled: bool,
-    ) -> Result<ModuleLifecycleStateSnapshot, ToggleModuleError> {
-        Self::toggle_module_with_actor(db, registry, tenant_id, module_slug, enabled, None).await
-    }
-
-    pub async fn toggle_module_with_actor(
-        db: &DatabaseConnection,
-        registry: &ModuleRegistry,
-        tenant_id: uuid::Uuid,
-        module_slug: &str,
-        enabled: bool,
-        requested_by: Option<String>,
+        actor_id: uuid::Uuid,
+        idempotency_key: uuid::Uuid,
+        expected_revision: u64,
     ) -> Result<ModuleLifecycleStateSnapshot, ToggleModuleError> {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
@@ -115,7 +138,14 @@ impl ModuleLifecycleService {
         let result = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites)
-            .toggle(tenant_id, module_slug, enabled, requested_by)
+            .toggle(ModuleLifecycleToggleCommand {
+                tenant_id,
+                module_slug: module_slug.to_string(),
+                enabled,
+                actor_id,
+                idempotency_key,
+                expected_revision,
+            })
             .await
             .map_err(map_lifecycle_writer_error)?;
         let state = result.state.ok_or_else(|| {
@@ -128,6 +158,11 @@ impl ModuleLifecycleService {
             enabled: state.enabled,
             settings: result.settings,
             operation_id: result.operation_id,
+            revision: result.revision.ok_or_else(|| {
+                ToggleModuleError::Policy(
+                    "static module lifecycle command returned no aggregate revision".to_string(),
+                )
+            })?,
         })
     }
 
@@ -174,8 +209,9 @@ impl ModuleLifecycleService {
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
         operation_id: uuid::Uuid,
-        requested_by: Option<String>,
+        actor_id: uuid::Uuid,
         idempotency_key: uuid::Uuid,
+        expected_revision: u64,
     ) -> Result<ModuleOperationRecoveryPlan, ModuleOperationRecoveryError> {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
@@ -185,7 +221,13 @@ impl ModuleLifecycleService {
         let retry_operation = ModuleControlPlane::new(db.clone())
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites)
-            .retry_post_hook(tenant_id, operation_id, requested_by, idempotency_key)
+            .retry_post_hook(ModuleLifecycleRecoveryCommand {
+                tenant_id,
+                operation_id,
+                actor_id,
+                idempotency_key,
+                expected_revision,
+            })
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
         Ok(retry_operation)
@@ -196,8 +238,9 @@ impl ModuleLifecycleService {
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
         operation_id: uuid::Uuid,
-        requested_by: Option<String>,
+        actor_id: uuid::Uuid,
         idempotency_key: uuid::Uuid,
+        expected_revision: u64,
     ) -> Result<ModuleLifecycleStateSnapshot, ModuleOperationRecoveryError> {
         let manifest = PlatformCompositionService::active_manifest(db)
             .await
@@ -208,7 +251,13 @@ impl ModuleLifecycleService {
             .lifecycle(registry, manifest.settings.default_enabled)
             .with_corequisites(co_requisites);
         let result = writer
-            .compensate_failed_operation(tenant_id, operation_id, requested_by, idempotency_key)
+            .compensate_failed_operation(ModuleLifecycleRecoveryCommand {
+                tenant_id,
+                operation_id,
+                actor_id,
+                idempotency_key,
+                expected_revision,
+            })
             .await
             .map_err(map_lifecycle_writer_recovery_error)?;
         let module_slug = result.module_slug;
@@ -225,6 +274,11 @@ impl ModuleLifecycleService {
             enabled,
             settings,
             operation_id: result.operation_id,
+            revision: result.revision.ok_or_else(|| {
+                ModuleOperationRecoveryError::Policy(
+                    "static module lifecycle command returned no aggregate revision".to_string(),
+                )
+            })?,
         })
     }
 
@@ -234,6 +288,9 @@ impl ModuleLifecycleService {
         tenant_id: uuid::Uuid,
         module_slug: &str,
         settings: serde_json::Value,
+        actor_id: uuid::Uuid,
+        idempotency_key: uuid::Uuid,
+        expected_revision: u64,
     ) -> Result<ModuleLifecycleStateSnapshot, UpdateModuleSettingsError> {
         if !settings.is_object() {
             return Err(UpdateModuleSettingsError::InvalidSettings);
@@ -265,7 +322,16 @@ impl ModuleLifecycleService {
         )?;
 
         let state = writer
-            .persist_static_normalized_settings(tenant_id, module_slug, settings)
+            .update_static_normalized_settings(ModuleLifecycleSettingsCommand {
+                tenant_id,
+                module_slug: module_slug.to_string(),
+                settings,
+                actor_id,
+                idempotency_key,
+                expected_revision,
+                expected_enabled: None,
+                expected_settings: None,
+            })
             .await
             .map_err(map_lifecycle_writer_settings_error)?;
         Ok(ModuleLifecycleStateSnapshot {
@@ -273,6 +339,7 @@ impl ModuleLifecycleService {
             enabled: state.enabled,
             settings: state.settings,
             operation_id: None,
+            revision: state.revision,
         })
     }
 }
@@ -300,12 +367,24 @@ fn map_toggle_execution_error(error: ModuleLifecycleExecutionError) -> ToggleMod
         }
         ModuleLifecycleExecutionError::PreHook(error) => ToggleModuleError::PreHookFailed(error),
         ModuleLifecycleExecutionError::PostHook(error) => ToggleModuleError::PostHookFailed(error),
-        ModuleLifecycleExecutionError::InvalidIdempotencyKey => {
-            ToggleModuleError::Policy("module lifecycle idempotency key is invalid".to_string())
+        ModuleLifecycleExecutionError::InvalidCommandIdentity => {
+            ToggleModuleError::InvalidCommandIdentity
         }
-        ModuleLifecycleExecutionError::IdempotencyConflict => ToggleModuleError::Policy(
-            "module lifecycle idempotency key was reused for a different command".to_string(),
+        ModuleLifecycleExecutionError::InvalidIdempotencyKey => {
+            ToggleModuleError::InvalidIdempotencyKey
+        }
+        ModuleLifecycleExecutionError::IdempotencyConflict => {
+            ToggleModuleError::IdempotencyConflict
+        }
+        ModuleLifecycleExecutionError::MissingExpectedRevision => ToggleModuleError::Policy(
+            "static module lifecycle requires an expected revision".to_string(),
         ),
+        ModuleLifecycleExecutionError::RevisionConflict {
+            expected, current, ..
+        } => ToggleModuleError::RevisionConflict { expected, current },
+        ModuleLifecycleExecutionError::OperationInProgress { .. } => {
+            ToggleModuleError::OperationInProgress
+        }
         ModuleLifecycleExecutionError::PolicyTransition(error) => ToggleModuleError::Policy(error),
     }
 }
@@ -324,7 +403,7 @@ fn map_lifecycle_writer_error(error: ModuleLifecycleDbWriterError) -> ToggleModu
         ModuleLifecycleDbWriterError::Recovery(error) => {
             ToggleModuleError::Policy(error.to_string())
         }
-        ModuleLifecycleDbWriterError::UnknownModule(error) => ToggleModuleError::Policy(error),
+        ModuleLifecycleDbWriterError::UnknownModule(_) => ToggleModuleError::UnknownModule,
         ModuleLifecycleDbWriterError::ArtifactSettings {
             module_slug,
             reason,
@@ -332,7 +411,13 @@ fn map_lifecycle_writer_error(error: ModuleLifecycleDbWriterError) -> ToggleModu
         ModuleLifecycleDbWriterError::Settings(error) => {
             ToggleModuleError::Policy(error.to_string())
         }
+        ModuleLifecycleDbWriterError::SettingsSnapshotConflict => ToggleModuleError::Policy(
+            "module settings changed since the reviewed snapshot".to_string(),
+        ),
         ModuleLifecycleDbWriterError::PolicyTransition(error) => ToggleModuleError::Policy(error),
+        ModuleLifecycleDbWriterError::OperationReceipt(error) => {
+            ToggleModuleError::Policy(error.to_string())
+        }
         error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
             ToggleModuleError::Policy(error.to_string())
         }
@@ -345,11 +430,22 @@ fn map_lifecycle_writer_recovery_error(
     match error {
         ModuleLifecycleDbWriterError::Recovery(error) => map_module_recovery_error(error),
         ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::InvalidCommandIdentity,
+        ) => ModuleOperationRecoveryError::InvalidCommandIdentity,
+        ModuleLifecycleDbWriterError::Lifecycle(
             ModuleLifecycleExecutionError::InvalidIdempotencyKey,
         ) => ModuleOperationRecoveryError::InvalidIdempotencyKey,
         ModuleLifecycleDbWriterError::Lifecycle(
             ModuleLifecycleExecutionError::IdempotencyConflict,
         ) => ModuleOperationRecoveryError::IdempotencyConflict,
+        ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::RevisionConflict {
+                expected, current, ..
+            },
+        ) => ModuleOperationRecoveryError::RevisionConflict { expected, current },
+        ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::OperationInProgress { .. },
+        ) => ModuleOperationRecoveryError::OperationInProgress,
         ModuleLifecycleDbWriterError::Lifecycle(error) => {
             ModuleOperationRecoveryError::Toggle(map_toggle_execution_error(error))
         }
@@ -377,8 +473,16 @@ fn map_lifecycle_writer_recovery_error(
         ModuleLifecycleDbWriterError::Settings(error) => {
             ModuleOperationRecoveryError::Database(DbErr::Custom(error.to_string()))
         }
+        ModuleLifecycleDbWriterError::SettingsSnapshotConflict => {
+            ModuleOperationRecoveryError::Policy(
+                "module settings changed since the reviewed snapshot".to_string(),
+            )
+        }
         ModuleLifecycleDbWriterError::PolicyTransition(error) => {
             ModuleOperationRecoveryError::Policy(error)
+        }
+        ModuleLifecycleDbWriterError::OperationReceipt(error) => {
+            ModuleOperationRecoveryError::Policy(error.to_string())
         }
         error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
             ModuleOperationRecoveryError::Policy(error.to_string())
@@ -386,7 +490,7 @@ fn map_lifecycle_writer_recovery_error(
     }
 }
 
-fn map_lifecycle_writer_settings_error(
+pub(crate) fn map_lifecycle_writer_settings_error(
     error: ModuleLifecycleDbWriterError,
 ) -> UpdateModuleSettingsError {
     match error {
@@ -398,6 +502,9 @@ fn map_lifecycle_writer_settings_error(
             "artifact settings for `{module_slug}`: {reason}"
         )),
         ModuleLifecycleDbWriterError::Settings(error) => map_module_settings_store_error(error),
+        ModuleLifecycleDbWriterError::SettingsSnapshotConflict => {
+            UpdateModuleSettingsError::SettingsSnapshotConflict
+        }
         ModuleLifecycleDbWriterError::Database(error) => {
             UpdateModuleSettingsError::Database(DbErr::Custom(error))
         }
@@ -410,6 +517,17 @@ fn map_lifecycle_writer_settings_error(
         ModuleLifecycleDbWriterError::Policy(error) => {
             UpdateModuleSettingsError::Policy(error.to_string())
         }
+        ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::IdempotencyConflict,
+        ) => UpdateModuleSettingsError::IdempotencyConflict,
+        ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::RevisionConflict {
+                expected, current, ..
+            },
+        ) => UpdateModuleSettingsError::RevisionConflict { expected, current },
+        ModuleLifecycleDbWriterError::Lifecycle(
+            ModuleLifecycleExecutionError::OperationInProgress { .. },
+        ) => UpdateModuleSettingsError::OperationInProgress,
         ModuleLifecycleDbWriterError::Lifecycle(error) => {
             UpdateModuleSettingsError::Policy(error.to_string())
         }
@@ -419,15 +537,38 @@ fn map_lifecycle_writer_settings_error(
         ModuleLifecycleDbWriterError::PolicyTransition(error) => {
             UpdateModuleSettingsError::Policy(error)
         }
+        ModuleLifecycleDbWriterError::OperationReceipt(error) => {
+            map_lifecycle_settings_receipt_error(error)
+        }
         error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
             UpdateModuleSettingsError::Policy(error.to_string())
         }
     }
 }
 
+pub(crate) fn map_lifecycle_settings_receipt_error(error: PortError) -> UpdateModuleSettingsError {
+    match error.code.as_str() {
+        "outbox.operation_receipt_conflict" => UpdateModuleSettingsError::IdempotencyConflict,
+        "outbox.operation_receipt_in_progress" => UpdateModuleSettingsError::OperationInProgress,
+        "modules.static_lifecycle_settings_snapshot_conflict" => {
+            UpdateModuleSettingsError::SettingsSnapshotConflict
+        }
+        "modules.static_lifecycle_settings_module_disabled" => {
+            UpdateModuleSettingsError::ModuleNotEnabledRecorded
+        }
+        "modules.static_lifecycle_revision_conflict" => {
+            UpdateModuleSettingsError::RevisionConflictRecorded
+        }
+        _ => UpdateModuleSettingsError::Policy(error.to_string()),
+    }
+}
+
 fn map_module_recovery_error(error: ModulesRecoveryError) -> ModuleOperationRecoveryError {
     match error {
         ModulesRecoveryError::OperationNotFound => ModuleOperationRecoveryError::OperationNotFound,
+        ModulesRecoveryError::InvalidCommandIdentity => {
+            ModuleOperationRecoveryError::InvalidCommandIdentity
+        }
         ModulesRecoveryError::InvalidIdempotencyKey => {
             ModuleOperationRecoveryError::InvalidIdempotencyKey
         }
@@ -446,6 +587,12 @@ fn map_module_recovery_error(error: ModulesRecoveryError) -> ModuleOperationReco
         }
         ModulesRecoveryError::IdempotencyConflict => {
             ModuleOperationRecoveryError::IdempotencyConflict
+        }
+        ModulesRecoveryError::RevisionConflict { expected, current } => {
+            ModuleOperationRecoveryError::RevisionConflict { expected, current }
+        }
+        ModulesRecoveryError::OperationInProgress => {
+            ModuleOperationRecoveryError::OperationInProgress
         }
         ModulesRecoveryError::Persistence(error) => {
             ModuleOperationRecoveryError::Database(DbErr::Custom(error))
@@ -478,7 +625,9 @@ fn map_module_settings_store_error(error: ModuleOperationStoreError) -> UpdateMo
 
 #[cfg(test)]
 mod tests {
-    use super::{ModuleLifecycleService, UpdateModuleSettingsError};
+    use super::{
+        ModuleLifecycleService, UpdateModuleSettingsError, map_lifecycle_settings_receipt_error,
+    };
     use crate::models::_entities::tenant_modules;
     use crate::models::tenants;
     use crate::modules::{ManifestManager, ManifestModuleSpec, ModulesManifest, build_registry};
@@ -531,6 +680,45 @@ mod tests {
         assert!(ModuleOperationStatus::Failed.is_terminal());
     }
 
+    #[test]
+    fn shared_settings_receipt_errors_preserve_retry_taxonomy() {
+        assert!(matches!(
+            map_lifecycle_settings_receipt_error(rustok_api::PortError::conflict(
+                "outbox.operation_receipt_conflict",
+                "conflicting command",
+            )),
+            UpdateModuleSettingsError::IdempotencyConflict
+        ));
+        assert!(matches!(
+            map_lifecycle_settings_receipt_error(rustok_api::PortError::unavailable(
+                "outbox.operation_receipt_in_progress",
+                "operation in progress",
+            )),
+            UpdateModuleSettingsError::OperationInProgress
+        ));
+        assert!(matches!(
+            map_lifecycle_settings_receipt_error(rustok_api::PortError::conflict(
+                "modules.static_lifecycle_settings_snapshot_conflict",
+                "reviewed snapshot is stale",
+            )),
+            UpdateModuleSettingsError::SettingsSnapshotConflict
+        ));
+        assert!(matches!(
+            map_lifecycle_settings_receipt_error(rustok_api::PortError::validation(
+                "modules.static_lifecycle_settings_module_disabled",
+                "module is disabled",
+            )),
+            UpdateModuleSettingsError::ModuleNotEnabledRecorded
+        ));
+        assert!(matches!(
+            map_lifecycle_settings_receipt_error(rustok_api::PortError::conflict(
+                "modules.static_lifecycle_revision_conflict",
+                "revision is stale",
+            )),
+            UpdateModuleSettingsError::RevisionConflictRecorded
+        ));
+    }
+
     struct OptionalSettingsModule;
 
     impl rustok_core::MigrationSource for OptionalSettingsModule {
@@ -559,7 +747,7 @@ mod tests {
     }
 
     fn build_settings_registry() -> ModuleRegistry {
-        build_registry().register(OptionalSettingsModule)
+        build_test_registry().register(OptionalSettingsModule)
     }
 
     fn path_module(crate_name: &str, path: &str, required: bool) -> ManifestModuleSpec {
@@ -652,6 +840,9 @@ mod tests {
             tenant.id,
             "content",
             serde_json::json!({ "postsPerPage": 20 }),
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            0,
         )
         .await;
         restore_manifest_env(previous);
@@ -687,23 +878,86 @@ mod tests {
         ManifestManager::save_to_path(&manifest_path, &manifest).expect("save manifest");
         let previous = set_manifest_env(&manifest_path);
 
-        ModuleLifecycleService::toggle_module(&db, &registry, tenant.id, "content", true)
-            .await
-            .expect("enable content module");
+        ModuleLifecycleService::toggle_module(
+            &db,
+            &registry,
+            tenant.id,
+            "content",
+            true,
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            0,
+        )
+        .await
+        .expect("enable content module");
 
+        let settings_actor = uuid::Uuid::new_v4();
+        let settings_idempotency_key = uuid::Uuid::new_v4();
         let updated = ModuleLifecycleService::update_module_settings(
             &db,
             &registry,
             tenant.id,
             "content",
             serde_json::json!({ "postsPerPage": 20 }),
+            settings_actor,
+            settings_idempotency_key,
+            1,
         )
         .await
         .expect("update module settings");
+        let replayed = ModuleLifecycleService::update_module_settings(
+            &db,
+            &registry,
+            tenant.id,
+            "content",
+            serde_json::json!({ "postsPerPage": 20 }),
+            settings_actor,
+            settings_idempotency_key,
+            1,
+        )
+        .await
+        .expect("same settings command must replay");
+        let divergent_reuse = ModuleLifecycleService::update_module_settings(
+            &db,
+            &registry,
+            tenant.id,
+            "content",
+            serde_json::json!({ "postsPerPage": 30 }),
+            settings_actor,
+            settings_idempotency_key,
+            1,
+        )
+        .await
+        .expect_err("a reused settings key must bind the complete command");
+        let stale_revision = ModuleLifecycleService::update_module_settings(
+            &db,
+            &registry,
+            tenant.id,
+            "content",
+            serde_json::json!({ "postsPerPage": 30 }),
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            1,
+        )
+        .await
+        .expect_err("settings must share the lifecycle aggregate revision");
         restore_manifest_env(previous);
 
         assert!(updated.enabled);
         assert_eq!(updated.settings["postsPerPage"], serde_json::json!(20));
+        assert_eq!(updated.revision, 2);
+        assert_eq!(replayed.revision, 2);
+        assert!(matches!(
+            divergent_reuse,
+            UpdateModuleSettingsError::IdempotencyConflict
+        ));
+        assert!(matches!(
+            stale_revision,
+            UpdateModuleSettingsError::RevisionConflict {
+                expected: 1,
+                current: 2,
+            }
+        ));
     }
 
     #[tokio::test]
@@ -737,6 +991,9 @@ mod tests {
             tenant.id,
             "tenant",
             serde_json::json!({ "workspaceName": "Acme" }),
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            0,
         )
         .await
         .expect("update core module settings");
@@ -798,9 +1055,18 @@ showSummaries = { type = "boolean", default = true }
         ManifestManager::save_to_path(&manifest_path, &manifest).expect("save manifest");
         let previous = set_manifest_env(&manifest_path);
 
-        ModuleLifecycleService::toggle_module(&db, &registry, tenant.id, "content", true)
-            .await
-            .expect("enable content module");
+        ModuleLifecycleService::toggle_module(
+            &db,
+            &registry,
+            tenant.id,
+            "content",
+            true,
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            0,
+        )
+        .await
+        .expect("enable content module");
 
         let updated = ModuleLifecycleService::update_module_settings(
             &db,
@@ -808,6 +1074,9 @@ showSummaries = { type = "boolean", default = true }
             tenant.id,
             "content",
             serde_json::json!({}),
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            1,
         )
         .await
         .expect("update module settings");

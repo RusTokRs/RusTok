@@ -3,8 +3,8 @@ use super::module_detail_panel::ModuleDetailPanel;
 use super::module_update_card::ModuleUpdateCard;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
-    ModuleSettingField, TenantModule,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleCompositionSnapshot, ModuleInfo,
+    ModuleOperationRecoveryPlan, ModuleSettingField, TenantModule,
 };
 use crate::features::modules::transport;
 #[cfg(target_arch = "wasm32")]
@@ -273,6 +273,7 @@ fn catalog_entry_to_module_info(module: &MarketplaceModule) -> ModuleInfo {
         kind: module.kind.clone(),
         dependencies: module.dependencies.clone(),
         enabled: false,
+        lifecycle_revision: 0,
         ownership: module.ownership.clone(),
         trust_level: module.trust_level.clone(),
         has_admin_ui: module.has_admin_ui,
@@ -384,6 +385,7 @@ pub fn ModulesList(
     modules: Vec<ModuleInfo>,
     marketplace_modules: Vec<MarketplaceModule>,
     marketplace_registry_freshness: Vec<MarketplaceRegistryFreshness>,
+    composition_snapshot: Option<ModuleCompositionSnapshot>,
     installed_modules: Vec<InstalledModule>,
     tenant_modules: Vec<TenantModule>,
     active_build: Option<BuildJob>,
@@ -393,6 +395,8 @@ pub fn ModulesList(
     let (module_list, set_module_list) = signal(modules);
     let (marketplace_catalog, set_marketplace_catalog) = signal(marketplace_modules);
     let (registry_freshness, set_registry_freshness) = signal(marketplace_registry_freshness);
+    let (composition_revision, set_composition_revision) =
+        signal(composition_snapshot.map(|snapshot| snapshot.revision));
     let (installed_module_list, set_installed_module_list) = signal(installed_modules);
     let (tenant_module_list, set_tenant_module_list) = signal(tenant_modules);
     let (active_build_state, set_active_build_state) = signal(active_build);
@@ -539,6 +543,14 @@ pub fn ModulesList(
               tenant_value: Option<String>,
               filters: CatalogFilters| {
             spawn_local(async move {
+                if let Ok(snapshot) = transport::fetch_module_composition_snapshot(
+                    token_value.clone(),
+                    tenant_value.clone(),
+                )
+                .await
+                {
+                    set_composition_revision.set(Some(snapshot.revision));
+                }
                 if let Ok(build) =
                     transport::fetch_active_build(token_value.clone(), tenant_value.clone()).await
                 {
@@ -877,8 +889,21 @@ pub fn ModulesList(
     };
 
     let enabled_modules_for_toggle = enabled_modules.clone();
+    let module_list_for_toggle = module_list;
     let on_toggle = Callback::new(move |(slug, enabled): (String, bool)| {
+        let Some(expected_revision) = module_list_for_toggle
+            .get_untracked()
+            .into_iter()
+            .find(|module| module.module_slug == slug)
+            .map(|module| module.lifecycle_revision)
+        else {
+            set_form_state.set(FormState::with_form_error(
+                "The module lifecycle revision is unavailable. Refresh and try again.".to_string(),
+            ));
+            return;
+        };
         let slug_clone = slug.clone();
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         set_loading_slug.set(Some(slug.clone()));
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
@@ -887,7 +912,15 @@ pub fn ModulesList(
         let enabled_modules_for_toggle_async = enabled_modules_for_toggle.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match transport::toggle_module(slug_clone.clone(), enabled, token_val, tenant_val).await
+            match transport::toggle_module(
+                slug_clone.clone(),
+                enabled,
+                expected_revision,
+                idempotency_key,
+                token_val,
+                tenant_val,
+            )
+            .await
             {
                 Ok(result) => {
                     set_module_list.update(|modules| {
@@ -896,6 +929,7 @@ pub fn ModulesList(
                             .find(|module| module.module_slug == slug_clone)
                         {
                             module.enabled = result.enabled;
+                            module.lifecycle_revision = result.revision;
                         }
                     });
                     set_tenant_module_list.update(|modules: &mut Vec<TenantModule>| {
@@ -903,6 +937,7 @@ pub fn ModulesList(
                             module_slug: result.module_slug.clone(),
                             enabled: result.enabled,
                             settings: result.settings.clone(),
+                            revision: result.revision,
                         };
                         if let Some(existing) = modules
                             .iter_mut()
@@ -935,16 +970,44 @@ pub fn ModulesList(
         refresh_module_recovery_plans(token_value, tenant_value);
     });
 
+    let module_list_for_retry = module_list;
+    let failed_recovery_plans_for_retry = failed_recovery_plans;
     let on_retry_recovery = Callback::new(move |operation_id: String| {
+        let Some(module_slug) = failed_recovery_plans_for_retry
+            .get_untracked()
+            .into_iter()
+            .find(|plan| plan.operation_id == operation_id)
+            .map(|plan| plan.module_slug)
+        else {
+            set_form_state.set(FormState::with_form_error(
+                "The selected recovery operation is no longer available. Refresh and try again."
+                    .to_string(),
+            ));
+            return;
+        };
+        let Some(expected_revision) = module_list_for_retry
+            .get_untracked()
+            .into_iter()
+            .find(|module| module.module_slug == module_slug)
+            .map(|module| module.lifecycle_revision)
+        else {
+            set_form_state.set(FormState::with_form_error(
+                "The module lifecycle revision is unavailable. Refresh and try again.".to_string(),
+            ));
+            return;
+        };
         let token_val = token.get();
         let tenant_val = tenant.get();
         let operation_id_for_call = operation_id.clone();
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
         set_recovery_action_operation_id.set(Some(operation_id.clone()));
         spawn_local(async move {
             match transport::retry_failed_module_operation_post_hook(
                 operation_id_for_call.clone(),
+                idempotency_key,
+                expected_revision,
                 token_val.clone(),
                 tenant_val.clone(),
             )
@@ -970,10 +1033,36 @@ pub fn ModulesList(
     });
 
     let enabled_modules_for_compensation = enabled_modules.clone();
+    let module_list_for_compensation = module_list;
+    let failed_recovery_plans_for_compensation = failed_recovery_plans;
     let on_compensate_recovery = Callback::new(move |operation_id: String| {
+        let Some(module_slug) = failed_recovery_plans_for_compensation
+            .get_untracked()
+            .into_iter()
+            .find(|plan| plan.operation_id == operation_id)
+            .map(|plan| plan.module_slug)
+        else {
+            set_form_state.set(FormState::with_form_error(
+                "The selected recovery operation is no longer available. Refresh and try again."
+                    .to_string(),
+            ));
+            return;
+        };
+        let Some(expected_revision) = module_list_for_compensation
+            .get_untracked()
+            .into_iter()
+            .find(|module| module.module_slug == module_slug)
+            .map(|module| module.lifecycle_revision)
+        else {
+            set_form_state.set(FormState::with_form_error(
+                "The module lifecycle revision is unavailable. Refresh and try again.".to_string(),
+            ));
+            return;
+        };
         let token_val = token.get();
         let tenant_val = tenant.get();
         let operation_id_for_call = operation_id.clone();
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
         set_recovery_action_operation_id.set(Some(operation_id.clone()));
@@ -981,6 +1070,8 @@ pub fn ModulesList(
         spawn_local(async move {
             match transport::compensate_failed_module_operation(
                 operation_id_for_call.clone(),
+                idempotency_key,
+                expected_revision,
                 token_val.clone(),
                 tenant_val.clone(),
             )
@@ -1004,6 +1095,7 @@ pub fn ModulesList(
                             .find(|existing| existing.module_slug == module.module_slug)
                         {
                             existing.enabled = module.enabled;
+                            existing.lifecycle_revision = module.revision;
                         }
                     });
                     enabled_modules_for_compensation
@@ -1026,16 +1118,33 @@ pub fn ModulesList(
         set_platform_loading_slug.set(Some(slug.clone()));
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
+        let Some(expected_revision) = composition_revision.get_untracked() else {
+            set_form_state.set(FormState::with_form_error(
+                "The platform composition revision is unavailable. Refresh and try again."
+                    .to_string(),
+            ));
+            set_platform_loading_slug.set(None);
+            return;
+        };
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         let token_val = token.get();
         let tenant_val = tenant.get();
         let refresh_token = token_val.clone();
         let refresh_tenant = tenant_val.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match transport::install_module(slug_clone.clone(), version, token_val, tenant_val)
-                .await
+            match transport::install_module(
+                slug_clone.clone(),
+                version,
+                expected_revision,
+                idempotency_key,
+                token_val,
+                tenant_val,
+            )
+            .await
             {
                 Ok(build) => {
+                    set_composition_revision.set(Some(build.manifest_revision));
                     upsert_installed_module(slug_clone.clone(), version_clone);
                     push_build_job(build);
                     set_selected_tab.set(ModulesTab::Installed);
@@ -1057,6 +1166,15 @@ pub fn ModulesList(
         set_platform_loading_slug.set(Some(slug.clone()));
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
+        let Some(expected_revision) = composition_revision.get_untracked() else {
+            set_form_state.set(FormState::with_form_error(
+                "The platform composition revision is unavailable. Refresh and try again."
+                    .to_string(),
+            ));
+            set_platform_loading_slug.set(None);
+            return;
+        };
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         let token_val = token.get();
         let tenant_val = tenant.get();
         let refresh_token = token_val.clone();
@@ -1064,8 +1182,17 @@ pub fn ModulesList(
         let enabled_modules_for_uninstall_async = enabled_modules_for_uninstall.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match transport::uninstall_module(slug_clone.clone(), token_val, tenant_val).await {
+            match transport::uninstall_module(
+                slug_clone.clone(),
+                expected_revision,
+                idempotency_key,
+                token_val,
+                tenant_val,
+            )
+            .await
+            {
                 Ok(build) => {
+                    set_composition_revision.set(Some(build.manifest_revision));
                     set_installed_module_list
                         .update(|modules| modules.retain(|module| module.slug != slug_clone));
                     set_tenant_module_list.update(|modules: &mut Vec<TenantModule>| {
@@ -1105,16 +1232,33 @@ pub fn ModulesList(
         set_platform_loading_slug.set(Some(slug.clone()));
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
+        let Some(expected_revision) = composition_revision.get_untracked() else {
+            set_form_state.set(FormState::with_form_error(
+                "The platform composition revision is unavailable. Refresh and try again."
+                    .to_string(),
+            ));
+            set_platform_loading_slug.set(None);
+            return;
+        };
+        let idempotency_key = uuid::Uuid::new_v4().to_string();
         let token_val = token.get();
         let tenant_val = tenant.get();
         let refresh_token = token_val.clone();
         let refresh_tenant = tenant_val.clone();
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
-            match transport::upgrade_module(slug_clone.clone(), version, token_val, tenant_val)
-                .await
+            match transport::upgrade_module(
+                slug_clone.clone(),
+                version,
+                expected_revision,
+                idempotency_key,
+                token_val,
+                tenant_val,
+            )
+            .await
             {
                 Ok(build) => {
+                    set_composition_revision.set(Some(build.manifest_revision));
                     upsert_installed_module(slug_clone.clone(), version_clone);
                     push_build_job(build);
                     set_success_message.set(Some(format!("Upgrade queued for {}", slug_clone)));
@@ -1193,6 +1337,17 @@ pub fn ModulesList(
         let Some(slug) = selected_module_slug.get() else {
             return;
         };
+        let Some(expected_revision) = module_list
+            .get_untracked()
+            .into_iter()
+            .find(|module| module.module_slug == slug)
+            .map(|module| module.lifecycle_revision)
+        else {
+            set_form_state.set(FormState::with_form_error(
+                "The module lifecycle revision is unavailable. Refresh and try again.".to_string(),
+            ));
+            return;
+        };
 
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
@@ -1216,6 +1371,8 @@ pub fn ModulesList(
             match transport::update_module_settings(
                 slug.clone(),
                 settings_payload,
+                expected_revision,
+                uuid::Uuid::new_v4().to_string(),
                 token_val,
                 tenant_val,
             )
@@ -1234,6 +1391,14 @@ pub fn ModulesList(
                         }
                     });
                     set_module_settings_draft.set(pretty_json(&module.settings));
+                    set_module_list.update(|modules| {
+                        if let Some(existing) = modules
+                            .iter_mut()
+                            .find(|existing| existing.module_slug == module.module_slug)
+                        {
+                            existing.lifecycle_revision = module.revision;
+                        }
+                    });
                     set_success_message.set(Some(format!("Saved tenant settings for {}", slug)));
                 }
                 Err(err) => set_form_state.set(FormState::with_form_error(format!("{}", err))),

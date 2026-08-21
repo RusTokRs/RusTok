@@ -8,7 +8,8 @@ use rustok_outbox::SysEventsMigration;
 use rustok_server::models::_entities::{module_operations, tenant_modules};
 use rustok_server::modules::ModulesManifest;
 use rustok_server::services::module_lifecycle::{
-    ModuleLifecycleService, ModuleOperationRecoveryError, ToggleModuleError,
+    ModuleLifecycleService as OwnerModuleLifecycleService, ModuleLifecycleStateSnapshot,
+    ModuleOperationRecoveryError, ToggleModuleError,
 };
 use rustok_server::services::platform_composition::PlatformCompositionService;
 use sea_orm::{
@@ -18,6 +19,64 @@ use sea_orm::{
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use uuid::Uuid;
+
+async fn toggle_with_actor(
+    db: &DatabaseConnection,
+    registry: &ModuleRegistry,
+    tenant_id: Uuid,
+    module_slug: &str,
+    enabled: bool,
+    actor_id: Uuid,
+) -> Result<ModuleLifecycleStateSnapshot, ToggleModuleError> {
+    let expected_revision = static_lifecycle_revision(db, tenant_id, module_slug).await;
+    OwnerModuleLifecycleService::toggle_module(
+        db,
+        registry,
+        tenant_id,
+        module_slug,
+        enabled,
+        actor_id,
+        Uuid::new_v4(),
+        expected_revision,
+    )
+    .await
+}
+
+async fn static_lifecycle_revision(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    module_slug: &str,
+) -> u64 {
+    db.query_one(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "SELECT revision FROM module_static_tenant_lifecycle WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
+        vec![tenant_id.into(), module_slug.into()],
+    ))
+    .await
+    .expect("read static lifecycle revision")
+    .map(|row| row.try_get::<i64>("", "revision").expect("valid static lifecycle revision"))
+    .map(|revision| u64::try_from(revision).expect("non-negative static lifecycle revision"))
+    .unwrap_or(0)
+}
+
+async fn toggle_with_fresh_command(
+    db: &DatabaseConnection,
+    registry: &ModuleRegistry,
+    tenant_id: Uuid,
+    module_slug: &str,
+    enabled: bool,
+) -> Result<ModuleLifecycleStateSnapshot, ToggleModuleError> {
+    toggle_with_actor(
+        db,
+        registry,
+        tenant_id,
+        module_slug,
+        enabled,
+        Uuid::new_v4(),
+    )
+    .await
+}
 
 struct TestModule {
     slug: &'static str,
@@ -351,6 +410,7 @@ async fn setup_db() -> DatabaseConnection {
             requested_by TEXT NULL,
             correlation_id TEXT NULL,
             idempotency_key TEXT NULL,
+            expected_revision INTEGER NULL,
             error_message TEXT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -360,6 +420,24 @@ async fn setup_db() -> DatabaseConnection {
     ))
     .await
     .expect("create module_operations");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        r#"
+        CREATE TABLE module_static_tenant_lifecycle (
+            tenant_id TEXT NOT NULL,
+            module_slug TEXT NOT NULL,
+            revision INTEGER NOT NULL DEFAULT 0,
+            active_idempotency_key TEXT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (tenant_id, module_slug),
+            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+        );
+        "#,
+    ))
+    .await
+    .expect("create module_static_tenant_lifecycle");
 
     db.execute(Statement::from_string(
         DbBackend::Sqlite,
@@ -399,16 +477,35 @@ async fn successful_enable_and_idempotent_retry() {
     let module = TestModule::new("commerce");
     let calls = module.enable_calls.clone();
     let registry = ModuleRegistry::new().register(module);
+    let actor_id = Uuid::new_v4();
+    let idempotency_key = Uuid::new_v4();
 
-    let enabled =
-        ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "commerce", true)
-            .await
-            .expect("first enable");
+    let enabled = OwnerModuleLifecycleService::toggle_module(
+        &db,
+        &registry,
+        tenant_id,
+        "commerce",
+        true,
+        actor_id,
+        idempotency_key,
+        0,
+    )
+    .await
+    .expect("first enable");
     assert!(enabled.enabled);
 
-    let second = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "commerce", true)
-        .await
-        .expect("second enable");
+    let second = OwnerModuleLifecycleService::toggle_module(
+        &db,
+        &registry,
+        tenant_id,
+        "commerce",
+        true,
+        actor_id,
+        idempotency_key,
+        0,
+    )
+    .await
+    .expect("exact retry");
     assert!(second.enabled);
     assert_eq!(calls.load(Ordering::SeqCst), 1, "hook should be idempotent");
 
@@ -434,7 +531,7 @@ async fn pre_enable_failure_keeps_state_uncommitted() {
 
     let registry = ModuleRegistry::new().register(TestModule::new("forum").with_enable_failure());
 
-    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "forum", true)
+    let err = toggle_with_fresh_command(&db, &registry, tenant_id, "forum", true)
         .await
         .expect_err("enable should fail");
 
@@ -491,8 +588,8 @@ async fn concurrent_toggle_requests_keep_consistent_state() {
     let disable_calls = module.disable_calls.clone();
     let registry = ModuleRegistry::new().register(module);
 
-    let first = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "blog", true);
-    let second = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "blog", false);
+    let first = toggle_with_fresh_command(&db, &registry, tenant_id, "blog", true);
+    let second = toggle_with_fresh_command(&db, &registry, tenant_id, "blog", false);
 
     let (r1, r2) = tokio::join!(first, second);
     assert!(
@@ -505,8 +602,9 @@ async fn concurrent_toggle_requests_keep_consistent_state() {
         .or(r2.as_ref().err())
         .expect("one concurrent transition must be rejected");
     assert!(
-        matches!(rejected, ToggleModuleError::Policy(message) if message.contains("durable cursor: Stale")),
-        "the competing transition must fail closed at the durable predecessor gate: {rejected:?}",
+        matches!(rejected, ToggleModuleError::OperationInProgress)
+            || matches!(rejected, ToggleModuleError::Policy(message) if message.contains("durable cursor: Stale")),
+        "the competing transition must fail closed at the aggregate or durable predecessor gate: {rejected:?}",
     );
 
     let state = tenant_modules::Entity::find()
@@ -530,7 +628,7 @@ async fn successful_toggle_writes_committed_module_operation() {
 
     let registry = ModuleRegistry::new().register(TestModule::new("pricing"));
 
-    let enabled = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "pricing", true)
+    let enabled = toggle_with_fresh_command(&db, &registry, tenant_id, "pricing", true)
         .await
         .expect("enable should succeed");
     assert!(enabled.enabled);
@@ -590,17 +688,11 @@ async fn successful_toggle_with_actor_persists_requested_by() {
     seed_tenant(&db, tenant_id).await;
 
     let registry = ModuleRegistry::new().register(TestModule::new("catalog"));
+    let actor_id = Uuid::new_v4();
 
-    ModuleLifecycleService::toggle_module_with_actor(
-        &db,
-        &registry,
-        tenant_id,
-        "catalog",
-        true,
-        Some("admin:user-1".to_string()),
-    )
-    .await
-    .expect("enable should succeed");
+    toggle_with_actor(&db, &registry, tenant_id, "catalog", true, actor_id)
+        .await
+        .expect("enable should succeed");
 
     let operation = module_operations::Entity::find()
         .filter(module_operations::Column::TenantId.eq(tenant_id))
@@ -611,7 +703,7 @@ async fn successful_toggle_with_actor_persists_requested_by() {
         .expect("operation exists");
 
     assert_eq!(operation.status, ModuleOperationStatus::Committed.as_str());
-    assert_eq!(operation.requested_by.as_deref(), Some("admin:user-1"));
+    assert_eq!(operation.requested_by, Some(actor_id.to_string()));
 }
 
 #[tokio::test]
@@ -627,7 +719,7 @@ async fn dependency_validation_failure_does_not_create_journal_row() {
             dependency: "pricing",
         });
 
-    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "checkout", true)
+    let err = toggle_with_fresh_command(&db, &registry, tenant_id, "checkout", true)
         .await
         .expect_err("enable should fail because dependency is missing");
     assert!(matches!(err, ToggleModuleError::MissingDependencies(_)));
@@ -658,14 +750,14 @@ async fn dependent_validation_failure_does_not_create_journal_row() {
             dependency: "pricing",
         });
 
-    ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "pricing", true)
+    toggle_with_fresh_command(&db, &registry, tenant_id, "pricing", true)
         .await
         .expect("enable dependency first");
-    ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "checkout", true)
+    toggle_with_fresh_command(&db, &registry, tenant_id, "checkout", true)
         .await
         .expect("enable dependent second");
 
-    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "pricing", false)
+    let err = toggle_with_fresh_command(&db, &registry, tenant_id, "pricing", false)
         .await
         .expect_err("disable should fail because module has dependents");
     assert!(matches!(err, ToggleModuleError::HasDependents(_)));
@@ -697,7 +789,7 @@ async fn unknown_module_failure_does_not_create_journal_row() {
 
     let registry = ModuleRegistry::new().register(TestModule::new("pricing"));
 
-    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "unknown", true)
+    let err = toggle_with_fresh_command(&db, &registry, tenant_id, "unknown", true)
         .await
         .expect_err("unknown module should fail");
     assert!(matches!(err, ToggleModuleError::UnknownModule));
@@ -721,7 +813,7 @@ async fn core_module_disable_failure_does_not_create_journal_row() {
 
     let registry = ModuleRegistry::new().register(CoreTestModule { slug: "tenant" });
 
-    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "tenant", false)
+    let err = toggle_with_fresh_command(&db, &registry, tenant_id, "tenant", false)
         .await
         .expect_err("core module disable should fail");
     assert!(matches!(
@@ -741,23 +833,21 @@ async fn core_module_disable_failure_does_not_create_journal_row() {
 }
 
 #[tokio::test]
-async fn repeated_explicit_disable_does_not_create_an_extra_journal_row() {
+async fn repeated_explicit_disable_records_a_distinct_no_op_receipt() {
     let db = setup_db().await;
     let tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
 
     let registry = ModuleRegistry::new().register(TestModule::new("inventory"));
 
-    let module =
-        ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "inventory", false)
-            .await
-            .expect("explicit disable should succeed");
+    let module = toggle_with_fresh_command(&db, &registry, tenant_id, "inventory", false)
+        .await
+        .expect("explicit disable should succeed");
     assert!(!module.enabled);
 
-    let repeated =
-        ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "inventory", false)
-            .await
-            .expect("repeated explicit disable should succeed");
+    let repeated = toggle_with_fresh_command(&db, &registry, tenant_id, "inventory", false)
+        .await
+        .expect("repeated explicit disable should succeed");
     assert!(!repeated.enabled);
 
     let operations = module_operations::Entity::find()
@@ -769,8 +859,8 @@ async fn repeated_explicit_disable_does_not_create_an_extra_journal_row() {
 
     assert_eq!(
         operations.len(),
-        1,
-        "the first explicit disable records tenant intent; only its repetition is a no-op",
+        2,
+        "a repeated explicit disable is a distinct no-op command with its own receipt",
     );
     assert_eq!(
         operations[0].status,
@@ -779,17 +869,17 @@ async fn repeated_explicit_disable_does_not_create_an_extra_journal_row() {
 }
 
 #[tokio::test]
-async fn noop_enable_for_already_enabled_module_does_not_create_extra_journal_row() {
+async fn noop_enable_for_already_enabled_module_records_a_receipt() {
     let db = setup_db().await;
     let tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
 
     let registry = ModuleRegistry::new().register(TestModule::new("catalog"));
 
-    ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "catalog", true)
+    toggle_with_fresh_command(&db, &registry, tenant_id, "catalog", true)
         .await
         .expect("initial enable should succeed");
-    let second = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "catalog", true)
+    let second = toggle_with_fresh_command(&db, &registry, tenant_id, "catalog", true)
         .await
         .expect("no-op enable should succeed");
     assert!(second.enabled);
@@ -803,8 +893,8 @@ async fn noop_enable_for_already_enabled_module_does_not_create_extra_journal_ro
 
     assert_eq!(
         operations.len(),
-        1,
-        "no-op enable transition must not create extra module_operations rows",
+        2,
+        "a distinct no-op command must retain its own committed lifecycle receipt",
     );
     assert_eq!(
         operations[0].status,
@@ -813,14 +903,15 @@ async fn noop_enable_for_already_enabled_module_does_not_create_extra_journal_ro
 }
 
 #[tokio::test]
-async fn toggle_without_actor_records_null_requested_by() {
+async fn toggle_records_authenticated_actor_identity() {
     let db = setup_db().await;
     let tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
 
     let registry = ModuleRegistry::new().register(TestModule::new("forum"));
+    let actor_id = Uuid::new_v4();
 
-    ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "forum", true)
+    toggle_with_actor(&db, &registry, tenant_id, "forum", true, actor_id)
         .await
         .expect("enable should succeed");
 
@@ -833,10 +924,7 @@ async fn toggle_without_actor_records_null_requested_by() {
         .expect("operation exists");
 
     assert_eq!(operation.status, ModuleOperationStatus::Committed.as_str());
-    assert!(
-        operation.requested_by.is_none(),
-        "toggle_module wrapper without actor must persist requested_by as NULL",
-    );
+    assert_eq!(operation.requested_by, Some(actor_id.to_string()));
 }
 
 #[tokio::test]
@@ -846,27 +934,21 @@ async fn hook_failure_with_actor_records_failed_operation_with_actor() {
     seed_tenant(&db, tenant_id).await;
 
     let registry = ModuleRegistry::new().register(TestModule::new("billing"));
+    let actor_id = Uuid::new_v4();
 
-    ModuleLifecycleService::toggle_module_with_actor(
-        &db,
-        &registry,
-        tenant_id,
-        "billing",
-        true,
-        Some("admin:user-2".to_string()),
-    )
-    .await
-    .expect("enable should succeed");
+    toggle_with_actor(&db, &registry, tenant_id, "billing", true, actor_id)
+        .await
+        .expect("enable should succeed");
 
     let failing_registry =
         ModuleRegistry::new().register(TestModule::new("billing").with_disable_failure());
-    let err = ModuleLifecycleService::toggle_module_with_actor(
+    let err = toggle_with_actor(
         &db,
         &failing_registry,
         tenant_id,
         "billing",
         false,
-        Some("admin:user-2".to_string()),
+        actor_id,
     )
     .await
     .expect_err("disable hook failure expected");
@@ -902,8 +984,8 @@ async fn hook_failure_with_actor_records_failed_operation_with_actor() {
         "pre-disable failure must retain the previously effective enabled state",
     );
     assert_eq!(
-        failed_operation.requested_by.as_deref(),
-        Some("admin:user-2"),
+        failed_operation.requested_by,
+        Some(actor_id.to_string()),
         "actor metadata must be preserved for failed operations too",
     );
     assert!(
@@ -931,13 +1013,14 @@ async fn hook_failure_with_actor_records_failed_operation_with_actor() {
 }
 
 #[tokio::test]
-async fn hook_failure_without_actor_records_failed_operation_with_null_actor() {
+async fn hook_failure_records_failed_operation_with_authenticated_actor() {
     let db = setup_db().await;
     let tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, tenant_id).await;
 
     let registry = ModuleRegistry::new().register(TestModule::new("orders").with_enable_failure());
-    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "orders", true)
+    let actor_id = Uuid::new_v4();
+    let err = toggle_with_actor(&db, &registry, tenant_id, "orders", true, actor_id)
         .await
         .expect_err("enable hook failure expected");
     assert!(matches!(err, ToggleModuleError::PreHookFailed(_)));
@@ -959,10 +1042,7 @@ async fn hook_failure_without_actor_records_failed_operation_with_null_actor() {
         !failed_operation.previous_effective_enabled,
         "pre-enable failure must retain the previously effective disabled state",
     );
-    assert!(
-        failed_operation.requested_by.is_none(),
-        "wrapper toggle_module without actor must keep requested_by=NULL even on failed operations",
-    );
+    assert_eq!(failed_operation.requested_by, Some(actor_id.to_string()));
     assert!(
         failed_operation.correlation_id.is_some(),
         "failed pre-enable operation must keep correlation id for retry/audit tracing",
@@ -996,16 +1076,10 @@ async fn post_enable_failure_keeps_committed_state_and_marks_failed_operation() 
     let failing_module = TestModule::new("search").with_post_enable_failure();
     let post_enable_calls = failing_module.post_enable_calls.clone();
     let registry = ModuleRegistry::new().register(failing_module);
-    let err = ModuleLifecycleService::toggle_module_with_actor(
-        &db,
-        &registry,
-        tenant_id,
-        "search",
-        true,
-        Some("admin:user-post-enable".to_string()),
-    )
-    .await
-    .expect_err("post-enable failure expected");
+    let actor_id = Uuid::new_v4();
+    let err = toggle_with_actor(&db, &registry, tenant_id, "search", true, actor_id)
+        .await
+        .expect_err("post-enable failure expected");
     assert!(matches!(err, ToggleModuleError::PostHookFailed(_)));
 
     let state = tenant_modules::Entity::find()
@@ -1040,8 +1114,8 @@ async fn post_enable_failure_keeps_committed_state_and_marks_failed_operation() 
             .contains("post-hook")
     );
     assert_eq!(
-        failed_operation.requested_by.as_deref(),
-        Some("admin:user-post-enable"),
+        failed_operation.requested_by,
+        Some(actor_id.to_string()),
         "post-hook failed operation must keep actor metadata for retry/audit attribution",
     );
     assert!(
@@ -1067,7 +1141,7 @@ async fn post_enable_failure_keeps_committed_state_and_marks_failed_operation() 
         "single post-enable failure attempt must produce exactly one journal row",
     );
 
-    let retry = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "search", true)
+    let retry = toggle_with_fresh_command(&db, &registry, tenant_id, "search", true)
         .await
         .expect("retry enable after committed post-hook failure should be a no-op");
     assert!(retry.enabled);
@@ -1080,13 +1154,13 @@ async fn post_enable_failure_keeps_committed_state_and_marks_failed_operation() 
         .expect("load search operations after retry");
     assert_eq!(
         operations_after_retry.len(),
-        1,
-        "idempotent retry after committed post-enable failure must not create extra journal rows",
+        2,
+        "a new no-op command after a committed post-enable failure records its receipt",
     );
     assert_eq!(
         post_enable_calls.load(Ordering::SeqCst),
         1,
-        "idempotent retry after committed post-enable failure must not invoke post-enable hook again",
+        "a no-op command after committed post-enable failure must not invoke post-enable hook again",
     );
 }
 
@@ -1097,23 +1171,17 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
     seed_tenant(&db, tenant_id).await;
 
     let registry = ModuleRegistry::new().register(TestModule::new("search"));
-    ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "search", true)
+    toggle_with_fresh_command(&db, &registry, tenant_id, "search", true)
         .await
         .expect("enable should succeed");
 
     let failing_module = TestModule::new("search").with_post_disable_failure();
     let post_disable_calls = failing_module.post_disable_calls.clone();
     let failing_registry = ModuleRegistry::new().register(failing_module);
-    let err = ModuleLifecycleService::toggle_module_with_actor(
-        &db,
-        &failing_registry,
-        tenant_id,
-        "search",
-        false,
-        Some("admin:user-post-disable".to_string()),
-    )
-    .await
-    .expect_err("post-disable failure expected");
+    let actor_id = Uuid::new_v4();
+    let err = toggle_with_actor(&db, &failing_registry, tenant_id, "search", false, actor_id)
+        .await
+        .expect_err("post-disable failure expected");
     assert!(matches!(err, ToggleModuleError::PostHookFailed(_)));
 
     let state = tenant_modules::Entity::find()
@@ -1148,8 +1216,8 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
             .contains("post-hook")
     );
     assert_eq!(
-        failed_operation.requested_by.as_deref(),
-        Some("admin:user-post-disable"),
+        failed_operation.requested_by,
+        Some(actor_id.to_string()),
         "post-hook failed operation must keep actor metadata for retry/audit attribution",
     );
     assert!(
@@ -1175,10 +1243,9 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
         "enable + failed disable must produce exactly two lifecycle journal rows",
     );
 
-    let retry =
-        ModuleLifecycleService::toggle_module(&db, &failing_registry, tenant_id, "search", false)
-            .await
-            .expect("retry disable after committed post-hook failure should be a no-op");
+    let retry = toggle_with_fresh_command(&db, &failing_registry, tenant_id, "search", false)
+        .await
+        .expect("retry disable after committed post-hook failure should be a no-op");
     assert!(!retry.enabled);
 
     let operations_after_retry = module_operations::Entity::find()
@@ -1189,13 +1256,13 @@ async fn post_disable_failure_keeps_committed_state_and_marks_failed_operation()
         .expect("load search operations after retry");
     assert_eq!(
         operations_after_retry.len(),
-        2,
-        "idempotent retry after committed post-disable failure must not create extra journal rows",
+        3,
+        "a new no-op command after a committed post-disable failure records its receipt",
     );
     assert_eq!(
         post_disable_calls.load(Ordering::SeqCst),
         1,
-        "idempotent retry after committed post-disable failure must not invoke post-disable hook again",
+        "a no-op command after committed post-disable failure must not invoke post-disable hook again",
     );
 }
 
@@ -1209,16 +1276,9 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
     let post_enable_calls = module.post_enable_calls.clone();
     let registry = ModuleRegistry::new().register(module);
 
-    let err = ModuleLifecycleService::toggle_module_with_actor(
-        &db,
-        &registry,
-        tenant_id,
-        "analytics",
-        true,
-        Some("admin:first-attempt".to_string()),
-    )
-    .await
-    .expect_err("first post-enable attempt should fail");
+    let err = toggle_with_fresh_command(&db, &registry, tenant_id, "analytics", true)
+        .await
+        .expect_err("first post-enable attempt should fail");
     assert!(matches!(err, ToggleModuleError::PostHookFailed(_)));
 
     let failed_operation = module_operations::Entity::find()
@@ -1229,7 +1289,7 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
         .expect("query failed operation")
         .expect("failed operation exists");
 
-    let plan = ModuleLifecycleService::module_operation_recovery_plan(
+    let plan = OwnerModuleLifecycleService::module_operation_recovery_plan(
         &db,
         &registry,
         tenant_id,
@@ -1247,7 +1307,7 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
 
     let foreign_tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, foreign_tenant_id).await;
-    let foreign_plan = ModuleLifecycleService::module_operation_recovery_plan(
+    let foreign_plan = OwnerModuleLifecycleService::module_operation_recovery_plan(
         &db,
         &registry,
         foreign_tenant_id,
@@ -1259,13 +1319,14 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
         foreign_plan,
         ModuleOperationRecoveryError::OperationNotFound
     ));
-    let foreign_retry = ModuleLifecycleService::retry_failed_post_hook_operation(
+    let foreign_retry = OwnerModuleLifecycleService::retry_failed_post_hook_operation(
         &db,
         &registry,
         foreign_tenant_id,
         failed_operation.id,
-        Some("admin:foreign-tenant".to_string()),
+        Uuid::new_v4(),
         uuid::Uuid::new_v4(),
+        0,
     )
     .await
     .expect_err("recovery must not cross the authenticated tenant boundary");
@@ -1274,20 +1335,25 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
         ModuleOperationRecoveryError::OperationNotFound
     ));
 
+    let retry_actor_id = Uuid::new_v4();
     let retry_idempotency_key = uuid::Uuid::new_v4();
-    let retry_operation = ModuleLifecycleService::retry_failed_post_hook_operation(
+    let retry_operation = OwnerModuleLifecycleService::retry_failed_post_hook_operation(
         &db,
         &registry,
         tenant_id,
         failed_operation.id,
-        Some("admin:retry".to_string()),
+        retry_actor_id,
         retry_idempotency_key,
+        1,
     )
     .await
     .expect("post-hook retry should succeed");
 
     assert_eq!(retry_operation.status, ModuleOperationStatus::Committed);
-    assert_eq!(retry_operation.requested_by.as_deref(), Some("admin:retry"));
+    assert_eq!(
+        retry_operation.requested_by,
+        Some(retry_actor_id.to_string())
+    );
     assert!(retry_operation.requested_enabled);
     assert!(
         !retry_operation.previous_effective_enabled,
@@ -1313,13 +1379,14 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
         .expect("load analytics operations");
     assert_eq!(operations.len(), 2);
 
-    let replayed_operation = ModuleLifecycleService::retry_failed_post_hook_operation(
+    let replayed_operation = OwnerModuleLifecycleService::retry_failed_post_hook_operation(
         &db,
         &registry,
         tenant_id,
         failed_operation.id,
-        Some("admin:retry".to_string()),
+        retry_actor_id,
         retry_idempotency_key,
+        1,
     )
     .await
     .expect("same retry idempotency key should replay the journal operation");
@@ -1337,7 +1404,7 @@ async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
     seed_tenant(&db, tenant_id).await;
 
     let registry = ModuleRegistry::new().register(TestModule::new("orders").with_enable_failure());
-    let err = ModuleLifecycleService::toggle_module(&db, &registry, tenant_id, "orders", true)
+    let err = toggle_with_fresh_command(&db, &registry, tenant_id, "orders", true)
         .await
         .expect_err("pre-enable failure expected");
     assert!(matches!(err, ToggleModuleError::PreHookFailed(_)));
@@ -1350,7 +1417,7 @@ async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
         .expect("query failed operation")
         .expect("failed operation exists");
 
-    let plan = ModuleLifecycleService::module_operation_recovery_plan(
+    let plan = OwnerModuleLifecycleService::module_operation_recovery_plan(
         &db,
         &registry,
         tenant_id,
@@ -1365,13 +1432,14 @@ async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
         ModuleOperationRecoveryAction::RepeatToggle
     );
 
-    let err = ModuleLifecycleService::retry_failed_post_hook_operation(
+    let err = OwnerModuleLifecycleService::retry_failed_post_hook_operation(
         &db,
         &registry,
         tenant_id,
         failed_operation.id,
-        Some("admin:retry".to_string()),
+        Uuid::new_v4(),
         uuid::Uuid::new_v4(),
+        0,
     )
     .await
     .expect_err("pre-hook failures are not post-hook retryable");
@@ -1388,16 +1456,9 @@ async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key()
     let post_disable_calls = module.post_disable_calls.clone();
     let registry = ModuleRegistry::new().register(module);
 
-    let err = ModuleLifecycleService::toggle_module_with_actor(
-        &db,
-        &registry,
-        tenant_id,
-        "billing",
-        true,
-        Some("admin:enable".to_string()),
-    )
-    .await
-    .expect_err("post-enable failure should leave a compensable operation");
+    let err = toggle_with_fresh_command(&db, &registry, tenant_id, "billing", true)
+        .await
+        .expect_err("post-enable failure should leave a compensable operation");
     assert!(matches!(err, ToggleModuleError::PostHookFailed(_)));
 
     let failed_operation = module_operations::Entity::find()
@@ -1410,13 +1471,14 @@ async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key()
 
     let foreign_tenant_id = uuid::Uuid::new_v4();
     seed_tenant(&db, foreign_tenant_id).await;
-    let foreign_compensation = ModuleLifecycleService::compensate_failed_operation(
+    let foreign_compensation = OwnerModuleLifecycleService::compensate_failed_operation(
         &db,
         &registry,
         foreign_tenant_id,
         failed_operation.id,
-        Some("admin:foreign-tenant".to_string()),
+        Uuid::new_v4(),
         uuid::Uuid::new_v4(),
+        0,
     )
     .await
     .expect_err("compensation must not cross the authenticated tenant boundary");
@@ -1425,28 +1487,31 @@ async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key()
         ModuleOperationRecoveryError::OperationNotFound
     ));
 
+    let actor_id = Uuid::new_v4();
     let idempotency_key = uuid::Uuid::new_v4();
 
-    let compensated = ModuleLifecycleService::compensate_failed_operation(
+    let compensated = OwnerModuleLifecycleService::compensate_failed_operation(
         &db,
         &registry,
         tenant_id,
         failed_operation.id,
-        Some("admin:compensate".to_string()),
+        actor_id,
         idempotency_key,
+        1,
     )
     .await
     .expect("compensation should disable the module");
     assert_eq!(compensated.module_slug, "billing");
     assert!(!compensated.enabled);
 
-    let replayed = ModuleLifecycleService::compensate_failed_operation(
+    let replayed = OwnerModuleLifecycleService::compensate_failed_operation(
         &db,
         &registry,
         tenant_id,
         failed_operation.id,
-        Some("admin:compensate".to_string()),
+        actor_id,
         idempotency_key,
+        1,
     )
     .await
     .expect("same compensation key should replay the reverse operation");

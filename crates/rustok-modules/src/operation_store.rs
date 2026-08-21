@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -14,6 +15,10 @@ pub struct ModuleOperationRequest {
     pub requested_by: Option<String>,
     pub correlation_id: String,
     pub idempotency_key: Option<Uuid>,
+    /// Static lifecycle commands bind this precondition into the durable
+    /// idempotency identity. Artifact paths retain no value here because they
+    /// use their own lifecycle aggregate.
+    pub expected_revision: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -42,6 +47,7 @@ pub struct ModuleOperationSnapshot {
     pub requested_by: Option<String>,
     pub correlation_id: Option<String>,
     pub idempotency_key: Option<Uuid>,
+    pub expected_revision: Option<u64>,
     pub error_message: Option<String>,
     pub created_at: DateTime<Utc>,
 }
@@ -56,16 +62,6 @@ pub enum ModuleOperationStoreError {
     IdempotencyConflict,
     #[error("module operation idempotency key is required")]
     MissingIdempotencyKey,
-}
-
-#[derive(Debug, Error)]
-pub(crate) enum TenantModuleSettingsCompareAndSwapError {
-    #[error("module settings compare-and-swap database error: {0}")]
-    Database(String),
-    #[error("module `{0}` is not enabled for this tenant")]
-    ModuleNotEnabled(String),
-    #[error("module `{0}` settings changed since the expected snapshot")]
-    Conflict(String),
 }
 
 /// Owner-owned persistence for lifecycle operation journaling.
@@ -98,15 +94,6 @@ pub struct TenantModuleSettingsRequest {
     pub is_effectively_enabled: bool,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TenantModuleSettingsCompareAndSwapRequest {
-    pub tenant_id: Uuid,
-    pub module_slug: String,
-    pub expected_enabled: bool,
-    pub expected_settings: serde_json::Value,
-    pub settings: serde_json::Value,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TenantModuleSettingsRecord {
     pub id: Uuid,
@@ -115,8 +102,50 @@ pub struct TenantModuleSettingsRecord {
     pub settings: serde_json::Value,
 }
 
+/// Durable concurrency snapshot for one static module lifecycle aggregate.
+/// The aggregate exists independently from the `tenant_modules` override
+/// projection, so an inherited/default state has revision zero until its first
+/// lifecycle command claims the aggregate.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StaticTenantLifecycleSnapshot {
+    pub tenant_id: Uuid,
+    pub module_slug: String,
+    pub revision: u64,
+    pub active_idempotency_key: Option<Uuid>,
+}
+
+/// Result of admitting one static lifecycle operation to its aggregate.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StaticTenantLifecycleClaim {
+    Acquired(StaticTenantLifecycleSnapshot),
+    AlreadyHeld(StaticTenantLifecycleSnapshot),
+}
+
+#[derive(Debug, Error)]
+pub enum StaticTenantLifecycleStoreError {
+    #[error("static module lifecycle store database error: {0}")]
+    Database(String),
+    #[error(
+        "static module lifecycle revision conflict for `{module_slug}`: expected {expected}, current {current}"
+    )]
+    RevisionConflict {
+        module_slug: String,
+        expected: u64,
+        current: u64,
+    },
+    #[error("static module lifecycle operation is already active for `{module_slug}`")]
+    OperationInProgress { module_slug: String },
+    #[error("static module lifecycle revision overflow for `{0}")]
+    RevisionOverflow(String),
+    #[error("static module lifecycle state is inconsistent for `{0}")]
+    InconsistentState(String),
+}
+
 /// Owner-owned persistence for a tenant's explicit module state row.
 pub struct TenantModuleStateStore;
+
+/// Owner-owned persistence for the static module lifecycle revision aggregate.
+pub struct StaticTenantLifecycleStore;
 
 impl ModuleOperationJournal {
     pub async fn find<C: ConnectionTrait>(
@@ -264,6 +293,7 @@ impl ModuleOperationJournal {
             || existing.requested_enabled != request.requested_enabled
             || existing.requested_by != request.requested_by
             || existing.correlation_id.as_deref() != Some(request.correlation_id.as_str())
+            || existing.expected_revision != request.expected_revision
         {
             return Err(ModuleOperationStoreError::IdempotencyConflict);
         }
@@ -277,7 +307,7 @@ impl ModuleOperationJournal {
         let id = rustok_core::generate_id();
         execute(
             db,
-            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, correlation_id, idempotency_key, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, NULL)",
+            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, correlation_id, idempotency_key, expected_revision, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, NULL)",
             vec![
                 id.into(),
                 request.tenant_id.into(),
@@ -288,6 +318,14 @@ impl ModuleOperationJournal {
                 request.requested_by.into(),
                 request.correlation_id.into(),
                 request.idempotency_key.into(),
+                request
+                    .expected_revision
+                    .map(|value| i64::try_from(value))
+                    .transpose()
+                    .map_err(|_| ModuleOperationStoreError::Database(
+                        "static lifecycle expected revision exceeds storage range".to_string(),
+                    ))?
+                    .into(),
             ],
         )
         .await?;
@@ -372,9 +410,395 @@ impl ModuleOperationJournal {
     }
 }
 
+impl StaticTenantLifecycleStore {
+    /// Loads the owner aggregate without creating a row for inherited/default
+    /// tenant state. Callers submit revision zero for that initial state.
+    pub async fn snapshot<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<StaticTenantLifecycleSnapshot, StaticTenantLifecycleStoreError> {
+        Self::read_persisted(db, tenant_id, module_slug)
+            .await?
+            .map(Ok)
+            .unwrap_or_else(|| {
+                Ok(StaticTenantLifecycleSnapshot {
+                    tenant_id,
+                    module_slug: module_slug.to_string(),
+                    revision: 0,
+                    active_idempotency_key: None,
+                })
+            })
+    }
+
+    async fn read_persisted<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<StaticTenantLifecycleSnapshot>, StaticTenantLifecycleStoreError> {
+        let backend = db.get_database_backend();
+        let sql = match backend {
+            DbBackend::Postgres => {
+                "SELECT revision, active_idempotency_key FROM module_static_tenant_lifecycle \
+                 WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
+            }
+            _ => {
+                "SELECT revision, active_idempotency_key FROM module_static_tenant_lifecycle \
+                 WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1"
+            }
+        };
+        db.query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![tenant_id.into(), module_slug.into()],
+        ))
+        .await
+        .map_err(static_lifecycle_database_error)?
+        .map(|row| static_lifecycle_snapshot_from_row(row, tenant_id, module_slug))
+        .transpose()
+    }
+
+    /// Returns a complete aggregate snapshot for every requested static slug
+    /// in one owner query. Missing rows are inherited/default state at
+    /// revision zero and are represented without creating an override row.
+    pub async fn snapshots<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slugs: impl IntoIterator<Item = String>,
+    ) -> Result<BTreeMap<String, StaticTenantLifecycleSnapshot>, StaticTenantLifecycleStoreError>
+    {
+        let module_slugs = module_slugs.into_iter().collect::<BTreeSet<_>>();
+        if module_slugs.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        let backend = db.get_database_backend();
+        let mut values = vec![tenant_id.into()];
+        let placeholders = module_slugs
+            .iter()
+            .enumerate()
+            .map(|(index, module_slug)| {
+                values.push(module_slug.clone().into());
+                match backend {
+                    DbBackend::Postgres => format!("${}", index + 2),
+                    _ => format!("?{}", index + 2),
+                }
+            })
+            .collect::<Vec<_>>();
+        let tenant_placeholder = match backend {
+            DbBackend::Postgres => "$1",
+            _ => "?1",
+        };
+        let rows = db
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT module_slug, revision, active_idempotency_key \
+                     FROM module_static_tenant_lifecycle WHERE tenant_id = {tenant_placeholder} \
+                     AND module_slug IN ({})",
+                    placeholders.join(", ")
+                ),
+                values,
+            ))
+            .await
+            .map_err(static_lifecycle_database_error)?;
+        let mut snapshots = module_slugs
+            .iter()
+            .map(|module_slug| {
+                (
+                    module_slug.clone(),
+                    StaticTenantLifecycleSnapshot {
+                        tenant_id,
+                        module_slug: module_slug.clone(),
+                        revision: 0,
+                        active_idempotency_key: None,
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        for row in rows {
+            let module_slug: String = row
+                .try_get("", "module_slug")
+                .map_err(static_lifecycle_database_error)?;
+            let snapshot = static_lifecycle_snapshot_from_row(row, tenant_id, &module_slug)?;
+            snapshots.insert(module_slug, snapshot);
+        }
+        Ok(snapshots)
+    }
+
+    /// Admits one command only when its reviewed aggregate revision is current.
+    /// The claim is intentionally durable and is cleared only by the owner when
+    /// that same operation reaches a terminal lifecycle boundary.
+    pub async fn claim<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+        expected_revision: u64,
+        idempotency_key: Uuid,
+    ) -> Result<StaticTenantLifecycleClaim, StaticTenantLifecycleStoreError> {
+        let persisted = Self::read_persisted(db, tenant_id, module_slug).await?;
+        let current = persisted.clone().unwrap_or(StaticTenantLifecycleSnapshot {
+            tenant_id,
+            module_slug: module_slug.to_string(),
+            revision: 0,
+            active_idempotency_key: None,
+        });
+        if let Some(active_idempotency_key) = current.active_idempotency_key {
+            return if active_idempotency_key == idempotency_key {
+                Ok(StaticTenantLifecycleClaim::AlreadyHeld(current))
+            } else {
+                Err(StaticTenantLifecycleStoreError::OperationInProgress {
+                    module_slug: module_slug.to_string(),
+                })
+            };
+        }
+        if current.revision != expected_revision {
+            return Err(StaticTenantLifecycleStoreError::RevisionConflict {
+                module_slug: module_slug.to_string(),
+                expected: expected_revision,
+                current: current.revision,
+            });
+        }
+
+        let backend = db.get_database_backend();
+        if persisted.is_none() {
+            let insert = db
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    match backend {
+                        DbBackend::Postgres => {
+                            "INSERT INTO module_static_tenant_lifecycle \
+                             (tenant_id, module_slug, revision, active_idempotency_key) \
+                             VALUES ($1, $2, $3, $4)"
+                        }
+                        _ => {
+                            "INSERT INTO module_static_tenant_lifecycle \
+                             (tenant_id, module_slug, revision, active_idempotency_key) \
+                             VALUES (?1, ?2, ?3, ?4)"
+                        }
+                    },
+                    vec![
+                        tenant_id.into(),
+                        module_slug.into(),
+                        i64::try_from(expected_revision)
+                            .map_err(|_| {
+                                StaticTenantLifecycleStoreError::RevisionOverflow(
+                                    module_slug.to_string(),
+                                )
+                            })?
+                            .into(),
+                        idempotency_key.into(),
+                    ],
+                ))
+                .await;
+            match insert {
+                Ok(_) => {
+                    return Ok(StaticTenantLifecycleClaim::Acquired(
+                        StaticTenantLifecycleSnapshot {
+                            tenant_id,
+                            module_slug: module_slug.to_string(),
+                            revision: expected_revision,
+                            active_idempotency_key: Some(idempotency_key),
+                        },
+                    ));
+                }
+                Err(_) => {
+                    // A concurrent first claim won the composite primary key.
+                    // Reloading applies the same exact-key/revision decision as
+                    // an already materialized aggregate.
+                    let refreshed = Self::snapshot(db, tenant_id, module_slug).await?;
+                    return if refreshed.active_idempotency_key == Some(idempotency_key) {
+                        Ok(StaticTenantLifecycleClaim::AlreadyHeld(refreshed))
+                    } else if refreshed.active_idempotency_key.is_some() {
+                        Err(StaticTenantLifecycleStoreError::OperationInProgress {
+                            module_slug: module_slug.to_string(),
+                        })
+                    } else if refreshed.revision != expected_revision {
+                        Err(StaticTenantLifecycleStoreError::RevisionConflict {
+                            module_slug: module_slug.to_string(),
+                            expected: expected_revision,
+                            current: refreshed.revision,
+                        })
+                    } else {
+                        Err(StaticTenantLifecycleStoreError::InconsistentState(
+                            module_slug.to_string(),
+                        ))
+                    };
+                }
+            }
+        }
+
+        let result = db
+            .execute(Statement::from_sql_and_values(
+                backend,
+                render_parameters(
+                    "UPDATE module_static_tenant_lifecycle \
+                     SET active_idempotency_key = {1}, updated_at = CURRENT_TIMESTAMP \
+                     WHERE tenant_id = {2} AND module_slug = {3} \
+                       AND revision = {4} AND active_idempotency_key IS NULL",
+                    backend,
+                ),
+                vec![
+                    idempotency_key.into(),
+                    tenant_id.into(),
+                    module_slug.into(),
+                    i64::try_from(expected_revision)
+                        .map_err(|_| {
+                            StaticTenantLifecycleStoreError::RevisionOverflow(
+                                module_slug.to_string(),
+                            )
+                        })?
+                        .into(),
+                ],
+            ))
+            .await
+            .map_err(static_lifecycle_database_error)?;
+        if result.rows_affected() == 1 {
+            return Ok(StaticTenantLifecycleClaim::Acquired(
+                StaticTenantLifecycleSnapshot {
+                    tenant_id,
+                    module_slug: module_slug.to_string(),
+                    revision: expected_revision,
+                    active_idempotency_key: Some(idempotency_key),
+                },
+            ));
+        }
+
+        let refreshed = Self::snapshot(db, tenant_id, module_slug).await?;
+        if refreshed.active_idempotency_key == Some(idempotency_key) {
+            Ok(StaticTenantLifecycleClaim::AlreadyHeld(refreshed))
+        } else if refreshed.active_idempotency_key.is_some() {
+            Err(StaticTenantLifecycleStoreError::OperationInProgress {
+                module_slug: module_slug.to_string(),
+            })
+        } else {
+            Err(StaticTenantLifecycleStoreError::RevisionConflict {
+                module_slug: module_slug.to_string(),
+                expected: expected_revision,
+                current: refreshed.revision,
+            })
+        }
+    }
+
+    /// Advances a claimed aggregate while deliberately retaining the claim for
+    /// the subsequent post-hook. The caller must clear it after the hook's
+    /// terminal journal state is durable.
+    pub async fn advance<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+        expected_revision: u64,
+        idempotency_key: Uuid,
+    ) -> Result<u64, StaticTenantLifecycleStoreError> {
+        let next_revision = expected_revision.checked_add(1).ok_or_else(|| {
+            StaticTenantLifecycleStoreError::RevisionOverflow(module_slug.to_string())
+        })?;
+        let backend = db.get_database_backend();
+        let result = db
+            .execute(Statement::from_sql_and_values(
+                backend,
+                render_parameters(
+                    "UPDATE module_static_tenant_lifecycle \
+                     SET revision = {1}, updated_at = CURRENT_TIMESTAMP \
+                     WHERE tenant_id = {2} AND module_slug = {3} \
+                       AND revision = {4} AND active_idempotency_key = {5}",
+                    backend,
+                ),
+                vec![
+                    i64::try_from(next_revision)
+                        .map_err(|_| {
+                            StaticTenantLifecycleStoreError::RevisionOverflow(
+                                module_slug.to_string(),
+                            )
+                        })?
+                        .into(),
+                    tenant_id.into(),
+                    module_slug.into(),
+                    i64::try_from(expected_revision)
+                        .map_err(|_| {
+                            StaticTenantLifecycleStoreError::RevisionOverflow(
+                                module_slug.to_string(),
+                            )
+                        })?
+                        .into(),
+                    idempotency_key.into(),
+                ],
+            ))
+            .await
+            .map_err(static_lifecycle_database_error)?;
+        if result.rows_affected() == 1 {
+            return Ok(next_revision);
+        }
+        Err(StaticTenantLifecycleStoreError::InconsistentState(
+            module_slug.to_string(),
+        ))
+    }
+
+    /// Clears an aggregate claim after its hook/journal operation reaches a
+    /// terminal state. A different command can never clear this claim.
+    pub async fn release<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        module_slug: &str,
+        idempotency_key: Uuid,
+    ) -> Result<(), StaticTenantLifecycleStoreError> {
+        let backend = db.get_database_backend();
+        let result = db
+            .execute(Statement::from_sql_and_values(
+                backend,
+                render_parameters(
+                    "UPDATE module_static_tenant_lifecycle \
+                     SET active_idempotency_key = NULL, updated_at = CURRENT_TIMESTAMP \
+                     WHERE tenant_id = {1} AND module_slug = {2} \
+                       AND active_idempotency_key = {3}",
+                    backend,
+                ),
+                vec![tenant_id.into(), module_slug.into(), idempotency_key.into()],
+            ))
+            .await
+            .map_err(static_lifecycle_database_error)?;
+        if result.rows_affected() != 1 {
+            return Err(StaticTenantLifecycleStoreError::InconsistentState(
+                module_slug.to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn static_lifecycle_snapshot_from_row(
+    row: sea_orm::QueryResult,
+    tenant_id: Uuid,
+    module_slug: &str,
+) -> Result<StaticTenantLifecycleSnapshot, StaticTenantLifecycleStoreError> {
+    let revision: i64 = row
+        .try_get("", "revision")
+        .map_err(static_lifecycle_database_error)?;
+    if revision < 0 {
+        return Err(StaticTenantLifecycleStoreError::InconsistentState(
+            module_slug.to_string(),
+        ));
+    }
+    Ok(StaticTenantLifecycleSnapshot {
+        tenant_id,
+        module_slug: module_slug.to_string(),
+        revision: u64::try_from(revision).map_err(|_| {
+            StaticTenantLifecycleStoreError::InconsistentState(module_slug.to_string())
+        })?,
+        active_idempotency_key: row
+            .try_get("", "active_idempotency_key")
+            .map_err(static_lifecycle_database_error)?,
+    })
+}
+
+fn static_lifecycle_database_error(
+    error: impl std::fmt::Display,
+) -> StaticTenantLifecycleStoreError {
+    StaticTenantLifecycleStoreError::Database(error.to_string())
+}
+
 fn operation_select_sql() -> &'static str {
     "SELECT id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, \
-     requested_by, correlation_id, idempotency_key, error_message, created_at FROM module_operations"
+     requested_by, correlation_id, idempotency_key, expected_revision, error_message, created_at FROM module_operations"
 }
 
 fn replay_or_conflict(
@@ -386,6 +810,7 @@ fn replay_or_conflict(
         || existing.previous_effective_enabled != request.previous_effective_enabled
         || existing.requested_by != request.requested_by
         || existing.correlation_id.as_deref() != Some(request.correlation_id.as_str())
+        || existing.expected_revision != request.expected_revision
     {
         return Err(ModuleOperationStoreError::IdempotencyConflict);
     }
@@ -416,6 +841,17 @@ fn operation_snapshot(
         requested_by: row.try_get("", "requested_by").map_err(database_error)?,
         correlation_id: row.try_get("", "correlation_id").map_err(database_error)?,
         idempotency_key: row.try_get("", "idempotency_key").map_err(database_error)?,
+        expected_revision: row
+            .try_get::<Option<i64>>("", "expected_revision")
+            .map_err(database_error)?
+            .map(|value| {
+                u64::try_from(value).map_err(|_| {
+                    ModuleOperationStoreError::Database(
+                        "module operation has an invalid expected revision".to_string(),
+                    )
+                })
+            })
+            .transpose()?,
         error_message: row.try_get("", "error_message").map_err(database_error)?,
         created_at: row.try_get("", "created_at").map_err(database_error)?,
     })
@@ -595,70 +1031,6 @@ impl TenantModuleStateStore {
             settings,
         })
     }
-
-    /// Atomically replaces one existing tenant module settings value only while both the
-    /// enablement bit and complete settings snapshot still equal the caller's reviewed state.
-    /// This owner primitive is intended for durable control-plane transitions that must not
-    /// overwrite a concurrent toggle or settings mutation.
-    pub(crate) async fn persist_settings_if_current<C: ConnectionTrait>(
-        db: &C,
-        request: TenantModuleSettingsCompareAndSwapRequest,
-    ) -> Result<TenantModuleSettingsRecord, TenantModuleSettingsCompareAndSwapError> {
-        let backend = db.get_database_backend();
-        let select = match backend {
-            DbBackend::Postgres => {
-                "SELECT id FROM tenant_modules WHERE tenant_id = $1 AND module_slug = $2 LIMIT 1"
-            }
-            _ => "SELECT id FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2 LIMIT 1",
-        };
-        let Some(row) = db
-            .query_one(Statement::from_sql_and_values(
-                backend,
-                select,
-                vec![request.tenant_id.into(), request.module_slug.clone().into()],
-            ))
-            .await
-            .map_err(|error| {
-                TenantModuleSettingsCompareAndSwapError::Database(error.to_string())
-            })?
-        else {
-            return Err(TenantModuleSettingsCompareAndSwapError::ModuleNotEnabled(
-                request.module_slug,
-            ));
-        };
-        let id: Uuid = row.try_get("", "id").map_err(|error| {
-            TenantModuleSettingsCompareAndSwapError::Database(error.to_string())
-        })?;
-        let result = db
-            .execute(Statement::from_sql_and_values(
-                backend,
-                render_parameters(
-                    "UPDATE tenant_modules SET settings = {1}, updated_at = CURRENT_TIMESTAMP WHERE id = {2} AND enabled = {3} AND settings = {4}",
-                    backend,
-                ),
-                vec![
-                    json_value(request.settings.clone()),
-                    id.into(),
-                    request.expected_enabled.into(),
-                    json_value(request.expected_settings),
-                ],
-            ))
-            .await
-            .map_err(|error| {
-                TenantModuleSettingsCompareAndSwapError::Database(error.to_string())
-            })?;
-        if result.rows_affected() != 1 {
-            return Err(TenantModuleSettingsCompareAndSwapError::Conflict(
-                request.module_slug,
-            ));
-        }
-        Ok(TenantModuleSettingsRecord {
-            id,
-            module_slug: request.module_slug,
-            enabled: request.expected_enabled,
-            settings: request.settings,
-        })
-    }
 }
 
 fn json_value(value: serde_json::Value) -> sea_orm::Value {
@@ -682,7 +1054,7 @@ async fn execute<C: ConnectionTrait>(
 }
 
 fn render_parameters(sql_template: &str, backend: DbBackend) -> String {
-    (1..=9).fold(sql_template.to_string(), |sql, index| {
+    (1..=10).fold(sql_template.to_string(), |sql, index| {
         let parameter = match backend {
             DbBackend::Postgres => format!("${index}"),
             _ => format!("?{index}"),
@@ -791,153 +1163,5 @@ mod tests {
         assert_eq!(updated.module_slug, "modules");
         assert!(updated.enabled);
         assert_eq!(updated.settings, json!({ "value": 3 }));
-    }
-
-    #[tokio::test]
-    async fn settings_compare_and_swap_updates_exact_snapshot() {
-        let database = database().await;
-        let tenant_id = Uuid::new_v4();
-        let initial = json!({ "builder": { "enabled": false }, "other": 1 });
-        let promoted = json!({ "builder": { "enabled": true }, "other": 1 });
-        let seeded = TenantModuleStateStore::persist_settings(
-            &database,
-            TenantModuleSettingsRequest {
-                tenant_id,
-                module_slug: "pages".to_string(),
-                settings: initial.clone(),
-                is_core: false,
-                is_effectively_enabled: true,
-            },
-        )
-        .await
-        .expect("seed pages settings");
-
-        let updated = TenantModuleStateStore::persist_settings_if_current(
-            &database,
-            TenantModuleSettingsCompareAndSwapRequest {
-                tenant_id,
-                module_slug: "pages".to_string(),
-                expected_enabled: true,
-                expected_settings: initial,
-                settings: promoted.clone(),
-            },
-        )
-        .await
-        .expect("compare-and-swap settings");
-
-        assert_eq!(updated.id, seeded.id);
-        assert!(updated.enabled);
-        assert_eq!(updated.settings, promoted);
-        assert_eq!(
-            stored_settings(&database, tenant_id, "pages").await,
-            promoted
-        );
-    }
-
-    #[tokio::test]
-    async fn settings_compare_and_swap_rejects_stale_settings_without_overwrite() {
-        let database = database().await;
-        let tenant_id = Uuid::new_v4();
-        let initial = json!({ "builder": { "enabled": false }, "other": 1 });
-        let concurrent = json!({ "builder": { "enabled": false }, "other": 2 });
-        let promoted = json!({ "builder": { "enabled": true }, "other": 1 });
-        TenantModuleStateStore::persist_settings(
-            &database,
-            TenantModuleSettingsRequest {
-                tenant_id,
-                module_slug: "pages".to_string(),
-                settings: initial.clone(),
-                is_core: false,
-                is_effectively_enabled: true,
-            },
-        )
-        .await
-        .expect("seed pages settings");
-        TenantModuleStateStore::persist_settings(
-            &database,
-            TenantModuleSettingsRequest {
-                tenant_id,
-                module_slug: "pages".to_string(),
-                settings: concurrent.clone(),
-                is_core: false,
-                is_effectively_enabled: true,
-            },
-        )
-        .await
-        .expect("concurrent settings write");
-
-        let result = TenantModuleStateStore::persist_settings_if_current(
-            &database,
-            TenantModuleSettingsCompareAndSwapRequest {
-                tenant_id,
-                module_slug: "pages".to_string(),
-                expected_enabled: true,
-                expected_settings: initial,
-                settings: promoted,
-            },
-        )
-        .await;
-
-        assert!(matches!(
-            result,
-            Err(TenantModuleSettingsCompareAndSwapError::Conflict(module_slug))
-                if module_slug == "pages"
-        ));
-        assert_eq!(
-            stored_settings(&database, tenant_id, "pages").await,
-            concurrent
-        );
-    }
-
-    #[tokio::test]
-    async fn settings_compare_and_swap_rejects_enabled_drift_without_overwrite() {
-        let database = database().await;
-        let tenant_id = Uuid::new_v4();
-        let initial = json!({ "builder": { "enabled": false }, "other": 1 });
-        let promoted = json!({ "builder": { "enabled": true }, "other": 1 });
-        TenantModuleStateStore::persist_settings(
-            &database,
-            TenantModuleSettingsRequest {
-                tenant_id,
-                module_slug: "pages".to_string(),
-                settings: initial.clone(),
-                is_core: false,
-                is_effectively_enabled: true,
-            },
-        )
-        .await
-        .expect("seed pages settings");
-        TenantModuleStateStore::persist(
-            &database,
-            TenantModuleStateRequest {
-                tenant_id,
-                module_slug: "pages".to_string(),
-                enabled: false,
-            },
-        )
-        .await
-        .expect("concurrent disable");
-
-        let result = TenantModuleStateStore::persist_settings_if_current(
-            &database,
-            TenantModuleSettingsCompareAndSwapRequest {
-                tenant_id,
-                module_slug: "pages".to_string(),
-                expected_enabled: true,
-                expected_settings: initial.clone(),
-                settings: promoted,
-            },
-        )
-        .await;
-
-        assert!(matches!(
-            result,
-            Err(TenantModuleSettingsCompareAndSwapError::Conflict(module_slug))
-                if module_slug == "pages"
-        ));
-        assert_eq!(
-            stored_settings(&database, tenant_id, "pages").await,
-            initial
-        );
     }
 }

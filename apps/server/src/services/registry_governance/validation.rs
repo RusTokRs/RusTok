@@ -34,6 +34,7 @@ impl RegistryGovernanceService {
             .publication_service()
             .enqueue_validation_job(ModuleValidationJobEnqueueCommand {
                 request_id: request.request.id.clone(),
+                expected_revision: request.request.revision,
                 actor_principal: authority.principal.to_json_value(),
                 allow_rejected_retry: was_requeued,
             })
@@ -71,6 +72,7 @@ impl RegistryGovernanceService {
         self.publication_service()
             .report_validation_stage(ModuleValidationStageReportCommand {
                 request_id: request.request.id.clone(),
+                expected_revision: request.request.revision,
                 stage_key: stage_key.to_string(),
                 status: status.to_string(),
                 actor_principal: authority.principal.to_json_value(),

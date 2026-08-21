@@ -18,6 +18,12 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(
+                        ColumnDef::new(RegistryPublishRequests::Revision)
+                            .big_integer()
+                            .not_null()
+                            .default(1),
+                    )
+                    .col(
                         ColumnDef::new(RegistryPublishRequests::Slug)
                             .string_len(96)
                             .not_null(),
@@ -373,6 +379,7 @@ impl MigrationTrait for Migration {
 enum RegistryPublishRequests {
     Table,
     Id,
+    Revision,
     Slug,
     Version,
     CrateName,

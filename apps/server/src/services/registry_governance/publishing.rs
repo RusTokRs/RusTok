@@ -55,8 +55,17 @@ impl RegistryGovernanceService {
         let checksum = hex::encode(Sha256::digest(&artifact.bytes));
         let artifact_size = i64::try_from(artifact.bytes.len())
             .map_err(|_| anyhow!("registry publish artifact size exceeds supported range"))?;
+        let request = self
+            .authorized_publish_request_status_snapshot(
+                request_id,
+                authority,
+                RegistryPublishRequestPermission::Manage,
+                "upload an artifact for",
+            )
+            .await?;
         let command = ModulePublishArtifactAttachCommand {
-            request_id: request_id.to_string(),
+            request_id: request.request.id.clone(),
+            expected_revision: request.request.revision,
             actor_principal: authority.principal.to_json_value(),
             actor_can_manage_modules: authority.can_manage_modules,
             checksum_sha256: checksum,
@@ -99,9 +108,18 @@ impl RegistryGovernanceService {
         authority: &RegistryAuthority,
         input: RegistryExternalPrebuiltStageInput,
     ) -> anyhow::Result<ModuleExternalPrebuiltStageResult> {
+        let request = self
+            .authorized_publish_request_status_snapshot(
+                request_id,
+                authority,
+                RegistryPublishRequestPermission::Manage,
+                "stage an external prebuilt artifact for",
+            )
+            .await?;
         self.publication_service()
             .stage_external_prebuilt(ModuleExternalPrebuiltStageCommand {
-                request_id: request_id.to_string(),
+                request_id: request.request.id.clone(),
+                expected_revision: request.request.revision,
                 artifact_digest: input.artifact_digest,
                 source_evidence: input.source_evidence,
                 provenance_reference: input.provenance_reference,
@@ -127,9 +145,18 @@ impl RegistryGovernanceService {
         authority: &RegistryAuthority,
         input: RegistryPlatformBuildStageInput,
     ) -> anyhow::Result<ModulePublishPlatformBuildStageResult> {
+        let request = self
+            .authorized_publish_request_status_snapshot(
+                request_id,
+                authority,
+                RegistryPublishRequestPermission::Manage,
+                "stage a platform build for",
+            )
+            .await?;
         self.publication_service()
             .stage_platform_build(ModulePublishPlatformBuildStageCommand {
-                request_id: request_id.to_string(),
+                request_id: request.request.id.clone(),
+                expected_revision: request.request.revision,
                 tenant_id: input.tenant_id,
                 build_request_id: input.build_request_id,
                 idempotency_key: input.idempotency_key,
@@ -218,6 +245,7 @@ impl RegistryGovernanceService {
         self.publication_service()
             .publish_request(ModulePublishRequestPublicationCommand {
                 request_id: request.request.id.clone(),
+                expected_revision: request.request.revision,
                 idempotency_key,
                 actor_principal: authority.principal.to_json_value(),
                 publisher_principal: effective_publisher,
@@ -256,6 +284,7 @@ impl RegistryGovernanceService {
         self.publication_service()
             .reject_publish_request(ModulePublishRequestRejectCommand {
                 request_id: request.request.id.clone(),
+                expected_revision: request.request.revision,
                 actor_principal: authority.principal.to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
@@ -292,6 +321,7 @@ impl RegistryGovernanceService {
         self.publication_service()
             .request_publish_request_changes(ModulePublishRequestChangesCommand {
                 request_id: request.request.id.clone(),
+                expected_revision: request.request.revision,
                 actor_principal: authority.principal.to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
@@ -327,6 +357,7 @@ impl RegistryGovernanceService {
         self.publication_service()
             .hold_publish_request(ModulePublishRequestHoldCommand {
                 request_id: request.request.id.clone(),
+                expected_revision: request.request.revision,
                 actor_principal: authority.principal.to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
@@ -362,6 +393,7 @@ impl RegistryGovernanceService {
         self.publication_service()
             .resume_publish_request(ModulePublishRequestResumeCommand {
                 request_id: request.request.id.clone(),
+                expected_revision: request.request.revision,
                 actor_principal: authority.principal.to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,

@@ -64,10 +64,12 @@ use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, Ru
 use sea_orm_migration::MigrationTrait;
 
 pub use artifact::{
-    ArtifactDataIndexField, ArtifactDataIndexValueType, ArtifactModuleKind, ArtifactOrigin,
-    ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactPersistenceContract,
-    ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef, ArtifactSchemaDocument,
-    ArtifactSourceLineage, ArtifactUiContribution, MAX_MODULE_ARTIFACT_SOURCE_MANIFEST_BYTES,
+    ArtifactDataIndexField, ArtifactDataIndexValueType, ArtifactLocalizationCatalog,
+    ArtifactModuleKind, ArtifactOrigin, ArtifactPayloadKind, ArtifactPermissionDescriptor,
+    ArtifactPersistenceContract, ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef,
+    ArtifactSchemaDocument, ArtifactSourceLineage, ArtifactUiActionConfirmation,
+    ArtifactUiAuditPolicy, ArtifactUiContribution, ArtifactUiContributionContent,
+    ArtifactUiSurface, MAX_MODULE_ARTIFACT_SOURCE_MANIFEST_BYTES,
     MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE,
     MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE, MODULE_ARTIFACT_SOURCE_MANIFEST_FILE,
     MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
@@ -145,8 +147,11 @@ pub use build_surface::{
     validate_platform_build_surface_contract,
 };
 pub use composition::{
-    ACTIVE_MODULE_COMPOSITION_ID, ModuleCompositionBuildEnqueuer, ModuleCompositionError,
-    ModuleCompositionSnapshot, ModuleCompositionUpdate, SeaOrmModuleCompositionService,
+    ACTIVE_MODULE_COMPOSITION_ID, ModuleCompositionBuildAdmission,
+    ModuleCompositionBuildEnqueueResult, ModuleCompositionBuildEnqueuer,
+    ModuleCompositionBuildLease, ModuleCompositionBuildReceipt, ModuleCompositionError,
+    ModuleCompositionOperation, ModuleCompositionSnapshot, ModuleCompositionUpdate,
+    SeaOrmModuleCompositionService,
 };
 pub use contracts::{
     ControlPlaneRevision, ModuleCommandContext, ModuleControlPlaneError,
@@ -314,15 +319,18 @@ pub use installation::{
     ArtifactMigrationRollbackMode, ArtifactPayloadSource, ArtifactRegistry,
     ArtifactRollbackRequest, ArtifactRollbackResult, ArtifactTenantDisableRequest,
     ArtifactTenantDisableResult, ArtifactTenantEnableRequest, ArtifactTenantEnableResult,
-    ArtifactUninstallRequest, ArtifactUninstallResult, ArtifactVerificationEvidence,
-    DurableArtifactBlobStore, InMemoryArtifactBlobStore, InstalledModuleArtifact,
-    ModuleArtifactPackage, ModuleInstallationError, ModuleInstallationScope, ModuleInstaller,
-    OciArtifactReference, SeaOrmArtifactInstallationStore, SeaOrmArtifactSandboxPolicyResolver,
+    ArtifactTenantLifecycleSnapshot, ArtifactUninstallRequest, ArtifactUninstallResult,
+    ArtifactVerificationEvidence, DurableArtifactBlobStore, InMemoryArtifactBlobStore,
+    InstalledModuleArtifact, ModuleArtifactPackage, ModuleInstallationError,
+    ModuleInstallationScope, ModuleInstaller, OciArtifactReference,
+    SeaOrmArtifactInstallationStore, SeaOrmArtifactSandboxPolicyResolver,
     SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
 pub use lifecycle_writer::{
-    ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError, TenantModuleOverrideSnapshot,
+    ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError, ModuleLifecycleRecoveryCommand,
+    ModuleLifecycleSettingsCommand, ModuleLifecycleSettingsResult, ModuleLifecycleToggleCommand,
+    TenantModuleOverrideSnapshot,
 };
 pub use marketplace::{
     MODULE_MARKETPLACE_DEFAULT_LIMIT, MODULE_MARKETPLACE_MAX_LIMIT,
@@ -355,7 +363,8 @@ pub use oci::{
 pub use operation_store::{
     ModuleOperationJournal, ModuleOperationRecord, ModuleOperationRecordOutcome,
     ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStoreError,
-    TenantModuleSettingsRecord, TenantModuleStateRecord,
+    StaticTenantLifecycleClaim, StaticTenantLifecycleSnapshot, StaticTenantLifecycleStore,
+    StaticTenantLifecycleStoreError, TenantModuleSettingsRecord, TenantModuleStateRecord,
 };
 pub(crate) use operation_store::{
     TenantModuleSettingsRequest, TenantModuleStateRequest, TenantModuleStateStore,
