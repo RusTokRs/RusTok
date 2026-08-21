@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 const policyPath = 'crates/rustok-forum/admin/src/locale_switch.rs';
 const uiPath = 'crates/rustok-forum/admin/src/ui/leptos.rs';
+const categoryDndPath = 'crates/rustok-forum/admin/src/ui/category_dnd.rs';
 const transportPath = 'crates/rustok-forum/admin/src/transport/graphql_adapter.rs';
 const libPath = 'crates/rustok-forum/admin/src/lib.rs';
 const docsPath = 'crates/rustok-forum/docs/forum-28-admin-locale-switch-contract.md';
@@ -11,6 +12,7 @@ const ruLocalePath = 'crates/rustok-forum/admin/locales/ru.json';
 for (const path of [
   policyPath,
   uiPath,
+  categoryDndPath,
   transportPath,
   libPath,
   docsPath,
@@ -22,6 +24,7 @@ for (const path of [
 
 const policy = fs.readFileSync(policyPath, 'utf8');
 const ui = fs.readFileSync(uiPath, 'utf8');
+const categoryDnd = fs.readFileSync(categoryDndPath, 'utf8');
 const transport = fs.readFileSync(transportPath, 'utf8');
 const lib = fs.readFileSync(libPath, 'utf8');
 const docs = fs.readFileSync(docsPath, 'utf8');
@@ -135,6 +138,18 @@ requireAll(ui, [
   'forum.error.localeSwitchPending',
   'forum.error.localeSwitchReplyDirty',
 ], 'admin UI contract');
+
+requireAll(categoryDnd, [
+  'normalize_locale_tag',
+  'category_card_content_lang',
+  'description_lang',
+  'data-forum-target-localized=""',
+  'lang=content_lang.clone()',
+  'lang=description_lang',
+  'dir="auto"',
+  'data-forum-route-identifier=""',
+  'dir="ltr"',
+], 'category card content-locale bidi contract');
 
 if (ui.includes('on:input=move |ev| set_locale.set(event_target_value(&ev))')) {
   throw new Error('locale input must not mutate active owner locale on each keystroke');
