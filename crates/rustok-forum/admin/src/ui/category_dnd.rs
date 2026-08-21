@@ -2,6 +2,7 @@ use leptos::ev::DragEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_api::normalize_locale_tag;
 
 use crate::core::{
     ForumAdminActionButtonKind, ForumAdminCategoryRenderLabels, category_card_view_model,
@@ -12,6 +13,10 @@ use crate::model::{
     CategoryDropPlacement, CategoryListItem, CategoryMoveRequest, category_drop_move_request,
 };
 use crate::transport;
+
+fn category_card_content_lang(locale: &str) -> String {
+    normalize_locale_tag(locale).unwrap_or_else(|| "und".to_string())
+}
 
 #[component]
 pub(super) fn CategoryDndGrid(
@@ -156,6 +161,17 @@ pub(super) fn CategoryDndGrid(
                     busy_key.as_deref(),
                     &category_labels,
                 );
+                let content_lang = category_card_content_lang(vm.effective_locale.as_str());
+                let description_lang = if item
+                    .description
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty())
+                {
+                    content_lang.clone()
+                } else {
+                    category_card_content_lang(locale.as_deref().unwrap_or_default())
+                };
                 let item_is_busy = vm.is_busy;
                 let item_id = item.id.clone();
                 let before_target = item.id.clone();
@@ -189,19 +205,35 @@ pub(super) fn CategoryDndGrid(
                                 <div class="flex items-start justify-between gap-4">
                                     <div>
                                         <div class="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                                            <span>{vm.effective_locale.clone()}</span>
+                                            <span dir="ltr">{vm.effective_locale.clone()}</span>
                                             <span>{format!("depth {} · position {}", item.depth, item.position)}</span>
                                             {item.is_archived.then(|| view! {
                                                 <span class="rounded-full bg-destructive/10 px-2 py-0.5 text-destructive">{archived_label.clone()}</span>
                                             })}
                                         </div>
-                                        <h3 class="mt-2 text-lg font-semibold text-foreground">{vm.name.clone()}</h3>
+                                        <h3
+                                            data-forum-target-localized=""
+                                            lang=content_lang.clone()
+                                            dir="auto"
+                                            class="mt-2 text-lg font-semibold text-foreground"
+                                        >
+                                            {vm.name.clone()}
+                                        </h3>
                                     </div>
-                                    <span class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
+                                    <span
+                                        data-forum-route-identifier=""
+                                        dir="ltr"
+                                        class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                                    >
                                         {vm.slug_badge.clone()}
                                     </span>
                                 </div>
-                                <p class="mt-3 text-sm leading-6 text-muted-foreground">
+                                <p
+                                    data-forum-target-localized=""
+                                    lang=description_lang
+                                    dir="auto"
+                                    class="mt-3 text-sm leading-6 text-muted-foreground"
+                                >
                                     {vm.description.clone()}
                                 </p>
                                 <div class="mt-4 flex flex-wrap gap-2">
