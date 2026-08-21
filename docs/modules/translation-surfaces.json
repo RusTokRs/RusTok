@@ -191,7 +191,7 @@
       "id": "forum_categories",
       "owner_slug": "forum",
       "resource_kind": "category",
-      "readiness": "blocked",
+      "readiness": "pilot_candidate",
       "provider_status": "registered",
       "field_profiles": ["plain_text"],
       "data_classification": ["public"],
@@ -199,9 +199,11 @@
       "evidence_paths": [
         "crates/rustok-forum/docs/implementation-plan.md",
         "crates/rustok-forum/src/services/category_translation_target.rs",
+        "crates/rustok-forum/src/services/category_translation_progress.rs",
+        "crates/rustok-forum/tests/category_translation_target_postgres.rs",
         "apps/server/src/services/module_event_dispatcher.rs"
       ],
-      "blockers": ["Add an owner-complete category change cursor and stable aggregate progress, then retain PostgreSQL concurrency/recovery and runtime evidence before promoting this provider to pilot_candidate."]
+      "blockers": ["Retain registered-host/runtime evidence before enabling this pilot in production."]
     },
     {
       "id": "forum_ugc",
