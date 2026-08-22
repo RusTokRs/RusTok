@@ -13,10 +13,9 @@ const result = spawnSync(process.execPath, [verifier], {
   env: process.env,
 });
 
-if (result.stdout) process.stdout.write(result.stdout);
-if (result.stderr) process.stderr.write(result.stderr);
-
 if (result.status === 0) {
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
   process.exit(0);
 }
 
@@ -28,6 +27,8 @@ const staleFingerprint = /runtime input .+ changed since recorded evidence; coll
 const refreshOnly = failures.length > 0 && failures.every((line) => staleFingerprint.test(line.slice(2)));
 
 if (!refreshOnly) {
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
   process.exit(result.status ?? 1);
 }
 
