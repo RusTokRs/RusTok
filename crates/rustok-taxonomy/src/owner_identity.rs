@@ -1,10 +1,7 @@
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::{
-    TaxonomyResult, TaxonomyTermKind,
-    entities::taxonomy_term,
-};
+use crate::{TaxonomyResult, TaxonomyTermKind, entities::taxonomy_term};
 
 /// Returns whether an exact Taxonomy identity exists inside the requested
 /// tenant and term kind without exposing Taxonomy persistence to consumers.

@@ -124,13 +124,8 @@ where
         .exec(db)
         .await
         .map_err(database_error)?;
-    delete_attached_localized_values(
-        db,
-        entity.tenant_id,
-        entity.entity_type,
-        entity.entity_id,
-    )
-    .await?;
+    delete_attached_localized_values(db, entity.tenant_id, entity.entity_type, entity.entity_id)
+        .await?;
     Ok(())
 }
 

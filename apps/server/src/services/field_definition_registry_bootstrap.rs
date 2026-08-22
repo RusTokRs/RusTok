@@ -44,19 +44,45 @@ struct TopicFieldDefinitionService;
 macro_rules! impl_field_definition_view_source {
     ($model:ty) => {
         impl FieldDefinitionViewSource for $model {
-            fn id(&self) -> Uuid { self.id }
-            fn field_key(&self) -> &str { &self.field_key }
-            fn field_type(&self) -> &str { &self.field_type }
-            fn label(&self) -> &serde_json::Value { &self.label }
-            fn description(&self) -> Option<&serde_json::Value> { self.description.as_ref() }
-            fn is_localized(&self) -> bool { self.is_localized }
-            fn is_required(&self) -> bool { self.is_required }
-            fn default_value(&self) -> Option<&serde_json::Value> { self.default_value.as_ref() }
-            fn validation(&self) -> Option<&serde_json::Value> { self.validation.as_ref() }
-            fn position(&self) -> i32 { self.position }
-            fn is_active(&self) -> bool { self.is_active }
-            fn created_at(&self) -> String { self.created_at.to_rfc3339() }
-            fn updated_at(&self) -> String { self.updated_at.to_rfc3339() }
+            fn id(&self) -> Uuid {
+                self.id
+            }
+            fn field_key(&self) -> &str {
+                &self.field_key
+            }
+            fn field_type(&self) -> &str {
+                &self.field_type
+            }
+            fn label(&self) -> &serde_json::Value {
+                &self.label
+            }
+            fn description(&self) -> Option<&serde_json::Value> {
+                self.description.as_ref()
+            }
+            fn is_localized(&self) -> bool {
+                self.is_localized
+            }
+            fn is_required(&self) -> bool {
+                self.is_required
+            }
+            fn default_value(&self) -> Option<&serde_json::Value> {
+                self.default_value.as_ref()
+            }
+            fn validation(&self) -> Option<&serde_json::Value> {
+                self.validation.as_ref()
+            }
+            fn position(&self) -> i32 {
+                self.position
+            }
+            fn is_active(&self) -> bool {
+                self.is_active
+            }
+            fn created_at(&self) -> String {
+                self.created_at.to_rfc3339()
+            }
+            fn updated_at(&self) -> String {
+                self.updated_at.to_rfc3339()
+            }
         }
     };
 }
@@ -79,7 +105,9 @@ macro_rules! impl_field_definition_service_adapter {
     ($adapter:ty, $entity_type:literal, $service:ty) => {
         #[async_trait]
         impl FieldDefinitionService for $adapter {
-            fn entity_type(&self) -> &'static str { $entity_type }
+            fn entity_type(&self) -> &'static str {
+                $entity_type
+            }
 
             async fn list_all(
                 &self,
@@ -87,7 +115,10 @@ macro_rules! impl_field_definition_service_adapter {
                 tenant_id: Uuid,
             ) -> Result<Vec<FieldDefinitionView>, FlexError> {
                 let rows = <$service>::list_all(db, tenant_id).await?;
-                Ok(rows.into_iter().map(field_definition_model_to_view).collect())
+                Ok(rows
+                    .into_iter()
+                    .map(field_definition_model_to_view)
+                    .collect())
             }
 
             async fn find_by_id(
@@ -107,7 +138,10 @@ macro_rules! impl_field_definition_service_adapter {
                 ids: &[Uuid],
             ) -> Result<Vec<FieldDefinitionView>, FlexError> {
                 let rows = <$service>::reorder(db, tenant_id, ids).await?;
-                Ok(rows.into_iter().map(field_definition_model_to_view).collect())
+                Ok(rows
+                    .into_iter()
+                    .map(field_definition_model_to_view)
+                    .collect())
             }
 
             async fn create(
@@ -117,7 +151,8 @@ macro_rules! impl_field_definition_service_adapter {
                 actor_id: Option<Uuid>,
                 input: CreateFieldDefinitionCommand,
             ) -> Result<(FieldDefinitionView, EventEnvelope), FlexError> {
-                let (row, event) = <$service>::create(db, tenant_id, actor_id, input.into()).await?;
+                let (row, event) =
+                    <$service>::create(db, tenant_id, actor_id, input.into()).await?;
                 Ok((field_definition_model_to_view(row), event))
             }
 
@@ -129,7 +164,8 @@ macro_rules! impl_field_definition_service_adapter {
                 id: Uuid,
                 input: UpdateFieldDefinitionCommand,
             ) -> Result<(FieldDefinitionView, EventEnvelope), FlexError> {
-                let (row, event) = <$service>::update(db, tenant_id, actor_id, id, input.into()).await?;
+                let (row, event) =
+                    <$service>::update(db, tenant_id, actor_id, id, input.into()).await?;
                 Ok((field_definition_model_to_view(row), event))
             }
 
@@ -177,7 +213,9 @@ mod tests {
     #[test]
     fn registry_bootstrap_registers_topic_entity_type() {
         let registry = build_field_def_registry();
-        let topic_service = registry.get("topic").expect("topic entity type should be registered");
+        let topic_service = registry
+            .get("topic")
+            .expect("topic entity type should be registered");
         assert_eq!(topic_service.entity_type(), "topic");
     }
 

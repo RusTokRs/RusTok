@@ -4,7 +4,10 @@ use flex::{
     CreateFieldDefinitionCommand, FieldDefinitionService, FlexModule,
     GenericAttachedFieldDefinitionService, TAXONOMY_CATEGORY_ENTITY_TYPE,
 };
-use rustok_core::{MigrationSource, field_schema::{FieldType, FlexError}};
+use rustok_core::{
+    MigrationSource,
+    field_schema::{FieldType, FlexError},
+};
 use sea_orm::Database;
 use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;

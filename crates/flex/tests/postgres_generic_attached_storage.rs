@@ -6,7 +6,10 @@ use flex::{
     persist_prepared_generic_attached_values, prepare_generic_attached_values_update,
     resolve_generic_attached_values,
 };
-use rustok_core::{MigrationSource, field_schema::{CustomFieldsSchema, FieldDefinition, FieldType}};
+use rustok_core::{
+    MigrationSource,
+    field_schema::{CustomFieldsSchema, FieldDefinition, FieldType},
+};
 use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement};
 use sea_orm_migration::prelude::SchemaManager;
 use serde_json::json;
@@ -97,12 +100,7 @@ async fn postgres_generic_category_donor_roundtrips_and_advances_definition_gene
     let service = GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE);
     let generation_before = generation(&db).await;
     service
-        .create(
-            &db,
-            tenant_id,
-            Some(Uuid::new_v4()),
-            create_command(),
-        )
+        .create(&db, tenant_id, Some(Uuid::new_v4()), create_command())
         .await
         .expect("generic Category definition should create on PostgreSQL");
     assert!(
@@ -147,5 +145,8 @@ async fn postgres_generic_category_donor_roundtrips_and_advances_definition_gene
     )
     .await
     .expect("foreign tenant lookup should succeed");
-    assert!(foreign.is_none(), "generic values must remain tenant-isolated");
+    assert!(
+        foreign.is_none(),
+        "generic values must remain tenant-isolated"
+    );
 }

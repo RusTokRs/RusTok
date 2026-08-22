@@ -43,7 +43,11 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(Alias::new("label")).json_binary().not_null())
-                    .col(ColumnDef::new(Alias::new("description")).json_binary().null())
+                    .col(
+                        ColumnDef::new(Alias::new("description"))
+                            .json_binary()
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(Alias::new("is_localized"))
                             .boolean()
@@ -56,8 +60,16 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(false),
                     )
-                    .col(ColumnDef::new(Alias::new("default_value")).json_binary().null())
-                    .col(ColumnDef::new(Alias::new("validation")).json_binary().null())
+                    .col(
+                        ColumnDef::new(Alias::new("default_value"))
+                            .json_binary()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(Alias::new("validation"))
+                            .json_binary()
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(Alias::new("position"))
                             .integer()
@@ -156,12 +168,8 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        create_field_definition_cache_generation_trigger(
-            manager,
-            DEFINITIONS_TABLE,
-            CACHE_TRIGGER,
-        )
-        .await
+        create_field_definition_cache_generation_trigger(manager, DEFINITIONS_TABLE, CACHE_TRIGGER)
+            .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -171,7 +179,11 @@ impl MigrationTrait for Migration {
             .drop_table(Table::drop().table(Alias::new(VALUES_TABLE)).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(Alias::new(DEFINITIONS_TABLE)).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(Alias::new(DEFINITIONS_TABLE))
+                    .to_owned(),
+            )
             .await
     }
 }

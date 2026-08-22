@@ -94,13 +94,9 @@ async fn generic_attached_values_split_shared_and_exact_locale_rows() {
     )
     .await
     .expect("Arabic write should prepare");
-    persist_prepared_generic_attached_values(
-        &db,
-        entity(tenant_id, entity_id),
-        &prepared,
-    )
-    .await
-    .expect("Arabic write should persist");
+    persist_prepared_generic_attached_values(&db, entity(tenant_id, entity_id), &prepared)
+        .await
+        .expect("Arabic write should persist");
 
     let shared = load_generic_attached_shared_values(&db, entity(tenant_id, entity_id))
         .await
@@ -113,16 +109,11 @@ async fn generic_attached_values_split_shared_and_exact_locale_rows() {
         .expect("Arabic row should exist");
     assert_eq!(arabic, json!({"tagline": "مرحبا"}));
 
-    let resolved = resolve_generic_attached_values(
-        &db,
-        entity(tenant_id, entity_id),
-        schema(),
-        "ar",
-        "en",
-    )
-    .await
-    .expect("Arabic payload should resolve")
-    .expect("resolved payload should exist");
+    let resolved =
+        resolve_generic_attached_values(&db, entity(tenant_id, entity_id), schema(), "ar", "en")
+            .await
+            .expect("Arabic payload should resolve")
+            .expect("resolved payload should exist");
     assert_eq!(resolved, json!({"badge": "gold", "tagline": "مرحبا"}));
 }
 
@@ -161,7 +152,10 @@ async fn exact_locale_authoring_does_not_seed_from_read_fallback() {
     let english_exact = load_exact_locale_values(&db, tenant_id, ENTITY_TYPE, entity_id, "en")
         .await
         .expect("English exact lookup should succeed");
-    assert!(english_exact.is_none(), "fallback copy must not seed English authoring");
+    assert!(
+        english_exact.is_none(),
+        "fallback copy must not seed English authoring"
+    );
 
     let arabic_exact = load_exact_locale_values(&db, tenant_id, ENTITY_TYPE, entity_id, "ar")
         .await

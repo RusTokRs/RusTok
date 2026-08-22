@@ -4,10 +4,11 @@ use uuid::Uuid;
 
 use flex::{
     AttachedEntityRef, FlexMappedErrorKind, GenericAttachedFieldDefinitionService,
-    TAXONOMY_CATEGORY_ENTITY_TYPE, delete_attached_localized_values, delete_generic_attached_values,
-    map_flex_error, persist_localized_values, persist_prepared_generic_attached_values,
-    prepare_attached_values_create, prepare_attached_values_update,
-    prepare_generic_attached_values_update, resolve_attached_payload, resolve_generic_attached_values,
+    TAXONOMY_CATEGORY_ENTITY_TYPE, delete_attached_localized_values,
+    delete_generic_attached_values, map_flex_error, persist_localized_values,
+    persist_prepared_generic_attached_values, prepare_attached_values_create,
+    prepare_attached_values_update, prepare_generic_attached_values_update,
+    resolve_attached_payload, resolve_generic_attached_values,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 
@@ -227,13 +228,11 @@ where
             )
             .await
             .map_err(|error| {
-                Error::Message(format!("Taxonomy Flex owner identity lookup failed: {error}"))
+                Error::Message(format!(
+                    "Taxonomy Flex owner identity lookup failed: {error}"
+                ))
             })?;
-            if exists {
-                Ok(())
-            } else {
-                Err(Error::NotFound)
-            }
+            if exists { Ok(()) } else { Err(Error::NotFound) }
         }
         other => Err(Error::BadRequest(format!(
             "generic Flex owner adapter is not registered for {other}"

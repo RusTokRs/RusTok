@@ -34,7 +34,13 @@ mod tests {
 
     #[test]
     fn malformed_entity_types_fail_closed() {
-        for value in ["", ".category", "taxonomy.", "taxonomy..category", "taxonomy-category"] {
+        for value in [
+            "",
+            ".category",
+            "taxonomy.",
+            "taxonomy..category",
+            "taxonomy-category",
+        ] {
             assert!(!is_valid_flex_entity_type(value), "{value}");
         }
     }

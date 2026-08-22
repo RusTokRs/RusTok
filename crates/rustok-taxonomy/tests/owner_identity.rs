@@ -77,9 +77,14 @@ async fn owner_identity_is_bounded_by_tenant_and_term_kind() {
             .expect("Category identity lookup should succeed")
     );
     assert!(
-        !taxonomy_term_identity_exists(&db, other_tenant_id, TaxonomyTermKind::Category, category_id)
-            .await
-            .expect("foreign tenant lookup should succeed")
+        !taxonomy_term_identity_exists(
+            &db,
+            other_tenant_id,
+            TaxonomyTermKind::Category,
+            category_id
+        )
+        .await
+        .expect("foreign tenant lookup should succeed")
     );
     assert!(
         !taxonomy_term_identity_exists(&db, tenant_id, TaxonomyTermKind::Category, tag_id)
@@ -87,13 +92,8 @@ async fn owner_identity_is_bounded_by_tenant_and_term_kind() {
             .expect("wrong kind lookup should succeed")
     );
     assert!(
-        !taxonomy_term_identity_exists(
-            &db,
-            tenant_id,
-            TaxonomyTermKind::Category,
-            Uuid::new_v4(),
-        )
-        .await
-        .expect("missing identity lookup should succeed")
+        !taxonomy_term_identity_exists(&db, tenant_id, TaxonomyTermKind::Category, Uuid::new_v4(),)
+            .await
+            .expect("missing identity lookup should succeed")
     );
 }
