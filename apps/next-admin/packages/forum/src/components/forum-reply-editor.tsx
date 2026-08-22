@@ -63,7 +63,12 @@ export function ForumReplyEditor({
       </CardHeader>
       <Form form={form} onSubmit={form.handleSubmit(submit)}>
         <CardContent className='space-y-4'>
-          <FormInput control={form.control} name='locale' label='Locale' />
+          <FormInput
+            control={form.control}
+            name='locale'
+            label='Locale'
+            dir='ltr'
+          />
           <RichTextEditor
             label='Reply content'
             profile='discussion'

@@ -63,6 +63,15 @@ const forumTopicEditor = requireFile(
 const sharedEditor = requireFile(
   'apps/next-admin/src/shared/ui/rich-text-editor.tsx'
 );
+const sharedFormInput = requireFile(
+  'apps/next-admin/src/shared/ui/forms/form-input.tsx'
+);
+const sharedFormSelect = requireFile(
+  'apps/next-admin/src/shared/ui/forms/form-select.tsx'
+);
+const sharedFormTypes = requireFile(
+  'apps/next-admin/src/shared/types/base-form.ts'
+);
 const modulesIndex = requireFile('apps/next-admin/src/modules/index.ts');
 const forumPage = requireFile(
   'apps/next-admin/src/app/dashboard/forum/reply/page.tsx'
@@ -128,7 +137,8 @@ hasAll(
     'updateForumTopic',
     'body: RichTextDocument;',
     'createForumReply',
-    'content: RichTextDocument;'
+    'content: RichTextDocument;',
+    'effectiveLocale: string;'
   ],
   'Forum GraphQL adapter'
 );
@@ -149,7 +159,8 @@ hasAll(
     'richTextDocumentHasText',
     'contentLocale={contentLocale}',
     'disabled={form.formState.isSubmitting}',
-    'content: doc'
+    'content: doc',
+    "dir='ltr'"
   ],
   'Forum reply editor'
 );
@@ -166,7 +177,12 @@ hasAll(
     'contentLocale={contentLocale}',
     'disabled={form.formState.isSubmitting}',
     'createForumTopic',
-    'updateForumTopic'
+    'updateForumTopic',
+    'lang={contentLocale}',
+    "dir='auto'",
+    "dir='ltr'",
+    'lang: category.effectiveLocale',
+    "dir: 'auto' as const"
   ],
   'Forum topic editor'
 );
@@ -208,6 +224,26 @@ hasAll(
     "frameUrl='/richtext/frame'"
   ],
   'Shared richtext adapter'
+);
+hasAll(
+  sharedFormTypes,
+  ['lang?: string;', "dir?: 'auto' | 'ltr' | 'rtl';"],
+  'Shared form option type'
+);
+hasAll(
+  sharedFormInput,
+  [
+    'lang?: string;',
+    "dir?: 'auto' | 'ltr' | 'rtl';",
+    'lang={lang}',
+    'dir={dir}'
+  ],
+  'Shared form input bidi boundary'
+);
+hasAll(
+  sharedFormSelect,
+  ['<span lang={option.lang} dir={option.dir}>'],
+  'Shared form select bidi boundary'
 );
 hasAll(modulesIndex, ["import '../../packages/blog/src';", "import '../../packages/forum/src';"], 'Host module registration');
 hasAll(
@@ -270,5 +306,5 @@ if (!packageJson.scripts?.['test:verify:blog:fba']?.includes('test:verify:blog:f
 requireFile('scripts/verify/verify-blog-forum-ui-ownership.test.mjs');
 
 console.log(
-  '[verify-blog-forum-ui-ownership] Forum owns its Next admin navigation, API, and canonical richtext topic/reply editors; Blog and Forum share only the richtext lifecycle adapter'
+  '[verify-blog-forum-ui-ownership] Forum owns its Next admin navigation, API, canonical richtext editors, and plain-text content-locale bidi boundary; Blog and Forum share only approved UI primitives'
 );
