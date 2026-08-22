@@ -15,7 +15,8 @@ modules:
    through a minimal adapter. A consumer must not reimplement field definitions, validation,
    localization, generic attached values, schema-builder behavior or custom-field transport.
 
-Flex is opt-in. An entity is not a Flex donor merely because it has a JSON/metadata column.
+Flex is opt-in. A domain entity is a Flex donor only when the product explicitly allows runtime
+extension; a JSON/metadata column alone does not imply support.
 
 ## Why this replaces the current category boundary
 
@@ -100,37 +101,26 @@ untyped metadata.
 
 ## Accepted Flex consumers
 
-The current runtime has historical donors `user`, `product`, `order` and `topic`. The desired rule is
-not to preserve that list mechanically; every donor must have demonstrated product intent.
+The current runtime donors `user`, `product`, `order` and `topic` are intentional extension surfaces.
+The list is not automatic: every future donor still needs demonstrated product intent.
 
 - `user`: retained; user/profile extension is a demonstrated use case.
 - `product`: retained; merchant-defined catalog attributes are a demonstrated use case, while core
   Product invariants remain normalized.
-- `order`: retain only for non-critical extension data; payment/inventory/ledger invariants must
+- `order`: retained only for non-critical extension data; payment/inventory/ledger invariants must
   never move into Flex.
+- `forum.topic`: retained as an explicit extension surface. Administrators may add optional custom
+  topic fields, while Forum-owned topic lifecycle, category, route identity, moderation, counters,
+  authoring and other business invariants remain normalized Forum fields.
 - `taxonomy.category`: add after the Taxonomy Category owner exists. This is the extension point for
   tenant-specific category fields beyond the canonical built-ins.
 - groups/profiles and future modules: opt in when their product surface explicitly supports custom
   fields.
-- `forum.topic`: **not a Flex donor**. Topics have no accepted custom-field product surface. Their
-  `metadata` column is Forum-owned internal/domain state and does not imply Flex support.
 
-## Forum topic Flex retirement
-
-Retirement is staged to avoid silently deleting tenant data:
-
-1. Remove `topic` from the runtime `FieldDefRegistry` so new field-definition CRUD is no longer
-   exposed.
-2. Audit `topic_field_definitions`, `forum_topics.metadata` custom keys and
-   `flex_attached_localized_values` rows for `entity_type = 'topic'` on production-like data.
-3. If no user-defined data exists, add an owner migration that removes the topic field-definition
-   table/cache trigger and any now-unused adapter/model/service source.
-4. If user-defined data exists, preserve/export it explicitly and define a reviewed migration before
-   dropping storage. Do not silently reinterpret it as Forum domain metadata.
-5. Update Flex cache-generation tests from the historical four-donor matrix to the actual live donor
-   set in the same cleanup slice.
-
-The first registry-disable step is intentionally safe while legacy tables still exist.
+For `forum.topic`, the existing `topic_field_definitions`, `forum_topics.metadata` donor payload and
+localized attached values remain live Flex infrastructure. They must be migrated toward the same
+minimal reusable donor adapter as other consumers rather than removed or expanded into a second
+Forum-specific custom-field implementation.
 
 ## Category migration sequence
 
@@ -158,6 +148,8 @@ The first registry-disable step is intentionally safe while legacy tables still 
 - Add category custom-field rendering to the generic admin schema-builder path; Taxonomy must not
   implement a second custom-fields editor.
 - Extend field types only through Flex when demonstrated (`Media`, references, rich text, etc.).
+- Use the Category onboarding to simplify the donor adapter contract for existing consumers,
+  including `forum.topic`, instead of adding another donor-specific service stack.
 
 ### Phase D — consumer migration
 
@@ -181,7 +173,7 @@ blind table rename.
 
 ## Forum-specific target
 
-After Forum migration:
+After Forum category migration:
 
 ```text
 taxonomy category
@@ -196,6 +188,10 @@ forum category binding/policy
   audience policy
   Forum counters/projections
   optional demonstrated Forum presentation override only
+
+forum topic
+  normalized Forum business fields
+  + optional Flex custom fields
 ```
 
 `forum_category_translations` and `ForumCategoryTranslationTargetProvider` are transitional artifacts
@@ -211,7 +207,7 @@ its boundary. At minimum the completed program must prove:
 - exact locale + fallback projections with `effective_locale` preserved;
 - Taxonomy Translation apply/CAS/progress for Category;
 - Flex opt-in registry: unsupported entity types fail closed;
-- `forum.topic` is not registered as a Flex donor;
+- `forum.topic` remains registered and its custom fields cannot replace normalized Forum invariants;
 - Category Flex definitions/values are tenant-scoped and multilingual where configured;
 - consumer bindings reject cross-tenant Taxonomy category references;
 - legacy category UUID/data backfill is deterministic and rollback/recovery is documented;
@@ -222,8 +218,9 @@ its boundary. At minimum the completed program must prove:
 
 1. Do not add a second category owner to solve a consumer-specific UI problem.
 2. Do not add a second custom-fields implementation to solve a donor-specific storage problem.
-3. Flex support is explicit opt-in; a metadata column is not opt-in.
+3. Flex support is explicit product opt-in; metadata storage by itself is not opt-in.
 4. Taxonomy owns shared Category hierarchy; consumers own only their relationships and domain policy.
-5. Media owns binary lifecycle; Taxonomy/Flex store typed Media references, not copied delivery URLs.
-6. Translation for canonical category copy is Taxonomy-owned.
-7. Keep migrations staged and data-preserving; never drop legacy custom/category data before an audit.
+5. Flex fields may extend a donor but must not replace normalized domain invariants.
+6. Media owns binary lifecycle; Taxonomy/Flex store typed Media references, not copied delivery URLs.
+7. Translation for canonical category copy is Taxonomy-owned.
+8. Keep migrations staged and data-preserving; never drop legacy category data before a verified cutover.
