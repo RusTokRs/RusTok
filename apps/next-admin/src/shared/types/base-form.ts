@@ -20,6 +20,8 @@ export interface FormOption {
   value: string;
   label: string;
   disabled?: boolean;
+  lang?: string;
+  dir?: 'auto' | 'ltr' | 'rtl';
 }
 
 // File upload specific types

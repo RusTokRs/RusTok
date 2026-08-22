@@ -63,6 +63,15 @@ const forumTopicEditor = requireFile(
 const sharedEditor = requireFile(
   'apps/next-admin/src/shared/ui/rich-text-editor.tsx'
 );
+const sharedFormInput = requireFile(
+  'apps/next-admin/src/shared/ui/forms/form-input.tsx'
+);
+const sharedFormSelect = requireFile(
+  'apps/next-admin/src/shared/ui/forms/form-select.tsx'
+);
+const sharedFormTypes = requireFile(
+  'apps/next-admin/src/shared/types/base-form.ts'
+);
 const modulesIndex = requireFile('apps/next-admin/src/modules/index.ts');
 const forumPage = requireFile(
   'apps/next-admin/src/app/dashboard/forum/reply/page.tsx'
@@ -128,7 +137,11 @@ hasAll(
     'updateForumTopic',
     'body: RichTextDocument;',
     'createForumReply',
-    'content: RichTextDocument;'
+    'content: RichTextDocument;',
+    'effectiveLocale: string;',
+    'export interface ForumTopicSummary extends ForumTopicMergeCandidate {',
+    'locale: string;\n  effectiveLocale: string;\n  slug: string;',
+    'id\n          locale\n          effectiveLocale\n          title'
   ],
   'Forum GraphQL adapter'
 );
@@ -143,11 +156,14 @@ hasAll(
     "@/shared/ui/rich-text-editor",
     "profile='discussion'",
     "from '../api/forum'",
+    'initialContentLocale: string;',
+    'defaultValues: { locale: initialContentLocale }',
     'validateRichTextDocument',
     'richTextDocumentHasText',
     'contentLocale={contentLocale}',
     'disabled={form.formState.isSubmitting}',
-    'content: doc'
+    'content: doc',
+    "dir='ltr'"
   ],
   'Forum reply editor'
 );
@@ -164,7 +180,12 @@ hasAll(
     'contentLocale={contentLocale}',
     'disabled={form.formState.isSubmitting}',
     'createForumTopic',
-    'updateForumTopic'
+    'updateForumTopic',
+    'lang={contentLocale}',
+    "dir='auto'",
+    "dir='ltr'",
+    'lang: category.effectiveLocale',
+    "dir: 'auto' as const"
   ],
   'Forum topic editor'
 );
@@ -189,7 +210,9 @@ hasNone(
     "./rt-json-format",
     'normalizeRtJsonPayload',
     'stringifyRtDoc',
-    'rt_json_v1'
+    'rt_json_v1',
+    'useLocale',
+    'hostLocale'
   ],
   'Forum reply editor'
 );
@@ -205,9 +228,42 @@ hasAll(
   ],
   'Shared richtext adapter'
 );
+hasAll(
+  sharedFormTypes,
+  ['lang?: string;', "dir?: 'auto' | 'ltr' | 'rtl';"],
+  'Shared form option type'
+);
+hasAll(
+  sharedFormInput,
+  [
+    'lang?: string;',
+    "dir?: 'auto' | 'ltr' | 'rtl';",
+    'lang={lang}',
+    'dir={dir}'
+  ],
+  'Shared form input bidi boundary'
+);
+hasAll(
+  sharedFormSelect,
+  ['<span lang={option.lang} dir={option.dir}>'],
+  'Shared form select bidi boundary'
+);
 hasAll(modulesIndex, ["import '../../packages/blog/src';", "import '../../packages/forum/src';"], 'Host module registration');
-hasAll(forumPage, ["../../../../../packages/forum/src", 'ForumReplyEditor', 'listForumTopics'], 'Forum route');
-hasNone(forumPage, ['packages/blog/src'], 'Forum route');
+hasAll(
+  forumPage,
+  [
+    "../../../../../packages/forum/src",
+    'ForumReplyEditor',
+    'listForumTopics',
+    'getForumTopic',
+    'selectedTopicSummary.locale',
+    'initialContentLocale={selectedTopic.effectiveLocale}',
+    'lang={topic.effectiveLocale}',
+    "dir='auto'"
+  ],
+  'Forum route'
+);
+hasNone(forumPage, ['packages/blog/src', 'selectedTopic.title'], 'Forum route');
 hasAll(
   forumTopicPage,
   [
@@ -215,11 +271,15 @@ hasAll(
     'ForumTopicEditor',
     'listForumCategories',
     'listForumTopics',
-    'getForumTopic'
+    'getForumTopic',
+    'selectedTopicSummary.locale',
+    'lang={topic.effectiveLocale}',
+    "dir='auto'",
+    'Edit the selected forum topic translation.'
   ],
   'Forum topic route'
 );
-hasNone(forumTopicPage, ['packages/blog/src'], 'Forum topic route');
+hasNone(forumTopicPage, ['packages/blog/src', 'selectedTopic.title'], 'Forum topic route');
 
 if (
   evidence.owner_package !== 'apps/next-admin/packages/forum/src' ||
@@ -255,5 +315,5 @@ if (!packageJson.scripts?.['test:verify:blog:fba']?.includes('test:verify:blog:f
 requireFile('scripts/verify/verify-blog-forum-ui-ownership.test.mjs');
 
 console.log(
-  '[verify-blog-forum-ui-ownership] Forum owns its Next admin navigation, API, and canonical richtext topic/reply editors; Blog and Forum share only the richtext lifecycle adapter'
+  '[verify-blog-forum-ui-ownership] Forum owns its Next admin navigation, API, canonical richtext editors, plain-text content-locale bidi boundary, and locale-aware topic selectors; Blog and Forum share only approved UI primitives'
 );
