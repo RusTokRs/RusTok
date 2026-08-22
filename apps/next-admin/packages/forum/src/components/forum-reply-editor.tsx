@@ -12,7 +12,6 @@ import {
   validateRichTextDocument,
   type RichTextDocument
 } from '@rustok/richtext';
-import { useLocale } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -20,14 +19,15 @@ import { createForumReply, type GqlOpts } from '../api/forum';
 
 export function ForumReplyEditor({
   topicId,
+  initialContentLocale,
   gqlOpts = {}
 }: {
   topicId: string;
+  initialContentLocale: string;
   gqlOpts?: GqlOpts;
 }) {
-  const hostLocale = useLocale();
   const form = useForm<{ locale: string }>({
-    defaultValues: { locale: hostLocale }
+    defaultValues: { locale: initialContentLocale }
   });
   const contentLocale = form.watch('locale');
   const [doc, setDoc] = useState<RichTextDocument>(emptyRichTextDocument());
