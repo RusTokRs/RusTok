@@ -138,7 +138,10 @@ hasAll(
     'body: RichTextDocument;',
     'createForumReply',
     'content: RichTextDocument;',
-    'effectiveLocale: string;'
+    'effectiveLocale: string;',
+    'export interface ForumTopicSummary extends ForumTopicMergeCandidate {',
+    'locale: string;\n  effectiveLocale: string;\n  slug: string;',
+    'id\n          locale\n          effectiveLocale\n          title'
   ],
   'Forum GraphQL adapter'
 );
@@ -254,7 +257,9 @@ hasAll(
     'listForumTopics',
     'getForumTopic',
     'selectedTopicSummary.locale',
-    'initialContentLocale={selectedTopic.effectiveLocale}'
+    'initialContentLocale={selectedTopic.effectiveLocale}',
+    'lang={topic.effectiveLocale}',
+    "dir='auto'"
   ],
   'Forum route'
 );
@@ -266,11 +271,15 @@ hasAll(
     'ForumTopicEditor',
     'listForumCategories',
     'listForumTopics',
-    'getForumTopic'
+    'getForumTopic',
+    'selectedTopicSummary.locale',
+    'lang={topic.effectiveLocale}',
+    "dir='auto'",
+    'Edit the selected forum topic translation.'
   ],
   'Forum topic route'
 );
-hasNone(forumTopicPage, ['packages/blog/src'], 'Forum topic route');
+hasNone(forumTopicPage, ['packages/blog/src', 'selectedTopic.title'], 'Forum topic route');
 
 if (
   evidence.owner_package !== 'apps/next-admin/packages/forum/src' ||
@@ -306,5 +315,5 @@ if (!packageJson.scripts?.['test:verify:blog:fba']?.includes('test:verify:blog:f
 requireFile('scripts/verify/verify-blog-forum-ui-ownership.test.mjs');
 
 console.log(
-  '[verify-blog-forum-ui-ownership] Forum owns its Next admin navigation, API, canonical richtext editors, and plain-text content-locale bidi boundary; Blog and Forum share only approved UI primitives'
+  '[verify-blog-forum-ui-ownership] Forum owns its Next admin navigation, API, canonical richtext editors, plain-text content-locale bidi boundary, and locale-aware topic selectors; Blog and Forum share only approved UI primitives'
 );
