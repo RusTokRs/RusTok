@@ -67,6 +67,7 @@ function writeBaseline(root) {
     "docs/architecture/taxonomy-flex-category-platform-plan.md",
     [
       "Taxonomy owns shared Category hierarchy",
+      "canonical presentation such as icon key, color and Media-owned image/cover references",
       "Consumer relation/binding tables stay with the consumer",
       "Flex is the only runtime custom-fields mechanism",
       "",
@@ -162,6 +163,17 @@ try {
     "Taxonomy-owned Category hierarchy must be allowed by the ownership boundary",
   );
   remove(root, "crates/rustok-taxonomy/src/hierarchy.rs");
+
+  write(
+    root,
+    "crates/rustok-taxonomy/src/entities/category_presentation.rs",
+    "pub struct CategoryPresentation { pub icon_key: Option<String>, pub color: Option<String>, pub image_media_id: Option<String> }\n",
+  );
+  expectSuccess(
+    root,
+    "Taxonomy-owned canonical Category presentation must be allowed by the ownership boundary",
+  );
+  remove(root, "crates/rustok-taxonomy/src/entities/category_presentation.rs");
 
   write(
     root,
