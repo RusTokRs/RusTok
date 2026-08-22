@@ -32,7 +32,8 @@ use crate::services::topic_field_service::TopicFieldService;
 use crate::services::user_field_service::UserFieldService;
 use flex::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
-    FieldDefinitionViewSource, UpdateFieldDefinitionCommand,
+    FieldDefinitionViewSource, GenericAttachedFieldDefinitionService,
+    TAXONOMY_CATEGORY_ENTITY_TYPE, UpdateFieldDefinitionCommand,
 };
 
 struct UserFieldDefinitionService;
@@ -46,51 +47,39 @@ macro_rules! impl_field_definition_view_source {
             fn id(&self) -> Uuid {
                 self.id
             }
-
             fn field_key(&self) -> &str {
                 &self.field_key
             }
-
             fn field_type(&self) -> &str {
                 &self.field_type
             }
-
             fn label(&self) -> &serde_json::Value {
                 &self.label
             }
-
             fn description(&self) -> Option<&serde_json::Value> {
                 self.description.as_ref()
             }
-
             fn is_localized(&self) -> bool {
                 self.is_localized
             }
-
             fn is_required(&self) -> bool {
                 self.is_required
             }
-
             fn default_value(&self) -> Option<&serde_json::Value> {
                 self.default_value.as_ref()
             }
-
             fn validation(&self) -> Option<&serde_json::Value> {
                 self.validation.as_ref()
             }
-
             fn position(&self) -> i32 {
                 self.position
             }
-
             fn is_active(&self) -> bool {
                 self.is_active
             }
-
             fn created_at(&self) -> String {
                 self.created_at.to_rfc3339()
             }
-
             fn updated_at(&self) -> String {
                 self.updated_at.to_rfc3339()
             }
@@ -208,6 +197,10 @@ pub fn build_field_def_registry() -> FieldDefRegistry {
     registry.register(Arc::new(OrderFieldDefinitionService));
     registry.register(Arc::new(ProductFieldDefinitionService));
     registry.register(Arc::new(TopicFieldDefinitionService));
+    #[cfg(feature = "mod-taxonomy")]
+    registry.register(Arc::new(GenericAttachedFieldDefinitionService::new(
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+    )));
     registry
 }
 
@@ -220,23 +213,29 @@ mod tests {
     #[test]
     fn registry_bootstrap_registers_topic_entity_type() {
         let registry = build_field_def_registry();
-
         let topic_service = registry
             .get("topic")
             .expect("topic entity type should be registered");
-
         assert_eq!(topic_service.entity_type(), "topic");
+    }
+
+    #[cfg(feature = "mod-taxonomy")]
+    #[test]
+    fn registry_bootstrap_registers_taxonomy_category_reference_donor() {
+        let registry = build_field_def_registry();
+        let category_service = registry
+            .get(flex::TAXONOMY_CATEGORY_ENTITY_TYPE)
+            .expect("taxonomy.category donor should be registered when Taxonomy is compiled");
+        assert_eq!(category_service.entity_type(), "taxonomy.category");
     }
 
     #[test]
     fn registry_bootstrap_keeps_unknown_entity_type_error() {
         let registry = build_field_def_registry();
-
         let err = match registry.get("unknown") {
             Ok(_) => panic!("unknown entity type should return error"),
             Err(err) => err,
         };
-
         assert!(matches!(err, FlexError::UnknownEntityType(_)));
     }
 }

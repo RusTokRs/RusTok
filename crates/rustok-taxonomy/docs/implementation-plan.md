@@ -93,10 +93,9 @@ Retained focused evidence:
   Translation-target CAS/change-cursor evidence and the final gate;
 - PR #3681 was squash-merged as `8746be7d5adcee0fd33005cb90065b92e3ba2cda`.
 
-### TAXONOMY-CAT-3 — canonical Category presentation — IN PROGRESS
+### TAXONOMY-CAT-3 — canonical Category presentation — COMPLETE
 
-PR #3682 is the focused presentation slice. It adds `taxonomy_category_presentations` as canonical
-Taxonomy-owned storage with:
+PR #3682 added `taxonomy_category_presentations` as canonical Taxonomy-owned storage with:
 
 - `icon_key` — normalized bounded ASCII kebab-case design token, maximum 64 bytes;
 - `color` — normalized lower-case `#rrggbb` or `#rrggbbaa`, accepting short/long hex input only;
@@ -115,28 +114,52 @@ resource/source/target CAS remains about localized text; a presentation change m
 text proposal. Consumer-specific presentation overrides remain future binding policy and must layer
 over canonical Taxonomy values rather than copying them when a binding is created.
 
-Focused evidence for this slice:
+Retained focused evidence:
 
-- `cargo test --locked -p rustok-taxonomy --test category_hierarchy --test category_presentation --test localized_route_lookup --test route_key_registry -- --nocapture`;
-- `Taxonomy Lookup Contract` includes the new presentation suite and source paths;
-- `Migration Compatibility` validates appended migration
-  `m20260822_000011_create_taxonomy_category_presentations`;
-- `Taxonomy PostgreSQL Evidence` applies the canonical migration graph on PostgreSQL 16 and executes
-  `category_presentation_postgres` to prove the Category-only/revision trigger plus same-revision
-  presentation CAS before the existing hierarchy/route/Translation evidence.
+- final head `c397dda2bc04a32974077dd2dbfd418797b56e1a` passed `Taxonomy Ownership Boundary` and
+  `Taxonomy Lookup Contract`;
+- exact-head `Taxonomy PostgreSQL Evidence` run `32572959402` passed the canonical PostgreSQL 16
+  migration graph plus direct Category presentation storage guard/same-revision CAS evidence;
+- PR #3682 was squash-merged as `7bb105d10fc99cb5271d008d3cb62395dee5cacf`.
 
-**Done when:** the exact PR head passes the focused presentation/lookup tests, the PostgreSQL
-presentation guard/CAS evidence and the canonical migration evidence, with no Forum/Blog/Product
-cutover or Flex donor work mixed in.
+### TAXONOMY-CAT-4 — Flex Category donor — IN PROGRESS
 
-### TAXONOMY-CAT-4 — Flex Category donor — PLANNED
+PR #3683 is the reusable backend donor foundation. It intentionally extends Flex rather than adding a
+Taxonomy-specific custom-fields engine:
 
-Register `taxonomy.category` as an explicit Flex donor through the smallest reusable adapter contract.
-Use the existing Flex definition/value/localization/validation/cache/transport stack and generic admin
-schema builder.
+- `taxonomy.category` is a namespaced Flex entity type;
+- Flex owns generic attached field-definition persistence keyed by tenant and donor entity type;
+- Flex owns optional generic shared attached values while reusing the existing localized-value store;
+- the server field-definition registry registers `taxonomy.category` when Taxonomy is compiled;
+- the server value adapter validates the real owner identity as the same-tenant
+  `TaxonomyTermKind::Category` before reading or writing generic Flex rows;
+- shared and localized prepared writes/deletes are committed atomically through a host transaction;
+- generic definitions reuse the existing validation, event and durable cache-generation contracts;
+- exact-locale authoring remains separate from read fallback, so editing one locale cannot seed
+  another locale with fallback text.
 
-**Done when:** a tenant can add shared or localized custom fields to Categories without Taxonomy
-implementing a second field-definition service, validator or custom form engine.
+Focused retained evidence for the backend foundation is owned by
+`Taxonomy Category Flex Donor Contract`. Its final merge gate must check out the exact PR head and run:
+
+- the source boundary verifier;
+- scoped Rust 1.96 formatting for CAT-4 files only;
+- SQLite generic field-definition tenant/duplicate/schema contracts;
+- SQLite shared/localized value roundtrip and exact-locale authoring contracts;
+- bounded Taxonomy tenant/kind owner-identity evidence;
+- server compile evidence for `mod-taxonomy,mod-flex` host registration/guard composition;
+- a PostgreSQL 16 generic donor roundtrip that also proves field-definition mutations advance the
+  durable Flex cache generation.
+
+The backend foundation is not the whole CAT-4 completion criterion. A follow-up slice must wire the
+Category instance transport/admin authoring surface through the existing generic Flex schema builder,
+prove shared and localized Category custom fields end-to-end from an actual Category instance, and
+ensure Taxonomy hard-delete removes any attached Flex value rows without creating generic ownership
+inside Taxonomy.
+
+**Done when:** a tenant can add, edit, localize, resolve and remove custom fields on real Categories
+through the platform Flex transport/admin surface, with tenant/kind ownership and hard-delete cleanup
+proved, while Taxonomy still implements no second field-definition service, validator or custom form
+engine.
 
 ### TAXONOMY-CAT-5 — Forum category cutover — PLANNED
 
@@ -214,10 +237,15 @@ Focused commands for the Category program:
 - `node scripts/verify/verify-taxonomy-ownership-boundary.mjs`
 - `node scripts/verify/verify-taxonomy-contract-matrix.test.mjs`
 - `node scripts/verify/verify-taxonomy-contract-matrix.mjs`
+- `node scripts/verify/verify-taxonomy-category-flex-donor.mjs`
 - `cargo test --locked -p rustok-taxonomy --test category_hierarchy --test category_presentation --test localized_route_lookup --test route_key_registry -- --nocapture`
+- `cargo test --locked -p rustok-taxonomy --test owner_identity -- --nocapture`
+- `cargo test --locked -p flex --test generic_attached_definitions --test generic_attached_storage -- --nocapture`
 - `cargo test --locked -p rustok-taxonomy --test category_presentation_postgres -- --nocapture` with `RUSTOK_TAXONOMY_TEST_DATABASE_URL` set to PostgreSQL;
+- `cargo test --locked -p flex --test postgres_generic_attached_storage -- --ignored --nocapture` with `RUSTOK_FLEX_TEST_POSTGRES_URL` set to PostgreSQL;
 - `cargo test --locked -p rustok-taxonomy --lib`
-- PostgreSQL commands retained in `.github/workflows/taxonomy-postgres-evidence.yml`.
+- PostgreSQL commands retained in `.github/workflows/taxonomy-postgres-evidence.yml` and
+  `.github/workflows/taxonomy-category-flex-donor-contract.yml`.
 
 Consumer cutovers add their own focused owner, migration, transport, multilingual/RTL and browser
 evidence. Unrelated/common workspace CI failures are not a reason to expand a Category PR's scope.

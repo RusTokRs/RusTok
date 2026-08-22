@@ -9,7 +9,6 @@ use async_graphql::{Context, FieldError, Result};
 use rustok_api::{
     AuthContext, Permission, TenantContext, graphql::GraphQLError, has_effective_permission,
 };
-use rustok_core::field_schema::is_valid_field_key;
 
 pub use mutation::FlexMutation;
 pub use query::FlexQuery;
@@ -59,22 +58,12 @@ fn bad_user_input(message: impl AsRef<str>) -> FieldError {
 }
 
 fn resolve_entity_type(entity_type: Option<String>) -> Result<String> {
-    let resolved = entity_type
-        .unwrap_or_else(|| "user".to_string())
-        .trim()
-        .to_ascii_lowercase();
-
-    if resolved.is_empty() {
-        return Err(bad_user_input("entity_type must not be empty"));
-    }
-
-    if !is_valid_field_key(&resolved) {
-        return Err(bad_user_input(
-            "entity_type must match ^[a-z][a-z0-9_]{0,127}$",
-        ));
-    }
-
-    Ok(resolved)
+    let raw = entity_type.unwrap_or_else(|| "user".to_string());
+    crate::normalize_flex_entity_type(&raw).ok_or_else(|| {
+        bad_user_input(
+            "entity_type must be a dot-namespaced identifier such as user or taxonomy.category",
+        )
+    })
 }
 
 #[cfg(test)]
@@ -104,13 +93,19 @@ mod tests {
             resolve_entity_type(Some(" Product ".to_string())).expect("normalize"),
             "product"
         );
+        assert_eq!(
+            resolve_entity_type(Some(" Taxonomy.Category ".to_string())).expect("namespace"),
+            "taxonomy.category"
+        );
     }
 
     #[test]
     fn resolve_entity_type_rejects_invalid_format() {
-        let gql = resolve_entity_type(Some("product-type".to_string()))
-            .expect_err("invalid entity type should fail")
-            .extend();
-        assert_eq!(error_code(&gql).as_deref(), Some("BAD_USER_INPUT"));
+        for invalid in ["product-type", "taxonomy..category", ".category"] {
+            let gql = resolve_entity_type(Some(invalid.to_string()))
+                .expect_err("invalid entity type should fail")
+                .extend();
+            assert_eq!(error_code(&gql).as_deref(), Some("BAD_USER_INPUT"));
+        }
     }
 }
