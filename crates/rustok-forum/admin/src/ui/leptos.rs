@@ -2004,7 +2004,12 @@ fn TopicsPage(
                                 view! {
                                     <div class="flex flex-wrap gap-2 rounded-2xl border border-border bg-background px-4 py-3">
                                         {parsed_tags.into_iter().map(|tag| view! {
-                                            <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                                            <span
+                                                data-forum-target-localized=""
+                                                lang=move || locale.get()
+                                                dir="auto"
+                                                class="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300"
+                                            >
                                                 {tag}
                                             </span>
                                         }).collect_view()}
