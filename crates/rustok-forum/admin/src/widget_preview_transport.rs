@@ -2,11 +2,16 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[cfg(feature = "ssr")]
 const MAX_FORUM_PAGE_BUILDER_ATTESTATION_CHALLENGE_BYTES: usize = 128;
+#[cfg(feature = "ssr")]
 const FORUM_PAGE_BUILDER_ATTESTATION_CONTRACT: &str = "forum_page_builder_server_fn_attestation_v1";
+#[cfg(feature = "ssr")]
 const FORUM_PAGE_BUILDER_PREVIEW_ENDPOINT: &str = "/api/fn/forum/page-builder-widget-preview";
+#[cfg(feature = "ssr")]
 const FORUM_PAGE_BUILDER_PROPERTY_SCHEMA_ENDPOINT: &str =
     "/api/fn/forum/page-builder-widget-property-schema";
+#[cfg(feature = "ssr")]
 const FORUM_PAGE_BUILDER_PROPERTY_VALIDATE_ENDPOINT: &str =
     "/api/fn/forum/page-builder-widget-property-validate";
 

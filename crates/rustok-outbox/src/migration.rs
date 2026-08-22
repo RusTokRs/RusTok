@@ -101,10 +101,7 @@ pub async fn create_owner_operation_receipts_table(
                         .not_null()
                         .primary_key(),
                 )
-                .col(
-                    ColumnDef::new(OwnerOperationReceipts::TenantId)
-                        .uuid(),
-                )
+                .col(ColumnDef::new(OwnerOperationReceipts::TenantId).uuid())
                 .col(
                     ColumnDef::new(OwnerOperationReceipts::ScopeKey)
                         .string_len(191)

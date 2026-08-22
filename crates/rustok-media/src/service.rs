@@ -343,8 +343,10 @@ fn is_iso_bmff_brand(data: &[u8], brands: &[&[u8; 4]]) -> bool {
     data.get(8..12)
         .is_some_and(|brand| brands.iter().any(|candidate| brand == candidate.as_slice()))
         || data.get(16..).is_some_and(|rest| {
-            rest.chunks_exact(4)
-                .any(|brand| brands.iter().any(|candidate| brand == candidate.as_slice()))
+            rest.as_chunks::<4>()
+                .0
+                .iter()
+                .any(|brand| brands.contains(&brand))
         })
 }
 

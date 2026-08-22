@@ -1854,7 +1854,7 @@ fn TopicsPage(
             filtered_category_label.as_str(),
         )
     });
-    let sidebar_selected_category = selected_category_display.clone();
+    let sidebar_selected_category = selected_category_display;
     let heading_selected_category = selected_category_display;
     let topic_form_tag_count =
         move || forum_admin_topic_tag_count_label(tags.get().as_str(), ready_template.as_str());
