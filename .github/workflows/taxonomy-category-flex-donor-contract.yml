@@ -50,7 +50,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: taxonomy-category-flex-donor-${{ github.event.pull_request.number || github.ref }}
@@ -62,48 +62,6 @@ env:
   TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
-  format-fix:
-    if: github.event_name == 'pull_request'
-    name: One-shot CAT-4 formatter
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.head_ref }}
-          persist-credentials: true
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.96.0
-          components: rustfmt
-      - name: Format CAT-4 Rust files only
-        shell: bash
-        run: |
-          files=(
-            crates/flex/src/attached_definitions.rs
-            crates/flex/src/attached_storage.rs
-            crates/flex/src/entity_type.rs
-            crates/flex/src/graphql/mod.rs
-            crates/flex/src/migrations/m20260822_000001_create_generic_attached_donor_storage.rs
-            crates/flex/tests/generic_attached_definitions.rs
-            crates/flex/tests/generic_attached_storage.rs
-            crates/flex/tests/postgres_generic_attached_storage.rs
-            crates/rustok-taxonomy/src/owner_identity.rs
-            crates/rustok-taxonomy/tests/owner_identity.rs
-            apps/server/src/services/field_definition_registry_bootstrap.rs
-            apps/server/src/services/flex_attached_values.rs
-          )
-          rustfmt +1.96.0 --edition 2024 "${files[@]}"
-          if git diff --quiet -- "${files[@]}"; then
-            echo "CAT-4 files already formatted"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- "${files[@]}"
-          git commit -m "style(flex): format CAT-4 Rust files"
-          git push origin "HEAD:${{ github.head_ref }}"
-
   source-contract:
     name: Category Flex donor source contract
     runs-on: ubuntu-latest
