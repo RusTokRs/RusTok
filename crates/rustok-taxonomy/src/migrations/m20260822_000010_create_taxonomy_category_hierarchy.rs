@@ -144,8 +144,9 @@ DECLARE
     child_scope_value TEXT;
     invalid_hierarchy BOOLEAN;
 BEGIN
-    -- Serialize hierarchy mutations per tenant. Service-level preflight remains useful for friendly
-    -- errors, while this lock makes the storage invariant safe under concurrent writers.
+    -- Backstop direct writers. The Taxonomy service also acquires this tenant lock in a separate
+    -- statement before its read preflight, which guarantees a fresh READ COMMITTED snapshot after
+    -- waiting for another hierarchy writer.
     PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text, 0));
 
     IF NEW.position < 0 THEN
@@ -197,12 +198,12 @@ BEGIN
         UNION ALL
 
         SELECT
-            hierarchy.term_id AS id,
+            ancestors.parent_id AS id,
             hierarchy.parent_term_id AS parent_id,
             ancestors.depth + 1 AS depth,
-            hierarchy.term_id = NEW.term_id AS cycle
+            ancestors.parent_id = NEW.term_id AS cycle
         FROM ancestors
-        JOIN taxonomy_category_hierarchy hierarchy
+        LEFT JOIN taxonomy_category_hierarchy hierarchy
           ON hierarchy.tenant_id = NEW.tenant_id
          AND hierarchy.term_id = ancestors.parent_id
         WHERE ancestors.parent_id IS NOT NULL
@@ -236,8 +237,8 @@ EXECUTE FUNCTION taxonomy_validate_category_hierarchy();
 async fn install_sqlite_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     for statement in [
-        "DROP TRIGGER IF EXISTS taxonomy_category_hierarchy_insert_guard",
-        "DROP TRIGGER IF EXISTS taxonomy_category_hierarchy_update_guard",
+        "DROP TRIGGER IF EXISTS taxonomy_category_hierarchy_insert_guard".to_string(),
+        "DROP TRIGGER IF EXISTS taxonomy_category_hierarchy_update_guard".to_string(),
         sqlite_guard_sql("INSERT", "taxonomy_category_hierarchy_insert_guard"),
         sqlite_guard_sql("UPDATE", "taxonomy_category_hierarchy_update_guard"),
     ] {
@@ -306,12 +307,12 @@ BEGIN
                 UNION ALL
 
                 SELECT
-                    hierarchy.term_id,
+                    ancestors.parent_id,
                     hierarchy.parent_term_id,
                     ancestors.depth + 1,
-                    hierarchy.term_id = NEW.term_id
+                    ancestors.parent_id = NEW.term_id
                 FROM ancestors
-                JOIN taxonomy_category_hierarchy hierarchy
+                LEFT JOIN taxonomy_category_hierarchy hierarchy
                   ON hierarchy.tenant_id = NEW.tenant_id
                  AND hierarchy.term_id = ancestors.parent_id
                 WHERE ancestors.parent_id IS NOT NULL
