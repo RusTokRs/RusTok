@@ -18,12 +18,17 @@ use crate::models::product_field_definitions::{
     CreateFieldDefinitionInput as ProductCreateInput, Model as ProductModel,
     UpdateFieldDefinitionInput as ProductUpdateInput,
 };
+use crate::models::topic_field_definitions::{
+    CreateFieldDefinitionInput as TopicCreateInput, Model as TopicModel,
+    UpdateFieldDefinitionInput as TopicUpdateInput,
+};
 use crate::models::user_field_definitions::{
     CreateFieldDefinitionInput as UserCreateInput, Model as UserModel,
     UpdateFieldDefinitionInput as UserUpdateInput,
 };
 use crate::services::order_field_service::OrderFieldService;
 use crate::services::product_field_service::ProductFieldService;
+use crate::services::topic_field_service::TopicFieldService;
 use crate::services::user_field_service::UserFieldService;
 use flex::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
@@ -33,6 +38,7 @@ use flex::{
 struct UserFieldDefinitionService;
 struct OrderFieldDefinitionService;
 struct ProductFieldDefinitionService;
+struct TopicFieldDefinitionService;
 
 macro_rules! impl_field_definition_view_source {
     ($model:ty) => {
@@ -95,10 +101,12 @@ macro_rules! impl_field_definition_view_source {
 impl_field_definition_view_source!(UserModel);
 impl_field_definition_view_source!(OrderModel);
 impl_field_definition_view_source!(ProductModel);
+impl_field_definition_view_source!(TopicModel);
 
 flex::impl_field_definition_command_conversions!(UserCreateInput, UserUpdateInput);
 flex::impl_field_definition_command_conversions!(OrderCreateInput, OrderUpdateInput);
 flex::impl_field_definition_command_conversions!(ProductCreateInput, ProductUpdateInput);
+flex::impl_field_definition_command_conversions!(TopicCreateInput, TopicUpdateInput);
 
 fn field_definition_model_to_view<T: FieldDefinitionViewSource>(model: T) -> FieldDefinitionView {
     FieldDefinitionView::from_source(&model)
@@ -192,14 +200,14 @@ impl_field_definition_service_adapter!(
     "product",
     ProductFieldService
 );
+impl_field_definition_service_adapter!(TopicFieldDefinitionService, "topic", TopicFieldService);
 
 pub fn build_field_def_registry() -> FieldDefRegistry {
     let mut registry = FieldDefRegistry::new();
     registry.register(Arc::new(UserFieldDefinitionService));
     registry.register(Arc::new(OrderFieldDefinitionService));
     registry.register(Arc::new(ProductFieldDefinitionService));
-    // Forum topics intentionally do not opt in to runtime custom fields. Topic metadata remains
-    // Forum-owned domain state; legacy topic Flex storage is retired through an explicit migration.
+    registry.register(Arc::new(TopicFieldDefinitionService));
     registry
 }
 
@@ -210,15 +218,14 @@ mod tests {
     use super::build_field_def_registry;
 
     #[test]
-    fn registry_bootstrap_does_not_register_topic_without_opt_in() {
+    fn registry_bootstrap_registers_topic_entity_type() {
         let registry = build_field_def_registry();
 
-        let err = match registry.get("topic") {
-            Ok(_) => panic!("topic must not be exposed as a Flex donor without product opt-in"),
-            Err(err) => err,
-        };
+        let topic_service = registry
+            .get("topic")
+            .expect("topic entity type should be registered");
 
-        assert!(matches!(err, FlexError::UnknownEntityType(_)));
+        assert_eq!(topic_service.entity_type(), "topic");
     }
 
     #[test]
