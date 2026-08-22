@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
+    QueryFilter, Statement, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -69,6 +70,7 @@ impl TaxonomyService {
         }
 
         let txn = self.database().begin().await?;
+        serialize_hierarchy_writer(&txn, tenant_id).await?;
         let term = load_category(&txn, tenant_id, term_id).await?;
 
         if let Some(parent_id) = input.parent_id {
@@ -109,6 +111,21 @@ impl TaxonomyService {
         txn.commit().await?;
         Ok(placement_from_model(row))
     }
+}
+
+async fn serialize_hierarchy_writer(
+    txn: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+) -> TaxonomyResult<()> {
+    if txn.get_database_backend() == DatabaseBackend::Postgres {
+        txn.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            vec![tenant_id.to_string().into()],
+        ))
+        .await?;
+    }
+    Ok(())
 }
 
 async fn load_category<C>(
