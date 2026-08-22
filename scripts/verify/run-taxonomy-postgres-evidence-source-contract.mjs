@@ -33,7 +33,7 @@ const normalizedPlan = plan.replace(/\s+/g, ' ');
 const currentPlanMarkers = [
   'TAXONOMY-CAT-2 — Category kind + hierarchy foundation — COMPLETE',
   'TAXONOMY-CAT-3 — canonical Category presentation — COMPLETE',
-  'TAXONOMY-CAT-4 — Flex Category donor — IN PROGRESS',
+  'TAXONOMY-CAT-4 — Flex Category donor — COMPLETE',
   'Taxonomy PostgreSQL Evidence',
   'route-registry contention evidence',
   'Translation-target CAS/change-cursor evidence',
