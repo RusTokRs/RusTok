@@ -160,9 +160,8 @@ async fn exact_locale_authoring_does_not_seed_from_read_fallback() {
 
     let english_exact = load_exact_locale_values(&db, tenant_id, ENTITY_TYPE, entity_id, "en")
         .await
-        .expect("English exact lookup should succeed")
-        .expect("localized schema persists an exact English row");
-    assert_eq!(english_exact, json!({}));
+        .expect("English exact lookup should succeed");
+    assert!(english_exact.is_none(), "fallback copy must not seed English authoring");
 
     let arabic_exact = load_exact_locale_values(&db, tenant_id, ENTITY_TYPE, entity_id, "ar")
         .await
