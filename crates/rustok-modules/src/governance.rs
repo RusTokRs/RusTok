@@ -11648,7 +11648,8 @@ mod tests {
         for statement in [
             "CREATE TABLE registry_publish_requests (\
                 id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 1, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
-                artifact_origin TEXT NOT NULL, artifact_checksum_sha256 TEXT NULL, submitted_at TEXT NULL\
+                artifact_origin TEXT NOT NULL, artifact_checksum_sha256 TEXT NULL, submitted_at TEXT NULL,\
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
              )",
             "CREATE TABLE registry_publish_alloy_staging (\
                 id TEXT PRIMARY KEY, request_id TEXT NOT NULL, alloy_tenant_id TEXT NOT NULL,\

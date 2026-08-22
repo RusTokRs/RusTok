@@ -31,6 +31,8 @@ impl MigrationTrait for Migration {
                     operation_kind TEXT NOT NULL CHECK (operation_kind IN ('quarantine', 'clear_quarantine', 'revoke')),\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     principal_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     receipt_json TEXT NULL,\
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                     completed_at TIMESTAMPTZ NULL,\
@@ -56,7 +58,10 @@ impl MigrationTrait for Migration {
                     idempotency_key TEXT PRIMARY KEY,\
                     operation_kind TEXT NOT NULL CHECK (operation_kind IN ('quarantine','clear_quarantine','revoke')),\
                     request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest,1,7) = 'sha256:' AND substr(request_digest,8) NOT GLOB '*[^0-9a-f]*'),\
-                    principal_id TEXT NOT NULL, receipt_json TEXT NULL,\
+                    principal_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
+                    receipt_json TEXT NULL,\
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT NULL,\
                     CHECK ((completed_at IS NULL AND receipt_json IS NULL) OR (completed_at IS NOT NULL AND receipt_json IS NOT NULL))\
                 )",

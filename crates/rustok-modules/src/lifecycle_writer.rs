@@ -579,7 +579,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         };
         let lease = match idempotency::admit(
             &self.db,
-            command.tenant_id,
+            idempotency::OwnerOperationScope::Tenant(command.tenant_id),
             STATIC_LIFECYCLE_OWNER_SLUG,
             &command.idempotency_key.to_string(),
             STATIC_LIFECYCLE_SETTINGS_OPERATION,

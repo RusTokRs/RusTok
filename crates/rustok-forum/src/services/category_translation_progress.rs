@@ -8,11 +8,12 @@ use rustok_translation_targets::{
     TranslationApplicationReceipt, TranslationPatchRequest, TranslationPatchValidation,
     TranslationResourcePage, TranslationResourceSnapshot, TranslationTargetCapability,
     TranslationTargetChangePage, TranslationTargetChangesRequest, TranslationTargetProgressFacts,
-    TranslationTargetProgressRequest, TranslationTargetProvider, TranslationTargetProviderDescriptor,
-    provider_support::contract_validation_error, validate_translation_read_context,
+    TranslationTargetProgressRequest, TranslationTargetProvider,
+    TranslationTargetProviderDescriptor, provider_support::contract_validation_error,
+    validate_translation_read_context,
 };
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     sea_query::{Expr, Query, SelectStatement},
 };
 use uuid::Uuid;

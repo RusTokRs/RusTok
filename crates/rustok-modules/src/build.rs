@@ -35,6 +35,10 @@ const MAX_PROCESSES: u16 = 1_024;
 const MAX_OUTPUT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_BUILD_DIAGNOSTICS: usize = 32;
 const MAX_WALL_CLOCK_MS: u64 = 2 * 60 * 60 * 1_000;
+/// The durable owner claim exceeds the largest admitted worker deadline so a
+/// healthy worker cannot be replaced before it has a bounded chance to return
+/// its terminal result. A lost dispatcher is recovered only after this lease.
+const BUILD_CLAIM_LEASE_SECONDS: u64 = MAX_WALL_CLOCK_MS / 1_000 + 5 * 60;
 
 /// Current transport contract version for isolated module build workers.
 pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 8;
@@ -383,6 +387,7 @@ pub trait ModuleBuildWorkerReadiness: Send + Sync {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleBuildSubmission {
     pub request_id: Uuid,
+    pub revision: u64,
     pub created: bool,
 }
 
@@ -391,6 +396,7 @@ pub struct ModuleBuildSubmission {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleBuildResultRecord {
     pub request_id: Uuid,
+    pub revision: u64,
     pub created: bool,
 }
 
@@ -400,6 +406,25 @@ pub struct ModuleBuildResultRecord {
 pub struct ModuleBuildCompletedResult {
     pub request: ModuleBuildRequest,
     pub result: ModuleBuildResult,
+    pub revision: u64,
+}
+
+/// Opaque owner-issued authority to execute one queued build request. It is
+/// never sent to the worker: only the dispatcher returns it with a terminal
+/// result while the durable lease remains valid.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModuleBuildExecutionClaim {
+    tenant_id: Uuid,
+    request_id: Uuid,
+    revision: u64,
+    claim_id: Uuid,
+}
+
+/// A queued build request paired with the sole live execution claim.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModuleBuildClaimedRequest {
+    pub request: ModuleBuildRequest,
+    pub claim: ModuleBuildExecutionClaim,
 }
 
 /// Owner-side durable queue for isolated module builds. It performs no source
@@ -439,6 +464,7 @@ impl SeaOrmModuleBuildService {
         let request_hash = build_request_hash(&request)?;
         let request_json = serde_json::to_value(&request)
             .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
+        let idempotency_key = request.context.idempotency_key.to_string();
         let transaction = self.db.begin().await.map_err(persistence_error)?;
         configure_tenant_scope(&transaction, tenant_id)
             .await
@@ -448,7 +474,7 @@ impl SeaOrmModuleBuildService {
             &transaction,
             tenant_id,
             &request.project_id,
-            &request.context.idempotency_key,
+            &idempotency_key,
         )
         .await?
         {
@@ -458,6 +484,7 @@ impl SeaOrmModuleBuildService {
             transaction.commit().await.map_err(persistence_error)?;
             return Ok(ModuleBuildSubmission {
                 request_id: existing.request_id,
+                revision: existing.revision,
                 created: false,
             });
         }
@@ -468,8 +495,8 @@ impl SeaOrmModuleBuildService {
                 backend,
                 format!(
                     "INSERT INTO module_build_requests \
-                     (request_id, tenant_id, project_id, idempotency_key, request_hash, request, attempt, status, created_at) \
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, 'queued', {}) ON CONFLICT DO NOTHING",
+                     (request_id, tenant_id, project_id, idempotency_key, request_hash, request, attempt, revision, status, created_at) \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, 1, 'queued', {}) ON CONFLICT DO NOTHING",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -483,7 +510,7 @@ impl SeaOrmModuleBuildService {
                     uuid_value(request.request_id, backend),
                     uuid_value(tenant_id, backend),
                     request.project_id.clone().into(),
-                    request.context.idempotency_key.clone().into(),
+                    idempotency_key.clone().into(),
                     request_hash.clone().into(),
                     sea_orm::Value::Json(Some(Box::new(request_json))),
                     i64::from(request.attempt).into(),
@@ -496,7 +523,7 @@ impl SeaOrmModuleBuildService {
                 &transaction,
                 tenant_id,
                 &request.project_id,
-                &request.context.idempotency_key,
+                &idempotency_key,
             )
             .await?
             else {
@@ -510,6 +537,7 @@ impl SeaOrmModuleBuildService {
             transaction.commit().await.map_err(persistence_error)?;
             return Ok(ModuleBuildSubmission {
                 request_id: existing.request_id,
+                revision: existing.revision,
                 created: false,
             });
         }
@@ -533,18 +561,25 @@ impl SeaOrmModuleBuildService {
         transaction.commit().await.map_err(persistence_error)?;
         Ok(ModuleBuildSubmission {
             request_id: request.request_id,
+            revision: 1,
             created: true,
         })
     }
 
-    /// Persists one terminal result after validating it against the immutable
-    /// queued request. The worker supplies tenant correlation in its result so
-    /// this host-side receiver can establish tenant RLS before loading state.
+    /// Persists one terminal result after validating it against both the
+    /// immutable request and the still-live owner claim. Exact terminal-result
+    /// redelivery replays without another transition; another live dispatcher
+    /// cannot complete a claim it does not own.
     pub async fn record_result(
         &self,
+        claim: &ModuleBuildExecutionClaim,
         result: ModuleBuildResult,
     ) -> Result<ModuleBuildResultRecord, ModuleBuildProtocolError> {
-        if result.tenant_id.is_nil() {
+        claim.validate()?;
+        if result.tenant_id.is_nil()
+            || result.tenant_id != claim.tenant_id
+            || result.request_id != claim.request_id
+        {
             return Err(ModuleBuildProtocolError::InvalidResult);
         }
         let result_hash = build_result_hash(&result)?;
@@ -559,7 +594,7 @@ impl SeaOrmModuleBuildService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT request, status, result_hash FROM module_build_requests \
+                    "SELECT request, status, result_hash, revision FROM module_build_requests \
                      WHERE request_id = {}{}",
                     placeholder(backend, 1),
                     result_lock_clause(backend),
@@ -579,6 +614,7 @@ impl SeaOrmModuleBuildService {
             return Err(ModuleBuildProtocolError::InvalidResult);
         }
         let status: String = row.try_get("", "status").map_err(persistence_error)?;
+        let revision = build_revision_from_row(&row)?;
         let stored_result_hash: Option<String> =
             row.try_get("", "result_hash").map_err(persistence_error)?;
         if status == "completed" {
@@ -588,35 +624,46 @@ impl SeaOrmModuleBuildService {
             transaction.commit().await.map_err(persistence_error)?;
             return Ok(ModuleBuildResultRecord {
                 request_id: result.request_id,
+                revision,
                 created: false,
             });
         }
-        if status != "queued" {
-            return Err(ModuleBuildProtocolError::InvalidResult);
+        if status != "running" || revision != claim.revision {
+            return Err(ModuleBuildProtocolError::ExecutionClaimConflict);
         }
         let updated = transaction
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
                     "UPDATE module_build_requests \
-                     SET result = {}, result_hash = {}, status = 'completed', completed_at = {} \
-                     WHERE request_id = {} AND status = 'queued'",
+                     SET result = {}, result_hash = {}, status = 'completed', revision = revision + 1, \
+                         execution_claim_id = NULL, lease_expires_at = NULL, completed_at = {} \
+                     WHERE request_id = {} AND status = 'running' AND revision = {} \
+                       AND execution_claim_id = {} AND {}",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     now_expression(backend),
                     placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                    build_claim_is_live_expression(backend),
                 ),
                 vec![
                     sea_orm::Value::Json(Some(Box::new(result_json))),
                     result_hash.into(),
                     uuid_value(result.request_id, backend),
+                    i64::try_from(claim.revision)
+                        .map_err(|_| ModuleBuildProtocolError::ExecutionClaimConflict)?
+                        .into(),
+                    uuid_value(claim.claim_id, backend),
                 ],
             ))
             .await
             .map_err(persistence_error)?;
         if updated.rows_affected() != 1 {
-            return Err(ModuleBuildProtocolError::ResultConflict);
+            return Err(ModuleBuildProtocolError::ExecutionClaimConflict);
         }
+        let revision = next_build_revision(revision)?;
         self.infrastructure
             .write_event(
                 &transaction,
@@ -636,19 +683,19 @@ impl SeaOrmModuleBuildService {
         transaction.commit().await.map_err(persistence_error)?;
         Ok(ModuleBuildResultRecord {
             request_id: result.request_id,
+            revision,
             created: true,
         })
     }
 
-    /// Loads a queued request under tenant RLS without retaining a database
-    /// transaction during remote worker execution. An outbox consumer calls
-    /// this before invoking the isolated worker and then returns its immutable
-    /// result through [`Self::record_result`].
-    pub async fn load_queued(
+    /// Claims one queued request under tenant RLS before any dispatcher invokes
+    /// the isolated worker. A redelivery may replace only an expired durable
+    /// claim; it receives a new revision and cannot complete the former claim.
+    pub async fn claim_queued(
         &self,
         tenant_id: Uuid,
         request_id: Uuid,
-    ) -> Result<ModuleBuildRequest, ModuleBuildProtocolError> {
+    ) -> Result<ModuleBuildClaimedRequest, ModuleBuildProtocolError> {
         if tenant_id.is_nil() || request_id.is_nil() {
             return Err(ModuleBuildProtocolError::InvalidRequest);
         }
@@ -661,8 +708,9 @@ impl SeaOrmModuleBuildService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT request, status FROM module_build_requests WHERE request_id = {}",
+                    "SELECT request, status, revision FROM module_build_requests WHERE request_id = {}{}",
                     placeholder(backend, 1),
+                    result_lock_clause(backend),
                 ),
                 vec![uuid_value(request_id, backend)],
             ))
@@ -670,9 +718,12 @@ impl SeaOrmModuleBuildService {
             .map_err(persistence_error)?
             .ok_or(ModuleBuildProtocolError::UnknownRequest)?;
         let status: String = row.try_get("", "status").map_err(persistence_error)?;
-        if status != "queued" {
+        if status == "completed" {
             transaction.commit().await.map_err(persistence_error)?;
             return Err(ModuleBuildProtocolError::NotQueued);
+        }
+        if status != "queued" && status != "running" {
+            return Err(ModuleBuildProtocolError::InvalidRequest);
         }
         let request_json: serde_json::Value =
             row.try_get("", "request").map_err(persistence_error)?;
@@ -682,8 +733,46 @@ impl SeaOrmModuleBuildService {
             return Err(ModuleBuildProtocolError::InvalidRequest);
         }
         request.validate()?;
+        let revision = build_revision_from_row(&row)?;
+        let claim_id = self.infrastructure.new_id();
+        let updated = transaction
+            .execute(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "UPDATE module_build_requests \
+                     SET status = 'running', revision = revision + 1, execution_claim_id = {}, \
+                         lease_expires_at = {}, claimed_at = {} \
+                     WHERE request_id = {} AND revision = {} AND \
+                       (status = 'queued' OR (status = 'running' AND {}))",
+                    placeholder(backend, 1),
+                    build_claim_expiry_expression(backend),
+                    now_expression(backend),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    build_claim_is_expired_expression(backend),
+                ),
+                vec![
+                    uuid_value(claim_id, backend),
+                    uuid_value(request_id, backend),
+                    i64::try_from(revision)
+                        .map_err(|_| ModuleBuildProtocolError::ExecutionClaimConflict)?
+                        .into(),
+                ],
+            ))
+            .await
+            .map_err(persistence_error)?;
+        if updated.rows_affected() != 1 {
+            transaction.commit().await.map_err(persistence_error)?;
+            return Err(ModuleBuildProtocolError::ExecutionInProgress);
+        }
+        let claim = ModuleBuildExecutionClaim {
+            tenant_id,
+            request_id,
+            revision: next_build_revision(revision)?,
+            claim_id,
+        };
         transaction.commit().await.map_err(persistence_error)?;
-        Ok(request)
+        Ok(ModuleBuildClaimedRequest { request, claim })
     }
 
     /// Loads one completed immutable build request/result pair under tenant RLS.
@@ -706,7 +795,7 @@ impl SeaOrmModuleBuildService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT request, result, status FROM module_build_requests WHERE request_id = {}",
+                    "SELECT request, result, status, revision FROM module_build_requests WHERE request_id = {}",
                     placeholder(backend, 1),
                 ),
                 vec![uuid_value(request_id, backend)],
@@ -732,8 +821,13 @@ impl SeaOrmModuleBuildService {
         if request.context.tenant_id != Some(tenant_id) || result.tenant_id != tenant_id {
             return Err(ModuleBuildProtocolError::InvalidResult);
         }
+        let revision = build_revision_from_row(&row)?;
         transaction.commit().await.map_err(persistence_error)?;
-        Ok(ModuleBuildCompletedResult { request, result })
+        Ok(ModuleBuildCompletedResult {
+            request,
+            result,
+            revision,
+        })
     }
 
     /// Delivers one outbox-selected request to the isolated worker. The owner
@@ -749,9 +843,10 @@ impl SeaOrmModuleBuildService {
     where
         W: ModuleBuildWorker + ?Sized,
     {
-        let request = self.load_queued(tenant_id, request_id).await?;
+        let ModuleBuildClaimedRequest { request, claim } =
+            self.claim_queued(tenant_id, request_id).await?;
         let result = worker.execute_build(request).await?;
-        self.record_result(result).await
+        self.record_result(&claim, result).await
     }
 }
 
@@ -770,14 +865,7 @@ impl ModuleBuildRequest {
         if !matches!(self.context.tenant_id, Some(tenant_id) if !tenant_id.is_nil()) {
             return Err(ModuleBuildProtocolError::InvalidRequest);
         }
-        for value in [
-            &self.context.actor_id,
-            &self.context.trace_id,
-            &self.context.correlation_id,
-            &self.context.idempotency_key,
-        ] {
-            validate_text(value)?;
-        }
+        validate_text(&self.context.trace_id)?;
         validate_text(&self.project_id)?;
         if !is_valid_module_slug(&self.expected_module_slug) {
             return Err(ModuleBuildProtocolError::InvalidRequest);
@@ -815,6 +903,19 @@ impl ModuleBuildRequest {
                 .any(|(index, profile)| self.validation_profiles[..index].contains(profile))
         {
             return Err(ModuleBuildProtocolError::InvalidValidationProfiles);
+        }
+        Ok(())
+    }
+}
+
+impl ModuleBuildExecutionClaim {
+    fn validate(&self) -> Result<(), ModuleBuildProtocolError> {
+        if self.tenant_id.is_nil()
+            || self.request_id.is_nil()
+            || self.claim_id.is_nil()
+            || self.revision == 0
+        {
+            return Err(ModuleBuildProtocolError::ExecutionClaimConflict);
         }
         Ok(())
     }
@@ -1112,6 +1213,7 @@ fn protocol_digest(domain: &str, fields: &[&str]) -> String {
 struct ExistingSubmission {
     request_id: Uuid,
     request_hash: String,
+    revision: u64,
 }
 
 async fn existing_submission<C: ConnectionTrait>(
@@ -1125,7 +1227,7 @@ async fn existing_submission<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT request_id, request_hash FROM module_build_requests \
+                "SELECT request_id, request_hash, revision FROM module_build_requests \
                  WHERE tenant_id = {} AND project_id = {} AND idempotency_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
@@ -1144,6 +1246,7 @@ async fn existing_submission<C: ConnectionTrait>(
             request_id: uuid_from_row(&row, "request_id", backend)
                 .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?,
             request_hash: row.try_get("", "request_hash").map_err(persistence_error)?,
+            revision: build_revision_from_row(&row)?,
         })
     })
     .transpose()
@@ -1183,6 +1286,54 @@ fn result_lock_clause(backend: sea_orm::DbBackend) -> &'static str {
     }
 }
 
+fn build_claim_expiry_expression(backend: sea_orm::DbBackend) -> String {
+    match backend {
+        sea_orm::DbBackend::Postgres => {
+            format!("NOW() + INTERVAL '{BUILD_CLAIM_LEASE_SECONDS} seconds'")
+        }
+        sea_orm::DbBackend::Sqlite => {
+            format!("datetime('now', '+{BUILD_CLAIM_LEASE_SECONDS} seconds')")
+        }
+        _ => unreachable!("module builds support PostgreSQL and SQLite only"),
+    }
+}
+
+fn build_claim_is_expired_expression(backend: sea_orm::DbBackend) -> &'static str {
+    match backend {
+        sea_orm::DbBackend::Postgres => "lease_expires_at <= NOW()",
+        sea_orm::DbBackend::Sqlite => "datetime(lease_expires_at) <= datetime('now')",
+        _ => unreachable!("module builds support PostgreSQL and SQLite only"),
+    }
+}
+
+fn build_claim_is_live_expression(backend: sea_orm::DbBackend) -> &'static str {
+    match backend {
+        sea_orm::DbBackend::Postgres => "lease_expires_at > NOW()",
+        sea_orm::DbBackend::Sqlite => "datetime(lease_expires_at) > datetime('now')",
+        _ => unreachable!("module builds support PostgreSQL and SQLite only"),
+    }
+}
+
+fn build_revision_from_row(row: &sea_orm::QueryResult) -> Result<u64, ModuleBuildProtocolError> {
+    let revision: i64 = row.try_get("", "revision").map_err(persistence_error)?;
+    u64::try_from(revision)
+        .ok()
+        .filter(|revision| *revision > 0)
+        .ok_or_else(|| {
+            ModuleBuildProtocolError::Persistence(
+                "module build request contains an invalid revision".to_string(),
+            )
+        })
+}
+
+fn next_build_revision(revision: u64) -> Result<u64, ModuleBuildProtocolError> {
+    revision.checked_add(1).ok_or_else(|| {
+        ModuleBuildProtocolError::Persistence(
+            "module build request revision overflowed".to_string(),
+        )
+    })
+}
+
 fn persistence_error(error: impl std::fmt::Display) -> ModuleBuildProtocolError {
     ModuleBuildProtocolError::Persistence(error.to_string())
 }
@@ -1211,6 +1362,10 @@ pub enum ModuleBuildProtocolError {
     UnknownRequest,
     #[error("module build request is no longer queued")]
     NotQueued,
+    #[error("module build request is already executing under a live claim")]
+    ExecutionInProgress,
+    #[error("module build execution claim is stale or does not own the request")]
+    ExecutionClaimConflict,
     #[error("module build request is not completed")]
     NotCompleted,
     #[error("module build request already has a different terminal result")]
@@ -1223,7 +1378,45 @@ pub enum ModuleBuildProtocolError {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
+
     use super::*;
+
+    struct NoopEventWriter;
+
+    #[async_trait]
+    impl rustok_outbox::TransactionalEventWriter for NoopEventWriter {
+        async fn write_event(
+            &self,
+            _transaction: &sea_orm::DatabaseTransaction,
+            _envelope: rustok_events::EventEnvelope,
+        ) -> rustok_core::Result<()> {
+            Ok(())
+        }
+    }
+
+    async fn build_service() -> SeaOrmModuleBuildService {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        crate::migrations::m20260716_000012_module_build_requests::Migration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("historical build-request schema");
+        crate::migrations::m20260822_000044_module_build_execution_claims::Migration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("execution-claim schema");
+        SeaOrmModuleBuildService::with_infrastructure(
+            database,
+            ControlPlaneInfrastructure::default()
+                .with_transactional_event_writer(Arc::new(NoopEventWriter)),
+        )
+    }
 
     fn digest(marker: char) -> String {
         format!("sha256:{}", marker.to_string().repeat(64))
@@ -1234,11 +1427,11 @@ mod tests {
             protocol_version: MODULE_BUILD_PROTOCOL_VERSION,
             request_id: Uuid::new_v4(),
             context: ModuleCommandContext {
-                actor_id: "user:42".to_string(),
+                actor_id: Uuid::new_v4(),
                 tenant_id: Some(Uuid::new_v4()),
                 trace_id: "trace-1".to_string(),
-                correlation_id: "correlation-1".to_string(),
-                idempotency_key: "module-build:1".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
             },
             project_id: "project:sample".to_string(),
             source: ModuleBuildSource {
@@ -1282,6 +1475,125 @@ mod tests {
             ],
             attempt: 1,
         }
+    }
+
+    fn cancelled_result(request: &ModuleBuildRequest) -> ModuleBuildResult {
+        ModuleBuildResult {
+            protocol_version: request.protocol_version,
+            request_id: request.request_id,
+            tenant_id: request.context.tenant_id.expect("validated tenant"),
+            attempt: request.attempt,
+            outcome: ModuleBuildOutcome::Cancelled,
+            source_digest: request.source.digest.clone(),
+            dependency_lock_digest: request.dependency_policy.lock_digest.clone(),
+            toolchain_digest: request.toolchain.protocol_digest(),
+            wit_digest: request.wit.protocol_digest(),
+            component_digest: None,
+            sbom_digest: None,
+            provenance_digest: None,
+            component_interface: None,
+            evidence: ModuleBuildEvidence {
+                log_reference: request.source.reference.clone(),
+                policy_report_reference: request.source.reference.clone(),
+                validation_results: Vec::new(),
+                diagnostics: Vec::new(),
+            },
+            publication: None,
+            metrics: ModuleBuildMetrics {
+                duration_ms: 1,
+                peak_memory_bytes: 1,
+                output_bytes: 1,
+            },
+            retryable: false,
+            next_action: ModuleBuildNextAction::None,
+        }
+    }
+
+    #[tokio::test]
+    async fn execution_claim_serializes_workers_and_replays_one_terminal_result() {
+        let service = build_service().await;
+        let request = request();
+        let tenant_id = request.context.tenant_id.expect("tenant");
+        let submitted = service.submit(request.clone()).await.expect("submit");
+        assert_eq!(submitted.revision, 1);
+
+        let claimed = service
+            .claim_queued(tenant_id, request.request_id)
+            .await
+            .expect("claim queued request");
+        assert_eq!(claimed.claim.revision, 2);
+        assert!(matches!(
+            service.claim_queued(tenant_id, request.request_id).await,
+            Err(ModuleBuildProtocolError::ExecutionInProgress)
+        ));
+
+        let result = cancelled_result(&claimed.request);
+        let recorded = service
+            .record_result(&claimed.claim, result.clone())
+            .await
+            .expect("record terminal result");
+        assert!(recorded.created);
+        assert_eq!(recorded.revision, 3);
+
+        let replay = service
+            .record_result(&claimed.claim, result)
+            .await
+            .expect("replay terminal result");
+        assert!(!replay.created);
+        assert_eq!(replay.revision, 3);
+        assert!(matches!(
+            service.claim_queued(tenant_id, request.request_id).await,
+            Err(ModuleBuildProtocolError::NotQueued)
+        ));
+        assert_eq!(
+            service
+                .load_completed(tenant_id, request.request_id)
+                .await
+                .expect("completed result")
+                .revision,
+            3
+        );
+    }
+
+    #[tokio::test]
+    async fn expired_claim_is_replaced_and_cannot_complete_after_recovery() {
+        let service = build_service().await;
+        let request = request();
+        let tenant_id = request.context.tenant_id.expect("tenant");
+        service.submit(request.clone()).await.expect("submit");
+        let first = service
+            .claim_queued(tenant_id, request.request_id)
+            .await
+            .expect("first claim");
+
+        service
+            .db
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_build_requests SET lease_expires_at = datetime('now', '-1 second') WHERE request_id = ?1".to_string(),
+                [uuid_value(request.request_id, DbBackend::Sqlite)],
+            ))
+            .await
+            .expect("expire first claim");
+        let recovered = service
+            .claim_queued(tenant_id, request.request_id)
+            .await
+            .expect("recover expired claim");
+        assert_eq!(recovered.claim.revision, 3);
+        assert!(matches!(
+            service
+                .record_result(&first.claim, cancelled_result(&first.request))
+                .await,
+            Err(ModuleBuildProtocolError::ExecutionClaimConflict)
+        ));
+        assert_eq!(
+            service
+                .record_result(&recovered.claim, cancelled_result(&recovered.request))
+                .await
+                .expect("complete recovered claim")
+                .revision,
+            4
+        );
     }
 
     #[test]

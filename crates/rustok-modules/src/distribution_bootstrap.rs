@@ -14,7 +14,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    ControlPlaneInfrastructure, ModuleStaticDistributionBuildEvidence,
+    ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionBuildEvidence,
     ModuleStaticDistributionExecutorMode, ModuleStaticDistributionItem,
     ModuleStaticDistributionReleaseAdmission,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
@@ -83,8 +83,7 @@ pub struct VerifiedModuleStaticDistributionBootstrapReceipt {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleStaticDistributionBootstrapImportCommand {
     pub receipt: ModuleStaticDistributionBootstrapReceipt,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -277,8 +276,8 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
         command: ModuleStaticDistributionBootstrapImportCommand,
     ) -> Result<ModuleStaticDistributionBootstrapImportReceipt, ModuleStaticDistributionReleaseError>
     {
-        if command.actor_id.is_nil()
-            || command.idempotency_key.is_nil()
+        if command.context.tenant_id.is_some()
+            || command.context.validate().is_err()
             || self.public_key_base64.trim().is_empty()
             || self.public_key_base64.trim() != self.public_key_base64
         {
@@ -295,13 +294,12 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
         let request_digest = bootstrap_import_request_digest(
             &receipt_digest,
             &self.public_key_base64,
-            command.actor_id,
+            &command.context,
         )?;
         if let Some(replay) = load_bootstrap_import_operation(
             &self.db,
-            command.idempotency_key,
+            &command.context,
             &request_digest,
-            command.actor_id,
             &command.receipt.payload,
             &receipt_digest,
         )
@@ -312,13 +310,7 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
 
         let payload = &command.receipt.payload;
         let transaction = self.db.begin().await.map_err(store_error)?;
-        reserve_bootstrap_import_operation(
-            &transaction,
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?;
+        reserve_bootstrap_import_operation(&transaction, &command.context, &request_digest).await?;
         let distribution_state = load_distribution_state(&transaction, true)
             .await
             .map_err(distribution_error)?;
@@ -335,7 +327,7 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
             &transaction,
             payload,
             &receipt_digest,
-            command.actor_id,
+            command.context.actor_id,
             self.infrastructure.now(),
         )
         .await?;
@@ -345,7 +337,7 @@ impl SeaOrmModuleStaticDistributionBootstrapService {
                 distribution_release_id: payload.distribution_release_id,
                 predecessor_release_id: None,
                 release_revision: 1,
-                actor_id: command.actor_id,
+                actor_id: command.context.actor_id,
                 admitted_at: self.infrastructure.now(),
                 distribution_build_id: payload.preparation_id,
                 composition_revision: payload.preparation.composition_revision,
@@ -515,18 +507,18 @@ async fn insert_bootstrap_item(
 fn bootstrap_import_request_digest(
     receipt_digest: &str,
     public_key_base64: &str,
-    actor_id: Uuid,
+    context: &ModuleCommandContext,
 ) -> Result<String, ModuleStaticDistributionReleaseError> {
     #[derive(Serialize)]
     struct Request<'a> {
         receipt_digest: &'a str,
         public_key_base64: &'a str,
-        actor_id: Uuid,
+        context: &'a ModuleCommandContext,
     }
     rustok_api::manifest_hash::hash_manifest(&Request {
         receipt_digest,
         public_key_base64,
-        actor_id,
+        context,
     })
     .map(|digest| format!("sha256:{digest}"))
     .map_err(store_error)
@@ -534,9 +526,8 @@ fn bootstrap_import_request_digest(
 
 async fn load_bootstrap_import_operation<C: ConnectionTrait>(
     connection: &C,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     request_digest: &str,
-    actor_id: Uuid,
     payload: &ModuleStaticDistributionBootstrapReceiptPayload,
     receipt_digest: &str,
 ) -> Result<
@@ -548,12 +539,12 @@ async fn load_bootstrap_import_operation<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_kind, request_digest, actor_id
+                "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id
                  FROM module_static_distribution_release_idempotency_keys
                  WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![uuid_value(context.idempotency_key, backend)],
         ))
         .await
         .map_err(store_error)?;
@@ -563,9 +554,18 @@ async fn load_bootstrap_import_operation<C: ConnectionTrait>(
     let operation_kind: String = row.try_get("", "operation_kind").map_err(store_error)?;
     let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
     let stored_actor = uuid_from_row(&row, "actor_id", backend).map_err(store_error)?;
+    let stored_context = ModuleCommandContext {
+        actor_id: stored_actor,
+        tenant_id: None,
+        trace_id: row.try_get("", "trace_id").map_err(store_error)?,
+        correlation_id: uuid_from_row(&row, "correlation_id", backend).map_err(store_error)?,
+        idempotency_key: context.idempotency_key,
+    };
     if operation_kind != "bootstrap_import"
         || stored_digest != request_digest
-        || stored_actor != actor_id
+        || stored_context.tenant_id.is_some()
+        || stored_context.validate().is_err()
+        || stored_context != *context
     {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
@@ -600,9 +600,8 @@ async fn load_bootstrap_import_operation<C: ConnectionTrait>(
 
 async fn reserve_bootstrap_import_operation(
     transaction: &DatabaseTransaction,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
@@ -610,18 +609,21 @@ async fn reserve_bootstrap_import_operation(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_release_idempotency_keys
-                 (idempotency_key, operation_kind, request_digest, actor_id, created_at)
-                 VALUES ({}, 'bootstrap_import', {}, {}, {})
+                 (idempotency_key, operation_kind, request_digest, actor_id, trace_id, correlation_id, created_at)
+                 VALUES ({}, 'bootstrap_import', {}, {}, {}, {})
                  ON CONFLICT (idempotency_key) DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
+                placeholder(backend, 4),
                 now_expression(backend),
             ),
             vec![
-                uuid_value(idempotency_key, backend),
+                uuid_value(context.idempotency_key, backend),
                 request_digest.to_owned().into(),
-                uuid_value(actor_id, backend),
+                uuid_value(context.actor_id, backend),
+                context.trace_id.clone().into(),
+                uuid_value(context.correlation_id, backend),
             ],
         ))
         .await
@@ -674,4 +676,30 @@ fn sha256_digest(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("sha256:{}", hex::encode(hasher.finalize()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bootstrap_import_digest_binds_the_entire_command_context() {
+        let context = ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: None,
+            trace_id: "test:static-distribution-bootstrap".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let receipt_digest = format!("sha256:{}", "a".repeat(64));
+        let public_key = STANDARD.encode([7_u8; 32]);
+        let initial = bootstrap_import_request_digest(&receipt_digest, &public_key, &context)
+            .expect("bootstrap request digest");
+        let mut changed_context = context.clone();
+        changed_context.trace_id = "test:static-distribution-bootstrap:other".to_string();
+        let changed =
+            bootstrap_import_request_digest(&receipt_digest, &public_key, &changed_context)
+                .expect("changed bootstrap request digest");
+        assert_ne!(initial, changed);
+    }
 }

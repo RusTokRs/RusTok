@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
+use axum::http::StatusCode;
 use chrono::{Duration, Utc};
 use rustok_api::Permission;
 use rustok_core::ModuleRegistry;
@@ -14,15 +15,20 @@ use uuid::Uuid;
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
-use crate::graphql::artifact_tenant_lifecycle::map_artifact_tenant_lifecycle_error;
+use crate::error::Error as ServerError;
+use crate::graphql::artifact_lifecycle::map_artifact_tenant_lifecycle_error;
 use crate::graphql::types::{
-    ActivityItem, ActivityUser, ArtifactTenantLifecycle, BuildJob, DashboardStats, InstalledModule,
-    MarketplaceModule, MarketplaceModuleVersion, MarketplaceRegistryFreshness,
-    ModuleCompositionSnapshot, ModuleOperationRecoveryPlan, ModuleRegistryItem, ModuleSettingField,
-    Tenant, TenantModule, User, UserConnection, UserEdge, UsersFilter,
+    ActivityItem, ActivityUser, ArtifactTenantLifecycle, ArtifactUiActionAudit,
+    ArtifactUiContribution, BuildJob, DashboardStats, InstalledModule, MarketplaceModule,
+    MarketplaceModuleVersion, MarketplaceRegistryFreshness, ModuleCompositionSnapshot,
+    ModuleOperationRecoveryPlan, ModuleRegistryItem, ModuleSettingField, Tenant, TenantModule,
+    User, UserConnection, UserEdge, UsersFilter,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
+use crate::services::artifact_ui::{
+    list_authorized_artifact_ui_action_audit, list_authorized_artifact_ui_contributions,
+};
 use crate::services::dashboard_user_activity;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
@@ -423,7 +429,7 @@ fn map_module_operation_recovery_error(error: ModuleOperationRecoveryError) -> F
     }
 }
 
-async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
+pub(crate) async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
@@ -450,6 +456,37 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn map_artifact_ui_contribution_error(error: ServerError) -> FieldError {
+    match error {
+        ServerError::NotFound => {
+            <FieldError as GraphQLError>::not_found("Artifact installation is unavailable")
+        }
+        error => {
+            tracing::error!(%error, "artifact UI contribution GraphQL read failed");
+            <FieldError as GraphQLError>::internal_error(
+                "Artifact UI contributions are unavailable",
+            )
+        }
+    }
+}
+
+fn map_artifact_ui_action_audit_error(error: ServerError) -> FieldError {
+    match error {
+        ServerError::NotFound => {
+            <FieldError as GraphQLError>::not_found("Artifact UI action is unavailable")
+        }
+        ServerError::Http(error) if error.status == StatusCode::FORBIDDEN => {
+            <FieldError as GraphQLError>::permission_denied(
+                "Permission denied for artifact UI action",
+            )
+        }
+        error => {
+            tracing::error!(%error, "artifact UI action audit GraphQL read failed");
+            <FieldError as GraphQLError>::internal_error("Artifact UI action audit is unavailable")
+        }
+    }
 }
 
 async fn ensure_modules_manage_permission(ctx: &Context<'_>) -> Result<()> {
@@ -520,6 +557,7 @@ impl RootQuery {
     }
 
     async fn enabled_modules(&self, ctx: &Context<'_>, limit: Option<i32>) -> Result<Vec<String>> {
+        ensure_modules_read_permission(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
@@ -760,6 +798,72 @@ impl RootQuery {
             enabled: lifecycle.enabled,
             revision,
             expected_revision,
+        })
+    }
+
+    /// Returns only host-safe, exact-locale contributions that the current
+    /// principal may render for one active artifact installation. The request
+    /// context owns locale resolution; callers cannot provide a fallback.
+    async fn artifact_ui_contributions(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+    ) -> Result<Vec<ArtifactUiContribution>> {
+        ensure_modules_read_permission(ctx).await?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let request = ctx.data::<RequestContext>()?;
+
+        list_authorized_artifact_ui_contributions(
+            runtime_ctx,
+            tenant.id,
+            auth.user_id,
+            installation_id,
+            &request.locale,
+        )
+        .await
+        .map_err(map_artifact_ui_contribution_error)
+        .map(|views| {
+            views
+                .into_iter()
+                .map(ArtifactUiContribution::from)
+                .collect()
+        })
+    }
+
+    /// Returns redacted execution evidence for the admitted Action or Form
+    /// contribution. The caller cannot select a raw binding ID, and the same
+    /// dynamic RBAC permission that authorizes execution guards this read.
+    async fn artifact_ui_action_audit(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+        contribution_id: String,
+    ) -> Result<Vec<ArtifactUiActionAudit>> {
+        ensure_modules_read_permission(ctx).await?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        list_authorized_artifact_ui_action_audit(
+            runtime_ctx,
+            tenant.id,
+            auth.user_id,
+            installation_id,
+            &contribution_id,
+        )
+        .await
+        .map_err(map_artifact_ui_action_audit_error)
+        .map(|entries| {
+            entries
+                .into_iter()
+                .map(ArtifactUiActionAudit::from)
+                .collect()
         })
     }
 

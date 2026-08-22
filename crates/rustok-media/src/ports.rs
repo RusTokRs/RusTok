@@ -352,7 +352,7 @@ async fn admit_write<T: Serialize>(
     let key = context.idempotency_key.as_deref().unwrap_or_default();
     match idempotency::admit(
         service.database(),
-        tenant_id,
+        idempotency::OwnerOperationScope::Tenant(tenant_id),
         "media",
         key,
         operation,

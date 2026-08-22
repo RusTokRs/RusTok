@@ -103,7 +103,11 @@ pub async fn create_owner_operation_receipts_table(
                 )
                 .col(
                     ColumnDef::new(OwnerOperationReceipts::TenantId)
-                        .uuid()
+                        .uuid(),
+                )
+                .col(
+                    ColumnDef::new(OwnerOperationReceipts::ScopeKey)
+                        .string_len(191)
                         .not_null(),
                 )
                 .col(
@@ -157,9 +161,9 @@ pub async fn create_owner_operation_receipts_table(
         .create_index(
             Index::create()
                 .if_not_exists()
-                .name("uidx_owner_operation_receipts_tenant_owner_key")
+                .name("uidx_owner_operation_receipts_scope_owner_key")
                 .table(OwnerOperationReceipts::Table)
-                .col(OwnerOperationReceipts::TenantId)
+                .col(OwnerOperationReceipts::ScopeKey)
                 .col(OwnerOperationReceipts::OwnerSlug)
                 .col(OwnerOperationReceipts::IdempotencyKey)
                 .unique()
@@ -201,6 +205,7 @@ enum OwnerOperationReceipts {
     Table,
     Id,
     TenantId,
+    ScopeKey,
     OwnerSlug,
     IdempotencyKey,
     Operation,

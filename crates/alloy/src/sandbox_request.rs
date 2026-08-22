@@ -423,6 +423,7 @@ impl AlloyDraftRequestBuilder {
                 tenant_id,
                 actor_id: context.user_id.clone(),
                 trace_id: None,
+                audit_label: None,
             },
             payload: SandboxPayload {
                 executor: SandboxExecutorKind::Rhai,

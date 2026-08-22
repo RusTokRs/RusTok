@@ -1092,24 +1092,6 @@ mod tests {
         database
     }
 
-    async fn stored_settings(
-        database: &sea_orm::DatabaseConnection,
-        tenant_id: Uuid,
-        module_slug: &str,
-    ) -> serde_json::Value {
-        database
-            .query_one(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "SELECT settings FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2",
-                vec![tenant_id.into(), module_slug.into()],
-            ))
-            .await
-            .expect("read settings")
-            .expect("settings row")
-            .try_get("", "settings")
-            .expect("settings json")
-    }
-
     #[tokio::test]
     async fn settings_persistence_enforces_effective_enablement_and_keeps_core_enabled() {
         let database = database().await;

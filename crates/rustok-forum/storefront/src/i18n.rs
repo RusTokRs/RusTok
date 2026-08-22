@@ -19,7 +19,10 @@ mod tests {
 
     #[test]
     fn arabic_catalog_is_selected_for_arabic_runtime_locale() {
-        assert_eq!(t(Some("ar"), "forum.categories.label", "Categories"), "التصنيفات");
+        assert_eq!(
+            t(Some("ar"), "forum.categories.label", "Categories"),
+            "التصنيفات"
+        );
         assert_eq!(
             t(Some("ar-SA"), "forum.thread.repliesTitle", "Replies"),
             "الردود"

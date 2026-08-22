@@ -279,7 +279,7 @@ impl ForumCategoryTranslationTargetProvider {
             .map_err(forum_error_to_port_error)?;
         super::category_translation_evidence::record_category_translation_change_in_tx(
             txn,
-            tenant_id,
+            idempotency::OwnerOperationScope::Tenant(tenant_id),
             category_id,
             OPERATION_APPLY_PATCH,
             TranslationResourceLifecycle::Active,

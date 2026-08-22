@@ -104,7 +104,7 @@ impl ProductCatalogSchemaService {
         }
 
         txn.publish(
-            tenant_id,
+            idempotency::OwnerOperationScope::Tenant(tenant_id),
             Some(actor_id),
             DomainEvent::ProductAttributeCreated { attribute_id },
         )

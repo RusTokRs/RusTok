@@ -202,11 +202,17 @@ Artifact persistence is limited to a revision plus a bundled schema digest for
 brokered namespaced values; descriptor decoding rejects unknown fields, so an
 artifact cannot attach SQL, DDL, native migrations, a bucket path, or a host
 storage handle.
-Dynamic artifact UI is similarly declarative-only: the current contract accepts only
-`admin_settings` and `admin_actions` contribution surfaces with immutable
-localization and declared permissions. Descriptor fields cannot carry a
-component, URL, iframe, or native frontend package; native UI remains a static
-promotion concern.
+Dynamic artifact UI is similarly declarative-only: the current contract accepts
+`admin_settings`, `admin_actions`, `admin_status`, `admin_help`,
+`admin_navigation`, `admin_table`, `admin_form`, and `storefront_slot` surfaces
+with immutable localization and declared permissions. Descriptor fields cannot
+carry a component, URL, iframe, or native frontend package. The owner projects
+an admitted contribution only into `rustok_api::ArtifactUiContributionView`.
+Its redacted execution evidence uses the same framework-neutral
+`rustok_api::ArtifactBindingExecutionAuditEntry` contract. Those DTOs exclude
+catalogs, localization keys, permissions, binding IDs, executable UI material,
+inputs, outputs, actors, traces, credentials, and grants. Native UI remains a
+static promotion concern.
 Schemas are keyed by their canonical digest, compile into a bounded node-local
 LRU cache with linear-time regex limits, and use a `jsonschema` build without
 filesystem or HTTP resolver features. Non-local `$ref`, `$dynamicRef`, and

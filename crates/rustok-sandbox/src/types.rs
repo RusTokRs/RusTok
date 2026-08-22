@@ -103,6 +103,9 @@ pub struct SandboxContext {
     pub tenant_id: Option<Uuid>,
     pub actor_id: Option<String>,
     pub trace_id: Option<String>,
+    /// Owner-defined, redacted operation label retained only for audit
+    /// correlation. It is never supplied by guest input or returned to it.
+    pub audit_label: Option<String>,
 }
 
 impl SandboxContext {
@@ -114,6 +117,7 @@ impl SandboxContext {
             tenant_id: None,
             actor_id: None,
             trace_id: None,
+            audit_label: None,
         }
     }
 }

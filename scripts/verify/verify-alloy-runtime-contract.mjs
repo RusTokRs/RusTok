@@ -686,7 +686,7 @@ hasAll(remoteAlloyController, [
   'TOOL_ALLOY_CHANGE_DELETED_EVIDENCE_RETENTION',
   '.get_deleted_evidence_retention(parse_remote_alloy_args(arguments)?)',
   '.change_deleted_evidence_retention(&actor_id, parse_remote_alloy_args(arguments)?)',
-  'owner_bound_alloy_authoring'
+  'source_bearing_alloy_authoring'
 ], 'remote MCP legal-hold transport');
 const mcpAlloyTools = read('crates/rustok-mcp/src/alloy_tools.rs');
 for (const forbidden of [

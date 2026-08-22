@@ -67,18 +67,17 @@ pub use artifact::{
     ArtifactDataIndexField, ArtifactDataIndexValueType, ArtifactLocalizationCatalog,
     ArtifactModuleKind, ArtifactOrigin, ArtifactPayloadKind, ArtifactPermissionDescriptor,
     ArtifactPersistenceContract, ArtifactRelease, ArtifactReleaseDraft, ArtifactReleaseRef,
-    ArtifactSchemaDocument, ArtifactSourceLineage, ArtifactUiActionConfirmation,
-    ArtifactUiAuditPolicy, ArtifactUiContribution, ArtifactUiContributionContent,
-    ArtifactUiSurface, MAX_MODULE_ARTIFACT_SOURCE_MANIFEST_BYTES,
-    MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION, MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE,
-    MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE, MODULE_ARTIFACT_SOURCE_MANIFEST_FILE,
-    MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
-    ModuleArtifactDescriptor, ModuleArtifactError, ModuleArtifactSourceManifest,
-    ModuleArtifactSourceManifestError, ModuleBindingIdempotency, ModuleDependencyConstraint,
-    ModuleHttpBinding, ModuleHttpMethod, ModuleHttpStreamingPolicy, ModuleRuntimeBinding,
-    ModuleRuntimeBindingKind, ModuleScheduleBinding, ModuleScheduleDeduplication,
-    ModuleScheduleMisfirePolicy, ModuleScheduleOverlapPolicy, canonical_artifact_descriptor_digest,
-    canonical_schema_digest, schedule_binding_digest,
+    ArtifactSchemaDocument, ArtifactSourceLineage, ArtifactUiAuditPolicy, ArtifactUiContribution,
+    ArtifactUiContributionContent, ArtifactUiProjectionError,
+    MAX_MODULE_ARTIFACT_SOURCE_MANIFEST_BYTES, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+    MODULE_ARTIFACT_RHAI_SOURCE_MEDIA_TYPE, MODULE_ARTIFACT_SIDECAR_MEDIA_TYPE,
+    MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, MODULE_ARTIFACT_STATIC_PROMOTION_MEDIA_TYPE,
+    MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE, ModuleArtifactDescriptor, ModuleArtifactError,
+    ModuleArtifactSourceManifest, ModuleArtifactSourceManifestError, ModuleBindingIdempotency,
+    ModuleDependencyConstraint, ModuleHttpBinding, ModuleHttpMethod, ModuleHttpStreamingPolicy,
+    ModuleRuntimeBinding, ModuleRuntimeBindingKind, ModuleScheduleBinding,
+    ModuleScheduleDeduplication, ModuleScheduleMisfirePolicy, ModuleScheduleOverlapPolicy,
+    canonical_artifact_descriptor_digest, canonical_schema_digest, schedule_binding_digest,
 };
 pub use artifact_capability_router::{
     ArtifactCapabilityBrokerResolver, ArtifactCapabilityBrokerResolverRouter,
@@ -132,12 +131,13 @@ pub use binding_idempotency::{
 pub use build::{
     MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION, MODULE_BUILD_RUNTIME_ABI,
     MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD, ModuleBuildAuthoring,
-    ModuleBuildCompletedResult, ModuleBuildComponentInterface, ModuleBuildDependencyPolicy,
-    ModuleBuildDiagnostic, ModuleBuildDiagnosticStage, ModuleBuildEvidence, ModuleBuildFailureCode,
-    ModuleBuildLimits, ModuleBuildMetrics, ModuleBuildNetworkPolicy, ModuleBuildNextAction,
-    ModuleBuildOutcome, ModuleBuildProtocolError, ModuleBuildPublicationReceipt,
-    ModuleBuildRequest, ModuleBuildResult, ModuleBuildResultRecord, ModuleBuildSignatureAuthority,
-    ModuleBuildSource, ModuleBuildSubmission, ModuleBuildToolchain, ModuleBuildValidationOutcome,
+    ModuleBuildClaimedRequest, ModuleBuildCompletedResult, ModuleBuildComponentInterface,
+    ModuleBuildDependencyPolicy, ModuleBuildDiagnostic, ModuleBuildDiagnosticStage,
+    ModuleBuildEvidence, ModuleBuildExecutionClaim, ModuleBuildFailureCode, ModuleBuildLimits,
+    ModuleBuildMetrics, ModuleBuildNetworkPolicy, ModuleBuildNextAction, ModuleBuildOutcome,
+    ModuleBuildProtocolError, ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult,
+    ModuleBuildResultRecord, ModuleBuildSignatureAuthority, ModuleBuildSource,
+    ModuleBuildSubmission, ModuleBuildToolchain, ModuleBuildValidationOutcome,
     ModuleBuildValidationProfile, ModuleBuildValidationResult, ModuleBuildWitContract,
     ModuleBuildWorker, ModuleBuildWorkerReadiness, SeaOrmModuleBuildService,
 };
@@ -208,7 +208,7 @@ pub use dispatcher::{
     ArtifactHttpBindingRequest, ArtifactInstallationTarget, ArtifactLifecycleExecutor,
     ModuleDispatchError, ModuleExecutionDispatcher, ModuleLifecycleHookPhase,
     dispatch_artifact_command_binding, dispatch_artifact_http_binding,
-    find_artifact_command_binding, find_artifact_http_binding,
+    find_artifact_command_binding, find_artifact_http_binding, find_artifact_ui_action_binding,
 };
 pub use distribution::{
     ModuleStaticDistributionAuthorizer, ModuleStaticDistributionBuild,
@@ -266,7 +266,10 @@ pub use event_delivery::{
     ArtifactEventProjectionTransport, SeaOrmArtifactEventDeliveryQueue,
     SeaOrmArtifactEventSubscriptionProjector,
 };
-pub use execution_audit::SeaOrmArtifactExecutionObserver;
+pub use execution_audit::{
+    ArtifactBindingExecutionAuditError, SeaOrmArtifactBindingExecutionAuditReader,
+    SeaOrmArtifactExecutionObserver,
+};
 pub use executor::{
     ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest, ModuleLifecycleToggleResult,
     execute_module_toggle,

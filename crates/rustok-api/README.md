@@ -12,6 +12,10 @@
 - Provide framework-neutral platform build/release snapshots and typed status,
   stage, and deployment-profile codes shared by owner ports, GraphQL adapters,
   and browser-safe native UI transports.
+- Provide the host-safe artifact UI projection and redacted binding-audit DTOs
+  shared by owner modules, server HTTP, GraphQL, Leptos, Next, and Flutter
+  adapters without exposing descriptor-local catalogs, permissions, bindings,
+  executable UI material, inputs, outputs, actors, traces, or credentials.
 - Provide the minimized federated module-registry freshness DTO shared by the
   owner catalog port, GraphQL, native Leptos transport, and Next/headless
   clients without exposing endpoints or remote error content.
@@ -45,6 +49,7 @@
 
 ## Entry points
 - `src/lib.rs`
+- `src/artifact_ui.rs`
 - `src/context/`
 - `src/request.rs`
 - `src/runtime.rs`

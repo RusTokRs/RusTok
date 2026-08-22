@@ -17,6 +17,8 @@ impl MigrationTrait for Migration {
                     installation_id UUID NOT NULL UNIQUE REFERENCES module_artifact_installations(installation_id),\
                     expected_revision BIGINT NOT NULL CHECK (expected_revision > 0),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     idempotency_key UUID NOT NULL UNIQUE,\
                     committed_at TIMESTAMPTZ NOT NULL\
@@ -32,6 +34,8 @@ impl MigrationTrait for Migration {
                     installation_id TEXT NOT NULL UNIQUE REFERENCES module_artifact_installations(installation_id),\
                     expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     idempotency_key TEXT NOT NULL UNIQUE,\
                     committed_at TEXT NOT NULL\

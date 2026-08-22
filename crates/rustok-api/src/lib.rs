@@ -9,6 +9,7 @@
  */
 
 pub mod artifact_permissions;
+pub mod artifact_ui;
 pub mod context;
 pub mod digest;
 pub mod event_delivery;
@@ -34,6 +35,10 @@ pub use artifact_permissions::{
     ArtifactPermissionLocalization, ArtifactPermissionRegistration,
     ArtifactPermissionRegistrationPort, ArtifactPermissionRegistrationRequest,
     ArtifactPermissionScope,
+};
+pub use artifact_ui::{
+    ArtifactBindingExecutionAuditEntry, ArtifactUiActionConfirmation, ArtifactUiContributionView,
+    ArtifactUiContributionViewContent, ArtifactUiSurface,
 };
 #[cfg(feature = "server")]
 pub use context::{

@@ -422,13 +422,21 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   installation, effective policy, composition, governance, lifecycle, recovery,
   and build operations.
 - [x] Define one stable owner error envelope and codes from the families above.
-- [ ] Define revision/CAS fields for every mutable aggregate:
+- [x] Define revision/CAS fields for every mutable aggregate:
   - platform composition revision;
   - publish-request revision;
   - installation revision;
   - tenant settings revision;
   - build attempt/revision.
-  Publish-request work is in progress: its durable row now begins at revision
+  Build requests now start at revision `1`. Before dispatch, the owner atomically
+  transitions a queued request to `running`, increments its revision, and issues
+  an opaque durable claim with a lease longer than the maximum admitted worker
+  deadline. Terminal persistence requires that exact still-live claim and its
+  observed revision, clears the lease, and increments the revision again;
+  exact terminal redelivery replays, while a recovered expired claim cannot be
+  completed by its former dispatcher. This prevents concurrent deliveries from
+  executing or publishing the same immutable build. Publish-request work is in
+  progress: its durable row now begins at revision
   `1`, owner-derived REST, GraphQL, and native-admin status projections expose
   that value. Reject, request-changes, hold, resume, final-publication,
   artifact-attach, validation-enqueue, and validation-worker result commands
@@ -448,8 +456,28 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   request-state and validation-stage transitions now use the compare-and-swap
   contract.
 - [ ] Define actor, tenant, trace, idempotency, and correlation context required
-  by every command.
-- [ ] Document GraphQL/native compatibility policy and versioning rules.
+  by every command. The canonical `ModuleCommandContext` validates non-nil UUID
+  actor, correlation, and idempotency identities, plus a bounded non-empty
+  trace; a
+  tenant context is either absent for platform scope or a non-nil UUID. The
+  artifact lifecycle family (activation, deactivation, tenant intent,
+  uninstall, rollback, migration checkpoints, and tenant data purge),
+  settings recovery, data snapshots, artifact secret binding, global
+  artifact-security transitions, static promotion, and static-distribution
+  bootstrap/admission/revocation now carry this one context through their owner
+  validation, durable receipts, and owner-created outbox envelopes where the
+  operation emits an event. Each receipt rejects an idempotency reuse with
+  different context evidence. GraphQL carries the context where that surface is
+  exposed.
+  The remaining mutable owner families still require atomic caller cutover to
+  this contract. The accepted target is recorded in
+  [ADR 2026-08-22](../../DECISIONS/2026-08-22-module-command-context-evidence.md).
+- [x] Document GraphQL/native compatibility and versioning rules. The central
+  UI transport contract requires one current repository-owned GraphQL/native
+  surface, atomic caller cutover, and no version-suffixed routes, fields,
+  types, server functions, or old/new adapters. An independently deployed
+  external API version maps at its boundary to the same canonical owner DTO;
+  it cannot fork authorization or domain semantics.
 - [x] Freeze the split between the compile-time implementation registry and the
   durable artifact-aware module definition catalog. `ModuleRegistry` retains
   only static implementation handles; `ModuleDefinitionCatalog` resolves the
@@ -914,9 +942,10 @@ adapter and must not be used as artifact identity or durable policy state.
   handle. Admission, rollback, deactivate, uninstall, tenant lifecycle, data
   purge, and migration checkpoints likewise complete their owner transaction
   before any downstream outbox consumer can execute an artifact.
-  Deactivation, tenant disable/enable, and uninstall reject nil installation,
-  actor, idempotency, and tenant-scope identities before opening that
-  transaction, keeping lifecycle audit and idempotency records attributable.
+  Deactivation, tenant disable/enable, uninstall, and migration checkpoints
+  reject nil installation, actor, idempotency, and tenant-scope identities
+  before opening that transaction, keeping lifecycle audit and idempotency
+  records attributable.
 
 ### 2.4 Facade Shape
 
@@ -1617,15 +1646,20 @@ migrations or arbitrary SQL.
   legal hold, separately authorized as a destructive owner command, and
   explicitly approved by a supplied durable policy snapshot
   with no audit or rollback hold; a missing rule retains it. Approval first
-  commits an immutable `collecting` operation with actor, reason, and policy
-  snapshot identity. Blob deletion is idempotent, interrupted collection
-  resumes without losing the original decision, and the final transaction
+  commits an immutable `collecting` operation with its tenant-matched typed
+  command context, reason, and policy snapshot identity. Blob deletion is
+  idempotent, interrupted collection resumes with the original
+  actor/trace/correlation/idempotency identity rather than that of the
+  resuming worker, and the final transaction
   deletes manifest-owned rows while preserving retention/restore/collection
   audit facts and emits `module.artifact.data_snapshot_collected`.
 - [x] Keep secret values outside settings and module data; store only brokered
   secret references. The secret-binding store persists only a host-authorized
   resolver reference in its separate owner table; structured data, sandbox
   inputs, artifact handles, and outbox evidence never include a secret value.
+  Binding is a tenant-matched typed command: its immutable operation receipt
+  retains actor, trace, correlation, and idempotency facts, rejects a changed
+  replay, and its outbox envelope preserves the same evidence.
   The sandbox handle-acquisition broker exposes only logical name and revision.
   `SeaOrmArtifactSecretUseService` is the separate host-only value boundary: a
   caller must present the exact nonzero handle revision and immutable execution
@@ -1646,9 +1680,14 @@ migrations or arbitrary SQL.
   rechecks source revisions, uses create-only target writes with deterministic
   per-record idempotency derived from the owner plan ID, and records a redacted
   installation checkpoint through the existing revision CAS/outbox path only
-  after the page completes. It holds no control-plane transaction across the
-  page. Uncertain-outcome recovery, distributed rollout, rollback, and
-  quarantine policies remain pending.
+  after the page completes. The apply command supplies authenticated
+  actor/reason/idempotency facts; the checkpoint receipt binds their immutable
+  request digest and replays an uncertain successful command without another
+  revision advance or outbox event. It holds no control-plane transaction
+  across the page. Distributed rollout, rollback, and quarantine policies
+  remain pending. Focused SQLite lifecycle and data-upgrade replay tests plus
+  the lifecycle command validation test passed after the durable checkpoint
+  receipt was added; no workspace-wide test run is claimed.
 - [x] Before allowing declarative DDL migrations, create a separate ADR and
   threat model covering allowed operations, schema isolation, locks, rollback,
   backup, cross-module references, tenant rollout, and failure recovery.
@@ -1718,9 +1757,12 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   bindings. They accept only an admitted Optional artifact visible in the
   requesting tenant scope that has not been uninstalled. An uninstall operation
   rejects a later tenant lifecycle command before it can write a new intent
-  record. Their durable lifecycle row also records the command's expected
-  revision and requested enabled state, making replays fail closed unless
-  actor, reason, revision, state, and key all match.
+  record. A separate tenant-scoped immutable receipt ledger records the
+  installation, requested state, expected and committed revisions, actor,
+  reason, and idempotency key. Exact retries replay their original committed
+  revision after later commands or uninstall without another event; divergent
+  key reuse fails closed. The mutable lifecycle row retains only current intent
+  and its latest audit metadata.
 - [x] Artifact uninstall is an owner-owned, revision-guarded and idempotent
   scope-selection removal. It requires an inactive installation, rejects an
   active direct dependent in the same scope, writes audit/outbox atomically,
@@ -1728,14 +1770,33 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   evidence. Its replay contract likewise matches the complete immutable
   command rather than accepting a reused key alone; a new command against the
   terminal uninstalled selection rejects before it can reach persistence.
+- [x] Expose the current dynamic installation lifecycle through tenant-scoped
+  GraphQL commands only. `activateTenantArtifact`, `deactivateTenantArtifact`,
+  `uninstallTenantArtifact`, and `rollbackTenantArtifact` derive scope from the
+  authenticated `TenantContext` and require `modules:manage`; no client input
+  can select tenant or platform scope. Rollback also accepts no target
+  installation selector: the owner selects only the retained direct
+  predecessor after its capability-grant and migration-policy checks. The
+  platform-scope GraphQL surface is deliberately absent because a
+  tenant-derived permission is not a platform-operator authorization contract;
+  it remains fail-closed until that distinct authority exists. The shared
+  GraphQL document guard classifies the tenant lifecycle snapshot as read and
+  every lifecycle mutation as manage before resolver execution; the owner
+  facade repeats the authorization check at the command boundary. The same
+  guard classifies the composition snapshot as read and marketplace registry
+  freshness as manage before their resolver/owner checks. The admin-navigation
+  `enabledModules` tenant availability projection is also read-gated at both
+  layers.
 - [x] The current structured artifact-data purge is a separate destructive
   operation. Its generic command/tenant-module attach identity is an explicit
   cutover gap; the target callable is `dynamic_artifact_data_purge`. It
   is tenant/module/data-contract scoped, revision-guarded and idempotent,
-  serializes against data writes, records actor/reason and the deleted-record
-  count, emits a transactional-outbox fact, and leaves a durable namespace
-  tombstone. A host-owned authorizer must approve lifecycle, retention, and
-  legal-hold policy before the operation begins.
+  serializes against data writes, carries a tenant-matched typed command
+  context, records actor/trace/correlation/reason and the deleted-record count
+  in its immutable receipt, emits a transactional-outbox fact with that same
+  command identity, and leaves a durable namespace tombstone. A host-owned
+  authorizer must approve lifecycle, retention, and legal-hold policy before
+  the operation begins.
 - [x] Complete `dynamic_artifact_settings_purge` as the independently
   authorized settings-owner lifecycle. The implemented core has exact
   encrypted recovery points, immutable KMS key-version/schema/descriptor/value
@@ -1746,7 +1807,10 @@ The owner boundary is fixed by the [module artifact rollback ADR](../../DECISION
   Recovery retention has its own revision-CAS receipt and may only extend
   expiry or add holds; the host KMS port rewraps authenticated ciphertext under the current
   approved key; collection records durable `ready`/`collecting`/`collected`
-  state before terminally clearing ciphertext while preserving evidence; and an
+  state before terminally clearing ciphertext while preserving evidence and
+  the original tenant-matched typed command context. A crash resume reloads
+  that stored actor/trace/correlation/idempotency identity before it emits the
+  terminal outbox event; and an
   intentionally unbound restore has a separate one-time continuity-authorized
   bind command. Direct restore pins its selected target admission revision;
   binding requires exact data owner, registry/repository lineage,
@@ -3047,13 +3111,36 @@ multi-node reconciliation path consumed by those transports.
   and action availability come from the modules owner. Remaining native
   mutation/parity coverage is tracked by the aggregate Phase 7 gate.
 - [ ] Reuse canonical DTOs through the approved framework-neutral contract
-  layer; do not duplicate GraphQL types in the UI package.
+  layer; do not duplicate GraphQL types in the UI package. The artifact UI
+  portion uses `rustok-api::ArtifactUiContributionView` and its typed
+  content/surface/confirmation contract plus the redacted
+  `ArtifactBindingExecutionAuditEntry` contract: `rustok-modules` creates
+  those owner projections and HTTP/native/GraphQL clients consume them without
+  descriptor-local duplicates. Other control-plane DTO families remain under
+  this aggregate item.
 - [x] Reuse canonical framework-neutral build/release snapshots across
   `SharedBuildControl`, GraphQL, and native admin. `rustok-api` owns the typed
   status/stage/profile contract, `rustok-build` alone maps SeaORM persistence,
   and the admin no longer defines or populates parallel build/release DTOs.
   The aggregate item remains open for the other control-plane DTO families.
-- [ ] Preserve GraphQL as the public/headless surface.
+- [ ] Preserve GraphQL as the public/headless surface. The artifact UI read
+  slice is available through `artifactUiContributions(installationId)`: it
+  adapts the one `rustok-api::ArtifactUiContributionView` projection, takes
+  its locale only from the resolved request context, and shares the HTTP
+  adapter's per-contribution dynamic-RBAC and exact-locale fail-closed rules.
+  Its `executeArtifactUiAction(installationId, contributionId, input,
+  idempotencyKey)` mutation resolves an admitted action/form contribution to
+  its exact Command binding, then shares REST's effective-policy, dynamic-RBAC,
+  durable-idempotency, sandbox-dispatch, and audit path without exposing a raw
+  binding selector. `artifactUiActionAudit(installationId, contributionId)`
+  provides its redacted execution evidence through the same contribution
+  resolution and dynamic-RBAC path, again without a raw binding selector.
+  Tenant dynamic-installation lifecycle also has owner-backed GraphQL commands:
+  `activateTenantArtifact`, `deactivateTenantArtifact`,
+  `uninstallTenantArtifact`, and `rollbackTenantArtifact`. They derive tenant,
+  actor, scope, and `modules:manage` from authenticated context and expose no
+  platform-scope or arbitrary rollback-target selector. The aggregate remains
+  open for the other control-plane operations.
 - [ ] Add GraphQL/native parity fixtures for success, validation, conflict,
   policy denial, recovery, and build failure.
 
@@ -3076,21 +3163,71 @@ uses an explicit UI trust boundary.
   authentication, or module-controlled locale fallback field. Leptos, Next,
   and Flutter hosts must adapt that one contract rather than receive
   host-specific artifacts.
-- [ ] Bind every action to an admitted runtime binding, permission, input/output
+- [x] Bind every action to an admitted runtime binding, permission, input/output
   schema, confirmation/destructive flag, idempotency, and audit policy. The
-  descriptor contract now rejects an action/form unless it references the exact
+  descriptor contract rejects an action/form unless it references the exact
   admitted `Command` binding with the same module-owned permission, bundled
   input/output schemas, required idempotency, a consistent destructive
-  confirmation, and required audit policy. Host action transport and durable
-  execution-audit consumption remain to be wired.
-- [ ] Resolve route, navigation, child-page, and storefront slot collisions in
-  the owner control plane before activation.
-- [ ] Use the host-provided effective locale and signed/admitted localization
+  confirmation, and required audit policy. The platform-owned
+  `POST /api/artifacts/{installation_id}/ui/contributions/{contribution_id}/execute`
+  route accepts only that reviewed Action/Form identity, then delegates to the
+  existing RBAC, schema, durable idempotency, and audited sandbox command path;
+  it cannot be used to select an arbitrary binding. The runtime writes the
+  host-selected admitted binding ID as a redacted neutral sandbox audit label;
+  `GET /api/artifacts/{installation_id}/ui/contributions/{contribution_id}/audit`
+  resolves and authorizes that same contribution before reading only its exact
+  tenant/installation/binding evidence. The response contains no payload,
+  output, actor, trace, credential, capability, or grant data.
+- [x] Resolve route, navigation, child-page, and storefront slot collisions in
+  the owner control plane before activation. `SeaOrmArtifactInstallationStore`
+  derives only typed navigation-route (including child-page) and storefront-slot
+  identities, acquires durable global resource locks in deterministic order, and
+  revalidates every candidate descriptor inside the lifecycle transaction. A
+  tenant activation compares its candidate with its platform baseline and its
+  own overlay; a platform activation compares it with every active tenant
+  overlay. The transaction-local PostgreSQL control-plane owner context permits
+  that platform-wide safety check without widening tenant-scoped queries. The
+  same guard runs before rollback can reactivate a predecessor, and a conflict
+  leaves the candidate admission revision unchanged.
+- Earlier focused verification on 2026-08-22 passed all 227
+  `rustok-modules` library tests after aligning the Alloy-fork SQLite fixture
+  with the owner-required publish-request `updated_at` field. After adding the
+  audit reader, the focused binding-evidence and canonical SQLite-migration
+  tests both passed. Exact-locale projection and binding-identity redaction
+  tests also passed, as did the package-scoped `cargo check --locked -p
+  rustok-server`. The shared GraphQL contribution, action, and audit adapters
+  then passed that same package check plus focused `rustok-api artifact_ui`
+  (3 passed), server `artifact_ui` (1 passed), and `module_security` (4
+  passed) library tests. The tenant lifecycle GraphQL transport then passed
+  `cargo check --locked -p rustok-server`, six `module_security` tests
+  covering the lifecycle snapshot, all five lifecycle mutations, composition
+  snapshot, registry freshness, and enabled-module availability, and its
+  focused sanitized-conflict test. `rustfmt --edition 2024`, `git diff
+  --check`, and `cargo metadata --locked --no-deps` also passed. No
+  workspace-wide compile or test run is claimed.
+- [x] Use the host-provided effective locale and signed/admitted localization
   catalogs; reject module-owned locale fallback chains and unsafe markup. The
-  admitted contract now has digest-verified, bounded plain-text catalogs with
-  an identical key set per declared locale and exact-locale lookup only; unsafe
-  markup is rejected. Host locale-context integration and rendering remain
-  open.
+  admitted contract has digest-verified, bounded plain-text catalogs with an
+  identical key set per declared locale and exact-locale lookup only; unsafe
+  markup is rejected. `GET /api/artifacts/{installation_id}/ui/contributions`
+  receives its locale exclusively from the server middleware's
+  `ResolvedRequestLocale`, filters each contribution through its dynamic RBAC
+  permission, and returns only the framework-neutral
+  `rustok-api::ArtifactUiContributionView` localized projection. The headless
+  GraphQL `artifactUiContributions(installationId)` read uses that exact same
+  server adapter and its middleware-resolved `RequestContext.locale`; it has
+  no locale argument or fallback. The headless
+  `executeArtifactUiAction(installationId, contributionId, input,
+  idempotencyKey)` mutation resolves the admitted contribution to its exact
+  Command binding and uses the same effective-policy, dynamic-RBAC,
+  durable-idempotency, sandbox-dispatch, and audit path as REST. It has no raw
+  binding selector. Its `artifactUiActionAudit(installationId, contributionId)`
+  companion uses that same contribution-resolution and dynamic-RBAC path to
+  return only `rustok-api::ArtifactBindingExecutionAuditEntry` facts. The
+  client cannot select a locale; an unavailable exact locale omits that
+  contribution rather than falling back. Catalogs, localization keys, binding
+  IDs, permissions, executable UI material, payloads, outputs, actors, traces,
+  credentials, capabilities, and grants never enter either response.
 - [ ] If custom untrusted web UI is introduced, run it from an isolated origin in
   a sandboxed iframe with strict CSP and a versioned, origin-checked,
   schema-validated message SDK. Do not provide platform cookies, bearer tokens,

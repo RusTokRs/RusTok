@@ -55,6 +55,8 @@ impl MigrationTrait for Migration {
                     operation_kind TEXT NOT NULL CHECK (operation_kind IN ('request', 'approve')),\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     promotion_id UUID NULL REFERENCES module_static_promotions(promotion_id) ON DELETE RESTRICT,\
                     result_revision BIGINT NULL CHECK (result_revision IS NULL OR result_revision > 0),\
                     result_status TEXT NULL CHECK (result_status IS NULL OR result_status IN ('requested', 'approved')),\
@@ -261,6 +263,8 @@ impl MigrationTrait for Migration {
                     operation_kind TEXT NOT NULL CHECK (operation_kind IN ('bootstrap_import', 'admit', 'revoke')),\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP\
                 )",
             ],
@@ -308,6 +312,8 @@ impl MigrationTrait for Migration {
                     operation_kind TEXT NOT NULL CHECK (operation_kind IN ('request', 'approve')),\
                     request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
                     promotion_id TEXT NULL REFERENCES module_static_promotions(promotion_id) ON DELETE RESTRICT,\
                     result_revision INTEGER NULL CHECK (result_revision IS NULL OR result_revision > 0),\
                     result_status TEXT NULL CHECK (result_status IS NULL OR result_status IN ('requested', 'approved')),\
@@ -514,6 +520,8 @@ impl MigrationTrait for Migration {
                     operation_kind TEXT NOT NULL CHECK (operation_kind IN ('bootstrap_import', 'admit', 'revoke')),\
                     request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
                 )",
             ],
@@ -602,6 +610,11 @@ mod tests {
         assert!(!tables.contains("module_static_distribution_release_operations"));
         assert!(!tables.contains("module_static_distribution_rollback_requests"));
         assert!(!tables.contains("module_static_distribution_rollback_operations"));
+
+        let idempotency_columns =
+            column_names(&db, "module_static_distribution_release_idempotency_keys").await;
+        assert!(idempotency_columns.contains("trace_id"));
+        assert!(idempotency_columns.contains("correlation_id"));
     }
 
     async fn column_names(db: &sea_orm::DatabaseConnection, table: &str) -> HashSet<String> {

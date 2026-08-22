@@ -270,7 +270,7 @@ impl TranslationTargetProvider for MediaTranslationTargetProvider {
         let admission_request = &request;
         let lease = match idempotency::admit(
             self.service.database(),
-            tenant_id,
+            idempotency::OwnerOperationScope::Tenant(tenant_id),
             TRANSLATION_OWNER_SLUG,
             idempotency_key,
             OPERATION_APPLY_PATCH,

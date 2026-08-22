@@ -5,12 +5,14 @@ use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use rustok_api::{ArtifactUiActionConfirmation, ArtifactUiSurface};
 use rustok_core::{ModuleContext, ModuleRegistry};
 use rustok_sandbox::ExecutionPhase;
 
 use crate::{
-    ArtifactReleaseRef, ModuleDefinitionCatalog, ModuleDefinitionSource, ModuleHttpMethod,
-    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    ArtifactReleaseRef, ArtifactUiAuditPolicy, ArtifactUiContribution,
+    ArtifactUiContributionContent, ModuleBindingIdempotency, ModuleDefinitionCatalog,
+    ModuleDefinitionSource, ModuleHttpMethod, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     artifact::{event_topic_matches, valid_event_topic},
 };
 
@@ -398,6 +400,60 @@ pub fn find_artifact_command_binding<'a>(
     })
 }
 
+/// Resolves a host-rendered action or form contribution to its one admitted
+/// command binding. This is intentionally narrower than a generic command
+/// lookup: a UI transport cannot invoke a binding merely by presenting an
+/// arbitrary binding ID.
+pub fn find_artifact_ui_action_binding<'a>(
+    contributions: &[ArtifactUiContribution],
+    bindings: &'a [ModuleRuntimeBinding],
+    contribution_id: &str,
+) -> Option<&'a ModuleRuntimeBinding> {
+    let contribution = contributions
+        .iter()
+        .find(|contribution| contribution.id == contribution_id)?;
+    let (binding_id, confirmation, destructive, audit_policy, expected_surface) =
+        match &contribution.content {
+            ArtifactUiContributionContent::Action {
+                binding_id,
+                confirmation,
+                destructive,
+                audit_policy,
+                ..
+            } => (
+                binding_id.as_str(),
+                confirmation,
+                destructive,
+                audit_policy,
+                ArtifactUiSurface::AdminActions,
+            ),
+            ArtifactUiContributionContent::Form {
+                binding_id,
+                confirmation,
+                destructive,
+                audit_policy,
+                ..
+            } => (
+                binding_id.as_str(),
+                confirmation,
+                destructive,
+                audit_policy,
+                ArtifactUiSurface::AdminForm,
+            ),
+            _ => return None,
+        };
+    if contribution.surface != expected_surface
+        || *audit_policy != ArtifactUiAuditPolicy::Required
+        || (*destructive != (*confirmation == ArtifactUiActionConfirmation::Destructive))
+    {
+        return None;
+    }
+    let binding = find_artifact_command_binding(bindings, binding_id)?;
+    (binding.permission == contribution.permission
+        && binding.idempotency == ModuleBindingIdempotency::Required)
+        .then_some(binding)
+}
+
 /// Dispatches one admitted command binding through an explicit immutable
 /// installation target. The host selects the binding and actor context; an
 /// artifact cannot create a command route or select another installation.
@@ -670,12 +726,14 @@ mod tests {
     use std::sync::Mutex;
 
     use async_trait::async_trait;
+    use rustok_api::{ArtifactUiActionConfirmation, ArtifactUiSurface};
     use sea_orm::Database;
 
     use super::*;
     use crate::{
-        ArtifactReleaseRef, ModuleBindingIdempotency, ModuleDefinition, ModuleDefinitionKind,
-        ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+        ArtifactReleaseRef, ArtifactUiAuditPolicy, ArtifactUiContribution,
+        ArtifactUiContributionContent, ModuleBindingIdempotency, ModuleDefinition,
+        ModuleDefinitionKind, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     };
 
     struct RecordingArtifactExecutor(Mutex<Vec<(String, ModuleLifecycleHookPhase)>>);
@@ -720,6 +778,99 @@ mod tests {
         ) -> Result<serde_json::Value, String> {
             Ok(dispatch.input)
         }
+    }
+
+    fn command_binding() -> ModuleRuntimeBinding {
+        ModuleRuntimeBinding {
+            id: "apply_settings".to_string(),
+            kind: ModuleRuntimeBindingKind::Command,
+            entrypoint: "settings.apply".to_string(),
+            input_schema_digest: format!("sha256:{}", "a".repeat(64)),
+            output_schema_digest: format!("sha256:{}", "b".repeat(64)),
+            permission: "artifact_module.settings.manage".to_string(),
+            idempotency: ModuleBindingIdempotency::Required,
+            limit_profile: "command".to_string(),
+            capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: None,
+        }
+    }
+
+    #[test]
+    fn ui_action_binding_requires_the_exact_admitted_action_or_form_contract() {
+        let binding = command_binding();
+        let action = ArtifactUiContribution {
+            id: "apply".to_string(),
+            surface: ArtifactUiSurface::AdminActions,
+            localization_digest: format!("sha256:{}", "c".repeat(64)),
+            permission: binding.permission.clone(),
+            content: ArtifactUiContributionContent::Action {
+                title_key: "actions.apply".to_string(),
+                binding_id: binding.id.clone(),
+                confirmation: ArtifactUiActionConfirmation::Destructive,
+                destructive: true,
+                audit_policy: ArtifactUiAuditPolicy::Required,
+            },
+        };
+        let form = ArtifactUiContribution {
+            id: "settings_form".to_string(),
+            surface: ArtifactUiSurface::AdminForm,
+            localization_digest: format!("sha256:{}", "c".repeat(64)),
+            permission: binding.permission.clone(),
+            content: ArtifactUiContributionContent::Form {
+                title_key: "settings.title".to_string(),
+                binding_id: binding.id.clone(),
+                confirmation: ArtifactUiActionConfirmation::None,
+                destructive: false,
+                audit_policy: ArtifactUiAuditPolicy::Required,
+            },
+        };
+        assert_eq!(
+            find_artifact_ui_action_binding(
+                &[action.clone(), form.clone()],
+                std::slice::from_ref(&binding),
+                "apply",
+            )
+            .map(|binding| binding.id.as_str()),
+            Some("apply_settings")
+        );
+        assert_eq!(
+            find_artifact_ui_action_binding(
+                &[action.clone(), form],
+                std::slice::from_ref(&binding),
+                "settings_form",
+            )
+            .map(|binding| binding.id.as_str()),
+            Some("apply_settings")
+        );
+
+        let mut mismatched_permission = action.clone();
+        mismatched_permission.permission = "artifact_module.settings.read".to_string();
+        assert!(
+            find_artifact_ui_action_binding(
+                &[mismatched_permission],
+                std::slice::from_ref(&binding),
+                "apply",
+            )
+            .is_none()
+        );
+
+        let mut non_idempotent_binding = binding.clone();
+        non_idempotent_binding.idempotency = ModuleBindingIdempotency::BestEffort;
+        assert!(
+            find_artifact_ui_action_binding(&[action.clone()], &[non_idempotent_binding], "apply",)
+                .is_none()
+        );
+
+        let mut non_action = action;
+        non_action.surface = ArtifactUiSurface::AdminStatus;
+        assert!(find_artifact_ui_action_binding(
+            &[non_action],
+            std::slice::from_ref(&binding),
+            "apply",
+        )
+        .is_none());
     }
 
     #[test]

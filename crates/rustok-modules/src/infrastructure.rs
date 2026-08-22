@@ -6,6 +6,8 @@ use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::contracts::ModuleCommandContext;
+
 /// Owner clock used for identities and evidence created outside a database
 /// expression. Transactional database timestamps remain owned by the storage
 /// adapter so one commit uses one database clock.
@@ -85,6 +87,20 @@ impl ControlPlaneInfrastructure {
         envelope.id = event_id;
         envelope.correlation_id = event_id;
         envelope.timestamp = self.now();
+        envelope
+    }
+
+    /// Builds an outbox envelope for a validated mutable owner command. The
+    /// command receipt and its event retain one actor, tenant, correlation,
+    /// and trace identity instead of synthesizing a second root context.
+    pub(crate) fn event_envelope_for_command(
+        &self,
+        command: &ModuleCommandContext,
+        event: DomainEvent,
+    ) -> EventEnvelope {
+        let mut envelope = self.event_envelope(command.tenant_id, Some(command.actor_id), event);
+        envelope.correlation_id = command.correlation_id;
+        envelope.trace_id = Some(command.trace_id.clone());
         envelope
     }
 }
@@ -192,5 +208,46 @@ mod tests {
         assert_eq!(envelope.tenant_id, tenant_id);
         assert_eq!(envelope.actor_id, Some(actor_id));
         assert_eq!(envelope.timestamp, now);
+    }
+
+    #[test]
+    fn command_event_envelope_preserves_command_evidence() {
+        let now = DateTime::parse_from_rfc3339("2026-08-22T12:00:00Z")
+            .expect("fixed time")
+            .with_timezone(&Utc);
+        let generated_event_id =
+            Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").expect("event UUID");
+        let context = ModuleCommandContext {
+            actor_id: Uuid::parse_str("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").expect("actor UUID"),
+            tenant_id: Some(
+                Uuid::parse_str("cccccccc-cccc-4ccc-8ccc-cccccccccccc").expect("tenant UUID"),
+            ),
+            trace_id: "trace-command".to_string(),
+            correlation_id: Uuid::parse_str("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+                .expect("correlation UUID"),
+            idempotency_key: Uuid::parse_str("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+                .expect("idempotency UUID"),
+        };
+        let infrastructure = ControlPlaneInfrastructure::new(
+            Arc::new(FixedClock(now)),
+            Arc::new(FixedId(generated_event_id)),
+        );
+
+        let envelope = infrastructure.event_envelope_for_command(
+            &context,
+            DomainEvent::ModuleBuildQueued {
+                request_id: Uuid::parse_str("ffffffff-ffff-4fff-8fff-ffffffffffff")
+                    .expect("request UUID"),
+                tenant_id: context.tenant_id.expect("tenant scope"),
+                project_id: "fixture".to_string(),
+                attempt: 1,
+            },
+        );
+
+        assert_eq!(envelope.id, generated_event_id);
+        assert_eq!(envelope.actor_id, Some(context.actor_id));
+        assert_eq!(envelope.tenant_id, context.tenant_id.expect("tenant scope"));
+        assert_eq!(envelope.correlation_id, context.correlation_id);
+        assert_eq!(envelope.trace_id.as_deref(), Some("trace-command"));
     }
 }

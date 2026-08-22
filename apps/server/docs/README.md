@@ -215,11 +215,38 @@ remain separate unfinished control-plane work.
   token, credential, transport, or discovery input. All other unregistered
   capability names remain default-deny. Artifact HTTP is a separate host
   transport at `/api/artifacts/{installation_id}/{*path}` and artifact commands
-  use `POST /api/artifacts/{installation_id}/commands/{binding_id}`. Both
-  resolve only an active exact installation, check the binding's dynamic RBAC
-  grant, enforce JSON and shared durable binding-idempotency limits through
-  `rustok-modules`, and call the shared sandbox executor rather than mounting
-  artifact routers or injecting dynamic GraphQL fields.
+  use `POST /api/artifacts/{installation_id}/commands/{binding_id}`. Host-rendered
+  declarative actions/forms use only
+  `POST /api/artifacts/{installation_id}/ui/contributions/{contribution_id}/execute`;
+  that route resolves the contribution to its exact admitted Command binding
+  before it joins the generic command execution path. Its companion
+  `GET /api/artifacts/{installation_id}/ui/contributions` reads the effective
+  locale only from server middleware, filters contributions by their dynamic
+  RBAC permission, and returns only host-safe localized declarative metadata.
+  Its response uses the shared `rustok_api::ArtifactUiContributionView` DTO,
+  not a server-local descriptor projection. Headless GraphQL exposes the same
+  projection through `artifactUiContributions(installationId)`; both
+  transports share one server adapter, receive locale only from resolved
+  request context, and omit unavailable exact-locale contributions. GraphQL
+  `executeArtifactUiAction(installationId, contributionId, input,
+  idempotencyKey)` is the corresponding headless action path. It resolves the
+  contribution to its admitted Command binding before using the same effective
+  policy, dynamic-RBAC, durable-idempotency, sandbox-dispatch, and audit path
+  as REST; it cannot select a raw binding ID.
+  Callers cannot select a locale; an unavailable exact locale omits the
+  contribution without fallback. Its audit companion
+  `GET /api/artifacts/{installation_id}/ui/contributions/{contribution_id}/audit`
+  resolves and authorizes that same contribution before returning its redacted
+  binding-specific evidence. Headless GraphQL exposes the same evidence through
+  `artifactUiActionAudit(installationId, contributionId)` using that exact
+  contribution-resolution and dynamic-RBAC path. Both audit transports project
+  the one `rustok_api::ArtifactBindingExecutionAuditEntry` DTO and do not expose
+  a raw binding selector. All five routes resolve only an active exact
+  installation and check the binding's dynamic RBAC grant. The three execution
+  routes enforce JSON and shared durable binding-idempotency limits through
+  `rustok-modules` and call the shared sandbox executor rather than mounting
+  artifact routers or injecting dynamic GraphQL fields; the audit route does
+  not dispatch the artifact.
 - `development.yaml` keeps `database.max_connections: 30` because heavy admin bootstrap routes like AI control plane resolve several GraphQL root fields in parallel. This is a local debug guardrail for both admin panels, not a new production contract.
 - For registry/governance surfaces the server remains the canonical validator of lifecycle policy, `reason` / `reason_code` contract and allowed action set; thin clients may do preflight but do not define policy locally.
 - Registry release, publication, and validation adapters obtain their shared transactional governance aggregate through `ModuleControlPlane`; host authorization and artifact storage remain adapter concerns. A remote validation claim returns the owner-issued `requestRevision`; a terminal runner request must return it as `expectedRequestRevision`, so claim and terminal stage transitions use the same request CAS. Heartbeats only renew an already-issued operational lease.
@@ -238,6 +265,24 @@ remain separate unfinished control-plane work.
   directly to the owner lifecycle transaction, so audit/outbox facts and exact
   replay remain owner-owned and raw admission or storage errors never cross
   GraphQL.
+- GraphQL `activateTenantArtifact`, `deactivateTenantArtifact`,
+  `uninstallTenantArtifact`, and `rollbackTenantArtifact` expose the matching
+  owner lifecycle commands only for the authenticated tenant. Their scope is
+  constructed from `TenantContext`, never accepted from the client; actor and
+  `modules:manage` are derived by the same boundary. Rollback permits no
+  target-installation selector: the owner can select only its retained direct
+  predecessor after re-evaluating the supplied target capability-grant
+  revision and migration rollback mode. There is deliberately no platform
+  lifecycle GraphQL endpoint: a tenant-derived permission cannot authorize a
+  platform-wide operation, and the transport remains fail-closed until a
+  separate platform operator authority is defined. The shared GraphQL module
+  authorization extension classifies the lifecycle snapshot as `modules:read`
+  and every lifecycle mutation as `modules:manage` before resolver execution;
+  resolver-level owner checks remain a second boundary. The same pre-resolver
+  guard classifies the immutable composition snapshot as read and the
+  operational marketplace registry freshness projection as manage, matching
+  their owner-resolver checks. `enabledModules`, the tenant availability list
+  consumed by admin navigation, is also `modules:read`-gated at both layers.
 - GraphQL build history and active-build reads use the host-composed read-only
   `rustok-build::SharedBuildControl`. Pagination limits are enforced by the
   owner, and the transport does not import build persistence entities.

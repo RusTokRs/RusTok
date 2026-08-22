@@ -36,11 +36,14 @@ impl ControlPlaneRevision {
 /// Mandatory request-scoped evidence carried by every owner command.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleCommandContext {
-    pub actor_id: String,
+    /// Authenticated owner identity. Module control-plane actors are platform
+    /// principals and therefore use the same non-nil UUID identity as the
+    /// durable event and audit contracts.
+    pub actor_id: Uuid,
     pub tenant_id: Option<Uuid>,
     pub trace_id: String,
-    pub correlation_id: String,
-    pub idempotency_key: String,
+    pub correlation_id: Uuid,
+    pub idempotency_key: Uuid,
 }
 
 /// Versioned owner command envelope used by mutable control-plane services.
@@ -80,19 +83,45 @@ impl<T> RevisionedModuleCommand<T> {
 
 impl ModuleCommandContext {
     pub fn validate(&self) -> Result<(), ModuleControlPlaneError> {
+        if self.actor_id.is_nil() {
+            return Err(ModuleControlPlaneError::validation(
+                ModuleErrorCode::InvalidCommandContext,
+                "`actor_id` must be a non-nil UUID.",
+                serde_json::json!({ "field": "actor_id" }),
+            ));
+        }
+        if self.trace_id.trim().is_empty() {
+            return Err(ModuleControlPlaneError::validation(
+                ModuleErrorCode::InvalidCommandContext,
+                "`trace_id` must not be empty.",
+                serde_json::json!({ "field": "trace_id" }),
+            ));
+        }
+        if self.trace_id.len() > 512 {
+            return Err(ModuleControlPlaneError::validation(
+                ModuleErrorCode::InvalidCommandContext,
+                "`trace_id` exceeds the durable event metadata limit.",
+                serde_json::json!({ "field": "trace_id", "limit": 512 }),
+            ));
+        }
         for (name, value) in [
-            ("actor_id", &self.actor_id),
-            ("trace_id", &self.trace_id),
-            ("correlation_id", &self.correlation_id),
-            ("idempotency_key", &self.idempotency_key),
+            ("correlation_id", self.correlation_id),
+            ("idempotency_key", self.idempotency_key),
         ] {
-            if value.trim().is_empty() {
+            if value.is_nil() {
                 return Err(ModuleControlPlaneError::validation(
                     ModuleErrorCode::InvalidCommandContext,
-                    format!("`{name}` must not be empty."),
+                    format!("`{name}` must be a non-nil UUID."),
                     serde_json::json!({ "field": name }),
                 ));
             }
+        }
+        if self.tenant_id.is_some_and(|tenant_id| tenant_id.is_nil()) {
+            return Err(ModuleControlPlaneError::validation(
+                ModuleErrorCode::InvalidCommandContext,
+                "`tenant_id` must be a non-nil UUID when the command is tenant-scoped.",
+                serde_json::json!({ "field": "tenant_id" }),
+            ));
         }
         Ok(())
     }
@@ -241,11 +270,11 @@ mod tests {
 
     fn context() -> ModuleCommandContext {
         ModuleCommandContext {
-            actor_id: "user:42".into(),
-            tenant_id: Some(Uuid::nil()),
+            actor_id: Uuid::new_v4(),
+            tenant_id: Some(Uuid::new_v4()),
             trace_id: "trace-1".into(),
-            correlation_id: "correlation-1".into(),
-            idempotency_key: "install:1".into(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
         }
     }
 
@@ -291,10 +320,38 @@ mod tests {
     #[test]
     fn command_context_requires_audit_and_idempotency_evidence() {
         context().validate().expect("valid context");
-        let mut invalid = context();
-        invalid.idempotency_key.clear();
+        for field in ["actor_id", "trace_id", "correlation_id", "idempotency_key"] {
+            let mut invalid = context();
+            match field {
+                "actor_id" => invalid.actor_id = Uuid::nil(),
+                "trace_id" => invalid.trace_id.clear(),
+                "correlation_id" => invalid.correlation_id = Uuid::nil(),
+                "idempotency_key" => invalid.idempotency_key = Uuid::nil(),
+                _ => unreachable!("test field is exhaustive"),
+            }
+            assert!(matches!(
+                invalid.validate(),
+                Err(ModuleControlPlaneError {
+                    code: ModuleErrorCode::InvalidCommandContext,
+                    ..
+                })
+            ));
+        }
+
+        let mut nil_tenant = context();
+        nil_tenant.tenant_id = Some(Uuid::nil());
         assert!(matches!(
-            invalid.validate(),
+            nil_tenant.validate(),
+            Err(ModuleControlPlaneError {
+                code: ModuleErrorCode::InvalidCommandContext,
+                ..
+            })
+        ));
+
+        let mut oversized_trace = context();
+        oversized_trace.trace_id = "x".repeat(513);
+        assert!(matches!(
+            oversized_trace.validate(),
             Err(ModuleControlPlaneError {
                 code: ModuleErrorCode::InvalidCommandContext,
                 ..

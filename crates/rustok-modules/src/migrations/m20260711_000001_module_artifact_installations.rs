@@ -43,8 +43,12 @@ impl MigrationTrait for Migration {
                 "CREATE UNIQUE INDEX module_artifact_installations_tenant_identity ON module_artifact_installations (tenant_id, slug, version, manifest_digest) WHERE scope_kind = 'tenant'",
                 "ALTER TABLE module_artifact_installations ENABLE ROW LEVEL SECURITY",
                 "CREATE POLICY module_artifact_installations_tenant_scope ON module_artifact_installations \
-                    USING (scope_kind = 'platform' OR tenant_id::text = current_setting('rustok.tenant_id', true)) \
-                    WITH CHECK (scope_kind = 'platform' OR tenant_id::text = current_setting('rustok.tenant_id', true))",
+                    USING (current_setting('rustok.module_control_plane_owner', true) = 'platform' \
+                        OR scope_kind = 'platform' \
+                        OR tenant_id::text = current_setting('rustok.tenant_id', true)) \
+                    WITH CHECK (current_setting('rustok.module_control_plane_owner', true) = 'platform' \
+                        OR scope_kind = 'platform' \
+                        OR tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
             DbBackend::Sqlite => &[
                 "CREATE TABLE module_artifact_installations (\

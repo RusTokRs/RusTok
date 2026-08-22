@@ -396,6 +396,7 @@ where
         context.tenant_id = Some(dispatch.tenant_id);
         context.actor_id = dispatch.context.actor_id.clone();
         context.trace_id = dispatch.context.trace_id.clone();
+        context.audit_label = Some(dispatch.binding.id.clone());
         let input =
             ArtifactBindingDispatchEnvelope::new(dispatch.binding, dispatch.phase, dispatch.input);
         self.runtime
