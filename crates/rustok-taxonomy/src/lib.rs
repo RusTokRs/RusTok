@@ -3,6 +3,7 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod category_delete;
 mod category_hierarchy;
 mod category_presentation;
 pub mod dto;
@@ -19,6 +20,7 @@ pub mod services;
 mod translation_evidence;
 pub mod translation_target;
 
+pub use category_delete::TaxonomyCategoryDeleteCleanupPort;
 pub use category_hierarchy::MAX_TAXONOMY_CATEGORY_DEPTH;
 pub use category_presentation::{
     TAXONOMY_CATEGORY_ICON_KEY_MAX_BYTES, TaxonomyCategoryMediaReferenceValidator,

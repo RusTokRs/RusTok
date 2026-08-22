@@ -45,6 +45,7 @@ requireAll('crates/flex/src/attached_storage.rs', [
   'prepare_generic_attached_values_update',
   'persist_prepared_generic_attached_values',
   'resolve_generic_attached_values',
+  'delete_generic_attached_values',
 ]);
 
 requireAll('crates/flex/src/migrations/m20260822_000001_create_generic_attached_donor_storage.rs', [
@@ -53,10 +54,42 @@ requireAll('crates/flex/src/migrations/m20260822_000001_create_generic_attached_
   'create_field_definition_cache_generation_trigger',
 ]);
 
+requireAll('crates/flex/src/graphql/runtime.rs', [
+  'pub trait AttachedValuesGraphqlPort',
+  'async fn resolve_values(',
+  'async fn update_values(',
+  'async fn delete_values(',
+  'attached_values: Arc<dyn AttachedValuesGraphqlPort>',
+]);
+
+requireAll('crates/flex/src/graphql/query.rs', [
+  'async fn attached_values(',
+  'Permission::FLEX_ENTRIES_READ',
+  '&tenant.default_locale',
+  '.resolve_values(',
+]);
+
+requireAll('crates/flex/src/graphql/mutation.rs', [
+  'async fn update_attached_values(',
+  'Permission::FLEX_ENTRIES_UPDATE',
+  '.update_values(',
+  'async fn delete_attached_values(',
+  'Permission::FLEX_ENTRIES_DELETE',
+  '.delete_values(',
+]);
+
 requireAll('crates/rustok-taxonomy/src/owner_identity.rs', [
   'pub async fn taxonomy_term_identity_exists',
   'taxonomy_term::Column::TenantId.eq(tenant_id)',
   'taxonomy_term::Column::Kind.eq(kind)',
+]);
+
+requireAll('crates/rustok-taxonomy/src/category_delete.rs', [
+  'pub trait TaxonomyCategoryDeleteCleanupPort',
+  'pub async fn delete_category_with_cleanup(',
+  'cleanup.cleanup_in_tx(&txn, tenant_id, category_id).await?;',
+  'TaxonomyTermKind::Category',
+  'txn.commit().await?;',
 ]);
 
 requireAll('apps/server/src/services/field_definition_registry_bootstrap.rs', [
@@ -71,12 +104,35 @@ requireAll('apps/server/src/services/flex_attached_values.rs', [
   'persist_registered_generic_values',
   'resolve_registered_generic_values',
   'delete_registered_generic_values',
+  'pub struct FlexAttachedValuesGraphqlAdapter',
+  'impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapter',
+  'pub struct FlexTaxonomyCategoryDeleteCleanup',
+  'impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for FlexTaxonomyCategoryDeleteCleanup',
+  'delete_generic_attached_values(',
   'rustok_taxonomy::taxonomy_term_identity_exists',
   'rustok_taxonomy::TaxonomyTermKind::Category',
   'let txn = db.begin().await?;',
   'persist_prepared_generic_attached_values(',
   'txn.commit().await?;',
   'Err(Error::NotFound)',
+]);
+
+requireAll('apps/server/src/graphql/schema.rs', [
+  'FlexAttachedValuesGraphqlAdapter',
+  'Arc::new(FlexAttachedValuesGraphqlAdapter::new(db.clone()))',
+]);
+
+requireAll('apps/server/tests/taxonomy_category_flex_attached_postgres.rs', [
+  'category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_values',
+  'FlexAttachedValuesGraphqlAdapter::new(db.clone())',
+  'TaxonomyTermKind::Category',
+  'TaxonomyTermKind::Tag',
+  'other_tenant_id',
+  '"مرحبا"',
+  'delete_category_with_cleanup(',
+  'FlexTaxonomyCategoryDeleteCleanup',
+  'load_generic_attached_shared_values',
+  'load_exact_locale_values',
 ]);
 
 requireAll('crates/flex/tests/generic_attached_definitions.rs', [
@@ -111,6 +167,10 @@ requireAll('.github/workflows/taxonomy-category-flex-donor-contract.yml', [
   'ref: ${{ env.TARGET_SHA }}',
   'Assert exact checked-out SHA',
   'Check CAT-4 Rust formatting only',
+  'crates/flex/src/graphql/runtime.rs',
+  'crates/rustok-taxonomy/src/category_delete.rs',
+  'apps/server/src/graphql/schema.rs',
+  'taxonomy_category_flex_attached_postgres',
   'generic_attached_definitions',
   'generic_attached_storage',
   'postgres_generic_attached_storage',

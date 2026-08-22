@@ -42,6 +42,13 @@ impl From<FieldDefinitionView> for FieldDefinitionObject {
 }
 
 #[derive(Debug, Clone, SimpleObject)]
+pub struct AttachedValuesObject {
+    pub entity_type: String,
+    pub entity_id: Uuid,
+    pub values: Option<JsonValue>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
 pub struct FlexSchemaObject {
     pub id: Uuid,
     pub slug: String,
@@ -130,6 +137,14 @@ pub struct CreateFlexEntryInput {
 pub struct UpdateFlexEntryInput {
     pub data: Option<JsonValue>,
     pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateAttachedValuesInput {
+    pub entity_type: Option<String>,
+    pub entity_id: Uuid,
+    pub locale: String,
+    pub values: Option<JsonValue>,
 }
 
 #[derive(Debug, Clone, SimpleObject)]
