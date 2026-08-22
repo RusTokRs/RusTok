@@ -4,7 +4,7 @@ use rustok_taxonomy::{
     TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
 };
 use rustok_test_utils::db::setup_test_db;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;
 
@@ -235,4 +235,69 @@ async fn category_placement_rejects_parent_from_another_tenant() {
         .await
         .expect_err("cross-tenant parent must fail closed");
     assert!(matches!(err, TaxonomyError::TermNotFound(id) if id == foreign_parent));
+}
+
+#[tokio::test]
+async fn sqlite_storage_guard_rejects_tag_rows_and_cycle_through_implicit_root() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let root = create_term(
+        &service,
+        tenant_id,
+        TaxonomyTermKind::Category,
+        TaxonomyScopeType::Global,
+        None,
+        "Storage Root",
+    )
+    .await;
+    let child = create_term(
+        &service,
+        tenant_id,
+        TaxonomyTermKind::Category,
+        TaxonomyScopeType::Global,
+        None,
+        "Storage Child",
+    )
+    .await;
+    service
+        .set_category_placement(
+            tenant_id,
+            admin(),
+            child,
+            SetTaxonomyCategoryPlacementInput {
+                parent_id: Some(root),
+                position: 0,
+            },
+        )
+        .await
+        .expect("child placement should be valid");
+
+    let tag = create_term(
+        &service,
+        tenant_id,
+        TaxonomyTermKind::Tag,
+        TaxonomyScopeType::Global,
+        None,
+        "Storage Tag",
+    )
+    .await;
+    let err = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO taxonomy_category_hierarchy (tenant_id, term_id, parent_term_id, position) VALUES (?, ?, NULL, ?)",
+            vec![tenant_id.into(), tag.into(), 0.into()],
+        ))
+        .await
+        .expect_err("storage must reject a Tag hierarchy row even without the service");
+    assert!(err.to_string().contains("not a Category"));
+
+    let err = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO taxonomy_category_hierarchy (tenant_id, term_id, parent_term_id, position) VALUES (?, ?, ?, ?)",
+            vec![tenant_id.into(), root.into(), child.into(), 0.into()],
+        ))
+        .await
+        .expect_err("storage must reject a cycle when the root had no placement row");
+    assert!(err.to_string().contains("cycle"));
 }
