@@ -7056,6 +7056,22 @@ dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",
  "js-sys",
+ "serde",
+ "serde_json",
+ "signature 2.2.0",
+ "zeroize",
+]
+
+[[package]]
+name = "jsonwebtoken"
+version = "11.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "881733cbc631fc9e472e24447ce32a64bedf2da498d6d8570b08edc87de71f65"
+dependencies = [
+ "aws-lc-rs",
+ "base64 0.22.1",
+ "getrandom 0.2.17",
+ "js-sys",
  "pem",
  "serde",
  "serde_json",
@@ -12510,7 +12526,7 @@ dependencies = [
  "chrono",
  "flex",
  "hex",
- "jsonwebtoken 10.4.0",
+ "jsonwebtoken 11.0.0",
  "password-hash 0.6.1",
  "rand 0.10.2",
  "rustok-api",
@@ -15517,7 +15533,7 @@ dependencies = [
  "futures-util",
  "hex",
  "ipnet",
- "jsonwebtoken 10.4.0",
+ "jsonwebtoken 11.0.0",
  "leptos 0.8.20",
  "leptos_axum",
  "mime_guess",
