@@ -32,7 +32,6 @@ const plan = fs.readFileSync('crates/rustok-taxonomy/docs/implementation-plan.md
 const currentPlanMarkers = [
   'TAXONOMY-CAT-2 — Category kind + hierarchy foundation — IN PROGRESS',
   'Taxonomy PostgreSQL Evidence',
-  'category_hierarchy_postgres',
   'route-registry contention evidence',
   'Translation-target CAS/change-cursor evidence',
   'runtime-input changes intentionally make them stale',
