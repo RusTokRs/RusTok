@@ -1,0 +1,40 @@
+name: Forum Translation Host Registration Contract
+
+on:
+  pull_request:
+    paths:
+      - "apps/server/src/services/module_event_dispatcher.rs"
+      - "apps/server/src/services/app_runtime.rs"
+      - "apps/server/src/modules/mod.rs"
+      - "apps/server/Cargo.toml"
+      - "crates/rustok-forum/src/services/category_translation_target.rs"
+      - "crates/rustok-forum/src/services/category_translation_progress.rs"
+      - "scripts/verify/verify-forum-translation-host-registration.mjs"
+      - ".github/workflows/forum-translation-host-registration-contract.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: forum-translation-host-registration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Verify Forum Translation host registration source contract
+        run: node scripts/verify/verify-forum-translation-host-registration.mjs
+
+  rust-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Test Forum Translation host registration
+        run: cargo test --locked -p rustok-server --no-default-features --features mod-forum host_runtime_extensions_register_admin_mutation_providers -- --nocapture
