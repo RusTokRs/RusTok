@@ -180,6 +180,24 @@ for (const [page, source] of [['category', categoryPage], ['topic', topicPage]])
   ], `${page} locale control`);
 }
 
+const categorySelectInput = topicPage.indexOf('category_select_options(&items');
+const topicTitleInput = topicPage.indexOf(
+  '<FieldShell label=topic_form_labels.title_label',
+  categorySelectInput,
+);
+if (categorySelectInput < 0 || topicTitleInput < 0) {
+  throw new Error('missing Forum admin category select localized options');
+}
+const categorySelectSurface = topicPage.slice(categorySelectInput, topicTitleInput);
+requireAll(categorySelectSurface, [
+  'category_select_options(&items, category_id.get().as_str())',
+  '.zip(items.iter())',
+  'forum_admin_content_lang(item.effective_locale.as_str())',
+  'data-forum-target-localized=""',
+  'lang=content_lang',
+  'dir="auto"',
+], 'category select option content-locale bidi contract');
+
 const tagChipInput = topicPage.indexOf('let parsed_tags = forum_admin_tag_chips');
 const richTextInput = topicPage.indexOf('<ForumRichTextEditor', tagChipInput);
 if (tagChipInput < 0 || richTextInput < 0) {
