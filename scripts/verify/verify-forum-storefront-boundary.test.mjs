@@ -28,9 +28,53 @@ pub fn forum_storefront_status_badge_class() {}
 `;
 }
 
-function uiSource({ rawAccent = false, rawHref = false, missingCoreUse = false, directRichtextHtml = false } = {}) {
+function uiSource({
+  rawAccent = false,
+  rawHref = false,
+  missingCoreUse = false,
+  directRichtextHtml = false,
+  missingBidi = false,
+} = {}) {
+  const categoryBidi = missingBidi ? "" : `
+forum_storefront_content_lang(item.effective_locale.as_str());
+let description_lang = if item { ui_content_lang.clone() };
+data-forum-target-localized="";
+lang=content_lang;
+lang=description_lang;
+dir="auto";
+data-forum-route-identifier="";
+dir="ltr";
+`;
   return `${missingCoreUse ? "" : "use crate::core::{forum_storefront_category_card_view_model, forum_storefront_topic_card_view_model, forum_storefront_status_badge_class, forum_storefront_count_label};\n"}
 use leptos_ui::RichTextHtml;
+use rustok_api::normalize_locale_tag;
+fn forum_storefront_content_lang(locale: &str) -> String { normalize_locale_tag(locale).unwrap_or_else(|| "und".to_string()) }
+fn ForumCategoryRail() {
+${categoryBidi}
+}
+fn ForumTopicFeed() {
+forum_storefront_content_lang(card.effective_locale.as_str());
+<span dir="ltr";
+data-forum-target-localized="";
+lang=content_lang;
+dir="auto";
+data-forum-route-identifier="";
+dir="ltr";
+}
+fn ForumThreadPanel() {
+forum_storefront_content_lang(topic.effective_locale.as_str());
+<span dir="ltr";
+data-forum-target-localized="";
+lang=content_lang.clone();
+dir="auto";
+data-forum-route-identifier="";
+dir="ltr";
+<RichTextHtml view=body content_locale=body_locale />;
+}
+fn ReplyCard() {
+<span dir="ltr";
+<RichTextHtml view=content content_locale=content_locale />;
+}
 ${directRichtextHtml ? "inner_html=body.html;" : "<RichTextHtml view=body content_locale=body_locale />;\n<RichTextHtml view=content content_locale=content_locale />;"}
 ${rawAccent ? 'const STYLE: &str = "background:linear-gradient(180deg,#0ea5e9 0%,#f59e0b 100%);";\n' : ""}
 ${rawHref ? 'const HREF: &str = "?category={category_id}";\n' : ""}
@@ -61,7 +105,7 @@ function fixture(options = {}) {
   if (options.restoredApi) writeFixtureFile(root, "crates/rustok-forum/storefront/src/api.rs", "mod graphql {}\n");
   writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-storefront-boundary.mjs shared `RichTextHtml`\n");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-storefront-boundary.mjs\n");
-  writeFixtureFile(root, "scripts/verify/verify-forum-storefront-boundary.test.mjs", "passes canonical fixture\nrejects Leptos-specific core\nrejects direct richtext HTML rendering\n");
+  writeFixtureFile(root, "scripts/verify/verify-forum-storefront-boundary.test.mjs", "passes canonical fixture\nrejects Leptos-specific core\nrejects direct richtext HTML rendering\nrejects missing storefront content-locale bidi\n");
   writeFixtureFile(root, "package.json", packageSource(options));
   return root;
 }
@@ -86,6 +130,12 @@ test("forum storefront boundary verifier rejects direct richtext HTML rendering"
   const result = run(fixture({ directRichtextHtml: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /topic projection must use RichTextHtml|must not bypass the shared RichTextHtml sink/);
+});
+
+test("forum storefront boundary verifier rejects missing storefront content-locale bidi", () => {
+  const result = run(fixture({ missingBidi: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /category rail missing content-locale bidi marker/);
 });
 
 test("forum storefront boundary verifier rejects raw UI accent fallback", () => {
