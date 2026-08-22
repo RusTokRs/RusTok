@@ -3,6 +3,8 @@ name: Taxonomy Ownership Boundary
 on:
   pull_request:
     paths:
+      - "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md"
+      - "docs/architecture/taxonomy-flex-category-platform-plan.md"
       - "crates/rustok-taxonomy/**"
       - "crates/rustok-blog/rustok-module.toml"
       - "crates/rustok-blog/CRATE_API.md"
@@ -33,6 +35,8 @@ on:
     branches:
       - main
     paths:
+      - "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md"
+      - "docs/architecture/taxonomy-flex-category-platform-plan.md"
       - "crates/rustok-taxonomy/**"
       - "crates/rustok-blog/rustok-module.toml"
       - "crates/rustok-blog/CRATE_API.md"

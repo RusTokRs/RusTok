@@ -48,7 +48,7 @@ function expectFailure(root, pattern, message) {
 
 const taxonomyDependency = '[dependencies]\ntaxonomy = { version_req = ">=0.1.0" }\n';
 
-function writeBaseline(root) {
+function writeBaseline(root, kinds = ["Tag"]) {
   write(
     root,
     "crates/rustok-blog/rustok-module.toml",
@@ -111,11 +111,29 @@ function writeBaseline(root) {
 
   write(
     root,
+    "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md",
+    [
+      "`rustok-taxonomy` becomes the canonical Category owner",
+      "Forum Topic remains an explicit Flex consumer",
+      "",
+    ].join("\n"),
+  );
+  write(
+    root,
+    "docs/architecture/taxonomy-flex-category-platform-plan.md",
+    [
+      "Add `TaxonomyTermKind::Category` as a first-class demonstrated kind",
+      "Consumer relation/binding tables stay with the consumer",
+      "",
+    ].join("\n"),
+  );
+
+  write(
+    root,
     "crates/rustok-taxonomy/src/dto.rs",
     [
       "pub enum TaxonomyTermKind {",
-      '    #[sea_orm(string_value = "tag")]',
-      "    Tag,",
+      ...kinds.map((kind) => `    ${kind},`),
       "}",
       "",
     ].join("\n"),
@@ -156,6 +174,8 @@ function writeBaseline(root) {
     root,
     ".github/workflows/taxonomy-ownership-boundary.yml",
     [
+      '- "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md"',
+      '- "docs/architecture/taxonomy-flex-category-platform-plan.md"',
       '- "crates/rustok-blog/rustok-module.toml"',
       '- "crates/rustok-blog/CRATE_API.md"',
       '- "crates/rustok-forum/rustok-module.toml"',
@@ -176,7 +196,26 @@ function writeBaseline(root) {
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "rustok-taxonomy-contract-"));
 try {
   writeBaseline(root);
-  expectSuccess(root, "baseline contract matrix should pass");
+  expectSuccess(root, "Tag-only migration baseline should remain valid");
+
+  writeBaseline(root, ["Tag", "Category"]);
+  expectSuccess(root, "accepted Category expansion should pass the contract matrix");
+
+  writeBaseline(root, ["Tag", "Collection"]);
+  expectFailure(
+    root,
+    /unsupported kinds: Collection/,
+    "an unreviewed vocabulary kind must still fail closed",
+  );
+  writeBaseline(root);
+
+  writeBaseline(root, ["Category"]);
+  expectFailure(
+    root,
+    /must retain Tag/,
+    "the existing Tag contract cannot disappear during Category rollout",
+  );
+  writeBaseline(root);
 
   write(
     root,
@@ -198,25 +237,7 @@ try {
   expectFailure(
     root,
     /forum_topic_tags/,
-    "owner public relation contract drift must fail closed",
-  );
-  writeBaseline(root);
-
-  write(
-    root,
-    "crates/rustok-taxonomy/src/dto.rs",
-    [
-      "pub enum TaxonomyTermKind {",
-      "    Tag,",
-      "    Category,",
-      "}",
-      "",
-    ].join("\n"),
-  );
-  expectFailure(
-    root,
-    /demonstrated kind baseline must remain exactly Tag/,
-    "speculative kind expansion must fail closed",
+    "owner public tag-relation contract drift must fail closed",
   );
   writeBaseline(root);
 
@@ -236,6 +257,8 @@ try {
     root,
     ".github/workflows/taxonomy-ownership-boundary.yml",
     [
+      '- "docs/architecture/taxonomy-flex-category-platform-plan.md"',
+      '- "crates/rustok-blog/rustok-module.toml"',
       '- "crates/rustok-blog/CRATE_API.md"',
       '- "crates/rustok-forum/rustok-module.toml"',
       '- "crates/rustok-forum/docs/README.md"',
@@ -252,8 +275,8 @@ try {
   );
   expectFailure(
     root,
-    /crates\/rustok-blog\/rustok-module\.toml/,
-    "consumer manifest changes must stay inside the focused ownership workflow trigger set",
+    /DECISIONS\/2026-08-22-taxonomy-category-flex-ownership\.md/,
+    "the accepted ownership decision must stay inside the focused workflow trigger set",
   );
 
   console.log("[verify-taxonomy-contract-matrix.test] PASS");
