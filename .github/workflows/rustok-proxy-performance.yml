@@ -1,0 +1,69 @@
+name: RusTok Proxy Performance
+
+on:
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - "crates/rustok-commerce/Cargo.toml"
+      - "crates/rustok-commerce/tests/storefront_proxy_performance.rs"
+      - "ops/loadtest/**"
+      - ".github/workflows/rustok-proxy-performance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  storefront-sqlite-proxy:
+    name: Storefront SQLite Proxy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Verify load-test harness contracts
+        run: node ops/loadtest/verify.mjs
+
+      - name: Run release storefront proxy benchmark
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --release -p rustok-commerce \
+            --test storefront_proxy_performance \
+            storefront_sqlite_proxy_benchmark \
+            -- --ignored --exact --nocapture 2>&1 | tee rustok-proxy-performance.log
+
+      - name: Extract proxy evidence JSON
+        shell: bash
+        run: |
+          grep 'RUSTOK_PROXY_PERF_JSON=' rustok-proxy-performance.log \
+            | tail -n 1 \
+            | sed 's/^.*RUSTOK_PROXY_PERF_JSON=//' \
+            > rustok-proxy-performance.json
+          test -s rustok-proxy-performance.json
+          node -e 'const fs=require("fs"); const v=JSON.parse(fs.readFileSync("rustok-proxy-performance.json","utf8")); if(v.contract!=="rustok_storefront_sqlite_proxy_v1") process.exit(1); console.log(JSON.stringify(v,null,2));'
+
+      - name: Upload proxy benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustok-proxy-performance-${{ github.sha }}
+          path: |
+            rustok-proxy-performance.log
+            rustok-proxy-performance.json

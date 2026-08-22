@@ -1,0 +1,33 @@
+{
+  "name": "rustok-rest",
+  "baseUrl": "http://127.0.0.1:5150",
+  "headers": {
+    "Accept": "application/json",
+    "X-Tenant-ID": "{{TENANT_ID}}"
+  },
+  "operations": {
+    "catalog": {
+      "method": "GET",
+      "path": "/store/products?page=1&per_page=24",
+      "expectedStatus": 200,
+      "timeout": "10s"
+    },
+    "product": {
+      "method": "GET",
+      "path": "/store/products/{{PRODUCT_ID}}",
+      "expectedStatus": 200,
+      "timeout": "10s",
+      "requiredBodyFragments": ["{{PRODUCT_SKU}}"]
+    },
+    "search": {
+      "method": "GET",
+      "path": "/store/products?page=1&per_page=24&search={{SEARCH_TERM}}",
+      "expectedStatus": 200,
+      "timeout": "10s",
+      "requiredBodyFragments": ["{{SEARCH_TERM}}"],
+      "requiredJsonValues": [
+        { "path": "meta.total", "equals": "{{SEARCH_EXPECTED_MATCHES}}" }
+      ]
+    }
+  }
+}

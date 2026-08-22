@@ -1,0 +1,43 @@
+{
+  "name": "magento-core-graphql",
+  "baseUrl": "http://127.0.0.1",
+  "headers": {
+    "Accept": "application/json",
+    "Content-Type": "application/json"
+  },
+  "operations": {
+    "catalog": {
+      "method": "POST",
+      "path": "/graphql",
+      "expectedStatus": 200,
+      "timeout": "10s",
+      "body": {
+        "query": "query Catalog { products(search: \"\", pageSize: 24, currentPage: 1) { total_count items { sku name } page_info { current_page page_size total_pages } } }"
+      },
+      "requiredBodyFragments": ["\"data\""]
+    },
+    "product": {
+      "method": "POST",
+      "path": "/graphql",
+      "expectedStatus": 200,
+      "timeout": "10s",
+      "body": {
+        "query": "query Product { products(filter: { sku: { eq: \"{{PRODUCT_SKU}}\" } }, pageSize: 1, currentPage: 1) { items { sku name } } }"
+      },
+      "requiredBodyFragments": ["{{PRODUCT_SKU}}"]
+    },
+    "search": {
+      "method": "POST",
+      "path": "/graphql",
+      "expectedStatus": 200,
+      "timeout": "10s",
+      "body": {
+        "query": "query Search { products(search: \"{{SEARCH_TERM}}\", pageSize: 24, currentPage: 1) { total_count items { sku name } page_info { current_page page_size total_pages } } }"
+      },
+      "requiredBodyFragments": ["{{SEARCH_TERM}}"],
+      "requiredJsonValues": [
+        { "path": "data.products.total_count", "equals": "{{SEARCH_EXPECTED_MATCHES}}" }
+      ]
+    }
+  }
+}

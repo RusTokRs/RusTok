@@ -160,5 +160,9 @@ name = "routes_contract_test"
 path = "tests/routes_contract_test.rs"
 
 [[test]]
+name = "storefront_proxy_performance"
+path = "tests/storefront_proxy_performance.rs"
+
+[[test]]
 name = "storefront_returns_graphql_test"
 path = "tests/storefront_returns_graphql_test.rs"
