@@ -13,6 +13,12 @@ const failures = [];
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
 };
+const normalizeWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const requireNormalizedText = (source, value, label) => {
+  if (!normalizeWhitespace(source).includes(normalizeWhitespace(value))) {
+    failures.push(`${label}: missing ${value}`);
+  }
+};
 const forbidText = (source, value, label) => {
   if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
@@ -111,29 +117,28 @@ for (const marker of [
 ]) requireText(docs, marker, `${files.docs}: operator contract`);
 
 for (const marker of [
-  "### P1. Invalidation observability and incident operations",
-  "[x] Export metrics for database generation",
-  "[x] Define alert thresholds",
-  "[x] Add an operator runbook",
-  "[ ] Make one policy incident traceable",
+  "### Durable invalidation and recovery",
+  "[x] Export bounded lag, generation, worker, and recovery telemetry.",
+  "[x] Retain source packets for #2849, #2853, #2856, and #2862.",
+  "[ ] Execute and retain the incident packet from #2846.",
   "Status: `in_progress`",
   "verify-rbac-invalidation-observability.mjs",
-]) requireText(plan, marker, `${files.plan}: implementation handoff`);
+]) requireNormalizedText(plan, marker, `${files.plan}: implementation handoff`);
 
 for (const marker of [
   "## RBAC durable invalidation observability composition",
   "signed durable-minus-applied lag",
-  "only recovery path",
+  "Recovery still clears permission snapshots through the existing owner/runtime path.",
   "Status: `pending`",
-  "leave the complete server composition audit for its Wave 2 cursor visit",
-]) requireText(serverPlan, marker, `${files.serverPlan}: cross-owner server handoff`);
+  "one complete authorization incident trace remain required evidence.",
+]) requireNormalizedText(serverPlan, marker, `${files.serverPlan}: cross-owner server handoff`);
 
 for (const marker of [
   "## Delivered result: bounded RBAC invalidation metrics",
   "same canonical process registry",
   "performs no database reads, cache operations or worker supervision",
-  "one retained incident chain",
-]) requireText(
+  "RBAC still needs one retained incident chain connecting evaluator decision",
+]) requireNormalizedText(
   telemetryPlan,
   marker,
   `${files.telemetryPlan}: cross-owner telemetry handoff`,
@@ -142,9 +147,9 @@ for (const marker of [
 for (const marker of [
   "Current item: `core/rbac`",
   "Next item: `core/rbac`",
-  "`core/rbac` — `crates/rustok-rbac` — in_progress",
-  "dedicated invalidation observability",
-]) requireText(master, marker, `${files.master}: active cursor`);
+  "`core/rbac` remains `in_progress`",
+  "incident/live negative transport evidence",
+]) requireNormalizedText(master, marker, `${files.master}: active cursor`);
 
 if (failures.length > 0) {
   console.error("RBAC invalidation observability verification failed:");

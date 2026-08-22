@@ -1,0 +1,117 @@
+name: RBAC Source Guards
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/server/**"
+      - "crates/rustok-api/**"
+      - "crates/rustok-cli/**"
+      - "crates/rustok-events/**"
+      - "crates/rustok-migrations/**"
+      - "crates/rustok-outbox/**"
+      - "crates/rustok-rbac/**"
+      - "docs/verification/PLATFORM_VERIFICATION_PLAN.md"
+      - "scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs"
+      - "scripts/verify/verify-rbac-owner-role-mutation-contract.mjs"
+      - "scripts/verify/verify-rbac-artifact-permission-outbox.mjs"
+      - "scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs"
+      - "scripts/verify/verify-rbac-explicit-principal-kind.mjs"
+      - "scripts/verify/verify-rbac-invalidation-observability.mjs"
+      - ".github/workflows/rbac-source-guards.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/server/**"
+      - "crates/rustok-api/**"
+      - "crates/rustok-cli/**"
+      - "crates/rustok-events/**"
+      - "crates/rustok-migrations/**"
+      - "crates/rustok-outbox/**"
+      - "crates/rustok-rbac/**"
+      - "docs/verification/PLATFORM_VERIFICATION_PLAN.md"
+      - "scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs"
+      - "scripts/verify/verify-rbac-owner-role-mutation-contract.mjs"
+      - "scripts/verify/verify-rbac-artifact-permission-outbox.mjs"
+      - "scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs"
+      - "scripts/verify/verify-rbac-explicit-principal-kind.mjs"
+      - "scripts/verify/verify-rbac-invalidation-observability.mjs"
+      - ".github/workflows/rbac-source-guards.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  source-contract:
+    name: RBAC source contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact verification revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+      - name: Record exact-head provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/rbac-source-guards
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "event=${GITHUB_EVENT_NAME}"
+            echo "expected_sha=$expected"
+            echo "actual_sha=$actual"
+            node --version
+          } | tee evidence/rbac-source-guards/metadata.txt
+      - name: Execute RBAC source guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          run_logged() {
+            local name="$1"
+            shift
+            echo "::group::$name"
+            set +e
+            "$@" 2>&1 | tee "evidence/rbac-source-guards/${name}.log"
+            rc=${PIPESTATUS[0]}
+            set -e
+            echo "::endgroup::"
+            if [[ $rc -ne 0 ]]; then
+              echo "::error::$name failed with exit code $rc"
+              failed=1
+            fi
+          }
+          run_logged cli-repair-source node scripts/verify/verify-rbac-cli-live-repair-propagation-source.mjs
+          run_logged owner-role-mutation node scripts/verify/verify-rbac-owner-role-mutation-contract.mjs
+          run_logged artifact-outbox node scripts/verify/verify-rbac-artifact-permission-outbox.mjs
+          run_logged artifact-tenant-integrity node scripts/verify/verify-rbac-artifact-permission-tenant-integrity.mjs
+          run_logged explicit-principal-kind node scripts/verify/verify-rbac-explicit-principal-kind.mjs
+          run_logged invalidation-observability node scripts/verify/verify-rbac-invalidation-observability.mjs
+          exit "$failed"
+      - name: Archive RBAC source-guard evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rbac-source-guards-${{ github.run_id }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: evidence/rbac-source-guards
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
