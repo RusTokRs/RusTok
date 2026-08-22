@@ -122,10 +122,10 @@ Retained focused evidence:
   migration graph plus direct Category presentation storage guard/same-revision CAS evidence;
 - PR #3682 was squash-merged as `7bb105d10fc99cb5271d008d3cb62395dee5cacf`.
 
-### TAXONOMY-CAT-4 — Flex Category donor — IN PROGRESS
+### TAXONOMY-CAT-4 — Flex Category donor — COMPLETE
 
-PR #3683 is the reusable backend donor foundation. It intentionally extends Flex rather than adding a
-Taxonomy-specific custom-fields engine:
+PR #3683 delivered the reusable backend donor foundation. It intentionally extends Flex rather than
+adding a Taxonomy-specific custom-fields engine:
 
 - `taxonomy.category` is a namespaced Flex entity type;
 - Flex owns generic attached field-definition persistence keyed by tenant and donor entity type;
@@ -138,28 +138,39 @@ Taxonomy-specific custom-fields engine:
 - exact-locale authoring remains separate from read fallback, so editing one locale cannot seed
   another locale with fallback text.
 
-Focused retained evidence for the backend foundation is owned by
-`Taxonomy Category Flex Donor Contract`. Its final merge gate must check out the exact PR head and run:
+PR #3684 completed the real Category instance boundary through the existing generic Flex surface:
 
-- the source boundary verifier;
-- scoped Rust 1.96 formatting for CAT-4 files only;
-- SQLite generic field-definition tenant/duplicate/schema contracts;
-- SQLite shared/localized value roundtrip and exact-locale authoring contracts;
-- bounded Taxonomy tenant/kind owner-identity evidence;
-- server compile evidence for `mod-taxonomy,mod-flex` host registration/guard composition;
-- a PostgreSQL 16 generic donor roundtrip that also proves field-definition mutations advance the
-  durable Flex cache generation.
+- Flex owns the attached-value GraphQL read/update/delete port and transport types;
+- tenant identity and tenant-default locale come from trusted GraphQL context rather than caller
+  payload;
+- the server adapter rejects Tags, foreign-tenant Categories and stale UUIDs before any attached Flex
+  value read/write;
+- shared and localized Category values resolve through the existing generic Flex schema/validation
+  path, including requested-locale to tenant-default fallback;
+- Taxonomy hard-delete invokes an injected cleanup port inside the owner transaction, while Flex alone
+  deletes its generic shared/localized value rows;
+- Taxonomy still owns no duplicate field-definition service, validator, localized-value engine or
+  custom form/schema-builder implementation.
 
-The backend foundation is not the whole CAT-4 completion criterion. A follow-up slice must wire the
-Category instance transport/admin authoring surface through the existing generic Flex schema builder,
-prove shared and localized Category custom fields end-to-end from an actual Category instance, and
-ensure Taxonomy hard-delete removes any attached Flex value rows without creating generic ownership
-inside Taxonomy.
+Retained focused evidence:
 
-**Done when:** a tenant can add, edit, localize, resolve and remove custom fields on real Categories
-through the platform Flex transport/admin surface, with tenant/kind ownership and hard-delete cleanup
-proved, while Taxonomy still implements no second field-definition service, validator or custom form
-engine.
+- PR #3683 final head `532444698ee3d1451603bd734ef3ef308c718044` passed `Taxonomy Category Flex Donor Contract`
+  run `32587184715` and `Taxonomy PostgreSQL Evidence` run `32587184591`, then squash-merged as
+  `5f063e5fcc56fa1af7859ede19aa3b345f05d218`;
+- PR #3684 exact head `1c9e79a790cac08005b82a73aa44c98a5194f5c0` passed `Taxonomy Category Flex Donor Contract`
+  run `32597360518`: source boundary, scoped Rust 1.96 formatting, generic definition/value contracts,
+  bounded Taxonomy owner identity, server host compile, generic PostgreSQL donor roundtrip and the
+  real Category PostgreSQL transport/hard-delete E2E all succeeded;
+- the same #3684 head passed `Taxonomy Ownership Boundary` run `32597360409` and complete
+  `Taxonomy PostgreSQL Evidence` run `32597360469`, including canonical PostgreSQL 16 migrations,
+  Category presentation CAS, hierarchy contention, route-registry contention, Translation-target
+  evidence and the final gate;
+- PR #3684 was squash-merged as `4ea8a0362ef9210294750c4c9766787a7191914f`.
+
+**Done:** a tenant can add, edit, localize, resolve and remove custom fields on real Categories through
+the platform Flex transport/schema-builder boundary, with tenant/kind ownership and hard-delete
+cleanup proved, while Taxonomy implements no second field-definition service, validator or custom
+form engine.
 
 ### TAXONOMY-CAT-5 — Forum category cutover — PLANNED
 
