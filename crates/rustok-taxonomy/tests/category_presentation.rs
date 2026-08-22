@@ -1,14 +1,16 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, SetTaxonomyCategoryPresentationInput, TaxonomyCategoryMediaId,
     TaxonomyCategoryMediaReferenceValidator, TaxonomyError, TaxonomyModule, TaxonomyResult,
     TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    entities::taxonomy_category_presentation,
 };
 use rustok_test_utils::db::setup_test_db;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;
 
@@ -314,4 +316,51 @@ async fn media_validator_rejects_non_public_or_cross_tenant_reference() {
         .await
         .expect_err("cross-tenant Media reference must fail owner validation");
     assert!(matches!(error, TaxonomyError::Validation(_)));
+}
+
+#[tokio::test]
+async fn storage_boundary_rejects_tag_and_non_positive_revision() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let tag_id = create_term(&service, tenant_id, TaxonomyTermKind::Tag, "Direct Tag").await;
+    let now = Utc::now().fixed_offset();
+
+    let tag_error = taxonomy_category_presentation::ActiveModel {
+        tenant_id: Set(tenant_id),
+        term_id: Set(tag_id),
+        icon_key: Set(Some("tag".to_string())),
+        color: Set(None),
+        image_media_id: Set(None),
+        cover_media_id: Set(None),
+        revision: Set(1),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&db)
+    .await
+    .expect_err("direct Tag presentation storage must fail");
+    assert!(tag_error.to_string().contains("not a Category"));
+
+    let category_id = create_term(
+        &service,
+        tenant_id,
+        TaxonomyTermKind::Category,
+        "Direct Category",
+    )
+    .await;
+    let revision_error = taxonomy_category_presentation::ActiveModel {
+        tenant_id: Set(tenant_id),
+        term_id: Set(category_id),
+        icon_key: Set(None),
+        color: Set(None),
+        image_media_id: Set(None),
+        cover_media_id: Set(None),
+        revision: Set(0),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&db)
+    .await
+    .expect_err("non-positive presentation revision must fail storage validation");
+    assert!(revision_error.to_string().contains("revision must be positive"));
 }
