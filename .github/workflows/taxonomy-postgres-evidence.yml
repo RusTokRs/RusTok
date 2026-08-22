@@ -11,6 +11,7 @@ on:
       - "crates/rustok-outbox/**"
       - "crates/rustok-taxonomy/**"
       - "crates/rustok-translation-targets/**"
+      - "scripts/verify/run-taxonomy-postgres-evidence-source-contract.mjs"
       - "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs"
       - "scripts/verify/verify-taxonomy-translation-target-postgres.mjs"
       - ".github/workflows/taxonomy-postgres-evidence.yml"
@@ -25,6 +26,7 @@ on:
       - "crates/rustok-outbox/**"
       - "crates/rustok-taxonomy/**"
       - "crates/rustok-translation-targets/**"
+      - "scripts/verify/run-taxonomy-postgres-evidence-source-contract.mjs"
       - "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs"
       - "scripts/verify/verify-taxonomy-translation-target-postgres.mjs"
       - ".github/workflows/taxonomy-postgres-evidence.yml"
@@ -66,9 +68,13 @@ jobs:
         with:
           node-version: 22
       - name: Verify route-registry PostgreSQL contention source
-        run: node scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs
+        run: >-
+          node scripts/verify/run-taxonomy-postgres-evidence-source-contract.mjs
+          scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs
       - name: Verify translation-target PostgreSQL source
-        run: node scripts/verify/verify-taxonomy-translation-target-postgres.mjs
+        run: >-
+          node scripts/verify/run-taxonomy-postgres-evidence-source-contract.mjs
+          scripts/verify/verify-taxonomy-translation-target-postgres.mjs
 
   postgres-evidence:
     name: Taxonomy PostgreSQL runtime evidence
