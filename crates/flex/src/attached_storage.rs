@@ -18,9 +18,9 @@ use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 
 use crate::{
     AttachedEntityRef, PreparedAttachedValuesWrite, delete_attached_localized_values,
-    persist_localized_values, prepare_attached_values_update, resolve_attached_payload,
+    is_valid_flex_entity_type, persist_localized_values, prepare_attached_values_update,
+    resolve_attached_payload,
 };
-use crate::registry::is_valid_flex_entity_type;
 
 pub const GENERIC_ATTACHED_VALUES_TABLE: &str = "flex_attached_values";
 
