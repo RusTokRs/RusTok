@@ -5,7 +5,7 @@ language: en
 status: active
 owners:
   - rustok-forum
-last_reviewed: 2026-08-15
+last_reviewed: 2026-08-22
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -280,7 +280,7 @@ remain pending.
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | Search projection/filtering, ordering, owner revisions and repair exist. PostgreSQL/Iggy and cross-module evidence remain. |
 | `FORUM-24` | `in_progress` | A-S plus descriptor correction provide category/topic routes, transports, mounts, SEO/hreflang and Search URLs. Execute registered-host, HTTP, browser and reindex evidence. |
-| `FORUM-25` | `planned` | Forum Translation provider and complete multilingual/RTL UI. |
+| `FORUM-25` | `in_progress` | Forum category Translation provider, cursor/progress/PostgreSQL evidence, Arabic admin/storefront catalogs, content-locale SEO/editor boundaries and multilingual/RTL admin read/write surfaces are source-ready. Retain registered-host/runtime provider evidence plus mounted multilingual/RTL browser parity; topic/reply UGC translation remains opt-in rather than an automatic provider. |
 | `FORUM-26` | `in_progress` | Forum trust/posting facts exist. Add Moderation/Reputation facts, persistence/enforcement, shared rate limits, transports/UI and evidence. |
 | `FORUM-27` | `planned` | Compose Profiles directory/profile with Forum stats/activity and permitted reputation/achievements. |
 | `FORUM-28` | `in_progress` | Canonical storage, renderer, projections, shared editor runtime, Leptos and Next topic create/edit and reply composition, native SSR/hydrate plus GraphQL CSR reply writes, owner content-locale/direction/spellcheck propagation and dynamic read-only state are implemented. Dirty locale switching is now fail-closed for category/topic editors, fallback-only localized form state is scrubbed before writes, unsaved reply drafts block locale changes, and unchanged Taxonomy tag attachments are preserved. Complete owner-copy i18n and mounted save/reload/browser parity evidence. |
