@@ -52,18 +52,33 @@ function expectFailure(root, pathPattern, tokenPattern, message) {
 }
 
 function writeBaseline(root) {
-  write(root, "crates/rustok-taxonomy/src/lib.rs", "pub fn flat_vocabulary() {}\n");
+  write(root, "crates/rustok-taxonomy/src/lib.rs", "pub fn shared_taxonomy() {}\n");
+  write(
+    root,
+    "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md",
+    [
+      "`rustok-taxonomy` becomes the canonical Category owner",
+      "Taxonomy does not receive a generic polymorphic `owner_type/owner_id` attachment table",
+      "",
+    ].join("\n"),
+  );
+  write(
+    root,
+    "docs/architecture/taxonomy-flex-category-platform-plan.md",
+    [
+      "Taxonomy owns shared Category hierarchy",
+      "Consumer relation/binding tables stay with the consumer",
+      "Flex is the only runtime custom-fields mechanism",
+      "",
+    ].join("\n"),
+  );
 
   write(
     root,
     "crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
     [
-      "fn migration() {",
-      "    let _ = BlogCategories::ParentId;",
-      "    let _ = TaxonomyTerms::Id;",
-      "}",
+      "fn migration() { let _ = TaxonomyTerms::Id; }",
       "// .table(BlogPostTags::Table)",
-      "// .table(BlogCategoryTranslations::Table)",
       "// .to(TaxonomyTerms::Table, TaxonomyTerms::Id)",
       "",
     ].join("\n"),
@@ -74,19 +89,6 @@ function writeBaseline(root) {
     '#[sea_orm(table_name = "blog_post_tags")]\npub struct Model;\n',
   );
 
-  write(
-    root,
-    "crates/rustok-forum/src/migrations/m20260328_000001_create_forum_tables.rs",
-    [
-      "fn migration() {",
-      "    let _ = ForumCategories::ParentId;",
-      "    let _ = ForumCategoryTranslations::Locale;",
-      "}",
-      "// .table(ForumCategories::Table)",
-      "// .table(ForumCategoryTranslations::Table)",
-      "",
-    ].join("\n"),
-  );
   write(
     root,
     "crates/rustok-forum/src/migrations/m20260329_000005_create_forum_topic_tags.rs",
@@ -124,31 +126,6 @@ function writeBaseline(root) {
     "crates/rustok-product/src/entities/product_tag.rs",
     '#[sea_orm(table_name = "product_tags")]\npub struct Model;\n',
   );
-  write(
-    root,
-    "crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs",
-    [
-      'const SQL: &str = r#"',
-      "CREATE TABLE IF NOT EXISTS catalog_categories (",
-      "    id UUID PRIMARY KEY,",
-      "    parent_id UUID REFERENCES catalog_categories(id)",
-      ");",
-      "CREATE TABLE IF NOT EXISTS catalog_category_closure (depth INTEGER NOT NULL);",
-      "CREATE TABLE IF NOT EXISTS product_categories (product_id UUID NOT NULL);",
-      '"#;',
-      "",
-    ].join("\n"),
-  );
-  write(
-    root,
-    "crates/rustok-product/docs/category-locale-contract.md",
-    [
-      "Product catalog categories remain a Product-owned tree/closure aggregate.",
-      "Product owns category parent/child relations, closure rows, moves, deletion",
-      "Taxonomy owns shared vocabulary identities and localized taxonomy route keys",
-      "",
-    ].join("\n"),
-  );
 
   write(
     root,
@@ -173,18 +150,16 @@ function writeBaseline(root) {
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "rustok-taxonomy-ownership-"));
 try {
   writeBaseline(root);
-  expectSuccess(root, "baseline owner-module fixture should pass");
+  expectSuccess(root, "baseline typed consumer ownership fixture should pass");
 
   write(
     root,
     "crates/rustok-taxonomy/src/hierarchy.rs",
-    "pub struct InvalidHierarchy { pub parent_id: i64 }\n",
+    "pub struct CategoryHierarchy { pub parent_id: Option<i64>, pub position: i32 }\n",
   );
-  expectFailure(
+  expectSuccess(
     root,
-    /crates\/rustok-taxonomy\/src\/hierarchy\.rs/,
-    /generic parent_id/,
-    "Taxonomy parent_id must fail closed",
+    "Taxonomy-owned Category hierarchy must be allowed by the ownership boundary",
   );
   remove(root, "crates/rustok-taxonomy/src/hierarchy.rs");
 
@@ -214,50 +189,21 @@ try {
   );
   remove(root, "crates/rustok-taxonomy/src/entities/generic_attachment.rs");
 
-  write(
-    root,
-    "crates/rustok-forum/src/migrations/m20260328_000001_create_forum_tables.rs",
-    [
-      "fn migration() { let _ = ForumCategories::ParentId; }",
-      "// .table(ForumCategories::Table)",
-      "",
-    ].join("\n"),
-  );
-  expectFailure(
-    root,
-    /m20260328_000001_create_forum_tables\.rs/,
-    /ForumCategoryTranslations::Table/,
-    "Forum category translation ownership drift must fail closed",
-  );
-  writeBaseline(root);
-
-  write(
-    root,
-    "crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs",
-    [
-      'const SQL: &str = r#"',
-      "CREATE TABLE IF NOT EXISTS catalog_categories (",
-      "    parent_id UUID REFERENCES catalog_categories(id)",
-      ");",
-      "CREATE TABLE IF NOT EXISTS product_categories (product_id UUID NOT NULL);",
-      '"#;',
-      "",
-    ].join("\n"),
-  );
-  expectFailure(
-    root,
-    /m20260701_000001_create_product_catalog_attributes\.rs/,
-    /catalog_category_closure/,
-    "Product category closure ownership drift must fail closed",
-  );
-  writeBaseline(root);
-
   remove(root, "crates/rustok-profiles/src/entities/profile_tag.rs");
   expectFailure(
     root,
     /crates\/rustok-profiles\/src\/entities\/profile_tag\.rs/,
-    /missing owner-owned Taxonomy consumer artifact/,
-    "missing owner relation artifact must fail closed",
+    /missing Taxonomy ownership artifact/,
+    "missing typed owner relation artifact must fail closed",
+  );
+  writeBaseline(root);
+
+  remove(root, "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md");
+  expectFailure(
+    root,
+    /DECISIONS\/2026-08-22-taxonomy-category-flex-ownership\.md/,
+    /missing Taxonomy ownership artifact/,
+    "accepted Category ownership decision must remain present",
   );
 
   console.log("[verify-taxonomy-ownership-boundary-self-test] PASS");
