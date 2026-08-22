@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui::RichTextHtml;
 use leptos_ui_routing::read_route_query_value;
+use rustok_api::normalize_locale_tag;
 use rustok_ui_core::UiRouteContext;
 
 use super::member_card::{ForumAuthorBadge, member_card_context};
@@ -16,6 +17,10 @@ use crate::model::{
     StorefrontForumData,
 };
 use crate::transport;
+
+fn forum_storefront_content_lang(locale: &str) -> String {
+    normalize_locale_tag(locale).unwrap_or_else(|| "und".to_string())
+}
 
 #[component]
 pub fn ForumView() -> impl IntoView {
@@ -201,6 +206,7 @@ fn ForumCategoryRail(
         "forum.categories.noDescription",
         "No description yet.",
     );
+    let ui_content_lang = forum_storefront_content_lang(locale.as_deref().unwrap_or_default());
 
     view! {
         <aside class="space-y-4 rounded-[1.75rem] border border-border bg-card p-5 shadow-sm xl:sticky xl:top-6 xl:self-start">
@@ -220,6 +226,17 @@ fn ForumCategoryRail(
                         no_description: no_description_label.clone(),
                         total_template: categories_total_template.clone(),
                     };
+                    let content_lang = forum_storefront_content_lang(item.effective_locale.as_str());
+                    let description_lang = if item
+                        .description
+                        .as_deref()
+                        .map(str::trim)
+                        .is_some_and(|value| !value.is_empty())
+                    {
+                        content_lang.clone()
+                    } else {
+                        ui_content_lang.clone()
+                    };
                     let card = forum_storefront_category_card_view_model(
                         module_route_base.as_str(),
                         &item,
@@ -238,14 +255,28 @@ fn ForumCategoryRail(
                             <div class="pl-3">
                                 <div class="flex items-start justify-between gap-3">
                                     <div>
-                                        <h4 class="text-sm font-semibold text-foreground">{card.name}</h4>
-                                        <p class="mt-1 text-xs text-muted-foreground">{card.slug_badge}</p>
+                                        <h4
+                                            data-forum-target-localized=""
+                                            lang=content_lang
+                                            dir="auto"
+                                            class="text-sm font-semibold text-foreground"
+                                        >{card.name}</h4>
+                                        <p
+                                            data-forum-route-identifier=""
+                                            dir="ltr"
+                                            class="mt-1 text-xs text-muted-foreground"
+                                        >{card.slug_badge}</p>
                                     </div>
                                     <span class="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                                         {card.topic_count}
                                     </span>
                                 </div>
-                                <p class="mt-3 line-clamp-3 text-sm text-muted-foreground">
+                                <p
+                                    data-forum-target-localized=""
+                                    lang=description_lang
+                                    dir="auto"
+                                    class="mt-3 line-clamp-3 text-sm text-muted-foreground"
+                                >
                                     {card.description}
                                 </p>
                             </div>
@@ -328,6 +359,7 @@ fn ForumTopicFeed(
                         selected_topic_id.as_deref(),
                         slug_template.as_str(),
                     );
+                    let content_lang = forum_storefront_content_lang(card.effective_locale.as_str());
                     let unread_label = if card.unread_count > 0 {
                         forum_storefront_count_label(unread_template.as_str(), card.unread_count)
                     } else {
@@ -345,7 +377,7 @@ fn ForumTopicFeed(
                                 <div class="space-y-3">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <span class=card.status_badge_class>{card.status.clone()}</span>
-                                        <span class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                                        <span dir="ltr" class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                                             {card.effective_locale.clone()}
                                         </span>
                                         {card.is_unread.then(|| view! {
@@ -363,8 +395,17 @@ fn ForumTopicFeed(
                                         })}
                                     </div>
                                     <div>
-                                        <h4 class="text-lg font-semibold text-foreground">{card.title}</h4>
-                                        <p class="mt-1 text-sm text-muted-foreground">{card.slug_label}</p>
+                                        <h4
+                                            data-forum-target-localized=""
+                                            lang=content_lang
+                                            dir="auto"
+                                            class="text-lg font-semibold text-foreground"
+                                        >{card.title}</h4>
+                                        <p
+                                            data-forum-route-identifier=""
+                                            dir="ltr"
+                                            class="mt-1 text-sm text-muted-foreground"
+                                        >{card.slug_label}</p>
                                     </div>
                                     <ForumAuthorBadge author_id />
                                 </div>
@@ -416,6 +457,7 @@ fn ForumThreadPanel(
     let status_class = topic_status_class(topic.status.as_str());
     let body = topic.body.clone();
     let body_locale = topic.effective_locale.clone();
+    let content_lang = forum_storefront_content_lang(topic.effective_locale.as_str());
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
     let mark_read_label = t(
@@ -446,7 +488,7 @@ fn ForumThreadPanel(
             <div class="space-y-3">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class=forum_storefront_status_badge_class(status_class)>{topic.status.clone()}</span>
-                    <span class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                    <span dir="ltr" class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                         {topic.effective_locale.clone()}
                     </span>
                     {topic.is_pinned.then(|| view! {
@@ -461,8 +503,17 @@ fn ForumThreadPanel(
                     })}
                 </div>
                 <div>
-                    <h3 class="text-2xl font-semibold text-card-foreground">{topic.title}</h3>
-                    <p class="mt-2 text-sm text-muted-foreground">{crate::core::forum_storefront_slug_label(slug_template.as_str(), topic.slug.as_str())}</p>
+                    <h3
+                        data-forum-target-localized=""
+                        lang=content_lang.clone()
+                        dir="auto"
+                        class="text-2xl font-semibold text-card-foreground"
+                    >{topic.title}</h3>
+                    <p
+                        data-forum-route-identifier=""
+                        dir="ltr"
+                        class="mt-2 text-sm text-muted-foreground"
+                    >{crate::core::forum_storefront_slug_label(slug_template.as_str(), topic.slug.as_str())}</p>
                 </div>
                 <ForumAuthorBadge author_id />
                 <RichTextHtml
@@ -495,7 +546,12 @@ fn ForumThreadPanel(
                 view! {
                     <div class="flex flex-wrap gap-2">
                         {topic.tags.into_iter().map(|tag| view! {
-                            <span class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+                            <span
+                                data-forum-target-localized=""
+                                lang=content_lang.clone()
+                                dir="auto"
+                                class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
+                            >
                                 {tag}
                             </span>
                         }).collect_view()}
@@ -537,7 +593,7 @@ fn ReplyCard(reply: ForumReplyDetail) -> impl IntoView {
         <article class="rounded-[1.15rem] border border-border bg-card p-4">
             <div class="flex items-center justify-between gap-3">
                 <span class=forum_storefront_status_badge_class(status_class)>{reply.status}</span>
-                <span class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                <span dir="ltr" class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                     {reply.effective_locale}
                 </span>
             </div>
