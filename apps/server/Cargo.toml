@@ -229,7 +229,7 @@ rustok-migrations = { path = "../../crates/rustok-migrations" }
 sea-orm-migration.workspace = true
 
 [dev-dependencies]
-serial_test = "3.5"
+serial_test = "4.0"
 rustok-test-utils.workspace = true
 rustok-translation-admin = { path = "../../crates/rustok-translation/admin", default-features = false, features = ["ssr"] }
 rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, features = ["ssr"] }
