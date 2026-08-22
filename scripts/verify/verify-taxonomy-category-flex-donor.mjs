@@ -79,9 +79,23 @@ requireAll('apps/server/src/services/flex_attached_values.rs', [
   'Err(Error::NotFound)',
 ]);
 
+requireAll('crates/flex/tests/generic_attached_definitions.rs', [
+  'generic_definition_service_is_tenant_scoped_and_reuses_flex_guards',
+  'same key should be allowed in another tenant',
+  'DuplicateFieldKey',
+  'get_schema',
+]);
+
 requireAll('crates/flex/tests/generic_attached_storage.rs', [
   'generic_attached_values_split_shared_and_exact_locale_rows',
   'exact_locale_authoring_does_not_seed_from_read_fallback',
+]);
+
+requireAll('crates/flex/tests/postgres_generic_attached_storage.rs', [
+  'postgres_generic_category_donor_roundtrips_and_advances_definition_generation',
+  'RUSTOK_FLEX_TEST_POSTGRES_URL',
+  'generation(&db).await > generation_before',
+  'generic values must remain tenant-isolated',
 ]);
 
 requireAll('crates/rustok-taxonomy/tests/owner_identity.rs', [
@@ -90,6 +104,17 @@ requireAll('crates/rustok-taxonomy/tests/owner_identity.rs', [
   'TaxonomyService::new',
   'TaxonomyTermKind::Category',
   'TaxonomyTermKind::Category, tag_id',
+]);
+
+requireAll('.github/workflows/taxonomy-category-flex-donor-contract.yml', [
+  'TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}',
+  'ref: ${{ env.TARGET_SHA }}',
+  'Assert exact checked-out SHA',
+  'Check CAT-4 Rust formatting only',
+  'generic_attached_definitions',
+  'generic_attached_storage',
+  'postgres_generic_attached_storage',
+  'RUSTOK_FLEX_TEST_POSTGRES_URL',
 ]);
 
 for (const forbidden of [
