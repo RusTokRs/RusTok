@@ -1,0 +1,85 @@
+name: Taxonomy Category Flex Donor Contract
+
+on:
+  pull_request:
+    paths:
+      - "crates/flex/src/attached_definitions.rs"
+      - "crates/flex/src/attached_storage.rs"
+      - "crates/flex/src/entity_type.rs"
+      - "crates/flex/src/lib.rs"
+      - "crates/flex/src/cache_generation.rs"
+      - "crates/flex/src/migrations/**"
+      - "crates/flex/tests/generic_attached_storage.rs"
+      - "crates/rustok-taxonomy/src/lib.rs"
+      - "crates/rustok-taxonomy/src/owner_identity.rs"
+      - "crates/rustok-taxonomy/tests/owner_identity.rs"
+      - "apps/server/src/services/field_definition_registry_bootstrap.rs"
+      - "apps/server/src/services/flex_attached_values.rs"
+      - "scripts/verify/verify-taxonomy-category-flex-donor.mjs"
+      - ".github/workflows/taxonomy-category-flex-donor-contract.yml"
+      - "Cargo.lock"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/flex/src/attached_definitions.rs"
+      - "crates/flex/src/attached_storage.rs"
+      - "crates/flex/src/entity_type.rs"
+      - "crates/flex/src/lib.rs"
+      - "crates/flex/src/cache_generation.rs"
+      - "crates/flex/src/migrations/**"
+      - "crates/flex/tests/generic_attached_storage.rs"
+      - "crates/rustok-taxonomy/src/lib.rs"
+      - "crates/rustok-taxonomy/src/owner_identity.rs"
+      - "crates/rustok-taxonomy/tests/owner_identity.rs"
+      - "apps/server/src/services/field_definition_registry_bootstrap.rs"
+      - "apps/server/src/services/flex_attached_values.rs"
+      - "scripts/verify/verify-taxonomy-category-flex-donor.mjs"
+      - ".github/workflows/taxonomy-category-flex-donor-contract.yml"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taxonomy-category-flex-donor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  source-contract:
+    name: Category Flex donor source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Verify Taxonomy Category donor boundaries
+        run: node scripts/verify/verify-taxonomy-category-flex-donor.mjs
+
+  rust-contract:
+    name: Category Flex donor Rust contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Run generic attached value storage contract
+        run: cargo test --locked -p flex --test generic_attached_storage -- --nocapture
+      - name: Run bounded Taxonomy owner identity contract
+        run: cargo test --locked -p rustok-taxonomy --test owner_identity -- --nocapture
+      - name: Compile host registration and owner guard
+        run: cargo check --locked -p rustok-server --no-default-features --features mod-taxonomy,mod-flex --lib
