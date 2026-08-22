@@ -72,7 +72,12 @@ export default async function Page(props: PageProps) {
               <option value=''>No topics available</option>
             ) : (
               topics.map((topic) => (
-                <option key={topic.id} value={topic.id}>
+                <option
+                  key={topic.id}
+                  value={topic.id}
+                  lang={topic.effectiveLocale}
+                  dir='auto'
+                >
                   {topic.title}
                 </option>
               ))

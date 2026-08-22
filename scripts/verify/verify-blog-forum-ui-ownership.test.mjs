@@ -35,7 +35,27 @@ disabled={form.formState.isSubmitting}`);
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/nav.ts',
     "title: 'Forum'\n/dashboard/forum/topic\n/dashboard/forum/reply");
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/api/forum.ts',
-    'export interface GqlOpts\nlistForumCategories\nlistForumTopics\ngetForumTopic\ncreateForumTopic\nupdateForumTopic\nbody: RichTextDocument;\ncreateForumReply\ncontent: RichTextDocument;\neffectiveLocale: string;');
+    `export interface GqlOpts
+listForumCategories
+export interface ForumTopicSummary extends ForumTopicMergeCandidate {
+  locale: string;
+  ${options.selectorMissingEffectiveLocale ? '' : 'effectiveLocale: string;'}
+  slug: string;
+}
+listForumTopics
+items {
+          id
+          locale
+          ${options.selectorMissingEffectiveLocale ? '' : 'effectiveLocale'}
+          title
+}
+getForumTopic
+createForumTopic
+updateForumTopic
+body: RichTextDocument;
+createForumReply
+content: RichTextDocument;
+effectiveLocale: string;`);
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/components/forum-reply-editor.tsx',
     `@/shared/ui/rich-text-editor
 profile='${options.articleProfile ? 'article' : 'discussion'}'
@@ -90,15 +110,26 @@ ${options.forumPlainTextMissingBidi ? '' : "lang={contentLocale}\ndir='auto'\ndi
   );
   writeFixtureFile(root, 'apps/next-admin/src/modules/index.ts',
     "import '../../packages/blog/src';\nimport '../../packages/forum/src';");
+  const selectorBidi = options.selectorMissingEffectiveLocale
+    ? ''
+    : "lang={topic.effectiveLocale}\ndir='auto'";
   writeFixtureFile(root, 'apps/next-admin/src/app/dashboard/forum/reply/page.tsx',
     `../../../../../packages/forum/src
 ${options.blogRoute ? '../../../../../packages/blog/src\n' : ''}ForumReplyEditor
 listForumTopics
 getForumTopic
 selectedTopicSummary.locale
-initialContentLocale={selectedTopic.effectiveLocale}`);
+initialContentLocale={selectedTopic.effectiveLocale}
+${selectorBidi}`);
   writeFixtureFile(root, 'apps/next-admin/src/app/dashboard/forum/topic/page.tsx',
-    "../../../../../packages/forum/src\nForumTopicEditor\nlistForumCategories\nlistForumTopics\ngetForumTopic");
+    `../../../../../packages/forum/src
+ForumTopicEditor
+listForumCategories
+listForumTopics
+getForumTopic
+selectedTopicSummary.locale
+${selectorBidi}
+Edit the selected forum topic translation.`);
   if (options.blogOwnsForum) {
     writeFixtureFile(root, 'apps/next-admin/packages/blog/src/api/forum.ts', 'legacy owner');
   }
@@ -175,6 +206,12 @@ test('Blog Forum UI ownership verifier rejects Forum plain-text bidi regression'
   const result = run(fixture({ forumPlainTextMissingBidi: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Forum reply editor missing dir='ltr'|Forum topic editor missing lang=\{contentLocale\}/);
+});
+
+test('Blog Forum UI ownership verifier rejects selector effective-locale regression', () => {
+  const result = run(fixture({ selectorMissingEffectiveLocale: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Forum GraphQL adapter missing|Forum route missing lang=\{topic\.effectiveLocale\}|Forum topic route missing lang=\{topic\.effectiveLocale\}/);
 });
 
 test('Blog Forum UI ownership verifier rejects a restored Forum format adapter', () => {
