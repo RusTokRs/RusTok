@@ -61,16 +61,20 @@ After the Category owner exists, register `taxonomy.category` as an attached Fle
 administrator-defined extension fields. Canonical Category fields remain Taxonomy-owned built-ins;
 Flex stores only extension fields.
 
-### 4. Forum Topic does not opt in to Flex
+### 4. Forum Topic remains an explicit Flex consumer
 
-There is no accepted product requirement for administrator-defined fields on Forum topics. Topic
-`metadata` remains Forum-owned internal/domain state and must not be interpreted as a generic custom-
-field contract.
+Forum Topic is intentionally extensible through Flex. Administrators may define optional topic
+fields for tenant-specific workflows, classification or presentation without requiring a Forum code
+extension.
 
-The runtime `FieldDefRegistry` therefore stops registering `topic`. Historical
-`topic_field_definitions` and localized attached values are retained only until a production-like data
-audit can prove them empty or define an explicit migration/export. No tenant data may be silently
-dropped.
+This does **not** move Forum business invariants into Flex. Topic lifecycle/status, category binding,
+route identity, authoring content, moderation state, counters, accepted-solution semantics, access
+policy and other Forum-critical state remain normalized Forum-owned fields.
+
+The existing `topic_field_definitions`, `forum_topics.metadata`, attached localized values and
+`FieldDefRegistry` registration remain live. Future work should simplify Topic onboarding toward the
+same minimal reusable Flex donor adapter used by other consumers, not remove Topic support or build a
+Forum-specific custom-field engine.
 
 ## Consequences
 
@@ -78,8 +82,9 @@ Positive:
 
 - one category identity/hierarchy/localization/presentation model can be reused across modules;
 - one Translation owner handles canonical category copy;
-- one Flex capability extends Categories, Products, Users, Groups and other explicit donors;
+- one Flex capability extends Categories, Products, Users, Topics, Groups and other explicit donors;
 - adding custom fields to a new module becomes adapter work instead of another field engine;
+- Forum Topic can support tenant-specific extension without polluting the normalized topic schema;
 - module-specific policy remains in the module that understands it.
 
 Tradeoffs:
@@ -89,7 +94,8 @@ Tradeoffs:
   Category implementation;
 - Product and Forum have category-specific policy/projection state that must become bindings rather
   than being blindly moved into Taxonomy;
-- Topic Flex storage needs an audit and cleanup migration after runtime admission is disabled.
+- Flex donor onboarding still has too much per-donor plumbing and should be reduced using
+  `taxonomy.category` as the next reference integration.
 
 ## Migration constraints
 
@@ -100,6 +106,8 @@ Tradeoffs:
   provider after Taxonomy is canonical.
 - Keep consumer relation/binding tables tenant-safe and module-owned.
 - Media remains the binary lifecycle owner; Taxonomy/Flex reference Media identities.
+- Topic Flex fields must remain optional extension data and must not replace normalized Forum
+  invariants.
 - Update focused source/runtime guards atomically with each ownership cutover.
 
 ## Verification
@@ -111,8 +119,8 @@ The completed migration must prove:
 - Taxonomy Translation CAS/progress/change-cursor behavior for Category;
 - cross-tenant consumer category bindings are rejected;
 - `taxonomy.category` Flex definitions/values are tenant-scoped and localized when configured;
-- `forum.topic` is not a registered Flex donor;
-- legacy Topic custom-field data is audited before storage removal;
+- `forum.topic` remains a registered Flex donor and unsupported entity types still fail closed;
+- Topic custom fields cannot overwrite or substitute normalized Forum business fields;
 - Forum mounted multilingual/RTL category surfaces consume Taxonomy-owned localized category data.
 
 ## Follow-up plan
