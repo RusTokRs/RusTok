@@ -90,6 +90,10 @@ impl TaxonomyService {
             .transpose()?
             .flatten();
 
+        // Validate owner identity before calling an external capability. The
+        // Category check is repeated inside the transaction before persistence
+        // so a concurrent delete cannot turn the preflight into write authority.
+        load_category(self.database(), tenant_id, term_id).await?;
         validate_media_references(
             media_validator,
             tenant_id,
