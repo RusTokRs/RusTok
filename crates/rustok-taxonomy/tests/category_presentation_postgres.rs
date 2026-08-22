@@ -5,7 +5,9 @@ use rustok_taxonomy::{
     CreateTaxonomyTermInput, SetTaxonomyCategoryPresentationInput, TaxonomyError,
     TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
 };
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use uuid::Uuid;
 
 const DATABASE_ENV: &str = "RUSTOK_TAXONOMY_TEST_DATABASE_URL";
@@ -57,7 +59,9 @@ async fn postgres_category_presentation_guard_and_cas_fail_closed() -> TestResul
         .await
         .expect_err("PostgreSQL guard must reject non-positive revisions");
     assert!(
-        zero_revision.to_string().contains("revision must be positive"),
+        zero_revision
+            .to_string()
+            .contains("revision must be positive"),
         "non-positive revision rejection must come from the storage guard: {zero_revision}"
     );
 
@@ -161,7 +165,8 @@ async fn ensure_category_presentation_schema(db: &DatabaseConnection) -> TestRes
     let row = db
         .query_one(Statement::from_string(
             DbBackend::Postgres,
-            "SELECT to_regclass('taxonomy_category_presentations') IS NOT NULL AS present".to_string(),
+            "SELECT to_regclass('taxonomy_category_presentations') IS NOT NULL AS present"
+                .to_string(),
         ))
         .await?
         .ok_or("PostgreSQL schema probe returned no row")?;

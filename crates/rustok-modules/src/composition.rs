@@ -152,7 +152,7 @@ impl SeaOrmModuleCompositionService {
         };
         let admission = idempotency::admit(
             &self.db,
-            operation.tenant_id,
+            idempotency::OwnerOperationScope::Tenant(operation.tenant_id),
             MODULE_COMPOSITION_OWNER_SLUG,
             &operation.idempotency_key.to_string(),
             REPLACE_AND_ENQUEUE_BUILD_OPERATION,

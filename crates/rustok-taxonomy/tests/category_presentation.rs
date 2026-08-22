@@ -6,8 +6,7 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, SetTaxonomyCategoryPresentationInput, TaxonomyCategoryMediaId,
     TaxonomyCategoryMediaReferenceValidator, TaxonomyError, TaxonomyModule, TaxonomyResult,
-    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    entities::taxonomy_category_presentation,
+    TaxonomyScopeType, TaxonomyService, TaxonomyTermKind, entities::taxonomy_category_presentation,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
@@ -92,7 +91,13 @@ impl TaxonomyCategoryMediaReferenceValidator for FakeMediaValidator {
 async fn category_without_presentation_reads_as_empty_revision_zero() {
     let (_db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
-    let category_id = create_term(&service, tenant_id, TaxonomyTermKind::Category, "Engineering").await;
+    let category_id = create_term(
+        &service,
+        tenant_id,
+        TaxonomyTermKind::Category,
+        "Engineering",
+    )
+    .await;
 
     let presentation = service
         .get_category_presentation(tenant_id, admin(), category_id)
@@ -135,8 +140,14 @@ async fn canonical_presentation_normalizes_tokens_and_validates_media() {
 
     assert_eq!(presentation.icon_key.as_deref(), Some("message-square"));
     assert_eq!(presentation.color.as_deref(), Some("#ff00aa"));
-    assert_eq!(presentation.image_media_id.map(Into::<Uuid>::into), Some(image_id));
-    assert_eq!(presentation.cover_media_id.map(Into::<Uuid>::into), Some(cover_id));
+    assert_eq!(
+        presentation.image_media_id.map(Into::<Uuid>::into),
+        Some(image_id)
+    );
+    assert_eq!(
+        presentation.cover_media_id.map(Into::<Uuid>::into),
+        Some(cover_id)
+    );
     assert_eq!(presentation.revision, 1);
 
     let read_back = service
@@ -362,5 +373,9 @@ async fn storage_boundary_rejects_tag_and_non_positive_revision() {
     .insert(&db)
     .await
     .expect_err("non-positive presentation revision must fail storage validation");
-    assert!(revision_error.to_string().contains("revision must be positive"));
+    assert!(
+        revision_error
+            .to_string()
+            .contains("revision must be positive")
+    );
 }

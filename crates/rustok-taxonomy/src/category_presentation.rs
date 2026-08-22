@@ -3,8 +3,8 @@ use chrono::Utc;
 use rustok_api::{Action, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
-    sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
+    TransactionTrait, sea_query::Expr,
 };
 use uuid::Uuid;
 
@@ -110,12 +110,12 @@ impl TaxonomyService {
 
         match existing {
             None => {
-                if let Some(expected_revision) = input.expected_revision {
-                    if expected_revision != 0 {
-                        return Err(TaxonomyError::conflict(format!(
-                            "Category presentation revision changed: expected {expected_revision}, current 0",
-                        )));
-                    }
+                if let Some(expected_revision) = input.expected_revision
+                    && expected_revision != 0
+                {
+                    return Err(TaxonomyError::conflict(format!(
+                        "Category presentation revision changed: expected {expected_revision}, current 0",
+                    )));
                 }
 
                 if icon_key.is_none()
@@ -133,8 +133,12 @@ impl TaxonomyService {
                     term_id: Set(term_id),
                     icon_key: Set(icon_key.clone()),
                     color: Set(color.clone()),
-                    image_media_id: Set(input.image_media_id.map(TaxonomyCategoryMediaId::into_uuid)),
-                    cover_media_id: Set(input.cover_media_id.map(TaxonomyCategoryMediaId::into_uuid)),
+                    image_media_id: Set(input
+                        .image_media_id
+                        .map(TaxonomyCategoryMediaId::into_uuid)),
+                    cover_media_id: Set(input
+                        .cover_media_id
+                        .map(TaxonomyCategoryMediaId::into_uuid)),
                     revision: Set(1),
                     created_at: Set(now),
                     updated_at: Set(now),
@@ -153,13 +157,13 @@ impl TaxonomyService {
                 })
             }
             Some(existing) => {
-                if let Some(expected_revision) = input.expected_revision {
-                    if expected_revision != existing.revision {
-                        return Err(TaxonomyError::conflict(format!(
-                            "Category presentation revision changed: expected {expected_revision}, current {}",
-                            existing.revision,
-                        )));
-                    }
+                if let Some(expected_revision) = input.expected_revision
+                    && expected_revision != existing.revision
+                {
+                    return Err(TaxonomyError::conflict(format!(
+                        "Category presentation revision changed: expected {expected_revision}, current {}",
+                        existing.revision,
+                    )));
                 }
 
                 let image_media_id = input.image_media_id.map(TaxonomyCategoryMediaId::into_uuid);
@@ -205,9 +209,7 @@ impl TaxonomyService {
                     )
                     .filter(taxonomy_category_presentation::Column::TenantId.eq(tenant_id))
                     .filter(taxonomy_category_presentation::Column::TermId.eq(term_id))
-                    .filter(
-                        taxonomy_category_presentation::Column::Revision.eq(existing.revision),
-                    )
+                    .filter(taxonomy_category_presentation::Column::Revision.eq(existing.revision))
                     .exec(&txn)
                     .await?;
                 if updated.rows_affected != 1 {
@@ -251,12 +253,12 @@ async fn validate_media_references(
             .validate_public_image_reference(tenant_id, media_id)
             .await?;
     }
-    if let Some(media_id) = cover_media_id {
-        if Some(media_id) != image_media_id {
-            validator
-                .validate_public_image_reference(tenant_id, media_id)
-                .await?;
-        }
+    if let Some(media_id) = cover_media_id
+        && Some(media_id) != image_media_id
+    {
+        validator
+            .validate_public_image_reference(tenant_id, media_id)
+            .await?;
     }
     Ok(())
 }
@@ -358,12 +360,12 @@ pub fn normalize_taxonomy_category_color(value: &str) -> TaxonomyResult<Option<S
         return Ok(None);
     }
     let digits = trimmed.strip_prefix('#').ok_or_else(|| {
-        TaxonomyError::validation(
-            "Category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA",
-        )
+        TaxonomyError::validation("Category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA")
     })?;
     if !matches!(digits.len(), 3 | 4 | 6 | 8)
-        || !digits.chars().all(|character| character.is_ascii_hexdigit())
+        || !digits
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
     {
         return Err(TaxonomyError::validation(
             "Category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA",

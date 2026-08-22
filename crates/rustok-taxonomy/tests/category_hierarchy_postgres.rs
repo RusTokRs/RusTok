@@ -5,7 +5,9 @@ use rustok_taxonomy::{
     CreateTaxonomyTermInput, SetTaxonomyCategoryPlacementInput, TaxonomyScopeType, TaxonomyService,
     TaxonomyTermKind,
 };
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+};
 use tokio::sync::Barrier;
 use uuid::Uuid;
 
@@ -119,7 +121,9 @@ async fn ensure_category_hierarchy_schema(db: &DatabaseConnection) -> TestResult
         .ok_or("PostgreSQL schema probe returned no row")?;
     let present: bool = row.try_get("", "present")?;
     if !present {
-        return Err("canonical server migrations did not create taxonomy_category_hierarchy".into());
+        return Err(
+            "canonical server migrations did not create taxonomy_category_hierarchy".into(),
+        );
     }
     Ok(())
 }
@@ -128,11 +132,7 @@ fn admin() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
 }
 
-async fn create_category(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    name: &str,
-) -> TestResult<Uuid> {
+async fn create_category(db: &DatabaseConnection, tenant_id: Uuid, name: &str) -> TestResult<Uuid> {
     let service = TaxonomyService::new(db.clone());
     Ok(service
         .create_term(

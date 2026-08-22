@@ -9,9 +9,7 @@ use uuid::Uuid;
 use rustok_api::{Action, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
 
-use crate::dto::{
-    SetTaxonomyCategoryPlacementInput, TaxonomyCategoryPlacement, TaxonomyTermKind,
-};
+use crate::dto::{SetTaxonomyCategoryPlacementInput, TaxonomyCategoryPlacement, TaxonomyTermKind};
 use crate::entities::{taxonomy_category_hierarchy, taxonomy_term};
 use crate::error::{TaxonomyError, TaxonomyResult};
 use crate::services::TaxonomyService;
@@ -98,14 +96,16 @@ impl TaxonomyService {
                 active.position = Set(input.position);
                 active.update(&txn).await?
             }
-            None => taxonomy_category_hierarchy::ActiveModel {
-                tenant_id: Set(tenant_id),
-                term_id: Set(term_id),
-                parent_term_id: Set(input.parent_id),
-                position: Set(input.position),
+            None => {
+                taxonomy_category_hierarchy::ActiveModel {
+                    tenant_id: Set(tenant_id),
+                    term_id: Set(term_id),
+                    parent_term_id: Set(input.parent_id),
+                    position: Set(input.position),
+                }
+                .insert(&txn)
+                .await?
             }
-            .insert(&txn)
-            .await?,
         };
 
         txn.commit().await?;
@@ -238,7 +238,11 @@ mod tests {
             .map(|(index, id)| {
                 row(
                     *id,
-                    if index == 0 { None } else { Some(ids[index - 1]) },
+                    if index == 0 {
+                        None
+                    } else {
+                        Some(ids[index - 1])
+                    },
                 )
             })
             .collect::<Vec<_>>();

@@ -104,7 +104,7 @@ impl ProductCatalogSchemaService {
         }
 
         txn.publish(
-            idempotency::OwnerOperationScope::Tenant(tenant_id),
+            tenant_id,
             Some(actor_id),
             DomainEvent::ProductAttributeCreated { attribute_id },
         )
@@ -203,7 +203,7 @@ impl ProductCatalogSchemaService {
     ) -> Result<idempotency::Admission, PortError> {
         idempotency::admit(
             &self.db,
-            tenant_id,
+            idempotency::OwnerOperationScope::Tenant(tenant_id),
             PRODUCT_SCHEMA_RECEIPT_OWNER,
             idempotency_key,
             operation,

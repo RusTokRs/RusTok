@@ -279,7 +279,7 @@ impl ForumCategoryTranslationTargetProvider {
             .map_err(forum_error_to_port_error)?;
         super::category_translation_evidence::record_category_translation_change_in_tx(
             txn,
-            idempotency::OwnerOperationScope::Tenant(tenant_id),
+            tenant_id,
             category_id,
             OPERATION_APPLY_PATCH,
             TranslationResourceLifecycle::Active,
@@ -452,7 +452,7 @@ impl TranslationTargetProvider for ForumCategoryTranslationTargetProvider {
         let idempotency_key = context.idempotency_key.as_deref().unwrap_or_default();
         let lease = match idempotency::admit(
             &self.db,
-            tenant_id,
+            idempotency::OwnerOperationScope::Tenant(tenant_id),
             TRANSLATION_OWNER_SLUG,
             idempotency_key,
             OPERATION_APPLY_PATCH,
