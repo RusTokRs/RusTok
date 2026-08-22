@@ -143,6 +143,8 @@ hasAll(
     "@/shared/ui/rich-text-editor",
     "profile='discussion'",
     "from '../api/forum'",
+    'initialContentLocale: string;',
+    'defaultValues: { locale: initialContentLocale }',
     'validateRichTextDocument',
     'richTextDocumentHasText',
     'contentLocale={contentLocale}',
@@ -189,7 +191,9 @@ hasNone(
     "./rt-json-format",
     'normalizeRtJsonPayload',
     'stringifyRtDoc',
-    'rt_json_v1'
+    'rt_json_v1',
+    'useLocale',
+    'hostLocale'
   ],
   'Forum reply editor'
 );
@@ -206,8 +210,19 @@ hasAll(
   'Shared richtext adapter'
 );
 hasAll(modulesIndex, ["import '../../packages/blog/src';", "import '../../packages/forum/src';"], 'Host module registration');
-hasAll(forumPage, ["../../../../../packages/forum/src", 'ForumReplyEditor', 'listForumTopics'], 'Forum route');
-hasNone(forumPage, ['packages/blog/src'], 'Forum route');
+hasAll(
+  forumPage,
+  [
+    "../../../../../packages/forum/src",
+    'ForumReplyEditor',
+    'listForumTopics',
+    'getForumTopic',
+    'selectedTopicSummary.locale',
+    'initialContentLocale={selectedTopic.effectiveLocale}'
+  ],
+  'Forum route'
+);
+hasNone(forumPage, ['packages/blog/src', 'selectedTopic.title'], 'Forum route');
 hasAll(
   forumTopicPage,
   [

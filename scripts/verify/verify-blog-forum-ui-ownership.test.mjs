@@ -40,6 +40,7 @@ disabled={form.formState.isSubmitting}`);
     `@/shared/ui/rich-text-editor
 profile='${options.articleProfile ? 'article' : 'discussion'}'
 from '../api/forum'
+${options.forumReplyUsesHostLocale ? 'useLocale\nhostLocale' : 'initialContentLocale: string;\ndefaultValues: { locale: initialContentLocale }'}
 validateRichTextDocument
 richTextDocumentHasText
 contentLocale={contentLocale}
@@ -67,9 +68,12 @@ updateForumTopic`);
   writeFixtureFile(root, 'apps/next-admin/src/modules/index.ts',
     "import '../../packages/blog/src';\nimport '../../packages/forum/src';");
   writeFixtureFile(root, 'apps/next-admin/src/app/dashboard/forum/reply/page.tsx',
-    options.blogRoute
-      ? "../../../../../packages/forum/src\n../../../../../packages/blog/src\nForumReplyEditor\nlistForumTopics"
-      : "../../../../../packages/forum/src\nForumReplyEditor\nlistForumTopics");
+    `../../../../../packages/forum/src
+${options.blogRoute ? '../../../../../packages/blog/src\n' : ''}ForumReplyEditor
+listForumTopics
+getForumTopic
+selectedTopicSummary.locale
+initialContentLocale={selectedTopic.effectiveLocale}`);
   writeFixtureFile(root, 'apps/next-admin/src/app/dashboard/forum/topic/page.tsx',
     "../../../../../packages/forum/src\nForumTopicEditor\nlistForumCategories\nlistForumTopics\ngetForumTopic");
   if (options.blogOwnsForum) {
@@ -130,6 +134,12 @@ test('Blog Forum UI ownership verifier rejects host locale as the edit-content l
   const result = run(fixture({ blogUsesHostLocale: true }));
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Blog post form missing initialData\?\.requestedLocale/);
+});
+
+test('Blog Forum UI ownership verifier rejects host locale in Forum reply composer', () => {
+  const result = run(fixture({ forumReplyUsesHostLocale: true }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Forum reply editor missing initialContentLocale: string;|Forum reply editor contains forbidden useLocale/);
 });
 
 test('Blog Forum UI ownership verifier rejects a restored Forum format adapter', () => {

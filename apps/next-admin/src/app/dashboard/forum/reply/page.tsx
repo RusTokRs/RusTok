@@ -5,6 +5,7 @@ import { SearchParams } from 'nuqs/server';
 import { PageContainer } from '@/widgets/app-shell';
 import {
   ForumReplyEditor,
+  getForumTopic,
   listForumTopics
 } from '../../../../../packages/forum/src';
 import {
@@ -29,8 +30,15 @@ export default async function Page(props: PageProps) {
   const gqlOpts = { token, tenantSlug, tenantId: tenantId ?? undefined };
   const topics = tenantId ? await listForumTopics(gqlOpts) : [];
   const requestedTopicId = readRouteSelection(searchParams, 'topic_id');
-  const selectedTopic = requestedTopicId
+  const selectedTopicSummary = requestedTopicId
     ? (topics.find((topic) => topic.id === requestedTopicId) ?? null)
+    : null;
+  const selectedTopic = selectedTopicSummary
+    ? await getForumTopic(
+        selectedTopicSummary.id,
+        gqlOpts,
+        selectedTopicSummary.locale
+      )
     : null;
   const preservedQueryEntries = listRouteQueryEntries(searchParams, [
     'topic_id'
@@ -42,7 +50,7 @@ export default async function Page(props: PageProps) {
       pageTitle='Forum Reply Composer'
       pageDescription={
         selectedTopic
-          ? `Draft richtext replies for "${selectedTopic.title}".`
+          ? 'Draft richtext replies for the selected forum topic.'
           : 'Draft richtext replies for forum topics.'
       }
       pageHeaderAction={
@@ -57,7 +65,7 @@ export default async function Page(props: PageProps) {
           ))}
           <select
             name='topic_id'
-            defaultValue={selectedTopic?.id ?? ''}
+            defaultValue={selectedTopicSummary?.id ?? ''}
             className='border-input bg-background h-9 min-w-60 rounded-md border px-3 text-sm'
           >
             {topics.length === 0 ? (
@@ -80,7 +88,11 @@ export default async function Page(props: PageProps) {
       }
     >
       {selectedTopic ? (
-        <ForumReplyEditor topicId={selectedTopic.id} gqlOpts={gqlOpts} />
+        <ForumReplyEditor
+          topicId={selectedTopic.id}
+          initialContentLocale={selectedTopic.effectiveLocale}
+          gqlOpts={gqlOpts}
+        />
       ) : (
         <div className='text-muted-foreground rounded-md border border-dashed p-6 text-sm'>
           Forum module has no selectable topics yet. Create a topic first, then
