@@ -1,20 +1,34 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
-function read(path) {
-  return fs.readFileSync(path, 'utf8');
+function read(file) {
+  return fs.readFileSync(file, 'utf8');
 }
 
-function requireAll(path, snippets) {
-  const content = read(path);
+function requireAll(file, snippets) {
+  const content = read(file);
   for (const snippet of snippets) {
     if (!content.includes(snippet)) {
-      throw new Error(`${path} is missing required CAT-4 contract: ${snippet}`);
+      throw new Error(`${file} is missing required CAT-4 contract: ${snippet}`);
     }
   }
   return content;
 }
 
-const entityType = requireAll('crates/flex/src/entity_type.rs', [
+function rustFiles(root) {
+  const files = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const child = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...rustFiles(child));
+    } else if (entry.isFile() && entry.name.endsWith('.rs')) {
+      files.push(child);
+    }
+  }
+  return files;
+}
+
+requireAll('crates/flex/src/entity_type.rs', [
   'pub const TAXONOMY_CATEGORY_ENTITY_TYPE: &str = "taxonomy.category";',
   "value.split('.').all(is_valid_field_key)",
 ]);
@@ -46,17 +60,22 @@ requireAll('crates/rustok-taxonomy/src/owner_identity.rs', [
 ]);
 
 requireAll('apps/server/src/services/field_definition_registry_bootstrap.rs', [
-  'GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)',
-  'registry.register(Arc::new(taxonomy_category));',
+  'GenericAttachedFieldDefinitionService::new(',
+  'TAXONOMY_CATEGORY_ENTITY_TYPE',
+  'registry.register(Arc::new(',
+  'registry_bootstrap_registers_taxonomy_category_reference_donor',
 ]);
 
-const valuesAdapter = requireAll('apps/server/src/services/flex_attached_values.rs', [
+requireAll('apps/server/src/services/flex_attached_values.rs', [
   'prepare_registered_generic_update',
   'persist_registered_generic_values',
   'resolve_registered_generic_values',
   'delete_registered_generic_values',
   'rustok_taxonomy::taxonomy_term_identity_exists',
   'rustok_taxonomy::TaxonomyTermKind::Category',
+  'let txn = db.begin().await?;',
+  'persist_prepared_generic_attached_values(',
+  'txn.commit().await?;',
   'Err(Error::NotFound)',
 ]);
 
@@ -67,6 +86,8 @@ requireAll('crates/flex/tests/generic_attached_storage.rs', [
 
 requireAll('crates/rustok-taxonomy/tests/owner_identity.rs', [
   'owner_identity_is_bounded_by_tenant_and_term_kind',
+  'TaxonomyModule.migrations()',
+  'TaxonomyService::new',
   'TaxonomyTermKind::Category',
   'TaxonomyTermKind::Category, tag_id',
 ]);
@@ -76,8 +97,10 @@ for (const forbidden of [
   'taxonomy_category_field_definitions',
   'taxonomy_category_custom_field_engine',
 ]) {
-  if (valuesAdapter.includes(forbidden) || entityType.includes(forbidden)) {
-    throw new Error(`CAT-4 must reuse Flex rather than introduce ${forbidden}`);
+  for (const file of rustFiles('crates/rustok-taxonomy/src')) {
+    if (read(file).includes(forbidden)) {
+      throw new Error(`CAT-4 must reuse Flex rather than introduce ${forbidden} in ${file}`);
+    }
   }
 }
 
