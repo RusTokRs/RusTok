@@ -31,7 +31,8 @@ const legacyPlanMarker = /^crates\/rustok-taxonomy\/docs\/implementation-plan\.m
 const plan = fs.readFileSync('crates/rustok-taxonomy/docs/implementation-plan.md', 'utf8');
 const normalizedPlan = plan.replace(/\s+/g, ' ');
 const currentPlanMarkers = [
-  'TAXONOMY-CAT-2 — Category kind + hierarchy foundation — IN PROGRESS',
+  'TAXONOMY-CAT-2 — Category kind + hierarchy foundation — COMPLETE',
+  'TAXONOMY-CAT-3 — canonical Category presentation — IN PROGRESS',
   'Taxonomy PostgreSQL Evidence',
   'route-registry contention evidence',
   'Translation-target CAS/change-cursor evidence',
