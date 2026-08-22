@@ -4,13 +4,12 @@
 
 `flex` is a capability-only custom-fields module, not a donor-persistence owner or a separate
 business domain. Attached mode extends explicit donor contracts; standalone mode owns schemas and
-entries. Runtime attached donors are now `user`, `product`, and `order`. Donors retain their tables
-and write paths.
+entries. Current attached donors are `user`, `product`, `order` and `topic`; donors retain their
+business tables and write paths.
 
-`forum.topic` is intentionally no longer registered as an attached donor. The historical
-`topic_field_definitions` table, cache-generation trigger and any previously persisted attached
-localized rows remain temporarily for an explicit data audit and cleanup migration; disabling the
-registry is the fail-closed first step and does not silently discard tenant data.
+`forum.topic` remains an intentional attached donor. Optional tenant-defined fields may extend a
+topic, but Forum-critical state such as lifecycle/status, category binding, content, route identity,
+moderation, counters, accepted-solution semantics and access policy stays normalized and Forum-owned.
 
 The accepted next shared consumer is `taxonomy.category`, after `rustok-taxonomy` gains canonical
 Category identity/hierarchy/localized presentation ownership. Flex will provide only administrator-
@@ -27,10 +26,10 @@ never becomes input to an authoring write.
 
 ## Platform donor rule
 
-Flex support is explicit opt-in. A metadata/JSON column is not an extension contract by itself.
-A new module should need only a bounded registration/storage adapter, permissions and its owner
-write/read integration. It must not rebuild field definitions, type validation, localized attached
-values, cache invalidation, generic transport or schema-builder behavior.
+Flex support is explicit product opt-in. A metadata/JSON column is not an extension contract by
+itself. A new module should need only a bounded registration/storage adapter, permissions and its
+owner write/read integration. It must not rebuild field definitions, type validation, localized
+attached values, cache invalidation, generic transport or schema-builder behavior.
 
 The target onboarding contract is intentionally small:
 
@@ -55,9 +54,9 @@ The field-definition cache is byte-weighted and keeps the local EventBus consume
 exact-invalidation path. Durable convergence is source-complete:
 
 - `flex_field_definition_cache_generation` is a singleton database generation;
-- transaction-local database triggers currently advance it for every INSERT/UPDATE/DELETE on
-  `user_field_definitions`, `product_field_definitions`, `order_field_definitions` and the legacy
-  `topic_field_definitions` table, including reorder and soft-delete updates;
+- transaction-local database triggers advance it for every INSERT/UPDATE/DELETE on
+  `user_field_definitions`, `product_field_definitions`, `order_field_definitions` and
+  `topic_field_definitions`, including reorder and soft-delete updates;
 - Flex owns `m20260716_000000_create_field_definition_cache_generation`; every owner trigger
   migration explicitly depends on it, so the shared generation exists before owner triggers and
   reverse rollback removes triggers before the singleton table/function;
@@ -70,10 +69,9 @@ exact-invalidation path. Durable convergence is source-complete:
   live degraded supervisor while the critical runtime guardrail checks `is_ready()`;
 - the process-local consumer remains restartable/abort-on-drop and full-clears on local lag.
 
-Source evidence currently still includes the historical four-definition-table cache matrix because
-legacy topic storage has not yet been dropped. The cleanup slice must update that matrix atomically
-with the topic trigger/table removal; registry donor support must not be inferred from the presence
-of a legacy cache source.
+Source evidence includes the four-definition-table cache matrix. Adding `taxonomy.category` must
+extend this mechanism through the common donor contract rather than introducing Taxonomy-specific
+cache invalidation for Flex definitions.
 
 This cache evidence is source-complete but is not compiled or database verified until the permanent
 cache workflow passes its compiled and PostgreSQL jobs on one revision.
@@ -90,28 +88,27 @@ cache workflow passes its compiled and PostgreSQL jobs on one revision.
 
 ## Open results
 
-1. **Retire accidental Topic donor support without losing tenant data.** Runtime registry admission
-   is disabled. Audit `topic_field_definitions`, topic custom metadata keys and
-   `flex_attached_localized_values(entity_type='topic')`; then remove the topic field-definition
-   service/model/table/cache trigger only with an explicit migration result.
-   **Depends on:** production-like data audit and owner migration.
-   **Done when:** `topic` fails closed as an unsupported Flex entity, legacy custom-field data is
-   either proven absent or explicitly migrated/exported, and topic-specific Flex definition/runtime
-   artifacts are removed without silently deleting user data.
-
-2. **Make donor onboarding a minimal reusable capability.** Reduce donor-specific plumbing so a new
+1. **Make donor onboarding a minimal reusable capability.** Reduce donor-specific plumbing so a new
    entity can opt in through one bounded registration/storage contract instead of copying field-
-   definition services, adapters, event/cache plumbing and admin rendering.
-   **Depends on:** the existing registry/GraphQL/runtime contracts and at least one new consumer.
+   definition services, adapters, event/cache plumbing and admin rendering. Existing Topic support is
+   retained and should converge onto that smaller adapter rather than being removed.
+   **Depends on:** the existing registry/GraphQL/runtime contracts and the next real consumer.
    **Done when:** `taxonomy.category` can opt in without implementing a parallel custom-field stack,
-   and a guardrail rejects module-local replacement engines.
+   existing donors remain compatible, and a guardrail rejects module-local replacement engines.
 
-3. **Add `taxonomy.category` as the reference shared donor.** After Taxonomy owns Category
+2. **Add `taxonomy.category` as the reference shared donor.** After Taxonomy owns Category
    identity/hierarchy/localized copy/presentation, attach administrator-defined category fields
    through Flex and the generic schema-builder path.
    **Depends on:** the accepted Taxonomy Category migration plan and Taxonomy owner storage.
    **Done when:** category custom fields support shared and localized values, tenant isolation,
    validation and generic admin authoring while built-in category fields remain Taxonomy-owned.
+
+3. **Preserve the Topic extension boundary.** Keep `topic` attached fields as optional extension data
+   and prevent Flex schemas from becoming a substitute for Forum normalized state.
+   **Depends on:** Forum Topic write/read adapters and the common donor contract.
+   **Done when:** Topic custom fields roundtrip through the same generic Flex semantics as other
+   donors, critical Forum fields are neither writable nor shadowable through Flex, and no Forum-only
+   custom-field engine exists.
 
 4. **Execute durable field-cache recovery evidence.** Run the source-complete SQLite owner matrix,
    PostgreSQL transaction/concurrency/replay test and two-replica server outage/regression recovery
@@ -167,14 +164,15 @@ cache workflow passes its compiled and PostgreSQL jobs on one revision.
 
 ## Change rules
 
-1. Flex support is explicit opt-in; never infer it from a metadata column.
+1. Flex support is explicit product opt-in; never infer it from a metadata column alone.
 2. Keep donor business persistence and attachment relations with their owning module unless a
    generic Flex value store is explicitly the accepted attached-value owner.
 3. Keep reusable generation/trigger helpers and Flex contracts in this crate; owner migrations
-   install/remove triggers on their own definition tables.
+   install triggers on their own definition tables.
 4. Do not create a module-local custom-field definition/validation/localization/transport engine.
    Improve Flex when a donor needs reusable behavior.
-5. Keep server work to composition, persistence adapters, reconciliation and HTTP handler
+5. Flex fields may extend a donor but must not replace normalized owner invariants.
+6. Keep server work to composition, persistence adapters, reconciliation and HTTP handler
    extraction.
-6. Update the canonical Flex README, manifest, donor docs and central module documentation with a
+7. Update the canonical Flex README, manifest, donor docs and central module documentation with a
    capability contract change.
