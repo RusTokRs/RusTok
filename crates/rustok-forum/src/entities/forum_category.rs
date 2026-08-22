@@ -11,6 +11,11 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub tenant_id: Uuid,
+    /// Transitional CAT-5 binding to the canonical Taxonomy Category identity.
+    ///
+    /// Legacy Forum category identity/hierarchy/localized copy remain live until
+    /// deterministic backfill and read/write cutover evidence are complete.
+    pub taxonomy_category_id: Option<Uuid>,
     pub parent_id: Option<Uuid>,
     pub position: i32,
     pub icon: Option<String>,
@@ -40,6 +45,62 @@ impl Related<super::forum_topic::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Topics.def()
     }
+}
+
+/// Bind one Forum category policy row to an existing canonical Taxonomy Category.
+///
+/// This is deliberately a narrow migration seam. It does not copy localized
+/// category data, hierarchy or presentation into Taxonomy and it does not switch
+/// Forum reads/writes away from their legacy owner yet. The caller must perform
+/// those staged cutover steps separately.
+pub(crate) async fn bind_taxonomy_category<C>(
+    db: &C,
+    tenant_id: Uuid,
+    forum_category_id: Uuid,
+    taxonomy_category_id: Uuid,
+) -> Result<Model, DbErr>
+where
+    C: ConnectionTrait,
+{
+    let taxonomy_exists = rustok_taxonomy::taxonomy_term_identity_exists(
+        db,
+        tenant_id,
+        rustok_taxonomy::TaxonomyTermKind::Category,
+        taxonomy_category_id,
+    )
+    .await
+    .map_err(|_| DbErr::Custom("Taxonomy category identity lookup failed".to_string()))?;
+    if !taxonomy_exists {
+        return Err(DbErr::Custom(
+            "Taxonomy category binding must reference a same-tenant Category".to_string(),
+        ));
+    }
+
+    let category = Entity::find_by_id(forum_category_id)
+        .filter(Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound("Forum category binding source not found".into()))?;
+
+    if category.taxonomy_category_id == Some(taxonomy_category_id) {
+        return Ok(category);
+    }
+
+    let duplicate = Entity::find()
+        .filter(Column::TenantId.eq(tenant_id))
+        .filter(Column::TaxonomyCategoryId.eq(taxonomy_category_id))
+        .filter(Column::Id.ne(forum_category_id))
+        .one(db)
+        .await?;
+    if duplicate.is_some() {
+        return Err(DbErr::Custom(
+            "Taxonomy category is already bound to another Forum category".to_string(),
+        ));
+    }
+
+    let mut active: ActiveModel = category.into();
+    active.taxonomy_category_id = ActiveValue::Set(Some(taxonomy_category_id));
+    active.update(db).await
 }
 
 #[async_trait::async_trait]
