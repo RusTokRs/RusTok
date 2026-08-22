@@ -189,6 +189,7 @@ BEGIN
             hierarchy.parent_term_id AS parent_id,
             1 AS depth,
             NEW.parent_term_id = NEW.term_id AS cycle
+        FROM (SELECT 1) AS seed
         LEFT JOIN taxonomy_category_hierarchy hierarchy
           ON hierarchy.tenant_id = NEW.tenant_id
          AND hierarchy.term_id = NEW.parent_term_id
