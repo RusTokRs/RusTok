@@ -1,4 +1,4 @@
-use sea_orm::{ConnectionTrait, DatabaseConnection};
+use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -117,14 +117,17 @@ impl FlexAttachedValuesService {
         entity_id: Uuid,
         prepared: &PreparedAttachedValuesWrite,
     ) -> ServerResult<()> {
-        ensure_registered_owner_exists(db, tenant_id, entity_type, entity_id).await?;
+        let txn = db.begin().await?;
+        ensure_registered_owner_exists(&txn, tenant_id, entity_type, entity_id).await?;
         persist_prepared_generic_attached_values(
-            db,
+            &txn,
             attached_ref(tenant_id, entity_type, entity_id),
             prepared,
         )
         .await
-        .map_err(map_flex_host_error)
+        .map_err(map_flex_host_error)?;
+        txn.commit().await?;
+        Ok(())
     }
 
     pub async fn resolve_registered_generic_values(
@@ -156,10 +159,13 @@ impl FlexAttachedValuesService {
         entity_type: &str,
         entity_id: Uuid,
     ) -> ServerResult<()> {
-        ensure_registered_owner_exists(db, tenant_id, entity_type, entity_id).await?;
-        delete_generic_attached_values(db, attached_ref(tenant_id, entity_type, entity_id))
+        let txn = db.begin().await?;
+        ensure_registered_owner_exists(&txn, tenant_id, entity_type, entity_id).await?;
+        delete_generic_attached_values(&txn, attached_ref(tenant_id, entity_type, entity_id))
             .await
-            .map_err(map_flex_host_error)
+            .map_err(map_flex_host_error)?;
+        txn.commit().await?;
+        Ok(())
     }
 
     pub async fn persist_localized_values<C>(
@@ -201,12 +207,15 @@ fn attached_ref<'a>(
     }
 }
 
-async fn ensure_registered_owner_exists(
-    db: &DatabaseConnection,
+async fn ensure_registered_owner_exists<C>(
+    db: &C,
     tenant_id: Uuid,
     entity_type: &str,
     entity_id: Uuid,
-) -> ServerResult<()> {
+) -> ServerResult<()>
+where
+    C: ConnectionTrait,
+{
     match entity_type {
         #[cfg(feature = "mod-taxonomy")]
         TAXONOMY_CATEGORY_ENTITY_TYPE => {
