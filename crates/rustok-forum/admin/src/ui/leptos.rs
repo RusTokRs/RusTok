@@ -51,6 +51,10 @@ where
     LocalResource::new(move || fetcher(source()))
 }
 
+fn forum_admin_content_lang(locale: &str) -> String {
+    normalize_locale_tag(locale).unwrap_or_else(|| "und".to_string())
+}
+
 #[component]
 pub fn ForumAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -2206,12 +2210,22 @@ fn render_category_sidebar(
                 </button>
                 {items.into_iter().map(|item| {
                     let vm = category_sidebar_view_model(&item, active_category_id.as_str());
+                    let content_lang = forum_admin_content_lang(item.effective_locale.as_str());
                     let item_id = vm.id.clone();
                     view! {
                         <button type="button" class=forum_admin_sidebar_category_class(vm.is_active) on:click=move |_| set_filter_category_id.set(item_id.clone())>
                             <span class="min-w-0">
-                                <span class="block truncate text-left text-sm font-medium text-foreground">{vm.name.clone()}</span>
-                                <span class="block truncate text-left text-xs text-muted-foreground">{vm.slug.clone()}</span>
+                                <span
+                                    data-forum-target-localized=""
+                                    lang=content_lang
+                                    dir="auto"
+                                    class="block truncate text-left text-sm font-medium text-foreground"
+                                >{vm.name.clone()}</span>
+                                <span
+                                    data-forum-route-identifier=""
+                                    dir="ltr"
+                                    class="block truncate text-left text-xs text-muted-foreground"
+                                >{vm.slug.clone()}</span>
                             </span>
                             <span class="rounded-full bg-background/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{vm.topic_count}</span>
                         </button>
@@ -2257,6 +2271,7 @@ fn render_topic_feed(
                         busy_key.as_deref(),
                         &topic_labels,
                     );
+                    let content_lang = forum_admin_content_lang(vm.effective_locale.as_str());
                     let item_id = vm.id.clone();
                     view! {
                         <article class="rounded-[1.5rem] border border-border bg-background p-5 shadow-sm transition hover:border-primary/30 hover:shadow-md">
@@ -2264,13 +2279,22 @@ fn render_topic_feed(
                                 <div class="space-y-3">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <span class=forum_admin_status_badge_class(vm.status_class)>{vm.status.clone()}</span>
-                                        <span class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">{vm.effective_locale.clone()}</span>
+                                        <span dir="ltr" class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">{vm.effective_locale.clone()}</span>
                                         {vm.pinned.then(|| view! { <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">{pinned_label.clone()}</span> })}
                                         {vm.locked.then(|| view! { <span class="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive">{locked_label.clone()}</span> })}
                                     </div>
                                     <div>
-                                        <h3 class="text-lg font-semibold text-foreground">{vm.title.clone()}</h3>
-                                        <p class="mt-1 text-sm text-muted-foreground">{vm.thread_path.clone()}</p>
+                                        <h3
+                                            data-forum-target-localized=""
+                                            lang=content_lang
+                                            dir="auto"
+                                            class="text-lg font-semibold text-foreground"
+                                        >{vm.title.clone()}</h3>
+                                        <p
+                                            data-forum-route-identifier=""
+                                            dir="ltr"
+                                            class="mt-1 text-sm text-muted-foreground"
+                                        >{vm.thread_path.clone()}</p>
                                     </div>
                                 </div>
                                 <div class="text-right">
@@ -2306,13 +2330,19 @@ fn render_reply_stack(
             <div class="mt-6 space-y-3">
                 {items.into_iter().map(|item| {
                     let vm = reply_card_view_model(&item);
+                    let content_lang = forum_admin_content_lang(vm.effective_locale.as_str());
                     view! {
                         <article class="rounded-[1.35rem] border border-border bg-background p-4">
                             <div class="flex items-center justify-between gap-3">
                                 <span class=forum_admin_status_badge_class(vm.status_class)>{vm.status.clone()}</span>
-                                <span class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{vm.effective_locale.clone()}</span>
+                                <span dir="ltr" class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{vm.effective_locale.clone()}</span>
                             </div>
-                            <p class="mt-3 text-sm leading-6 text-muted-foreground">{vm.content_preview.clone()}</p>
+                            <p
+                                data-forum-target-localized=""
+                                lang=content_lang
+                                dir="auto"
+                                class="mt-3 text-sm leading-6 text-muted-foreground"
+                            >{vm.content_preview.clone()}</p>
                         </article>
                     }
                 }).collect_view()}

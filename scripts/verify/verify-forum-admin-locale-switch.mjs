@@ -137,6 +137,7 @@ requireAll(ui, [
   'forum.error.localeSwitchInvalid',
   'forum.error.localeSwitchPending',
   'forum.error.localeSwitchReplyDirty',
+  'forum_admin_content_lang',
 ], 'admin UI contract');
 
 requireAll(categoryDnd, [
@@ -178,6 +179,50 @@ for (const [page, source] of [['category', categoryPage], ['topic', topicPage]])
     'locale=Signal::derive(move || locale.get())',
   ], `${page} locale control`);
 }
+
+const categorySidebarInput = ui.indexOf('fn render_category_sidebar(');
+const topicFeedInput = ui.indexOf('fn render_topic_feed(');
+const replyStackInput = ui.indexOf('fn render_reply_stack(');
+const applyCategoryInput = ui.indexOf('fn apply_category_to_form(');
+if (
+  categorySidebarInput < 0 ||
+  topicFeedInput < 0 ||
+  replyStackInput < 0 ||
+  applyCategoryInput < 0
+) {
+  throw new Error('missing Forum admin localized read surfaces');
+}
+
+const categorySidebar = ui.slice(categorySidebarInput, topicFeedInput);
+const topicFeed = ui.slice(topicFeedInput, replyStackInput);
+const replyStack = ui.slice(replyStackInput, applyCategoryInput);
+
+requireAll(categorySidebar, [
+  'forum_admin_content_lang(item.effective_locale.as_str())',
+  'data-forum-target-localized=""',
+  'lang=content_lang',
+  'dir="auto"',
+  'data-forum-route-identifier=""',
+  'dir="ltr"',
+], 'category sidebar content-locale bidi contract');
+
+requireAll(topicFeed, [
+  'forum_admin_content_lang(vm.effective_locale.as_str())',
+  '<span dir="ltr"',
+  'data-forum-target-localized=""',
+  'lang=content_lang',
+  'dir="auto"',
+  'data-forum-route-identifier=""',
+  'dir="ltr"',
+], 'topic feed content-locale bidi contract');
+
+requireAll(replyStack, [
+  'forum_admin_content_lang(vm.effective_locale.as_str())',
+  '<span dir="ltr"',
+  'data-forum-target-localized=""',
+  'lang=content_lang',
+  'dir="auto"',
+], 'reply preview content-locale bidi contract');
 
 requireAll(docs, [
   'active locale',
