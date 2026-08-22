@@ -10,12 +10,15 @@ use uuid::Uuid;
 pub enum TaxonomyTermKind {
     #[sea_orm(string_value = "tag")]
     Tag,
+    #[sea_orm(string_value = "category")]
+    Category,
 }
 
 impl std::fmt::Display for TaxonomyTermKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Tag => write!(f, "tag"),
+            Self::Category => write!(f, "category"),
         }
     }
 }
@@ -69,6 +72,19 @@ pub struct ResolveTaxonomyTermInput {
     pub locale: String,
     pub slug_or_alias: String,
     pub fallback_locale: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetTaxonomyCategoryPlacementInput {
+    pub parent_id: Option<Uuid>,
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaxonomyCategoryPlacement {
+    pub term_id: Uuid,
+    pub parent_id: Option<Uuid>,
+    pub position: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -3,6 +3,7 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod category_hierarchy;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -16,10 +17,12 @@ pub mod services;
 mod translation_evidence;
 pub mod translation_target;
 
+pub use category_hierarchy::MAX_TAXONOMY_CATEGORY_DEPTH;
 pub use dto::{
     ApplyExactTaxonomyTranslationInput, CreateTaxonomyTermInput, ListTaxonomyTermsFilter,
-    ResolveTaxonomyTermInput, TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermListItem,
-    TaxonomyTermResponse, TaxonomyTranslationApplyResult, UpdateTaxonomyTermInput,
+    ResolveTaxonomyTermInput, SetTaxonomyCategoryPlacementInput, TaxonomyCategoryPlacement,
+    TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermListItem, TaxonomyTermResponse,
+    TaxonomyTranslationApplyResult, UpdateTaxonomyTermInput,
 };
 pub use error::{TaxonomyError, TaxonomyResult};
 pub use module_term_mutation::{
