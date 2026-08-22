@@ -24,7 +24,7 @@ Localized route keys have one storage namespace per `tenant + kind + scope + loc
 semantics rather than a hidden archived lifecycle.
 
 `TaxonomyTranslationTargetProvider` remains the single Translation owner for canonical Taxonomy
-copy. Category must reuse that provider; Forum, Blog and Product must not retain duplicate category
+copy. Category reuses that provider; Forum, Blog and Product must not retain duplicate category
 Translation providers after their cutovers.
 
 ## Category ownership contract
@@ -36,13 +36,20 @@ Taxonomy-owned Category data includes:
 - localized `name`, `slug`, `description` and aliases;
 - parent/child hierarchy and sibling ordering;
 - cycle, maximum-depth and same-scope invariants;
-- canonical presentation such as icon, color and typed Media references;
+- canonical presentation: bounded semantic icon key, canonical color and typed Media identities;
 - revision/change evidence used by Translation/cache consumers;
 - opt-in Flex extension capability for tenant-defined fields.
 
 A Category without an explicit hierarchy placement is a root category with default position `0`.
 Hierarchy is typed Category storage, not a generic term relation: Tags do not acquire parent/child
 semantics merely because they share the Taxonomy term table.
+
+Canonical Category presentation is also separate typed storage. An absent presentation reads as an
+empty canonical presentation at revision `0`. Presentation has its own optimistic revision because a
+color/icon/image change must not invalidate the Taxonomy term revision used by Translation CAS.
+Media remains the binary lifecycle owner: Taxonomy stores only typed Media identities and runtime
+composition must validate same-tenant active public images before a write. Delivery URLs, storage
+paths and blob lifecycle are never copied into Taxonomy.
 
 Consumer-owned state stays outside Taxonomy. Examples include Forum moderation/audience/posting
 policy and counters, Product merchandising/navigation assignment semantics, Blog placement policy,
@@ -53,10 +60,10 @@ and every module's typed relation/binding between its domain objects and a Taxon
 `flex` is the platform custom-fields capability. Taxonomy must not build a second custom-fields
 engine.
 
-After the Category owner is stable, `taxonomy.category` becomes an explicit Flex donor. Built-in
-Category identity, hierarchy, localization, routes and canonical presentation remain normalized
-Taxonomy fields. Flex supplies administrator-defined extension fields, validation, localized values,
-transport and generic admin schema-builder behavior.
+After canonical Category presentation is stable, `taxonomy.category` becomes an explicit Flex donor.
+Built-in Category identity, hierarchy, localization, routes and canonical presentation remain
+normalized Taxonomy fields. Flex supplies administrator-defined extension fields, validation,
+localized values, transport and generic admin schema-builder behavior.
 
 Forum Topic remains an intentional Flex donor for optional tenant-defined topic fields. That does not
 move Forum business invariants such as route identity, moderation state, category binding, accepted
@@ -67,59 +74,60 @@ solution, counters or access policy into Flex.
 ### TAXONOMY-CAT-1 — ownership decision and guardrails — COMPLETE
 
 PR #3680 accepted Taxonomy as the canonical shared Category owner and Flex as the only runtime
-custom-fields capability. The Taxonomy ownership/kind guardrails now allow the intentional Category
-kind and typed shared hierarchy while still rejecting generic polymorphic consumer storage.
+custom-fields capability. The Taxonomy ownership/kind guardrails allow the intentional Category kind
+and typed shared hierarchy while still rejecting generic polymorphic consumer storage.
 
-**Done when:**
+### TAXONOMY-CAT-2 — Category kind + hierarchy foundation — COMPLETE
 
-- ADR and platform plan are canonical;
-- `Tag` and the accepted `Category` kind are the only demonstrated kinds;
-- ownership verifiers reject generic consumer attachment storage but no longer reject typed Category
-  hierarchy;
-- Forum Topic remains Flex-enabled.
+PR #3681 added `TaxonomyTermKind::Category`, Taxonomy-owned hierarchy persistence, bounded placement
+APIs and storage-level hierarchy enforcement. Category writers are tenant/scope bounded, Tags are
+rejected, position is non-negative, depth is capped at 16, and cycle prevention is enforced in both
+service and storage boundaries. PostgreSQL hierarchy mutations serialize per tenant so concurrent
+opposite moves cannot both commit an invalid cycle.
 
-### TAXONOMY-CAT-2 — Category kind + hierarchy foundation — IN PROGRESS
+Retained focused evidence:
 
-Add `TaxonomyTermKind::Category` to the existing generic term/route/Translation contract and add
-Taxonomy-owned hierarchy persistence.
+- `Taxonomy Ownership Boundary` and `Taxonomy Lookup Contract` passed on the final PR head;
+- exact-head `Taxonomy PostgreSQL Evidence` run `32571095910` passed source contract, canonical
+  PostgreSQL 16 migrations, Category hierarchy contention, route-registry contention evidence,
+  Translation-target CAS/change-cursor evidence and the final gate;
+- PR #3681 was squash-merged as `8746be7d5adcee0fd33005cb90065b92e3ba2cda`.
 
-Required behavior:
+### TAXONOMY-CAT-3 — canonical Category presentation — IN PROGRESS
 
-- child and parent are Category terms in the same tenant;
-- child and parent have the same scope type/value;
-- Tags are rejected by Category hierarchy APIs;
-- self-parent and cycles are rejected;
-- hierarchy depth is bounded to 16;
-- sibling position is non-negative;
-- root placement is explicit when stored, while a missing placement reads as root position `0`;
-- tenant-composite foreign keys prevent cross-tenant hierarchy corruption;
-- existing Tag lookup/route semantics remain unchanged.
+PR #3682 is the focused presentation slice. It adds `taxonomy_category_presentations` as canonical
+Taxonomy-owned storage with:
 
-Focused evidence:
+- `icon_key` — normalized bounded ASCII kebab-case design token, maximum 64 bytes;
+- `color` — normalized lower-case `#rrggbb` or `#rrggbbaa`, accepting short/long hex input only;
+- `image_media_id` and `cover_media_id` — typed Media identities, never copied delivery URLs;
+- independent presentation `revision` with full-replacement compare-and-swap semantics;
+- empty revision `0` when no canonical presentation row exists;
+- normalized no-op writes that do not advance presentation revision;
+- Category-only read/write APIs; Tags cannot acquire Category presentation;
+- an owner-neutral `TaxonomyCategoryMediaReferenceValidator` boundary. Runtime composition must
+  delegate validation to the Media public-image owner contract and reject cross-tenant or non-public
+  assets. Taxonomy does not add a hard compile/runtime dependency on Media merely to store optional
+  identities.
 
-- `cargo test --locked -p rustok-taxonomy --test category_hierarchy --test localized_route_lookup --test route_key_registry -- --nocapture`
-- `Taxonomy Ownership Boundary`
-- `Taxonomy Lookup Contract`
-- canonical migration graph on PostgreSQL through `Taxonomy PostgreSQL Evidence`.
+The presentation revision is deliberately distinct from `taxonomy_terms.revision`. Translation
+resource/source/target CAS remains about localized text; a presentation change must not invalidate a
+text proposal. Consumer-specific presentation overrides remain future binding policy and must layer
+over canonical Taxonomy values rather than copying them when a binding is created.
 
-**Done when:** the focused Rust and ownership contracts pass on the exact PR head and the canonical
-PostgreSQL migration/runtime evidence passes for the changed runtime inputs.
+Focused evidence for this slice:
 
-### TAXONOMY-CAT-3 — canonical Category presentation — PLANNED
+- `cargo test --locked -p rustok-taxonomy --test category_hierarchy --test category_presentation --test localized_route_lookup --test route_key_registry -- --nocapture`;
+- `Taxonomy Lookup Contract` includes the new presentation suite and source paths;
+- `Migration Compatibility` validates appended migration
+  `m20260822_000011_create_taxonomy_category_presentations`;
+- `Taxonomy PostgreSQL Evidence` applies the canonical migration graph on PostgreSQL 16 and executes
+  `category_presentation_postgres` to prove the Category-only/revision trigger plus same-revision
+  presentation CAS before the existing hierarchy/route/Translation evidence.
 
-Add typed canonical presentation without introducing module-specific copies:
-
-- `icon_key` or equivalent bounded icon identity;
-- validated canonical color representation;
-- Media-owned image and cover references;
-- read projections with clear canonical/override semantics.
-
-Media remains the binary lifecycle owner. Taxonomy stores Media identity, not copied delivery URLs.
-Module-specific presentation overrides are allowed only for demonstrated UX needs and must resolve
-against the canonical Taxonomy value rather than copying it at binding creation time.
-
-**Done when:** presentation is typed, tenant-safe and reusable by all consumers without local
-`forum_category.icon`, `blog_category.image`, etc. becoming competing canonical owners.
+**Done when:** the exact PR head passes the focused presentation/lookup tests, the PostgreSQL
+presentation guard/CAS evidence and the canonical migration evidence, with no Forum/Blog/Product
+cutover or Flex donor work mixed in.
 
 ### TAXONOMY-CAT-4 — Flex Category donor — PLANNED
 
@@ -176,19 +184,23 @@ label fallback text with the requested/content locale when Taxonomy resolved ano
 ## PostgreSQL evidence policy
 
 `Taxonomy PostgreSQL Evidence` is the production-like runtime gate for the canonical migration graph,
-route-key contention and Translation CAS/cursor behavior.
+Category presentation storage guards/CAS, Category hierarchy concurrency, route-registry contention
+and Translation CAS/cursor behavior.
 
 Checked-in evidence snapshots are retained provenance, but runtime-input changes intentionally make
 them stale. Staleness must trigger a fresh PostgreSQL run; it must not prevent the runtime job from
-starting. The source phase may tolerate only the specific "runtime input changed since recorded
-evidence" condition. Any structural verifier failure remains fatal. The workflow gate remains closed
-unless the current-head PostgreSQL runtime job succeeds.
+starting. The compatibility source wrapper may bridge only known superseded historical plan
+assertions and stale runtime fingerprints while validating the current Category plan markers. Any
+structural verifier failure remains fatal. The workflow gate remains closed unless the current-head
+PostgreSQL runtime job succeeds.
 
 The runtime job must continue to:
 
 - check out the exact PR head/push SHA;
 - assert Rust `1.96.0`;
-- apply the canonical server migrator to PostgreSQL 16;
+- apply the canonical server Migrator to PostgreSQL 16;
+- execute Category presentation storage-guard and same-revision CAS evidence;
+- execute Category hierarchy contention evidence;
 - execute route-registry contention evidence;
 - execute Translation-target CAS/change-cursor evidence;
 - archive exact-head metadata and logs.
@@ -202,7 +214,8 @@ Focused commands for the Category program:
 - `node scripts/verify/verify-taxonomy-ownership-boundary.mjs`
 - `node scripts/verify/verify-taxonomy-contract-matrix.test.mjs`
 - `node scripts/verify/verify-taxonomy-contract-matrix.mjs`
-- `cargo test --locked -p rustok-taxonomy --test category_hierarchy --test localized_route_lookup --test route_key_registry -- --nocapture`
+- `cargo test --locked -p rustok-taxonomy --test category_hierarchy --test category_presentation --test localized_route_lookup --test route_key_registry -- --nocapture`
+- `cargo test --locked -p rustok-taxonomy --test category_presentation_postgres -- --nocapture` with `RUSTOK_TAXONOMY_TEST_DATABASE_URL` set to PostgreSQL;
 - `cargo test --locked -p rustok-taxonomy --lib`
 - PostgreSQL commands retained in `.github/workflows/taxonomy-postgres-evidence.yml`.
 
