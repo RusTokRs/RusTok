@@ -55,6 +55,47 @@ fn forum_admin_content_lang(locale: &str) -> String {
     normalize_locale_tag(locale).unwrap_or_else(|| "und".to_string())
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SelectedCategoryDisplay {
+    label: String,
+    content_lang: Option<String>,
+}
+
+fn forum_admin_selected_category_display(
+    categories: Option<Result<Vec<CategoryListItem>, String>>,
+    selected_id: &str,
+    all_categories_label: &str,
+    filtered_category_label: &str,
+) -> SelectedCategoryDisplay {
+    let label = selected_category_filter_label(
+        categories.clone(),
+        selected_id,
+        all_categories_label,
+        filtered_category_label,
+    );
+    let content_lang = match categories {
+        Some(Ok(items)) if !selected_id.trim().is_empty() => items
+            .into_iter()
+            .find(|item| item.id == selected_id)
+            .map(|item| forum_admin_content_lang(item.effective_locale.as_str())),
+        _ => None,
+    };
+    SelectedCategoryDisplay {
+        label,
+        content_lang,
+    }
+}
+
+fn render_selected_category_label(value: SelectedCategoryDisplay) -> AnyView {
+    match value.content_lang {
+        Some(content_lang) => view! {
+            <span data-forum-target-localized="" lang=content_lang dir="auto">{value.label}</span>
+        }
+        .into_any(),
+        None => view! { <span>{value.label}</span> }.into_any(),
+    }
+}
+
 #[component]
 pub fn ForumAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -1805,14 +1846,16 @@ fn TopicsPage(
             "Create or open a topic first. SEO stays attached to the forum thread editor.",
         ),
     );
-    let selected_category_name = Memo::new(move |_| {
-        selected_category_filter_label(
+    let selected_category_display = Memo::new(move |_| {
+        forum_admin_selected_category_display(
             categories.get(),
             filter_category_id.get().as_str(),
             all_categories_label.as_str(),
             filtered_category_label.as_str(),
         )
     });
+    let sidebar_selected_category = selected_category_display.clone();
+    let heading_selected_category = selected_category_display;
     let topic_form_tag_count =
         move || forum_admin_topic_tag_count_label(tags.get().as_str(), ready_template.as_str());
     let sidebar_locale = ui_locale.clone();
@@ -1849,10 +1892,14 @@ fn TopicsPage(
                 </div>
 
                 <div class="space-y-3 rounded-[1.5rem] border border-border bg-gradient-to-br from-background to-muted/40 p-4">
-                    <SidebarStat
-                        label=sidebar_copy.active_filter_label.clone()
-                        value=Signal::derive(move || selected_category_name.get())
-                    />
+                    <div class="rounded-2xl border border-border bg-card px-4 py-3">
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                            {sidebar_copy.active_filter_label.clone()}
+                        </p>
+                        <p class="mt-2 text-sm font-medium text-foreground">
+                            {move || render_selected_category_label(sidebar_selected_category.get())}
+                        </p>
+                    </div>
                     <SidebarStat
                         label=sidebar_copy.draft_tags_label.clone()
                         value=Signal::derive(topic_form_tag_count)
@@ -1878,7 +1925,7 @@ fn TopicsPage(
                                 {topic_stream_labels.stream_label.clone()}
                             </p>
                             <h2 class="mt-2 text-2xl font-semibold text-card-foreground">
-                                {move || selected_category_name.get()}
+                                {move || render_selected_category_label(heading_selected_category.get())}
                             </h2>
                             <p class="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                                 {topic_stream_labels.stream_body.clone()}
@@ -2161,6 +2208,17 @@ fn render_category_grid(
                         busy_key.as_deref(),
                         &category_labels,
                     );
+                    let content_lang = forum_admin_content_lang(vm.effective_locale.as_str());
+                    let description_lang = if item
+                        .description
+                        .as_deref()
+                        .map(str::trim)
+                        .is_some_and(|value| !value.is_empty())
+                    {
+                        content_lang.clone()
+                    } else {
+                        forum_admin_content_lang(locale.as_deref().unwrap_or_default())
+                    };
                     let item_id = vm.id.clone();
                     view! {
                         <article class="relative overflow-hidden rounded-[1.5rem] border border-border bg-background p-5 shadow-sm">
@@ -2168,18 +2226,28 @@ fn render_category_grid(
                             <div class="pl-3">
                                 <div class="flex items-start justify-between gap-4">
                                     <div>
-                                        <div class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                                        <div dir="ltr" class="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                                             {vm.effective_locale.clone()}
                                         </div>
-                                        <h3 class="mt-2 text-lg font-semibold text-foreground">{vm.name.clone()}</h3>
+                                        <h3
+                                            data-forum-target-localized=""
+                                            lang=content_lang
+                                            dir="auto"
+                                            class="mt-2 text-lg font-semibold text-foreground"
+                                        >{vm.name.clone()}</h3>
                                     </div>
-                                    <span class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                                        {vm.slug_badge.clone()}
-                                    </span>
+                                    <span
+                                        data-forum-route-identifier=""
+                                        dir="ltr"
+                                        class="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                                    >{vm.slug_badge.clone()}</span>
                                 </div>
-                                <p class="mt-3 text-sm leading-6 text-muted-foreground">
-                                    {vm.description.clone()}
-                                </p>
+                                <p
+                                    data-forum-target-localized=""
+                                    lang=description_lang
+                                    dir="auto"
+                                    class="mt-3 text-sm leading-6 text-muted-foreground"
+                                >{vm.description.clone()}</p>
                                 <div class="mt-4 flex flex-wrap gap-2">
                                     <StaticChip label=vm.topics_count_label.clone() />
                                     <StaticChip label=vm.replies_count_label.clone() />
