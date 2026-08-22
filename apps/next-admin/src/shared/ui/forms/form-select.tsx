@@ -70,7 +70,9 @@ function FormSelect<
                   value={option.value}
                   disabled={option.disabled}
                 >
-                  {option.label}
+                  <span lang={option.lang} dir={option.dir}>
+                    {option.label}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
