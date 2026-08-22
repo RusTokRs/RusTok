@@ -87,6 +87,62 @@ pub struct TaxonomyCategoryPlacement {
     pub position: i32,
 }
 
+/// Strongly typed reference to an asset owned by the Media capability.
+///
+/// Taxonomy persists only the Media identity. Runtime composition must validate
+/// that the referenced asset belongs to the same tenant and is an active,
+/// ready public image before admitting a Category presentation write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaxonomyCategoryMediaId(Uuid);
+
+impl TaxonomyCategoryMediaId {
+    pub const fn new(media_id: Uuid) -> Self {
+        Self(media_id)
+    }
+
+    pub const fn into_uuid(self) -> Uuid {
+        self.0
+    }
+}
+
+impl From<Uuid> for TaxonomyCategoryMediaId {
+    fn from(value: Uuid) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<TaxonomyCategoryMediaId> for Uuid {
+    fn from(value: TaxonomyCategoryMediaId) -> Self {
+        value.into_uuid()
+    }
+}
+
+/// Full canonical Category presentation replacement.
+///
+/// `expected_revision` is a presentation-only optimistic concurrency token.
+/// It is intentionally separate from the Taxonomy term/Translation resource
+/// revision so changing icon/color/media does not invalidate a text translation
+/// proposal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetTaxonomyCategoryPresentationInput {
+    pub icon_key: Option<String>,
+    pub color: Option<String>,
+    pub image_media_id: Option<TaxonomyCategoryMediaId>,
+    pub cover_media_id: Option<TaxonomyCategoryMediaId>,
+    pub expected_revision: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaxonomyCategoryPresentation {
+    pub term_id: Uuid,
+    pub icon_key: Option<String>,
+    pub color: Option<String>,
+    pub image_media_id: Option<TaxonomyCategoryMediaId>,
+    pub cover_media_id: Option<TaxonomyCategoryMediaId>,
+    pub revision: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplyExactTaxonomyTranslationInput {
     pub source_locale: TenantLocale,
