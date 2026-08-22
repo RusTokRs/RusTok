@@ -180,6 +180,19 @@ for (const [page, source] of [['category', categoryPage], ['topic', topicPage]])
   ], `${page} locale control`);
 }
 
+const tagChipInput = topicPage.indexOf('let parsed_tags = forum_admin_tag_chips');
+const richTextInput = topicPage.indexOf('<ForumRichTextEditor', tagChipInput);
+if (tagChipInput < 0 || richTextInput < 0) {
+  throw new Error('missing Forum admin topic tag chip surface');
+}
+const tagChipSurface = topicPage.slice(tagChipInput, richTextInput);
+requireAll(tagChipSurface, [
+  'forum_admin_tag_chips(tags.get().as_str())',
+  'data-forum-target-localized=""',
+  'lang=move || locale.get()',
+  'dir="auto"',
+], 'topic tag chip content-locale bidi contract');
+
 const categorySidebarInput = ui.indexOf('fn render_category_sidebar(');
 const topicFeedInput = ui.indexOf('fn render_topic_feed(');
 const replyStackInput = ui.indexOf('fn render_reply_stack(');
