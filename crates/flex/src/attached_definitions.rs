@@ -18,6 +18,7 @@ use uuid::Uuid;
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 use rustok_events::EventEnvelope;
 
+use crate::is_valid_flex_entity_type;
 use crate::registry::{
     CreateFieldDefinitionCommand, FieldDefinitionService, FieldDefinitionSource,
     FieldDefinitionView, FieldDefinitionViewSource, UpdateFieldDefinitionCommand,
@@ -25,7 +26,7 @@ use crate::registry::{
     field_definition_description_json, field_definition_from_source,
     field_definition_label_json, field_definition_position_or_next,
     field_definition_type_name, field_definition_updated_event, field_definition_validation_json,
-    is_valid_flex_entity_type, validate_field_definition_create,
+    validate_field_definition_create,
 };
 
 pub const GENERIC_ATTACHED_FIELD_DEFINITIONS_TABLE: &str = "flex_attached_field_definitions";
@@ -58,99 +59,32 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {}
 
 impl FieldDefinitionSource for Model {
-    fn field_key(&self) -> &str {
-        &self.field_key
-    }
-
-    fn field_type(&self) -> &str {
-        &self.field_type
-    }
-
-    fn label(&self) -> &serde_json::Value {
-        &self.label
-    }
-
-    fn description(&self) -> Option<&serde_json::Value> {
-        self.description.as_ref()
-    }
-
-    fn is_localized(&self) -> bool {
-        self.is_localized
-    }
-
-    fn is_required(&self) -> bool {
-        self.is_required
-    }
-
-    fn default_value(&self) -> Option<&serde_json::Value> {
-        self.default_value.as_ref()
-    }
-
-    fn validation(&self) -> Option<&serde_json::Value> {
-        self.validation.as_ref()
-    }
-
-    fn position(&self) -> i32 {
-        self.position
-    }
-
-    fn is_active(&self) -> bool {
-        self.is_active
-    }
+    fn field_key(&self) -> &str { &self.field_key }
+    fn field_type(&self) -> &str { &self.field_type }
+    fn label(&self) -> &serde_json::Value { &self.label }
+    fn description(&self) -> Option<&serde_json::Value> { self.description.as_ref() }
+    fn is_localized(&self) -> bool { self.is_localized }
+    fn is_required(&self) -> bool { self.is_required }
+    fn default_value(&self) -> Option<&serde_json::Value> { self.default_value.as_ref() }
+    fn validation(&self) -> Option<&serde_json::Value> { self.validation.as_ref() }
+    fn position(&self) -> i32 { self.position }
+    fn is_active(&self) -> bool { self.is_active }
 }
 
 impl FieldDefinitionViewSource for Model {
-    fn id(&self) -> Uuid {
-        self.id
-    }
-
-    fn field_key(&self) -> &str {
-        &self.field_key
-    }
-
-    fn field_type(&self) -> &str {
-        &self.field_type
-    }
-
-    fn label(&self) -> &serde_json::Value {
-        &self.label
-    }
-
-    fn description(&self) -> Option<&serde_json::Value> {
-        self.description.as_ref()
-    }
-
-    fn is_localized(&self) -> bool {
-        self.is_localized
-    }
-
-    fn is_required(&self) -> bool {
-        self.is_required
-    }
-
-    fn default_value(&self) -> Option<&serde_json::Value> {
-        self.default_value.as_ref()
-    }
-
-    fn validation(&self) -> Option<&serde_json::Value> {
-        self.validation.as_ref()
-    }
-
-    fn position(&self) -> i32 {
-        self.position
-    }
-
-    fn is_active(&self) -> bool {
-        self.is_active
-    }
-
-    fn created_at(&self) -> String {
-        self.created_at.to_rfc3339()
-    }
-
-    fn updated_at(&self) -> String {
-        self.updated_at.to_rfc3339()
-    }
+    fn id(&self) -> Uuid { self.id }
+    fn field_key(&self) -> &str { &self.field_key }
+    fn field_type(&self) -> &str { &self.field_type }
+    fn label(&self) -> &serde_json::Value { &self.label }
+    fn description(&self) -> Option<&serde_json::Value> { self.description.as_ref() }
+    fn is_localized(&self) -> bool { self.is_localized }
+    fn is_required(&self) -> bool { self.is_required }
+    fn default_value(&self) -> Option<&serde_json::Value> { self.default_value.as_ref() }
+    fn validation(&self) -> Option<&serde_json::Value> { self.validation.as_ref() }
+    fn position(&self) -> i32 { self.position }
+    fn is_active(&self) -> bool { self.is_active }
+    fn created_at(&self) -> String { self.created_at.to_rfc3339() }
+    fn updated_at(&self) -> String { self.updated_at.to_rfc3339() }
 }
 
 /// Reusable registry adapter for a namespaced attached donor.
@@ -168,9 +102,7 @@ impl GenericAttachedFieldDefinitionService {
         Self { entity_type }
     }
 
-    pub fn entity_type_name(&self) -> &'static str {
-        self.entity_type
-    }
+    pub fn entity_type_name(&self) -> &'static str { self.entity_type }
 
     pub async fn get_schema(
         &self,
@@ -185,10 +117,7 @@ impl GenericAttachedFieldDefinitionService {
             .all(db)
             .await
             .map_err(database_error)?;
-        let definitions = rows
-            .iter()
-            .filter_map(field_definition_from_source)
-            .collect();
+        let definitions = rows.iter().filter_map(field_definition_from_source).collect();
         Ok(CustomFieldsSchema::new(definitions))
     }
 
@@ -209,9 +138,7 @@ impl GenericAttachedFieldDefinitionService {
 
 #[async_trait]
 impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
-    fn entity_type(&self) -> &'static str {
-        self.entity_type
-    }
+    fn entity_type(&self) -> &'static str { self.entity_type }
 
     async fn list_all(
         &self,
@@ -226,11 +153,7 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
             .all(db)
             .await
             .map_err(database_error)
-            .map(|rows| {
-                rows.iter()
-                    .map(FieldDefinitionView::from_source)
-                    .collect()
-            })
+            .map(|rows| rows.iter().map(FieldDefinitionView::from_source).collect())
     }
 
     async fn find_by_id(
@@ -317,17 +240,11 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
             field_key: Set(field_key.clone()),
             field_type: Set(field_type.clone()),
             label: Set(field_definition_label_json(&input.label)),
-            description: Set(input
-                .description
-                .as_ref()
-                .map(field_definition_description_json)),
+            description: Set(input.description.as_ref().map(field_definition_description_json)),
             is_localized: Set(input.is_localized),
             is_required: Set(input.is_required),
             default_value: Set(input.default_value),
-            validation: Set(input
-                .validation
-                .as_ref()
-                .map(field_definition_validation_json)),
+            validation: Set(input.validation.as_ref().map(field_definition_validation_json)),
             position: Set(field_definition_position_or_next(input.position, active_count)),
             is_active: Set(true),
             created_at: Set(now),
@@ -361,44 +278,24 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
         id: Uuid,
         input: UpdateFieldDefinitionCommand,
     ) -> Result<(FieldDefinitionView, EventEnvelope), FlexError> {
-        let row = self
-            .find_scoped(db, tenant_id, id)
-            .await?
-            .ok_or(FlexError::NotFound(id))?;
+        let row = self.find_scoped(db, tenant_id, id).await?.ok_or(FlexError::NotFound(id))?;
         let field_key = row.field_key.clone();
         let mut active: ActiveModel = row.into();
-        if let Some(label) = input.label {
-            active.label = Set(field_definition_label_json(&label));
-        }
+        if let Some(label) = input.label { active.label = Set(field_definition_label_json(&label)); }
         if let Some(description) = input.description {
             active.description = Set(Some(field_definition_description_json(&description)));
         }
-        if let Some(is_localized) = input.is_localized {
-            active.is_localized = Set(is_localized);
-        }
-        if let Some(is_required) = input.is_required {
-            active.is_required = Set(is_required);
-        }
-        if let Some(default_value) = input.default_value {
-            active.default_value = Set(Some(default_value));
-        }
+        if let Some(is_localized) = input.is_localized { active.is_localized = Set(is_localized); }
+        if let Some(is_required) = input.is_required { active.is_required = Set(is_required); }
+        if let Some(default_value) = input.default_value { active.default_value = Set(Some(default_value)); }
         if let Some(validation) = input.validation {
             active.validation = Set(Some(field_definition_validation_json(&validation)));
         }
-        if let Some(position) = input.position {
-            active.position = Set(position);
-        }
-        if let Some(is_active) = input.is_active {
-            active.is_active = Set(is_active);
-        }
+        if let Some(position) = input.position { active.position = Set(position); }
+        if let Some(is_active) = input.is_active { active.is_active = Set(is_active); }
         active.updated_at = Set(Utc::now().fixed_offset());
         let row = active.update(db).await.map_err(database_error)?;
-        let event = field_definition_updated_event(
-            tenant_id,
-            actor_id,
-            self.entity_type,
-            field_key,
-        );
+        let event = field_definition_updated_event(tenant_id, actor_id, self.entity_type, field_key);
         Ok((FieldDefinitionView::from_source(&row), event))
     }
 
@@ -409,31 +306,18 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
         actor_id: Option<Uuid>,
         id: Uuid,
     ) -> Result<EventEnvelope, FlexError> {
-        let row = self
-            .find_scoped(db, tenant_id, id)
-            .await?
-            .ok_or(FlexError::NotFound(id))?;
+        let row = self.find_scoped(db, tenant_id, id).await?.ok_or(FlexError::NotFound(id))?;
         let field_key = row.field_key.clone();
         let mut active: ActiveModel = row.into();
         active.is_active = Set(false);
         active.updated_at = Set(Utc::now().fixed_offset());
         active.update(db).await.map_err(database_error)?;
-        Ok(field_definition_deleted_event(
-            tenant_id,
-            actor_id,
-            self.entity_type,
-            field_key,
-        ))
+        Ok(field_definition_deleted_event(tenant_id, actor_id, self.entity_type, field_key))
     }
 }
 
-fn database_error(error: sea_orm::DbErr) -> FlexError {
-    FlexError::Database(error.to_string())
-}
+fn database_error(error: sea_orm::DbErr) -> FlexError { FlexError::Database(error.to_string()) }
 
 fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
-    matches!(
-        error.sql_err(),
-        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
-    )
+    matches!(error.sql_err(), Some(sea_orm::SqlErr::UniqueConstraintViolation(_)))
 }
