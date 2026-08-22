@@ -121,10 +121,13 @@ Focused evidence for this slice:
 - `Taxonomy Lookup Contract` includes the new presentation suite and source paths;
 - `Migration Compatibility` validates appended migration
   `m20260822_000011_create_taxonomy_category_presentations`;
-- `Taxonomy PostgreSQL Evidence` applies the canonical migration graph on PostgreSQL 16.
+- `Taxonomy PostgreSQL Evidence` applies the canonical migration graph on PostgreSQL 16 and executes
+  `category_presentation_postgres` to prove the Category-only/revision trigger plus same-revision
+  presentation CAS before the existing hierarchy/route/Translation evidence.
 
-**Done when:** the exact PR head passes the focused presentation/lookup tests and the canonical
-PostgreSQL migration evidence, with no Forum/Blog/Product cutover or Flex donor work mixed in.
+**Done when:** the exact PR head passes the focused presentation/lookup tests, the PostgreSQL
+presentation guard/CAS evidence and the canonical migration evidence, with no Forum/Blog/Product
+cutover or Flex donor work mixed in.
 
 ### TAXONOMY-CAT-4 — Flex Category donor — PLANNED
 
@@ -181,7 +184,8 @@ label fallback text with the requested/content locale when Taxonomy resolved ano
 ## PostgreSQL evidence policy
 
 `Taxonomy PostgreSQL Evidence` is the production-like runtime gate for the canonical migration graph,
-Category hierarchy concurrency, route-registry contention and Translation CAS/cursor behavior.
+Category presentation storage guards/CAS, Category hierarchy concurrency, route-registry contention
+and Translation CAS/cursor behavior.
 
 Checked-in evidence snapshots are retained provenance, but runtime-input changes intentionally make
 them stale. Staleness must trigger a fresh PostgreSQL run; it must not prevent the runtime job from
@@ -195,6 +199,7 @@ The runtime job must continue to:
 - check out the exact PR head/push SHA;
 - assert Rust `1.96.0`;
 - apply the canonical server Migrator to PostgreSQL 16;
+- execute Category presentation storage-guard and same-revision CAS evidence;
 - execute Category hierarchy contention evidence;
 - execute route-registry contention evidence;
 - execute Translation-target CAS/change-cursor evidence;
@@ -210,6 +215,7 @@ Focused commands for the Category program:
 - `node scripts/verify/verify-taxonomy-contract-matrix.test.mjs`
 - `node scripts/verify/verify-taxonomy-contract-matrix.mjs`
 - `cargo test --locked -p rustok-taxonomy --test category_hierarchy --test category_presentation --test localized_route_lookup --test route_key_registry -- --nocapture`
+- `cargo test --locked -p rustok-taxonomy --test category_presentation_postgres -- --nocapture` with `RUSTOK_TAXONOMY_TEST_DATABASE_URL` set to PostgreSQL;
 - `cargo test --locked -p rustok-taxonomy --lib`
 - PostgreSQL commands retained in `.github/workflows/taxonomy-postgres-evidence.yml`.
 
