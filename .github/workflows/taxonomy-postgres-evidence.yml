@@ -142,6 +142,12 @@ jobs:
           set -o pipefail
           cargo run --locked -p rustok-migrations --bin rustok-migrate -- up \
             2>&1 | tee evidence/taxonomy-postgres/migrations.log
+      - name: Execute Taxonomy Category hierarchy contention evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p rustok-taxonomy --test category_hierarchy_postgres -- --nocapture \
+            2>&1 | tee evidence/taxonomy-postgres/category-hierarchy.log
       - name: Execute Taxonomy route-registry contention evidence
         shell: bash
         run: |
