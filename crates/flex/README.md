@@ -5,7 +5,11 @@
 ## Purpose
 
 - Provide transport-agnostic registry contracts for Flex field definitions.
+- Let any domain module opt in to runtime-defined custom fields with a minimal adapter instead of rebuilding definitions, validation, localization and transport.
 - Keep module-to-module dependencies clean while host adapters supply persistence and runtime wiring.
+
+Flex is explicit opt-in. A domain entity does not become a Flex donor merely because it has a
+`metadata`/JSON column.
 
 ## Responsibilities
 
@@ -17,16 +21,25 @@
 - Owner-owned standalone fields_config parsing/schema building/serialization, localized field-key derivation, row-to-view mapping, entry normalization/schema validation, shared/localized split, read resolution, and PATCH merge helpers; server persistence adapters only expose source traits and adapt SeaORM rows into storage calls.
 - `FlexModule` capability-only runtime metadata for the manifest-driven module registry.
 
+## Donor policy
+
+The runtime donor registry is a product contract, not an inventory of tables that happen to support JSON.
+
+- `user`, `product`, and `order` are the currently registered attached donors.
+- `forum.topic` is intentionally **not** a Flex donor. Forum topic metadata remains Forum-owned domain/internal state. Historical topic field-definition/localized-value storage is retained temporarily for a data audit and explicit cleanup migration; new topic custom-field CRUD is not exposed through the registry.
+- `taxonomy.category` is the next planned donor after Taxonomy becomes the canonical Category owner. Taxonomy owns built-in category identity/hierarchy/localized copy/presentation; Flex supplies only administrator-defined extension fields.
+- Future donors such as groups/profiles must opt in only with a demonstrated product surface and must reuse Flex rather than introduce a module-local custom-fields engine.
+
+Critical normalized business invariants remain in their owner modules even for Flex-enabled entities.
+
 ## Multilingual status
 
 The current Flex multilingual contract is already partially live and must be treated as canonical by contributors and agents:
 
-- `FieldDefinition` now carries explicit `is_localized` semantics in `rustok-core`, registry DTOs, GraphQL inputs, and attached-mode persistence.
-- Attached-mode registered consumers are `user`, `product`, `order`, and `topic`. `node` is not part of the live attached contract yet.
+- `FieldDefinition` carries explicit `is_localized` semantics in `rustok-core`, registry DTOs, GraphQL inputs, and attached-mode persistence.
 - Standalone schema UI copy (`name`, `description`) no longer belongs in `flex_schemas`; it is stored in `flex_schema_translations`.
-- Standalone entry payloads no longer treat inline locale-aware JSON as the canonical path: shared values stay in `flex_entries.data`, while locale-aware values now live in `flex_entry_localized_values`.
-- Generic attached localized value storage now lives in the shared `flex` crate and persists into `flex_attached_localized_values`; live donor read/write paths now exist for `user`, `product`, `order`, and `topic`.
-- `topic` is no longer schema-only: forum topics now use `forum_topics.metadata` as the donor payload, and locale-aware Flex keys are resolved through the same attached multilingual contract as the other live donors.
+- Standalone entry payloads no longer treat inline locale-aware JSON as the canonical path: shared values stay in `flex_entries.data`, while locale-aware values live in `flex_entry_localized_values`.
+- Generic attached localized value storage lives in the shared `flex` crate and persists into `flex_attached_localized_values`.
 - Cleanup migrations remove residual inline locale-aware Flex payloads from donor metadata and standalone entry base rows; runtime resolves only shared payload plus parallel localized records.
 - Authoring accepts only a valid normalized locale and prepares locale-aware updates from that exact row. Read-time fallback is a presentation concern and must never seed another locale or become input to a write.
 - Attached field-definition and standalone schemas/entries GraphQL surfaces are live through manifest-driven host composition; GraphQL roots, runtime handle, permission checks, error mapping, event publication, and DTOs are owner-owned in `flex::graphql`. Standalone REST contract DTOs and view mappings are owner-owned in `flex::rest`, while server only supplies the Axum handler adapter, concrete standalone persistence adapter, and attached registry/cache/DB wiring through `FlexGraphqlRuntime`. Rollout/governance is enforced through the `capability_only` ghost-module manifest, `mod-flex` host wiring, explicit `flex_schemas:*` / `flex_entries:*` RBAC, and repo-side validation (`cargo xtask validate-manifest`, `cargo xtask module validate flex`, `node scripts/verify/verify-flex-multilingual-contract.mjs`, `node scripts/verify/verify-flex-standalone-contract.mjs`).
@@ -51,7 +64,7 @@ Do not implement new Flex multilingual behavior from older plans that assume inl
 - `flex::graphql::{FlexQuery, FlexMutation, FlexGraphqlRuntime}`
 - `flex::graphql::{FieldDefinitionObject, CreateFieldDefinitionInput, UpdateFieldDefinitionInput, DeleteFieldDefinitionPayload}`
 - `flex::graphql::{FlexSchemaObject, FlexEntryObject, CreateFlexSchemaInput, UpdateFlexSchemaInput, CreateFlexEntryInput, UpdateFlexEntryInput, DeleteFlexPayload}`
-- `flex::rest::{CreateFlexSchemaRequest, UpdateFlexSchemaRequest, CreateFlexEntryRequest, UpdateFlexEntryRequest, FlexSchemaResponse, FlexEntryResponse, DeleteFlexResponse}`
+- `flex::rest::{CreateFlexSchemaRequest, UpdateFlexSchemaRequest, CreateFlexEntryRequest, UpdateFlexEntryRequest, FlexSchemaResponse, DeleteFlexResponse}`
 - `flex::{parse_standalone_fields_config, build_standalone_custom_fields_schema, serialize_standalone_fields_config, standalone_localized_field_keys}`
 - `flex::{StandaloneSchemaViewSource, StandaloneSchemaTranslationSource, StandaloneEntryViewSource, standalone_schema_view_from_source, standalone_entry_view_from_source}`
 - `flex::normalize_and_validate_standalone_entry`
@@ -60,4 +73,5 @@ Do not implement new Flex multilingual behavior from older plans that assume inl
 
 - Module documentation: [`docs/README.md`](./docs/README.md)
 - Implementation plan: [`docs/implementation-plan.md`](./docs/implementation-plan.md)
+- Platform Taxonomy/Flex Category plan: [`../../docs/architecture/taxonomy-flex-category-platform-plan.md`](../../docs/architecture/taxonomy-flex-category-platform-plan.md)
 - Platform docs index: [`../../docs/index.md`](../../docs/index.md)
