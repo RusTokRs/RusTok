@@ -3,8 +3,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use flex::{
-    AttachedEntityRef, delete_attached_localized_values, persist_localized_values,
-    prepare_attached_values_create, prepare_attached_values_update, resolve_attached_payload,
+    AttachedEntityRef, GenericAttachedFieldDefinitionService, TAXONOMY_CATEGORY_ENTITY_TYPE,
+    delete_attached_localized_values, persist_localized_values, prepare_attached_values_create,
+    prepare_attached_values_update, resolve_attached_payload,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 
@@ -116,6 +117,12 @@ async fn load_schema(
         "product" => ProductFieldService::get_schema(db, tenant_id).await,
         "order" => OrderFieldService::get_schema(db, tenant_id).await,
         "topic" => TopicFieldService::get_schema(db, tenant_id).await,
+        #[cfg(feature = "mod-taxonomy")]
+        TAXONOMY_CATEGORY_ENTITY_TYPE => {
+            GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
+                .get_schema(db, tenant_id)
+                .await
+        }
         other => Err(FlexError::UnknownEntityType(other.to_string())),
     }
 }
