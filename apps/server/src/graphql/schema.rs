@@ -46,6 +46,7 @@ use crate::services::app_lifecycle::StopHandle;
 use crate::services::build_event_hub::BuildEventHub;
 use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::field_definition_registry_bootstrap::build_field_def_registry;
+use crate::services::flex_attached_values::FlexAttachedValuesGraphqlAdapter;
 use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
 use flex::graphql::FlexGraphqlRuntime;
 use rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery};
@@ -194,6 +195,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         db.clone(),
         build_field_def_registry(),
         Arc::new(field_definition_cache),
+        Arc::new(FlexAttachedValuesGraphqlAdapter::new(db.clone())),
     );
     let builder = Schema::build(
         Query::default(),

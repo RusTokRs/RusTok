@@ -7,19 +7,22 @@ on:
       - "crates/flex/src/attached_definitions.rs"
       - "crates/flex/src/attached_storage.rs"
       - "crates/flex/src/entity_type.rs"
-      - "crates/flex/src/graphql/mod.rs"
+      - "crates/flex/src/graphql/**"
       - "crates/flex/src/lib.rs"
       - "crates/flex/src/cache_generation.rs"
       - "crates/flex/src/migrations/**"
       - "crates/flex/tests/generic_attached_definitions.rs"
       - "crates/flex/tests/generic_attached_storage.rs"
       - "crates/flex/tests/postgres_generic_attached_storage.rs"
+      - "crates/rustok-taxonomy/src/category_delete.rs"
       - "crates/rustok-taxonomy/src/lib.rs"
       - "crates/rustok-taxonomy/src/owner_identity.rs"
       - "crates/rustok-taxonomy/tests/owner_identity.rs"
       - "crates/rustok-taxonomy/docs/implementation-plan.md"
+      - "apps/server/src/graphql/schema.rs"
       - "apps/server/src/services/field_definition_registry_bootstrap.rs"
       - "apps/server/src/services/flex_attached_values.rs"
+      - "apps/server/tests/taxonomy_category_flex_attached_postgres.rs"
       - "scripts/verify/verify-taxonomy-category-flex-donor.mjs"
       - ".github/workflows/taxonomy-category-flex-donor-contract.yml"
       - "Cargo.lock"
@@ -31,19 +34,22 @@ on:
       - "crates/flex/src/attached_definitions.rs"
       - "crates/flex/src/attached_storage.rs"
       - "crates/flex/src/entity_type.rs"
-      - "crates/flex/src/graphql/mod.rs"
+      - "crates/flex/src/graphql/**"
       - "crates/flex/src/lib.rs"
       - "crates/flex/src/cache_generation.rs"
       - "crates/flex/src/migrations/**"
       - "crates/flex/tests/generic_attached_definitions.rs"
       - "crates/flex/tests/generic_attached_storage.rs"
       - "crates/flex/tests/postgres_generic_attached_storage.rs"
+      - "crates/rustok-taxonomy/src/category_delete.rs"
       - "crates/rustok-taxonomy/src/lib.rs"
       - "crates/rustok-taxonomy/src/owner_identity.rs"
       - "crates/rustok-taxonomy/tests/owner_identity.rs"
       - "crates/rustok-taxonomy/docs/implementation-plan.md"
+      - "apps/server/src/graphql/schema.rs"
       - "apps/server/src/services/field_definition_registry_bootstrap.rs"
       - "apps/server/src/services/flex_attached_values.rs"
+      - "apps/server/tests/taxonomy_category_flex_attached_postgres.rs"
       - "scripts/verify/verify-taxonomy-category-flex-donor.mjs"
       - ".github/workflows/taxonomy-category-flex-donor-contract.yml"
       - "Cargo.lock"
@@ -105,27 +111,34 @@ jobs:
             crates/flex/src/attached_storage.rs \
             crates/flex/src/entity_type.rs \
             crates/flex/src/graphql/mod.rs \
+            crates/flex/src/graphql/runtime.rs \
+            crates/flex/src/graphql/query.rs \
+            crates/flex/src/graphql/mutation.rs \
+            crates/flex/src/graphql/types.rs \
             crates/flex/src/migrations/m20260822_000001_create_generic_attached_donor_storage.rs \
             crates/flex/tests/generic_attached_definitions.rs \
             crates/flex/tests/generic_attached_storage.rs \
             crates/flex/tests/postgres_generic_attached_storage.rs \
+            crates/rustok-taxonomy/src/category_delete.rs \
             crates/rustok-taxonomy/src/owner_identity.rs \
             crates/rustok-taxonomy/tests/owner_identity.rs \
+            apps/server/src/graphql/schema.rs \
             apps/server/src/services/field_definition_registry_bootstrap.rs \
-            apps/server/src/services/flex_attached_values.rs
+            apps/server/src/services/flex_attached_values.rs \
+            apps/server/tests/taxonomy_category_flex_attached_postgres.rs
       - name: Run generic attached definition contracts
         run: cargo test --locked -p flex --test generic_attached_definitions -- --nocapture
       - name: Run generic attached value storage contract
         run: cargo test --locked -p flex --test generic_attached_storage -- --nocapture
       - name: Run bounded Taxonomy owner identity contract
         run: cargo test --locked -p rustok-taxonomy --test owner_identity -- --nocapture
-      - name: Compile host registration and owner guard
+      - name: Compile host registration, instance transport and owner guard
         run: cargo check --locked -p rustok-server --no-default-features --features mod-taxonomy,mod-flex --lib
 
   postgres-contract:
     name: Category Flex donor PostgreSQL contract
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     services:
       postgres:
         image: postgres:16
@@ -156,3 +169,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run PostgreSQL generic Category donor contract
         run: cargo test --locked -p flex --test postgres_generic_attached_storage -- --ignored --nocapture
+      - name: Run PostgreSQL real Category instance transport and hard-delete contract
+        run: cargo test --locked -p rustok-server --no-default-features --features mod-taxonomy,mod-flex --test taxonomy_category_flex_attached_postgres -- --ignored --nocapture

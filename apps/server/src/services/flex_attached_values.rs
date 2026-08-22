@@ -196,6 +196,122 @@ impl FlexAttachedValuesService {
     }
 }
 
+#[derive(Clone)]
+pub struct FlexAttachedValuesGraphqlAdapter {
+    db: DatabaseConnection,
+}
+
+impl FlexAttachedValuesGraphqlAdapter {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+}
+
+#[async_trait::async_trait]
+impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapter {
+    async fn resolve_values(
+        &self,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+        preferred_locale: &str,
+        tenant_default_locale: &str,
+    ) -> Result<Option<Value>, FlexError> {
+        FlexAttachedValuesService::resolve_registered_generic_values(
+            &self.db,
+            tenant_id,
+            entity_type,
+            entity_id,
+            preferred_locale,
+            tenant_default_locale,
+        )
+        .await
+        .map_err(|error| map_host_error_to_flex(error, entity_id))
+    }
+
+    async fn update_values(
+        &self,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+        locale: &str,
+        payload: Option<Value>,
+    ) -> Result<Option<Value>, FlexError> {
+        let prepared = FlexAttachedValuesService::prepare_registered_generic_update(
+            &self.db,
+            tenant_id,
+            entity_type,
+            entity_id,
+            locale,
+            payload,
+        )
+        .await
+        .map_err(|error| map_host_error_to_flex(error, entity_id))?;
+        FlexAttachedValuesService::persist_registered_generic_values(
+            &self.db,
+            tenant_id,
+            entity_type,
+            entity_id,
+            &prepared,
+        )
+        .await
+        .map_err(|error| map_host_error_to_flex(error, entity_id))?;
+        FlexAttachedValuesService::resolve_registered_generic_values(
+            &self.db,
+            tenant_id,
+            entity_type,
+            entity_id,
+            locale,
+            locale,
+        )
+        .await
+        .map_err(|error| map_host_error_to_flex(error, entity_id))
+    }
+
+    async fn delete_values(
+        &self,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+    ) -> Result<(), FlexError> {
+        FlexAttachedValuesService::delete_registered_generic_values(
+            &self.db,
+            tenant_id,
+            entity_type,
+            entity_id,
+        )
+        .await
+        .map_err(|error| map_host_error_to_flex(error, entity_id))
+    }
+}
+
+/// Host implementation of the Taxonomy-owned Category delete cleanup boundary.
+///
+/// Taxonomy controls the owner transaction and calls this port before deleting the Category row;
+/// the host delegates only capability-owned attached rows to Flex.
+#[cfg(feature = "mod-taxonomy")]
+pub struct FlexTaxonomyCategoryDeleteCleanup;
+
+#[cfg(feature = "mod-taxonomy")]
+#[async_trait::async_trait]
+impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for FlexTaxonomyCategoryDeleteCleanup {
+    async fn cleanup_in_tx(
+        &self,
+        txn: &sea_orm::DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+    ) -> rustok_taxonomy::TaxonomyResult<()> {
+        delete_generic_attached_values(
+            txn,
+            attached_ref(tenant_id, TAXONOMY_CATEGORY_ENTITY_TYPE, category_id),
+        )
+        .await
+        .map_err(|error| {
+            rustok_taxonomy::TaxonomyError::Database(sea_orm::DbErr::Custom(error.to_string()))
+        })
+    }
+}
+
 fn attached_ref<'a>(
     tenant_id: Uuid,
     entity_type: &'a str,
@@ -246,6 +362,16 @@ fn map_flex_host_error(error: FlexError) -> Error {
         FlexMappedErrorKind::Internal => Error::Message(mapped.message),
         FlexMappedErrorKind::NotFound => Error::NotFound,
         FlexMappedErrorKind::BadUserInput => Error::BadRequest(mapped.message),
+    }
+}
+
+fn map_host_error_to_flex(error: Error, entity_id: Uuid) -> FlexError {
+    match error {
+        Error::NotFound => FlexError::NotFound(entity_id),
+        Error::BadRequest(message) | Error::Validation(message) => {
+            FlexError::UnknownEntityType(message)
+        }
+        error => FlexError::Database(error.to_string()),
     }
 }
 

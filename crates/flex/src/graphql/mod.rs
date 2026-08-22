@@ -12,7 +12,7 @@ use rustok_api::{
 
 pub use mutation::FlexMutation;
 pub use query::FlexQuery;
-pub use runtime::FlexGraphqlRuntime;
+pub use runtime::{AttachedValuesGraphqlPort, FlexGraphqlRuntime};
 pub use types::*;
 
 fn require_access(
