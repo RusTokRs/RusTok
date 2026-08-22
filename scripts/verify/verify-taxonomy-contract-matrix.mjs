@@ -123,20 +123,41 @@ for (const consumer of consumers) {
   requireMarkers(consumer.contract, consumer.contractMarkers);
 }
 
+requireMarkers("DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md", [
+  "`rustok-taxonomy` becomes the canonical Category owner",
+  "Forum Topic remains an explicit Flex consumer",
+]);
+requireMarkers("docs/architecture/taxonomy-flex-category-platform-plan.md", [
+  "Add `TaxonomyTermKind::Category` as a first-class demonstrated kind",
+  "Consumer relation/binding tables stay with the consumer",
+]);
+
 const dtoPath = "crates/rustok-taxonomy/src/dto.rs";
 const dto = requireFile(dtoPath);
+let demonstratedKinds = [];
 if (dto !== null) {
   const kindEnum = dto.match(/pub enum TaxonomyTermKind\s*\{([\s\S]*?)\n\}/);
   if (!kindEnum) {
     fail(`${dtoPath}: TaxonomyTermKind enum is missing`);
   } else {
-    const variants = [...kindEnum[1].matchAll(/^\s*([A-Z][A-Za-z0-9_]*)\s*,\s*$/gm)].map(
-      (match) => match[1],
-    );
-    if (variants.length !== 1 || variants[0] !== "Tag") {
+    demonstratedKinds = [
+      ...kindEnum[1].matchAll(/^\s*([A-Z][A-Za-z0-9_]*)\s*,\s*$/gm),
+    ].map((match) => match[1]);
+    const allowedKinds = new Set(["Tag", "Category"]);
+    if (!demonstratedKinds.includes("Tag")) {
+      fail(`${dtoPath}: demonstrated kind surface must retain Tag`);
+    }
+    const unexpected = demonstratedKinds.filter((kind) => !allowedKinds.has(kind));
+    if (unexpected.length > 0) {
       fail(
-        `${dtoPath}: demonstrated kind baseline must remain exactly Tag until a new kind has an explicit ownership/lookup contract; found ${variants.join(", ") || "none"}`,
+        `${dtoPath}: demonstrated kinds require an explicit ownership/lookup contract; unsupported kinds: ${unexpected.join(", ")}`,
       );
+    }
+    const duplicates = demonstratedKinds.filter(
+      (kind, index) => demonstratedKinds.indexOf(kind) !== index,
+    );
+    if (duplicates.length > 0) {
+      fail(`${dtoPath}: duplicate TaxonomyTermKind variants: ${[...new Set(duplicates)].join(", ")}`);
     }
   }
 }
@@ -165,6 +186,8 @@ requireMarkers(lookupWorkflow, [
 
 const ownershipWorkflow = ".github/workflows/taxonomy-ownership-boundary.yml";
 requireMarkers(ownershipWorkflow, [
+  '"DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md"',
+  '"docs/architecture/taxonomy-flex-category-platform-plan.md"',
   '"crates/rustok-blog/rustok-module.toml"',
   '"crates/rustok-blog/CRATE_API.md"',
   '"crates/rustok-forum/rustok-module.toml"',
@@ -186,5 +209,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Taxonomy contract matrix checks passed: ${consumers.length} consumer manifests/public relation contracts are synchronized; demonstrated kinds=Tag; focused lookup and ownership coverage remain wired.`,
+  `Taxonomy contract matrix checks passed: ${consumers.length} consumer manifests/public tag-relation contracts are synchronized; demonstrated kinds=${demonstratedKinds.join(",") || "none"}; Tag is retained and Category is the only accepted next shared kind; focused lookup and ownership coverage remain wired.`,
 );
