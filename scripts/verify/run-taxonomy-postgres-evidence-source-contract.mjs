@@ -29,6 +29,7 @@ const staleFingerprint = /runtime input .+ changed since recorded evidence; coll
 const legacyPlanMarker = /^crates\/rustok-taxonomy\/docs\/implementation-plan\.md: missing (?:route_registry_contention_postgres\.rs|translation_target_postgres\.rs|RUSTOK_TAXONOMY_TEST_DATABASE_URL|canonical server Migrator|two-writer route-key contention|translation apply CAS|Exactly one stale-revision candidate may commit|hard deletion|Final exact-head pull-request run `31847950553`|Post-merge main run `31857567129`|Result 4 is complete for the current runtime input fingerprints\.|runtime input fingerprints)$/;
 
 const plan = fs.readFileSync('crates/rustok-taxonomy/docs/implementation-plan.md', 'utf8');
+const normalizedPlan = plan.replace(/\s+/g, ' ');
 const currentPlanMarkers = [
   'TAXONOMY-CAT-2 — Category kind + hierarchy foundation — IN PROGRESS',
   'Taxonomy PostgreSQL Evidence',
@@ -37,7 +38,7 @@ const currentPlanMarkers = [
   'runtime-input changes intentionally make them stale',
   'Any structural verifier failure remains fatal',
 ];
-const missingCurrentMarkers = currentPlanMarkers.filter((marker) => !plan.includes(marker));
+const missingCurrentMarkers = currentPlanMarkers.filter((marker) => !normalizedPlan.includes(marker));
 
 const refreshCompatible =
   failures.length > 0 &&
