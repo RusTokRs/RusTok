@@ -44,9 +44,10 @@ const taxonomyPersistenceFiles = taxonomySourceFiles.filter(
     relative.includes("/src/entities/") || relative.includes("/src/migrations/"),
 );
 
-// Shared Category hierarchy is an accepted Taxonomy capability. What remains forbidden is moving
-// consumer attachment/binding storage into Taxonomy or introducing an untyped polymorphic owner
-// table. Blog/Forum/Product/Profile relations remain typed owner-module contracts.
+// Shared Category hierarchy and canonical presentation are accepted Taxonomy capabilities. What
+// remains forbidden is moving consumer attachment/binding storage into Taxonomy or introducing an
+// untyped polymorphic owner table. Blog/Forum/Product/Profile relations remain typed owner-module
+// contracts.
 const forbiddenConsumerRelations = [
   "blog_post_tags",
   "forum_topic_tags",
@@ -86,6 +87,7 @@ requireMarkers(
   "docs/architecture/taxonomy-flex-category-platform-plan.md",
   [
     "Taxonomy owns shared Category hierarchy",
+    "canonical presentation such as icon key, color and Media-owned image/cover references",
     "Consumer relation/binding tables stay with the consumer",
     "Flex is the only runtime custom-fields mechanism",
   ],
@@ -148,5 +150,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Taxonomy ownership boundary checks passed: ${taxonomySourceFiles.length} Taxonomy Rust source files may own shared Category hierarchy; Blog, Forum, Product, and Profiles retain typed consumer attachment relations and generic polymorphic attachment storage remains forbidden.`,
+  `Taxonomy ownership boundary checks passed: ${taxonomySourceFiles.length} Taxonomy Rust source files may own shared Category hierarchy/presentation; Blog, Forum, Product, and Profiles retain typed consumer attachment relations and generic polymorphic attachment storage remains forbidden.`,
 );
