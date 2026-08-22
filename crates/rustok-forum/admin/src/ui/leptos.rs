@@ -1952,7 +1952,21 @@ fn TopicsPage(
                                             <option value="">{topic_form_labels.choose_category_label.clone()}</option>
                                             {category_select_options(&items, category_id.get().as_str())
                                                 .into_iter()
-                                                .map(|option| view! { <option value=option.value selected=option.is_selected>{option.label}</option> })
+                                                .zip(items.iter())
+                                                .map(|(option, item)| {
+                                                    let content_lang = forum_admin_content_lang(item.effective_locale.as_str());
+                                                    view! {
+                                                        <option
+                                                            data-forum-target-localized=""
+                                                            lang=content_lang
+                                                            dir="auto"
+                                                            value=option.value
+                                                            selected=option.is_selected
+                                                        >
+                                                            {option.label}
+                                                        </option>
+                                                    }
+                                                })
                                                 .collect_view()}
                                         </select>
                                     }.into_any(),
