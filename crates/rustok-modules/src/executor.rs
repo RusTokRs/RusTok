@@ -217,7 +217,6 @@ pub async fn execute_module_toggle(
         let tenant_id = request.tenant_id;
         let module_slug = request.module_slug.clone();
         let requested_override_enabled = request.requested_override_enabled;
-        let static_lifecycle = static_lifecycle;
         let state = match db
             .transaction::<_, Option<TenantModuleStateRecord>, ModuleLifecycleExecutionError>(
                 |transaction| {

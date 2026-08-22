@@ -859,8 +859,12 @@ mod tests {
         let mut non_idempotent_binding = binding.clone();
         non_idempotent_binding.idempotency = ModuleBindingIdempotency::BestEffort;
         assert!(
-            find_artifact_ui_action_binding(&[action.clone()], &[non_idempotent_binding], "apply",)
-                .is_none()
+            find_artifact_ui_action_binding(
+                std::slice::from_ref(&action),
+                &[non_idempotent_binding],
+                "apply",
+            )
+            .is_none()
         );
 
         let mut non_action = action;

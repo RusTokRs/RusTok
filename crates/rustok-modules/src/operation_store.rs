@@ -320,7 +320,7 @@ impl ModuleOperationJournal {
                 request.idempotency_key.into(),
                 request
                     .expected_revision
-                    .map(|value| i64::try_from(value))
+                    .map(i64::try_from)
                     .transpose()
                     .map_err(|_| ModuleOperationStoreError::Database(
                         "static lifecycle expected revision exceeds storage range".to_string(),

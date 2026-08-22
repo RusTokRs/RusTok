@@ -912,10 +912,6 @@ impl RootQuery {
         })
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the public GraphQL marketplace contract exposes independent filter arguments"
-    )]
     async fn marketplace(
         &self,
         ctx: &Context<'_>,
