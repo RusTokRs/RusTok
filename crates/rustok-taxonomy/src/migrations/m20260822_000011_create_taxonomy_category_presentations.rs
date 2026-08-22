@@ -172,6 +172,10 @@ BEGIN
         RAISE EXCEPTION 'taxonomy Category presentation revision must be positive';
     END IF;
 
+    IF TG_OP = 'UPDATE' AND NEW.revision <> OLD.revision + 1 THEN
+        RAISE EXCEPTION 'taxonomy Category presentation update must advance revision by exactly one';
+    END IF;
+
     IF NOT EXISTS (
         SELECT 1
           FROM taxonomy_terms term
@@ -188,7 +192,7 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS taxonomy_category_presentation_guard ON taxonomy_category_presentations;
 CREATE TRIGGER taxonomy_category_presentation_guard
-BEFORE INSERT OR UPDATE OF tenant_id, term_id, revision
+BEFORE INSERT OR UPDATE
 ON taxonomy_category_presentations
 FOR EACH ROW
 EXECUTE FUNCTION taxonomy_validate_category_presentation();
@@ -212,6 +216,17 @@ async fn install_sqlite_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr>
 }
 
 fn sqlite_guard_sql(operation: &str, trigger_name: &str) -> String {
+    let revision_transition = if operation == "UPDATE" {
+        r#"
+    SELECT CASE
+        WHEN NEW.revision <> OLD.revision + 1
+        THEN RAISE(ABORT, 'taxonomy Category presentation update must advance revision by exactly one')
+    END;
+"#
+    } else {
+        ""
+    };
+
     format!(
         r#"
 CREATE TRIGGER {trigger_name}
@@ -222,7 +237,7 @@ BEGIN
         WHEN NEW.revision < 1
         THEN RAISE(ABORT, 'taxonomy Category presentation revision must be positive')
     END;
-
+{revision_transition}
     SELECT CASE
         WHEN NOT EXISTS (
             SELECT 1
