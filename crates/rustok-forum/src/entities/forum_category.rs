@@ -11,11 +11,6 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub tenant_id: Uuid,
-    /// Transitional CAT-5 binding to the canonical Taxonomy Category identity.
-    ///
-    /// Legacy Forum category identity/hierarchy/localized copy remain live until
-    /// deterministic backfill and read/write cutover evidence are complete.
-    pub taxonomy_category_id: Option<Uuid>,
     pub parent_id: Option<Uuid>,
     pub position: i32,
     pub icon: Option<String>,
