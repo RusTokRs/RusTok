@@ -104,8 +104,7 @@ async fn forum_category_binding_is_category_only_tenant_bounded_and_one_to_one()
 
     let tenant_id = Uuid::new_v4();
     let other_tenant_id = Uuid::new_v4();
-    let forum_category_id =
-        create_forum_category(&forum, tenant_id, "General", "general").await;
+    let forum_category_id = create_forum_category(&forum, tenant_id, "General", "general").await;
     let second_forum_category_id =
         create_forum_category(&forum, tenant_id, "Support", "support").await;
 
