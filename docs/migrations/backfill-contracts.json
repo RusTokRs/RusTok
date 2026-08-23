@@ -203,6 +203,13 @@
       "reason": "Legacy artifact permission catalog rows carry localized copy inside authorization identity and grants lack exact scope identity; the cutover groups one immutable definition, canonicalizes truthful locale tags, and refuses ambiguous platform-or-tenant grants instead of inventing authority",
       "setup_sql": "INSERT INTO rbac_artifact_permission_catalog (id, scope_key, installation_id, module_slug, release_digest, permission_key, locale, label, description) VALUES ('34000000-0000-0000-0000-000000000001', 'platform', '34000000-0000-0000-0000-000000000002', 'rbac_fixture', 'sha256:fixture', 'rbac_fixture.events.handle', 'EN_us', 'Handle events', 'Allows event handling'), ('34000000-0000-0000-0000-000000000003', 'platform', '34000000-0000-0000-0000-000000000002', 'rbac_fixture', 'sha256:fixture', 'rbac_fixture.events.handle', 'fr', 'Gérer les événements', 'Autorise la gestion des événements')",
       "assertion_sql": "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'rbac_artifact_permission_catalog') AND (SELECT COUNT(*) FROM rbac_artifact_permission_definitions WHERE scope_key = 'platform' AND installation_id = '34000000-0000-0000-0000-000000000002'::uuid AND permission_key = 'rbac_fixture.events.handle') = 1 AND EXISTS (SELECT 1 FROM rbac_artifact_permission_translations translation JOIN rbac_artifact_permission_definitions definition ON definition.id = translation.artifact_permission_id WHERE definition.installation_id = '34000000-0000-0000-0000-000000000002'::uuid AND translation.locale = 'en-US' AND translation.label = 'Handle events') AND EXISTS (SELECT 1 FROM rbac_artifact_permission_translations translation JOIN rbac_artifact_permission_definitions definition ON definition.id = translation.artifact_permission_id WHERE definition.installation_id = '34000000-0000-0000-0000-000000000002'::uuid AND translation.locale = 'fr' AND translation.label = 'Gérer les événements')) AS passed"
+    },
+    {
+      "id": "forum-taxonomy-category-binding-bootstrap",
+      "migration": "m20260823_000029_add_forum_taxonomy_category_binding",
+      "mode": "none",
+      "owner": "rustok-forum",
+      "reason": "Creates an empty tenant-safe Forum-to-Taxonomy Category binding relation for staged CAT-5 cutover; legacy Forum category rows remain unchanged and deterministic data backfill is intentionally deferred to the next verified migration slice"
     }
   ]
 }
