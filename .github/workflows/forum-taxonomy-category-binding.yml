@@ -8,6 +8,7 @@ on:
       - "crates/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs"
       - "crates/rustok-forum/src/migrations/mod.rs"
       - "crates/rustok-forum/src/services/mod.rs"
+      - "docs/migrations/backfill-contracts.json"
       - "scripts/verify/verify-forum-taxonomy-category-binding.mjs"
       - ".github/workflows/forum-taxonomy-category-binding.yml"
   push:
@@ -19,6 +20,7 @@ on:
       - "crates/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs"
       - "crates/rustok-forum/src/migrations/mod.rs"
       - "crates/rustok-forum/src/services/mod.rs"
+      - "docs/migrations/backfill-contracts.json"
       - "scripts/verify/verify-forum-taxonomy-category-binding.mjs"
       - ".github/workflows/forum-taxonomy-category-binding.yml"
   workflow_dispatch:
