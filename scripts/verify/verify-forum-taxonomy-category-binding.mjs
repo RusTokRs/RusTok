@@ -15,12 +15,21 @@ const rejectMarker = (path, marker, label = marker) => {
 
 const migration = 'crates/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs';
 const migrationRegistry = 'crates/rustok-forum/src/migrations/mod.rs';
+const backfillContracts = 'docs/migrations/backfill-contracts.json';
 const relation = 'crates/rustok-forum/src/entities/forum_category_taxonomy_binding.rs';
 const entities = 'crates/rustok-forum/src/entities/mod.rs';
 const legacyCategory = 'crates/rustok-forum/src/entities/forum_category.rs';
 const legacyProvider = 'crates/rustok-forum/src/services/mod.rs';
 
-for (const path of [migration, migrationRegistry, relation, entities, legacyCategory, legacyProvider]) {
+for (const path of [
+  migration,
+  migrationRegistry,
+  backfillContracts,
+  relation,
+  entities,
+  legacyCategory,
+  legacyProvider,
+]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 
@@ -32,6 +41,9 @@ if (failures.length === 0) {
   requireMarker(migration, '(TaxonomyTerms::TenantId, TaxonomyTerms::Id)', 'tenant-safe Taxonomy identity target');
   requireMarker(migrationRegistry, 'm20260823_000029_add_forum_taxonomy_category_binding', 'registered CAT-5 migration');
   requireMarker(migrationRegistry, 'm20260711_000001_add_tenant_identity_key', 'Taxonomy tenant identity dependency');
+  requireMarker(backfillContracts, 'forum-taxonomy-category-binding-bootstrap', 'CAT-5 backfill declaration');
+  requireMarker(backfillContracts, '"migration": "m20260823_000029_add_forum_taxonomy_category_binding"', 'CAT-5 migration backfill registration');
+  requireMarker(backfillContracts, '"mode": "none"', 'empty binding-table backfill mode');
 
   requireMarker(relation, 'ForumCategoryTaxonomyBindingService', 'bounded binding service');
   requireMarker(relation, 'taxonomy_term_identity_exists', 'Taxonomy owner identity validation');
