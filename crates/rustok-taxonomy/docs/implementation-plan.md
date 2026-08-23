@@ -172,7 +172,7 @@ the platform Flex transport/schema-builder boundary, with tenant/kind ownership 
 cleanup proved, while Taxonomy implements no second field-definition service, validator or custom
 form engine.
 
-### TAXONOMY-CAT-5 — Forum category cutover — PLANNED
+### TAXONOMY-CAT-5 — Forum category cutover — IN PROGRESS
 
 Forum is the first consumer migration because FORUM-25 exposed the ownership conflict.
 
@@ -187,6 +187,36 @@ Migration rules:
 - make Forum admin/storefront consume Taxonomy `requested_locale`/`effective_locale` projections;
 - keep Topic Flex support independent of Category migration;
 - complete mounted multilingual/RTL browser parity only against Taxonomy-owned Category data.
+
+First accepted slice, PR #3686, adds only the data-preserving typed binding seam:
+
+- Forum owns `forum_category_taxonomy_bindings`; the relation is tenant-safe and one-to-one inside a
+  tenant while Taxonomy remains the canonical Category identity owner;
+- the binding service validates the target through the public Taxonomy identity contract as an exact
+  same-tenant `TaxonomyTermKind::Category`; Tags, foreign-tenant identities and stale UUIDs fail
+  closed;
+- the appended Forum migration is explicitly classified as `mode: none` because this slice creates an
+  empty relation and deliberately performs no category data backfill;
+- legacy Forum category identity, hierarchy, localized copy, presentation and
+  `ForumCategoryTranslationTargetProvider` remain authoritative until deterministic backfill and
+  read/write cutover evidence exists;
+- no Taxonomy scope (`global` versus `module=forum`) is selected by the low-level binding seam; that
+  policy remains a backfill/cutover decision.
+
+Retained focused evidence:
+
+- PR #3686 exact head `7e64eb9d3fc3af4d8e7b7ec1063cf45ea8859c58` passed `Forum Taxonomy Category Binding Contract`
+  run `32659255474`: exact-head source guard, scoped Rust 1.96 formatting, real runtime bind/idempotency
+  and rebind/duplicate/Tag/foreign-tenant/stale-identity rejection evidence, plus
+  `cargo check --locked -p rustok-forum --lib`;
+- the same #3686 head passed `Migration Compatibility` run `32659255365`: harness preflight,
+  append-only migration plan, PostgreSQL N-1 to head upgrade, fresh incremental/apply-all migration
+  smoke and rollback-latest all succeeded;
+- PR #3686 was squash-merged as `9af3a113c28ecb964dd9ff1737a7ddd69e916f23`.
+
+**Next:** implement deterministic, resumable Forum category backfill/reuse from fresh `main`, choose
+and document the Taxonomy scope policy there, and preserve legacy Forum hierarchy/translations/provider
+until the subsequent read/write cutover proves parity.
 
 **Done when:** Forum no longer owns a duplicate canonical category entity or Translation provider and
 all Forum category behaviors use the shared Taxonomy identity without losing Forum-specific policy.
