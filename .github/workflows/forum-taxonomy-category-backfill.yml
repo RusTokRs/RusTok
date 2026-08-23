@@ -1,0 +1,76 @@
+name: Forum Taxonomy Category Backfill Contract
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-forum/src/migrations/m20260823_000030_backfill_forum_categories_to_taxonomy.rs"
+      - "crates/rustok-forum/src/migrations/mod.rs"
+      - "docs/migrations/backfill-contracts.json"
+      - "scripts/verify/verify-forum-taxonomy-category-backfill.mjs"
+      - ".github/workflows/forum-taxonomy-category-backfill.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-forum/src/migrations/m20260823_000030_backfill_forum_categories_to_taxonomy.rs"
+      - "crates/rustok-forum/src/migrations/mod.rs"
+      - "docs/migrations/backfill-contracts.json"
+      - "scripts/verify/verify-forum-taxonomy-category-backfill.mjs"
+      - ".github/workflows/forum-taxonomy-category-backfill.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forum-taxonomy-category-backfill-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  source-contract:
+    name: Forum Taxonomy Category backfill source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Verify staged Forum Category backfill boundary
+        run: node scripts/verify/verify-forum-taxonomy-category-backfill.mjs
+
+  rust-contract:
+    name: Forum Taxonomy Category backfill Rust contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check CAT-5 backfill Rust formatting only
+        shell: bash
+        run: |
+          rustfmt +1.96.0 --edition 2024 --check \
+            crates/rustok-forum/src/migrations/m20260823_000030_backfill_forum_categories_to_taxonomy.rs
+      - name: Compile Forum backfill and migration registry
+        run: cargo check --locked -p rustok-forum --lib
