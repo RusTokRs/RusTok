@@ -2,7 +2,8 @@ use rustok_taxonomy::{
     TaxonomyScopeType, TaxonomyTermKind,
     entities::{
         taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
-        taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation, translation_change,
+        taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation,
+        translation_change,
     },
     normalize_taxonomy_category_color, normalize_taxonomy_category_icon_key, normalize_term_locale,
     normalize_term_route_key,
@@ -83,7 +84,10 @@ async fn ensure_taxonomy_term(
 ) -> Result<(), DbErr> {
     let canonical_key = canonical_key_for_forum_category(category.id);
 
-    if let Some(existing) = taxonomy_term::Entity::find_by_id(category.id).one(txn).await? {
+    if let Some(existing) = taxonomy_term::Entity::find_by_id(category.id)
+        .one(txn)
+        .await?
+    {
         if existing.tenant_id != category.tenant_id
             || existing.kind != TaxonomyTermKind::Category
             || existing.scope_type != TaxonomyScopeType::Module
@@ -170,9 +174,10 @@ async fn ensure_category_translations_and_routes(
                 )));
             }
             None => {
-                if let Some(id_owner) = taxonomy_term_translation::Entity::find_by_id(translation.id)
-                    .one(txn)
-                    .await?
+                if let Some(id_owner) =
+                    taxonomy_term_translation::Entity::find_by_id(translation.id)
+                        .one(txn)
+                        .await?
                 {
                     return Err(DbErr::Migration(format!(
                         "Forum Category Taxonomy backfill blocked: translation UUID {} is already used by Taxonomy term {}",
@@ -355,7 +360,10 @@ async fn ensure_category_presentation(
             if existing.icon_key == icon_key
                 && existing.color == color
                 && existing.image_media_id.is_none()
-                && existing.cover_media_id.is_none() => Ok(()),
+                && existing.cover_media_id.is_none() =>
+        {
+            Ok(())
+        }
         Some(_) => Err(DbErr::Migration(format!(
             "Forum Category Taxonomy backfill blocked: canonical presentation already differs for category {}",
             category.id,
@@ -389,7 +397,10 @@ async fn ensure_category_hierarchy(
     {
         Some(existing)
             if existing.parent_term_id == category.parent_id
-                && existing.position == category.position => Ok(()),
+                && existing.position == category.position =>
+        {
+            Ok(())
+        }
         Some(_) => Err(DbErr::Migration(format!(
             "Forum Category Taxonomy backfill blocked: hierarchy already differs for category {}",
             category.id,
@@ -412,12 +423,10 @@ async fn ensure_forum_binding(
     txn: &sea_orm::DatabaseTransaction,
     category: &forum_category::Model,
 ) -> Result<(), DbErr> {
-    if let Some(existing) = forum_category_taxonomy_binding::Entity::find_by_id((
-        category.tenant_id,
-        category.id,
-    ))
-    .one(txn)
-    .await?
+    if let Some(existing) =
+        forum_category_taxonomy_binding::Entity::find_by_id((category.tenant_id, category.id))
+            .one(txn)
+            .await?
     {
         if existing.taxonomy_category_id == category.id {
             return Ok(());
@@ -469,11 +478,7 @@ fn exact_taxonomy_locale(value: &str, category_id: Uuid) -> Result<String, DbErr
     Ok(normalized)
 }
 
-fn exact_taxonomy_route_key(
-    value: &str,
-    category_id: Uuid,
-    locale: &str,
-) -> Result<String, DbErr> {
+fn exact_taxonomy_route_key(value: &str, category_id: Uuid, locale: &str) -> Result<String, DbErr> {
     let normalized = normalize_term_route_key(value).ok_or_else(|| {
         DbErr::Migration(format!(
             "Forum Category Taxonomy backfill blocked: category {category_id} locale {locale} has an empty route key",
