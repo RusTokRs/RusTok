@@ -8,6 +8,7 @@ on:
       - "crates/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs"
       - "crates/rustok-forum/src/migrations/mod.rs"
       - "crates/rustok-forum/src/services/mod.rs"
+      - "crates/rustok-forum/tests/category_taxonomy_binding.rs"
       - "docs/migrations/backfill-contracts.json"
       - "scripts/verify/verify-forum-taxonomy-category-binding.mjs"
       - ".github/workflows/forum-taxonomy-category-binding.yml"
@@ -20,6 +21,7 @@ on:
       - "crates/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs"
       - "crates/rustok-forum/src/migrations/mod.rs"
       - "crates/rustok-forum/src/services/mod.rs"
+      - "crates/rustok-forum/tests/category_taxonomy_binding.rs"
       - "docs/migrations/backfill-contracts.json"
       - "scripts/verify/verify-forum-taxonomy-category-binding.mjs"
       - ".github/workflows/forum-taxonomy-category-binding.yml"
@@ -78,6 +80,9 @@ jobs:
         run: |
           rustfmt +1.96.0 --edition 2024 --check \
             crates/rustok-forum/src/entities/forum_category_taxonomy_binding.rs \
-            crates/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs
+            crates/rustok-forum/src/migrations/m20260823_000029_add_forum_taxonomy_category_binding.rs \
+            crates/rustok-forum/tests/category_taxonomy_binding.rs
+      - name: Run Forum Taxonomy Category binding runtime contract
+        run: cargo test --locked -p rustok-forum --test category_taxonomy_binding -- --nocapture
       - name: Compile Forum binding and migration registry
         run: cargo check --locked -p rustok-forum --lib
