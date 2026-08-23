@@ -1,14 +1,22 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService, CreateCategoryInput, ForumCategoryTaxonomyBindingService, ForumModule,
-    entities::forum_category_taxonomy_binding,
+    ForumCategoryTaxonomyBindingService, ForumModule, entities::forum_category_taxonomy_binding,
 };
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
 };
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, EntityTrait,
+    Statement,
+};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
+
+const FORUM_BINDING_SCHEMA_MIGRATIONS: &[&str] = &[
+    "m20260328_000001_create_forum_tables",
+    "m20260712_000001_enforce_forum_core_tenant_integrity",
+    "m20260823_000029_add_forum_taxonomy_category_binding",
+];
 
 async fn setup() -> DatabaseConnection {
     let db_url = format!(
@@ -29,12 +37,22 @@ async fn setup() -> DatabaseConnection {
             .await
             .expect("taxonomy migration should apply");
     }
+
+    let mut applied_forum_migrations = 0usize;
     for migration in ForumModule.migrations() {
-        migration
-            .up(&schema)
-            .await
-            .expect("forum migration should apply");
+        if FORUM_BINDING_SCHEMA_MIGRATIONS.contains(&migration.name()) {
+            migration
+                .up(&schema)
+                .await
+                .expect("required Forum binding migration should apply");
+            applied_forum_migrations += 1;
+        }
     }
+    assert_eq!(
+        applied_forum_migrations,
+        FORUM_BINDING_SCHEMA_MIGRATIONS.len(),
+        "every required Forum binding migration must be registered"
+    );
     db
 }
 
@@ -42,31 +60,16 @@ fn admin() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
 }
 
-async fn create_forum_category(
-    service: &CategoryService,
-    tenant_id: Uuid,
-    name: &str,
-    slug: &str,
-) -> Uuid {
-    service
-        .create(
-            tenant_id,
-            admin(),
-            CreateCategoryInput {
-                locale: "en".to_string(),
-                name: name.to_string(),
-                slug: slug.to_string(),
-                description: None,
-                icon: None,
-                color: None,
-                parent_id: None,
-                position: Some(0),
-                moderated: false,
-            },
-        )
-        .await
-        .expect("forum category should be created")
-        .id
+async fn create_forum_category(db: &DatabaseConnection, tenant_id: Uuid) -> Uuid {
+    let category_id = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO forum_categories (id, tenant_id) VALUES (?, ?)",
+        [category_id.into(), tenant_id.into()],
+    ))
+    .await
+    .expect("Forum category owner row should be created");
+    category_id
 }
 
 async fn create_taxonomy_term(
@@ -98,15 +101,13 @@ async fn create_taxonomy_term(
 #[tokio::test]
 async fn forum_category_binding_is_category_only_tenant_bounded_and_one_to_one() {
     let db = setup().await;
-    let forum = CategoryService::new(db.clone());
     let taxonomy = TaxonomyService::new(db.clone());
     let binding = ForumCategoryTaxonomyBindingService::new(db.clone());
 
     let tenant_id = Uuid::new_v4();
     let other_tenant_id = Uuid::new_v4();
-    let forum_category_id = create_forum_category(&forum, tenant_id, "General", "general").await;
-    let second_forum_category_id =
-        create_forum_category(&forum, tenant_id, "Support", "support").await;
+    let forum_category_id = create_forum_category(&db, tenant_id).await;
+    let second_forum_category_id = create_forum_category(&db, tenant_id).await;
 
     let taxonomy_category_id = create_taxonomy_term(
         &taxonomy,
