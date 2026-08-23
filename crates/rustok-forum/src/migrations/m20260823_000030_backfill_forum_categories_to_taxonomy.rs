@@ -348,10 +348,6 @@ async fn ensure_category_presentation(
         .map_err(|error| DbErr::Migration(error.to_string()))?
         .flatten();
 
-    if icon_key.is_none() && color.is_none() {
-        return Ok(());
-    }
-
     match taxonomy_category_presentation::Entity::find_by_id((category.tenant_id, category.id))
         .one(txn)
         .await?
@@ -368,6 +364,7 @@ async fn ensure_category_presentation(
             "Forum Category Taxonomy backfill blocked: canonical presentation already differs for category {}",
             category.id,
         ))),
+        None if icon_key.is_none() && color.is_none() => Ok(()),
         None => {
             taxonomy_category_presentation::ActiveModel {
                 tenant_id: Set(category.tenant_id),
