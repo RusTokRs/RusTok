@@ -148,5 +148,9 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             "m20260716_000004_add_topic_field_cache_generation_trigger",
             vec!["m20260716_000000_create_field_definition_cache_generation"],
         ),
+        MigrationDependencyDescriptor::new(
+            "m20260823_000029_add_forum_taxonomy_category_binding",
+            vec!["m20260711_000001_add_tenant_identity_key"],
+        ),
     ]
 }
