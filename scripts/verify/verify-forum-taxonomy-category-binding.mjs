@@ -17,6 +17,7 @@ const migration = 'crates/rustok-forum/src/migrations/m20260823_000029_add_forum
 const migrationRegistry = 'crates/rustok-forum/src/migrations/mod.rs';
 const backfillContracts = 'docs/migrations/backfill-contracts.json';
 const relation = 'crates/rustok-forum/src/entities/forum_category_taxonomy_binding.rs';
+const runtimeTest = 'crates/rustok-forum/tests/category_taxonomy_binding.rs';
 const entities = 'crates/rustok-forum/src/entities/mod.rs';
 const legacyCategory = 'crates/rustok-forum/src/entities/forum_category.rs';
 const legacyProvider = 'crates/rustok-forum/src/services/mod.rs';
@@ -26,6 +27,7 @@ for (const path of [
   migrationRegistry,
   backfillContracts,
   relation,
+  runtimeTest,
   entities,
   legacyCategory,
   legacyProvider,
@@ -52,6 +54,12 @@ if (failures.length === 0) {
   requireMarker(relation, 'already bound to a different Taxonomy Category', 'no implicit rebind contract');
   requireMarker(relation, 'already bound to another Forum category', 'one-to-one duplicate guard');
   requireMarker(entities, 'pub mod forum_category_taxonomy_binding;', 'binding entity registration');
+
+  requireMarker(runtimeTest, 'forum_category_binding_is_category_only_tenant_bounded_and_one_to_one', 'runtime binding contract');
+  requireMarker(runtimeTest, 'repeating the same binding should be idempotent', 'idempotent bind proof');
+  requireMarker(runtimeTest, 'Taxonomy Tags must not masquerade as Categories', 'wrong-kind runtime proof');
+  requireMarker(runtimeTest, 'foreign-tenant Taxonomy Categories must fail closed', 'foreign-tenant runtime proof');
+  requireMarker(runtimeTest, 'stale Taxonomy Category identities must fail closed', 'stale identity runtime proof');
 
   rejectMarker(legacyCategory, 'taxonomy_category_id', 'binding state embedded in legacy category row');
   requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'legacy hierarchy retained during staged cutover');
