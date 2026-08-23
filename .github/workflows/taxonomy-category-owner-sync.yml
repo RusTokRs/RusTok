@@ -1,0 +1,59 @@
+name: Taxonomy Category Owner Sync Contract
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-taxonomy/src/lib.rs"
+      - "crates/rustok-taxonomy/src/owner_category_sync.rs"
+      - "crates/rustok-taxonomy/tests/owner_category_sync.rs"
+      - ".github/workflows/taxonomy-category-owner-sync.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-taxonomy/src/lib.rs"
+      - "crates/rustok-taxonomy/src/owner_category_sync.rs"
+      - "crates/rustok-taxonomy/tests/owner_category_sync.rs"
+      - ".github/workflows/taxonomy-category-owner-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taxonomy-category-owner-sync-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  owner-sync-contract:
+    name: Taxonomy Category owner sync Rust contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check owner sync Rust formatting only
+        run: |
+          cargo fmt --check -- \
+            crates/rustok-taxonomy/src/owner_category_sync.rs \
+            crates/rustok-taxonomy/tests/owner_category_sync.rs
+      - name: Run transactional Category owner sync contract
+        run: cargo test --locked -p rustok-taxonomy --test owner_category_sync -- --nocapture
+      - name: Compile Taxonomy owner sync surface
+        run: cargo check --locked -p rustok-taxonomy --lib
