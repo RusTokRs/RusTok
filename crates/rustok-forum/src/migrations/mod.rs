@@ -59,6 +59,7 @@ mod m20260806_000026_add_forum_category_route_aliases;
 mod m20260807_000027_add_forum_moderation_subject_revisions;
 mod m20260820_000028_add_forum_category_translation_changes;
 mod m20260823_000029_add_forum_taxonomy_category_binding;
+mod m20260823_000030_backfill_forum_categories_to_taxonomy;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -126,6 +127,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260807_000027_add_forum_moderation_subject_revisions::Migration),
         Box::new(m20260820_000028_add_forum_category_translation_changes::Migration),
         Box::new(m20260823_000029_add_forum_taxonomy_category_binding::Migration),
+        Box::new(m20260823_000030_backfill_forum_categories_to_taxonomy::Migration),
     ]
 }
 
@@ -153,6 +155,13 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260823_000029_add_forum_taxonomy_category_binding",
             vec!["m20260711_000001_add_tenant_identity_key"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260823_000030_backfill_forum_categories_to_taxonomy",
+            vec![
+                "m20260822_000011_create_taxonomy_category_presentations",
+                "m20260823_000029_add_forum_taxonomy_category_binding",
+            ],
         ),
     ]
 }
