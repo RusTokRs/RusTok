@@ -1,9 +1,12 @@
-use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use std::sync::Arc;
+
+use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService, CategoryTreeQuery, CreateCategoryInput, ForumModule,
+    CategoryService, CategoryTreeQuery, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
+    ForumModule, ReplyService, TopicService,
     entities::{forum_category, forum_category_taxonomy_binding, forum_category_translation},
 };
-use rustok_outbox::OutboxModule;
+use rustok_outbox::{OutboxModule, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
@@ -49,6 +52,44 @@ async fn forum_category_reads_use_taxonomy_copy_hierarchy_and_presentation() -> 
         )
         .await?;
 
+    let author_id = Uuid::new_v4();
+    db.execute_unprepared(&format!(
+        "INSERT INTO users (id, tenant_id) VALUES ('{author_id}', '{tenant_id}')"
+    ))
+    .await?;
+    let author = SecurityContext::new(UserRole::Admin, Some(author_id));
+    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let topic_service = TopicService::new(db.clone(), event_bus.clone());
+    let reply_service = ReplyService::new(db.clone(), event_bus);
+    let topic = topic_service
+        .create(
+            tenant_id,
+            author.clone(),
+            CreateTopicInput {
+                locale: "en".to_string(),
+                category_id: support.id,
+                title: "Read cutover counter proof".to_string(),
+                slug: Some("read-cutover-counter-proof".to_string()),
+                body: rustok_api::RichTextDocument::single_paragraph("Counter proof body"),
+                metadata: serde_json::json!({}),
+                tags: vec![],
+                channel_slugs: None,
+            },
+        )
+        .await?;
+    reply_service
+        .create(
+            tenant_id,
+            author,
+            topic.id,
+            CreateReplyInput {
+                locale: "en".to_string(),
+                content: rustok_api::RichTextDocument::single_paragraph("Counter proof reply"),
+                parent_reply_id: None,
+            },
+        )
+        .await?;
+
     forum_category_translation::Entity::delete_many()
         .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
         .exec(&db)
@@ -65,8 +106,6 @@ async fn forum_category_reads_use_taxonomy_copy_hierarchy_and_presentation() -> 
     stale_forum_support.icon = Set(Some("legacy-only".to_string()));
     stale_forum_support.color = Set(Some("#abcdef".to_string()));
     stale_forum_support.moderated = Set(true);
-    stale_forum_support.topic_count = Set(7);
-    stale_forum_support.reply_count = Set(11);
     stale_forum_support.update(&db).await?;
 
     let exact = service.get(tenant_id, admin(), support.id, "en").await?;
@@ -77,8 +116,8 @@ async fn forum_category_reads_use_taxonomy_copy_hierarchy_and_presentation() -> 
     assert_eq!(exact.icon.as_deref(), Some("life-buoy"));
     assert_eq!(exact.color.as_deref(), Some("#112233"));
     assert!(exact.moderated, "moderation remains Forum-owned");
-    assert_eq!(exact.topic_count, 7, "counters remain Forum-owned");
-    assert_eq!(exact.reply_count, 11, "counters remain Forum-owned");
+    assert_eq!(exact.topic_count, 1, "counters remain Forum-owned");
+    assert_eq!(exact.reply_count, 1, "counters remain Forum-owned");
 
     let fallback = service
         .get_with_locale_fallback(tenant_id, admin(), support.id, "fr", Some("en"))
@@ -95,8 +134,8 @@ async fn forum_category_reads_use_taxonomy_copy_hierarchy_and_presentation() -> 
     assert_eq!(listed_support.name, "Support");
     assert_eq!(listed_support.icon.as_deref(), Some("life-buoy"));
     assert_eq!(listed_support.color.as_deref(), Some("#112233"));
-    assert_eq!(listed_support.topic_count, 7);
-    assert_eq!(listed_support.reply_count, 11);
+    assert_eq!(listed_support.topic_count, 1);
+    assert_eq!(listed_support.reply_count, 1);
 
     let tree = service
         .tree(
@@ -117,6 +156,9 @@ async fn forum_category_reads_use_taxonomy_copy_hierarchy_and_presentation() -> 
     assert_eq!(root_node.children[0].id, support.id);
     assert_eq!(root_node.children[0].position, 0);
     assert_eq!(root_node.children[0].name, "Support");
+    assert!(root_node.children[0].moderated);
+    assert_eq!(root_node.children[0].topic_count, 1);
+    assert_eq!(root_node.children[0].reply_count, 1);
     assert_eq!(root_node.children[1].id, lounge.id);
     assert_eq!(root_node.children[1].position, 1);
     assert!(
