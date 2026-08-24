@@ -17,6 +17,10 @@ use super::category_visibility::ForumCategoryVisibilityPolicyService;
 use super::rbac::enforce_scope;
 use super::{category, category_command, category_lifecycle, category_policy};
 
+#[path = "category_owner_taxonomy_read.rs"]
+mod taxonomy_read;
+use taxonomy_read::ForumCategoryTaxonomyReadService;
+
 /// Public owner facade for forum categories.
 ///
 /// Only explicit domain operations are exposed. The raw persistence service is
@@ -302,5 +306,3 @@ impl CategoryService {
         .await
     }
 }
-
-include!("category_owner_taxonomy_read.rs");
