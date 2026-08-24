@@ -12,16 +12,16 @@ const failures = [];
 
 const paths = {
   route: "crates/rustok-forum/src/services/category_route.rs",
-  alias: "crates/rustok-forum/src/services/category_route_alias.rs",
+  retiredAlias: "crates/rustok-forum/src/services/category_route_alias.rs",
   owner: "crates/rustok-forum/src/services/category_projection_owner.rs",
+  forumSync: "crates/rustok-forum/src/services/category_taxonomy_sync.rs",
+  taxonomySync: "crates/rustok-taxonomy/src/owner_category_route_sync.rs",
   migration:
     "crates/rustok-forum/src/migrations/m20260806_000026_add_forum_category_route_aliases.rs",
   migrationsMod: "crates/rustok-forum/src/migrations/mod.rs",
-  contract:
-    "crates/rustok-forum/contracts/forum-category-slug-alias-owner.json",
   contractTest: "crates/rustok-forum/tests/category_slug_alias_contract.rs",
-  sqliteTest: "crates/rustok-forum/tests/category_slug_alias_sqlite.rs",
-  docs: "crates/rustok-forum/docs/forum-24m-category-slug-alias-owner.md",
+  ownedAliasTest:
+    "crates/rustok-forum/tests/category_taxonomy_owned_alias_history.rs",
 };
 
 function read(relativePath) {
@@ -41,30 +41,22 @@ function forbidText(content, marker, label) {
   if (content.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-function occurrenceCount(content, marker) {
-  return content.split(marker).length - 1;
-}
-
 const source = Object.fromEntries(
-  Object.entries(paths).map(([key, value]) => [key, read(value)]),
+  Object.entries(paths)
+    .filter(([key]) => key !== "retiredAlias")
+    .map(([key, value]) => [key, read(value)]),
 );
 
-let contract = null;
-try {
-  contract = JSON.parse(source.contract);
-} catch (error) {
-  failures.push(`${paths.contract}: invalid JSON (${error.message})`);
+if (existsSync(path.join(repoRoot, paths.retiredAlias))) {
+  failures.push(`${paths.retiredAlias}: legacy runtime alias helper must be retired`);
 }
 
+// Keep the historical migration available for installations upgrading through
+// the old Forum-owned route schema. Runtime ownership is checked separately.
 for (const marker of [
   "CREATE TABLE IF NOT EXISTS forum_category_route_aliases",
   "UNIQUE (tenant_id, locale, slug)",
   "FOREIGN KEY (tenant_id, category_id)",
-  "forum category route aliases are append-only",
-  "forum category route is reserved by alias",
-  "forum category route alias conflicts with current route",
-  "forum_category_translation_route_alias_guard",
-  "forum_category_route_alias_insert_guard",
 ]) {
   requireText(source.migration, marker, paths.migration);
 }
@@ -75,75 +67,69 @@ requireText(
 );
 
 for (const marker of [
-  "include!(\"category_route_alias.rs\")",
+  "TaxonomyOwnerCategoryReader",
+  "resolve_term_route_for_module(",
   "pub alias_id: Option<Uuid>",
-  "load_alias_route_candidates(db, tenant_id, slug)",
-  "candidate.alias_id.is_none()",
-  "alias_id: candidate.alias_id",
-  "Exact-locale aliases therefore precede fallback-locale current",
-  "exact_alias_precedes_fallback_current_route",
+  "forum_category_taxonomy_binding",
+  "ensure_active_category",
 ]) {
   requireText(source.route, marker, paths.route);
 }
-
 for (const marker of [
-  "Historical route keys are never reusable",
-  "ensure_current_route_key_available_in_tx(",
-  "prepare_slug_rename_in_tx(",
+  "category_route_alias.rs",
+  "forum_category_route_aliases",
+  "load_alias_route_candidates",
+]) {
+  forbidText(source.route, marker, paths.route);
+}
+
+requireText(
+  source.forumSync,
+  "sync_module_category_with_owned_aliases_in_tx(",
+  paths.forumSync,
+);
+requireText(source.forumSync, "aliases: Vec::new()", paths.forumSync);
+for (const marker of [
+  "forum_category_route_aliases",
+  "load_aliases_for_locale_in_tx",
+]) {
+  forbidText(source.forumSync, marker, paths.forumSync);
+}
+for (const marker of [
   "record_slug_rename_alias_in_tx(",
-  "pg_advisory_xact_lock",
-  "keys.sort_unstable()",
-  "ON CONFLICT (tenant_id, locale, slug) DO NOTHING",
-  "MAX_FORUM_CATEGORY_ROUTE_ALIAS_REASON_LEN: usize = 500",
+  "prepare_slug_rename_in_tx(",
+  "ensure_current_route_key_available_in_tx(",
   "FORUM_CATEGORY_RENAMED_ROUTE_REASON",
 ]) {
-  requireText(source.alias, marker, paths.alias);
+  forbidText(source.owner, marker, paths.owner);
 }
 
 for (const marker of [
-  "let previous_slug = normalize_required_slug(&existing_translation.slug)?;",
-  "Some(name) =>",
-  "normalize_required_slug(name)?",
-  "if slug_changed",
-  "prepare_slug_rename_in_tx(",
-  "record_slug_rename_alias_in_tx(",
-  "publish_forum_projection_scope_direct_in_tx(",
+  "taxonomy_term_alias::Entity::find()",
+  "taxonomy_term_translation::Entity::find()",
+  "aliases.extend(std::mem::take(&mut input.aliases))",
+  "if previous_slug != next_slug",
+  "aliases.insert(previous_slug)",
+  "sync_module_category_in_tx(txn, tenant_id, input).await",
 ]) {
-  requireText(source.owner, marker, paths.owner);
-}
-if (occurrenceCount(source.owner, "ensure_current_route_key_available_in_tx(") !== 2) {
-  failures.push(
-    `${paths.owner}: create and new-translation paths must both reserve route keys`,
-  );
+  requireText(source.taxonomySync, marker, paths.taxonomySync);
 }
 
 for (const marker of [
-  "explicit_and_name_derived_slug_changes_record_redirects_atomically",
-  "historical_route_keys_cannot_be_reclaimed_inside_one_tenant",
-  "archived_category_hides_current_and_historical_routes",
-  "alias_rows_are_append_only_and_guard_direct_route_reuse",
-]) {
-  requireText(source.sqliteTest, marker, paths.sqliteTest);
-}
-
-for (const marker of [
-  "migration_reserves_one_append_only_historical_route_namespace",
-  "every_public_category_slug_write_path_uses_the_route_owner",
-  "alias_owner_is_bounded_idempotent_and_never_reuses_history",
-  "resolver_combines_current_and_alias_candidates_without_authorizing_visibility",
+  "forum_route_reads_are_taxonomy_owned",
+  "forum_category_writes_delegate_alias_history_to_taxonomy",
+  "taxonomy_route_sync_preserves_and_extends_append_only_history",
 ]) {
   requireText(source.contractTest, marker, paths.contractTest);
 }
-
 for (const marker of [
-  "source-ready / maintainer execution pending",
-  "Historical route keys are deliberately not reusable",
-  "existing name-derived slug change",
-  "exact-locale old route cannot be shadowed",
-  "Alias ownership is not visibility authorization",
-  "No tests, verifiers, formatting, Cargo commands",
+  "DROP TABLE forum_category_route_aliases",
+  'slug: Some("help".to_string())',
+  'slug: Some("assistance".to_string())',
+  'resolve(tenant_id, "en", "support", None)',
+  'resolve(tenant_id, "en", "help", None)',
 ]) {
-  requireText(source.docs, marker, paths.docs);
+  requireText(source.ownedAliasTest, marker, paths.ownedAliasTest);
 }
 
 for (const marker of [
@@ -156,43 +142,8 @@ for (const marker of [
   "StatusCode::",
 ]) {
   forbidText(source.route, marker, paths.route);
-  forbidText(source.alias, marker, paths.alias);
-}
-
-if (contract) {
-  if (contract.task !== "FORUM-24M") {
-    failures.push(`${paths.contract}: task must be FORUM-24M`);
-  }
-  if (contract.status !== "source_ready_maintainer_execution_pending") {
-    failures.push(`${paths.contract}: unexpected source status`);
-  }
-  if (contract.aliases?.table !== "forum_category_route_aliases") {
-    failures.push(`${paths.contract}: unexpected alias table`);
-  }
-  if (contract.aliases?.append_only !== true) {
-    failures.push(`${paths.contract}: aliases must be append-only`);
-  }
-  if (contract.aliases?.historical_key_reusable_by_same_category !== false) {
-    failures.push(`${paths.contract}: same-category route reuse must remain blocked`);
-  }
-  if (contract.aliases?.historical_key_reusable_by_other_category !== false) {
-    failures.push(`${paths.contract}: cross-category route reuse must remain blocked`);
-  }
-  if (contract.resolution?.exact_alias_precedes_fallback_current_route !== true) {
-    failures.push(`${paths.contract}: exact alias precedence is required`);
-  }
-  if (contract.authorization?.alias_owner_authorizes_storefront_disclosure !== false) {
-    failures.push(`${paths.contract}: alias owner must not authorize disclosure`);
-  }
-  if (contract.compatibility?.storefront_route_mounted !== false) {
-    failures.push(`${paths.contract}: category host mount must remain out of scope`);
-  }
-  if (contract.compatibility?.seo_or_hreflang_changed !== false) {
-    failures.push(`${paths.contract}: SEO and hreflang must remain out of scope`);
-  }
-  if (contract.verification?.executed_by_implementation_agent !== false) {
-    failures.push(`${paths.contract}: execution must not be claimed`);
-  }
+  forbidText(source.forumSync, marker, paths.forumSync);
+  forbidText(source.taxonomySync, marker, paths.taxonomySync);
 }
 
 if (failures.length > 0) {

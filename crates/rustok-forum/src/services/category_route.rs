@@ -46,10 +46,6 @@ pub struct ForumCategoryRouteResolution {
 /// the resolved Taxonomy Category must map through the same-tenant typed Forum
 /// binding and the Forum category must remain active. The public path remains
 /// `/{locale}/forum/c/{slug}` and hierarchy is intentionally absent from it.
-///
-/// Legacy Forum route rows are retained temporarily only as compatibility
-/// write/history donors during CAT-5; public reads and route namespace
-/// authority do not fall back to them.
 pub struct ForumCategoryRouteService {
     db: DatabaseConnection,
 }
@@ -269,8 +265,6 @@ fn normalize_stored_slug(value: &str) -> ForumResult<String> {
 fn forum_category_route_path(locale: &str, slug: &str) -> String {
     format!("/{locale}/forum/c/{slug}")
 }
-
-include!("category_route_alias.rs");
 
 #[cfg(test)]
 mod tests {

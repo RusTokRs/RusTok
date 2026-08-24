@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Statement,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+    QueryOrder,
 };
 use uuid::Uuid;
 
@@ -34,9 +34,8 @@ pub(in crate::services) async fn sync_category_locale_in_tx(
                 "Forum category {category_id} has no localized copy for Taxonomy synchronization"
             ))
         })?;
-    let aliases = load_aliases_for_locale_in_tx(txn, tenant_id, category_id, locale).await?;
 
-    rustok_taxonomy::sync_module_category_in_tx(
+    rustok_taxonomy::sync_module_category_with_owned_aliases_in_tx(
         txn,
         tenant_id,
         rustok_taxonomy::SyncModuleCategoryInput {
@@ -46,7 +45,7 @@ pub(in crate::services) async fn sync_category_locale_in_tx(
             locale: translation.locale,
             name: translation.name,
             slug: translation.slug,
-            aliases,
+            aliases: Vec::new(),
             description: translation.description,
             parent_id: category.parent_id,
             position: category.position,
@@ -139,47 +138,6 @@ async fn ensure_same_id_binding_in_tx(
     .insert(txn)
     .await?;
     Ok(())
-}
-
-async fn load_aliases_for_locale_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    category_id: Uuid,
-    locale: &str,
-) -> ForumResult<Vec<String>> {
-    let statement = match txn.get_database_backend() {
-        DatabaseBackend::Postgres => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
-            SELECT slug
-            FROM forum_category_route_aliases
-            WHERE tenant_id = $1 AND category_id = $2 AND locale = $3
-            ORDER BY created_at, alias_id
-            "#,
-            vec![tenant_id.into(), category_id.into(), locale.into()],
-        ),
-        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            r#"
-            SELECT slug
-            FROM forum_category_route_aliases
-            WHERE tenant_id = ? AND category_id = ? AND locale = ?
-            ORDER BY created_at, alias_id
-            "#,
-            vec![tenant_id.into(), category_id.into(), locale.into()],
-        ),
-        backend => {
-            return Err(ForumError::Validation(format!(
-                "Forum Category Taxonomy synchronization does not support database backend {backend:?}"
-            )));
-        }
-    };
-
-    let mut aliases = Vec::new();
-    for row in txn.query_all(statement).await? {
-        aliases.push(row.try_get("", "slug")?);
-    }
-    Ok(aliases)
 }
 
 fn canonical_key_for_forum_category(category_id: Uuid) -> String {
