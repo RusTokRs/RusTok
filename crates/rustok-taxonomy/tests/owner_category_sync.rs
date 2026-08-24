@@ -1,8 +1,8 @@
 use rustok_core::MigrationSource;
 use rustok_taxonomy::{
+    SyncModuleCategoryInput, TaxonomyModule, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
     entities::{taxonomy_category_presentation, taxonomy_term_alias, translation_change},
-    sync_module_category_in_tx, SyncModuleCategoryInput, TaxonomyModule,
-    TaxonomyOwnerCategoryReader, TaxonomyScopeType,
+    sync_module_category_in_tx,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{
