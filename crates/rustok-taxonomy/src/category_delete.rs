@@ -4,7 +4,7 @@ use rustok_core::{PermissionScope, SecurityContext};
 use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, TransactionTrait};
 use uuid::Uuid;
 
-use crate::dto::TaxonomyTermKind;
+use crate::dto::{TaxonomyScopeType, TaxonomyTermKind};
 use crate::entities::{taxonomy_term, taxonomy_term_translation};
 use crate::error::{TaxonomyError, TaxonomyResult};
 use crate::services::TaxonomyService;
@@ -45,9 +45,55 @@ impl TaxonomyService {
             return Err(TaxonomyError::forbidden("Permission denied"));
         }
 
-        let term = taxonomy_term::Entity::find_by_id(category_id)
+        self.delete_category_with_cleanup_inner(tenant_id, category_id, None, cleanup)
+            .await
+    }
+
+    /// Hard-delete a Category owned by a module that already authorized its consumer command.
+    ///
+    /// This is the delete counterpart to the transaction-bound module Category owner-sync APIs:
+    /// the consumer remains the permission owner while Taxonomy validates the exact module scope
+    /// and owns the canonical delete transaction. Host cleanup still runs before the canonical
+    /// term is removed, so capability data and consumer cleanup can participate atomically.
+    pub async fn delete_module_category_with_cleanup(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        module_scope: &str,
+        cleanup: &dyn TaxonomyCategoryDeleteCleanupPort,
+    ) -> TaxonomyResult<()> {
+        let module_scope = module_scope.trim().to_ascii_lowercase();
+        if module_scope.is_empty() {
+            return Err(TaxonomyError::validation(
+                "Category module-owner delete requires a non-empty module scope",
+            ));
+        }
+
+        self.delete_category_with_cleanup_inner(
+            tenant_id,
+            category_id,
+            Some(module_scope.as_str()),
+            cleanup,
+        )
+        .await
+    }
+
+    async fn delete_category_with_cleanup_inner(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        module_scope: Option<&str>,
+        cleanup: &dyn TaxonomyCategoryDeleteCleanupPort,
+    ) -> TaxonomyResult<()> {
+        let mut term_query = taxonomy_term::Entity::find_by_id(category_id)
             .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
-            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category));
+        if let Some(module_scope) = module_scope {
+            term_query = term_query
+                .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+                .filter(taxonomy_term::Column::ScopeValue.eq(module_scope));
+        }
+        let term = term_query
             .one(self.database())
             .await?
             .ok_or(TaxonomyError::TermNotFound(category_id))?;
@@ -93,13 +139,17 @@ impl TaxonomyService {
         .await?;
         cleanup.cleanup_in_tx(&txn, tenant_id, category_id).await?;
 
-        let deleted = taxonomy_term::Entity::delete_many()
+        let mut delete_query = taxonomy_term::Entity::delete_many()
             .filter(taxonomy_term::Column::Id.eq(category_id))
             .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
             .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
-            .filter(taxonomy_term::Column::Revision.eq(term.revision))
-            .exec(&txn)
-            .await?;
+            .filter(taxonomy_term::Column::Revision.eq(term.revision));
+        if let Some(module_scope) = module_scope {
+            delete_query = delete_query
+                .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+                .filter(taxonomy_term::Column::ScopeValue.eq(module_scope));
+        }
+        let deleted = delete_query.exec(&txn).await?;
         if deleted.rows_affected != 1 {
             return Err(TaxonomyError::conflict(
                 "taxonomy Category changed before deletion could commit",
