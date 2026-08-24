@@ -80,6 +80,26 @@ pub(in crate::services) async fn sync_category_any_locale_in_tx(
     sync_category_locale_in_tx(txn, tenant_id, category_id, &translation.locale).await
 }
 
+pub(in crate::services) async fn sync_siblings_for_parent_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    parent_id: Option<Uuid>,
+) -> ForumResult<()> {
+    let categories = forum_category::Entity::find()
+        .filter(forum_category::Column::TenantId.eq(tenant_id))
+        .order_by_asc(forum_category::Column::Position)
+        .order_by_asc(forum_category::Column::Id)
+        .all(txn)
+        .await?;
+    for category in categories
+        .into_iter()
+        .filter(|category| category.parent_id == parent_id)
+    {
+        sync_category_any_locale_in_tx(txn, tenant_id, category.id).await?;
+    }
+    Ok(())
+}
+
 async fn ensure_same_id_binding_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
