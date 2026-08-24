@@ -4,7 +4,6 @@ mod bounded_compat;
 mod category {
     include!("category_import.rs");
     include!("category.rs");
-    include!("category_locale_enumeration.rs");
     include!("category_projection_owner.rs");
     include!("category_visibility_list.rs");
 }
@@ -41,10 +40,6 @@ mod category_search_scope {
     include!("category_search_scope.rs");
 }
 mod category_topic_create_audience;
-mod category_tree {
-    include!("category_tree.rs");
-    include!("category_tree_visibility.rs");
-}
 mod category_visibility;
 mod counter_reconciliation;
 pub mod event;
