@@ -1,10 +1,13 @@
 use chrono::Utc;
 use rustok_core::generate_id;
-use sea_orm::{ActiveModelTrait, DatabaseTransaction, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set,
+};
 use uuid::Uuid;
 
 use crate::{
-    BlogResult, entities::translation_change::ActiveModel as TranslationChangeActiveModel,
+    BlogError, BlogResult,
+    entities::{blog_category_translation, translation_change::ActiveModel as TranslationChangeActiveModel},
 };
 
 pub(crate) const TRANSLATION_OWNER_SLUG: &str = "blog";
@@ -39,6 +42,35 @@ pub(crate) async fn record_translation_change_in_tx(
     }
     .insert(transaction)
     .await?;
+
+    if evidence.resource_kind == TRANSLATION_RESOURCE_KIND
+        && evidence.operation == "upsert"
+        && evidence.lifecycle == "active"
+    {
+        let translation = blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::TenantId.eq(evidence.tenant_id))
+            .filter(blog_category_translation::Column::CategoryId.eq(evidence.resource_id))
+            .filter(blog_category_translation::Column::Locale.eq(evidence.locale))
+            .one(transaction)
+            .await?
+            .ok_or_else(|| {
+                BlogError::Validation(format!(
+                    "Category translation evidence cannot synchronize missing locale {} for category {}",
+                    evidence.locale, evidence.resource_id
+                ))
+            })?;
+
+        crate::services::category_taxonomy_sync::sync_category_copy_in_tx(
+            transaction,
+            evidence.tenant_id,
+            evidence.resource_id,
+            translation.locale,
+            translation.name,
+            translation.slug,
+            translation.description,
+        )
+        .await?;
+    }
 
     Ok(())
 }
