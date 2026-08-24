@@ -1,0 +1,83 @@
+name: Blog Taxonomy Category Delete Lifecycle Contract
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-taxonomy/src/category_delete.rs"
+      - "crates/rustok-blog/src/services/category_delete.rs"
+      - "crates/rustok-blog/src/services/category_owner.rs"
+      - "crates/rustok-blog/src/services/category_taxonomy_sync.rs"
+      - "crates/rustok-blog/src/services/mod.rs"
+      - "crates/rustok-blog/src/controllers/mod.rs"
+      - "crates/rustok-blog/src/controllers/categories.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs"
+      - "apps/server/src/services/mod.rs"
+      - "apps/server/src/services/flex_attached_values.rs"
+      - ".github/workflows/blog-taxonomy-category-delete-lifecycle.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-taxonomy/src/category_delete.rs"
+      - "crates/rustok-blog/src/services/category_delete.rs"
+      - "crates/rustok-blog/src/services/category_owner.rs"
+      - "crates/rustok-blog/src/services/category_taxonomy_sync.rs"
+      - "crates/rustok-blog/src/services/mod.rs"
+      - "crates/rustok-blog/src/controllers/mod.rs"
+      - "crates/rustok-blog/src/controllers/categories.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs"
+      - "apps/server/src/services/mod.rs"
+      - "apps/server/src/services/flex_attached_values.rs"
+      - ".github/workflows/blog-taxonomy-category-delete-lifecycle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-taxonomy-category-delete-lifecycle-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  delete-lifecycle-contract:
+    name: Blog Taxonomy Category delete lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check touched Rust leaf formatting
+        run: |
+          rustfmt +1.96.0 --edition 2024 --check \
+            crates/rustok-taxonomy/src/category_delete.rs \
+            crates/rustok-blog/src/services/category_delete.rs \
+            crates/rustok-blog/src/services/category_owner.rs \
+            crates/rustok-blog/src/controllers/categories.rs \
+            crates/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs
+      - name: Run Blog Taxonomy Category delete lifecycle contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_delete_lifecycle -- --nocapture
+      - name: Re-run Blog Taxonomy Category structure sync contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_structure_sync -- --nocapture
+      - name: Re-run Blog Taxonomy Category read cutover contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_read_cutover -- --nocapture
+      - name: Compile Blog Category owner surface
+        run: cargo +1.96.0 check --locked -p rustok-blog --lib
+      - name: Compile server host composition
+        run: cargo +1.96.0 check --locked -p rustok-server --no-default-features --features mod-blog

@@ -4,10 +4,11 @@ use axum::routing::{get, post};
 use rustok_api::HostRuntimeContext;
 use rustok_comments::CommentsThreadPort;
 use rustok_outbox::TransactionalEventBus;
+use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
-use crate::CommentService;
+use crate::{CategoryService, CommentService};
 
 pub mod categories;
 #[cfg(feature = "comment-assets")]
@@ -20,6 +21,7 @@ pub struct BlogHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
+    category_delete_cleanup: Arc<dyn TaxonomyCategoryDeleteCleanupPort>,
 }
 
 impl BlogHttpRuntime {
@@ -29,6 +31,11 @@ impl BlogHttpRuntime {
 
     fn event_bus(&self) -> TransactionalEventBus {
         self.event_bus.clone()
+    }
+
+    fn category_service(&self) -> CategoryService {
+        CategoryService::new(self.db_clone(), self.event_bus())
+            .with_category_delete_cleanup(self.category_delete_cleanup.clone())
     }
 
     fn comment_service(&self) -> CommentService {
@@ -45,10 +52,16 @@ impl BlogHttpRuntime {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
             .context("blog HTTP routes require TransactionalEventBus in HostRuntimeContext")?;
+        let category_delete_cleanup = runtime
+            .shared_get::<Arc<dyn TaxonomyCategoryDeleteCleanupPort>>()
+            .context(
+                "blog HTTP routes require Taxonomy Category delete cleanup in HostRuntimeContext",
+            )?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
             comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>(),
+            category_delete_cleanup,
         })
     }
 }
