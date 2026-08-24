@@ -39,7 +39,7 @@ fn ensure_category_permission(auth: &AuthContext, action: Action) -> HttpResult<
 }
 
 fn category_service(runtime: &BlogHttpRuntime) -> CategoryService {
-    CategoryService::new(runtime.db_clone(), runtime.event_bus())
+    runtime.category_service()
 }
 
 fn category_command_service(runtime: &BlogHttpRuntime) -> CategoryCommandService {
