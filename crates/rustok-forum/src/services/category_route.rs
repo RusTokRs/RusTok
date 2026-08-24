@@ -1,17 +1,24 @@
 use std::collections::HashSet;
 
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
-use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
+use rustok_content::normalize_locale_code;
+use rustok_taxonomy::{
+    TaxonomyOwnerCategoryReader, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::{forum_category, forum_category_lifecycle, forum_category_translation};
+use crate::entities::{
+    forum_category, forum_category_lifecycle, forum_category_taxonomy_binding,
+    forum_category_translation,
+};
 use crate::error::{ForumError, ForumResult};
 
 pub const MAX_FORUM_CATEGORY_ROUTE_LOCALE_LEN: usize = 64;
 pub const MAX_FORUM_CATEGORY_ROUTE_SLUG_LEN: usize = 255;
 pub const MAX_FORUM_CATEGORY_ROUTE_CANDIDATES: u64 = 64;
+const FORUM_TAXONOMY_SCOPE: &str = "forum";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -45,20 +52,16 @@ struct CategoryRouteCandidate {
     alias_id: Option<Uuid>,
 }
 
-/// Forum-owned localized category route identity and immutable alias resolver.
+/// Forum route facade for Taxonomy-owned Category route identity.
 ///
-/// Category slugs are locale-aware translation fields. Current and historical
-/// routes share one tenant/locale/slug namespace. The canonical route is
+/// Canonical localized slugs and immutable aliases are resolved through the
+/// Taxonomy route-key registry. Forum retains ownership of route disclosure:
+/// the resolved Taxonomy Category must map through the same-tenant typed Forum
+/// binding and the Forum category must remain active. The public path remains
 /// `/{locale}/forum/c/{slug}` and hierarchy is intentionally absent from it.
 ///
-/// Reverse lookup follows the shared Forum locale precedence: requested locale,
-/// explicit fallback, platform fallback, then one unambiguous first-available
-/// category. Exact-locale aliases therefore precede fallback-locale current
-/// routes instead of allowing an old route to be shadowed.
-///
-/// This owner intentionally does not authorize storefront disclosure. Callers
-/// must recheck category audience, channel and module visibility before exposing
-/// a descriptor or redirect. Archived categories are never route candidates.
+/// Legacy Forum route rows are retained temporarily for command-side collision
+/// validation during CAT-5, but public route reads do not fall back to them.
 pub struct ForumCategoryRouteService {
     db: DatabaseConnection,
 }
@@ -79,17 +82,34 @@ impl ForumCategoryRouteService {
         let fallback_locale = fallback_locale.map(normalize_route_locale).transpose()?;
         ensure_active_category(&self.db, tenant_id, category_id).await?;
 
-        let translations = load_category_translations(&self.db, tenant_id, category_id).await?;
-        let resolved = resolve_by_locale_with_fallback(
-            &translations,
-            &requested_locale,
-            fallback_locale.as_deref(),
-            |translation| translation.locale.as_str(),
-        );
-        let translation = resolved.item.ok_or(ForumError::CategoryRouteNotFound)?;
-        let locale = normalize_stored_locale(resolved.effective_locale.as_str())?;
-        let slug = normalize_stored_slug(translation.slug.as_str())?;
+        let binding = load_taxonomy_binding_for_forum(&self.db, tenant_id, category_id).await?;
+        let taxonomy_category_id = binding
+            .map(|binding| binding.taxonomy_category_id)
+            .ok_or(ForumError::CategoryRouteResolutionConflict)?;
+        let taxonomy_categories = TaxonomyOwnerCategoryReader::new(self.db.clone())
+            .load_scoped_categories(
+                tenant_id,
+                TaxonomyScopeType::Module,
+                Some(FORUM_TAXONOMY_SCOPE),
+                Some(&[taxonomy_category_id]),
+                requested_locale.as_str(),
+                fallback_locale.as_deref(),
+            )
+            .await
+            .map_err(map_taxonomy_route_error)?;
+        let taxonomy_category = match taxonomy_categories.as_slice() {
+            [category] if category.id == taxonomy_category_id => category,
+            _ => return Err(ForumError::CategoryRouteResolutionConflict),
+        };
+        if !taxonomy_category
+            .available_locales
+            .contains(&taxonomy_category.effective_locale)
+        {
+            return Err(ForumError::CategoryRouteResolutionConflict);
+        }
 
+        let locale = normalize_stored_locale(taxonomy_category.effective_locale.as_str())?;
+        let slug = normalize_stored_slug(taxonomy_category.slug.as_str())?;
         Ok(ForumCategoryRouteDescriptor {
             category_id,
             path: forum_category_route_path(locale.as_str(), slug.as_str()),
@@ -109,22 +129,41 @@ impl ForumCategoryRouteService {
         let requested_slug = normalize_route_slug(requested_slug)?;
         let fallback_locale = fallback_locale.map(normalize_route_locale).transpose()?;
 
-        let candidates =
-            load_route_candidates(&self.db, tenant_id, requested_slug.as_str()).await?;
-        let candidate = select_route_candidate(
-            &candidates,
-            requested_locale.as_str(),
-            fallback_locale.as_deref(),
-        )?;
+        let route = TaxonomyService::new(self.db.clone())
+            .resolve_term_route_for_module(
+                tenant_id,
+                TaxonomyTermKind::Category,
+                FORUM_TAXONOMY_SCOPE,
+                requested_locale.as_str(),
+                fallback_locale.as_deref(),
+                requested_slug.as_str(),
+            )
+            .await
+            .map_err(map_taxonomy_route_error)?
+            .ok_or(ForumError::CategoryRouteNotFound)?;
+        if route.kind != TaxonomyTermKind::Category
+            || route.scope_type != TaxonomyScopeType::Module
+            || route.scope_value.as_deref() != Some(FORUM_TAXONOMY_SCOPE)
+        {
+            return Err(ForumError::CategoryRouteNotFound);
+        }
+
+        let binding = load_forum_binding_for_taxonomy(&self.db, tenant_id, route.term_id).await?;
+        let category_id = binding
+            .map(|binding| binding.forum_category_id)
+            .ok_or(ForumError::CategoryRouteNotFound)?;
+        ensure_active_category(&self.db, tenant_id, category_id).await?;
+
         let canonical = self
             .canonical_descriptor(
                 tenant_id,
-                candidate.category_id,
+                category_id,
                 requested_locale.as_str(),
                 fallback_locale.as_deref(),
             )
             .await?;
-        let disposition = if candidate.alias_id.is_none()
+        let disposition = if route.alias_id.is_none()
+            && route.matched_locale == requested_locale
             && requested_locale == canonical.locale
             && requested_slug == canonical.slug
         {
@@ -138,7 +177,7 @@ impl ForumCategoryRouteService {
             requested_slug,
             disposition,
             canonical,
-            alias_id: candidate.alias_id,
+            alias_id: route.alias_id,
         })
     }
 }
@@ -166,6 +205,39 @@ async fn ensure_active_category(
         return Err(ForumError::CategoryRouteNotFound);
     }
     Ok(())
+}
+
+async fn load_taxonomy_binding_for_forum(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> ForumResult<Option<forum_category_taxonomy_binding::Model>> {
+    forum_category_taxonomy_binding::Entity::find_by_id((tenant_id, category_id))
+        .one(db)
+        .await
+        .map_err(ForumError::from)
+}
+
+async fn load_forum_binding_for_taxonomy(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    taxonomy_category_id: Uuid,
+) -> ForumResult<Option<forum_category_taxonomy_binding::Model>> {
+    forum_category_taxonomy_binding::Entity::find()
+        .filter(forum_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
+        .filter(
+            forum_category_taxonomy_binding::Column::TaxonomyCategoryId.eq(taxonomy_category_id),
+        )
+        .one(db)
+        .await
+        .map_err(ForumError::from)
+}
+
+fn map_taxonomy_route_error(error: rustok_taxonomy::TaxonomyError) -> ForumError {
+    match error {
+        rustok_taxonomy::TaxonomyError::Database(error) => ForumError::Database(error),
+        _ => ForumError::CategoryRouteResolutionConflict,
+    }
 }
 
 async fn load_category_translations(
