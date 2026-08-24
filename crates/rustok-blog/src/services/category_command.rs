@@ -17,6 +17,7 @@ use crate::dto::{
 };
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
+use crate::services::category_taxonomy_sync::sync_category_structures_in_tx;
 use crate::services::rbac::enforce_scope;
 
 /// Owner-side structural commands for the Blog category hierarchy.
@@ -136,6 +137,10 @@ impl CategoryCommandService {
             .find(|placement| placement.id == category_id)
             .cloned()
             .ok_or_else(|| BlogError::validation("Moved category placement was not persisted"))?;
+
+        let mut taxonomy_structure_ids = touched.iter().copied().collect::<Vec<_>>();
+        taxonomy_structure_ids.sort_unstable();
+        sync_category_structures_in_tx(&txn, tenant_id, &taxonomy_structure_ids).await?;
 
         txn.commit().await?;
         Ok(MoveCategoryResponse { moved, updated })

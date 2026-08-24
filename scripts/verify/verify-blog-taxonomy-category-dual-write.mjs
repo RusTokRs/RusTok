@@ -38,8 +38,6 @@ if (failures.length === 0) {
   requireMarker(sync, 'ensure_same_id_binding_in_tx', 'same-ID typed binding repair');
   requireMarker(sync, 'icon_key: None', 'no fabricated Taxonomy presentation');
   requireMarker(sync, 'color: None', 'no fabricated Taxonomy presentation');
-  rejectMarker(sync, 'sync_category_structure_in_tx', 'structural command cutover in copy-only slice');
-  rejectMarker(sync, 'sync_siblings_for_parent_in_tx', 'sibling structural cutover in copy-only slice');
 
   requireMarker(services, 'pub(crate) mod category_taxonomy_sync;', 'owner sync seam registration');
   requireMarker(runtime, 'category_create_and_update_dual_write_copy_routes_and_binding', 'create/update runtime proof');
