@@ -47,8 +47,9 @@ pub struct ForumCategoryRouteResolution {
 /// binding and the Forum category must remain active. The public path remains
 /// `/{locale}/forum/c/{slug}` and hierarchy is intentionally absent from it.
 ///
-/// Legacy Forum route rows are retained temporarily for command-side collision
-/// validation during CAT-5, but public route reads do not fall back to them.
+/// Legacy Forum route rows are retained temporarily only as compatibility
+/// write/history donors during CAT-5; public reads and route namespace
+/// authority do not fall back to them.
 pub struct ForumCategoryRouteService {
     db: DatabaseConnection,
 }
@@ -255,15 +256,6 @@ fn normalize_route_slug(value: &str) -> ForumResult<String> {
         return Err(ForumError::CategoryRouteNotFound);
     }
     Ok(normalized)
-}
-
-fn normalize_route_slug_for_write(value: &str) -> ForumResult<String> {
-    normalize_route_slug(value).map_err(|error| match error {
-        ForumError::CategoryRouteNotFound => ForumError::Validation(
-            "Forum category route slug must contain a valid route segment".to_string(),
-        ),
-        other => other,
-    })
 }
 
 fn normalize_stored_locale(value: &str) -> ForumResult<String> {

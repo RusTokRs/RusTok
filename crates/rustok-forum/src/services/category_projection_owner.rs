@@ -67,10 +67,6 @@ impl CategoryProjectionOwnerService {
         .insert(&txn)
         .await?;
 
-        ForumCategoryRouteService::ensure_current_route_key_available_in_tx(
-            &txn, tenant_id, id, &locale, &slug,
-        )
-        .await?;
         forum_category_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             category_id: Set(id),
@@ -83,6 +79,9 @@ impl CategoryProjectionOwnerService {
         .insert(&txn)
         .await?;
 
+        // Taxonomy owns the route namespace. Its owner-sync runs in this same
+        // transaction, so a canonical/alias collision rolls the compatibility
+        // Forum rows back atomically instead of relying on a duplicate preflight.
         taxonomy_sync::sync_siblings_for_parent_in_tx(&txn, tenant_id, input.parent_id).await?;
         super::category_translation_evidence::record_category_translation_change_in_tx(
             &txn,
@@ -158,17 +157,6 @@ impl CategoryProjectionOwnerService {
                     },
                 };
                 let slug_changed = previous_slug != next_slug;
-                if slug_changed {
-                    ForumCategoryRouteService::prepare_slug_rename_in_tx(
-                        &txn,
-                        tenant_id,
-                        category_id,
-                        &locale,
-                        &previous_slug,
-                        &next_slug,
-                    )
-                    .await?;
-                }
 
                 let mut active: forum_category_translation::ActiveModel =
                     existing_translation.into();
@@ -184,6 +172,9 @@ impl CategoryProjectionOwnerService {
                 }
                 active.update(&txn).await?;
 
+                // Keep the compatibility alias log only as the append-only
+                // history donor for owner-sync. Taxonomy, not this table,
+                // decides whether the route key can commit.
                 if slug_changed {
                     ForumCategoryRouteService::record_slug_rename_alias_in_tx(
                         &txn,
@@ -209,14 +200,6 @@ impl CategoryProjectionOwnerService {
                     .unwrap_or_else(|| normalize_slug(&name));
                 let slug = normalize_required_slug(&slug)?;
 
-                ForumCategoryRouteService::ensure_current_route_key_available_in_tx(
-                    &txn,
-                    tenant_id,
-                    category_id,
-                    &locale,
-                    &slug,
-                )
-                .await?;
                 forum_category_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     category_id: Set(category_id),

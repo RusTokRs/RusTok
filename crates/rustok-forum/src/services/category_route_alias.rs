@@ -13,83 +13,13 @@ struct StoredCategoryRouteAlias {
 }
 
 impl ForumCategoryRouteService {
-    /// Reserves one current route key for category create or a new translation.
-    ///
-    /// Historical route keys are never reusable, including by the category that
-    /// originally owned them. This keeps old localized URLs deterministic while
-    /// CAT-5 still dual-writes legacy Forum persistence and Taxonomy.
-    pub(crate) async fn ensure_current_route_key_available_in_tx(
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        category_id: Uuid,
-        locale: &str,
-        slug: &str,
-    ) -> ForumResult<()> {
-        let locale = normalize_route_locale(locale)?;
-        let slug = normalize_route_slug_for_write(slug)?;
-        lock_category_route_key_in_tx(txn, tenant_id, &locale, &slug).await?;
-
-        let current = load_exact_current_route_owners(txn, tenant_id, &locale, &slug).await?;
-        match current.as_slice() {
-            [] => {}
-            [owner] if *owner == category_id => {}
-            _ => return Err(ForumError::CategoryRouteResolutionConflict),
-        }
-        if !load_exact_category_route_aliases(txn, tenant_id, &locale, &slug)
-            .await?
-            .is_empty()
-        {
-            return Err(ForumError::CategoryRouteResolutionConflict);
-        }
-        Ok(())
-    }
-
-    /// Locks and validates both sides of one localized slug rename.
-    pub(crate) async fn prepare_slug_rename_in_tx(
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        category_id: Uuid,
-        locale: &str,
-        previous_slug: &str,
-        slug: &str,
-    ) -> ForumResult<()> {
-        let locale = normalize_route_locale(locale)?;
-        let previous_slug = normalize_route_slug(previous_slug)?;
-        let slug = normalize_route_slug_for_write(slug)?;
-        if previous_slug == slug {
-            return Ok(());
-        }
-
-        let mut keys = [previous_slug.as_str(), slug.as_str()];
-        keys.sort_unstable();
-        for key in keys {
-            lock_category_route_key_in_tx(txn, tenant_id, &locale, key).await?;
-        }
-
-        match load_exact_current_route_owners(txn, tenant_id, &locale, &previous_slug)
-            .await?
-            .as_slice()
-        {
-            [owner] if *owner == category_id => {}
-            _ => return Err(ForumError::CategoryRouteResolutionConflict),
-        }
-        if !load_exact_current_route_owners(txn, tenant_id, &locale, &slug)
-            .await?
-            .is_empty()
-            || !load_exact_category_route_aliases(txn, tenant_id, &locale, &slug)
-                .await?
-                .is_empty()
-            || !load_exact_category_route_aliases(txn, tenant_id, &locale, &previous_slug)
-                .await?
-                .is_empty()
-        {
-            return Err(ForumError::CategoryRouteResolutionConflict);
-        }
-        Ok(())
-    }
-
     /// Records one immutable self-target category route redirect after the
-    /// translation row has moved to its new slug in the same transaction.
+    /// compatibility translation row has moved to its new slug in the same
+    /// transaction.
+    ///
+    /// During the remaining CAT-5 compatibility phase this table is only an
+    /// append-only history donor for Taxonomy owner-sync. Taxonomy owns route
+    /// namespace validation and decides whether the transaction may commit.
     pub(crate) async fn record_slug_rename_alias_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -160,47 +90,6 @@ impl ForumCategoryRouteService {
     }
 }
 
-async fn load_exact_current_route_owners<C>(
-    db: &C,
-    tenant_id: Uuid,
-    locale: &str,
-    slug: &str,
-) -> ForumResult<Vec<Uuid>>
-where
-    C: ConnectionTrait,
-{
-    let statement = match db.get_database_backend() {
-        DatabaseBackend::Postgres => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
-            SELECT category_id
-            FROM forum_category_translations
-            WHERE tenant_id = $1 AND locale = $2 AND slug = $3
-            ORDER BY category_id
-            LIMIT 2
-            "#,
-            vec![tenant_id.into(), locale.into(), slug.into()],
-        ),
-        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            r#"
-            SELECT category_id
-            FROM forum_category_translations
-            WHERE tenant_id = ? AND locale = ? AND slug = ?
-            ORDER BY category_id
-            LIMIT 2
-            "#,
-            vec![tenant_id.into(), locale.into(), slug.into()],
-        ),
-        backend => return Err(unsupported_category_route_backend(backend)),
-    };
-    db.query_all(statement)
-        .await?
-        .into_iter()
-        .map(|row| row.try_get("", "category_id").map_err(ForumError::from))
-        .collect()
-}
-
 async fn load_exact_category_route_aliases<C>(
     db: &C,
     tenant_id: Uuid,
@@ -258,28 +147,6 @@ fn stored_category_route_alias_from_row(row: QueryResult) -> ForumResult<StoredC
         slug: normalize_stored_slug(&slug)?,
         reason: normalize_category_route_alias_reason(&reason)?,
     })
-}
-
-async fn lock_category_route_key_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    locale: &str,
-    slug: &str,
-) -> ForumResult<()> {
-    match txn.get_database_backend() {
-        DatabaseBackend::Postgres => {
-            let key = format!("forum-category-route:{tenant_id}:{locale}:{slug}");
-            txn.execute(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                [key.into()],
-            ))
-            .await?;
-            Ok(())
-        }
-        DatabaseBackend::Sqlite => Ok(()),
-        backend => Err(unsupported_category_route_backend(backend)),
-    }
 }
 
 fn normalize_category_route_alias_reason(reason: &str) -> ForumResult<String> {
