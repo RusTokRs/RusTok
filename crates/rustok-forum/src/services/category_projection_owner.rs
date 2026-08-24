@@ -67,6 +67,18 @@ impl CategoryProjectionOwnerService {
         .insert(&txn)
         .await?;
 
+        forum_category_translation::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            category_id: Set(id),
+            tenant_id: Set(tenant_id),
+            locale: Set(locale.clone()),
+            name: Set(canonical_name.clone()),
+            slug: Set(slug.clone()),
+            description: Set(canonical_description.clone()),
+        }
+        .insert(&txn)
+        .await?;
+
         taxonomy_sync::sync_category_copy_in_tx(
             &txn,
             tenant_id,
@@ -161,6 +173,35 @@ impl CategoryProjectionOwnerService {
                 (name, slug, requested_description.clone())
             }
         };
+
+        let existing_compatibility = forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
+            .filter(forum_category_translation::Column::CategoryId.eq(category_id))
+            .filter(forum_category_translation::Column::Locale.eq(&locale))
+            .one(&txn)
+            .await?;
+        match existing_compatibility {
+            Some(existing) => {
+                let mut active: forum_category_translation::ActiveModel = existing.into();
+                active.name = Set(canonical_name.clone());
+                active.slug = Set(canonical_slug.clone());
+                active.description = Set(canonical_description.clone());
+                active.update(&txn).await?;
+            }
+            None => {
+                forum_category_translation::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    category_id: Set(category_id),
+                    tenant_id: Set(tenant_id),
+                    locale: Set(locale.clone()),
+                    name: Set(canonical_name.clone()),
+                    slug: Set(canonical_slug.clone()),
+                    description: Set(canonical_description.clone()),
+                }
+                .insert(&txn)
+                .await?;
+            }
+        }
 
         taxonomy_sync::sync_category_copy_in_tx(
             &txn,
