@@ -1,5 +1,6 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{CategoryService, CreateCategoryInput, ForumModule, UpdateCategoryInput};
+use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
@@ -329,6 +330,9 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
     let db = Database::connect(options).await?;
 
     let manager = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration.up(&manager).await?;
+    }
     for migration in TaxonomyModule.migrations() {
         migration.up(&manager).await?;
     }
