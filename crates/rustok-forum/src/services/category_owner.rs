@@ -56,11 +56,11 @@ impl CategoryService {
         input: CreateCategoryInput,
     ) -> ForumResult<CategoryResponse> {
         let locale = input.locale.clone();
-        let created = self
+        let category_id = self
             .inner
             .create(tenant_id, security.clone(), input)
             .await?;
-        self.get(tenant_id, security, created.id, &locale).await
+        self.get(tenant_id, security, category_id, &locale).await
     }
 
     pub async fn get(
