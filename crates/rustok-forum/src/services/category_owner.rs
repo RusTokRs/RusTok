@@ -24,7 +24,7 @@ use super::{category, category_command, category_lifecycle, category_policy, cat
 /// commands through `Deref`.
 pub struct CategoryService {
     inner: category::CategoryProjectionOwnerService,
-    read: category::CategoryTaxonomyReadService,
+    read: category::taxonomy_read::CategoryTaxonomyReadService,
     commands: category_command::CategoryCommandProjectionOwnerService,
     lifecycle: category_lifecycle::CategoryLifecycleProjectionOwnerService,
     policy: category_policy::CategoryTopicPolicyService,
@@ -36,7 +36,7 @@ impl CategoryService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             inner: category::CategoryProjectionOwnerService::new(db.clone()),
-            read: category::CategoryTaxonomyReadService::new(db.clone()),
+            read: category::taxonomy_read::CategoryTaxonomyReadService::new(db.clone()),
             commands: category_command::CategoryCommandProjectionOwnerService::new(db.clone()),
             lifecycle: category_lifecycle::CategoryLifecycleProjectionOwnerService::new(db.clone()),
             policy: category_policy::CategoryTopicPolicyService::new(db.clone()),
