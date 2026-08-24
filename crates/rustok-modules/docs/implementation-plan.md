@@ -33,6 +33,14 @@ also passed. `rustfmt --edition 2024` for touched owner files, `git diff
 ownership verifier also passed. This is scoped evidence; it is not a claim
 that the workspace-wide compile or test suite passed.
 
+On 2026-08-24, the focused external-prebuilt receipt/replay owner test and its
+SQLite migration-schema test passed. The matching `rustok-server` check also
+passed after the GraphQL composition-error mapper was aligned to the canonical
+platform-scope error. `rustfmt --edition 2024`, `git diff --check`, the
+module-control-plane write-path verifier, and the build-worker isolation
+verifier passed. This remains scoped evidence; no workspace-wide compile or
+test suite was run.
+
 ## FFA/FBA status
 
 - FFA status: `not_started`
@@ -136,19 +144,26 @@ Still outside the owner boundary:
   OCI receipt identities. The component/payload digest and OCI manifest digest
   are intentionally distinct: staging validates both SHA-256 identities,
   matches only the component digest to the uploaded bytes, and reserves the
-  manifest digest for signature/admission joins. Its idempotency replay compares tenant, build,
-  source, component, and authenticated actor. Final publication now requires
-  that current stage.
+  manifest digest for signature/admission joins. Its tenant-scoped
+  `ModuleCommandContext` is derived only from the authenticated actor/session
+  plus request trace and idempotency evidence; the owner requires its actor UUID
+  to match the canonical user principal. The immutable staging receipt persists
+  and replays expected revision, tenant, actor, trace, correlation, privilege,
+  build, source, component, and authenticated principal together. Final
+  publication now requires that current stage.
   Artifact origin is explicit and `unclassified` records fail closed. External
   prebuilts use a separate current stage with an approved provenance policy,
   independent quarantine review, and either a reproducible source identity or
   an explicit source-absence reason; they require author signature and platform
   admission bound to the staged payload digest but cannot use a build-worker
-  attestation. The server external staging adapter derives actor/quarantine
-  approver and an authenticated `modules.manage` fact, but the owner command
-  enforces that capability and requires the two principals to be identical.
-  Its replay compares all immutable source/provenance/quarantine facts and
-  both authenticated principals. The platform build-stage adapter derives its
+  attestation. The server external staging adapter derives a platform-scoped
+  `ModuleCommandContext` (`tenant_id: None`) because the registry aggregate is
+  global; the session tenant remains authorization evidence and is not a
+  registry command scope. The owner binds the actor and quarantine-approver
+  user UUIDs to the context actor, requires the authenticated `modules.manage`
+  fact, and persists/replays expected revision, actor, trace, correlation,
+  privilege, source/provenance/quarantine facts, and both principals as one
+  immutable receipt. The platform build-stage adapter derives its
   tenant only from the authenticated session and forwards only the completed
   build ID, idempotency key, and authenticated privilege fact. The owner then
   authorizes the durable request manager: `modules.manage`, the current owner
@@ -327,6 +342,20 @@ operation receipt preserves all five evidence fields, rejects conflicting
 idempotency reuse, and emits its outbox event with the same identity. Sandbox
 handle acquisition and host-only secret use remain execution-scoped reads and
 do not become management-command adapters.
+Registry platform-build staging also uses the tenant-matched context. Its
+append-only staging receipt binds the completed build and the authenticated
+principal to the complete command evidence, so replay with a changed actor,
+trace, correlation, expected revision, or privilege fact fails closed.
+External-prebuilt staging is platform-scoped because it mutates the global
+registry aggregate. Its immutable receipt has no tenant field, binds both
+authenticated user principals to the context actor UUID, and rejects changed
+expected revision, actor, trace, correlation, privilege, or evidence on replay.
+Alloy-authored staging is tenant-scoped: its HTTP and GraphQL adapters derive
+the context from authenticated tenant/user identity, request idempotency, and
+telemetry trace. Its immutable receipt binds the expected request revision,
+Alloy tenant/script, reviewed source and sandbox evidence, and full context;
+the staged user principal must equal the context actor UUID, and any changed
+context evidence on replay fails closed.
 Global artifact security transitions also use the context with no tenant scope.
 Their receipt persists the complete platform command evidence and their
 quarantine/revocation event preserves the same actor, trace, and correlation
@@ -338,9 +367,14 @@ same platform-scoped context in their shared release idempotency ledger. That
 ledger persists actor, trace, correlation, and idempotency facts, rejects any
 replay with changed evidence, and the admission/revocation outbox events retain
 the original command identity.
-Build and authoring callers use the same typed evidence without string parsing
-or compatibility adapters. Other owner services will adopt these contracts as
-their write paths are moved. `ModuleControlPlane` is the
+Platform composition now uses the same platform-scoped context. Its receipt is
+isolated in the shared ledger's explicit `platform` namespace, keeps the full
+context in the request fingerprint, and rejects a tenant-scoped command before
+reading the global projection. The post-commit platform build notification
+retains the same actor, correlation, and trace facts instead of generating a
+new delivery identity. Build and authoring callers use the same typed evidence
+without string parsing or compatibility adapters. Other owner services will
+adopt these contracts as their write paths are moved. `ModuleControlPlane` is the
 owner composition root for currently extracted database-backed services; it is
 not a server/admin compatibility facade or a parallel execution path. Server
 lifecycle, composition, artifact runtime/HTTP, and registry-governance adapters
@@ -580,19 +614,22 @@ by registry transports. The HTTP adapter maps only that owner contract to an
 HTTP envelope, keeps not-found detail content-free, and no longer maintains a
 parallel lifecycle-error taxonomy.
 
-GraphQL platform-native install, uninstall, and upgrade mutations now derive
-tenant, actor, and `modules:manage` permission from authenticated context and
-provide a non-nil idempotency UUID, a positive expected revision, and the
-requested module change to one platform composition adapter. The owner rejects
-nil identities and non-positive revisions before receipt admission, admits the
-canonical command before the host reads the durable snapshot, then atomically
+GraphQL platform-native install, uninstall, and upgrade mutations require a
+direct SuperAdmin whose authenticated tenant matches the routed tenant and
+whose effective permissions include `modules:manage`. The routed tenant is an
+authorization anchor, not composition scope: the adapter constructs a
+platform-scoped command context with no tenant identity, a non-nil idempotency
+UUID, and a positive expected revision. The owner rejects any tenant-scoped
+context before receipt admission, admits the canonical command in the platform
+receipt namespace before the host reads the durable snapshot, then atomically
 commits the composition CAS, build enqueue, and terminal owner-operation
 receipt. An exact retry replays the original immutable build after later
-composition changes; at-least-once build notification is re-emitted without
-another build record. The admin obtains only the owner-issued composition
-revision and forwards it with a UUID; it neither calculates a manifest hash nor
-parses the build execution identity. No GraphQL resolver loads, mutates,
-validates, serializes, or hashes a composition manifest directly.
+composition changes; at-least-once platform build notification is re-emitted
+with the original actor, correlation, and trace evidence without another build
+record. The admin obtains only the owner-issued composition revision and
+forwards it with a UUID; it neither calculates a manifest hash nor parses the
+build execution identity. No GraphQL resolver loads, mutates, validates,
+serializes, or hashes a composition manifest directly.
 
 The artifact tenant-lifecycle owner now exposes a bounded snapshot for one
 admitted Optional installation and tenant. It returns inherited enabled intent

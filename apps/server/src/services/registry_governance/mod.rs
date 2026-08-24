@@ -89,11 +89,12 @@ pub struct RegistryArtifactUpload {
     pub bytes: bytes::Bytes,
 }
 
-/// Host-normalized external prebuilt evidence. The server derives actor and
-/// quarantine approver from authenticated authority rather than accepting
-/// either principal from the transport payload.
+/// Host-normalized external prebuilt evidence. The server derives a complete
+/// platform-scoped command context, actor, and quarantine approver from
+/// authenticated authority rather than accepting them from the payload.
 #[derive(Debug, Clone)]
 pub struct RegistryExternalPrebuiltStageInput {
+    pub context: rustok_modules::ModuleCommandContext,
     pub artifact_digest: String,
     pub source_evidence: rustok_modules::ModuleExternalSourceEvidence,
     pub provenance_reference: String,
@@ -101,17 +102,16 @@ pub struct RegistryExternalPrebuiltStageInput {
     pub provenance_policy_revision: String,
     pub quarantine_review_reference: String,
     pub quarantine_policy_revision: String,
-    pub idempotency_key: Uuid,
 }
 
-/// Host-normalized platform build selection. The controller derives
-/// `tenant_id` from the authenticated session, preserving the build owner's
-/// tenant-RLS boundary at this cross-owner promotion point.
+/// Host-normalized platform build selection. The controller derives the
+/// complete tenant-scoped command context from the authenticated session,
+/// preserving the build owner's tenant-RLS boundary and request evidence at
+/// this cross-owner promotion point.
 #[derive(Debug, Clone)]
 pub struct RegistryPlatformBuildStageInput {
-    pub tenant_id: Uuid,
+    pub context: rustok_modules::ModuleCommandContext,
     pub build_request_id: Uuid,
-    pub idempotency_key: Uuid,
 }
 
 #[derive(Clone)]

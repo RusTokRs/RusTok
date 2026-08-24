@@ -36,7 +36,7 @@ below wherever they differ.
 ## Execution Checkpoint
 
 - Current phase: `sandbox_worker_and_build_closure`.
-- Last updated: 2026-08-14.
+- Last updated: 2026-08-24.
 - Completed foundation:
   - neutral sandbox request, policy, broker, executor, outcome, error, and audit
     contracts;
@@ -64,6 +64,35 @@ below wherever they differ.
   `rustok-admin --no-default-features --features ssr` all pass `cargo check`
   (warnings only). No workspace-wide compile or test claim is made.
 - Open architecture blockers: none.
+- Latest platform-composition scope evidence: the global `platform_state`
+  owner now rejects tenant-scoped commands, reserves exact retries in the
+  shared platform receipt namespace, and retains full command evidence. Its
+  GraphQL install/uninstall/upgrade transport requires a direct SuperAdmin
+  plus `modules:manage`, while the post-commit platform build notification
+  retains the same actor, correlation, and trace fields. `rustfmt --edition
+  2024`, `git diff --check`, and the module-control-plane owner-boundary
+  verifier passed. The current targeted Cargo verification is recorded below;
+  no workspace-wide compile or test suite is claimed.
+- Latest registry platform-build staging evidence: the REST adapter derives
+  one tenant-scoped command context from authenticated session, idempotency,
+  and telemetry trace. The owner rejects a principal whose UUID does not match
+  that context, persists expected revision plus full context and privilege in
+  the append-only staging receipt, and rejects every changed replay fact.
+- Latest registry external-prebuilt staging evidence: the global registry
+  aggregate uses a platform-scoped command context (`tenant_id` absent), even
+  though the authenticated session tenant remains authorization evidence. The
+  owner binds both the operator and quarantine approver user UUIDs to the
+  context actor, persists expected revision plus full context and privilege in
+  the immutable staging receipt, and rejects conflicting replay evidence.
+- Current external-prebuilt verification: the focused owner receipt/replay test
+  and SQLite migration-schema test passed, as did `cargo check --locked -p
+  rustok-server` after its GraphQL composition-error mapper was aligned to the
+  canonical platform-scope error. `rustfmt --edition 2024`, `git diff --check`,
+  `verify-module-control-plane-write-path.mjs`, and
+  `verify-module-build-worker-isolation.mjs` passed. The scoped Cargo commands
+  reported only a pre-existing unused import in an untouched `rustok-forum`
+  migration and Windows linker informational warnings; no workspace-wide
+  compile or test suite was run.
 - Latest artifact-node materialization evidence: the separately deployable
   `rustok-artifact-node-agent` authenticates only to the narrow mTLS controller
   port, reads the owner-issued admitted digest directly from durable CAS, and
@@ -464,11 +493,12 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   uninstall, rollback, migration checkpoints, and tenant data purge),
   settings recovery, data snapshots, artifact secret binding, global
   artifact-security transitions, static promotion, and static-distribution
-  bootstrap/admission/revocation now carry this one context through their owner
-  validation, durable receipts, and owner-created outbox envelopes where the
-  operation emits an event. Each receipt rejects an idempotency reuse with
-  different context evidence. GraphQL carries the context where that surface is
-  exposed.
+  bootstrap/admission/revocation, and tenant-scoped registry platform-build
+  staging now carry this one context through their owner validation, durable
+  receipts, and owner-created outbox envelopes where the operation emits an
+  event. Each receipt rejects an idempotency reuse with different context
+  evidence. GraphQL and REST adapters carry the context where those surfaces
+  are exposed.
   The remaining mutable owner families still require atomic caller cutover to
   this contract. The accepted target is recorded in
   [ADR 2026-08-22](../../DECISIONS/2026-08-22-module-command-context-evidence.md).
@@ -1074,6 +1104,16 @@ adapter and must not be used as artifact identity or durable policy state.
   is the owner port; the server adapter creates the existing build record only
   through the owner-owned transaction, and it publishes its non-transactional
   build notification after commit. A failed enqueue rolls the CAS update back.
+  Composition is a platform aggregate: every mutation carries a
+  platform-scoped `ModuleCommandContext`, the shared receipt ledger uses its
+  separate `platform` namespace instead of a tenant or sentinel UUID, and the
+  owner rejects a tenant-scoped context before it reads `platform_state`.
+  GraphQL permits that command only for a direct, tenant-matched SuperAdmin
+  holding `modules:manage`; the routed tenant anchors authorization but never
+  enters the composition command or receipt. The post-commit `build.requested`
+  event is emitted at platform scope with the original actor, correlation, and
+  trace evidence, so notification delivery does not create a second command
+  identity.
 - [x] Move registry ownership, publish-request, release, validation-stage,
   yanking, and governance rules from `RegistryGovernanceService`. Release
   yanking, ownership binding, owner transfer, publish-request rejection,
@@ -2054,7 +2094,14 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   deployment-owned file before accepting work. This is
   configuration-review evidence and does not
   replace deployment evidence that the launcher enforces the corresponding
-  controls.
+  controls. The canonical module-build-worker Kubernetes renderer now pins the
+  selected RuntimeClass and image digest, deploys two hardened replicas with
+  mTLS readiness probes, mounts only a read-only source PVC plus attestation
+  and mTLS material, and permits ingress only from the dispatcher while
+  default-denying egress. Its probe executes the generated authenticated
+  readiness RPC rather than accepting a listening port. Retained cluster proof
+  that the launcher actually creates the corresponding hardened OCI jobs is
+  still required.
   Deployment evidence that the launcher actually creates the hardened job
   remains required before this item can close.
 - [ ] The worker has no tenant database access and no general platform secrets.
@@ -2460,17 +2507,28 @@ trust policy before admission.
   reproducible source identity or an explicit absence reason, an approved
   provenance-policy revision, and an independent quarantine review. The final
   owner transaction requires the current origin-specific stage. The server now
-  exposes an external-prebuilt staging adapter that derives actor and quarantine
-  approver plus an authenticated `modules.manage` fact. The owner enforces that
-  capability and exact actor/approver equality. The parallel platform build-stage
-  adapter derives the tenant exclusively from the authenticated session and
-  passes only a completed build ID, idempotency key, and authenticated privilege
-  fact to the owner RLS reload; the owner derives the current request manager
-  from binding/requester facts. Both staging paths
-  persist and compare their full authenticated immutable command fingerprints
-  on replay: platform builds include tenant, build, source, component, and
-  actor; external prebuilts include source/provenance/quarantine facts and
-  both authenticated principals. Any conflicting reuse fails closed.
+  exposes an external-prebuilt staging adapter that derives a platform-scoped
+  `ModuleCommandContext`, actor and quarantine approver plus an authenticated
+  `modules.manage` fact. The owner rejects a tenant-scoped context, binds both
+  canonical user principals to its actor UUID, and enforces that capability.
+  The parallel platform build-stage
+  adapter derives a complete tenant-scoped `ModuleCommandContext` from the
+  authenticated session, telemetry trace, and idempotency key, then supplies
+  only that context, a completed build ID, and the authenticated privilege fact
+  to the owner RLS reload. The owner binds the context actor UUID to the
+  canonical user principal and derives the current request manager from
+  binding/requester facts. Both staging paths persist and compare their full
+  authenticated immutable command fingerprints on replay: platform builds
+  include expected revision, tenant, actor, trace, correlation, privilege,
+  build, source, and component; external prebuilts include platform scope,
+  expected revision, actor, trace, correlation, privilege,
+  source/provenance/quarantine facts, and both authenticated principals. Any
+  conflicting reuse fails closed. Alloy-authored staging uses the corresponding
+  tenant-scoped context derived by authenticated HTTP and GraphQL adapters;
+  its receipt binds expected revision, Alloy tenant/script, reviewed source and
+  sandbox facts, actor, trace, correlation, and idempotency. The owner requires
+  the staged user principal to equal the context actor UUID and rejects a
+  changed-context replay.
 - [x] Run automated descriptor, compatibility, dependency, signature, SBOM,
   provenance, license, vulnerability, and sandbox smoke checks. The owner
   validates the claimed canonical bundle against the exact SHA-256, crate,
@@ -2524,9 +2582,10 @@ trust policy before admission.
   signature, and platform admission whose verified payload digest matches that
   stage; they cannot claim a build-worker
   attestation. The server transport accepts only evidence fields and an
-  idempotency key, deriving the actor and quarantine approver plus authenticated
-  `modules.manage` fact. The owner enforces both the external operator
-  capability and actor/approver equality. The parallel platform build-stage
+  idempotency key, deriving a platform-scoped command context, the actor and
+  quarantine approver, plus the authenticated `modules.manage` fact. The owner
+  enforces the external operator capability and binds both user principals to
+  the context actor UUID. The parallel platform build-stage
   adapter accepts no caller-supplied tenant identifier and derives its owner
   RLS scope from the authenticated session; its owner command authorizes the
   current request manager from durable binding/requester facts.
@@ -2683,6 +2742,10 @@ evolution while sharing the production sandbox and module release contracts.
   latest approved review, then delegates an idempotent `alloy_authored` stage
   to `rustok-modules`. The owner records source/review evidence together with
   the Alloy tenant/script identity and remains the only marketplace writer.
+  Both authenticated adapters construct one tenant-scoped
+  `ModuleCommandContext`; the owner persists its expected revision and complete
+  actor/trace/correlation/idempotency receipt, binds the staged principal to
+  that actor UUID, and rejects conflicting replay evidence.
   Final promotion also requires matching platform admission for the attached
   artifact. Origin-aware owner upload and the isolated validation worker now
   accept only a bounded canonical Alloy workspace, and release staging requires
@@ -2922,13 +2985,17 @@ multi-node reconciliation path consumed by those transports.
   preloads an operation for tenant authorization or reloads its plan after the
   command.
 - [x] Route GraphQL platform-native install, uninstall, and upgrade through one
-  typed composition adapter. Resolvers derive authenticated tenant, actor, and
-  permission, require revision and idempotency inputs, and provide only that
-  context plus the requested module change. The owner admits the command before
-  the adapter obtains the durable snapshot or applies the static host-manifest
-  adapter, then controls the composition-CAS/build/receipt transaction.
-  Resolvers no longer load, mutate, validate, serialize, or hash a manifest
-  directly. The
+  typed composition adapter. Resolvers require a direct SuperAdmin principal
+  whose authenticated tenant matches the routed tenant and whose effective
+  permissions include `modules:manage`; a tenant administrator cannot mutate
+  global `platform_state`. The routed tenant is authorization evidence only:
+  resolvers construct a platform-scoped `ModuleCommandContext` with no tenant
+  identity, then provide that context, revision, idempotency key, and requested
+  module change to the adapter. The owner admits the command in the platform
+  receipt namespace before the adapter obtains the durable snapshot or applies
+  the static host-manifest adapter, then controls the
+  composition-CAS/build/receipt transaction. Resolvers no longer load, mutate,
+  validate, serialize, or hash a manifest directly. The
   `installedModules` query also consumes the adapter's owner-backed installed
   projection rather than inspecting the manifest in GraphQL.
 - [x] Move remote validation lease observability behind the registry owner. The

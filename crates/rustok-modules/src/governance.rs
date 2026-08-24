@@ -11,7 +11,6 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::ControlPlaneInfrastructure;
 use crate::build::{
     ModuleBuildOutcome, ModuleBuildPublicationReceipt, ModuleBuildSignatureAuthority,
     ModuleBuildValidationOutcome, ModuleBuildValidationProfile, SeaOrmModuleBuildService,
@@ -19,6 +18,7 @@ use crate::build::{
 use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
 use crate::marketplace::{ModuleMarketplaceEntry, ModuleMarketplaceVersion};
 use crate::marketplace_content::ModuleMarketplaceContentProjection;
+use crate::{ControlPlaneInfrastructure, ModuleCommandContext};
 
 /// Stable reason-code vocabulary for a release yank.
 pub const REGISTRY_YANK_REASON_CODES: &[&str] = &[
@@ -765,13 +765,14 @@ pub enum ModuleExternalSourceEvidence {
     Unavailable { reason_code: String },
 }
 
-/// Owner-authenticated immutable external-artifact staging. The platform
-/// records the approved provenance policy and stricter quarantine review
-/// before the request can enter ordinary final publication.
+/// Owner-authenticated immutable external-artifact staging. The command is
+/// platform-scoped because it mutates the global registry aggregate, while the
+/// owner records the approved provenance policy and quarantine review.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleExternalPrebuiltStageCommand {
     pub request_id: String,
     pub expected_revision: i64,
+    pub context: ModuleCommandContext,
     pub artifact_digest: String,
     pub source_evidence: ModuleExternalSourceEvidence,
     pub provenance_reference: String,
@@ -780,7 +781,6 @@ pub struct ModuleExternalPrebuiltStageCommand {
     pub quarantine_review_reference: String,
     pub quarantine_policy_revision: String,
     pub quarantine_approved_by_principal: serde_json::Value,
-    pub idempotency_key: Uuid,
     pub actor_principal: serde_json::Value,
     /// An authenticated platform privilege required for the external-artifact
     /// quarantine decision.
@@ -802,6 +802,7 @@ pub struct ModuleExternalPrebuiltStageResult {
 pub struct ModuleAlloyAuthoredStageCommand {
     pub request_id: String,
     pub expected_revision: i64,
+    pub context: ModuleCommandContext,
     pub alloy_tenant_id: Uuid,
     pub alloy_script_id: Uuid,
     pub artifact_digest: String,
@@ -821,7 +822,6 @@ pub struct ModuleAlloyAuthoredStageCommand {
     pub sandbox_runtime_abi: String,
     pub sandbox_policy_digest: String,
     pub sandbox_capability_grants: u32,
-    pub idempotency_key: Uuid,
     pub actor_principal: serde_json::Value,
 }
 
@@ -971,15 +971,15 @@ pub struct ModulePlatformAdmissionCommand {
 }
 
 /// Owner-authenticated selection of one durable completed platform build for a
-/// registry request. The command carries only immutable identifiers; the build
-/// request/result are always reloaded under tenant RLS by the owner service.
+/// registry request. The command carries the complete tenant-scoped command
+/// evidence; the build request/result are always reloaded under tenant RLS by
+/// the owner service.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModulePublishPlatformBuildStageCommand {
     pub request_id: String,
     pub expected_revision: i64,
-    pub tenant_id: Uuid,
+    pub context: ModuleCommandContext,
     pub build_request_id: Uuid,
-    pub idempotency_key: Uuid,
     pub actor_principal: serde_json::Value,
     /// An authenticated host fact. The owner combines it with the durable
     /// request and owner-binding identities before staging the build.
@@ -1371,13 +1371,23 @@ impl ModulePublishRequestCreateCommand {
 
 impl ModuleExternalPrebuiltStageCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        let actor_id = self.context.actor_id.to_string();
         if self.request_id.trim().is_empty()
             || self.expected_revision < 1
             || receipt_digest_sha256(&self.artifact_digest).is_err()
             || receipt_digest_sha256(&self.provenance_digest).is_err()
-            || self.idempotency_key.is_nil()
             || !self.quarantine_approved_by_principal.is_object()
             || !self.actor_principal.is_object()
+            || self.context.validate().is_err()
+            || self.context.tenant_id.is_some()
+            || !matches!(
+                governance_principal_user_id(&self.actor_principal),
+                Some(principal_actor_id) if principal_actor_id == actor_id.as_str()
+            )
+            || !matches!(
+                governance_principal_user_id(&self.quarantine_approved_by_principal),
+                Some(principal_actor_id) if principal_actor_id == actor_id.as_str()
+            )
         {
             return Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand);
         }
@@ -1427,8 +1437,11 @@ impl ModuleExternalPrebuiltStageCommand {
 
 impl ModuleAlloyAuthoredStageCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        let actor_id = self.context.actor_id.to_string();
         if self.request_id.trim().is_empty()
             || self.expected_revision < 1
+            || self.context.validate().is_err()
+            || self.context.tenant_id != Some(self.alloy_tenant_id)
             || self.alloy_tenant_id.is_nil()
             || self.alloy_script_id.is_nil()
             || receipt_digest_sha256(&self.artifact_digest).is_err()
@@ -1438,9 +1451,12 @@ impl ModuleAlloyAuthoredStageCommand {
             || receipt_digest_sha256(&self.sandbox_policy_digest).is_err()
             || self.source_revision == 0
             || self.sandbox_execution_id.is_nil()
-            || self.idempotency_key.is_nil()
             || !self.reviewed_by_principal.is_object()
             || !self.actor_principal.is_object()
+            || !matches!(
+                governance_principal_user_id(&self.actor_principal),
+                Some(principal_actor_id) if principal_actor_id == actor_id.as_str()
+            )
             || self
                 .parent_release
                 .as_ref()
@@ -1623,12 +1639,17 @@ impl ModulePlatformAdmissionCommand {
 
 impl ModulePublishPlatformBuildStageCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        let actor_id = self.context.actor_id.to_string();
         if self.request_id.trim().is_empty()
             || self.expected_revision < 1
-            || self.tenant_id.is_nil()
             || self.build_request_id.is_nil()
-            || self.idempotency_key.is_nil()
             || !self.actor_principal.is_object()
+            || self.context.validate().is_err()
+            || !matches!(self.context.tenant_id, Some(tenant_id) if !tenant_id.is_nil())
+            || !matches!(
+                governance_principal_user_id(&self.actor_principal),
+                Some(principal_actor_id) if principal_actor_id == actor_id.as_str()
+            )
         {
             return Err(ModuleGovernanceError::InvalidPlatformBuildStageCommand);
         }
@@ -2513,8 +2534,12 @@ impl SeaOrmModuleGovernanceService {
         command: ModulePublishPlatformBuildStageCommand,
     ) -> Result<ModulePublishPlatformBuildStageResult, ModuleGovernanceError> {
         command.validate()?;
+        let tenant_id = command
+            .context
+            .tenant_id
+            .ok_or(ModuleGovernanceError::InvalidPlatformBuildStageCommand)?;
         let completed = SeaOrmModuleBuildService::new(self.db.clone())
-            .load_completed(command.tenant_id, command.build_request_id)
+            .load_completed(tenant_id, command.build_request_id)
             .await
             .map_err(|_| ModuleGovernanceError::InvalidPlatformBuildStageCommand)?;
         let component_digest = completed
@@ -2620,18 +2645,21 @@ impl SeaOrmModuleGovernanceService {
                 backend,
                 format!(
                     "INSERT INTO registry_publish_build_staging \
-                     (id, request_id, tenant_id, build_request_id, source_reference, source_digest, component_digest, \
+                     (id, request_id, expected_revision, tenant_id, build_request_id, source_reference, source_digest, component_digest, \
                       artifact_manifest_digest, sbom_manifest_digest, provenance_manifest_digest, \
-                      signature_manifest_digest, staged_by_principal, idempotency_key, staged_at) \
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
+                      signature_manifest_digest, staged_by_principal, actor_id, trace_id, correlation_id, \
+                      actor_can_manage_modules, idempotency_key, staged_at) \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
                      ON CONFLICT (request_id, idempotency_key) DO NOTHING",
                     mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8),
-                    mark(9), mark(10), mark(11), mark(12), mark(13),
+                    mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15),
+                    mark(16), mark(17), mark(18),
                 ),
                 vec![
                     staging_id.clone().into(),
                     command.request_id.clone().into(),
-                    registry_uuid_value(command.tenant_id, backend),
+                    command.expected_revision.into(),
+                    registry_uuid_value(tenant_id, backend),
                     registry_uuid_value(command.build_request_id, backend),
                     completed.request.source.reference.clone().into(),
                     completed.request.source.digest.clone().into(),
@@ -2641,7 +2669,11 @@ impl SeaOrmModuleGovernanceService {
                     receipt.provenance_referrer.digest.clone().into(),
                     receipt.signature_manifest.digest.clone().into(),
                     Value::Json(Some(Box::new(command.actor_principal.clone()))),
-                    registry_uuid_value(command.idempotency_key, backend),
+                    registry_uuid_value(command.context.actor_id, backend),
+                    command.context.trace_id.clone().into(),
+                    registry_uuid_value(command.context.correlation_id, backend),
+                    Value::Bool(Some(command.actor_can_manage_modules)),
+                    registry_uuid_value(command.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -2651,10 +2683,12 @@ impl SeaOrmModuleGovernanceService {
                 .query_one(Statement::from_sql_and_values(
                     backend,
                     format!(
-                        "SELECT id, CAST(tenant_id AS TEXT) AS tenant_id, \
+                        "SELECT id, expected_revision, CAST(tenant_id AS TEXT) AS tenant_id, \
                          CAST(build_request_id AS TEXT) AS build_request_id, \
                          source_reference, source_digest, component_digest, \
-                         CAST(staged_by_principal AS TEXT) AS staged_by_principal \
+                         CAST(staged_by_principal AS TEXT) AS staged_by_principal, \
+                         CAST(actor_id AS TEXT) AS actor_id, trace_id, \
+                         CAST(correlation_id AS TEXT) AS correlation_id, actor_can_manage_modules \
                          FROM registry_publish_build_staging \
                          WHERE request_id = {} AND idempotency_key = {}",
                         mark(1),
@@ -2662,7 +2696,7 @@ impl SeaOrmModuleGovernanceService {
                     ),
                     vec![
                         command.request_id.clone().into(),
-                        registry_uuid_value(command.idempotency_key, backend),
+                        registry_uuid_value(command.context.idempotency_key, backend),
                     ],
                 ))
                 .await
@@ -2671,6 +2705,9 @@ impl SeaOrmModuleGovernanceService {
                     ModuleGovernanceError::Store("build-stage conflict lost its row".to_string())
                 })?;
             let existing_id: String = existing.try_get("", "id").map_err(store_error)?;
+            let existing_expected_revision: i64 = existing
+                .try_get("", "expected_revision")
+                .map_err(store_error)?;
             let existing_tenant_id: String =
                 existing.try_get("", "tenant_id").map_err(store_error)?;
             let existing_build_request_id: String = existing
@@ -2690,12 +2727,27 @@ impl SeaOrmModuleGovernanceService {
                     .map_err(store_error)?,
             )
             .map_err(store_error)?;
-            if existing_tenant_id != command.tenant_id.to_string()
+            let existing_actor_id: String =
+                existing.try_get("", "actor_id").map_err(store_error)?;
+            let existing_trace_id: String =
+                existing.try_get("", "trace_id").map_err(store_error)?;
+            let existing_correlation_id: String = existing
+                .try_get("", "correlation_id")
+                .map_err(store_error)?;
+            let existing_actor_can_manage_modules: bool = existing
+                .try_get("", "actor_can_manage_modules")
+                .map_err(store_error)?;
+            if existing_expected_revision != command.expected_revision
+                || existing_tenant_id != tenant_id.to_string()
                 || existing_build_request_id != command.build_request_id.to_string()
                 || existing_source_reference != completed.request.source.reference
                 || existing_source_digest != completed.request.source.digest
                 || existing_component_digest != component_digest
                 || existing_actor != command.actor_principal
+                || existing_actor_id != command.context.actor_id.to_string()
+                || existing_trace_id != command.context.trace_id
+                || existing_correlation_id != command.context.correlation_id.to_string()
+                || existing_actor_can_manage_modules != command.actor_can_manage_modules
             {
                 return Err(ModuleGovernanceError::PlatformBuildStageIdempotencyConflict);
             }
@@ -2795,6 +2847,14 @@ impl SeaOrmModuleGovernanceService {
                     "source_digest": completed.request.source.digest,
                     "component_digest": component_digest,
                     "artifact_manifest_digest": receipt.artifact.digest,
+                    "command_context": {
+                        "actor_id": command.context.actor_id,
+                        "tenant_id": tenant_id,
+                        "trace_id": command.context.trace_id,
+                        "correlation_id": command.context.correlation_id,
+                        "idempotency_key": command.context.idempotency_key,
+                        "actor_can_manage_modules": command.actor_can_manage_modules,
+                    },
                 })))),
             ],
         ))
@@ -2991,11 +3051,12 @@ impl SeaOrmModuleGovernanceService {
                 backend,
                 format!(
                     "INSERT INTO registry_publish_external_staging \
-                     (id, request_id, artifact_digest, source_evidence_kind, source_reference, \
+                     (id, request_id, expected_revision, artifact_digest, source_evidence_kind, source_reference, \
                       source_digest, source_absence_reason, provenance_reference, provenance_digest, \
                       provenance_policy_revision, quarantine_review_reference, quarantine_policy_revision, \
-                      quarantine_approved_by_principal, staged_by_principal, idempotency_key, staged_at) \
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
+                      quarantine_approved_by_principal, staged_by_principal, actor_id, trace_id, correlation_id, \
+                      actor_can_manage_modules, idempotency_key, staged_at) \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
                      ON CONFLICT (request_id, idempotency_key) DO NOTHING",
                     mark(1),
                     mark(2),
@@ -3012,10 +3073,16 @@ impl SeaOrmModuleGovernanceService {
                     mark(13),
                     mark(14),
                     mark(15),
+                    mark(16),
+                    mark(17),
+                    mark(18),
+                    mark(19),
+                    mark(20),
                 ),
                 vec![
                     staging_id.clone().into(),
                     command.request_id.clone().into(),
+                    command.expected_revision.into(),
                     command.artifact_digest.clone().into(),
                     source_evidence_kind.into(),
                     source_reference.clone().into(),
@@ -3030,7 +3097,11 @@ impl SeaOrmModuleGovernanceService {
                         command.quarantine_approved_by_principal.clone(),
                     ))),
                     Value::Json(Some(Box::new(command.actor_principal.clone()))),
-                    registry_uuid_value(command.idempotency_key, backend),
+                    registry_uuid_value(command.context.actor_id, backend),
+                    command.context.trace_id.clone().into(),
+                    registry_uuid_value(command.context.correlation_id, backend),
+                    Value::Bool(Some(command.actor_can_manage_modules)),
+                    registry_uuid_value(command.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -3040,12 +3111,14 @@ impl SeaOrmModuleGovernanceService {
                 .query_one(Statement::from_sql_and_values(
                     backend,
                     format!(
-                        "SELECT id, artifact_digest, source_evidence_kind, source_reference, source_digest, \
+                        "SELECT id, expected_revision, artifact_digest, source_evidence_kind, source_reference, source_digest, \
                          source_absence_reason, provenance_reference, provenance_digest, \
                          provenance_policy_revision, quarantine_review_reference, \
                          quarantine_policy_revision, \
                          CAST(quarantine_approved_by_principal AS TEXT) AS quarantine_approved_by_principal, \
-                         CAST(staged_by_principal AS TEXT) AS staged_by_principal \
+                         CAST(staged_by_principal AS TEXT) AS staged_by_principal, \
+                         CAST(actor_id AS TEXT) AS actor_id, trace_id, \
+                         CAST(correlation_id AS TEXT) AS correlation_id, actor_can_manage_modules \
                          FROM registry_publish_external_staging \
                          WHERE request_id = {} AND idempotency_key = {}",
                         mark(1),
@@ -3053,7 +3126,7 @@ impl SeaOrmModuleGovernanceService {
                     ),
                     vec![
                         command.request_id.clone().into(),
-                        registry_uuid_value(command.idempotency_key, backend),
+                        registry_uuid_value(command.context.idempotency_key, backend),
                     ],
                 ))
                 .await
@@ -3062,6 +3135,9 @@ impl SeaOrmModuleGovernanceService {
                     ModuleGovernanceError::Store("external-stage conflict lost its row".to_string())
                 })?;
             let existing_id: String = existing.try_get("", "id").map_err(store_error)?;
+            let existing_expected_revision: i64 = existing
+                .try_get("", "expected_revision")
+                .map_err(store_error)?;
             let existing_artifact_digest: String = existing
                 .try_get("", "artifact_digest")
                 .map_err(store_error)?;
@@ -3103,7 +3179,18 @@ impl SeaOrmModuleGovernanceService {
                     .map_err(store_error)?,
             )
             .map_err(store_error)?;
-            if existing_artifact_digest != command.artifact_digest
+            let existing_actor_id: String =
+                existing.try_get("", "actor_id").map_err(store_error)?;
+            let existing_trace_id: String =
+                existing.try_get("", "trace_id").map_err(store_error)?;
+            let existing_correlation_id: String = existing
+                .try_get("", "correlation_id")
+                .map_err(store_error)?;
+            let existing_actor_can_manage_modules: bool = existing
+                .try_get("", "actor_can_manage_modules")
+                .map_err(store_error)?;
+            if existing_expected_revision != command.expected_revision
+                || existing_artifact_digest != command.artifact_digest
                 || existing_source_evidence_kind != source_evidence_kind
                 || existing_source_reference != source_reference
                 || existing_source_digest != source_digest
@@ -3115,6 +3202,10 @@ impl SeaOrmModuleGovernanceService {
                 || existing_quarantine_policy_revision != command.quarantine_policy_revision
                 || existing_quarantine_approver != command.quarantine_approved_by_principal
                 || existing_actor != command.actor_principal
+                || existing_actor_id != command.context.actor_id.to_string()
+                || existing_trace_id != command.context.trace_id
+                || existing_correlation_id != command.context.correlation_id.to_string()
+                || existing_actor_can_manage_modules != command.actor_can_manage_modules
             {
                 return Err(ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict);
             }
@@ -3183,6 +3274,14 @@ impl SeaOrmModuleGovernanceService {
                     "provenance_digest": command.provenance_digest.clone(),
                     "provenance_policy_revision": command.provenance_policy_revision.clone(),
                     "quarantine_policy_revision": command.quarantine_policy_revision.clone(),
+                    "command_context": {
+                        "scope": "platform",
+                        "actor_id": command.context.actor_id,
+                        "trace_id": command.context.trace_id,
+                        "correlation_id": command.context.correlation_id,
+                        "idempotency_key": command.context.idempotency_key,
+                        "actor_can_manage_modules": command.actor_can_manage_modules,
+                    },
                 })))),
             ],
         ))
@@ -3273,13 +3372,13 @@ impl SeaOrmModuleGovernanceService {
                 backend,
                 format!(
                     "INSERT INTO registry_publish_alloy_staging \
-                     (id, request_id, alloy_tenant_id, alloy_script_id, artifact_digest, source_digest, source_revision, \
+                     (id, request_id, expected_revision, alloy_tenant_id, alloy_script_id, artifact_digest, source_digest, source_revision, \
                       parent_release_slug, parent_release_version, parent_release_digest, \
                       review_reference, review_digest, review_policy_revision, \
                       reviewed_by_principal, sandbox_execution_id, sandbox_test_path, sandbox_executor, \
                       sandbox_runtime_abi, sandbox_policy_digest, sandbox_capability_grants, \
-                      staged_by_principal, idempotency_key, staged_at) \
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
+                      staged_by_principal, actor_id, trace_id, correlation_id, idempotency_key, staged_at) \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
                      ON CONFLICT (request_id, idempotency_key) DO NOTHING",
                     mark(1),
                     mark(2),
@@ -3303,10 +3402,15 @@ impl SeaOrmModuleGovernanceService {
                     mark(20),
                     mark(21),
                     mark(22),
+                    mark(23),
+                    mark(24),
+                    mark(25),
+                    mark(26),
                 ),
                 vec![
                     staging_id.clone().into(),
                     command.request_id.clone().into(),
+                    command.expected_revision.into(),
                     registry_uuid_value(command.alloy_tenant_id, backend),
                     registry_uuid_value(command.alloy_script_id, backend),
                     command.artifact_digest.clone().into(),
@@ -3338,7 +3442,10 @@ impl SeaOrmModuleGovernanceService {
                     command.sandbox_policy_digest.clone().into(),
                     i64::from(command.sandbox_capability_grants).into(),
                     Value::Json(Some(Box::new(command.actor_principal.clone()))),
-                    registry_uuid_value(command.idempotency_key, backend),
+                    registry_uuid_value(command.context.actor_id, backend),
+                    command.context.trace_id.clone().into(),
+                    registry_uuid_value(command.context.correlation_id, backend),
+                    registry_uuid_value(command.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -3348,7 +3455,7 @@ impl SeaOrmModuleGovernanceService {
                 .query_one(Statement::from_sql_and_values(
                     backend,
                     format!(
-                        "SELECT id, CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
+                        "SELECT id, expected_revision, CAST(alloy_tenant_id AS TEXT) AS alloy_tenant_id, \
                          CAST(alloy_script_id AS TEXT) AS alloy_script_id, \
                          artifact_digest, source_digest, source_revision, \
                          parent_release_slug, parent_release_version, parent_release_digest, \
@@ -3358,7 +3465,9 @@ impl SeaOrmModuleGovernanceService {
                          sandbox_test_path, sandbox_executor, sandbox_runtime_abi, sandbox_policy_digest, \
                          sandbox_capability_grants, \
                          CAST(reviewed_by_principal AS TEXT) AS reviewed_by_principal, \
-                         CAST(staged_by_principal AS TEXT) AS staged_by_principal \
+                         CAST(staged_by_principal AS TEXT) AS staged_by_principal, \
+                         CAST(actor_id AS TEXT) AS actor_id, trace_id, \
+                         CAST(correlation_id AS TEXT) AS correlation_id \
                          FROM registry_publish_alloy_staging \
                          WHERE request_id = {} AND idempotency_key = {}",
                         mark(1),
@@ -3366,7 +3475,7 @@ impl SeaOrmModuleGovernanceService {
                     ),
                     vec![
                         command.request_id.clone().into(),
-                        registry_uuid_value(command.idempotency_key, backend),
+                        registry_uuid_value(command.context.idempotency_key, backend),
                     ],
                 ))
                 .await
@@ -3375,6 +3484,9 @@ impl SeaOrmModuleGovernanceService {
                     ModuleGovernanceError::Store("Alloy stage conflict lost its row".to_string())
                 })?;
             let existing_id: String = existing.try_get("", "id").map_err(store_error)?;
+            let existing_expected_revision: i64 = existing
+                .try_get("", "expected_revision")
+                .map_err(store_error)?;
             let existing_tenant_id: String = existing
                 .try_get("", "alloy_tenant_id")
                 .map_err(store_error)?;
@@ -3428,7 +3540,15 @@ impl SeaOrmModuleGovernanceService {
                     .map_err(store_error)?,
             )
             .map_err(store_error)?;
-            if existing_tenant_id != command.alloy_tenant_id.to_string()
+            let existing_actor_id: String =
+                existing.try_get("", "actor_id").map_err(store_error)?;
+            let existing_trace_id: String =
+                existing.try_get("", "trace_id").map_err(store_error)?;
+            let existing_correlation_id: String = existing
+                .try_get("", "correlation_id")
+                .map_err(store_error)?;
+            if existing_expected_revision != command.expected_revision
+                || existing_tenant_id != command.alloy_tenant_id.to_string()
                 || existing_script_id != command.alloy_script_id.to_string()
                 || existing_artifact_digest != command.artifact_digest
                 || existing_source_digest != command.source_digest
@@ -3446,6 +3566,9 @@ impl SeaOrmModuleGovernanceService {
                     != i64::from(command.sandbox_capability_grants)
                 || existing_reviewer != command.reviewed_by_principal
                 || existing_actor != command.actor_principal
+                || existing_actor_id != command.context.actor_id.to_string()
+                || existing_trace_id != command.context.trace_id
+                || existing_correlation_id != command.context.correlation_id.to_string()
             {
                 return Err(ModuleGovernanceError::AlloyAuthoredStageIdempotencyConflict);
             }
@@ -3522,6 +3645,14 @@ impl SeaOrmModuleGovernanceService {
                     "sandbox_runtime_abi": command.sandbox_runtime_abi.clone(),
                     "sandbox_policy_digest": command.sandbox_policy_digest.clone(),
                     "sandbox_capability_grants": command.sandbox_capability_grants,
+                    "command_context": {
+                        "scope": "tenant",
+                        "tenant_id": command.context.tenant_id,
+                        "actor_id": command.context.actor_id,
+                        "trace_id": command.context.trace_id,
+                        "correlation_id": command.context.correlation_id,
+                        "idempotency_key": command.context.idempotency_key,
+                    },
                 })))),
             ],
         ))
@@ -10855,9 +10986,15 @@ mod tests {
     use super::*;
     use crate::{
         ArtifactBlobStore, ArtifactModuleKind, ArtifactPayloadKind, ArtifactReleaseRef,
-        InMemoryArtifactBlobStore, ModuleArtifactDescriptor, ModuleMarketplaceArtifactOrigin,
-        ModuleMarketplaceArtifactRelease, ModuleMarketplaceEvidenceKind,
-        ModuleMarketplaceEvidenceReference, TrustEvidenceKind, TrustEvidenceReference,
+        InMemoryArtifactBlobStore, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION,
+        MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD,
+        ModuleArtifactDescriptor, ModuleBuildAuthoring, ModuleBuildComponentInterface,
+        ModuleBuildDependencyPolicy, ModuleBuildEvidence, ModuleBuildLimits, ModuleBuildMetrics,
+        ModuleBuildNetworkPolicy, ModuleBuildNextAction, ModuleBuildRequest, ModuleBuildResult,
+        ModuleBuildSource, ModuleBuildToolchain, ModuleBuildValidationResult,
+        ModuleBuildWitContract, ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease,
+        ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference, TrustEvidenceKind,
+        TrustEvidenceReference,
     };
 
     #[test]
@@ -10933,6 +11070,643 @@ mod tests {
             actor_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
             actor_can_manage_modules: false,
         }
+    }
+
+    #[test]
+    fn platform_build_stage_command_requires_tenant_context_and_matching_actor() {
+        let actor_id = Uuid::new_v4();
+        let mut command = ModulePublishPlatformBuildStageCommand {
+            request_id: "request-1".to_string(),
+            expected_revision: 1,
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: Some(Uuid::new_v4()),
+                trace_id: "test:platform-build-stage".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            build_request_id: Uuid::new_v4(),
+            actor_principal: serde_json::json!({ "kind": "user", "id": actor_id }),
+            actor_can_manage_modules: false,
+        };
+        assert!(command.validate().is_ok());
+
+        command.context.tenant_id = None;
+        assert_eq!(
+            command.validate(),
+            Err(ModuleGovernanceError::InvalidPlatformBuildStageCommand)
+        );
+
+        command.context.tenant_id = Some(Uuid::new_v4());
+        command.actor_principal = serde_json::json!({ "kind": "user", "id": Uuid::new_v4() });
+        assert_eq!(
+            command.validate(),
+            Err(ModuleGovernanceError::InvalidPlatformBuildStageCommand)
+        );
+    }
+
+    fn stage_digest(marker: char) -> String {
+        format!("sha256:{}", marker.to_string().repeat(64))
+    }
+
+    fn completed_platform_build(
+        tenant_id: Uuid,
+        build_request_id: Uuid,
+    ) -> (ModuleBuildRequest, ModuleBuildResult) {
+        let request = ModuleBuildRequest {
+            protocol_version: MODULE_BUILD_PROTOCOL_VERSION,
+            request_id: build_request_id,
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(tenant_id),
+                trace_id: "test:completed-platform-build".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            project_id: "project:sample".to_string(),
+            source: ModuleBuildSource {
+                digest: stage_digest('a'),
+                reference: format!("cas://{}", stage_digest('a')),
+            },
+            expected_module_slug: "sample_module".to_string(),
+            expected_version: "1.0.0".to_string(),
+            runtime_abi: MODULE_BUILD_RUNTIME_ABI.to_string(),
+            wit: ModuleBuildWitContract {
+                world: MODULE_BUILD_WIT_WORLD.to_string(),
+                version: MODULE_BUILD_WIT_VERSION.to_string(),
+            },
+            toolchain: ModuleBuildToolchain {
+                rust_toolchain: "1.85.0".to_string(),
+                component_target: MODULE_BUILD_COMPONENT_TARGET.to_string(),
+            },
+            authoring: ModuleBuildAuthoring {
+                sdk_version: "1.0.0".to_string(),
+                template_version: "1.0.0".to_string(),
+            },
+            dependency_policy: ModuleBuildDependencyPolicy {
+                lock_digest: stage_digest('b'),
+                allowed_registries: vec!["https://crates.io".to_string()],
+                allow_git_dependencies: false,
+                allow_build_scripts: false,
+                allow_native_links: false,
+            },
+            limits: ModuleBuildLimits {
+                cpu_cores: 2,
+                memory_bytes: 512 * 1024 * 1024,
+                disk_bytes: 2 * 1024 * 1024 * 1024,
+                process_limit: 32,
+                output_bytes: 1024 * 1024,
+                wall_clock_ms: 300_000,
+            },
+            network_policy: ModuleBuildNetworkPolicy::Denied,
+            validation_profiles: vec![
+                ModuleBuildValidationProfile::Check,
+                ModuleBuildValidationProfile::Test,
+                ModuleBuildValidationProfile::DependencyPolicy,
+                ModuleBuildValidationProfile::Vulnerability,
+            ],
+            attempt: 1,
+        };
+        let reference = |marker| OciArtifactReference {
+            registry: "registry.example".to_string(),
+            repository: "modules/sample_module".to_string(),
+            digest: stage_digest(marker),
+        };
+        let result = ModuleBuildResult {
+            protocol_version: request.protocol_version,
+            request_id: request.request_id,
+            tenant_id,
+            attempt: request.attempt,
+            outcome: ModuleBuildOutcome::Succeeded,
+            source_digest: request.source.digest.clone(),
+            dependency_lock_digest: request.dependency_policy.lock_digest.clone(),
+            toolchain_digest: request.toolchain.protocol_digest(),
+            wit_digest: request.wit.protocol_digest(),
+            component_digest: Some(stage_digest('c')),
+            sbom_digest: Some(stage_digest('d')),
+            provenance_digest: Some(stage_digest('e')),
+            component_interface: Some(ModuleBuildComponentInterface {
+                exports: vec!["run".to_string()],
+                imports: Vec::new(),
+            }),
+            evidence: ModuleBuildEvidence {
+                log_reference: "cas://logs/platform-build".to_string(),
+                policy_report_reference: "cas://reports/platform-build".to_string(),
+                validation_results: request
+                    .validation_profiles
+                    .iter()
+                    .copied()
+                    .map(|profile| ModuleBuildValidationResult {
+                        profile,
+                        outcome: ModuleBuildValidationOutcome::Passed,
+                    })
+                    .collect(),
+                diagnostics: Vec::new(),
+            },
+            publication: Some(ModuleBuildPublicationReceipt {
+                artifact: reference('f'),
+                sbom_referrer: reference('g'),
+                provenance_referrer: reference('h'),
+                signature_manifest: reference('i'),
+                signature_authority: ModuleBuildSignatureAuthority::BuildService,
+            }),
+            metrics: ModuleBuildMetrics {
+                duration_ms: 1,
+                peak_memory_bytes: 1,
+                output_bytes: 1,
+            },
+            retryable: false,
+            next_action: ModuleBuildNextAction::AdmitArtifact,
+        };
+        (request, result)
+    }
+
+    #[tokio::test]
+    async fn platform_build_stage_receipt_rejects_changed_context_or_privilege() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE module_build_requests (\
+                request_id TEXT PRIMARY KEY, request JSON NOT NULL, result JSON NOT NULL, \
+                status TEXT NOT NULL, revision INTEGER NOT NULL\
+             )",
+            "CREATE TABLE registry_publish_requests (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, \
+                revision INTEGER NOT NULL, status TEXT NOT NULL, artifact_origin TEXT NOT NULL, \
+                artifact_checksum_sha256 TEXT NULL, requested_by_principal JSON NOT NULL, \
+                publisher_principal JSON NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_publish_build_staging (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, expected_revision INTEGER NOT NULL, \
+                tenant_id TEXT NOT NULL, build_request_id TEXT NOT NULL, source_reference TEXT NOT NULL, \
+                source_digest TEXT NOT NULL, component_digest TEXT NOT NULL, \
+                artifact_manifest_digest TEXT NOT NULL, sbom_manifest_digest TEXT NOT NULL, \
+                provenance_manifest_digest TEXT NOT NULL, signature_manifest_digest TEXT NOT NULL, \
+                staged_by_principal JSON NOT NULL, actor_id TEXT NOT NULL, trace_id TEXT NOT NULL, \
+                correlation_id TEXT NOT NULL, actor_can_manage_modules BOOLEAN NOT NULL, \
+                idempotency_key TEXT NOT NULL, staged_at TEXT NOT NULL, \
+                UNIQUE (request_id, idempotency_key)\
+             )",
+            "CREATE TABLE registry_module_owners (slug TEXT PRIMARY KEY, owner_principal JSON NOT NULL)",
+            "CREATE TABLE registry_validation_stages (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, stage_key TEXT NOT NULL, \
+                status TEXT NOT NULL, attempt_number INTEGER NOT NULL, queue_reason TEXT NOT NULL, \
+                runner_kind TEXT NULL, created_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_governance_events (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL, \
+                event_type TEXT NOT NULL, actor_principal JSON NOT NULL, publisher_principal JSON NULL, \
+                details JSON NOT NULL, created_at TEXT NOT NULL\
+             )",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("stage fixture schema");
+        }
+
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let build_request_id = Uuid::new_v4();
+        let (build_request, build_result) = completed_platform_build(tenant_id, build_request_id);
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_build_requests (request_id, request, result, status, revision) \
+                 VALUES (?1, ?2, ?3, 'completed', 3)"
+                    .to_string(),
+                vec![
+                    build_request_id.to_string().into(),
+                    Value::Json(Some(Box::new(
+                        serde_json::to_value(&build_request).expect("build request JSON"),
+                    ))),
+                    Value::Json(Some(Box::new(
+                        serde_json::to_value(&build_result).expect("build result JSON"),
+                    ))),
+                ],
+            ))
+            .await
+            .expect("completed build fixture");
+        let actor_principal = serde_json::json!({ "kind": "user", "id": actor_id });
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_publish_requests (\
+                    id, slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
+                    requested_by_principal, publisher_principal, updated_at\
+                 ) VALUES (?1, 'sample_module', '1.0.0', 1, 'submitted', 'platform_built', ?2, ?3, NULL, datetime('now'))"
+                    .to_string(),
+                vec![
+                    "request-1".into(),
+                    "a".repeat(64).into(),
+                    Value::Json(Some(Box::new(actor_principal.clone()))),
+                ],
+            ))
+            .await
+            .expect("publish request fixture");
+
+        let command = ModulePublishPlatformBuildStageCommand {
+            request_id: "request-1".to_string(),
+            expected_revision: 1,
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: Some(tenant_id),
+                trace_id: "test:platform-build-stage-receipt".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            build_request_id,
+            actor_principal,
+            actor_can_manage_modules: false,
+        };
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let first = service
+            .stage_platform_build(command.clone())
+            .await
+            .expect("first stage");
+        assert!(first.created);
+        let receipt = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT expected_revision, tenant_id, actor_id, trace_id, correlation_id, \
+                 actor_can_manage_modules, idempotency_key FROM registry_publish_build_staging"
+                    .to_string(),
+            ))
+            .await
+            .expect("stage receipt query")
+            .expect("stage receipt");
+        assert_eq!(
+            receipt
+                .try_get::<i64>("", "expected_revision")
+                .expect("expected revision"),
+            command.expected_revision
+        );
+        assert_eq!(
+            receipt.try_get::<String>("", "tenant_id").expect("tenant"),
+            tenant_id.to_string()
+        );
+        assert_eq!(
+            receipt.try_get::<String>("", "actor_id").expect("actor"),
+            actor_id.to_string()
+        );
+        assert_eq!(
+            receipt.try_get::<String>("", "trace_id").expect("trace"),
+            command.context.trace_id
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "correlation_id")
+                .expect("correlation"),
+            command.context.correlation_id.to_string()
+        );
+        assert!(
+            !receipt
+                .try_get::<bool>("", "actor_can_manage_modules")
+                .expect("privilege")
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "idempotency_key")
+                .expect("idempotency"),
+            command.context.idempotency_key.to_string()
+        );
+
+        let replay = service
+            .stage_platform_build(command.clone())
+            .await
+            .expect("exact replay");
+        assert!(!replay.created);
+        assert_eq!(replay.staging_id, first.staging_id);
+
+        let mut changed_trace = command.clone();
+        changed_trace.context.trace_id = "test:changed-trace".to_string();
+        assert_eq!(
+            service.stage_platform_build(changed_trace).await,
+            Err(ModuleGovernanceError::PlatformBuildStageIdempotencyConflict)
+        );
+
+        let mut changed_privilege = command;
+        changed_privilege.actor_can_manage_modules = true;
+        assert_eq!(
+            service.stage_platform_build(changed_privilege).await,
+            Err(ModuleGovernanceError::PlatformBuildStageIdempotencyConflict)
+        );
+    }
+
+    #[tokio::test]
+    async fn external_prebuilt_stage_receipt_rejects_changed_context_or_privilege() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_publish_requests (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, \
+                revision INTEGER NOT NULL, status TEXT NOT NULL, artifact_origin TEXT NOT NULL, \
+                artifact_checksum_sha256 TEXT NULL, submitted_at TEXT NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_publish_external_staging (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, expected_revision INTEGER NOT NULL, \
+                artifact_digest TEXT NOT NULL, source_evidence_kind TEXT NOT NULL, source_reference TEXT NULL, \
+                source_digest TEXT NULL, source_absence_reason TEXT NULL, provenance_reference TEXT NOT NULL, \
+                provenance_digest TEXT NOT NULL, provenance_policy_revision TEXT NOT NULL, \
+                quarantine_review_reference TEXT NOT NULL, quarantine_policy_revision TEXT NOT NULL, \
+                quarantine_approved_by_principal JSON NOT NULL, staged_by_principal JSON NOT NULL, \
+                actor_id TEXT NOT NULL, trace_id TEXT NOT NULL, correlation_id TEXT NOT NULL, \
+                actor_can_manage_modules BOOLEAN NOT NULL, idempotency_key TEXT NOT NULL, \
+                staged_at TEXT NOT NULL, UNIQUE (request_id, idempotency_key)\
+             )",
+            "CREATE TABLE registry_publication_evidence (\
+                request_id TEXT NOT NULL, authority TEXT NOT NULL, \
+                subject_digest_sha256 TEXT NOT NULL, created_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_governance_events (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL, \
+                event_type TEXT NOT NULL, actor_principal JSON NOT NULL, publisher_principal JSON NULL, \
+                details JSON NOT NULL, created_at TEXT NOT NULL\
+             )",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("stage fixture schema");
+        }
+
+        let actor_id = Uuid::new_v4();
+        let actor_principal = serde_json::json!({ "kind": "user", "id": actor_id });
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_publish_requests (\
+                    id, slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
+                    submitted_at, updated_at\
+                 ) VALUES ('request-1', 'sample_module', '1.0.0', 1, 'submitted', \
+                    'external_prebuilt', ?1, NULL, datetime('now'))"
+                    .to_string(),
+                vec!["a".repeat(64).into()],
+            ))
+            .await
+            .expect("publish request fixture");
+
+        let command = ModuleExternalPrebuiltStageCommand {
+            request_id: "request-1".to_string(),
+            expected_revision: 1,
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: "test:external-prebuilt-stage-receipt".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            artifact_digest: format!("sha256:{}", "a".repeat(64)),
+            source_evidence: ModuleExternalSourceEvidence::Reproducible {
+                reference: "https://source.example/modules/sample_module.tar.gz".to_string(),
+                digest: format!("sha256:{}", "b".repeat(64)),
+            },
+            provenance_reference: "https://evidence.example/provenance.json".to_string(),
+            provenance_digest: format!("sha256:{}", "c".repeat(64)),
+            provenance_policy_revision: "external-provenance-policy".to_string(),
+            quarantine_review_reference: "https://reviews.example/quarantine/1".to_string(),
+            quarantine_policy_revision: "external-quarantine-policy".to_string(),
+            quarantine_approved_by_principal: actor_principal.clone(),
+            actor_principal: actor_principal.clone(),
+            actor_can_manage_modules: true,
+        };
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let first = service
+            .stage_external_prebuilt(command.clone())
+            .await
+            .expect("first stage");
+        assert!(first.created);
+        let receipt = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT expected_revision, actor_id, trace_id, correlation_id, \
+                 actor_can_manage_modules, idempotency_key FROM registry_publish_external_staging"
+                    .to_string(),
+            ))
+            .await
+            .expect("stage receipt query")
+            .expect("stage receipt");
+        assert_eq!(
+            receipt
+                .try_get::<i64>("", "expected_revision")
+                .expect("expected revision"),
+            command.expected_revision
+        );
+        assert_eq!(
+            receipt.try_get::<String>("", "actor_id").expect("actor"),
+            actor_id.to_string()
+        );
+        assert_eq!(
+            receipt.try_get::<String>("", "trace_id").expect("trace"),
+            command.context.trace_id
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "correlation_id")
+                .expect("correlation"),
+            command.context.correlation_id.to_string()
+        );
+        assert!(
+            receipt
+                .try_get::<bool>("", "actor_can_manage_modules")
+                .expect("privilege")
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "idempotency_key")
+                .expect("idempotency"),
+            command.context.idempotency_key.to_string()
+        );
+
+        let replay = service
+            .stage_external_prebuilt(command.clone())
+            .await
+            .expect("exact replay");
+        assert!(!replay.created);
+        assert_eq!(replay.staging_id, first.staging_id);
+
+        let mut changed_trace = command.clone();
+        changed_trace.context.trace_id = "test:changed-trace".to_string();
+        assert_eq!(
+            service.stage_external_prebuilt(changed_trace).await,
+            Err(ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict)
+        );
+
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE registry_publish_external_staging SET actor_can_manage_modules = 0"
+                    .to_string(),
+            ))
+            .await
+            .expect("corrupt privilege receipt");
+        assert_eq!(
+            service.stage_external_prebuilt(command).await,
+            Err(ModuleGovernanceError::ExternalPrebuiltStageIdempotencyConflict)
+        );
+    }
+
+    #[tokio::test]
+    async fn alloy_authored_stage_receipt_rejects_changed_command_context() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_publish_requests (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, \
+                revision INTEGER NOT NULL, status TEXT NOT NULL, artifact_origin TEXT NOT NULL, \
+                artifact_checksum_sha256 TEXT NULL, submitted_at TEXT NULL, updated_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_publish_alloy_staging (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, expected_revision INTEGER NOT NULL, \
+                alloy_tenant_id TEXT NOT NULL, alloy_script_id TEXT NOT NULL, artifact_digest TEXT NOT NULL, \
+                source_digest TEXT NOT NULL, source_revision INTEGER NOT NULL, parent_release_slug TEXT NULL, \
+                parent_release_version TEXT NULL, parent_release_digest TEXT NULL, review_reference TEXT NOT NULL, \
+                review_digest TEXT NOT NULL, review_policy_revision TEXT NOT NULL, reviewed_by_principal JSON NOT NULL, \
+                sandbox_execution_id TEXT NOT NULL, sandbox_test_path TEXT NOT NULL, sandbox_executor TEXT NOT NULL, \
+                sandbox_runtime_abi TEXT NOT NULL, sandbox_policy_digest TEXT NOT NULL, \
+                sandbox_capability_grants INTEGER NOT NULL, staged_by_principal JSON NOT NULL, actor_id TEXT NOT NULL, \
+                trace_id TEXT NOT NULL, correlation_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, \
+                staged_at TEXT NOT NULL, UNIQUE (request_id, idempotency_key)\
+             )",
+            "CREATE TABLE registry_publication_evidence (\
+                request_id TEXT NOT NULL, authority TEXT NOT NULL, \
+                subject_digest_sha256 TEXT NOT NULL, created_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_governance_events (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL, \
+                event_type TEXT NOT NULL, actor_principal JSON NOT NULL, publisher_principal JSON NULL, \
+                details JSON NOT NULL, created_at TEXT NOT NULL\
+             )",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("stage fixture schema");
+        }
+
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO registry_publish_requests (\
+                    id, slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
+                    submitted_at, updated_at\
+                 ) VALUES ('request-1', 'sample_module', '1.0.0', 1, 'submitted', \
+                    'alloy_authored', ?1, NULL, datetime('now'))"
+                    .to_string(),
+                vec!["a".repeat(64).into()],
+            ))
+            .await
+            .expect("publish request fixture");
+        let command = ModuleAlloyAuthoredStageCommand {
+            request_id: "request-1".to_string(),
+            expected_revision: 1,
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: Some(tenant_id),
+                trace_id: "test:alloy-stage-receipt".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            alloy_tenant_id: tenant_id,
+            alloy_script_id: Uuid::new_v4(),
+            artifact_digest: format!("sha256:{}", "a".repeat(64)),
+            source_digest: format!("sha256:{}", "a".repeat(64)),
+            source_revision: 1,
+            parent_release: None,
+            review_reference: "alloy://scripts/example/revisions/1/reviews/approved".to_string(),
+            review_digest: format!("sha256:{}", "b".repeat(64)),
+            review_policy_revision: "review-policy".to_string(),
+            reviewed_by_principal: serde_json::json!({ "kind": "user", "id": Uuid::new_v4() }),
+            sandbox_execution_id: Uuid::new_v4(),
+            sandbox_test_path: ALLOY_PUBLICATION_SMOKE_TEST_PATH.to_string(),
+            sandbox_executor: "rhai".to_string(),
+            sandbox_runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
+            sandbox_policy_digest: format!("sha256:{}", "c".repeat(64)),
+            sandbox_capability_grants: 0,
+            actor_principal: serde_json::json!({ "kind": "user", "id": actor_id }),
+        };
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let first = service
+            .stage_alloy_authored(command.clone())
+            .await
+            .expect("first stage");
+        assert!(first.created);
+        let receipt = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT expected_revision, actor_id, trace_id, correlation_id, idempotency_key \
+                 FROM registry_publish_alloy_staging"
+                    .to_string(),
+            ))
+            .await
+            .expect("stage receipt query")
+            .expect("stage receipt");
+        assert_eq!(
+            receipt
+                .try_get::<i64>("", "expected_revision")
+                .expect("expected revision"),
+            command.expected_revision
+        );
+        assert_eq!(
+            receipt.try_get::<String>("", "actor_id").expect("actor"),
+            actor_id.to_string()
+        );
+        assert_eq!(
+            receipt.try_get::<String>("", "trace_id").expect("trace"),
+            command.context.trace_id
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "correlation_id")
+                .expect("correlation"),
+            command.context.correlation_id.to_string()
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "idempotency_key")
+                .expect("idempotency"),
+            command.context.idempotency_key.to_string()
+        );
+
+        let replay = service
+            .stage_alloy_authored(command.clone())
+            .await
+            .expect("exact replay");
+        assert!(!replay.created);
+        assert_eq!(replay.staging_id, first.staging_id);
+
+        let mut changed_trace = command.clone();
+        changed_trace.context.trace_id = "test:changed-trace".to_string();
+        assert_eq!(
+            service.stage_alloy_authored(changed_trace).await,
+            Err(ModuleGovernanceError::AlloyAuthoredStageIdempotencyConflict)
+        );
+
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "UPDATE registry_publish_alloy_staging SET actor_id = 'corrupt-actor'".to_string(),
+            ))
+            .await
+            .expect("corrupt actor receipt");
+        assert_eq!(
+            service.stage_alloy_authored(command).await,
+            Err(ModuleGovernanceError::AlloyAuthoredStageIdempotencyConflict)
+        );
     }
 
     fn governance_request_snapshot(
@@ -11593,10 +12367,19 @@ mod tests {
 
     #[test]
     fn alloy_stage_requires_fixed_zero_grant_sandbox_evidence() {
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
         let mut command = ModuleAlloyAuthoredStageCommand {
             request_id: "request-alloy".into(),
             expected_revision: 1,
-            alloy_tenant_id: Uuid::new_v4(),
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: Some(tenant_id),
+                trace_id: "test:alloy-stage".into(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            alloy_tenant_id: tenant_id,
             alloy_script_id: Uuid::new_v4(),
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
             source_digest: format!("sha256:{}", "a".repeat(64)),
@@ -11612,8 +12395,7 @@ mod tests {
             sandbox_runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.into(),
             sandbox_policy_digest: format!("sha256:{}", "c".repeat(64)),
             sandbox_capability_grants: 0,
-            idempotency_key: Uuid::new_v4(),
-            actor_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
+            actor_principal: serde_json::json!({ "kind": "user", "id": actor_id }),
         };
         assert!(command.validate().is_ok());
 
@@ -11652,7 +12434,7 @@ mod tests {
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\
              )",
             "CREATE TABLE registry_publish_alloy_staging (\
-                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, alloy_tenant_id TEXT NOT NULL,\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, expected_revision INTEGER NOT NULL, alloy_tenant_id TEXT NOT NULL,\
                 alloy_script_id TEXT NOT NULL, artifact_digest TEXT NOT NULL, source_digest TEXT NOT NULL,\
                 source_revision INTEGER NOT NULL, parent_release_slug TEXT NULL,\
                 parent_release_version TEXT NULL, parent_release_digest TEXT NULL,\
@@ -11661,7 +12443,8 @@ mod tests {
                 sandbox_execution_id TEXT NOT NULL, sandbox_test_path TEXT NOT NULL,\
                 sandbox_executor TEXT NOT NULL, sandbox_runtime_abi TEXT NOT NULL,\
                 sandbox_policy_digest TEXT NOT NULL, sandbox_capability_grants INTEGER NOT NULL,\
-                staged_by_principal JSON NOT NULL, idempotency_key TEXT NOT NULL, staged_at TEXT NOT NULL,\
+                staged_by_principal JSON NOT NULL, actor_id TEXT NOT NULL, trace_id TEXT NOT NULL,\
+                correlation_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, staged_at TEXT NOT NULL,\
                 UNIQUE (request_id, idempotency_key)\
              )",
             "CREATE TABLE registry_module_releases (\
@@ -11713,12 +12496,21 @@ mod tests {
             version: "1.0.0".to_string(),
             digest: format!("sha256:{}", "a".repeat(64)),
         };
+        let alloy_tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
         let service = SeaOrmModuleGovernanceService::new(database.clone());
         service
             .stage_alloy_authored(ModuleAlloyAuthoredStageCommand {
                 request_id: "request-fork".to_string(),
                 expected_revision: 1,
-                alloy_tenant_id: Uuid::new_v4(),
+                context: ModuleCommandContext {
+                    actor_id,
+                    tenant_id: Some(alloy_tenant_id),
+                    trace_id: "test:alloy-fork".to_string(),
+                    correlation_id: Uuid::new_v4(),
+                    idempotency_key: Uuid::new_v4(),
+                },
+                alloy_tenant_id,
                 alloy_script_id: Uuid::new_v4(),
                 artifact_digest: format!("sha256:{}", "b".repeat(64)),
                 source_digest: format!("sha256:{}", "b".repeat(64)),
@@ -11734,8 +12526,7 @@ mod tests {
                 sandbox_runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
                 sandbox_policy_digest: format!("sha256:{}", "d".repeat(64)),
                 sandbox_capability_grants: 0,
-                idempotency_key: Uuid::new_v4(),
-                actor_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
+                actor_principal: serde_json::json!({ "kind": "user", "id": actor_id }),
             })
             .await
             .expect("stage imported fork");
@@ -12268,9 +13059,17 @@ mod tests {
 
     #[test]
     fn external_prebuilt_stage_requires_explicit_source_evidence() {
+        let actor_id = Uuid::new_v4();
         let command = ModuleExternalPrebuiltStageCommand {
             request_id: "request-1".to_string(),
             expected_revision: 1,
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: "test:external-prebuilt-stage".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
             source_evidence: ModuleExternalSourceEvidence::Unavailable {
                 reason_code: "source_unavailable".to_string(),
@@ -12281,14 +13080,20 @@ mod tests {
             quarantine_review_reference: "https://reviews.example/quarantine/1".to_string(),
             quarantine_policy_revision: "external-quarantine-v1".to_string(),
             quarantine_approved_by_principal: serde_json::json!({
-                "kind": "reviewer",
-                "id": "security-operator",
+                "kind": "user",
+                "id": actor_id,
             }),
-            idempotency_key: Uuid::new_v4(),
-            actor_principal: serde_json::json!({ "kind": "operator", "id": "publisher" }),
+            actor_principal: serde_json::json!({ "kind": "user", "id": actor_id }),
             actor_can_manage_modules: true,
         };
         assert!(command.validate().is_ok());
+
+        let mut tenant_scoped = command.clone();
+        tenant_scoped.context.tenant_id = Some(Uuid::new_v4());
+        assert!(matches!(
+            tenant_scoped.validate(),
+            Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand)
+        ));
 
         let mut unclassified_absence = command;
         unclassified_absence.source_evidence = ModuleExternalSourceEvidence::Unavailable {
@@ -12306,9 +13111,17 @@ mod tests {
             .await
             .expect("database");
         let service = SeaOrmModuleGovernanceService::new(database);
+        let actor_id = Uuid::new_v4();
         let command = ModuleExternalPrebuiltStageCommand {
             request_id: "request-1".to_string(),
             expected_revision: 1,
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: "test:external-prebuilt-authority".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
             artifact_digest: format!("sha256:{}", "a".repeat(64)),
             source_evidence: ModuleExternalSourceEvidence::Unavailable {
                 reason_code: "source_unavailable".to_string(),
@@ -12320,12 +13133,11 @@ mod tests {
             quarantine_policy_revision: "external-quarantine-policy".to_string(),
             quarantine_approved_by_principal: serde_json::json!({
                 "kind": "user",
-                "id": "security-operator",
+                "id": actor_id,
             }),
-            idempotency_key: Uuid::new_v4(),
             actor_principal: serde_json::json!({
                 "kind": "user",
-                "id": "security-operator",
+                "id": actor_id,
             }),
             actor_can_manage_modules: false,
         };
@@ -12340,7 +13152,7 @@ mod tests {
             serde_json::json!({ "kind": "user", "id": "other-operator" });
         assert_eq!(
             service.stage_external_prebuilt(mismatched_approver).await,
-            Err(ModuleGovernanceError::PublishRequestExternalPrebuiltStagingUnauthorized)
+            Err(ModuleGovernanceError::InvalidExternalPrebuiltStageCommand)
         );
     }
 

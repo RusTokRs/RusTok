@@ -1,7 +1,7 @@
 use rustok_build::NoopBuildEventPublisher;
 use rustok_build::build::Entity as BuildEntity;
 use rustok_core::ModuleRegistry;
-use rustok_modules::ModuleCompositionError;
+use rustok_modules::{ModuleCommandContext, ModuleCompositionError};
 use rustok_outbox::SysEventsMigration;
 use rustok_server::modules::{ManifestDiff, ManifestModuleSpec, ModulesManifest};
 use rustok_server::services::platform_composition::{
@@ -80,13 +80,21 @@ fn build_command(
     reason: &str,
 ) -> PlatformCompositionBuildCommand {
     PlatformCompositionBuildCommand {
-        tenant_id: Uuid::new_v4(),
-        actor_id: Uuid::new_v4(),
-        idempotency_key: Uuid::new_v4(),
+        context: platform_command_context(Uuid::new_v4(), Uuid::new_v4()),
         expected_revision,
         manifest,
         manifest_diff,
         reason: reason.to_string(),
+    }
+}
+
+fn platform_command_context(actor_id: Uuid, idempotency_key: Uuid) -> ModuleCommandContext {
+    ModuleCommandContext {
+        actor_id,
+        tenant_id: None,
+        trace_id: "test:platform-composition".to_string(),
+        correlation_id: idempotency_key,
+        idempotency_key,
     }
 }
 
@@ -326,7 +334,6 @@ async fn exact_idempotency_retry_replays_original_build_after_composition_change
     let seeded = PlatformCompositionService::active_snapshot(&db)
         .await
         .expect("seed active snapshot");
-    let tenant_id = Uuid::new_v4();
     let actor_id = Uuid::new_v4();
     let idempotency_key = Uuid::new_v4();
 
@@ -335,9 +342,7 @@ async fn exact_idempotency_retry_replays_original_build_after_composition_change
         publisher.clone(),
         &registry,
         PlatformCompositionBuildCommand {
-            tenant_id,
-            actor_id,
-            idempotency_key,
+            context: platform_command_context(actor_id, idempotency_key),
             expected_revision: seeded.revision,
             manifest: ModulesManifest::default(),
             manifest_diff: ManifestDiff::default(),
@@ -352,9 +357,7 @@ async fn exact_idempotency_retry_replays_original_build_after_composition_change
         publisher,
         &registry,
         PlatformCompositionBuildCommand {
-            tenant_id,
-            actor_id,
-            idempotency_key,
+            context: platform_command_context(actor_id, idempotency_key),
             expected_revision: seeded.revision,
             manifest: ModulesManifest::default(),
             manifest_diff: ManifestDiff::default(),

@@ -100,8 +100,8 @@ impl RegistryGovernanceService {
     }
 
     /// Transport adapter for external prebuilt staging. The owner remains the
-    /// sole writer and verifies the authenticated operator capability together
-    /// with the quarantine approver identity.
+    /// sole writer and verifies the platform command context, authenticated
+    /// operator capability, and quarantine approver identity together.
     pub async fn stage_external_prebuilt(
         &self,
         request_id: &str,
@@ -120,6 +120,7 @@ impl RegistryGovernanceService {
             .stage_external_prebuilt(ModuleExternalPrebuiltStageCommand {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
+                context: input.context,
                 artifact_digest: input.artifact_digest,
                 source_evidence: input.source_evidence,
                 provenance_reference: input.provenance_reference,
@@ -128,7 +129,6 @@ impl RegistryGovernanceService {
                 quarantine_review_reference: input.quarantine_review_reference,
                 quarantine_policy_revision: input.quarantine_policy_revision,
                 quarantine_approved_by_principal: authority.principal.to_json_value(),
-                idempotency_key: input.idempotency_key,
                 actor_principal: authority.principal.to_json_value(),
                 actor_can_manage_modules: authority.can_manage_modules,
             })
@@ -137,8 +137,9 @@ impl RegistryGovernanceService {
     }
 
     /// Transport adapter for staging an immutable completed platform build. It
-    /// receives a tenant only from the session-authenticated controller; the
-    /// owner derives both request-management permission and build identity.
+    /// receives a complete tenant command context only from the
+    /// session-authenticated controller; the owner derives both
+    /// request-management permission and build identity.
     pub async fn stage_platform_build(
         &self,
         request_id: &str,
@@ -157,9 +158,8 @@ impl RegistryGovernanceService {
             .stage_platform_build(ModulePublishPlatformBuildStageCommand {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
-                tenant_id: input.tenant_id,
+                context: input.context,
                 build_request_id: input.build_request_id,
-                idempotency_key: input.idempotency_key,
                 actor_principal: authority.principal.to_json_value(),
                 actor_can_manage_modules: authority.can_manage_modules,
             })

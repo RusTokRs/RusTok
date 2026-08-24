@@ -363,7 +363,6 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
             .context
             .tenant_id
             .ok_or(ModuleAuthoringPublishError::InvalidCommand)?;
-        let idempotency_key = command.context.idempotency_key;
         let completed = self
             .builds
             .load_completed(tenant_id, command.build_request_id)
@@ -427,9 +426,8 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
             .stage_platform_build(ModulePublishPlatformBuildStageCommand {
                 request_id: request_id.clone(),
                 expected_revision: 2,
-                tenant_id,
+                context: command.context.clone(),
                 build_request_id: command.build_request_id,
-                idempotency_key,
                 actor_principal: actor_principal.clone(),
                 actor_can_manage_modules: false,
             })

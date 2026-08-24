@@ -2,7 +2,6 @@ use rustok_api::manifest_hash::{canonical_manifest_snapshot_json, hash_manifest_
 use sea_orm::{DatabaseConnection, DatabaseTransaction, DbErr};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use uuid::Uuid;
 
 use crate::modules::{
     InstalledManifestModule, ManifestDiff, ManifestError, ManifestManager, ModulesManifest,
@@ -11,7 +10,7 @@ use rustok_api::PortError;
 use rustok_build::build::Model as Build;
 use rustok_build::{BuildEventPublisher, BuildRequest, BuildService};
 use rustok_modules::{
-    ModuleCompositionBuildAdmission, ModuleCompositionBuildEnqueueResult,
+    ModuleCommandContext, ModuleCompositionBuildAdmission, ModuleCompositionBuildEnqueueResult,
     ModuleCompositionBuildEnqueuer, ModuleCompositionBuildLease, ModuleCompositionError,
     ModuleCompositionOperation, ModuleCompositionSnapshot, ModuleCompositionUpdate,
     ModuleControlPlane, ModuleDefinitionError, SeaOrmModuleCompositionService,
@@ -81,9 +80,7 @@ pub enum PlatformCompositionModuleChange {
 /// and composition owner respectively.
 #[derive(Debug, Clone)]
 pub struct PlatformCompositionModuleMutation {
-    pub tenant_id: Uuid,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
     pub expected_revision: i64,
     pub change: PlatformCompositionModuleChange,
 }
@@ -91,9 +88,7 @@ pub struct PlatformCompositionModuleMutation {
 pub struct PlatformCompositionBuildService;
 
 pub struct PlatformCompositionBuildCommand {
-    pub tenant_id: Uuid,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
     pub expected_revision: i64,
     pub manifest: ModulesManifest,
     pub manifest_diff: ManifestDiff,
@@ -102,7 +97,7 @@ pub struct PlatformCompositionBuildCommand {
 
 #[derive(Serialize)]
 struct PlatformCompositionBuildReceiptRequest<'a> {
-    actor_id: Uuid,
+    context: &'a ModuleCommandContext,
     expected_revision: i64,
     manifest: &'a ModulesManifest,
     manifest_changes: &'a [String],
@@ -234,9 +229,7 @@ impl PlatformCompositionBuildService {
         mutation: PlatformCompositionModuleMutation,
     ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
         let operation = ModuleCompositionOperation {
-            tenant_id: mutation.tenant_id,
-            actor_id: mutation.actor_id,
-            idempotency_key: mutation.idempotency_key,
+            context: mutation.context.clone(),
             expected_revision: mutation.expected_revision,
         };
         let owner = ModuleControlPlane::new(db.clone()).composition();
@@ -265,13 +258,11 @@ impl PlatformCompositionBuildService {
         command: PlatformCompositionBuildCommand,
     ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
         let operation = ModuleCompositionOperation {
-            tenant_id: command.tenant_id,
-            actor_id: command.actor_id,
-            idempotency_key: command.idempotency_key,
+            context: command.context.clone(),
             expected_revision: command.expected_revision,
         };
         let receipt_request = PlatformCompositionBuildReceiptRequest {
-            actor_id: command.actor_id,
+            context: &command.context,
             expected_revision: command.expected_revision,
             manifest: &command.manifest,
             manifest_changes: &command.manifest_diff.changes,
@@ -321,9 +312,7 @@ impl PlatformCompositionBuildService {
             ),
         };
         Ok(PlatformCompositionBuildCommand {
-            tenant_id: mutation.tenant_id,
-            actor_id: mutation.actor_id,
-            idempotency_key: mutation.idempotency_key,
+            context: mutation.context,
             expected_revision: mutation.expected_revision,
             manifest,
             manifest_diff,
@@ -340,9 +329,7 @@ impl PlatformCompositionBuildService {
         command: PlatformCompositionBuildCommand,
     ) -> Result<PlatformCompositionBuildResult, PlatformCompositionBuildError> {
         let PlatformCompositionBuildCommand {
-            tenant_id,
-            actor_id,
-            idempotency_key,
+            context,
             expected_revision,
             manifest,
             manifest_diff,
@@ -363,16 +350,14 @@ impl PlatformCompositionBuildService {
         let enqueuer = ServerCompositionBuildEnqueuer {
             manifest,
             manifest_diff,
-            requested_by: actor_id.to_string(),
+            requested_by: context.actor_id.to_string(),
             reason,
         };
         let owner_result = owner
             .replace_active_snapshot_and_enqueue(
                 ModuleCompositionUpdate {
                     operation: ModuleCompositionOperation {
-                        tenant_id,
-                        actor_id,
-                        idempotency_key,
+                        context,
                         expected_revision,
                     },
                     manifest: manifest_json,

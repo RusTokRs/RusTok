@@ -12,9 +12,11 @@ use sea_orm::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use thiserror::Error;
-use uuid::Uuid;
 
-use crate::data::{now_expression, placeholder};
+use crate::{
+    ModuleCommandContext,
+    data::{now_expression, placeholder},
+};
 use rustok_api::{
     PortError,
     manifest_hash::{canonical_manifest_snapshot_json, hash_manifest_snapshot},
@@ -40,9 +42,10 @@ pub struct ModuleCompositionSnapshot {
 /// completed retries replayable after later composition changes.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleCompositionOperation {
-    pub tenant_id: Uuid,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    /// Global composition is owned by the platform, never by an arbitrary
+    /// tenant. The context therefore must be platform-scoped (`tenant_id` is
+    /// absent) while retaining the authenticated actor and request evidence.
+    pub context: ModuleCommandContext,
     pub expected_revision: i64,
 }
 
@@ -84,7 +87,7 @@ pub enum ModuleCompositionBuildAdmission<T> {
 
 #[derive(Serialize)]
 struct ModuleCompositionOperationReceiptRequest<'a, R> {
-    actor_id: Uuid,
+    context: &'a ModuleCommandContext,
     expected_revision: i64,
     request: &'a R,
 }
@@ -146,15 +149,15 @@ impl SeaOrmModuleCompositionService {
     {
         validate_operation(operation)?;
         let receipt_request = ModuleCompositionOperationReceiptRequest {
-            actor_id: operation.actor_id,
+            context: &operation.context,
             expected_revision: operation.expected_revision,
             request: operation_request,
         };
         let admission = idempotency::admit(
             &self.db,
-            idempotency::OwnerOperationScope::Tenant(operation.tenant_id),
+            idempotency::OwnerOperationScope::Platform,
             MODULE_COMPOSITION_OWNER_SLUG,
-            &operation.idempotency_key.to_string(),
+            &operation.context.idempotency_key.to_string(),
             REPLACE_AND_ENQUEUE_BUILD_OPERATION,
             &receipt_request,
         )
@@ -285,7 +288,7 @@ impl SeaOrmModuleCompositionService {
                     next_revision.into(),
                     SqlValue::Json(Some(Box::new(canonical_manifest.clone()))),
                     manifest_hash.clone().into(),
-                    update.operation.actor_id.to_string().into(),
+                    update.operation.context.actor_id.to_string().into(),
                     ACTIVE_MODULE_COMPOSITION_ID.into(),
                     current.revision.into(),
                 ],
@@ -390,8 +393,10 @@ pub enum ModuleCompositionError {
     InvalidRevision,
     #[error("composition operation requires a positive expected revision")]
     InvalidExpectedRevision,
-    #[error("composition operation requires a non-nil {field}")]
-    InvalidOperationIdentity { field: &'static str },
+    #[error("composition operation command context is invalid: {0}")]
+    InvalidCommandContext(String),
+    #[error("composition operation must use the platform command scope")]
+    InvalidOperationScope,
     #[error("active composition revision overflowed")]
     RevisionOverflow,
     #[error("active composition revision conflict: expected {expected}, current {current}")]
@@ -417,16 +422,12 @@ pub enum ModuleCompositionError {
 fn validate_operation(
     operation: &ModuleCompositionOperation,
 ) -> Result<(), ModuleCompositionError> {
-    if operation.tenant_id.is_nil() {
-        return Err(ModuleCompositionError::InvalidOperationIdentity { field: "tenant ID" });
-    }
-    if operation.actor_id.is_nil() {
-        return Err(ModuleCompositionError::InvalidOperationIdentity { field: "actor ID" });
-    }
-    if operation.idempotency_key.is_nil() {
-        return Err(ModuleCompositionError::InvalidOperationIdentity {
-            field: "idempotency key",
-        });
+    operation
+        .context
+        .validate()
+        .map_err(|error| ModuleCompositionError::InvalidCommandContext(error.to_string()))?;
+    if operation.context.tenant_id.is_some() {
+        return Err(ModuleCompositionError::InvalidOperationScope);
     }
     if operation.expected_revision < 1 {
         return Err(ModuleCompositionError::InvalidExpectedRevision);
@@ -444,7 +445,8 @@ fn operation_failure(error: &ModuleCompositionError) -> PortError {
         }
         ModuleCompositionError::InvalidRevision
         | ModuleCompositionError::InvalidExpectedRevision
-        | ModuleCompositionError::InvalidOperationIdentity { .. }
+        | ModuleCompositionError::InvalidCommandContext(_)
+        | ModuleCompositionError::InvalidOperationScope
         | ModuleCompositionError::InvalidBootstrapActor
         | ModuleCompositionError::Serialize(_)
         | ModuleCompositionError::Deserialize(_) => {
@@ -465,6 +467,7 @@ mod tests {
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use uuid::Uuid;
 
     use rustok_outbox::SysEventsMigration;
 
@@ -532,9 +535,13 @@ mod tests {
 
     fn operation(expected_revision: i64, idempotency_key: Uuid) -> ModuleCompositionOperation {
         ModuleCompositionOperation {
-            tenant_id: Uuid::new_v4(),
-            actor_id: Uuid::new_v4(),
-            idempotency_key,
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: None,
+                trace_id: "test:platform-composition".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key,
+            },
             expected_revision,
         }
     }
@@ -584,47 +591,58 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admission_requires_non_nil_identity_and_positive_revision() {
+    async fn admission_requires_platform_scoped_context_and_positive_revision() {
         let service = SeaOrmModuleCompositionService::new(setup_database().await);
         let request = serde_json::json!({ "change": "install" });
 
-        for (operation, expected_field) in [
-            (
-                ModuleCompositionOperation {
-                    tenant_id: Uuid::nil(),
-                    actor_id: Uuid::new_v4(),
-                    idempotency_key: Uuid::new_v4(),
-                    expected_revision: 1,
-                },
-                Some("tenant ID"),
-            ),
-            (
-                ModuleCompositionOperation {
-                    tenant_id: Uuid::new_v4(),
+        let tenant_scoped = ModuleCompositionOperation {
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(Uuid::new_v4()),
+                trace_id: "test:tenant-composition".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            expected_revision: 1,
+        };
+        assert!(matches!(
+            service
+                .admit_build_operation::<i64, _>(&tenant_scoped, &request)
+                .await,
+            Err(ModuleCompositionError::InvalidOperationScope)
+        ));
+
+        for operation in [
+            ModuleCompositionOperation {
+                context: ModuleCommandContext {
                     actor_id: Uuid::nil(),
+                    tenant_id: None,
+                    trace_id: "test:invalid-actor".to_string(),
+                    correlation_id: Uuid::new_v4(),
                     idempotency_key: Uuid::new_v4(),
-                    expected_revision: 1,
                 },
-                Some("actor ID"),
-            ),
-            (
-                ModuleCompositionOperation {
-                    tenant_id: Uuid::new_v4(),
+                expected_revision: 1,
+            },
+            ModuleCompositionOperation {
+                context: ModuleCommandContext {
                     actor_id: Uuid::new_v4(),
+                    tenant_id: None,
+                    trace_id: "".to_string(),
+                    correlation_id: Uuid::new_v4(),
+                    idempotency_key: Uuid::new_v4(),
+                },
+                expected_revision: 1,
+            },
+            ModuleCompositionOperation {
+                context: ModuleCommandContext {
+                    actor_id: Uuid::new_v4(),
+                    tenant_id: None,
+                    trace_id: "test:invalid-idempotency".to_string(),
+                    correlation_id: Uuid::new_v4(),
                     idempotency_key: Uuid::nil(),
-                    expected_revision: 1,
                 },
-                Some("idempotency key"),
-            ),
-            (
-                ModuleCompositionOperation {
-                    tenant_id: Uuid::new_v4(),
-                    actor_id: Uuid::new_v4(),
-                    idempotency_key: Uuid::new_v4(),
-                    expected_revision: 0,
-                },
-                None,
-            ),
+                expected_revision: 1,
+            },
         ] {
             let error = match service
                 .admit_build_operation::<i64, _>(&operation, &request)
@@ -633,17 +651,44 @@ mod tests {
                 Ok(_) => panic!("invalid operation context must fail before receipt admission"),
                 Err(error) => error,
             };
-            match expected_field {
-                Some(field) => assert!(matches!(
-                    error,
-                    ModuleCompositionError::InvalidOperationIdentity { field: actual } if actual == field
-                )),
-                None => assert!(matches!(
-                    error,
-                    ModuleCompositionError::InvalidExpectedRevision
-                )),
-            }
+            assert!(matches!(
+                error,
+                ModuleCompositionError::InvalidCommandContext(_)
+            ));
         }
+
+        assert!(matches!(
+            service
+                .admit_build_operation::<i64, _>(&operation(0, Uuid::new_v4()), &request)
+                .await,
+            Err(ModuleCompositionError::InvalidExpectedRevision)
+        ));
+    }
+
+    #[tokio::test]
+    async fn admission_records_the_platform_receipt_scope() {
+        let database = setup_database().await;
+        let service = SeaOrmModuleCompositionService::new(database.clone());
+        let operation = operation(1, Uuid::new_v4());
+        let _lease = admit_recording_operation(
+            &service,
+            &operation,
+            &serde_json::json!({ "change": "install" }),
+        )
+        .await;
+
+        let row = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT tenant_id, scope_key FROM owner_operation_receipts".to_string(),
+            ))
+            .await
+            .expect("load receipt")
+            .expect("composition receipt");
+        let tenant_id: Option<String> = row.try_get("", "tenant_id").expect("tenant ID");
+        let scope_key: String = row.try_get("", "scope_key").expect("scope key");
+        assert_eq!(tenant_id, None);
+        assert_eq!(scope_key, "platform");
     }
 
     #[tokio::test]
@@ -691,6 +736,15 @@ mod tests {
         assert!(!updated.replayed);
         assert!(replay.replayed);
         assert_eq!(enqueuer.calls.load(Ordering::SeqCst), 1);
+
+        let mut changed_evidence = initial_operation.clone();
+        changed_evidence.context.trace_id = "test:changed-composition-trace".to_string();
+        assert!(matches!(
+            service
+                .admit_build_operation::<i64, _>(&changed_evidence, &request)
+                .await,
+            Err(ModuleCompositionError::OperationReceipt(_))
+        ));
 
         assert!(matches!(
             {

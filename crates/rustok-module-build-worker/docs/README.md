@@ -3,6 +3,33 @@
 The worker requires a mutually authenticated listener configured with the
 `RUSTOK_MODULE_BUILD` prefix:
 
+## Kubernetes deployment renderer
+
+`scripts/generate/render-module-build-worker-deployment.mjs` renders the
+canonical hardened Kubernetes boundary. It requires an explicit namespace,
+repository, digest-pinned worker image, `gvisor` or `kata` runtime, mTLS secret,
+isolation-attestation ConfigMap, non-secret worker configuration ConfigMap, and
+read-only source-archive PVC. The renderer selects `runsc` or `kata`, creates a
+two-replica rolling deployment, disables service-account tokens and all host
+namespaces, applies a non-root read-only security context and bounded
+ephemeral volumes, limits ingress to the build dispatcher, and denies egress.
+
+The configuration ConfigMap must provide the remaining non-secret fixed paths
+and publication settings, including the absolute job launcher, Cargo,
+Cargo-home, wasm-tools, credential-broker, and Cosign executable paths and
+their digests. It must set `RUSTOK_MODULE_BUILD_WORKDIR` to
+`/var/lib/rustok/work` and `RUSTOK_MODULE_BUILD_CARGO_HOME` to
+`/var/lib/rustok/cargo`; request data cannot select any of those values.
+
+The renderer invokes the image-owned
+`/app/rustok-module-build-worker-probe` for startup, readiness, and liveness.
+The probe establishes mTLS and calls the generated readiness RPC; it does not
+treat an open TCP listener as evidence that the OCI launcher, pinned image, or
+isolation attestation remain valid. The mounted `attestation.json` is
+configuration evidence only. Production still needs retained cluster evidence
+that the selected RuntimeClass and launcher actually enforce the declared OCI
+job controls.
+
 - `RUSTOK_MODULE_BUILD_LISTEN_ADDR`;
 - `RUSTOK_MODULE_BUILD_SERVER_CERT_PEM`;
 - `RUSTOK_MODULE_BUILD_SERVER_KEY_PEM`;

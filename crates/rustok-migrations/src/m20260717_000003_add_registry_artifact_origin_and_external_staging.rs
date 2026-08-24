@@ -21,6 +21,7 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE registry_publish_external_staging (\
                     id TEXT PRIMARY KEY,\
                     request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
+                    expected_revision BIGINT NOT NULL CHECK (expected_revision > 0),\
                     artifact_digest TEXT NOT NULL CHECK (length(artifact_digest) = 71),\
                     source_evidence_kind TEXT NOT NULL CHECK (source_evidence_kind IN ('reproducible', 'unavailable')),\
                     source_reference TEXT NULL,\
@@ -33,6 +34,10 @@ impl MigrationTrait for Migration {
                     quarantine_policy_revision TEXT NOT NULL,\
                     quarantine_approved_by_principal JSONB NOT NULL,\
                     staged_by_principal JSONB NOT NULL,\
+                    actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
+                    correlation_id UUID NOT NULL,\
+                    actor_can_manage_modules BOOLEAN NOT NULL,\
                     idempotency_key UUID NOT NULL,\
                     staged_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                     CHECK (\
@@ -54,6 +59,7 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE registry_publish_external_staging (\
                     id TEXT PRIMARY KEY NOT NULL,\
                     request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
+                    expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),\
                     artifact_digest TEXT NOT NULL CHECK (length(artifact_digest) = 71),\
                     source_evidence_kind TEXT NOT NULL CHECK (source_evidence_kind IN ('reproducible', 'unavailable')),\
                     source_reference TEXT NULL,\
@@ -66,6 +72,10 @@ impl MigrationTrait for Migration {
                     quarantine_policy_revision TEXT NOT NULL,\
                     quarantine_approved_by_principal JSON NOT NULL,\
                     staged_by_principal JSON NOT NULL,\
+                    actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
+                    correlation_id TEXT NOT NULL,\
+                    actor_can_manage_modules BOOLEAN NOT NULL,\
                     idempotency_key TEXT NOT NULL,\
                     staged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                     CHECK (\
@@ -108,5 +118,61 @@ impl MigrationTrait for Migration {
                 .await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Migration;
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+    #[tokio::test]
+    async fn sqlite_external_prebuilt_staging_persists_command_context_receipt_fields() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        for statement in [
+            "CREATE TABLE registry_publish_requests (id TEXT PRIMARY KEY)",
+            "CREATE TABLE registry_module_releases (id TEXT PRIMARY KEY)",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("migration prerequisite schema");
+        }
+
+        let manager = SchemaManager::new(&database);
+        Migration
+            .up(&manager)
+            .await
+            .expect("external prebuilt staging migration");
+        let fields = database
+            .query_all(Statement::from_string(
+                DbBackend::Sqlite,
+                "PRAGMA table_info(registry_publish_external_staging)".to_string(),
+            ))
+            .await
+            .expect("staging schema query")
+            .into_iter()
+            .map(|row| row.try_get::<String>("", "name").expect("field name"))
+            .collect::<Vec<_>>();
+
+        for field in [
+            "expected_revision",
+            "actor_id",
+            "trace_id",
+            "correlation_id",
+            "actor_can_manage_modules",
+            "idempotency_key",
+        ] {
+            assert!(
+                fields.iter().any(|candidate| candidate == field),
+                "missing {field}"
+            );
+        }
     }
 }
