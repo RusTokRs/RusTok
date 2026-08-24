@@ -12,10 +12,9 @@ const failures = [];
 const files = {
   evidence: 'crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
   postService: 'crates/rustok-blog/src/services/post.rs',
+  categoryProjection: 'crates/rustok-blog/src/services/category_name_projection.rs',
   dto: 'crates/rustok-blog/src/dto/post.rs',
   harness: 'crates/rustok-blog/tests/post_category_name_projection.rs',
-  slice: 'crates/rustok-blog/docs/implementation-plan-slice-105.md',
-  current: 'crates/rustok-blog/docs/implementation-plan-current.md',
 };
 
 function read(relativePath) {
@@ -46,10 +45,9 @@ function count(source, marker) {
 
 const evidence = json(files.evidence);
 const postService = read(files.postService);
+const categoryProjection = read(files.categoryProjection);
 const dto = read(files.dto);
 const harness = read(files.harness);
-const slice = read(files.slice);
-const current = read(files.current);
 
 if (evidence) {
   if (
@@ -65,8 +63,10 @@ if (evidence) {
   const contract = evidence.source_contract ?? {};
   for (const [key, expected] of Object.entries({
     category_identity_source: 'blog_posts.category_id',
-    category_name_source: 'blog_category_translations.name',
-    tenant_bound_translation_query: true,
+    category_name_source: 'taxonomy_owner_category.name',
+    typed_binding_source: 'blog_category_taxonomy_bindings',
+    taxonomy_scope: 'module/blog',
+    tenant_bound_binding_query: true,
     detail_projection_present: true,
     authenticated_list_projection_present: true,
     public_list_projection_present: true,
@@ -77,7 +77,8 @@ if (evidence) {
     tenant_fallback_precedence: true,
     platform_fallback_precedence: true,
     first_available_fallback_retained: true,
-    missing_category_or_translation_returns_none: true,
+    incomplete_binding_or_projection_fails_closed: true,
+    legacy_category_translation_read_removed: true,
     category_translation_write_semantics_changed: false,
     category_translation_readiness_promoted: false,
     search_projection_source_changed: false,
@@ -92,15 +93,14 @@ if (evidence) {
 
   if (
     evidence.production_source !== files.postService ||
+    evidence.category_projection_source !== files.categoryProjection ||
     evidence.dto_source !== files.dto ||
     evidence.source_harness?.path !== files.harness ||
     evidence.source_harness?.status !== 'executable_no_run' ||
     evidence.source_harness?.runtime_status !== 'not_run' ||
-    evidence.verifier !== 'scripts/verify/verify-blog-post-category-name-projection-source.mjs' ||
-    evidence.self_test !== 'scripts/verify/verify-blog-post-category-name-projection-source.test.mjs' ||
     evidence.planning_result?.post_category_name_source_complete !== true ||
+    evidence.planning_result?.legacy_blog_category_translation_projection_retired !== true ||
     evidence.planning_result?.additional_category_name_projection_scaffolding_required !== false ||
-    evidence.planning_result?.next_autonomous_source_work_requires_fresh_audit !== true ||
     !Array.isArray(evidence.execution) ||
     evidence.execution.length !== 0
   ) failures.push(`${files.evidence}: source/harness/planning drift`);
@@ -111,32 +111,44 @@ if (count(dto, 'pub category_name: Option<String>') < 2) {
 }
 
 for (const marker of [
-  'blog_category_translation, blog_post, blog_post_channel_visibility, blog_post_translation',
   'async fn load_category_names_map(',
-  'category_ids.sort_unstable();',
-  'category_ids.dedup();',
-  'blog_category_translation::Column::TenantId.eq(tenant_id)',
-  'blog_category_translation::Column::CategoryId.is_in(category_ids.clone())',
-  'resolve_by_locale_with_fallback(',
-  'fallback_locale,',
-  'translation.name.clone()',
+  'crate::services::category_name_projection::load_category_names_map(',
   'let category_names_map = self',
   '.and_then(|category_id| category_names_map.get(&category_id).cloned())',
   'let category_name = if let Some(category_id) = post.category_id',
   'category_name,',
 ]) need(postService, marker, files.postService);
-
 if (count(postService, '.load_category_names_map(') !== 3) {
   failures.push(`${files.postService}: expected exactly three category-name projection calls`);
 }
+forbid(postService, 'blog_category_translation', files.postService);
 forbid(postService, 'category_name: None', files.postService);
 forbid(postService, 'CategoryService::new(self.db.clone()', files.postService);
-forbid(postService, '.get(\n                tenant_id,\n                SecurityContext::system()', files.postService);
+
+for (const marker of [
+  'blog_category_taxonomy_binding',
+  'TaxonomyOwnerCategoryReader',
+  'TaxonomyScopeType::Module',
+  'const BLOG_TAXONOMY_SCOPE: &str = "blog";',
+  'BlogCategoryId.is_in(category_ids.clone())',
+  'bindings.len() != category_ids.len()',
+  'binding_by_blog.len() != category_ids.len()',
+  'blog_by_taxonomy.len() != category_ids.len()',
+  'Some(&taxonomy_ids)',
+  'fallback_locale,',
+  'canonical.len() != category_ids.len()',
+  'canonical.name.clone()',
+]) need(categoryProjection, marker, files.categoryProjection);
+forbid(categoryProjection, 'blog_category_translation', files.categoryProjection);
+forbid(categoryProjection, 'CategoryService', files.categoryProjection);
 
 for (const marker of [
   'post_category_name_projects_across_detail_and_list_paths',
   'CreateCategoryInput',
   'name: "Nachrichten".to_string()',
+  'blog_category_translation::Entity::delete_many()',
+  'blog_category_translation::Column::TenantId.eq(tenant_id)',
+  'blog_category_translation::Column::CategoryId.eq(category_id)',
   'get_post_with_locale_fallback(',
   'Some("de")',
   'list_posts_with_locale_fallback(',
@@ -146,25 +158,10 @@ for (const marker of [
   'public.items[0].category_name.as_deref()',
 ]) need(harness, marker, files.harness);
 
-for (const marker of [
-  'Status: `post_category_name_projection_source_ready_maintainer_execution_pending`.',
-  '`post_category_name_projection = source_ready_maintainer_execution_pending`',
-  '`category_identity_source = blog_posts.category_id`',
-  '`category_name_source = blog_category_translations.name`',
-  'They do not call `CategoryService::get` once per post',
-  'No additional category-name projection scaffolding is required after this slice.',
-]) need(slice, marker, files.slice);
-
-for (const marker of [
-  'Status: `canonical_source_cursor_actualized_through_slice_105`.',
-  '`post_category_name_projection = source_ready_maintainer_execution_pending`',
-  'source-complete through slice 105',
-]) need(current, marker, files.current);
-
 if (failures.length) {
   console.error('[verify-blog-post-category-name-projection-source] FAIL');
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(Math.min(failures.length, 255));
 }
 
-console.log('[verify-blog-post-category-name-projection-source] PASS detail=list=public batch=true execution=not-run');
+console.log('[verify-blog-post-category-name-projection-source] PASS owner=taxonomy binding=typed detail=list=public batch=true execution=not-run');
