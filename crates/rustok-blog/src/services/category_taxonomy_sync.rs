@@ -1,7 +1,6 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
-    QueryOrder,
 };
 use uuid::Uuid;
 
@@ -10,7 +9,7 @@ use crate::error::{BlogError, BlogResult};
 
 const BLOG_TAXONOMY_SCOPE: &str = "blog";
 
-pub(in crate::services) async fn sync_category_copy_in_tx(
+pub(crate) async fn sync_category_copy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -47,54 +46,6 @@ pub(in crate::services) async fn sync_category_copy_in_tx(
     .map_err(map_taxonomy_error)?;
 
     ensure_same_id_binding_in_tx(txn, tenant_id, category_id).await
-}
-
-pub(in crate::services) async fn sync_category_structure_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> BlogResult<()> {
-    let category = blog_category::Entity::find_by_id(category_id)
-        .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .one(txn)
-        .await?
-        .ok_or(BlogError::CategoryNotFound(category_id))?;
-
-    rustok_taxonomy::sync_module_category_structure_with_owned_copy_in_tx(
-        txn,
-        tenant_id,
-        category_id,
-        BLOG_TAXONOMY_SCOPE,
-        canonical_key_for_blog_category(category_id),
-        category.parent_id,
-        category.position,
-        None,
-        None,
-    )
-    .await
-    .map_err(map_taxonomy_error)?;
-
-    ensure_same_id_binding_in_tx(txn, tenant_id, category_id).await
-}
-
-pub(in crate::services) async fn sync_siblings_for_parent_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    parent_id: Option<Uuid>,
-) -> BlogResult<()> {
-    let categories = blog_category::Entity::find()
-        .filter(blog_category::Column::TenantId.eq(tenant_id))
-        .order_by_asc(blog_category::Column::Position)
-        .order_by_asc(blog_category::Column::Id)
-        .all(txn)
-        .await?;
-    for category in categories
-        .into_iter()
-        .filter(|category| category.parent_id == parent_id)
-    {
-        sync_category_structure_in_tx(txn, tenant_id, category.id).await?;
-    }
-    Ok(())
 }
 
 async fn ensure_same_id_binding_in_tx(
