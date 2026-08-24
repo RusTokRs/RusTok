@@ -8,7 +8,7 @@ use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
-    EntityTrait, QueryFilter, Statement,
+    EntityTrait, PaginatorTrait, QueryFilter, Statement,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -21,14 +21,7 @@ async fn taxonomy_route_registry_rejects_writes_when_legacy_route_state_is_stale
     let tenant_id = Uuid::new_v4();
     let service = CategoryService::new(db.clone());
 
-    let owner = create_category(
-        &service,
-        tenant_id,
-        None,
-        "Support",
-        "support",
-    )
-    .await?;
+    let owner = create_category(&service, tenant_id, None, "Support", "support").await?;
     service
         .update(
             tenant_id,
@@ -47,14 +40,7 @@ async fn taxonomy_route_registry_rejects_writes_when_legacy_route_state_is_stale
         )
         .await?;
 
-    let challenger = create_category(
-        &service,
-        tenant_id,
-        None,
-        "General",
-        "general",
-    )
-    .await?;
+    let challenger = create_category(&service, tenant_id, None, "General", "general").await?;
 
     delete_legacy_route_state(&db, tenant_id, owner).await?;
 
