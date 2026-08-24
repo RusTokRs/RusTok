@@ -12,7 +12,7 @@ use crate::error::{ForumError, ForumResult};
 
 const FORUM_TAXONOMY_SCOPE: &str = "forum";
 
-pub(super) async fn sync_category_locale_in_tx(
+pub(in crate::services) async fn sync_category_locale_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -60,7 +60,7 @@ pub(super) async fn sync_category_locale_in_tx(
     ensure_same_id_binding_in_tx(txn, tenant_id, category_id).await
 }
 
-pub(super) async fn sync_category_any_locale_in_tx(
+pub(in crate::services) async fn sync_category_any_locale_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
