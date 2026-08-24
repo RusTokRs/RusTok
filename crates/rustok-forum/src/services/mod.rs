@@ -41,9 +41,6 @@ mod category_search_scope {
     include!("category_search_scope.rs");
 }
 mod category_topic_create_audience;
-mod category_translation_evidence;
-mod category_translation_progress;
-mod category_translation_target;
 mod category_tree {
     include!("category_tree.rs");
     include!("category_tree_visibility.rs");
@@ -197,7 +194,6 @@ pub use category_topic_create_audience::{
     ForumCategoryTopicCreateAudiencePolicy, ForumCategoryTopicCreateAudiencePolicyLayer,
     ForumCategoryTopicCreateAudiencePolicyService, SetForumCategoryTopicCreateAudiencePolicyInput,
 };
-pub use category_translation_progress::ForumCategoryTranslationTargetProvider;
 pub use category_visibility::{
     ForumCategoryVisibilityPolicy, ForumCategoryVisibilityPolicyService,
     SetForumCategoryVisibilityPolicyInput,
