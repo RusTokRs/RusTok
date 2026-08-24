@@ -24,6 +24,7 @@ use super::{category, category_command, category_lifecycle, category_policy, cat
 /// commands through `Deref`.
 pub struct CategoryService {
     inner: category::CategoryProjectionOwnerService,
+    read: category::CategoryTaxonomyReadService,
     commands: category_command::CategoryCommandProjectionOwnerService,
     lifecycle: category_lifecycle::CategoryLifecycleProjectionOwnerService,
     policy: category_policy::CategoryTopicPolicyService,
@@ -35,6 +36,7 @@ impl CategoryService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             inner: category::CategoryProjectionOwnerService::new(db.clone()),
+            read: category::CategoryTaxonomyReadService::new(db.clone()),
             commands: category_command::CategoryCommandProjectionOwnerService::new(db.clone()),
             lifecycle: category_lifecycle::CategoryLifecycleProjectionOwnerService::new(db.clone()),
             policy: category_policy::CategoryTopicPolicyService::new(db.clone()),
@@ -79,7 +81,7 @@ impl CategoryService {
         {
             return Err(ForumError::CategoryNotFound(category_id));
         }
-        self.inner
+        self.read
             .get_with_locale_fallback(tenant_id, security, category_id, locale, fallback_locale)
             .await
     }
@@ -251,7 +253,7 @@ impl CategoryService {
             .visibility
             .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
             .await?;
-        self.inner
+        self.read
             .list_paginated_with_locale_fallback_and_hidden_categories(
                 tenant_id,
                 security,
