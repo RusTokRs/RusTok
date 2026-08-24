@@ -80,3 +80,7 @@ impl CategoryService {
         Ok((items, total))
     }
 }
+
+pub(super) mod taxonomy_read {
+    include!("category_taxonomy_read.rs");
+}
