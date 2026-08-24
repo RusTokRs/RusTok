@@ -3,6 +3,7 @@ use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumModule, MoveCategoryInput,
     ReorderCategorySiblingsInput, UpdateCategoryInput, entities::forum_category_taxonomy_binding,
 };
+use rustok_outbox::OutboxModule;
 use rustok_taxonomy::{
     TaxonomyModule, TaxonomyOwnerCategoryReader, TaxonomyScopeType, entities::taxonomy_term_alias,
 };
@@ -193,6 +194,9 @@ async fn setup() -> TestResult<DatabaseConnection> {
     let db = Database::connect(options).await?;
     let manager = SchemaManager::new(&db);
 
+    for migration in OutboxModule.migrations() {
+        migration.up(&manager).await?;
+    }
     for migration in TaxonomyModule.migrations() {
         migration.up(&manager).await?;
     }
