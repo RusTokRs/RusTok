@@ -1,15 +1,32 @@
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_content::normalize_locale_code;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tracing::instrument;
 use uuid::Uuid;
 
 use crate::{
     dto::{TaxonomyScopeType, TaxonomyTermKind},
-    entities::taxonomy_term_route_key,
+    entities::{taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation},
     error::{TaxonomyError, TaxonomyResult},
     services::TaxonomyService,
 };
+
+/// Storage-encapsulated route match for a module consumer.
+///
+/// The route-key registry remains the lookup authority. `alias_id` is `None`
+/// for a canonical localized slug and contains the Taxonomy alias identity for
+/// a historical/alternate route. Consumers keep ownership of their own route
+/// disclosure and lifecycle policy after resolving this Taxonomy-owned route.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaxonomyModuleRouteMatch {
+    pub term_id: Uuid,
+    pub kind: TaxonomyTermKind,
+    pub scope_type: TaxonomyScopeType,
+    pub scope_value: Option<String>,
+    pub matched_locale: String,
+    pub route_key: String,
+    pub alias_id: Option<Uuid>,
+}
 
 impl TaxonomyService {
     /// Resolves a localized route key for a module consumer without applying
@@ -31,6 +48,71 @@ impl TaxonomyService {
         fallback_locale: Option<&str>,
         slug_or_alias: &str,
     ) -> TaxonomyResult<Option<Uuid>> {
+        Ok(self
+            .resolve_route_key_for_module(
+                tenant_id,
+                kind,
+                module_slug,
+                locale,
+                fallback_locale,
+                slug_or_alias,
+            )
+            .await?
+            .map(|route| route.term_id))
+    }
+
+    /// Resolves the exact Taxonomy-owned route match for a module consumer.
+    ///
+    /// Unlike `resolve_term_id_for_module`, this projection also exposes the
+    /// matched locale/scope and whether the route came from a canonical slug or
+    /// a Taxonomy alias. It is intended for staged consumer route cutovers that
+    /// must preserve redirect semantics without reading Taxonomy persistence
+    /// entities directly.
+    #[instrument(skip(self))]
+    pub async fn resolve_term_route_for_module(
+        &self,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        slug_or_alias: &str,
+    ) -> TaxonomyResult<Option<TaxonomyModuleRouteMatch>> {
+        let Some(route) = self
+            .resolve_route_key_for_module(
+                tenant_id,
+                kind,
+                module_slug,
+                locale,
+                fallback_locale,
+                slug_or_alias,
+            )
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        let alias_id = route_source_alias_id(self.database(), tenant_id, &route).await?;
+        Ok(Some(TaxonomyModuleRouteMatch {
+            term_id: route.term_id,
+            kind: route.kind,
+            scope_type: route.scope_type,
+            scope_value: decode_scope_value(route.scope_type, &route.scope_value),
+            matched_locale: route.locale,
+            route_key: route.route_key,
+            alias_id,
+        }))
+    }
+
+    async fn resolve_route_key_for_module(
+        &self,
+        tenant_id: Uuid,
+        kind: TaxonomyTermKind,
+        module_slug: &str,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        slug_or_alias: &str,
+    ) -> TaxonomyResult<Option<taxonomy_term_route_key::Model>> {
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let module_scope = normalize_module_scope(module_slug)?;
@@ -55,12 +137,47 @@ impl TaxonomyService {
                     .one(self.database())
                     .await?
                 {
-                    return Ok(Some(route.term_id));
+                    return Ok(Some(route));
                 }
             }
         }
 
         Ok(None)
+    }
+}
+
+async fn route_source_alias_id(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    route: &taxonomy_term_route_key::Model,
+) -> TaxonomyResult<Option<Uuid>> {
+    let canonical = taxonomy_term_translation::Entity::find()
+        .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term_translation::Column::TermId.eq(route.term_id))
+        .filter(taxonomy_term_translation::Column::Locale.eq(&route.locale))
+        .filter(taxonomy_term_translation::Column::Slug.eq(&route.route_key))
+        .one(db)
+        .await?;
+    let aliases = taxonomy_term_alias::Entity::find()
+        .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term_alias::Column::TermId.eq(route.term_id))
+        .filter(taxonomy_term_alias::Column::Locale.eq(&route.locale))
+        .filter(taxonomy_term_alias::Column::Slug.eq(&route.route_key))
+        .all(db)
+        .await?;
+
+    match (canonical.is_some(), aliases.as_slice()) {
+        (true, []) => Ok(None),
+        (false, [alias]) => Ok(Some(alias.id)),
+        (true, _) => Err(TaxonomyError::conflict(
+            "Taxonomy route registry key is owned by both canonical copy and an alias",
+        )),
+        (false, []) => Err(TaxonomyError::conflict(
+            "Taxonomy route registry key has no canonical copy or alias source",
+        )),
+        (false, _) => Err(TaxonomyError::conflict(
+            "Taxonomy route registry key has multiple alias sources",
+        )),
     }
 }
 
@@ -94,6 +211,13 @@ fn resolve_locale_candidates(locale: &str, fallback_locale: Option<&str>) -> Vec
         candidates.push(PLATFORM_FALLBACK_LOCALE.to_string());
     }
     candidates
+}
+
+fn decode_scope_value(scope_type: TaxonomyScopeType, scope_value: &str) -> Option<String> {
+    match scope_type {
+        TaxonomyScopeType::Global => None,
+        TaxonomyScopeType::Module => Some(scope_value.to_owned()),
+    }
 }
 
 #[cfg(test)]
