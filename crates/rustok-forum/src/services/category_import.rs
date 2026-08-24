@@ -63,30 +63,17 @@ impl CategoryService {
         .insert(txn)
         .await?;
 
-        super::category_route::ForumCategoryRouteService::ensure_current_route_key_available_in_tx(
-            txn, tenant_id, record.id, &locale, &slug,
-        )
-        .await?;
-        forum_category_translation::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            category_id: Set(record.id),
-            tenant_id: Set(tenant_id),
-            locale: Set(locale),
-            name: Set(record.name.clone()),
-            slug: Set(slug),
-            description: Set(record.description.clone()),
-        }
-        .insert(txn)
-        .await?;
-
-        super::category_translation_evidence::record_category_translation_change_in_tx(
+        taxonomy_sync::sync_category_copy_in_tx(
             txn,
             tenant_id,
             record.id,
-            "import",
-            rustok_translation_targets::TranslationResourceLifecycle::Active,
+            locale,
+            record.name.clone(),
+            slug,
+            record.description.clone(),
         )
         .await?;
+        taxonomy_sync::sync_siblings_for_parent_in_tx(txn, tenant_id, record.parent_id).await?;
 
         Ok(())
     }

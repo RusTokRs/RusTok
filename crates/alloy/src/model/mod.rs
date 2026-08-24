@@ -23,7 +23,7 @@ pub use provenance::{
 pub use proxy::{EntityProxy, register_entity_proxy};
 pub use release::{
     AlloyPublicationSmokeEvidence, AlloyReleaseError, AlloyReleaseStageCommand,
-    MAX_RELEASE_ACTOR_ID_LENGTH, is_release_approved, review_evidence_digest, review_reference,
+    alloy_release_command_context, is_release_approved, review_evidence_digest, review_reference,
 };
 pub use retention::{
     ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError,

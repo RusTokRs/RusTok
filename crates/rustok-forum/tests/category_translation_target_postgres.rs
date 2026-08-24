@@ -19,8 +19,7 @@ use uuid::Uuid;
 
 use support::{TestResult, postgres::PostgresForumTestDb, test_error};
 
-const CHANGE_JOURNAL_MIGRATION: &str =
-    "m20260820_000028_add_forum_category_translation_changes";
+const CHANGE_JOURNAL_MIGRATION: &str = "m20260820_000028_add_forum_category_translation_changes";
 
 #[tokio::test]
 async fn category_translation_change_journal_supports_postgres_down_up() -> TestResult<()> {
@@ -32,7 +31,9 @@ async fn category_translation_change_journal_supports_postgres_down_up() -> Test
         .migrations()
         .into_iter()
         .find(|migration| migration.name() == CHANGE_JOURNAL_MIGRATION)
-        .ok_or_else(|| test_error("Forum translation change journal migration is not registered"))?;
+        .ok_or_else(|| {
+            test_error("Forum translation change journal migration is not registered")
+        })?;
 
     migration.down(&manager).await?;
     migration.up(&manager).await?;
@@ -110,8 +111,16 @@ async fn concurrent_same_snapshot_translation_applies_commit_once() -> TestResul
             Err(error) => failures.push(error),
         }
     }
-    assert_eq!(successes.len(), 1, "exactly one same-snapshot apply must commit");
-    assert_eq!(failures.len(), 1, "the competing same-snapshot apply must close");
+    assert_eq!(
+        successes.len(),
+        1,
+        "exactly one same-snapshot apply must commit"
+    );
+    assert_eq!(
+        failures.len(),
+        1,
+        "the competing same-snapshot apply must close"
+    );
     assert_eq!(failures[0].kind, PortErrorKind::Conflict);
 
     let recovered = ForumCategoryTranslationTargetProvider::new(test_db.peer().await?);
@@ -140,7 +149,11 @@ async fn concurrent_same_snapshot_translation_applies_commit_once() -> TestResul
             },
         )
         .await?;
-    assert_eq!(changes.changes.len(), 2, "create plus one winning apply only");
+    assert_eq!(
+        changes.changes.len(),
+        2,
+        "create plus one winning apply only"
+    );
 
     let progress = recovered
         .read_progress(
@@ -247,7 +260,10 @@ async fn cursor_and_progress_resume_across_reconstruction_archive_and_restore() 
         )
         .await?;
     assert_eq!(archived_progress.resources, 0);
-    assert_eq!(archived_progress.owner_change_cursor, Some(archived_cursor.clone()));
+    assert_eq!(
+        archived_progress.owner_change_cursor,
+        Some(archived_cursor.clone())
+    );
     drop(archived_provider);
 
     CategoryService::new(test_db.peer().await?)

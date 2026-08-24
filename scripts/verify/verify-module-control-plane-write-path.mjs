@@ -20,6 +20,31 @@ const nonOwnerRoots = [
 const ownerRoot = path.join(root, 'crates/rustok-modules/src');
 const adminModuleTransportRoot = path.join(root, 'apps/admin/src/features/modules/transport');
 const ownerManifestPath = path.join(root, 'crates/rustok-modules/Cargo.toml');
+const ownerContractsPath = path.join(root, 'crates/rustok-modules/src/contracts.rs');
+const lifecycleOwnerPath = path.join(root, 'crates/rustok-modules/src/installation.rs');
+const artifactDataOwnerPath = path.join(root, 'crates/rustok-modules/src/data.rs');
+const artifactSettingsRecoveryOwnerPath = path.join(
+  root,
+  'crates/rustok-modules/src/artifact_settings_recovery.rs',
+);
+const artifactDataSnapshotOwnerPath = path.join(
+  root,
+  'crates/rustok-modules/src/data_snapshot.rs',
+);
+const artifactSecretOwnerPath = path.join(root, 'crates/rustok-modules/src/secrets.rs');
+const artifactSecurityStateOwnerPath = path.join(
+  root,
+  'crates/rustok-modules/src/security_state.rs',
+);
+const staticPromotionOwnerPath = path.join(root, 'crates/rustok-modules/src/promotion.rs');
+const staticDistributionBootstrapOwnerPath = path.join(
+  root,
+  'crates/rustok-modules/src/distribution_bootstrap.rs',
+);
+const staticDistributionReleaseOwnerPath = path.join(
+  root,
+  'crates/rustok-modules/src/distribution_release.rs',
+);
 const runtimeManifestPath = path.join(root, 'crates/rustok-runtime/Cargo.toml');
 const registryValidationWorkerRoot = path.join(root, 'crates/rustok-registry-validation-worker');
 const registryValidationWorkerManifestPath = path.join(registryValidationWorkerRoot, 'Cargo.toml');
@@ -150,6 +175,25 @@ function isProductionSource(filePath) {
 
 try {
   const ownerManifest = fs.readFileSync(ownerManifestPath, 'utf8');
+  const ownerContracts = fs.readFileSync(ownerContractsPath, 'utf8');
+  const lifecycleOwner = fs.readFileSync(lifecycleOwnerPath, 'utf8');
+  const artifactDataOwner = fs.readFileSync(artifactDataOwnerPath, 'utf8');
+  const artifactSettingsRecoveryOwner = fs.readFileSync(
+    artifactSettingsRecoveryOwnerPath,
+    'utf8',
+  );
+  const artifactDataSnapshotOwner = fs.readFileSync(artifactDataSnapshotOwnerPath, 'utf8');
+  const artifactSecretOwner = fs.readFileSync(artifactSecretOwnerPath, 'utf8');
+  const artifactSecurityStateOwner = fs.readFileSync(artifactSecurityStateOwnerPath, 'utf8');
+  const staticPromotionOwner = fs.readFileSync(staticPromotionOwnerPath, 'utf8');
+  const staticDistributionBootstrapOwner = fs.readFileSync(
+    staticDistributionBootstrapOwnerPath,
+    'utf8',
+  );
+  const staticDistributionReleaseOwner = fs.readFileSync(
+    staticDistributionReleaseOwnerPath,
+    'utf8',
+  );
   const runtimeManifest = fs.readFileSync(runtimeManifestPath, 'utf8');
   const forbiddenDependencyViolations = forbiddenOwnerDependencies.filter((dependency) =>
     new RegExp(`^${dependency.replaceAll('-', '\\-')}\\s*=`, 'm').test(ownerManifest),
@@ -184,6 +228,149 @@ try {
   if (forbiddenDependencyViolations.length > 0) {
     fail(
       `modules owner must remain independent from AI, product, commerce, MCP, and host/UI frameworks; dependencies found: ${forbiddenDependencyViolations.join(', ')}`,
+    );
+  }
+
+  if (
+    !ownerContracts.includes('pub struct ModuleCommandContext') ||
+    !ownerContracts.includes('pub actor_id: Uuid,') ||
+    !ownerContracts.includes('pub correlation_id: Uuid,') ||
+    !ownerContracts.includes('pub idempotency_key: Uuid,') ||
+    !ownerContracts.includes('tenant_id.is_some_and(|tenant_id| tenant_id.is_nil())')
+  ) {
+    fail(
+      'module command context must use typed UUID evidence and reject a nil tenant identity; platform scope is represented only by an absent tenant_id',
+    );
+  }
+
+  const promotionContextFields =
+    staticPromotionOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  if (
+    promotionContextFields.length !== 2 ||
+    !staticPromotionOwner.includes('valid_platform_command_context') ||
+    !staticPromotionOwner.includes('trace_id, correlation_id') ||
+    !staticPromotionOwner.includes('event_envelope_for_command(')
+  ) {
+    fail(
+      'static promotion commands must retain a platform-scoped ModuleCommandContext in their durable operation receipt and owner-created outbox events',
+    );
+  }
+
+  const distributionReleaseContextFields =
+    staticDistributionReleaseOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  if (
+    distributionReleaseContextFields.length !== 2 ||
+    !staticDistributionReleaseOwner.includes('valid_platform_command_context') ||
+    !staticDistributionReleaseOwner.includes('trace_id, correlation_id') ||
+    !staticDistributionReleaseOwner.includes('event_envelope_for_command(') ||
+    !staticDistributionReleaseOwner.includes('"admit", context, request_digest')
+  ) {
+    fail(
+      'static distribution admission and revocation must retain platform-scoped ModuleCommandContext evidence in their shared durable receipt and owner-created outbox events',
+    );
+  }
+
+  const distributionBootstrapContextFields =
+    staticDistributionBootstrapOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  if (
+    distributionBootstrapContextFields.length !== 1 ||
+    !staticDistributionBootstrapOwner.includes('context.tenant_id.is_some()') ||
+    !staticDistributionBootstrapOwner.includes('trace_id, correlation_id') ||
+    !staticDistributionBootstrapOwner.includes('stored_context != *context')
+  ) {
+    fail(
+      'static distribution bootstrap import must retain and replay a platform-scoped ModuleCommandContext in the shared durable receipt',
+    );
+  }
+
+  const securityStateContextFields =
+    artifactSecurityStateOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  if (
+    securityStateContextFields.length !== 1 ||
+    !artifactSecurityStateOwner.includes('valid_platform_command_context') ||
+    !artifactSecurityStateOwner.includes('trace_id, correlation_id') ||
+    !artifactSecurityStateOwner.includes('event_envelope_for_command(')
+  ) {
+    fail(
+      'global artifact security transitions must retain a platform-scoped ModuleCommandContext in their durable operation receipt and owner-created outbox event',
+    );
+  }
+
+  const lifecycleContextFields = lifecycleOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  const commandEventEnvelopes = lifecycleOwner.match(/event_envelope_for_command\(/g) ?? [];
+  if (
+    lifecycleContextFields.length < 7 ||
+    commandEventEnvelopes.length < 6 ||
+    !lifecycleOwner.includes('context.tenant_id != scope_tenant_id')
+  ) {
+    fail(
+      'artifact lifecycle commands must carry one scope-matched ModuleCommandContext through durable receipts and owner-created events',
+    );
+  }
+
+  const purgeRequest = artifactDataOwner.match(
+    /pub struct ArtifactDataPurgeRequest\s*\{(?<fields>[\s\S]*?)\n\}/,
+  );
+  if (
+    !purgeRequest?.groups?.fields.includes('pub context: ModuleCommandContext,') ||
+    !artifactDataOwner.includes('request.context.tenant_id != Some(request.scope.tenant_id)') ||
+    !artifactDataOwner.includes('trace_id, correlation_id, reason') ||
+    !artifactDataOwner.includes('event_envelope_for_command(')
+  ) {
+    fail(
+      'dynamic artifact data purge must preserve a tenant-matched ModuleCommandContext in its durable receipt and owner-created outbox event',
+    );
+  }
+
+  const settingsRecoveryContextFields =
+    artifactSettingsRecoveryOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  const settingsRecoveryEventEnvelopes =
+    artifactSettingsRecoveryOwner.match(/event_envelope_for_command\(/g) ?? [];
+  if (
+    settingsRecoveryContextFields.length < 7 ||
+    settingsRecoveryEventEnvelopes.length < 7 ||
+    !artifactSettingsRecoveryOwner.includes(
+      'valid_command_context(request.tenant_id, &request.context)',
+    ) ||
+    !artifactSettingsRecoveryOwner.includes(
+      'trace_id, correlation_id, idempotency_key',
+    ) ||
+    !artifactSettingsRecoveryOwner.includes('settings_recovery_collection_work_in')
+  ) {
+    fail(
+      'artifact settings recovery commands must retain tenant-matched ModuleCommandContext evidence in every receipt and preserve it when collection work resumes',
+    );
+  }
+
+  const snapshotContextFields =
+    artifactDataSnapshotOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  const snapshotEventEnvelopes =
+    artifactDataSnapshotOwner.match(/event_envelope_for_command\(/g) ?? [];
+  if (
+    snapshotContextFields.length < 4 ||
+    snapshotEventEnvelopes.length < 4 ||
+    !artifactDataSnapshotOwner.includes('valid_command_context') ||
+    !artifactDataSnapshotOwner.includes('command_context_from_row') ||
+    !artifactDataSnapshotOwner.includes('trace_id, correlation_id, idempotency_key')
+  ) {
+    fail(
+      'artifact data snapshot commands must preserve tenant-matched ModuleCommandContext evidence across staging, receipts, and resumable collection work',
+    );
+  }
+
+  const secretBindingContextFields =
+    artifactSecretOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  if (
+    secretBindingContextFields.length !== 1 ||
+    !artifactSecretOwner.includes(
+      'valid_command_context(request.scope.tenant_id, &request.context)',
+    ) ||
+    !artifactSecretOwner.includes('command_context_from_receipt_row') ||
+    !artifactSecretOwner.includes('trace_id, correlation_id, idempotency_key') ||
+    !artifactSecretOwner.includes('event_envelope_for_command(')
+  ) {
+    fail(
+      'artifact secret binding must retain a tenant-matched ModuleCommandContext in its operation receipt and owner-created outbox event',
     );
   }
 

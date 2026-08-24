@@ -43,7 +43,22 @@ async fn setup() -> (
     Uuid,
 ) {
     let db = setup_forum_test_db().await;
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
+
     let schema = SchemaManager::new(&db);
+    for migration in rustok_outbox::OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
@@ -61,7 +76,8 @@ async fn setup() -> (
 
     let transport = MemoryTransport::new();
     let receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let event_bus =
+        TransactionalEventBus::new(Arc::new(rustok_outbox::OutboxTransport::new(db.clone())));
     (db, event_bus, receiver, Uuid::new_v4())
 }
 
@@ -69,6 +85,11 @@ async fn ensure_topic_flex_schema(db: &DatabaseConnection) {
     if db.get_database_backend() != DbBackend::Sqlite {
         return;
     }
+
+    let schema_manager = SchemaManager::new(db);
+    flex::cache_generation::create_field_definition_cache_generation_table(&schema_manager)
+        .await
+        .expect("cache generation table should be created");
 
     let builder = db.get_database_backend();
     let schema = Schema::new(builder);
@@ -78,6 +99,14 @@ async fn ensure_topic_flex_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(topic_field_definitions_storage::Entity),
     )
     .await;
+
+    flex::cache_generation::create_field_definition_cache_generation_trigger(
+        &schema_manager,
+        "topic_field_definitions",
+        "flex_topic_fd_cache_generation",
+    )
+    .await
+    .expect("cache generation trigger should be created");
     let attached_table = sea_orm::sea_query::Table::create()
         .table(sea_orm::sea_query::Alias::new(
             "flex_attached_localized_values",

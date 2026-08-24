@@ -259,7 +259,7 @@ impl ReactionWritePort for ReactionsService {
 
         let lease = match idempotency::admit(
             self.database(),
-            canonical_subject.tenant_id(),
+            idempotency::OwnerOperationScope::Tenant(canonical_subject.tenant_id()),
             REACTION_OWNER_SLUG,
             expected_key.as_str(),
             APPLY_REACTION_OPERATION,

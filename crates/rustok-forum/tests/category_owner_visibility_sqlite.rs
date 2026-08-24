@@ -6,8 +6,9 @@ use rustok_forum::{
     ForumCategoryVisibilityPolicyService, ForumError, ForumModule,
     SetForumCategoryVisibilityPolicyInput,
 };
+use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -24,7 +25,23 @@ async fn setup() -> DatabaseConnection {
     let db = Database::connect(options)
         .await
         .expect("forum category owner visibility sqlite database should connect");
+    db.execute_unprepared(
+        r#"
+        CREATE TABLE users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        )
+        "#,
+    )
+    .await
+    .expect("users table should be created");
     let schema = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)

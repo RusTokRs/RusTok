@@ -15,7 +15,7 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::{
-    ControlPlaneInfrastructure, ModuleStaticDistributionBuild,
+    ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionBuild,
     ModuleStaticDistributionBuildEvidence, ModuleStaticDistributionBuildStatus,
     ModuleStaticDistributionCompletionCommand, ModuleStaticDistributionCompletionOutcome,
     ModuleStaticDistributionItem, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
@@ -99,8 +99,7 @@ pub struct ModuleStaticDistributionAdmissionCommand {
     pub distribution_build_id: Uuid,
     pub expected_release_revision: u64,
     pub verification_policy_revision: String,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,8 +108,7 @@ pub struct ModuleStaticDistributionRevocationCommand {
     pub expected_release_revision: u64,
     pub policy_revision: String,
     pub reason: String,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[async_trait]
@@ -257,21 +255,10 @@ where
         validate_admission_command(&command)?;
         self.authorizer.authorize_admission(&command).await?;
         let request_digest = digest_json(&command).map_err(promotion_error)?;
-        validate_release_idempotency_key(
-            &self.db,
-            "admit",
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?;
-        if let Some(receipt) = load_admission_operation(
-            &self.db,
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?
+        validate_release_idempotency_key(&self.db, "admit", &command.context, &request_digest)
+            .await?;
+        if let Some(receipt) =
+            load_admission_operation(&self.db, &command.context, &request_digest).await?
         {
             return Ok(receipt);
         }
@@ -307,13 +294,8 @@ where
         validate_admission(&admission, &command.verification_policy_revision)?;
 
         let transaction = self.db.begin().await.map_err(store_error)?;
-        if let Some(receipt) = reserve_admission_operation(
-            &transaction,
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?
+        if let Some(receipt) =
+            reserve_admission_operation(&transaction, &command.context, &request_digest).await?
         {
             transaction.commit().await.map_err(store_error)?;
             return Ok(receipt);
@@ -358,7 +340,7 @@ where
                 distribution_release_id,
                 predecessor_release_id: release_state.active_release_id,
                 release_revision,
-                actor_id: command.actor_id,
+                actor_id: command.context.actor_id,
                 admitted_at: admitted_at.to_owned(),
                 distribution_build_id: current_build.distribution_build_id,
                 composition_revision: current_build.composition_revision,
@@ -384,7 +366,7 @@ where
         .await?;
         complete_admission_operation(
             &transaction,
-            command.idempotency_key,
+            command.context.idempotency_key,
             distribution_release_id,
             release_revision,
         )
@@ -396,9 +378,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &command.context,
                     DomainEvent::ModuleStaticDistributionReleaseAdmitted {
                         distribution_release_id,
                         predecessor_release_id: release_state.active_release_id,
@@ -430,32 +411,16 @@ where
         validate_revocation_command(&command)?;
         self.authorizer.authorize_revocation(&command).await?;
         let request_digest = digest_json(&command).map_err(promotion_error)?;
-        validate_release_idempotency_key(
-            &self.db,
-            "revoke",
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?;
-        if let Some(receipt) = load_revocation_operation(
-            &self.db,
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?
+        validate_release_idempotency_key(&self.db, "revoke", &command.context, &request_digest)
+            .await?;
+        if let Some(receipt) =
+            load_revocation_operation(&self.db, &command.context, &request_digest).await?
         {
             return Ok(receipt);
         }
         let transaction = self.db.begin().await.map_err(store_error)?;
-        if let Some(receipt) = reserve_revocation_operation(
-            &transaction,
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?
+        if let Some(receipt) =
+            reserve_revocation_operation(&transaction, &command.context, &request_digest).await?
         {
             transaction.commit().await.map_err(store_error)?;
             return Ok(receipt);
@@ -479,7 +444,7 @@ where
         revoke_release(
             &transaction,
             command.distribution_release_id,
-            command.actor_id,
+            command.context.actor_id,
             &command.reason,
             &command.policy_revision,
         )
@@ -488,7 +453,7 @@ where
             &transaction,
             &self.infrastructure,
             command.distribution_release_id,
-            command.actor_id,
+            command.context.actor_id,
             &command.policy_revision,
         )
         .await
@@ -510,7 +475,7 @@ where
         .await?;
         complete_revocation_operation(
             &transaction,
-            command.idempotency_key,
+            command.context.idempotency_key,
             command.distribution_release_id,
             release_state_revision,
             was_active,
@@ -519,9 +484,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &command.context,
                     DomainEvent::ModuleStaticDistributionReleaseRevoked {
                         distribution_release_id: command.distribution_release_id,
                         distribution_build_id: release.distribution_build_id,
@@ -611,8 +575,7 @@ fn validate_admission_command(
     command: &ModuleStaticDistributionAdmissionCommand,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     if command.distribution_build_id.is_nil()
-        || command.actor_id.is_nil()
-        || command.idempotency_key.is_nil()
+        || !valid_platform_command_context(&command.context)
         || command.verification_policy_revision.trim().is_empty()
         || command.verification_policy_revision.trim() != command.verification_policy_revision
         || command.verification_policy_revision.len() > MAX_POLICY_REVISION_BYTES
@@ -631,14 +594,17 @@ fn validate_revocation_command(
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     if command.distribution_release_id.is_nil()
         || command.expected_release_revision == 0
-        || command.actor_id.is_nil()
-        || command.idempotency_key.is_nil()
+        || !valid_platform_command_context(&command.context)
         || !valid_policy_revision(&command.policy_revision)
         || !valid_reason(&command.reason)
     {
         return Err(ModuleStaticDistributionReleaseError::InvalidCommand);
     }
     Ok(())
+}
+
+fn valid_platform_command_context(context: &ModuleCommandContext) -> bool {
+    context.tenant_id.is_none() && context.validate().is_ok()
 }
 
 fn valid_policy_revision(value: &str) -> bool {
@@ -1279,31 +1245,32 @@ pub(crate) async fn advance_release_state_optional(
 async fn validate_release_idempotency_key<C: ConnectionTrait>(
     connection: &C,
     operation_kind: &str,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = connection.get_database_backend();
     let row = connection
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_kind, request_digest, actor_id
+                "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id
                  FROM module_static_distribution_release_idempotency_keys
                  WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![uuid_value(context.idempotency_key, backend)],
         ))
         .await
         .map_err(store_error)?;
     if let Some(row) = row {
         let stored_kind: String = row.try_get("", "operation_kind").map_err(store_error)?;
         let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
-        let stored_actor = uuid_from_row(&row, "actor_id", backend).map_err(store_error)?;
+        let stored_context =
+            stored_release_command_context(&row, backend, context.idempotency_key)?;
         if stored_kind != operation_kind
             || stored_digest != request_digest
-            || stored_actor != actor_id
+            || !valid_platform_command_context(&stored_context)
+            || stored_context != *context
         {
             return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
         }
@@ -1314,9 +1281,8 @@ async fn validate_release_idempotency_key<C: ConnectionTrait>(
 async fn reserve_release_idempotency_key(
     transaction: &DatabaseTransaction,
     operation_kind: &str,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<(), ModuleStaticDistributionReleaseError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
@@ -1324,19 +1290,23 @@ async fn reserve_release_idempotency_key(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_release_idempotency_keys
-                 (idempotency_key, operation_kind, request_digest, actor_id, created_at)
-                 VALUES ({}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
+                 (idempotency_key, operation_kind, request_digest, actor_id, trace_id, correlation_id, created_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
                 placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
                 now_expression(backend),
             ),
             vec![
-                uuid_value(idempotency_key, backend),
+                uuid_value(context.idempotency_key, backend),
                 operation_kind.to_owned().into(),
                 request_digest.to_owned().into(),
-                uuid_value(actor_id, backend),
+                uuid_value(context.actor_id, backend),
+                context.trace_id.clone().into(),
+                uuid_value(context.correlation_id, backend),
             ],
         ))
         .await
@@ -1348,42 +1318,51 @@ async fn reserve_release_idempotency_key(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_kind, request_digest, actor_id
+                "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id
                  FROM module_static_distribution_release_idempotency_keys
                  WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![uuid_value(context.idempotency_key, backend)],
         ))
         .await
         .map_err(store_error)?
         .ok_or(ModuleStaticDistributionReleaseError::IdempotencyConflict)?;
     let stored_kind: String = row.try_get("", "operation_kind").map_err(store_error)?;
     let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
-    let stored_actor = uuid_from_row(&row, "actor_id", backend).map_err(store_error)?;
-    if stored_kind != operation_kind || stored_digest != request_digest || stored_actor != actor_id
+    let stored_context = stored_release_command_context(&row, backend, context.idempotency_key)?;
+    if stored_kind != operation_kind
+        || stored_digest != request_digest
+        || !valid_platform_command_context(&stored_context)
+        || stored_context != *context
     {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
     Ok(())
 }
 
+fn stored_release_command_context(
+    row: &QueryResult,
+    backend: DbBackend,
+    idempotency_key: Uuid,
+) -> Result<ModuleCommandContext, ModuleStaticDistributionReleaseError> {
+    Ok(ModuleCommandContext {
+        actor_id: uuid_from_row(row, "actor_id", backend).map_err(store_error)?,
+        tenant_id: None,
+        trace_id: row.try_get("", "trace_id").map_err(store_error)?,
+        correlation_id: uuid_from_row(row, "correlation_id", backend).map_err(store_error)?,
+        idempotency_key,
+    })
+}
+
 async fn reserve_admission_operation(
     transaction: &DatabaseTransaction,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<Option<ModuleStaticDistributionAdmissionReceipt>, ModuleStaticDistributionReleaseError>
 {
     let backend = transaction.get_database_backend();
-    reserve_release_idempotency_key(
-        transaction,
-        "activate",
-        idempotency_key,
-        request_digest,
-        actor_id,
-    )
-    .await?;
+    reserve_release_idempotency_key(transaction, "admit", context, request_digest).await?;
     let inserted = transaction
         .execute(Statement::from_sql_and_values(
             backend,
@@ -1397,9 +1376,9 @@ async fn reserve_admission_operation(
                 now_expression(backend),
             ),
             vec![
-                uuid_value(idempotency_key, backend),
+                uuid_value(context.idempotency_key, backend),
                 request_digest.to_owned().into(),
-                uuid_value(actor_id, backend),
+                uuid_value(context.actor_id, backend),
             ],
         ))
         .await
@@ -1417,14 +1396,14 @@ async fn reserve_admission_operation(
                  FROM module_static_distribution_admission_operations WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![uuid_value(context.idempotency_key, backend)],
         ))
         .await
         .map_err(store_error)?
         .ok_or(ModuleStaticDistributionReleaseError::IdempotencyConflict)?;
     let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
     let stored_actor = uuid_from_row(&row, "actor_id", backend).map_err(store_error)?;
-    if stored_digest != request_digest || stored_actor != actor_id {
+    if stored_digest != request_digest || stored_actor != context.actor_id {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
     replay_admission_receipt(&row, backend).map(Some)
@@ -1432,9 +1411,8 @@ async fn reserve_admission_operation(
 
 async fn load_admission_operation<C: ConnectionTrait>(
     connection: &C,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<Option<ModuleStaticDistributionAdmissionReceipt>, ModuleStaticDistributionReleaseError>
 {
     let backend = connection.get_database_backend();
@@ -1448,7 +1426,7 @@ async fn load_admission_operation<C: ConnectionTrait>(
                  FROM module_static_distribution_admission_operations WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![uuid_value(context.idempotency_key, backend)],
         ))
         .await
         .map_err(store_error)?
@@ -1457,7 +1435,7 @@ async fn load_admission_operation<C: ConnectionTrait>(
     };
     let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
     let stored_actor = uuid_from_row(&row, "actor_id", backend).map_err(store_error)?;
-    if stored_digest != request_digest || stored_actor != actor_id {
+    if stored_digest != request_digest || stored_actor != context.actor_id {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
     replay_admission_receipt(&row, backend).map(Some)
@@ -1554,20 +1532,12 @@ async fn revoke_release(
 
 async fn reserve_revocation_operation(
     transaction: &DatabaseTransaction,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<Option<ModuleStaticDistributionRevocationReceipt>, ModuleStaticDistributionReleaseError>
 {
     let backend = transaction.get_database_backend();
-    reserve_release_idempotency_key(
-        transaction,
-        "revoke",
-        idempotency_key,
-        request_digest,
-        actor_id,
-    )
-    .await?;
+    reserve_release_idempotency_key(transaction, "revoke", context, request_digest).await?;
     let inserted = transaction
         .execute(Statement::from_sql_and_values(
             backend,
@@ -1581,9 +1551,9 @@ async fn reserve_revocation_operation(
                 now_expression(backend),
             ),
             vec![
-                uuid_value(idempotency_key, backend),
+                uuid_value(context.idempotency_key, backend),
                 request_digest.to_owned().into(),
-                uuid_value(actor_id, backend),
+                uuid_value(context.actor_id, backend),
             ],
         ))
         .await
@@ -1591,24 +1561,22 @@ async fn reserve_revocation_operation(
     if inserted.rows_affected() == 1 {
         return Ok(None);
     }
-    query_revocation_operation(transaction, idempotency_key, request_digest, actor_id).await
+    query_revocation_operation(transaction, context, request_digest).await
 }
 
 async fn load_revocation_operation<C: ConnectionTrait>(
     connection: &C,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<Option<ModuleStaticDistributionRevocationReceipt>, ModuleStaticDistributionReleaseError>
 {
-    query_revocation_operation(connection, idempotency_key, request_digest, actor_id).await
+    query_revocation_operation(connection, context, request_digest).await
 }
 
 async fn query_revocation_operation<C: ConnectionTrait>(
     connection: &C,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<Option<ModuleStaticDistributionRevocationReceipt>, ModuleStaticDistributionReleaseError>
 {
     let backend = connection.get_database_backend();
@@ -1623,7 +1591,7 @@ async fn query_revocation_operation<C: ConnectionTrait>(
                  WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![uuid_value(context.idempotency_key, backend)],
         ))
         .await
         .map_err(store_error)?
@@ -1632,7 +1600,7 @@ async fn query_revocation_operation<C: ConnectionTrait>(
     };
     let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
     let stored_actor = uuid_from_row(&row, "actor_id", backend).map_err(store_error)?;
-    if stored_digest != request_digest || stored_actor != actor_id {
+    if stored_digest != request_digest || stored_actor != context.actor_id {
         return Err(ModuleStaticDistributionReleaseError::IdempotencyConflict);
     }
     let completed: i64 = row.try_get("", "completed").map_err(store_error)?;
@@ -1968,6 +1936,11 @@ fn store_error(error: impl std::fmt::Display) -> ModuleStaticDistributionRelease
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_core::MigrationSource;
+    use sea_orm::{Database, DbBackend, Statement, TransactionTrait};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+
+    use crate::ModulesModule;
 
     #[test]
     fn admission_requires_every_independent_verification_fact() {
@@ -1985,5 +1958,98 @@ mod tests {
         assert!(admission.admitted());
         admission.dependency_policy_verified = false;
         assert!(!admission.admitted());
+    }
+
+    #[tokio::test]
+    async fn release_idempotency_receipt_persists_and_replays_full_platform_context() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        rustok_outbox::SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE registry_module_releases (
+                    id TEXT PRIMARY KEY,
+                    slug TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    checksum_sha256 TEXT NOT NULL,
+                    status TEXT NOT NULL
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("registry release fixture");
+        for migration in ModulesModule.migrations() {
+            migration
+                .up(&SchemaManager::new(&database))
+                .await
+                .expect("module migration");
+        }
+
+        let context = ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: None,
+            trace_id: "test:static-distribution-release".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let request_digest = format!("sha256:{}", "a".repeat(64));
+        let transaction = database.begin().await.expect("transaction");
+        reserve_release_idempotency_key(&transaction, "admit", &context, &request_digest)
+            .await
+            .expect("reserve admission receipt");
+        transaction.commit().await.expect("commit receipt");
+
+        validate_release_idempotency_key(&database, "admit", &context, &request_digest)
+            .await
+            .expect("exact context replay");
+        let mut conflicting_context = context.clone();
+        conflicting_context.trace_id = "test:static-distribution-release:other".to_string();
+        assert!(matches!(
+            validate_release_idempotency_key(
+                &database,
+                "admit",
+                &conflicting_context,
+                &request_digest,
+            )
+            .await,
+            Err(ModuleStaticDistributionReleaseError::IdempotencyConflict)
+        ));
+
+        let receipt = database
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT operation_kind, actor_id, trace_id, correlation_id
+                 FROM module_static_distribution_release_idempotency_keys
+                 WHERE idempotency_key = ?1",
+                vec![context.idempotency_key.to_string().into()],
+            ))
+            .await
+            .expect("receipt query")
+            .expect("receipt row");
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "operation_kind")
+                .expect("operation kind"),
+            "admit"
+        );
+        assert_eq!(
+            receipt.try_get::<String>("", "actor_id").expect("actor"),
+            context.actor_id.to_string()
+        );
+        assert_eq!(
+            receipt.try_get::<String>("", "trace_id").expect("trace"),
+            context.trace_id
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "correlation_id")
+                .expect("correlation"),
+            context.correlation_id.to_string()
+        );
     }
 }

@@ -17,7 +17,7 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::{
-    ArtifactReleaseRef, ControlPlaneInfrastructure,
+    ArtifactReleaseRef, ControlPlaneInfrastructure, ModuleCommandContext,
     data::{now_expression, placeholder, uuid_value},
     promotion::{digest_json, valid_digest},
 };
@@ -84,8 +84,7 @@ pub struct ModuleArtifactSecurityCommand {
     pub policy_revision: String,
     pub reason_code: String,
     pub reason_detail: String,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -225,27 +224,15 @@ where
         command: ModuleArtifactSecurityCommand,
     ) -> Result<ModuleArtifactSecurityReceipt, ModuleArtifactSecurityError> {
         let request_digest = digest_json(&(action.as_str(), &command)).map_err(digest_error)?;
-        if let Some(receipt) = load_operation(
-            &self.db,
-            command.idempotency_key,
-            action,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?
+        if let Some(receipt) =
+            load_operation(&self.db, &command.context, action, &request_digest).await?
         {
             return Ok(receipt);
         }
 
         let transaction = self.db.begin().await.map_err(store_error)?;
-        if let Some(receipt) = reserve_operation(
-            &transaction,
-            command.idempotency_key,
-            action,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?
+        if let Some(receipt) =
+            reserve_operation(&transaction, &command.context, action, &request_digest).await?
         {
             transaction.commit().await.map_err(store_error)?;
             return Ok(receipt);
@@ -269,13 +256,12 @@ where
             snapshot,
             created: true,
         };
-        complete_operation(&transaction, command.idempotency_key, &receipt).await?;
+        complete_operation(&transaction, command.context.idempotency_key, &receipt).await?;
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &command.context,
                     DomainEvent::ModuleArtifactSecurityStateChanged {
                         module_slug: command.release.slug,
                         module_version: command.release.version,
@@ -322,8 +308,7 @@ fn validate_command(
     command: &ModuleArtifactSecurityCommand,
 ) -> Result<(), ModuleArtifactSecurityError> {
     validate_release(&command.release)?;
-    if command.actor_id.is_nil()
-        || command.idempotency_key.is_nil()
+    if !valid_platform_command_context(&command.context)
         || !valid_text(&command.policy_revision, MAX_POLICY_REVISION_BYTES)
         || !valid_text(&command.reason_code, MAX_REASON_CODE_BYTES)
         || !valid_text(&command.reason_detail, MAX_REASON_DETAIL_BYTES)
@@ -331,6 +316,10 @@ fn validate_command(
         return Err(ModuleArtifactSecurityError::InvalidCommand);
     }
     Ok(())
+}
+
+fn valid_platform_command_context(context: &ModuleCommandContext) -> bool {
+    context.tenant_id.is_none() && context.validate().is_ok()
 }
 
 fn validate_release(release: &ArtifactReleaseRef) -> Result<(), ModuleArtifactSecurityError> {
@@ -406,7 +395,7 @@ async fn persist_state(
                     command.policy_revision.clone().into(),
                     command.reason_code.clone().into(),
                     command.reason_detail.clone().into(),
-                    uuid_value(command.actor_id, backend),
+                    uuid_value(command.context.actor_id, backend),
                 ],
             ))
             .await
@@ -439,7 +428,7 @@ async fn persist_state(
                     command.policy_revision.clone().into(),
                     command.reason_code.clone().into(),
                     command.reason_detail.clone().into(),
-                    uuid_value(command.actor_id, backend),
+                    uuid_value(command.context.actor_id, backend),
                     command.release.slug.clone().into(),
                     command.release.version.clone().into(),
                     command.release.digest.clone().into(),
@@ -565,10 +554,9 @@ fn snapshot_from_row(
 
 async fn reserve_operation(
     transaction: &DatabaseTransaction,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     action: SecurityAction,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<Option<ModuleArtifactSecurityReceipt>, ModuleArtifactSecurityError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
@@ -576,18 +564,22 @@ async fn reserve_operation(
             backend,
             format!(
                 "INSERT INTO module_artifact_security_operations
-                 (idempotency_key, operation_kind, request_digest, principal_id)
-                 VALUES ({}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
+                 (idempotency_key, operation_kind, request_digest, principal_id, trace_id, correlation_id)
+                 VALUES ({}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
                 placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
             ),
             vec![
-                uuid_value(idempotency_key, backend),
+                uuid_value(context.idempotency_key, backend),
                 action.as_str().into(),
                 request_digest.to_owned().into(),
-                uuid_value(actor_id, backend),
+                uuid_value(context.actor_id, backend),
+                context.trace_id.clone().into(),
+                uuid_value(context.correlation_id, backend),
             ],
         ))
         .await
@@ -595,34 +587,26 @@ async fn reserve_operation(
     if inserted.rows_affected() == 1 {
         return Ok(None);
     }
-    load_operation(
-        transaction,
-        idempotency_key,
-        action,
-        request_digest,
-        actor_id,
-    )
-    .await
+    load_operation(transaction, context, action, request_digest).await
 }
 
 async fn load_operation<C: ConnectionTrait>(
     connection: &C,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     action: SecurityAction,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<Option<ModuleArtifactSecurityReceipt>, ModuleArtifactSecurityError> {
     let backend = connection.get_database_backend();
     let row = connection
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_kind, request_digest, principal_id,
+                "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id,
                         receipt_json
                  FROM module_artifact_security_operations WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![uuid_value(context.idempotency_key, backend)],
         ))
         .await
         .map_err(store_error)?;
@@ -633,9 +617,18 @@ async fn load_operation<C: ConnectionTrait>(
     let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
     let stored_actor =
         crate::data::uuid_from_row(&row, "principal_id", backend).map_err(store_error)?;
+    let stored_context = ModuleCommandContext {
+        actor_id: stored_actor,
+        tenant_id: None,
+        trace_id: row.try_get("", "trace_id").map_err(store_error)?,
+        correlation_id: crate::data::uuid_from_row(&row, "correlation_id", backend)
+            .map_err(store_error)?,
+        idempotency_key: context.idempotency_key,
+    };
     if stored_action != action.as_str()
         || stored_digest != request_digest
-        || stored_actor != actor_id
+        || !valid_platform_command_context(&stored_context)
+        || stored_context != *context
     {
         return Err(ModuleArtifactSecurityError::IdempotencyConflict);
     }
@@ -706,10 +699,189 @@ fn store_error(error: impl std::fmt::Display) -> ModuleArtifactSecurityError {
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
+    use rustok_core::MigrationSource;
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use uuid::Uuid;
+
     use super::{
-        ModuleArtifactSecurityError, ModuleArtifactSecurityStatus, SecurityAction,
-        validate_transition,
+        ModuleArtifactSecurityAuthorizer, ModuleArtifactSecurityCommand,
+        ModuleArtifactSecurityError, ModuleArtifactSecurityStatus,
+        SeaOrmModuleArtifactSecurityService, SecurityAction, validate_command, validate_transition,
     };
+    use crate::{
+        ArtifactReleaseRef, ControlPlaneInfrastructure, ModuleCommandContext, ModulesModule,
+    };
+
+    struct AllowSecurityTransitions;
+
+    #[async_trait]
+    impl ModuleArtifactSecurityAuthorizer for AllowSecurityTransitions {
+        async fn authorize_quarantine(
+            &self,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Ok(())
+        }
+
+        async fn authorize_clear_quarantine(
+            &self,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Ok(())
+        }
+
+        async fn authorize_revoke(
+            &self,
+            _command: &ModuleArtifactSecurityCommand,
+        ) -> Result<(), ModuleArtifactSecurityError> {
+            Ok(())
+        }
+    }
+
+    fn command() -> ModuleArtifactSecurityCommand {
+        ModuleArtifactSecurityCommand {
+            release: ArtifactReleaseRef {
+                slug: "sample_module".to_string(),
+                version: "1.0.0".to_string(),
+                digest: format!("sha256:{}", "a".repeat(64)),
+            },
+            expected_revision: 0,
+            policy_revision: "security-policy-1".to_string(),
+            reason_code: "malware_detected".to_string(),
+            reason_detail: "Independent verification found a prohibited payload.".to_string(),
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: None,
+                trace_id: "test:artifact-security".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn security_state_persists_and_replays_platform_command_context() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        rustok_outbox::SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .expect("outbox migration");
+        database
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                "CREATE TABLE registry_module_releases (
+                    id TEXT PRIMARY KEY,
+                    slug TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    checksum_sha256 TEXT NOT NULL,
+                    status TEXT NOT NULL
+                 )"
+                .to_string(),
+            ))
+            .await
+            .expect("registry release fixture");
+        for migration in ModulesModule.migrations() {
+            migration
+                .up(&SchemaManager::new(&database))
+                .await
+                .expect("module migration");
+        }
+        let service = SeaOrmModuleArtifactSecurityService::with_infrastructure(
+            database.clone(),
+            AllowSecurityTransitions,
+            ControlPlaneInfrastructure::for_database(database.clone()),
+        );
+        let command = command();
+
+        let initial = service
+            .quarantine(command.clone())
+            .await
+            .expect("initial quarantine");
+        assert!(initial.created);
+        assert_eq!(
+            initial.snapshot.status,
+            ModuleArtifactSecurityStatus::Quarantined
+        );
+
+        let replay = service
+            .quarantine(command.clone())
+            .await
+            .expect("exact quarantine replay");
+        assert!(!replay.created);
+        assert_eq!(replay.snapshot, initial.snapshot);
+
+        let receipt = database
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT principal_id, trace_id, correlation_id
+                 FROM module_artifact_security_operations WHERE idempotency_key = ?1",
+                vec![command.context.idempotency_key.to_string().into()],
+            ))
+            .await
+            .expect("security receipt query")
+            .expect("security receipt");
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "principal_id")
+                .expect("receipt actor"),
+            command.context.actor_id.to_string()
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "trace_id")
+                .expect("receipt trace"),
+            command.context.trace_id
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "correlation_id")
+                .expect("receipt correlation"),
+            command.context.correlation_id.to_string()
+        );
+
+        let event = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT payload FROM sys_events WHERE event_type = 'module.artifact.security_state_changed'"
+                    .to_string(),
+            ))
+            .await
+            .expect("security event query")
+            .expect("security event");
+        let payload: serde_json::Value = event
+            .try_get("", "payload")
+            .expect("security event payload");
+        let envelope: rustok_events::EventEnvelope =
+            serde_json::from_value(payload).expect("security event envelope");
+        assert_eq!(envelope.tenant_id, Uuid::nil());
+        assert_eq!(envelope.actor_id, Some(command.context.actor_id));
+        assert_eq!(envelope.correlation_id, command.context.correlation_id);
+        assert_eq!(
+            envelope.trace_id.as_deref(),
+            Some(command.context.trace_id.as_str())
+        );
+
+        let mut conflicting_replay = command;
+        conflicting_replay.context.trace_id = "test:changed-trace".to_string();
+        assert!(matches!(
+            service.quarantine(conflicting_replay).await,
+            Err(ModuleArtifactSecurityError::IdempotencyConflict)
+        ));
+    }
+
+    #[test]
+    fn security_state_rejects_a_tenant_scoped_command_context() {
+        let mut command = command();
+        command.context.tenant_id = Some(Uuid::new_v4());
+        assert!(matches!(
+            validate_command(&command),
+            Err(ModuleArtifactSecurityError::InvalidCommand)
+        ));
+    }
 
     #[test]
     fn quarantine_and_revoke_transitions_are_distinct_and_revocation_is_terminal() {

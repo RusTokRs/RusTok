@@ -333,7 +333,7 @@ async fn only_state_changes_publish_artifact_permission_events() {
 }
 
 #[tokio::test]
-async fn explicit_scope_mutation_remains_exact_for_corrupt_parallel_definitions() {
+async fn explicit_scope_mutation_does_not_shadow_platform_or_tenant_definition() {
     let db = setup_database().await;
     let tenant_id = Uuid::new_v4();
     let role_id = Uuid::new_v4();

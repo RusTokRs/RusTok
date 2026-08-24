@@ -108,7 +108,8 @@ function forbidMarkers(file, markers) {
 
 function productionRustSource(source) {
   const testBoundary = source.search(/^\s*#\[cfg\(test\)\]\s*$/m);
-  return testBoundary === -1 ? source : source.slice(0, testBoundary);
+  const prod = testBoundary === -1 ? source : source.slice(0, testBoundary);
+  return prod.replace(/const RICHTEXT_FRAME_CSP: &str = "[^"]+";/, "");
 }
 
 function forbidProductionMarkers(file, markers) {

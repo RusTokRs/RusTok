@@ -1,8 +1,6 @@
-use async_graphql::{Context, Enum, ErrorExtensions, FieldError, Object, Result, SimpleObject};
-use rustok_api::{
-    AuthContext, RequestContext, TenantContext,
-    graphql::{GraphQLError, require_module_enabled},
-};
+use async_graphql::{Context, Enum, ErrorExtensions, Object, Result, SimpleObject};
+use rustok_api::graphql::require_module_enabled;
+use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
@@ -103,7 +101,7 @@ async fn resolve_authorized_public_route(
 
     let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
-    let tenant_id = resolve_tenant_scope(tenant, requested_tenant_id)?;
+    let tenant_id = super::resolve_tenant_scope(tenant, requested_tenant_id)?;
     let authenticated = ctx.data_opt::<AuthContext>().is_some();
     let anonymous_channel_enabled = if authenticated {
         true
@@ -294,17 +292,7 @@ fn internal_error(message: &'static str) -> async_graphql::Error {
         .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR"))
 }
 
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
-    }
-}
+
 
 fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
     ctx.data_opt::<RequestContext>()

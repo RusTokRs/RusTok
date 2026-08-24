@@ -135,6 +135,7 @@ export function ForumTopicEditor({
               control={form.control}
               name='locale'
               label='Content locale'
+              dir='ltr'
               required
             />
             <FormSelect
@@ -145,7 +146,9 @@ export function ForumTopicEditor({
               disabled={isEditing || form.formState.isSubmitting}
               options={categories.map((category) => ({
                 value: category.id,
-                label: category.name
+                label: category.name,
+                lang: category.effectiveLocale,
+                dir: 'auto' as const
               }))}
               placeholder='Select a category'
               description={
@@ -161,12 +164,15 @@ export function ForumTopicEditor({
               control={form.control}
               name='title'
               label='Title'
+              lang={contentLocale}
+              dir='auto'
               required
             />
             <FormInput
               control={form.control}
               name='slug'
               label='Slug'
+              dir='ltr'
               placeholder='Generated from the title when empty'
               disabled={isEditing || form.formState.isSubmitting}
               description={
@@ -181,6 +187,8 @@ export function ForumTopicEditor({
             control={form.control}
             name='tags'
             label='Tags'
+            lang={contentLocale}
+            dir='auto'
             placeholder='rust, help, discussion'
           />
 

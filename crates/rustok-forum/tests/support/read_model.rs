@@ -161,6 +161,13 @@ pub async fn exercise_bounded_cursor_read_models(db: &DatabaseConnection) -> Tes
     Ok(())
 }
 
+fn sql_uuid(db: &DatabaseConnection, id: Uuid) -> String {
+    match db.get_database_backend() {
+        sea_orm::DatabaseBackend::Postgres => format!("'{id}'"),
+        _ => format!("X'{}'", id.simple().to_string().to_uppercase()),
+    }
+}
+
 async fn seed_forum(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -184,12 +191,17 @@ async fn seed_category(
         "INSERT INTO forum_categories
             (id, tenant_id, position, moderated, topic_count, reply_count)
          VALUES
-            ('{category_id}', '{tenant_id}', {position}, FALSE, 0, 0);
+            ({}, {}, {position}, FALSE, 0, 0);
          INSERT INTO forum_category_translations
             (id, category_id, tenant_id, locale, name, slug)
          VALUES
-            ('{translation_id}', '{category_id}', '{tenant_id}', 'en',
-             'Category {position}', 'category-{category_id}');"
+            ({}, {}, {}, 'en',
+             'Category {position}', 'category-{category_id}');",
+        sql_uuid(db, category_id),
+        sql_uuid(db, tenant_id),
+        sql_uuid(db, translation_id),
+        sql_uuid(db, category_id),
+        sql_uuid(db, tenant_id),
     ))
     .await?;
     Ok(category_id)
@@ -202,19 +214,27 @@ async fn seed_topics(
     count: usize,
 ) -> TestResult<Vec<Uuid>> {
     let mut ids = Vec::with_capacity(count);
+    let base_time = chrono::Utc::now();
     for index in 0..count {
         let topic_id = Uuid::new_v4();
         let translation_id = Uuid::new_v4();
+        let topic_time = (base_time + chrono::Duration::milliseconds(index as i64 * 10)).to_rfc3339();
         db.execute_unprepared(&format!(
             "INSERT INTO forum_topics
-                (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
+                (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count, created_at, updated_at)
              VALUES
-                ('{topic_id}', '{tenant_id}', '{category_id}', 'open', '{{}}', FALSE, FALSE, 0);
+                ({}, {}, {}, 'open', '{{}}', FALSE, FALSE, 0, '{topic_time}', '{topic_time}');
              INSERT INTO forum_topic_translations
                 (id, topic_id, tenant_id, locale, title, body)
              VALUES
-                ('{translation_id}', '{topic_id}', '{tenant_id}', 'en',
-                 'Topic {index}', 'Body {index}');"
+                ({}, {}, {}, 'en',
+                 'Topic {index}', 'Body {index}');",
+            sql_uuid(db, topic_id),
+            sql_uuid(db, tenant_id),
+            sql_uuid(db, category_id),
+            sql_uuid(db, translation_id),
+            sql_uuid(db, topic_id),
+            sql_uuid(db, tenant_id),
         ))
         .await?;
         ids.push(topic_id);
@@ -236,13 +256,19 @@ async fn seed_replies(
             "INSERT INTO forum_replies
                 (id, tenant_id, topic_id, status, position)
              VALUES
-                ('{reply_id}', '{tenant_id}', '{topic_id}', 'approved', {});
+                ({}, {}, {}, 'approved', {});
              INSERT INTO forum_reply_bodies
                 (id, reply_id, tenant_id, locale, body)
              VALUES
-                ('{body_id}', '{reply_id}', '{tenant_id}', 'en',
+                ({}, {}, {}, 'en',
                  'Reply {index}');",
-            index + 1
+            sql_uuid(db, reply_id),
+            sql_uuid(db, tenant_id),
+            sql_uuid(db, topic_id),
+            index + 1,
+            sql_uuid(db, body_id),
+            sql_uuid(db, reply_id),
+            sql_uuid(db, tenant_id),
         ))
         .await?;
         ids.push(reply_id);

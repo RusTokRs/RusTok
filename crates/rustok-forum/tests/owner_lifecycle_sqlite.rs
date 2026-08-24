@@ -88,7 +88,10 @@ async fn owner_reply_commands_enforce_lock_moderation_and_soft_delete() {
         .expect("owner should soft-delete reply explicitly");
     assert_eq!(reply_status(&db, pending.id).await, "deleted");
     assert!(reply_deleted(&db, pending.id).await);
-    assert_eq!(reply_body(&db, pending.id).await, "[deleted]");
+    assert_eq!(
+        reply_body(&db, pending.id).await,
+        serde_json::to_string(&reply_input("pending reply").content).unwrap()
+    );
     assert_eq!(reply_revision_count(&db, pending.id).await, 1);
     assert_eq!(topic_reply_count(&db, moderated_topic_id).await, 0);
     assert_eq!(category_reply_count(&db, category_id).await, 0);
@@ -132,11 +135,14 @@ async fn owner_topic_delete_redacts_thread_and_preserves_revisions() {
 
     assert!(topic_deleted(&db, topic_id).await);
     assert_eq!(topic_status(&db, topic_id).await, "archived");
-    assert_eq!(topic_title(&db, topic_id).await, "[deleted]");
-    assert_eq!(topic_body(&db, topic_id).await, "[deleted]");
+    assert_eq!(topic_title(&db, topic_id).await, "Topic");
+    assert_eq!(topic_body(&db, topic_id).await, "Topic body");
     assert_eq!(reply_status(&db, reply.id).await, "deleted");
     assert!(reply_deleted(&db, reply.id).await);
-    assert_eq!(reply_body(&db, reply.id).await, "[deleted]");
+    assert_eq!(
+        reply_body(&db, reply.id).await,
+        serde_json::to_string(&reply_input("public reply").content).unwrap()
+    );
     assert_eq!(topic_revision_count(&db, topic_id).await, 1);
     assert_eq!(reply_revision_count(&db, reply.id).await, 1);
     assert_eq!(category_topic_count(&db, category_id).await, 0);
@@ -184,6 +190,14 @@ async fn setup_db() -> DatabaseConnection {
             .await
             .expect("taxonomy migration should apply");
     }
+        db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         migration
             .up(&manager)
@@ -198,6 +212,10 @@ fn event_bus(db: DatabaseConnection) -> TransactionalEventBus {
     TransactionalEventBus::new(Arc::new(OutboxTransport::new(db)))
 }
 
+fn sql_uuid(id: Uuid) -> String {
+    format!("X'{}'", id.simple().to_string().to_uppercase())
+}
+
 async fn seed_category(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -207,7 +225,9 @@ async fn seed_category(
     db.execute_unprepared(&format!(
         "INSERT INTO forum_categories \
          (id, tenant_id, position, moderated, topic_count, reply_count) \
-         VALUES ('{category_id}', '{tenant_id}', 0, {}, 0, 0)",
+         VALUES ({}, {}, 0, {}, 0, 0)",
+        sql_uuid(category_id),
+        sql_uuid(tenant_id),
         if moderated { 1 } else { 0 }
     ))
     .await
@@ -225,18 +245,25 @@ async fn seed_topic(
     db.execute_unprepared(&format!(
         "INSERT INTO forum_topics \
          (id, tenant_id, category_id, author_id, status, metadata, is_pinned, is_locked, reply_count) \
-         VALUES ('{topic_id}', '{tenant_id}', '{category_id}', '{author_id}', 'open', '{{}}', 0, {}, 0); \
+         VALUES ({}, {}, {}, {}, 'open', '{{}}', 0, {}, 0); \
          INSERT INTO forum_topic_translations \
          (id, topic_id, tenant_id, locale, title, slug, body) \
-         VALUES ('{}', '{topic_id}', '{tenant_id}', 'en', 'Topic', 'topic-{topic_id}', 'Topic body')",
+         VALUES ({}, {}, {}, 'en', 'Topic', 'topic-{topic_id}', 'Topic body')",
+        sql_uuid(topic_id),
+        sql_uuid(tenant_id),
+        sql_uuid(category_id),
+        sql_uuid(author_id),
         if locked { 1 } else { 0 },
-        Uuid::new_v4(),
+        sql_uuid(Uuid::new_v4()),
+        sql_uuid(topic_id),
+        sql_uuid(tenant_id),
     ))
     .await
     .expect("topic seed should succeed");
 
     db.execute_unprepared(&format!(
-        "UPDATE forum_categories SET topic_count = 1 WHERE id = '{category_id}'"
+        "UPDATE forum_categories SET topic_count = 1 WHERE id = {}",
+        sql_uuid(category_id)
     ))
     .await
     .expect("category topic count seed should succeed");
@@ -263,7 +290,7 @@ async fn scalar_string(db: &DatabaseConnection, sql: String) -> String {
 async fn topic_reply_count(db: &DatabaseConnection, topic_id: Uuid) -> i64 {
     scalar_i64(
         db,
-        format!("SELECT reply_count AS value FROM forum_topics WHERE id = '{topic_id}'"),
+        format!("SELECT reply_count AS value FROM forum_topics WHERE id = {}", sql_uuid(topic_id)),
     )
     .await
 }
@@ -271,7 +298,7 @@ async fn topic_reply_count(db: &DatabaseConnection, topic_id: Uuid) -> i64 {
 async fn category_topic_count(db: &DatabaseConnection, category_id: Uuid) -> i64 {
     scalar_i64(
         db,
-        format!("SELECT topic_count AS value FROM forum_categories WHERE id = '{category_id}'"),
+        format!("SELECT topic_count AS value FROM forum_categories WHERE id = {}", sql_uuid(category_id)),
     )
     .await
 }
@@ -279,7 +306,7 @@ async fn category_topic_count(db: &DatabaseConnection, category_id: Uuid) -> i64
 async fn category_reply_count(db: &DatabaseConnection, category_id: Uuid) -> i64 {
     scalar_i64(
         db,
-        format!("SELECT reply_count AS value FROM forum_categories WHERE id = '{category_id}'"),
+        format!("SELECT reply_count AS value FROM forum_categories WHERE id = {}", sql_uuid(category_id)),
     )
     .await
 }
@@ -295,7 +322,7 @@ async fn event_count(db: &DatabaseConnection, event_type: &str) -> i64 {
 async fn reply_status(db: &DatabaseConnection, reply_id: Uuid) -> String {
     scalar_string(
         db,
-        format!("SELECT status AS value FROM forum_replies WHERE id = '{reply_id}'"),
+        format!("SELECT status AS value FROM forum_replies WHERE id = {}", sql_uuid(reply_id)),
     )
     .await
 }
@@ -303,7 +330,7 @@ async fn reply_status(db: &DatabaseConnection, reply_id: Uuid) -> String {
 async fn topic_status(db: &DatabaseConnection, topic_id: Uuid) -> String {
     scalar_string(
         db,
-        format!("SELECT status AS value FROM forum_topics WHERE id = '{topic_id}'"),
+        format!("SELECT status AS value FROM forum_topics WHERE id = {}", sql_uuid(topic_id)),
     )
     .await
 }
@@ -311,7 +338,7 @@ async fn topic_status(db: &DatabaseConnection, topic_id: Uuid) -> String {
 async fn reply_body(db: &DatabaseConnection, reply_id: Uuid) -> String {
     scalar_string(
         db,
-        format!("SELECT body AS value FROM forum_reply_bodies WHERE reply_id = '{reply_id}'"),
+        format!("SELECT body AS value FROM forum_reply_bodies WHERE reply_id = {}", sql_uuid(reply_id)),
     )
     .await
 }
@@ -320,7 +347,8 @@ async fn topic_title(db: &DatabaseConnection, topic_id: Uuid) -> String {
     scalar_string(
         db,
         format!(
-            "SELECT title AS value FROM forum_topic_translations WHERE topic_id = '{topic_id}'"
+            "SELECT title AS value FROM forum_topic_translations WHERE topic_id = {}",
+            sql_uuid(topic_id)
         ),
     )
     .await
@@ -329,7 +357,7 @@ async fn topic_title(db: &DatabaseConnection, topic_id: Uuid) -> String {
 async fn topic_body(db: &DatabaseConnection, topic_id: Uuid) -> String {
     scalar_string(
         db,
-        format!("SELECT body AS value FROM forum_topic_translations WHERE topic_id = '{topic_id}'"),
+        format!("SELECT body AS value FROM forum_topic_translations WHERE topic_id = {}", sql_uuid(topic_id)),
     )
     .await
 }
@@ -338,7 +366,8 @@ async fn reply_deleted(db: &DatabaseConnection, reply_id: Uuid) -> bool {
     scalar_i64(
         db,
         format!(
-            "SELECT COUNT(*) AS value FROM forum_replies WHERE id = '{reply_id}' AND deleted_at IS NOT NULL"
+            "SELECT COUNT(*) AS value FROM forum_replies WHERE id = {} AND deleted_at IS NOT NULL",
+            sql_uuid(reply_id)
         ),
     )
     .await
@@ -349,7 +378,8 @@ async fn topic_deleted(db: &DatabaseConnection, topic_id: Uuid) -> bool {
     scalar_i64(
         db,
         format!(
-            "SELECT COUNT(*) AS value FROM forum_topics WHERE id = '{topic_id}' AND deleted_at IS NOT NULL"
+            "SELECT COUNT(*) AS value FROM forum_topics WHERE id = {} AND deleted_at IS NOT NULL",
+            sql_uuid(topic_id)
         ),
     )
     .await
@@ -360,7 +390,8 @@ async fn reply_revision_count(db: &DatabaseConnection, reply_id: Uuid) -> i64 {
     scalar_i64(
         db,
         format!(
-            "SELECT COUNT(*) AS value FROM forum_reply_revisions WHERE reply_id = '{reply_id}'"
+            "SELECT COUNT(*) AS value FROM forum_reply_revisions WHERE reply_id = {}",
+            sql_uuid(reply_id)
         ),
     )
     .await
@@ -370,7 +401,8 @@ async fn topic_revision_count(db: &DatabaseConnection, topic_id: Uuid) -> i64 {
     scalar_i64(
         db,
         format!(
-            "SELECT COUNT(*) AS value FROM forum_topic_revisions WHERE topic_id = '{topic_id}'"
+            "SELECT COUNT(*) AS value FROM forum_topic_revisions WHERE topic_id = {}",
+            sql_uuid(topic_id)
         ),
     )
     .await

@@ -27,8 +27,8 @@ use crate::{
     ArtifactBindingDispatch, ArtifactBindingExecutor, ArtifactCapabilityBrokerResolver,
     ArtifactCapabilityExecution, ArtifactDataIndexField, ArtifactDataIndexValueType,
     ArtifactInstallationTarget, ArtifactMigrationCheckpointRequest, ArtifactReleaseRef,
-    ControlPlaneInfrastructure, InstalledModuleArtifact, ModuleInstallationScope,
-    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    ControlPlaneInfrastructure, InstalledModuleArtifact, ModuleCommandContext,
+    ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
     resolve_granted_artifact_capability,
 };
@@ -445,6 +445,9 @@ pub struct ArtifactDataUpgradeApplyRequest {
     pub installation_scope: ModuleInstallationScope,
     pub expected_installation_revision: u64,
     pub has_irreversible_migration: bool,
+    /// Mandatory owner-command evidence for the durable migration checkpoint.
+    pub context: ModuleCommandContext,
+    pub reason: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -477,9 +480,10 @@ pub enum ArtifactDataAccess {
 pub struct ArtifactDataPurgeRequest {
     pub scope: ArtifactDataScope,
     pub expected_namespace_revision: u64,
-    pub actor_id: Uuid,
+    /// Mandatory authenticated evidence for this destructive owner command.
+    /// The tenant identity must match the retained data namespace exactly.
+    pub context: ModuleCommandContext,
     pub reason: String,
-    pub idempotency_key: Uuid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1183,6 +1187,8 @@ where
                 expected_revision: request.expected_installation_revision,
                 checkpoint,
                 has_irreversible_migration: request.has_irreversible_migration,
+                context: request.context.clone(),
+                reason: request.reason,
             })
             .await?;
         Ok(ArtifactDataUpgradeApplyResult {
@@ -1196,7 +1202,17 @@ fn validate_upgrade_apply_request(
     request: &ArtifactDataUpgradeApplyRequest,
 ) -> Result<(), ArtifactDataError> {
     validate_upgrade_plan(&request.plan)?;
-    if request.expected_installation_revision == 0 {
+    let scope_tenant_id = match request.installation_scope {
+        ModuleInstallationScope::Platform => None,
+        ModuleInstallationScope::Tenant { tenant_id } if !tenant_id.is_nil() => Some(tenant_id),
+        ModuleInstallationScope::Tenant { .. } => return Err(ArtifactDataError::InvalidUpgrade),
+    };
+    if request.expected_installation_revision == 0
+        || request.expected_installation_revision > i64::MAX as u64
+        || request.reason.trim().is_empty()
+        || request.context.tenant_id != scope_tenant_id
+        || request.context.validate().is_err()
+    {
         return Err(ArtifactDataError::InvalidUpgrade);
     }
     Ok(())
@@ -5217,7 +5233,7 @@ where
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT expected_namespace_revision, actor_id, reason, namespace_revision, purged_records
+                    "SELECT expected_namespace_revision, actor_id, trace_id, correlation_id, reason, namespace_revision, purged_records
                      FROM module_artifact_data_purge_operations
                      WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
                      AND policy_revision = {} AND idempotency_key = {}",
@@ -5232,7 +5248,7 @@ where
                     request.scope.module_slug.clone().into(),
                     revision_value(request.scope.data_contract_revision)?,
                     revision_value(request.scope.policy_revision)?,
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -5242,9 +5258,13 @@ where
                 .try_get("", "expected_namespace_revision")
                 .map_err(storage_error)?;
             let actor_id = uuid_from_row(&row, "actor_id", backend)?;
+            let trace_id: String = row.try_get("", "trace_id").map_err(storage_error)?;
+            let correlation_id = uuid_from_row(&row, "correlation_id", backend)?;
             let reason: String = row.try_get("", "reason").map_err(storage_error)?;
             if u64::try_from(expected_revision).ok() != Some(request.expected_namespace_revision)
-                || actor_id != request.actor_id
+                || actor_id != request.context.actor_id
+                || trace_id != request.context.trace_id
+                || correlation_id != request.context.correlation_id
                 || reason != request.reason
             {
                 return Err(ArtifactDataError::IdempotencyConflict);
@@ -5474,8 +5494,8 @@ where
                 format!(
                     "INSERT INTO module_artifact_data_purge_operations
                      (tenant_id, module_slug, data_contract_revision, policy_revision, idempotency_key, expected_namespace_revision,
-                      namespace_revision, actor_id, reason, purged_records, completed_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                      namespace_revision, actor_id, trace_id, correlation_id, reason, purged_records, completed_at)
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -5486,6 +5506,8 @@ where
                     placeholder(backend, 8),
                     placeholder(backend, 9),
                     placeholder(backend, 10),
+                    placeholder(backend, 11),
+                    placeholder(backend, 12),
                     now_expression(backend),
                 ),
                 vec![
@@ -5493,10 +5515,12 @@ where
                     request.scope.module_slug.clone().into(),
                     revision_value(request.scope.data_contract_revision)?,
                     revision_value(request.scope.policy_revision)?,
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                     revision_value(request.expected_namespace_revision)?,
                     revision_value(next_revision)?,
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     request.reason.clone().into(),
                     purged_records.into(),
                 ],
@@ -5506,9 +5530,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(request.scope.tenant_id),
-                    Some(request.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactDataPurged {
                         tenant_id: request.scope.tenant_id,
                         module_slug: request.scope.module_slug.clone(),
@@ -5730,8 +5753,8 @@ async fn validate_artifact_data_index_contract<C: ConnectionTrait>(
 fn validate_purge_request(request: &ArtifactDataPurgeRequest) -> Result<(), ArtifactDataError> {
     request.scope.validate()?;
     if request.expected_namespace_revision == 0
-        || request.actor_id.is_nil()
-        || request.idempotency_key.is_nil()
+        || request.context.tenant_id != Some(request.scope.tenant_id)
+        || request.context.validate().is_err()
         || request.reason.trim().is_empty()
         || request.reason.len() > 2_000
     {
@@ -6651,16 +6674,117 @@ mod tests {
             })
             .await
             .expect("export data");
-        SeaOrmArtifactDataPurgeService::new(database.clone(), AllowPurgeAuthorizer)
-            .purge(ArtifactDataPurgeRequest {
-                scope: next_scope.clone(),
-                expected_namespace_revision: 1,
+        let purge_request = ArtifactDataPurgeRequest {
+            scope: next_scope.clone(),
+            expected_namespace_revision: 1,
+            context: ModuleCommandContext {
                 actor_id: Uuid::new_v4(),
-                reason: "verify policy-scoped purge evidence".to_string(),
+                tenant_id: Some(next_scope.tenant_id),
+                trace_id: "test:artifact-data-purge".to_string(),
+                correlation_id: Uuid::new_v4(),
                 idempotency_key: Uuid::new_v4(),
-            })
+            },
+            reason: "verify policy-scoped purge evidence".to_string(),
+        };
+        let purge_context = purge_request.context.clone();
+        let purge = SeaOrmArtifactDataPurgeService::new(database.clone(), AllowPurgeAuthorizer);
+        assert!(matches!(
+            purge
+                .purge(ArtifactDataPurgeRequest {
+                    context: ModuleCommandContext {
+                        tenant_id: Some(Uuid::new_v4()),
+                        ..purge_request.context.clone()
+                    },
+                    ..purge_request.clone()
+                })
+                .await,
+            Err(ArtifactDataError::PurgePrecondition)
+        ));
+        let purged = purge
+            .purge(purge_request.clone())
             .await
             .expect("purge data");
+        assert_eq!(
+            purge
+                .purge(purge_request.clone())
+                .await
+                .expect("replay purge"),
+            purged
+        );
+        assert!(matches!(
+            purge
+                .purge(ArtifactDataPurgeRequest {
+                    context: ModuleCommandContext {
+                        trace_id: "test:conflicting-artifact-data-purge".to_string(),
+                        ..purge_request.context.clone()
+                    },
+                    ..purge_request.clone()
+                })
+                .await,
+            Err(ArtifactDataError::IdempotencyConflict)
+        ));
+        assert!(matches!(
+            purge
+                .purge(ArtifactDataPurgeRequest {
+                    context: ModuleCommandContext {
+                        correlation_id: Uuid::new_v4(),
+                        ..purge_request.context.clone()
+                    },
+                    ..purge_request.clone()
+                })
+                .await,
+            Err(ArtifactDataError::IdempotencyConflict)
+        ));
+        let purge_receipt = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT actor_id, trace_id, correlation_id \
+                 FROM module_artifact_data_purge_operations"
+                    .to_string(),
+            ))
+            .await
+            .expect("purge receipt query")
+            .expect("purge receipt");
+        assert_eq!(
+            purge_receipt
+                .try_get::<String>("", "actor_id")
+                .expect("purge receipt actor"),
+            purge_context.actor_id.to_string()
+        );
+        assert_eq!(
+            purge_receipt
+                .try_get::<String>("", "trace_id")
+                .expect("purge receipt trace"),
+            purge_context.trace_id
+        );
+        assert_eq!(
+            purge_receipt
+                .try_get::<String>("", "correlation_id")
+                .expect("purge receipt correlation"),
+            purge_context.correlation_id.to_string()
+        );
+        let purge_event = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT payload FROM sys_events \
+                 WHERE event_type = 'module.artifact.data_purged'"
+                    .to_string(),
+            ))
+            .await
+            .expect("purge event query")
+            .expect("purge event");
+        let purge_payload: Value = purge_event
+            .try_get("", "payload")
+            .expect("purge event payload");
+        let purge_envelope: rustok_events::EventEnvelope =
+            serde_json::from_value(purge_payload).expect("purge event envelope");
+        assert_eq!(purge_envelope.actor_id, Some(purge_context.actor_id));
+        assert_eq!(purge_envelope.tenant_id, next_scope.tenant_id);
+        assert_eq!(purge_envelope.correlation_id, purge_context.correlation_id);
+        assert_eq!(
+            purge_envelope.trace_id.as_deref(),
+            Some(purge_context.trace_id.as_str())
+        );
         for table in [
             "module_artifact_data_exports",
             "module_artifact_data_purge_operations",
@@ -7460,7 +7584,18 @@ mod tests {
             installation_scope: ModuleInstallationScope::Tenant { tenant_id },
             expected_installation_revision: 4,
             has_irreversible_migration: true,
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(tenant_id),
+                trace_id: "test:data-upgrade".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            reason: "apply approved upgrade plan".to_string(),
         };
+        let checkpoint_actor_id = request.context.actor_id;
+        let checkpoint_reason = request.reason.clone();
+        let checkpoint_idempotency_key = request.context.idempotency_key;
 
         assert!(matches!(
             applier.apply(request.clone()).await,
@@ -7474,9 +7609,13 @@ mod tests {
         let retry = applier.apply(request).await.expect("idempotent retry");
         assert_eq!(retry.records[0].value, json!({ "version": 2 }));
         assert_eq!(retry.installation_revision, 5);
+        let requests = checkpoints.requests.lock().expect("checkpoint lock");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].context.actor_id, checkpoint_actor_id);
+        assert_eq!(requests[0].reason, checkpoint_reason);
         assert_eq!(
-            checkpoints.requests.lock().expect("checkpoint lock").len(),
-            1
+            requests[0].context.idempotency_key,
+            checkpoint_idempotency_key
         );
     }
 

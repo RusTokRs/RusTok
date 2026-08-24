@@ -16,7 +16,7 @@ use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 
 use crate::{
     ArtifactDataError, ArtifactDataObject, ArtifactDataQuota, ArtifactDataRecord,
-    ArtifactDataScope, ControlPlaneInfrastructure,
+    ArtifactDataScope, ControlPlaneInfrastructure, ModuleCommandContext,
     data::{
         artifact_data_value_size, configure_tenant_scope, namespace_lock_clause, now_expression,
         placeholder, revision_value, uuid_from_row, uuid_value,
@@ -36,9 +36,8 @@ const MAX_POLICY_SNAPSHOT_ID_BYTES: usize = 128;
 pub struct ArtifactDataSnapshotCreateRequest {
     pub scope: ArtifactDataScope,
     pub expected_namespace_revision: u64,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub reason: String,
-    pub idempotency_key: Uuid,
     pub retain_until: DateTime<Utc>,
     pub legal_hold: bool,
 }
@@ -62,9 +61,8 @@ pub struct ArtifactDataRestoreRequest {
     pub snapshot_id: Uuid,
     pub target: ArtifactDataScope,
     pub expected_namespace_revision: u64,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub reason: String,
-    pub idempotency_key: Uuid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,9 +80,8 @@ pub struct ArtifactDataSnapshotRetentionUpdateRequest {
     pub expected_retention_revision: u64,
     pub extend_retain_until: Option<DateTime<Utc>>,
     pub legal_hold: Option<bool>,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub reason: String,
-    pub idempotency_key: Uuid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,7 +95,7 @@ pub struct ArtifactDataSnapshotRetention {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactDataSnapshotCollectionRequest {
     pub tenant_id: Uuid,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub reason: String,
     pub policy_snapshot_id: String,
     pub limit: u32,
@@ -312,7 +309,7 @@ where
                     uuid_value(request.scope.tenant_id, backend),
                     request.scope.module_slug.clone().into(),
                     revision_value(request.scope.data_contract_revision)?,
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -378,15 +375,16 @@ where
                     "INSERT INTO module_artifact_data_snapshots
                      (snapshot_id, tenant_id, module_slug, data_contract_revision, policy_revision,
                       source_namespace_revision, status, retention_revision, request_digest, manifest_digest, actor_id,
-                      reason, idempotency_key, structured_record_count, object_count,
+                      trace_id, correlation_id, reason, idempotency_key, structured_record_count, object_count,
                       total_object_bytes, retain_until, legal_hold, created_at, ready_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, 'staging', 1, {}, NULL, {}, {}, {}, {}, {}, {}, {}, {}, {}, NULL)
+                     VALUES ({}, {}, {}, {}, {}, {}, 'staging', 1, {}, NULL, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, NULL)
                      ON CONFLICT (tenant_id, module_slug, data_contract_revision, idempotency_key) DO NOTHING",
                     placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
                     placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6),
                     placeholder(backend, 7), placeholder(backend, 8), placeholder(backend, 9),
                     placeholder(backend, 10), placeholder(backend, 11), placeholder(backend, 12),
                     placeholder(backend, 13), placeholder(backend, 14), placeholder(backend, 15),
+                    placeholder(backend, 16), placeholder(backend, 17),
                     now_expression(backend),
                 ),
                 vec![
@@ -397,9 +395,11 @@ where
                     revision_value(request.scope.policy_revision)?,
                     revision_value(namespace_revision)?,
                     request_digest.to_owned().into(),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     request.reason.clone().into(),
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                     revision_value(records.len() as u64)?,
                     revision_value(objects.len() as u64)?,
                     revision_value(total_object_bytes)?,
@@ -423,7 +423,7 @@ where
                         uuid_value(request.scope.tenant_id, backend),
                         request.scope.module_slug.clone().into(),
                         revision_value(request.scope.data_contract_revision)?,
-                        uuid_value(request.idempotency_key, backend),
+                        uuid_value(request.context.idempotency_key, backend),
                     ],
                 ))
                 .await
@@ -561,7 +561,7 @@ where
         if status != "staging" {
             return Err(ArtifactDataError::SnapshotPrecondition);
         }
-        let actor_id = uuid_from_row(&row, "actor_id", backend)?;
+        let context = command_context_from_row(&row, tenant_id, backend)?;
         let manifest = load_manifest(&transaction, tenant_id, snapshot_id).await?;
         if !manifest_within_limits(&manifest)
             || manifest
@@ -601,9 +601,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(tenant_id),
-                    Some(actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &context,
                     DomainEvent::ModuleArtifactDataSnapshotCreated {
                         snapshot_id,
                         tenant_id,
@@ -800,26 +799,29 @@ where
                     "INSERT INTO module_artifact_data_restore_operations
                      (tenant_id, module_slug, data_contract_revision, idempotency_key, request_digest,
                       snapshot_id, expected_namespace_revision, namespace_revision, restored_records,
-                      restored_objects, actor_id, reason, completed_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                      restored_objects, actor_id, trace_id, correlation_id, reason, completed_at)
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
                     placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6),
                     placeholder(backend, 7), placeholder(backend, 8), placeholder(backend, 9),
                     placeholder(backend, 10), placeholder(backend, 11), placeholder(backend, 12),
+                    placeholder(backend, 13), placeholder(backend, 14),
                     now_expression(backend),
                 ),
                 vec![
                     uuid_value(request.target.tenant_id, backend),
                     request.target.module_slug.clone().into(),
                     revision_value(request.target.data_contract_revision)?,
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                     request_digest.to_owned().into(),
                     uuid_value(request.snapshot_id, backend),
                     revision_value(request.expected_namespace_revision)?,
                     revision_value(namespace_revision)?,
                     revision_value(restored_records)?,
                     revision_value(restored_objects)?,
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     request.reason.clone().into(),
                 ],
             ))
@@ -828,9 +830,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(request.target.tenant_id),
-                    Some(request.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactDataSnapshotRestored {
                         snapshot_id: request.snapshot_id,
                         tenant_id: request.target.tenant_id,
@@ -975,8 +976,8 @@ where
                     "INSERT INTO module_artifact_data_snapshot_retention_operations
                      (tenant_id, snapshot_id, idempotency_key, request_digest,
                       expected_retention_revision, retention_revision, retain_until,
-                      legal_hold, actor_id, reason, completed_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                      legal_hold, actor_id, trace_id, correlation_id, reason, completed_at)
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -987,18 +988,22 @@ where
                     placeholder(backend, 8),
                     placeholder(backend, 9),
                     placeholder(backend, 10),
+                    placeholder(backend, 11),
+                    placeholder(backend, 12),
                     now_expression(backend),
                 ),
                 vec![
                     uuid_value(request.tenant_id, backend),
                     uuid_value(request.snapshot_id, backend),
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                     request_digest.into(),
                     revision_value(request.expected_retention_revision)?,
                     revision_value(retention_revision)?,
                     datetime_value(retain_until.to_owned(), backend),
                     legal_hold.into(),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     request.reason.into(),
                 ],
             ))
@@ -1010,9 +1015,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(request.tenant_id),
-                    Some(request.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactDataSnapshotRetentionUpdated {
                         snapshot_id: request.snapshot_id,
                         tenant_id: request.tenant_id,
@@ -1192,9 +1196,9 @@ where
                 format!(
                     "INSERT INTO module_artifact_data_snapshot_collections
                      (collection_id, tenant_id, snapshot_id, module_slug,
-                      data_contract_revision, policy_snapshot_id, actor_id, reason,
-                      object_count, collecting_at, completed_at)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, NULL)",
+                      data_contract_revision, policy_snapshot_id, actor_id, trace_id,
+                      correlation_id, idempotency_key, reason, object_count, collecting_at, completed_at)
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, NULL)",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -1204,6 +1208,9 @@ where
                     placeholder(backend, 7),
                     placeholder(backend, 8),
                     placeholder(backend, 9),
+                    placeholder(backend, 10),
+                    placeholder(backend, 11),
+                    placeholder(backend, 12),
                     now_expression(backend),
                 ),
                 vec![
@@ -1213,7 +1220,10 @@ where
                     candidate.scope.module_slug.clone().into(),
                     revision_value(candidate.scope.data_contract_revision)?,
                     request.policy_snapshot_id.clone().into(),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                     request.reason.clone().into(),
                     revision_value(candidate.object_count)?,
                 ],
@@ -1250,7 +1260,7 @@ where
             module_slug: candidate.scope.module_slug.clone(),
             data_contract_revision: candidate.scope.data_contract_revision,
             policy_snapshot_id: request.policy_snapshot_id.clone(),
-            actor_id: request.actor_id,
+            context: request.context.clone(),
             object_count: candidate.object_count,
         })
     }
@@ -1339,9 +1349,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(work.tenant_id),
-                    Some(work.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &work.context,
                     DomainEvent::ModuleArtifactDataSnapshotCollected {
                         collection_id: work.collection_id,
                         snapshot_id: work.snapshot_id,
@@ -1393,7 +1402,7 @@ struct CollectionWork {
     module_slug: String,
     data_contract_revision: u64,
     policy_snapshot_id: String,
-    actor_id: Uuid,
+    context: ModuleCommandContext,
     object_count: u64,
 }
 
@@ -1656,8 +1665,28 @@ async fn lock_snapshot<C: ConnectionTrait>(
 ) -> Result<sea_orm::QueryResult, ArtifactDataError> {
     let backend = connection.get_database_backend();
     connection.query_one(Statement::from_sql_and_values(backend, format!(
-        "SELECT snapshot_id, tenant_id, module_slug, data_contract_revision, policy_revision, source_namespace_revision, status, retention_revision, manifest_digest, structured_record_count, object_count, total_object_bytes, retain_until, legal_hold, actor_id FROM module_artifact_data_snapshots WHERE tenant_id = {} AND snapshot_id = {}{}",
+        "SELECT snapshot_id, tenant_id, module_slug, data_contract_revision, policy_revision, source_namespace_revision, status, retention_revision, manifest_digest, structured_record_count, object_count, total_object_bytes, retain_until, legal_hold, actor_id, trace_id, correlation_id, idempotency_key FROM module_artifact_data_snapshots WHERE tenant_id = {} AND snapshot_id = {}{}",
         placeholder(backend,1), placeholder(backend,2), namespace_lock_clause(backend)), vec![uuid_value(tenant_id, backend), uuid_value(snapshot_id, backend)])).await.map_err(snapshot_storage_error)?.ok_or(ArtifactDataError::SnapshotPrecondition)
+}
+
+fn command_context_from_row(
+    row: &sea_orm::QueryResult,
+    tenant_id: Uuid,
+    backend: DbBackend,
+) -> Result<ModuleCommandContext, ArtifactDataError> {
+    let context = ModuleCommandContext {
+        actor_id: uuid_from_row(row, "actor_id", backend)?,
+        tenant_id: Some(tenant_id),
+        trace_id: row
+            .try_get("", "trace_id")
+            .map_err(snapshot_storage_error)?,
+        correlation_id: uuid_from_row(row, "correlation_id", backend)?,
+        idempotency_key: uuid_from_row(row, "idempotency_key", backend)?,
+    };
+    context
+        .validate()
+        .map_err(|error| ArtifactDataError::Storage(error.to_string()))?;
+    Ok(context)
 }
 
 async fn lock_restore_namespace(
@@ -1752,7 +1781,7 @@ async fn find_restore_operation_in<C: ConnectionTrait>(
     let backend = connection.get_database_backend();
     let row = connection.query_one(Statement::from_sql_and_values(backend, format!(
         "SELECT request_digest, snapshot_id, namespace_revision, restored_records, restored_objects FROM module_artifact_data_restore_operations WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {} AND idempotency_key = {}",
-        placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4)), vec![uuid_value(request.target.tenant_id, backend), request.target.module_slug.clone().into(), revision_value(request.target.data_contract_revision)?, uuid_value(request.idempotency_key, backend)])).await.map_err(snapshot_storage_error)?;
+        placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4)), vec![uuid_value(request.target.tenant_id, backend), request.target.module_slug.clone().into(), revision_value(request.target.data_contract_revision)?, uuid_value(request.context.idempotency_key, backend)])).await.map_err(snapshot_storage_error)?;
     let Some(row) = row else {
         return Ok(None);
     };
@@ -1791,7 +1820,7 @@ async fn find_retention_operation<C: ConnectionTrait>(
             vec![
                 uuid_value(request.tenant_id, backend),
                 uuid_value(request.snapshot_id, backend),
-                uuid_value(request.idempotency_key, backend),
+                uuid_value(request.context.idempotency_key, backend),
             ],
         ))
         .await
@@ -1851,7 +1880,8 @@ async fn collection_work_in<C: ConnectionTrait>(
             backend,
             format!(
                 "SELECT collection_id, tenant_id, snapshot_id, module_slug,
-                        data_contract_revision, policy_snapshot_id, actor_id, object_count
+                        data_contract_revision, policy_snapshot_id, actor_id, trace_id,
+                        correlation_id, idempotency_key, object_count
                  FROM module_artifact_data_snapshot_collections
                  WHERE tenant_id = {} AND snapshot_id = {} AND completed_at IS NULL",
                 placeholder(backend, 1),
@@ -1865,9 +1895,14 @@ async fn collection_work_in<C: ConnectionTrait>(
         .await
         .map_err(snapshot_storage_error)?
         .ok_or(ArtifactDataError::SnapshotCollectionPrecondition)?;
+    let stored_tenant_id = uuid_from_row(&row, "tenant_id", backend)?;
+    let context = command_context_from_row(&row, stored_tenant_id, backend)?;
+    if stored_tenant_id != tenant_id {
+        return Err(ArtifactDataError::SnapshotCollectionPrecondition);
+    }
     Ok(CollectionWork {
         collection_id: uuid_from_row(&row, "collection_id", backend)?,
-        tenant_id: uuid_from_row(&row, "tenant_id", backend)?,
+        tenant_id: stored_tenant_id,
         snapshot_id: uuid_from_row(&row, "snapshot_id", backend)?,
         module_slug: row
             .try_get("", "module_slug")
@@ -1876,7 +1911,7 @@ async fn collection_work_in<C: ConnectionTrait>(
         policy_snapshot_id: row
             .try_get("", "policy_snapshot_id")
             .map_err(snapshot_storage_error)?,
-        actor_id: uuid_from_row(&row, "actor_id", backend)?,
+        context,
         object_count: nonnegative_u64(&row, "object_count")?,
     })
 }
@@ -1979,8 +2014,7 @@ fn validate_create_request(
 ) -> Result<(), ArtifactDataError> {
     request.scope.validate()?;
     if request.expected_namespace_revision == 0
-        || request.actor_id.is_nil()
-        || request.idempotency_key.is_nil()
+        || !valid_command_context(request.scope.tenant_id, &request.context)
         || !valid_reason(&request.reason)
     {
         return Err(ArtifactDataError::SnapshotPrecondition);
@@ -1992,8 +2026,7 @@ fn validate_restore_request(request: &ArtifactDataRestoreRequest) -> Result<(), 
     request.target.validate()?;
     if request.snapshot_id.is_nil()
         || request.expected_namespace_revision == 0
-        || request.actor_id.is_nil()
-        || request.idempotency_key.is_nil()
+        || !valid_command_context(request.target.tenant_id, &request.context)
         || !valid_reason(&request.reason)
     {
         return Err(ArtifactDataError::RestorePrecondition);
@@ -2007,8 +2040,7 @@ fn validate_retention_update_request(
     if request.tenant_id.is_nil()
         || request.snapshot_id.is_nil()
         || request.expected_retention_revision == 0
-        || request.actor_id.is_nil()
-        || request.idempotency_key.is_nil()
+        || !valid_command_context(request.tenant_id, &request.context)
         || !valid_reason(&request.reason)
         || (request.extend_retain_until.is_none() && request.legal_hold.is_none())
     {
@@ -2021,7 +2053,7 @@ fn validate_collection_request(
     request: &ArtifactDataSnapshotCollectionRequest,
 ) -> Result<(), ArtifactDataError> {
     if request.tenant_id.is_nil()
-        || request.actor_id.is_nil()
+        || !valid_command_context(request.tenant_id, &request.context)
         || !valid_reason(&request.reason)
         || !valid_policy_snapshot_id(&request.policy_snapshot_id)
         || request.limit == 0
@@ -2030,6 +2062,10 @@ fn validate_collection_request(
         return Err(ArtifactDataError::SnapshotCollectionPrecondition);
     }
     Ok(())
+}
+
+fn valid_command_context(tenant_id: Uuid, context: &ModuleCommandContext) -> bool {
+    context.tenant_id == Some(tenant_id) && context.validate().is_ok()
 }
 
 fn valid_policy_snapshot_id(value: &str) -> bool {
@@ -2210,6 +2246,50 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    fn command_context(tenant_id: Uuid) -> ModuleCommandContext {
+        ModuleCommandContext {
+            actor_id: Uuid::new_v4(),
+            tenant_id: Some(tenant_id),
+            trace_id: "test:artifact-data-snapshot".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        }
+    }
+
+    #[test]
+    fn snapshot_commands_reject_a_foreign_command_context() {
+        let tenant_id = Uuid::new_v4();
+        let foreign_context = command_context(Uuid::new_v4());
+        let scope = ArtifactDataScope {
+            tenant_id,
+            module_slug: "snapshot_module".to_string(),
+            data_contract_revision: 1,
+            policy_revision: 1,
+        };
+
+        assert_eq!(
+            validate_create_request(&ArtifactDataSnapshotCreateRequest {
+                scope: scope.clone(),
+                expected_namespace_revision: 1,
+                context: foreign_context.clone(),
+                reason: "reject foreign snapshot context".to_string(),
+                retain_until: Utc::now(),
+                legal_hold: false,
+            }),
+            Err(ArtifactDataError::SnapshotPrecondition)
+        );
+        assert_eq!(
+            validate_restore_request(&ArtifactDataRestoreRequest {
+                snapshot_id: Uuid::new_v4(),
+                target: scope,
+                expected_namespace_revision: 1,
+                context: foreign_context,
+                reason: "reject foreign restore context".to_string(),
+            }),
+            Err(ArtifactDataError::RestorePrecondition)
+        );
+    }
 
     fn manifest(
         records: Vec<ArtifactDataRecord>,

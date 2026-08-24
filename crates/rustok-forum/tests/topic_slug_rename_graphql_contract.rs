@@ -43,7 +43,7 @@ fn graphql_rename_adapter_uses_routed_tenant_update_scope_and_owner_service() {
         "require_module_enabled(ctx, MODULE_SLUG).await?",
         "Permission::FORUM_TOPICS_UPDATE",
         "Permission denied: forum_topics:update required",
-        "Permission denied: tenant scope mismatch",
+        "resolve_tenant_scope",
         "TopicService::new(db.clone(), event_bus.clone())",
         ".rename_slug(",
         "SecurityContext::from_permission_snapshot",

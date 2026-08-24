@@ -392,7 +392,7 @@ impl TranslationTargetProvider for BlogCategoryTranslationTargetProvider {
         let idempotency_key = context.idempotency_key.as_deref().unwrap_or_default();
         let lease = match idempotency::admit(
             self.service.database(),
-            tenant_id,
+            idempotency::OwnerOperationScope::Tenant(tenant_id),
             TRANSLATION_OWNER_SLUG,
             idempotency_key,
             OPERATION_APPLY_PATCH,

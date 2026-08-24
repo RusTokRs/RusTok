@@ -16,12 +16,13 @@ fn admin() -> SecurityContext {
 async fn status_removal_migration_promotes_legacy_terms_and_drops_soft_lifecycle() {
     let db = setup_test_db().await;
     let schema_manager = SchemaManager::new(&db);
-    let mut migrations = TaxonomyModule.migrations();
-    let status_removal = migrations
-        .pop()
-        .expect("status removal must remain the final retained taxonomy migration");
+    let all_migrations = TaxonomyModule.migrations();
+    let status_removal_idx = all_migrations
+        .iter()
+        .position(|migration| migration.name() == "m20260813_000009_remove_term_status")
+        .expect("status removal must exist in taxonomy migrations");
 
-    for migration in migrations {
+    for migration in &all_migrations[..status_removal_idx] {
         migration
             .up(&schema_manager)
             .await
@@ -65,10 +66,16 @@ async fn status_removal_migration_promotes_legacy_terms_and_drops_soft_lifecycle
     .await
     .expect("legacy translation evidence should be marked archived");
 
-    status_removal
+    all_migrations[status_removal_idx]
         .up(&schema_manager)
         .await
         .expect("status removal migration should succeed");
+    for migration in &all_migrations[status_removal_idx + 1..] {
+        migration
+            .up(&schema_manager)
+            .await
+            .expect("subsequent taxonomy migration should succeed");
+    }
 
     assert!(
         !schema_manager

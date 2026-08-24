@@ -62,7 +62,8 @@ pub use model::{
     ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError,
     ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger,
     SourceProvenance, TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunError,
-    TestRunLease, TestRunStatus, deleted_evidence_retention, register_entity_proxy,
+    TestRunLease, TestRunStatus, alloy_release_command_context, deleted_evidence_retention,
+    register_entity_proxy,
 };
 pub use runner::{
     AlloyPublishedRhaiSourceProvider, AlloyPublishedRhaiSourceProviderHandle,

@@ -1,7 +1,13 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
-use rustok_forum::{CategoryService, CreateCategoryInput, ForumModule, UpdateCategoryInput};
+use rustok_forum::{
+    CategoryService, CreateCategoryInput, ForumModule, UpdateCategoryInput,
+    entities::{forum_category, forum_category_lifecycle, forum_category_translation},
+};
+use rustok_outbox::OutboxModule;
+use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -38,15 +44,12 @@ END
         failed_create.is_err(),
         "forced translation failure must make category creation fail"
     );
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT COUNT(*) AS value FROM forum_categories WHERE tenant_id = '{tenant_id}'"
-            ),
-        )
-        .await?,
-        0,
+    assert!(
+        forum_category::Entity::find()
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .all(&db)
+            .await?
+            .is_empty(),
         "category row must roll back when its initial translation fails"
     );
 
@@ -89,7 +92,7 @@ END
                 description: Some("changed description".to_string()),
                 icon: None,
                 color: None,
-                position: Some(99),
+                position: None,
                 moderated: Some(true),
             },
         )
@@ -98,40 +101,18 @@ END
         failed_update.is_err(),
         "forced translation update failure must make category update fail"
     );
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT position AS value FROM forum_categories WHERE id = '{}'",
-                category.id
-            ),
-        )
-        .await?,
-        3
-    );
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT moderated AS value FROM forum_categories WHERE id = '{}'",
-                category.id
-            ),
-        )
-        .await?,
-        0
-    );
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT COUNT(*) AS value
-                 FROM forum_category_translations
-                 WHERE category_id = '{}' AND name = 'Changed category'",
-                category.id
-            ),
-        )
-        .await?,
-        0
+    let persisted = load_category(&db, tenant_id, category.id).await?;
+    assert_eq!(persisted.position, 3);
+    assert!(!persisted.moderated);
+    assert!(
+        forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
+            .filter(forum_category_translation::Column::CategoryId.eq(category.id))
+            .filter(forum_category_translation::Column::Name.eq("Changed category"))
+            .one(&db)
+            .await?
+            .is_none(),
+        "failed update must not leak changed localized copy"
     );
 
     execute(
@@ -166,8 +147,8 @@ END
                 description: None,
                 icon: None,
                 color: None,
-                position: Some(77),
-                moderated: None,
+                position: None,
+                moderated: Some(true),
             },
         )
         .await;
@@ -175,29 +156,18 @@ END
         failed_locale_insert.is_err(),
         "forced new-locale failure must make category update fail"
     );
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT position AS value FROM forum_categories WHERE id = '{}'",
-                category.id
-            ),
-        )
-        .await?,
-        3
-    );
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT COUNT(*) AS value
-                 FROM forum_category_translations
-                 WHERE category_id = '{}' AND locale = 'fr'",
-                category.id
-            ),
-        )
-        .await?,
-        0
+    let persisted = load_category(&db, tenant_id, category.id).await?;
+    assert_eq!(persisted.position, 3);
+    assert!(!persisted.moderated);
+    assert!(
+        forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
+            .filter(forum_category_translation::Column::CategoryId.eq(category.id))
+            .filter(forum_category_translation::Column::Locale.eq("fr"))
+            .one(&db)
+            .await?
+            .is_none(),
+        "failed locale insert must not leak a translation"
     );
 
     execute(&db, "DROP TRIGGER forum_test_reject_new_category_locale").await?;
@@ -222,44 +192,23 @@ END
         failed_archive.is_err(),
         "forced lifecycle failure must make category deletion/archive fail"
     );
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT COUNT(*) AS value FROM forum_categories WHERE id = '{}'",
-                category.id
-            ),
-        )
-        .await?,
-        1,
-        "normal category deletion must preserve the category row"
-    );
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT COUNT(*) AS value
-                 FROM forum_category_translations
-                 WHERE category_id = '{}'",
-                category.id
-            ),
-        )
-        .await?,
-        1,
+    load_category(&db, tenant_id, category.id).await?;
+    assert!(
+        forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
+            .filter(forum_category_translation::Column::CategoryId.eq(category.id))
+            .one(&db)
+            .await?
+            .is_some(),
         "normal category deletion must preserve translations"
     );
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT COUNT(*) AS value
-                 FROM forum_category_lifecycle
-                 WHERE tenant_id = '{tenant_id}' AND category_id = '{}'",
-                category.id
-            ),
-        )
-        .await?,
-        0,
+    assert!(
+        forum_category_lifecycle::Entity::find()
+            .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+            .filter(forum_category_lifecycle::Column::CategoryId.eq(category.id))
+            .one(&db)
+            .await?
+            .is_none(),
         "failed category archive must not leak lifecycle state"
     );
 
@@ -268,31 +217,16 @@ END
     service
         .delete(tenant_id, category.id, admin_security())
         .await?;
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT COUNT(*) AS value
-                 FROM forum_category_lifecycle
-                 WHERE tenant_id = '{tenant_id}' AND category_id = '{}'",
-                category.id
-            ),
-        )
-        .await?,
-        1,
+    assert!(
+        forum_category_lifecycle::Entity::find()
+            .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+            .filter(forum_category_lifecycle::Column::CategoryId.eq(category.id))
+            .one(&db)
+            .await?
+            .is_some(),
         "successful category deletion must archive the category"
     );
-    assert_eq!(
-        scalar_i64(
-            &db,
-            format!(
-                "SELECT COUNT(*) AS value FROM forum_categories WHERE id = '{}'",
-                category.id
-            ),
-        )
-        .await?,
-        1
-    );
+    load_category(&db, tenant_id, category.id).await?;
 
     Ok(())
 }
@@ -315,6 +249,19 @@ fn admin_security() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))
 }
 
+async fn load_category(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> TestResult<forum_category::Model> {
+    forum_category::Entity::find_by_id(category_id)
+        .filter(forum_category::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await?
+        .ok_or_else(|| std::io::Error::other(format!("category {category_id} is missing")))
+        .map_err(Into::into)
+}
+
 async fn setup_sqlite() -> TestResult<DatabaseConnection> {
     let url = format!(
         "sqlite:file:forum_category_atomicity_{}?mode=memory&cache=shared",
@@ -326,26 +273,22 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
         .min_connections(1)
         .sqlx_logging(false);
     let db = Database::connect(options).await?;
-
-    execute(
-        &db,
-        r#"
-CREATE TABLE taxonomy_terms (
-    id TEXT PRIMARY KEY NOT NULL,
-    tenant_id TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    scope_type TEXT NOT NULL,
-    scope_value TEXT NOT NULL DEFAULT '',
-    canonical_key TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-"#,
+    db.execute_unprepared(
+        "CREATE TABLE users (\
+            id TEXT NOT NULL PRIMARY KEY, \
+            tenant_id TEXT NOT NULL, \
+            UNIQUE (tenant_id, id)\
+        )",
     )
     .await?;
 
     let manager = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration.up(&manager).await?;
+    }
+    for migration in TaxonomyModule.migrations() {
+        migration.up(&manager).await?;
+    }
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }
@@ -356,12 +299,4 @@ CREATE TABLE taxonomy_terms (
 async fn execute(db: &DatabaseConnection, sql: impl Into<String>) -> TestResult<()> {
     db.execute_unprepared(&sql.into()).await?;
     Ok(())
-}
-
-async fn scalar_i64(db: &DatabaseConnection, sql: impl Into<String>) -> TestResult<i64> {
-    let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Sqlite, sql.into()))
-        .await?
-        .ok_or_else(|| std::io::Error::other("scalar query returned no row"))?;
-    Ok(row.try_get("", "value")?)
 }

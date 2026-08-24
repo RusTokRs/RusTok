@@ -1,9 +1,10 @@
 use async_graphql::{
-    ComplexObject, Context, Enum, InputObject, Result, SimpleObject, dataloader::DataLoader,
+    ComplexObject, Context, Enum, InputObject, Json, Result, SimpleObject, dataloader::DataLoader,
 };
 use rustok_api::{
-    Permission, PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus,
-    PlatformDeploymentProfile,
+    ArtifactBindingExecutionAuditEntry, ArtifactUiContributionView,
+    ArtifactUiContributionViewContent, ArtifactUiSurface as ArtifactUiSurfaceContract, Permission,
+    PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
 };
 use rustok_core::{UserRole, UserStatus};
 use sea_orm::DatabaseConnection;
@@ -190,6 +191,132 @@ pub struct ArtifactTenantLifecycle {
     pub enabled: bool,
     pub revision: i64,
     pub expected_revision: i64,
+}
+
+/// Owner-issued activation receipt for an installation in the authenticated
+/// tenant scope. The predecessor is the exact direct serving predecessor, not
+/// an arbitrary historical installation.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactActivation {
+    pub installation_id: Uuid,
+    pub operation_id: Uuid,
+    pub predecessor_installation_id: Option<Uuid>,
+    pub installation_revision: i64,
+    pub predecessor_revision: Option<i64>,
+}
+
+/// Owner-issued deactivation receipt for an installation in the authenticated
+/// tenant scope. It removes runtime bindings without deleting evidence or data.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactDeactivation {
+    pub installation_id: Uuid,
+    pub operation_id: Uuid,
+    pub revision: i64,
+}
+
+/// Owner-issued uninstall receipt for an inactive installation in the
+/// authenticated tenant scope. Physical retention and collection are separate.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactUninstall {
+    pub installation_id: Uuid,
+    pub operation_id: Uuid,
+    pub revision: i64,
+}
+
+/// Owner-issued direct-predecessor rollback receipt in the authenticated tenant
+/// scope. The returned target is the newly selected serving installation.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactRollback {
+    pub operation_id: Uuid,
+    pub source_installation_id: Uuid,
+    pub target_installation_id: Uuid,
+    pub source_revision: i64,
+    pub target_revision: i64,
+}
+
+/// Migration policy the owner must validate before it can select the retained
+/// direct predecessor. The input is transport metadata, never artifact code.
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum ArtifactMigrationRollbackMode {
+    Reversible,
+    Compensating,
+    Prohibited,
+}
+
+/// GraphQL adapter over the canonical host-safe artifact UI projection. The
+/// content remains its exact tagged JSON contract because its shape is chosen
+/// by the admitted contribution surface, not by a guest-provided GraphQL type.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactUiContribution {
+    pub id: String,
+    pub surface: ArtifactUiSurface,
+    pub content: Json<ArtifactUiContributionViewContent>,
+}
+
+/// Typed GraphQL representation of the canonical host presentation surface.
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum ArtifactUiSurface {
+    AdminSettings,
+    AdminActions,
+    AdminStatus,
+    AdminHelp,
+    AdminNavigation,
+    AdminTable,
+    AdminForm,
+    StorefrontSlot,
+}
+
+impl From<ArtifactUiSurfaceContract> for ArtifactUiSurface {
+    fn from(surface: ArtifactUiSurfaceContract) -> Self {
+        match surface {
+            ArtifactUiSurfaceContract::AdminSettings => Self::AdminSettings,
+            ArtifactUiSurfaceContract::AdminActions => Self::AdminActions,
+            ArtifactUiSurfaceContract::AdminStatus => Self::AdminStatus,
+            ArtifactUiSurfaceContract::AdminHelp => Self::AdminHelp,
+            ArtifactUiSurfaceContract::AdminNavigation => Self::AdminNavigation,
+            ArtifactUiSurfaceContract::AdminTable => Self::AdminTable,
+            ArtifactUiSurfaceContract::AdminForm => Self::AdminForm,
+            ArtifactUiSurfaceContract::StorefrontSlot => Self::StorefrontSlot,
+        }
+    }
+}
+
+impl From<ArtifactUiContributionView> for ArtifactUiContribution {
+    fn from(view: ArtifactUiContributionView) -> Self {
+        Self {
+            id: view.id,
+            surface: view.surface.into(),
+            content: Json(view.content),
+        }
+    }
+}
+
+/// GraphQL adapter over one canonical redacted artifact-binding audit entry.
+/// The owner has already selected and authorized the binding through its
+/// declared UI contribution before this value is constructed.
+#[derive(SimpleObject, Clone)]
+pub struct ArtifactUiActionAudit {
+    pub execution_id: Uuid,
+    pub status: String,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub duration_ms: Option<u64>,
+    pub error_code: Option<String>,
+}
+
+impl From<ArtifactBindingExecutionAuditEntry> for ArtifactUiActionAudit {
+    fn from(entry: ArtifactBindingExecutionAuditEntry) -> Self {
+        Self {
+            execution_id: entry.execution_id,
+            status: entry.status,
+            started_at: entry.started_at,
+            finished_at: entry.finished_at,
+            duration_ms: entry.duration_ms,
+            error_code: entry.error_code,
+        }
+    }
 }
 
 #[derive(SimpleObject, Clone)]
@@ -856,4 +983,33 @@ pub struct ActivityItem {
 pub struct ActivityUser {
     pub id: String,
     pub name: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_api::{
+        ArtifactUiActionConfirmation, ArtifactUiContributionView,
+        ArtifactUiContributionViewContent, ArtifactUiSurface as ArtifactUiSurfaceContract,
+    };
+
+    use super::{ArtifactUiContribution, ArtifactUiSurface};
+
+    #[test]
+    fn artifact_ui_adapter_preserves_the_canonical_projection() {
+        let view = ArtifactUiContributionView {
+            id: "profile_form".to_string(),
+            surface: ArtifactUiSurfaceContract::AdminForm,
+            content: ArtifactUiContributionViewContent::Form {
+                title: "Profile".to_string(),
+                schema: serde_json::json!({"type": "object"}),
+                confirmation: ArtifactUiActionConfirmation::Acknowledge,
+                destructive: false,
+            },
+        };
+
+        let contribution = ArtifactUiContribution::from(view.clone());
+        assert_eq!(contribution.id, view.id);
+        assert_eq!(contribution.surface, ArtifactUiSurface::AdminForm);
+        assert_eq!(contribution.content.0, view.content);
+    }
 }

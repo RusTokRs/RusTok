@@ -15,14 +15,14 @@ async fn setup() -> (sea_orm::DatabaseConnection, Uuid, Uuid, Uuid) {
         r#"
 PRAGMA foreign_keys = ON;
 CREATE TABLE users (
-    id TEXT PRIMARY KEY NOT NULL,
-    tenant_id TEXT NOT NULL,
+    id BLOB PRIMARY KEY NOT NULL,
+    tenant_id BLOB NOT NULL,
     email TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE forum_user_stats (
-    tenant_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
+    tenant_id BLOB NOT NULL,
+    user_id BLOB NOT NULL,
     topic_count INTEGER NOT NULL DEFAULT 0,
     reply_count INTEGER NOT NULL DEFAULT 0,
     solution_count INTEGER NOT NULL DEFAULT 0,
@@ -48,8 +48,12 @@ CREATE TABLE forum_user_stats (
     let user_id = Uuid::new_v4();
     db.execute_unprepared(&format!(
         "INSERT INTO users (id, tenant_id, email) VALUES \
-         ('{actor_id}', '{tenant_id}', 'actor@example.invalid'), \
-         ('{user_id}', '{tenant_id}', 'member@example.invalid')"
+         (X'{}', X'{}', 'actor@example.invalid'), \
+         (X'{}', X'{}', 'member@example.invalid')",
+        actor_id.simple().to_string().to_uppercase(),
+        tenant_id.simple().to_string().to_uppercase(),
+        user_id.simple().to_string().to_uppercase(),
+        tenant_id.simple().to_string().to_uppercase(),
     ))
     .await
     .expect("trust users should be inserted");
@@ -192,7 +196,9 @@ async fn trust_database_guards_reject_orphans_gaps_and_direct_mutation() {
     let update_revision = db
         .execute_unprepared(&format!(
             "UPDATE forum_user_trust_revisions SET trust_level = 99 \
-             WHERE tenant_id = '{tenant_id}' AND user_id = '{user_id}' AND revision = 1"
+             WHERE tenant_id = X'{}' AND user_id = X'{}' AND revision = 1",
+            tenant_id.simple().to_string().to_uppercase(),
+            user_id.simple().to_string().to_uppercase()
         ))
         .await;
     assert!(update_revision.is_err());
@@ -200,7 +206,9 @@ async fn trust_database_guards_reject_orphans_gaps_and_direct_mutation() {
     let delete_revision = db
         .execute_unprepared(&format!(
             "DELETE FROM forum_user_trust_revisions \
-             WHERE tenant_id = '{tenant_id}' AND user_id = '{user_id}' AND revision = 1"
+             WHERE tenant_id = X'{}' AND user_id = X'{}' AND revision = 1",
+            tenant_id.simple().to_string().to_uppercase(),
+            user_id.simple().to_string().to_uppercase()
         ))
         .await;
     assert!(delete_revision.is_err());
@@ -208,7 +216,9 @@ async fn trust_database_guards_reject_orphans_gaps_and_direct_mutation() {
     let direct_state_update = db
         .execute_unprepared(&format!(
             "UPDATE forum_user_trust_states SET trust_level = 50, revision = 2 \
-             WHERE tenant_id = '{tenant_id}' AND user_id = '{user_id}'"
+             WHERE tenant_id = X'{}' AND user_id = X'{}'",
+            tenant_id.simple().to_string().to_uppercase(),
+            user_id.simple().to_string().to_uppercase()
         ))
         .await;
     assert!(direct_state_update.is_err());
@@ -216,7 +226,9 @@ async fn trust_database_guards_reject_orphans_gaps_and_direct_mutation() {
     let direct_state_delete = db
         .execute_unprepared(&format!(
             "DELETE FROM forum_user_trust_states \
-             WHERE tenant_id = '{tenant_id}' AND user_id = '{user_id}'"
+             WHERE tenant_id = X'{}' AND user_id = X'{}'",
+            tenant_id.simple().to_string().to_uppercase(),
+            user_id.simple().to_string().to_uppercase()
         ))
         .await;
     assert!(direct_state_delete.is_err());
@@ -226,8 +238,11 @@ async fn trust_database_guards_reject_orphans_gaps_and_direct_mutation() {
             "INSERT INTO forum_user_trust_revisions \
              (tenant_id, user_id, revision, previous_trust_level, trust_level, change_kind, \
               reason_code, reason_summary, changed_by_user_id, idempotency_key, created_at) \
-             VALUES ('{tenant_id}', '{user_id}', 3, 10, 20, 'manual_override', \
-                     'gap_attempt', 'Gap attempt', '{actor_id}', 'trust-gap', CURRENT_TIMESTAMP)"
+             VALUES (X'{}', X'{}', 3, 10, 20, 'manual_override', \
+                     'gap_attempt', 'Gap attempt', X'{}', 'trust-gap', CURRENT_TIMESTAMP)",
+            tenant_id.simple().to_string().to_uppercase(),
+            user_id.simple().to_string().to_uppercase(),
+            actor_id.simple().to_string().to_uppercase()
         ))
         .await;
     assert!(gap.is_err());
@@ -238,8 +253,10 @@ async fn trust_database_guards_reject_orphans_gaps_and_direct_mutation() {
             "INSERT INTO forum_user_trust_revisions \
              (tenant_id, user_id, revision, previous_trust_level, trust_level, change_kind, \
               reason_code, reason_summary, changed_by_user_id, idempotency_key, created_at) \
-             VALUES ('{foreign_tenant}', '{user_id}', 1, NULL, 10, 'manual_override', \
-                     'foreign_attempt', 'Foreign attempt', NULL, 'trust-foreign', CURRENT_TIMESTAMP)"
+             VALUES (X'{}', X'{}', 1, NULL, 10, 'manual_override', \
+                     'foreign_attempt', 'Foreign attempt', NULL, 'trust-foreign', CURRENT_TIMESTAMP)",
+            foreign_tenant.simple().to_string().to_uppercase(),
+            user_id.simple().to_string().to_uppercase()
         ))
         .await;
     assert!(foreign_state.is_err());

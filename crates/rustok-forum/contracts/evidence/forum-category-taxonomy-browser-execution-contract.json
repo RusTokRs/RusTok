@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "module": "forum",
+  "program": "TAXONOMY-CAT-5",
+  "status": "source_ready_maintainer_execution_pending",
+  "runner": "apps/next-admin/tests/forum-category-taxonomy/browser-evidence.spec.ts",
+  "config": "apps/next-admin/playwright.forum-category-taxonomy.config.ts",
+  "surfaces": [
+    "mounted Forum admin categories",
+    "mounted Forum storefront category rail",
+    "mounted Forum canonical category route"
+  ],
+  "required_environment": [
+    "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE",
+    "RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL",
+    "RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL",
+    "RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL",
+    "RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL",
+    "RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL",
+    "RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL",
+    "RUSTOK_FORUM_CATEGORY_E2E_RTL_REQUESTED_LOCALE",
+    "RUSTOK_FORUM_CATEGORY_E2E_RTL_EFFECTIVE_LOCALE",
+    "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_REQUESTED_LOCALE",
+    "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_EFFECTIVE_LOCALE",
+    "RUSTOK_FORUM_CATEGORY_E2E_ROOT_NAME",
+    "RUSTOK_FORUM_CATEGORY_E2E_ROOT_SLUG",
+    "RUSTOK_FORUM_CATEGORY_E2E_CHILD_NAME",
+    "RUSTOK_FORUM_CATEGORY_E2E_CHILD_SLUG",
+    "RUSTOK_FORUM_CATEGORY_E2E_ROOT_ICON",
+    "RUSTOK_FORUM_CATEGORY_E2E_ACCENT_CLASS",
+    "RUSTOK_FORUM_CATEGORY_E2E_ROOT_CANONICAL_PATH",
+    "RUSTOK_FORUM_CATEGORY_E2E_CHILD_CANONICAL_PATH",
+    "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_NAME",
+    "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_SLUG",
+    "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_CANONICAL_PATH"
+  ],
+  "claims_after_successful_execution": [
+    "admin Category tree renders RTL Taxonomy-owned copy with effective locale and dir=auto",
+    "admin route identifiers remain LTR while localized copy is RTL-capable",
+    "admin Category hierarchy and sibling order match the prepared Taxonomy-owned fixture",
+    "admin Category icon/accent presentation matches the prepared Taxonomy-owned fixture",
+    "admin requested locale can fall back to a different Taxonomy effective locale",
+    "storefront Category rail renders the same RTL Taxonomy-owned copy and canonical localized hrefs",
+    "storefront Category rail preserves Taxonomy owner ordering",
+    "storefront requested locale fallback renders effective-locale copy and canonical effective-locale href",
+    "legacy Category alias navigation redirects to the Taxonomy canonical route"
+  ],
+  "boundaries": [
+    "browser source does not seed Forum or Taxonomy state",
+    "browser source does not call GraphQL or owner APIs directly",
+    "authenticated admin state is maintainer supplied through Playwright storage state",
+    "fixture URLs are credential-free",
+    "production Forum and Taxonomy ownership behavior is unchanged by this evidence slice",
+    "screenshots, video and tracing are disabled"
+  ],
+  "not_claimed": [
+    "browser execution",
+    "deployment provenance",
+    "production rollout completion",
+    "TAXONOMY-CAT-5 completion"
+  ]
+}

@@ -284,7 +284,7 @@ fn remote_tool_audit_metadata(tool_name: &str, metadata: serde_json::Value) -> s
     if is_remote_alloy_authoring_tool(tool_name) {
         serde_json::json!({
             "redacted": true,
-            "reason": "owner_bound_alloy_authoring",
+            "reason": "source_bearing_alloy_authoring",
         })
     } else {
         metadata
@@ -1003,7 +1003,7 @@ mod tests {
 
         let redacted = remote_tool_audit_metadata(rustok_mcp::TOOL_ALLOY_CREATE_SCRIPT, metadata);
         assert_eq!(redacted["redacted"], true);
-        assert_eq!(redacted["reason"], "owner_bound_alloy_authoring");
+        assert_eq!(redacted["reason"], "source_bearing_alloy_authoring");
         assert!(!redacted.to_string().contains("credential"));
     }
 

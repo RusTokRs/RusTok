@@ -40,6 +40,8 @@ impl MigrationTrait for Migration {
                     resolver_key TEXT NOT NULL CHECK (length(resolver_key) BETWEEN 1 AND 512),\
                     expected_revision BIGINT NULL CHECK (expected_revision > 0),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     revision BIGINT NOT NULL CHECK (revision > 0),\
                     completed_at TIMESTAMPTZ NOT NULL,\
@@ -76,6 +78,8 @@ impl MigrationTrait for Migration {
                     resolver_key TEXT NOT NULL CHECK (length(resolver_key) BETWEEN 1 AND 512),\
                     expected_revision INTEGER NULL CHECK (expected_revision > 0),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     revision INTEGER NOT NULL CHECK (revision > 0),\
                     completed_at TEXT NOT NULL,\

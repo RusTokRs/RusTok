@@ -27,9 +27,14 @@ impl ModuleGraphqlField {
         let authority = match (operation_type, field_name) {
             (
                 OperationType::Query,
-                "moduleRegistry"
+                "enabledModules"
+                | "moduleRegistry"
                 | "tenantModules"
+                | "artifactTenantLifecycle"
+                | "artifactUiContributions"
+                | "artifactUiActionAudit"
                 | "installedModules"
+                | "moduleCompositionSnapshot"
                 | "marketplace"
                 | "marketplaceModule"
                 | "moduleOperationRecoveryPlan"
@@ -37,12 +42,19 @@ impl ModuleGraphqlField {
                 | "activeBuild"
                 | "buildHistory",
             ) => ModuleAuthority::Read,
+            (OperationType::Query, "marketplaceRegistryFreshness") => ModuleAuthority::Manage,
+            (OperationType::Mutation, "executeArtifactUiAction") => ModuleAuthority::Read,
             (
                 OperationType::Mutation,
                 "installModule"
                 | "uninstallModule"
                 | "upgradeModule"
                 | "toggleModule"
+                | "setArtifactTenantEnabled"
+                | "activateTenantArtifact"
+                | "deactivateTenantArtifact"
+                | "uninstallTenantArtifact"
+                | "rollbackTenantArtifact"
                 | "retryFailedModuleOperationPostHook"
                 | "compensateFailedModuleOperation"
                 | "updateModuleSettings",
@@ -53,19 +65,31 @@ impl ModuleGraphqlField {
 
         Some(Self {
             name: match field_name {
+                "enabledModules" => "enabledModules",
                 "moduleRegistry" => "moduleRegistry",
                 "tenantModules" => "tenantModules",
+                "artifactTenantLifecycle" => "artifactTenantLifecycle",
+                "artifactUiContributions" => "artifactUiContributions",
+                "artifactUiActionAudit" => "artifactUiActionAudit",
                 "installedModules" => "installedModules",
+                "moduleCompositionSnapshot" => "moduleCompositionSnapshot",
                 "marketplace" => "marketplace",
                 "marketplaceModule" => "marketplaceModule",
+                "marketplaceRegistryFreshness" => "marketplaceRegistryFreshness",
                 "moduleOperationRecoveryPlan" => "moduleOperationRecoveryPlan",
                 "failedModuleOperationRecoveryPlans" => "failedModuleOperationRecoveryPlans",
                 "activeBuild" => "activeBuild",
                 "buildHistory" => "buildHistory",
+                "executeArtifactUiAction" => "executeArtifactUiAction",
                 "installModule" => "installModule",
                 "uninstallModule" => "uninstallModule",
                 "upgradeModule" => "upgradeModule",
                 "toggleModule" => "toggleModule",
+                "setArtifactTenantEnabled" => "setArtifactTenantEnabled",
+                "activateTenantArtifact" => "activateTenantArtifact",
+                "deactivateTenantArtifact" => "deactivateTenantArtifact",
+                "uninstallTenantArtifact" => "uninstallTenantArtifact",
+                "rollbackTenantArtifact" => "rollbackTenantArtifact",
                 "retryFailedModuleOperationPostHook" => "retryFailedModuleOperationPostHook",
                 "compensateFailedModuleOperation" => "compensateFailedModuleOperation",
                 "updateModuleSettings" => "updateModuleSettings",
@@ -81,6 +105,7 @@ impl ModuleGraphqlField {
             ModuleAuthority::Read => {
                 has_effective_permission(permissions, &Permission::MODULES_READ)
                     || has_effective_permission(permissions, &Permission::MODULES_LIST)
+                    || has_effective_permission(permissions, &Permission::MODULES_MANAGE)
             }
             ModuleAuthority::Manage => {
                 has_effective_permission(permissions, &Permission::MODULES_MANAGE)
@@ -90,7 +115,7 @@ impl ModuleGraphqlField {
 
     fn permission_hint(self) -> &'static str {
         match self.authority {
-            ModuleAuthority::Read => "modules:read or modules:list",
+            ModuleAuthority::Read => "modules:read, modules:list, or modules:manage",
             ModuleAuthority::Manage => "modules:manage",
         }
     }
@@ -223,15 +248,30 @@ impl Extension for GraphqlModuleSecurityPolicyExtension {
 
 #[cfg(test)]
 mod tests {
-    use super::{ModuleAuthority, ModuleGraphqlDocumentPolicy, classify_document};
+    use super::{
+        ModuleAuthority, ModuleGraphqlDocumentPolicy, ModuleGraphqlField, classify_document,
+    };
     use async_graphql::Request;
+    use rustok_api::Permission;
 
     #[test]
     fn classifies_module_fields_inside_fragments_and_subscriptions() {
         let mut request = Request::new(
             r#"
                 query ModuleState { ...ModuleFields }
-                fragment ModuleFields on Query { moduleRegistry { moduleSlug } }
+                fragment ModuleFields on Query {
+                    enabledModules
+                    moduleRegistry { moduleSlug }
+                    artifactTenantLifecycle(
+                        installationId: "00000000-0000-0000-0000-000000000000"
+                    ) { expectedRevision }
+                    artifactUiContributions(installationId: "00000000-0000-0000-0000-000000000000") { id }
+                    artifactUiActionAudit(
+                        installationId: "00000000-0000-0000-0000-000000000000"
+                        contributionId: "apply"
+                    ) { executionId }
+                    moduleCompositionSnapshot { revision }
+                }
                 subscription BuildState { buildProgress { buildId } }
             "#,
         );
@@ -244,8 +284,39 @@ mod tests {
             .expect("module policy should be attached");
 
         assert!(policy.0.iter().any(
+            |field| field.name == "enabledModules" && field.authority == ModuleAuthority::Read
+        ));
+        assert!(policy.0.iter().any(
             |field| field.name == "moduleRegistry" && field.authority == ModuleAuthority::Read
         ));
+        assert!(
+            policy
+                .0
+                .iter()
+                .any(|field| field.name == "artifactTenantLifecycle"
+                    && field.authority == ModuleAuthority::Read)
+        );
+        assert!(
+            policy
+                .0
+                .iter()
+                .any(|field| field.name == "artifactUiContributions"
+                    && field.authority == ModuleAuthority::Read)
+        );
+        assert!(
+            policy
+                .0
+                .iter()
+                .any(|field| field.name == "artifactUiActionAudit"
+                    && field.authority == ModuleAuthority::Read)
+        );
+        assert!(
+            policy
+                .0
+                .iter()
+                .any(|field| field.name == "moduleCompositionSnapshot"
+                    && field.authority == ModuleAuthority::Read)
+        );
         assert!(
             policy
                 .0
@@ -270,5 +341,128 @@ mod tests {
 
         assert_eq!(policy.0.len(), 1);
         assert_eq!(policy.0[0].authority, ModuleAuthority::Manage);
+    }
+
+    #[test]
+    fn classifies_marketplace_registry_freshness_as_manage() {
+        let mut request = Request::new(
+            r#"
+                query MarketplaceRegistryFreshness {
+                    marketplaceRegistryFreshness { registryId }
+                }
+            "#,
+        );
+
+        classify_document(&mut request).expect("document should parse");
+        let policy = request
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("module policy should be attached");
+
+        assert_eq!(policy.0.len(), 1);
+        assert_eq!(policy.0[0].name, "marketplaceRegistryFreshness");
+        assert_eq!(policy.0[0].authority, ModuleAuthority::Manage);
+    }
+
+    #[test]
+    fn classifies_artifact_ui_actions_as_read_before_dynamic_rbac() {
+        let mut request = Request::new(
+            r#"
+                mutation ExecuteArtifactUiAction {
+                    executeArtifactUiAction(
+                        installationId: "00000000-0000-0000-0000-000000000000"
+                        contributionId: "apply"
+                        input: {}
+                        idempotencyKey: "00000000-0000-0000-0000-000000000000"
+                    )
+                }
+            "#,
+        );
+
+        classify_document(&mut request).expect("document should parse");
+        let policy = request
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("module policy should be attached");
+
+        assert_eq!(policy.0.len(), 1);
+        assert_eq!(policy.0[0].name, "executeArtifactUiAction");
+        assert_eq!(policy.0[0].authority, ModuleAuthority::Read);
+    }
+
+    #[test]
+    fn classifies_tenant_artifact_lifecycle_mutations_as_manage() {
+        let mut request = Request::new(
+            r#"
+                mutation TenantArtifactLifecycle {
+                    setArtifactTenantEnabled(
+                        installationId: "00000000-0000-0000-0000-000000000000"
+                        enabled: true
+                        expectedRevision: 1
+                        reason: "enable"
+                        idempotencyKey: "00000000-0000-0000-0000-000000000001"
+                    ) { revision }
+                    activateTenantArtifact(
+                        installationId: "00000000-0000-0000-0000-000000000000"
+                        expectedRevision: 1
+                        reason: "activate"
+                        idempotencyKey: "11111111-1111-1111-1111-111111111111"
+                    ) { operationId }
+                    deactivateTenantArtifact(
+                        installationId: "00000000-0000-0000-0000-000000000000"
+                        expectedRevision: 2
+                        reason: "deactivate"
+                        idempotencyKey: "22222222-2222-2222-2222-222222222222"
+                    ) { operationId }
+                    uninstallTenantArtifact(
+                        installationId: "00000000-0000-0000-0000-000000000000"
+                        expectedRevision: 3
+                        reason: "uninstall"
+                        idempotencyKey: "33333333-3333-3333-3333-333333333333"
+                    ) { operationId }
+                    rollbackTenantArtifact(
+                        installationId: "00000000-0000-0000-0000-000000000000"
+                        expectedRevision: 4
+                        reason: "rollback"
+                        idempotencyKey: "44444444-4444-4444-4444-444444444444"
+                        targetCapabilityGrantRevision: 1
+                        migrationRollbackMode: REVERSIBLE
+                    ) { targetInstallationId }
+                }
+            "#,
+        );
+
+        classify_document(&mut request).expect("document should parse");
+        let policy = request
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("module policy should be attached");
+
+        assert_eq!(policy.0.len(), 5);
+        assert!(policy.0.iter().all(|field| {
+            field.authority == ModuleAuthority::Manage
+                && matches!(
+                    field.name,
+                    "setArtifactTenantEnabled"
+                        | "activateTenantArtifact"
+                        | "deactivateTenantArtifact"
+                        | "uninstallTenantArtifact"
+                        | "rollbackTenantArtifact"
+                )
+        }));
+    }
+
+    #[test]
+    fn module_manage_permission_includes_module_reads() {
+        assert!(
+            ModuleGraphqlField {
+                name: "artifactUiContributions",
+                authority: ModuleAuthority::Read,
+            }
+            .allowed(&[Permission::MODULES_MANAGE])
+        );
     }
 }

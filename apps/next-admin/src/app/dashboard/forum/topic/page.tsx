@@ -41,7 +41,11 @@ export default async function Page(props: PageProps) {
     ? (topics.find((topic) => topic.id === requestedTopicId) ?? null)
     : null;
   const selectedTopic = selectedTopicSummary
-    ? await getForumTopic(selectedTopicSummary.id, gqlOpts)
+    ? await getForumTopic(
+        selectedTopicSummary.id,
+        gqlOpts,
+        selectedTopicSummary.locale
+      )
     : null;
   const preservedQueryEntries = listRouteQueryEntries(searchParams, [
     'topic_id'
@@ -53,7 +57,7 @@ export default async function Page(props: PageProps) {
       pageTitle='Forum Topic Composer'
       pageDescription={
         selectedTopic
-          ? `Edit the ${selectedTopic.requestedLocale} translation of "${selectedTopic.title}".`
+          ? 'Edit the selected forum topic translation.'
           : 'Create a forum topic with the shared richtext editor.'
       }
       pageHeaderAction={
@@ -69,12 +73,17 @@ export default async function Page(props: PageProps) {
             ))}
             <select
               name='topic_id'
-              defaultValue={selectedTopic?.id ?? ''}
+              defaultValue={selectedTopicSummary?.id ?? ''}
               className='border-input bg-background h-9 min-w-60 rounded-md border px-3 text-sm'
             >
               <option value=''>New topic</option>
               {topics.map((topic) => (
-                <option key={topic.id} value={topic.id}>
+                <option
+                  key={topic.id}
+                  value={topic.id}
+                  lang={topic.effectiveLocale}
+                  dir='auto'
+                >
                   {topic.title}
                 </option>
               ))}

@@ -41,8 +41,9 @@ repair, durable authorization generation storage, and RBAC integration contracts
 `apps/server` owns authenticated adapters, caller transaction orchestration, cache
 adapters, fast-path invalidation delivery, worker supervision, and process telemetry.
 `rustok-events` owns sealed event contracts. `rustok-outbox` owns durable transactional
-transport. `rustok-migrations` owns the immutable global migration prefix and explicit
-append-only release tail.
+transport. `rustok-migrations` owns the canonical global migration plan. Its Migration
+Compatibility workflow exports base and head plans, then accepts only a head that
+preserves the complete published base prefix and appends new migrations.
 
 Claims, presentation roles, caches, projections, and consumers are never permission or
 role-assignment authority.
@@ -95,8 +96,9 @@ Merged source provides:
    authority;
 10. downgrade checks that preserve exact scope identity or refuse the downgrade;
 11. explicit SQLite upgrade/downgrade transactions and failure-atomicity regressions;
-12. a global migration registry that preserves every current-main tail entry and appends
-    only `m20260803_000001_canonicalize_artifact_permissions`;
+12. a global migration planner whose published plan remains an immutable prefix and
+    appends `m20260803_000001_canonicalize_artifact_permissions` without rewriting
+    earlier migration identities;
 13. source guards and SQLite regressions for owner boundaries, exact scope, locale,
     tenant integrity, event atomicity, upgrade, rollback, and removed execution paths.
 
@@ -173,6 +175,12 @@ close the component.
 - [x] Enforce tenant-composite role/actor and exact definition/scope parents.
 - [x] Add SQLite integrity, upgrade, rollback, explicit-scope, and Outbox regressions.
 - [x] Add fail-closed source verifiers.
+- [x] Retain the executable explicit-scope owner regression. The SQLite fixture
+  creates parallel platform and tenant definitions for the same admitted
+  installation/permission key, grants both explicitly, then proves that each
+  scoped revoke removes only its own definition and preserves the other grant.
+  `verify-rbac-artifact-permission-outbox.mjs` and the focused scenario passed
+  on 2026-08-22.
 - [x] Generate and review the exact-head event digest — PR #3617 merge-SHA run
   `32061362433`; artifact `9298285369`; generated diff 0 bytes.
 - [ ] Execute contract, owner transaction, SQLite, PostgreSQL, adapter, verifier,
@@ -187,7 +195,8 @@ close the component.
 - [x] Refuse lossy downgrade of exact scope identity.
 - [x] Wrap SQLite upgrade and downgrade in explicit transactions.
 - [x] Register the PostgreSQL backfill fixture.
-- [x] Preserve the complete current-main tail and append only the RBAC cutover.
+- [x] Preserve the complete published migration-plan prefix and append only the RBAC
+  cutover; the CI-owned base/head export check is the canonical enforcement point.
 - [ ] Execute Migration Compatibility, clean PostgreSQL apply, N-1 upgrade, fixture,
   rollback, and schema-contract checks on one exact head.
 
@@ -226,7 +235,7 @@ close the component.
   `31836046621`, 1/1 pass.
 - [x] Execute #2856 Redis available/outage/restart recovery — PR #3579 run
   `31842014975`, 1/1 pass; artifact `9235209675`.
-- [x] Execute #2862 registered-CLI repair propagation — PR #3590 exact-head run
+- [x] Execute #2862 registered-CLI repair propagation — PR #3590 run
   `31885429843`, 1/1 pass; merged run `32004633206`; artifact `9280508296`.
 - [x] Retain one same-revision result set within documented bounds for all required
   multi-replica packets — PR #3590 run `31885429843` at
@@ -264,7 +273,7 @@ cargo test -p rustok-events --test rbac_artifact_permission_contracts
 cargo test -p rustok-rbac --test artifact_permission_outbox_sqlite
 cargo test -p rustok-rbac --test artifact_permission_tenant_integrity_sqlite
 cargo test -p rustok-rbac --test artifact_permission_upgrade_sqlite
-cargo test -p rustok-migrations migrator_preserves_append_only_migration_tail
+node scripts/verify/verify-migration-plan-compatibility.mjs --self-test
 cargo test -p rustok-server --test rbac_permission_resolver_read_only_guard
 cargo test -p rustok-server --test rbac_auth_admin_effective_noop_guard
 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked -p rustok-server --test rbac_mutation_api_architecture_guard -- --nocapture

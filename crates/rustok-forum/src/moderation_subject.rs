@@ -102,7 +102,7 @@ impl ModerationSubjectCommandPort for ForumModerationSubjectAdapter {
 
         let lease = match idempotency::admit(
             &self.db,
-            tenant_id,
+            idempotency::OwnerOperationScope::Tenant(tenant_id),
             FORUM_OWNER_SLUG,
             expected_idempotency_key.as_str(),
             APPLY_MODERATION_DECISION_OPERATION,

@@ -642,7 +642,7 @@ pub async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnEr
             .await
             .map_err(|err| server_error(err.to_string()))?;
 
-        Ok(registry_modules
+        registry_modules
             .into_iter()
             .map(|module| {
                 let metadata = module_runtime_metadata(module.slug());
@@ -700,7 +700,7 @@ pub async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnEr
                         .unwrap_or_default(),
                 })
             })
-            .collect::<Result<Vec<_>, ServerFnError>>()?)
+            .collect::<Result<Vec<_>, ServerFnError>>()
     }
     #[cfg(not(feature = "ssr"))]
     {

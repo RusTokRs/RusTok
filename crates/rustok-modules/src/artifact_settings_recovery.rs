@@ -24,7 +24,7 @@ use rustok_api::manifest_hash::{
 use rustok_events::DomainEvent;
 
 use crate::{
-    ControlPlaneInfrastructure, ModuleArtifactDescriptor,
+    ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleCommandContext,
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
     canonical_artifact_descriptor_digest,
     data::configure_tenant_scope,
@@ -47,9 +47,10 @@ pub struct ArtifactSettingsRecoveryPointCreateRequest {
     pub installation_id: Uuid,
     pub expected_installation_revision: u64,
     pub expected_settings_revision: u64,
-    pub actor_id: Uuid,
+    /// Mandatory authenticated evidence. Its tenant must match this recovery
+    /// operation's tenant scope.
+    pub context: ModuleCommandContext,
     pub reason: String,
-    pub idempotency_key: Uuid,
 }
 
 /// Host-owned retention evidence returned only after policy evaluation.
@@ -116,9 +117,8 @@ pub struct ArtifactSettingsRecoveryRetentionUpdateRequest {
     pub legal_hold: Option<bool>,
     pub audit_hold: Option<bool>,
     pub incident_hold: Option<bool>,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub reason: String,
-    pub idempotency_key: Uuid,
 }
 
 /// Immutable receipt for one revision-guarded retention update. It deliberately
@@ -145,9 +145,8 @@ pub struct ArtifactSettingsPurgeRequest {
     pub recovery_point_id: Uuid,
     pub expected_installation_revision: u64,
     pub expected_settings_revision: u64,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub reason: String,
-    pub idempotency_key: Uuid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,9 +168,8 @@ pub struct ArtifactSettingsRestoreRequest {
     /// separate continuity bind command.
     pub target_installation_id: Option<Uuid>,
     pub expected_target_installation_revision: Option<u64>,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub reason: String,
-    pub idempotency_key: Uuid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -188,9 +186,8 @@ pub struct ArtifactSettingsRestoreResult {
 pub struct ArtifactSettingsRecoveryRewrapRequest {
     pub tenant_id: Uuid,
     pub recovery_point_id: Uuid,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub reason: String,
-    pub idempotency_key: Uuid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,7 +203,7 @@ pub struct ArtifactSettingsRecoveryRewrapResult {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactSettingsRecoveryCollectionRequest {
     pub tenant_id: Uuid,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub reason: String,
     pub policy_snapshot_id: String,
     pub limit: u32,
@@ -228,9 +225,8 @@ pub struct ArtifactSettingsRecoveryBindRequest {
     pub recovery_point_id: Uuid,
     pub target_installation_id: Uuid,
     pub expected_target_installation_revision: u64,
-    pub actor_id: Uuid,
+    pub context: ModuleCommandContext,
     pub reason: String,
-    pub idempotency_key: Uuid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -518,10 +514,11 @@ where
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "INSERT INTO module_artifact_settings_recovery_operations (operation_id, tenant_id, installation_id, expected_installation_revision, expected_settings_revision, recovery_point_id, actor_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                    "INSERT INTO module_artifact_settings_recovery_operations (operation_id, tenant_id, installation_id, expected_installation_revision, expected_settings_revision, recovery_point_id, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3),
                     placeholder(backend, 4), placeholder(backend, 5), placeholder(backend, 6),
-                    placeholder(backend, 7), placeholder(backend, 8), placeholder(backend, 9), now_expression(backend),
+                    placeholder(backend, 7), placeholder(backend, 8), placeholder(backend, 9),
+                    placeholder(backend, 10), placeholder(backend, 11), now_expression(backend),
                 ),
                 vec![
                     uuid_value(self.infrastructure.new_id(), backend),
@@ -530,9 +527,11 @@ where
                     revision_value(request.expected_installation_revision)?,
                     revision_value(request.expected_settings_revision)?,
                     uuid_value(recovery_point_id, backend),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     request.reason.clone().into(),
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -540,9 +539,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(request.tenant_id),
-                    Some(request.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactSettingsRecoveryPointCreated {
                         recovery_point_id,
                         tenant_id: request.tenant_id,
@@ -665,10 +663,11 @@ where
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "INSERT INTO module_artifact_settings_purge_operations (operation_id, tenant_id, installation_id, recovery_point_id, expected_installation_revision, expected_settings_revision, tombstone_revision, actor_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                    "INSERT INTO module_artifact_settings_purge_operations (operation_id, tenant_id, installation_id, recovery_point_id, expected_installation_revision, expected_settings_revision, tombstone_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
                     placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
-                    placeholder(backend, 9), placeholder(backend, 10), now_expression(backend),
+                    placeholder(backend, 9), placeholder(backend, 10), placeholder(backend, 11),
+                    placeholder(backend, 12), now_expression(backend),
                 ),
                 vec![
                     uuid_value(purge_operation_id, backend),
@@ -678,9 +677,11 @@ where
                     revision_value(request.expected_installation_revision)?,
                     revision_value(request.expected_settings_revision)?,
                     revision_value(tombstone_revision)?,
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     request.reason.clone().into(),
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -707,9 +708,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(request.tenant_id),
-                    Some(request.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactSettingsPurged {
                         recovery_point_id: request.recovery_point_id,
                         tenant_id: request.tenant_id,
@@ -873,9 +873,10 @@ where
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "INSERT INTO module_artifact_settings_restore_operations (operation_id, tenant_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                    "INSERT INTO module_artifact_settings_restore_operations (operation_id, tenant_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1), placeholder(backend, 2), placeholder(backend, 3), placeholder(backend, 4),
-                    placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8), placeholder(backend, 9), now_expression(backend),
+                    placeholder(backend, 5), placeholder(backend, 6), placeholder(backend, 7), placeholder(backend, 8),
+                    placeholder(backend, 9), placeholder(backend, 10), placeholder(backend, 11), now_expression(backend),
                 ),
                 vec![
                     uuid_value(restore_operation_id, backend),
@@ -884,9 +885,11 @@ where
                     optional_uuid_value(request.target_installation_id, backend),
                     optional_revision_value(request.expected_target_installation_revision)?,
                     uuid_value(settings_instance_id, backend),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     request.reason.clone().into(),
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -894,9 +897,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(request.tenant_id),
-                    Some(request.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactSettingsRestored {
                         recovery_point_id: request.recovery_point_id,
                         tenant_id: request.tenant_id,
@@ -1004,7 +1006,7 @@ where
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "INSERT INTO module_artifact_settings_recovery_retention_operations (operation_id, tenant_id, recovery_point_id, idempotency_key, request_digest, expected_retention_revision, retention_revision, retain_until, legal_hold, audit_hold, incident_hold, policy_snapshot_id, actor_id, reason, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                    "INSERT INTO module_artifact_settings_recovery_retention_operations (operation_id, tenant_id, recovery_point_id, idempotency_key, request_digest, expected_retention_revision, retention_revision, retain_until, legal_hold, audit_hold, incident_hold, policy_snapshot_id, actor_id, trace_id, correlation_id, reason, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -1019,13 +1021,15 @@ where
                     placeholder(backend, 12),
                     placeholder(backend, 13),
                     placeholder(backend, 14),
+                    placeholder(backend, 15),
+                    placeholder(backend, 16),
                     now_expression(backend),
                 ),
                 vec![
                     uuid_value(self.infrastructure.new_id(), backend),
                     uuid_value(request.tenant_id, backend),
                     uuid_value(request.recovery_point_id, backend),
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                     request_digest.into(),
                     revision_value(request.expected_retention_revision)?,
                     revision_value(retention_revision)?,
@@ -1034,7 +1038,9 @@ where
                     bool_value(retention.audit_hold, backend),
                     bool_value(retention.incident_hold, backend),
                     retention.policy_snapshot_id.clone().into(),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     request.reason.clone().into(),
                 ],
             ))
@@ -1043,9 +1049,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(request.tenant_id),
-                    Some(request.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactSettingsRecoveryRetentionUpdated {
                         recovery_point_id: request.recovery_point_id,
                         tenant_id: request.tenant_id,
@@ -1142,7 +1147,7 @@ where
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "INSERT INTO module_artifact_settings_recovery_rewrap_operations (operation_id, tenant_id, recovery_point_id, idempotency_key, previous_key_version, key_version, actor_id, reason, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {})",
+                    "INSERT INTO module_artifact_settings_recovery_rewrap_operations (operation_id, tenant_id, recovery_point_id, idempotency_key, previous_key_version, key_version, actor_id, trace_id, correlation_id, reason, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -1151,16 +1156,20 @@ where
                     placeholder(backend, 6),
                     placeholder(backend, 7),
                     placeholder(backend, 8),
+                    placeholder(backend, 9),
+                    placeholder(backend, 10),
                     now_expression(backend),
                 ),
                 vec![
                     uuid_value(rewrap_operation_id, backend),
                     uuid_value(request.tenant_id, backend),
                     uuid_value(request.recovery_point_id, backend),
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                     recovery.key_version.clone().into(),
                     rewrapped.key_version.clone().into(),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     request.reason.clone().into(),
                 ],
             ))
@@ -1169,9 +1178,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(request.tenant_id),
-                    Some(request.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactSettingsRecoveryRewrapped {
                         recovery_point_id: request.recovery_point_id,
                         tenant_id: request.tenant_id,
@@ -1361,7 +1369,7 @@ where
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "INSERT INTO module_artifact_settings_recovery_bind_operations (operation_id, tenant_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                    "INSERT INTO module_artifact_settings_recovery_bind_operations (operation_id, tenant_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -1371,6 +1379,8 @@ where
                     placeholder(backend, 7),
                     placeholder(backend, 8),
                     placeholder(backend, 9),
+                    placeholder(backend, 10),
+                    placeholder(backend, 11),
                     now_expression(backend),
                 ),
                 vec![
@@ -1380,9 +1390,11 @@ where
                     uuid_value(request.target_installation_id, backend),
                     revision_value(request.expected_target_installation_revision)?,
                     uuid_value(settings_instance_id, backend),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
                     request.reason.clone().into(),
-                    uuid_value(request.idempotency_key, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -1390,9 +1402,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(request.tenant_id),
-                    Some(request.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &request.context,
                     DomainEvent::ModuleArtifactSettingsRecoveryBound {
                         recovery_point_id: request.recovery_point_id,
                         tenant_id: request.tenant_id,
@@ -1486,13 +1497,16 @@ where
             .execute(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "INSERT INTO module_artifact_settings_recovery_collections (collection_id, tenant_id, recovery_point_id, policy_snapshot_id, actor_id, reason, collecting_at, completed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, NULL)",
+                    "INSERT INTO module_artifact_settings_recovery_collections (collection_id, tenant_id, recovery_point_id, policy_snapshot_id, actor_id, trace_id, correlation_id, idempotency_key, reason, collecting_at, completed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, NULL)",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
                     placeholder(backend, 4),
                     placeholder(backend, 5),
                     placeholder(backend, 6),
+                    placeholder(backend, 7),
+                    placeholder(backend, 8),
+                    placeholder(backend, 9),
                     now_expression(backend),
                 ),
                 vec![
@@ -1500,7 +1514,10 @@ where
                     uuid_value(request.tenant_id, backend),
                     uuid_value(candidate.recovery_point_id, backend),
                     request.policy_snapshot_id.clone().into(),
-                    uuid_value(request.actor_id, backend),
+                    uuid_value(request.context.actor_id, backend),
+                    request.context.trace_id.clone().into(),
+                    uuid_value(request.context.correlation_id, backend),
+                    uuid_value(request.context.idempotency_key, backend),
                     request.reason.clone().into(),
                 ],
             ))
@@ -1531,7 +1548,7 @@ where
             collection_id,
             tenant_id: request.tenant_id,
             recovery_point_id: candidate.recovery_point_id,
-            actor_id: request.actor_id,
+            context: request.context.clone(),
         })
     }
 
@@ -1602,9 +1619,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    Some(work.tenant_id),
-                    Some(work.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &work.context,
                     DomainEvent::ModuleArtifactSettingsRecoveryCollected {
                         collection_id: work.collection_id,
                         recovery_point_id: work.recovery_point_id,
@@ -1740,7 +1756,7 @@ struct SettingsRecoveryCollectionWork {
     collection_id: Uuid,
     tenant_id: Uuid,
     recovery_point_id: Uuid,
-    actor_id: Uuid,
+    context: ModuleCommandContext,
 }
 
 #[derive(Clone, Debug)]
@@ -2318,10 +2334,13 @@ async fn find_recovery_operation_in<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation.installation_id, operation.expected_installation_revision, operation.expected_settings_revision, operation.actor_id, operation.reason, point.* FROM module_artifact_settings_recovery_operations operation JOIN module_artifact_settings_recovery_points point ON point.recovery_point_id = operation.recovery_point_id WHERE operation.tenant_id = {} AND operation.idempotency_key = {}",
+                "SELECT operation.installation_id, operation.expected_installation_revision, operation.expected_settings_revision, operation.actor_id, operation.trace_id, operation.correlation_id, operation.idempotency_key, operation.reason, point.* FROM module_artifact_settings_recovery_operations operation JOIN module_artifact_settings_recovery_points point ON point.recovery_point_id = operation.recovery_point_id WHERE operation.tenant_id = {} AND operation.idempotency_key = {}",
                 placeholder(backend, 1), placeholder(backend, 2),
             ),
-            vec![uuid_value(request.tenant_id, backend), uuid_value(request.idempotency_key, backend)],
+            vec![
+                uuid_value(request.tenant_id, backend),
+                uuid_value(request.context.idempotency_key, backend),
+            ],
         ))
         .await
         .map_err(storage_error)?;
@@ -2333,17 +2352,34 @@ async fn find_recovery_operation_in<C: ConnectionTrait>(
     let expected_settings_revision: i64 = row
         .try_get("", "expected_settings_revision")
         .map_err(storage_error)?;
-    let actor_id = uuid_from_row(&row, "actor_id", backend)?;
     let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if installation_id != request.installation_id
         || positive_u64(expected_installation_revision)? != request.expected_installation_revision
         || positive_u64(expected_settings_revision)? != request.expected_settings_revision
-        || actor_id != request.actor_id
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
         || reason != request.reason
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
     }
     Ok(Some(recovery_point_from_row(&row, backend)?))
+}
+
+fn command_context_from_receipt_row(
+    row: &QueryResult,
+    tenant_id: Uuid,
+    backend: DbBackend,
+) -> Result<ModuleCommandContext, ArtifactSettingsRecoveryError> {
+    let context = ModuleCommandContext {
+        actor_id: uuid_from_row(row, "actor_id", backend)?,
+        tenant_id: Some(tenant_id),
+        trace_id: row.try_get("", "trace_id").map_err(storage_error)?,
+        correlation_id: uuid_from_row(row, "correlation_id", backend)?,
+        idempotency_key: uuid_from_row(row, "idempotency_key", backend)?,
+    };
+    context
+        .validate()
+        .map_err(|error| ArtifactSettingsRecoveryError::Storage(error.to_string()))?;
+    Ok(context)
 }
 
 async fn find_purge_operation_in<C: ConnectionTrait>(
@@ -2355,10 +2391,13 @@ async fn find_purge_operation_in<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_id, installation_id, recovery_point_id, expected_installation_revision, expected_settings_revision, tombstone_revision, actor_id, reason FROM module_artifact_settings_purge_operations WHERE tenant_id = {} AND idempotency_key = {}",
+                "SELECT operation_id, installation_id, recovery_point_id, expected_installation_revision, expected_settings_revision, tombstone_revision, actor_id, trace_id, correlation_id, idempotency_key, reason FROM module_artifact_settings_purge_operations WHERE tenant_id = {} AND idempotency_key = {}",
                 placeholder(backend, 1), placeholder(backend, 2),
             ),
-            vec![uuid_value(request.tenant_id, backend), uuid_value(request.idempotency_key, backend)],
+            vec![
+                uuid_value(request.tenant_id, backend),
+                uuid_value(request.context.idempotency_key, backend),
+            ],
         ))
         .await
         .map_err(storage_error)?;
@@ -2371,13 +2410,12 @@ async fn find_purge_operation_in<C: ConnectionTrait>(
     let expected_settings_revision: i64 = row
         .try_get("", "expected_settings_revision")
         .map_err(storage_error)?;
-    let actor_id = uuid_from_row(&row, "actor_id", backend)?;
     let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if installation_id != request.installation_id
         || recovery_point_id != request.recovery_point_id
         || positive_u64(expected_installation_revision)? != request.expected_installation_revision
         || positive_u64(expected_settings_revision)? != request.expected_settings_revision
-        || actor_id != request.actor_id
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
         || reason != request.reason
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
@@ -2402,10 +2440,13 @@ async fn find_restore_operation_in<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, reason FROM module_artifact_settings_restore_operations WHERE tenant_id = {} AND idempotency_key = {}",
+                "SELECT operation_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, trace_id, correlation_id, idempotency_key, reason FROM module_artifact_settings_restore_operations WHERE tenant_id = {} AND idempotency_key = {}",
                 placeholder(backend, 1), placeholder(backend, 2),
             ),
-            vec![uuid_value(request.tenant_id, backend), uuid_value(request.idempotency_key, backend)],
+            vec![
+                uuid_value(request.tenant_id, backend),
+                uuid_value(request.context.idempotency_key, backend),
+            ],
         ))
         .await
         .map_err(storage_error)?;
@@ -2414,12 +2455,11 @@ async fn find_restore_operation_in<C: ConnectionTrait>(
     let target_installation_id = optional_uuid_from_row(&row, "target_installation_id", backend)?;
     let expected_target_installation_revision =
         optional_positive_u64_from_row(&row, "expected_target_installation_revision")?;
-    let actor_id = uuid_from_row(&row, "actor_id", backend)?;
     let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if recovery_point_id != request.recovery_point_id
         || target_installation_id != request.target_installation_id
         || expected_target_installation_revision != request.expected_target_installation_revision
-        || actor_id != request.actor_id
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
         || reason != request.reason
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
@@ -2442,13 +2482,13 @@ async fn find_retention_operation_in<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT recovery_point_id, request_digest, retention_revision, retain_until, legal_hold, audit_hold, incident_hold, policy_snapshot_id FROM module_artifact_settings_recovery_retention_operations WHERE tenant_id = {} AND idempotency_key = {}",
+                "SELECT recovery_point_id, request_digest, retention_revision, retain_until, legal_hold, audit_hold, incident_hold, policy_snapshot_id, actor_id, trace_id, correlation_id, idempotency_key FROM module_artifact_settings_recovery_retention_operations WHERE tenant_id = {} AND idempotency_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
             ),
             vec![
                 uuid_value(request.tenant_id, backend),
-                uuid_value(request.idempotency_key, backend),
+                uuid_value(request.context.idempotency_key, backend),
             ],
         ))
         .await
@@ -2458,7 +2498,10 @@ async fn find_retention_operation_in<C: ConnectionTrait>(
     };
     let stored_digest: String = row.try_get("", "request_digest").map_err(storage_error)?;
     let recovery_point_id = uuid_from_row(&row, "recovery_point_id", backend)?;
-    if recovery_point_id != request.recovery_point_id || stored_digest != request_digest {
+    if recovery_point_id != request.recovery_point_id
+        || stored_digest != request_digest
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
+    {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
     }
     Ok(Some(ArtifactSettingsRecoveryRetentionUpdateResult {
@@ -2486,13 +2529,13 @@ async fn find_rewrap_operation_in<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_id, recovery_point_id, previous_key_version, key_version, actor_id, reason FROM module_artifact_settings_recovery_rewrap_operations WHERE tenant_id = {} AND idempotency_key = {}",
+                "SELECT operation_id, recovery_point_id, previous_key_version, key_version, actor_id, trace_id, correlation_id, idempotency_key, reason FROM module_artifact_settings_recovery_rewrap_operations WHERE tenant_id = {} AND idempotency_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
             ),
             vec![
                 uuid_value(request.tenant_id, backend),
-                uuid_value(request.idempotency_key, backend),
+                uuid_value(request.context.idempotency_key, backend),
             ],
         ))
         .await
@@ -2501,10 +2544,9 @@ async fn find_rewrap_operation_in<C: ConnectionTrait>(
         return Ok(None);
     };
     let recovery_point_id = uuid_from_row(&row, "recovery_point_id", backend)?;
-    let actor_id = uuid_from_row(&row, "actor_id", backend)?;
     let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if recovery_point_id != request.recovery_point_id
-        || actor_id != request.actor_id
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
         || reason != request.reason
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
@@ -2528,13 +2570,13 @@ async fn find_bind_operation_in<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, reason FROM module_artifact_settings_recovery_bind_operations WHERE tenant_id = {} AND idempotency_key = {}",
+                "SELECT operation_id, recovery_point_id, target_installation_id, expected_target_installation_revision, settings_instance_id, actor_id, trace_id, correlation_id, idempotency_key, reason FROM module_artifact_settings_recovery_bind_operations WHERE tenant_id = {} AND idempotency_key = {}",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
             ),
             vec![
                 uuid_value(request.tenant_id, backend),
-                uuid_value(request.idempotency_key, backend),
+                uuid_value(request.context.idempotency_key, backend),
             ],
         ))
         .await
@@ -2547,13 +2589,12 @@ async fn find_bind_operation_in<C: ConnectionTrait>(
     let expected_target_installation_revision: i64 = row
         .try_get("", "expected_target_installation_revision")
         .map_err(storage_error)?;
-    let actor_id = uuid_from_row(&row, "actor_id", backend)?;
     let reason: String = row.try_get("", "reason").map_err(storage_error)?;
     if recovery_point_id != request.recovery_point_id
         || target_installation_id != request.target_installation_id
         || positive_u64(expected_target_installation_revision)?
             != request.expected_target_installation_revision
-        || actor_id != request.actor_id
+        || command_context_from_receipt_row(&row, request.tenant_id, backend)? != request.context
         || reason != request.reason
     {
         return Err(ArtifactSettingsRecoveryError::IdempotencyConflict);
@@ -2599,7 +2640,7 @@ async fn settings_recovery_collection_work_in<C: ConnectionTrait>(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT collection_id, tenant_id, recovery_point_id, actor_id FROM module_artifact_settings_recovery_collections WHERE tenant_id = {} AND recovery_point_id = {} AND completed_at IS NULL",
+                "SELECT collection_id, tenant_id, recovery_point_id, actor_id, trace_id, correlation_id, idempotency_key FROM module_artifact_settings_recovery_collections WHERE tenant_id = {} AND recovery_point_id = {} AND completed_at IS NULL",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
             ),
@@ -2611,11 +2652,22 @@ async fn settings_recovery_collection_work_in<C: ConnectionTrait>(
         .await
         .map_err(storage_error)?
         .ok_or(ArtifactSettingsRecoveryError::CollectionPrecondition)?;
+    let stored_tenant_id = uuid_from_row(&row, "tenant_id", backend)?;
+    let context = ModuleCommandContext {
+        actor_id: uuid_from_row(&row, "actor_id", backend)?,
+        tenant_id: Some(stored_tenant_id),
+        trace_id: row.try_get("", "trace_id").map_err(storage_error)?,
+        correlation_id: uuid_from_row(&row, "correlation_id", backend)?,
+        idempotency_key: uuid_from_row(&row, "idempotency_key", backend)?,
+    };
+    if stored_tenant_id != tenant_id || !valid_command_context(stored_tenant_id, &context) {
+        return Err(ArtifactSettingsRecoveryError::CollectionPrecondition);
+    }
     Ok(SettingsRecoveryCollectionWork {
         collection_id: uuid_from_row(&row, "collection_id", backend)?,
-        tenant_id: uuid_from_row(&row, "tenant_id", backend)?,
+        tenant_id: stored_tenant_id,
         recovery_point_id: uuid_from_row(&row, "recovery_point_id", backend)?,
-        actor_id: uuid_from_row(&row, "actor_id", backend)?,
+        context,
     })
 }
 
@@ -2732,9 +2784,8 @@ fn validate_recovery_point_request(
         request.installation_id,
         request.expected_installation_revision,
         request.expected_settings_revision,
-        request.actor_id,
+        &request.context,
         &request.reason,
-        request.idempotency_key,
     )
 }
 
@@ -2746,9 +2797,8 @@ fn validate_purge_request(
         request.installation_id,
         request.expected_installation_revision,
         request.expected_settings_revision,
-        request.actor_id,
+        &request.context,
         &request.reason,
-        request.idempotency_key,
     )?;
     if request.recovery_point_id.is_nil() {
         return Err(ArtifactSettingsRecoveryError::InvalidRequest);
@@ -2767,8 +2817,7 @@ fn validate_restore_request(
         || request
             .expected_target_installation_revision
             .is_some_and(|revision| revision == 0)
-        || request.actor_id.is_nil()
-        || request.idempotency_key.is_nil()
+        || !valid_command_context(request.tenant_id, &request.context)
         || !valid_reason(&request.reason)
     {
         return Err(ArtifactSettingsRecoveryError::InvalidRequest);
@@ -2782,8 +2831,7 @@ fn validate_retention_update_request(
     if request.tenant_id.is_nil()
         || request.recovery_point_id.is_nil()
         || request.expected_retention_revision == 0
-        || request.actor_id.is_nil()
-        || request.idempotency_key.is_nil()
+        || !valid_command_context(request.tenant_id, &request.context)
         || !valid_reason(&request.reason)
         || (request.extend_retain_until.is_none()
             && request.legal_hold.is_none()
@@ -2800,8 +2848,7 @@ fn validate_rewrap_request(
 ) -> Result<(), ArtifactSettingsRecoveryError> {
     if request.tenant_id.is_nil()
         || request.recovery_point_id.is_nil()
-        || request.actor_id.is_nil()
-        || request.idempotency_key.is_nil()
+        || !valid_command_context(request.tenant_id, &request.context)
         || !valid_reason(&request.reason)
     {
         return Err(ArtifactSettingsRecoveryError::InvalidRequest);
@@ -2813,7 +2860,7 @@ fn validate_collection_request(
     request: &ArtifactSettingsRecoveryCollectionRequest,
 ) -> Result<(), ArtifactSettingsRecoveryError> {
     if request.tenant_id.is_nil()
-        || request.actor_id.is_nil()
+        || !valid_command_context(request.tenant_id, &request.context)
         || !valid_reason(&request.reason)
         || !valid_policy_snapshot_id(&request.policy_snapshot_id)
         || request.limit == 0
@@ -2831,8 +2878,7 @@ fn validate_bind_request(
         || request.recovery_point_id.is_nil()
         || request.target_installation_id.is_nil()
         || request.expected_target_installation_revision == 0
-        || request.actor_id.is_nil()
-        || request.idempotency_key.is_nil()
+        || !valid_command_context(request.tenant_id, &request.context)
         || !valid_reason(&request.reason)
     {
         return Err(ArtifactSettingsRecoveryError::InvalidRequest);
@@ -2845,21 +2891,23 @@ fn validate_command(
     installation_id: Uuid,
     expected_installation_revision: u64,
     expected_settings_revision: u64,
-    actor_id: Uuid,
+    context: &ModuleCommandContext,
     reason: &str,
-    idempotency_key: Uuid,
 ) -> Result<(), ArtifactSettingsRecoveryError> {
     if tenant_id.is_nil()
         || installation_id.is_nil()
         || expected_installation_revision == 0
         || expected_settings_revision == 0
-        || actor_id.is_nil()
-        || idempotency_key.is_nil()
+        || !valid_command_context(tenant_id, context)
         || !valid_reason(reason)
     {
         return Err(ArtifactSettingsRecoveryError::InvalidRequest);
     }
     Ok(())
+}
+
+fn valid_command_context(tenant_id: Uuid, context: &ModuleCommandContext) -> bool {
+    context.tenant_id == Some(tenant_id) && context.validate().is_ok()
 }
 
 fn validate_retention(
@@ -3193,6 +3241,46 @@ mod tests {
 
     struct AllowRecoveryCollectionPolicy;
 
+    fn command_context(tenant_id: Uuid, actor_id: Uuid) -> ModuleCommandContext {
+        ModuleCommandContext {
+            actor_id,
+            tenant_id: Some(tenant_id),
+            trace_id: "test:artifact-settings-recovery".to_string(),
+            correlation_id: Uuid::new_v4(),
+            idempotency_key: Uuid::new_v4(),
+        }
+    }
+
+    #[test]
+    fn settings_recovery_rejects_a_foreign_command_context() {
+        let tenant_id = Uuid::new_v4();
+        let foreign_tenant_id = Uuid::new_v4();
+        let context = command_context(foreign_tenant_id, Uuid::new_v4());
+
+        assert_eq!(
+            validate_purge_request(&ArtifactSettingsPurgeRequest {
+                tenant_id,
+                installation_id: Uuid::new_v4(),
+                recovery_point_id: Uuid::new_v4(),
+                expected_installation_revision: 1,
+                expected_settings_revision: 1,
+                context: context.clone(),
+                reason: "reject foreign settings purge context".to_string(),
+            }),
+            Err(ArtifactSettingsRecoveryError::InvalidRequest)
+        );
+        assert_eq!(
+            validate_collection_request(&ArtifactSettingsRecoveryCollectionRequest {
+                tenant_id,
+                context,
+                reason: "reject foreign collection context".to_string(),
+                policy_snapshot_id: "test-policy".to_string(),
+                limit: 1,
+            }),
+            Err(ArtifactSettingsRecoveryError::InvalidRequest)
+        );
+    }
+
     #[async_trait]
     impl ArtifactSettingsRecoveryCollectionPolicy for AllowRecoveryCollectionPolicy {
         fn snapshot_id(&self) -> &str {
@@ -3394,20 +3482,7 @@ mod tests {
         .await;
         insert_admission(&database, source_installation_id, "inactive", 3).await;
         insert_admission(&database, target_installation_id, "inactive", 1).await;
-        database
-            .execute(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "INSERT INTO module_artifact_uninstall_operations (operation_id, installation_id, expected_revision, actor_id, reason, idempotency_key, committed_at) VALUES (?1, ?2, 2, ?3, 'retired source', ?4, '2026-08-13T00:00:00Z')"
-                    .to_string(),
-                vec![
-                    Uuid::new_v4().to_string().into(),
-                    source_installation_id.to_string().into(),
-                    actor_id.to_string().into(),
-                    Uuid::new_v4().to_string().into(),
-                ],
-            ))
-            .await
-            .expect("source uninstall evidence");
+        insert_uninstall_evidence(&database, source_installation_id, actor_id).await;
         database
             .execute(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
@@ -3434,9 +3509,8 @@ mod tests {
             installation_id: source_installation_id,
             expected_installation_revision: 3,
             expected_settings_revision: 5,
-            actor_id,
+            context: command_context(tenant_id, actor_id),
             reason: "retain settings before purge".to_string(),
-            idempotency_key: Uuid::new_v4(),
         };
         let recovery = service
             .create_recovery_point(recovery_request.clone())
@@ -3464,9 +3538,8 @@ mod tests {
             legal_hold: Some(false),
             audit_hold: Some(false),
             incident_hold: Some(false),
-            actor_id,
+            context: command_context(tenant_id, actor_id),
             reason: "extend protected settings retention".to_string(),
-            idempotency_key: Uuid::new_v4(),
         };
         let retained = service
             .update_retention(retention_request.clone())
@@ -3484,9 +3557,8 @@ mod tests {
         let rewrap_request = ArtifactSettingsRecoveryRewrapRequest {
             tenant_id,
             recovery_point_id: recovery.recovery_point_id,
-            actor_id,
+            context: command_context(tenant_id, actor_id),
             reason: "rotate approved KMS key".to_string(),
-            idempotency_key: Uuid::new_v4(),
         };
         let rewrapped = service
             .rewrap(rewrap_request.clone())
@@ -3515,9 +3587,8 @@ mod tests {
             recovery_point_id: recovery.recovery_point_id,
             expected_installation_revision: 3,
             expected_settings_revision: 5,
-            actor_id,
+            context: command_context(tenant_id, actor_id),
             reason: "purge retired settings".to_string(),
-            idempotency_key: Uuid::new_v4(),
         };
         let purge = service
             .purge(purge_request.clone())
@@ -3554,9 +3625,8 @@ mod tests {
             recovery_point_id: recovery.recovery_point_id,
             target_installation_id: None,
             expected_target_installation_revision: None,
-            actor_id,
+            context: command_context(tenant_id, actor_id),
             reason: "restore settings before continuity selection".to_string(),
-            idempotency_key: Uuid::new_v4(),
         };
         let restored = service
             .restore(restore_request.clone())
@@ -3618,9 +3688,8 @@ mod tests {
             recovery_point_id: recovery.recovery_point_id,
             target_installation_id,
             expected_target_installation_revision: 1,
-            actor_id,
+            context: command_context(tenant_id, actor_id),
             reason: "bind settings to continuity-approved successor".to_string(),
-            idempotency_key: Uuid::new_v4(),
         };
         let bound = service
             .bind(bind_request.clone())
@@ -3660,11 +3729,12 @@ mod tests {
             ))
             .await
             .expect("expire recovery point for collection");
+        let collection_context = command_context(tenant_id, actor_id);
         let collected = service
             .collect(
                 ArtifactSettingsRecoveryCollectionRequest {
                     tenant_id,
-                    actor_id,
+                    context: collection_context.clone(),
                     reason: "collect expired encrypted recovery point".to_string(),
                     policy_snapshot_id: "retention-policy-2026-08".to_string(),
                     limit: 1,
@@ -3701,6 +3771,67 @@ mod tests {
                 .try_get::<Option<String>>("", "collected_at")
                 .expect("collection timestamp")
                 .is_some()
+        );
+        let collection_receipt = database
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT actor_id, trace_id, correlation_id, idempotency_key FROM module_artifact_settings_recovery_collections WHERE recovery_point_id = ?1"
+                    .to_string(),
+                vec![recovery.recovery_point_id.to_string().into()],
+            ))
+            .await
+            .expect("collection receipt query")
+            .expect("collection receipt");
+        assert_eq!(
+            collection_receipt
+                .try_get::<String>("", "actor_id")
+                .expect("collection actor"),
+            collection_context.actor_id.to_string()
+        );
+        assert_eq!(
+            collection_receipt
+                .try_get::<String>("", "trace_id")
+                .expect("collection trace"),
+            collection_context.trace_id
+        );
+        assert_eq!(
+            collection_receipt
+                .try_get::<String>("", "correlation_id")
+                .expect("collection correlation"),
+            collection_context.correlation_id.to_string()
+        );
+        assert_eq!(
+            collection_receipt
+                .try_get::<String>("", "idempotency_key")
+                .expect("collection idempotency"),
+            collection_context.idempotency_key.to_string()
+        );
+        let collection_event = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT payload FROM sys_events WHERE event_type = 'module.artifact.settings_recovery_collected'"
+                    .to_string(),
+            ))
+            .await
+            .expect("collection event query")
+            .expect("collection event");
+        let collection_payload: Value = collection_event
+            .try_get("", "payload")
+            .expect("collection event payload");
+        let collection_envelope: rustok_events::EventEnvelope =
+            serde_json::from_value(collection_payload).expect("collection event envelope");
+        assert_eq!(
+            collection_envelope.actor_id,
+            Some(collection_context.actor_id)
+        );
+        assert_eq!(collection_envelope.tenant_id, tenant_id);
+        assert_eq!(
+            collection_envelope.correlation_id,
+            collection_context.correlation_id
+        );
+        assert_eq!(
+            collection_envelope.trace_id.as_deref(),
+            Some(collection_context.trace_id.as_str())
         );
         let event_types = database
             .query_all(Statement::from_string(
@@ -3779,20 +3910,7 @@ mod tests {
         .await;
         insert_admission(&database, source_installation_id, "inactive", 3).await;
         insert_admission(&database, target_installation_id, "inactive", 1).await;
-        database
-            .execute(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "INSERT INTO module_artifact_uninstall_operations (operation_id, installation_id, expected_revision, actor_id, reason, idempotency_key, committed_at) VALUES (?1, ?2, 2, ?3, 'retired source', ?4, '2026-08-13T00:00:00Z')"
-                    .to_string(),
-                vec![
-                    Uuid::new_v4().to_string().into(),
-                    source_installation_id.to_string().into(),
-                    actor_id.to_string().into(),
-                    Uuid::new_v4().to_string().into(),
-                ],
-            ))
-            .await
-            .expect("source uninstall evidence");
+        insert_uninstall_evidence(&database, source_installation_id, actor_id).await;
         database
             .execute(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
@@ -3820,9 +3938,8 @@ mod tests {
                 installation_id: source_installation_id,
                 expected_installation_revision: 3,
                 expected_settings_revision: 5,
-                actor_id,
+                context: command_context(tenant_id, actor_id),
                 reason: "retain settings before direct restore".to_string(),
-                idempotency_key: Uuid::new_v4(),
             })
             .await
             .expect("create recovery point");
@@ -3833,9 +3950,8 @@ mod tests {
                 recovery_point_id: recovery.recovery_point_id,
                 expected_installation_revision: 3,
                 expected_settings_revision: 5,
-                actor_id,
+                context: command_context(tenant_id, actor_id),
                 reason: "purge retained source settings".to_string(),
-                idempotency_key: Uuid::new_v4(),
             })
             .await
             .expect("purge source settings");
@@ -3846,9 +3962,8 @@ mod tests {
                 recovery_point_id: recovery.recovery_point_id,
                 target_installation_id: Some(target_installation_id),
                 expected_target_installation_revision: Some(2),
-                actor_id,
+                context: command_context(tenant_id, actor_id),
                 reason: "attempt stale direct restore".to_string(),
-                idempotency_key: Uuid::new_v4(),
             })
             .await;
         assert_eq!(
@@ -3861,9 +3976,8 @@ mod tests {
             recovery_point_id: recovery.recovery_point_id,
             target_installation_id: Some(target_installation_id),
             expected_target_installation_revision: Some(1),
-            actor_id,
+            context: command_context(tenant_id, actor_id),
             reason: "restore retained settings into successor".to_string(),
-            idempotency_key: Uuid::new_v4(),
         };
         let restored = service
             .restore(request.clone())
@@ -3991,6 +4105,30 @@ mod tests {
             ))
             .await
             .expect("admission");
+    }
+
+    async fn insert_uninstall_evidence(
+        database: &DatabaseConnection,
+        installation_id: Uuid,
+        actor_id: Uuid,
+    ) {
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_artifact_uninstall_operations \
+                 (operation_id, installation_id, expected_revision, actor_id, trace_id, correlation_id, reason, idempotency_key, committed_at) \
+                 VALUES (?1, ?2, 2, ?3, 'test:artifact-settings-recovery', ?4, 'retired source', ?5, '2026-08-13T00:00:00Z')"
+                    .to_string(),
+                vec![
+                    Uuid::new_v4().to_string().into(),
+                    installation_id.to_string().into(),
+                    actor_id.to_string().into(),
+                    Uuid::new_v4().to_string().into(),
+                    Uuid::new_v4().to_string().into(),
+                ],
+            ))
+            .await
+            .expect("source uninstall evidence");
     }
 
     async fn count_rows(

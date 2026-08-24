@@ -98,6 +98,9 @@ where
             .get_source_revision(command.script_id, command.expected_revision)
             .await
             .map_err(script_error_to_release)?;
+        if command.context.tenant_id != Some(source.tenant_id) {
+            return Err(AlloyReleaseError::InvalidCommand);
+        }
         if command.artifact_digest != source.source_digest {
             return Err(AlloyReleaseError::ArtifactSourceDigestMismatch);
         }
@@ -129,11 +132,11 @@ where
         smoke_script.parent_release = source.parent_release.clone();
         let mut smoke_context = ExecutionContext::new(ExecutionPhase::Manual)
             .with_tenant(source.tenant_id.to_string())
-            .with_user(command.actor_id.clone());
+            .with_user(command.context.actor_id.to_string());
         // The release idempotency key is also the stable logical sandbox
         // execution identity, so a transport retry cannot manufacture a
         // different immutable owner command for the same release attempt.
-        smoke_context.execution_id = command.idempotency_key;
+        smoke_context.execution_id = command.context.idempotency_key;
         let smoke_evidence = self
             .runtime
             .execute_publication_smoke(&smoke_script, &smoke_context)
@@ -162,10 +165,10 @@ where
                 sandbox_runtime_abi: smoke_evidence.runtime_abi,
                 sandbox_policy_digest: smoke_evidence.policy_digest,
                 sandbox_capability_grants: smoke_evidence.capability_grants,
-                idempotency_key: command.idempotency_key,
+                context: command.context.clone(),
                 actor_principal: serde_json::json!({
-                    "kind": "alloy_actor",
-                    "id": command.actor_id,
+                    "kind": "user",
+                    "id": command.context.actor_id,
                 }),
             })
             .await
@@ -199,7 +202,7 @@ mod tests {
         AlloyImportedDraftPolicyError, AlloyImportedDraftPolicyProvider,
         AlloyImportedDraftPolicyProviderHandle, AlloyReleaseStageCommand, InMemoryStorage,
         ReviewCommand, ReviewStatus, RhaiWorkspace, RhaiWorkspaceFile, RhaiWorkspaceFileKind,
-        Script, ScriptRegistry, ScriptTrigger,
+        Script, ScriptRegistry, ScriptTrigger, alloy_release_command_context,
     };
 
     #[derive(Default)]
@@ -293,8 +296,7 @@ mod tests {
                 publish_request_id: "request-imported-fork".to_string(),
                 expected_publish_request_revision: 1,
                 artifact_digest: source_digest,
-                actor_id: "publisher".to_string(),
-                idempotency_key: Uuid::new_v4(),
+                context: alloy_release_command_context(tenant_id, Uuid::new_v4(), Uuid::new_v4()),
             })
             .await
             .expect("stage imported fork");

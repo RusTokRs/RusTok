@@ -1,9 +1,6 @@
-use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
-use rustok_api::{
-    AuthContext, RequestContext, TenantContext,
-    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
-};
-use rustok_channel::ChannelService;
+use async_graphql::{Context, Object, Result};
+use rustok_api::graphql::{require_module_enabled, resolve_graphql_locale};
+use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
@@ -68,12 +65,12 @@ async fn load_storefront_audience_topic(
     requested_locale: Option<&str>,
 ) -> Result<(Uuid, Option<TopicResponse>)> {
     require_module_enabled(ctx, MODULE_SLUG).await?;
-    require_public_forum_channel_enabled(ctx).await?;
+    super::require_public_forum_channel_enabled(ctx).await?;
 
     let db = ctx.data::<DatabaseConnection>()?;
     let event_bus = ctx.data::<TransactionalEventBus>()?;
     let tenant = ctx.data::<TenantContext>()?;
-    let tenant_id = resolve_tenant_scope(tenant, requested_tenant_id)?;
+    let tenant_id = super::resolve_tenant_scope(tenant, requested_tenant_id)?;
     let locale = resolve_graphql_locale(ctx, requested_locale);
     let runtime = ctx
         .data_opt::<ForumGraphqlRuntimeData>()
@@ -114,48 +111,6 @@ async fn load_storefront_audience_topic(
     };
 
     Ok((tenant_id, topic))
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
-    }
-}
-
-async fn require_public_forum_channel_enabled(ctx: &Context<'_>) -> Result<()> {
-    if ctx.data_opt::<AuthContext>().is_some() {
-        return Ok(());
-    }
-
-    let Some(request_context) = ctx.data_opt::<RequestContext>() else {
-        return Ok(());
-    };
-    let Some(channel_id) = request_context.channel_id else {
-        return Ok(());
-    };
-
-    let db = ctx.data::<DatabaseConnection>()?;
-    let enabled = ChannelService::new(db.clone())
-        .is_module_enabled(channel_id, MODULE_SLUG)
-        .await
-        .map_err(|error| {
-            async_graphql::Error::new(format!("Channel module check failed: {error}"))
-                .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR"))
-        })?;
-    if enabled {
-        return Ok(());
-    }
-
-    Err(
-        async_graphql::Error::new("Forum module is not enabled for this channel")
-            .extend_with(|_, ext| ext.set("code", "FORBIDDEN")),
-    )
 }
 
 fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {

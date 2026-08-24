@@ -27,6 +27,7 @@ export interface GqlOpts {
 
 export interface ForumTopicSummary extends ForumTopicMergeCandidate {
   locale: string;
+  effectiveLocale: string;
   slug: string;
 }
 
@@ -227,6 +228,7 @@ export async function listForumTopics(
         items {
           id
           locale
+          effectiveLocale
           title
           slug
           categoryId

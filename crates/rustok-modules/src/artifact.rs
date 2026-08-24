@@ -11,8 +11,9 @@ use std::{
 use thiserror::Error;
 
 use rustok_api::{
-    ArtifactPermissionLocalization, is_valid_locale_tag, is_valid_module_slug,
-    manifest_hash::hash_manifest_snapshot,
+    ArtifactPermissionLocalization, ArtifactUiActionConfirmation, ArtifactUiContributionView,
+    ArtifactUiContributionViewContent, ArtifactUiSurface, is_valid_locale_tag,
+    is_valid_module_slug, manifest_hash::hash_manifest_snapshot,
 };
 use rustok_sandbox::{CapabilityName, RHAI_SOURCE_MEDIA_TYPE, SandboxExecutorKind};
 
@@ -290,32 +291,6 @@ impl ArtifactLocalizationCatalog {
     }
 }
 
-/// Host surface on which one declarative contribution may render. The values
-/// name a platform presentation slot, never a host package, URL, iframe, or
-/// executable component.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ArtifactUiSurface {
-    AdminSettings,
-    AdminActions,
-    AdminStatus,
-    AdminHelp,
-    AdminNavigation,
-    AdminTable,
-    AdminForm,
-    StorefrontSlot,
-}
-
-/// User confirmation required before an action/form dispatches its admitted
-/// runtime binding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ArtifactUiActionConfirmation {
-    None,
-    Acknowledge,
-    Destructive,
-}
-
 /// Every declarative action is audit-required. This explicit protocol field
 /// prevents an artifact from opting a host action out of durable evidence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -416,6 +391,21 @@ pub struct ArtifactUiContribution {
     pub localization_digest: String,
     pub permission: String,
     pub content: ArtifactUiContributionContent,
+}
+
+/// A contribution cannot be projected when the host has not selected an exact
+/// locale that the admitted catalog provides, or when immutable descriptor
+/// references are unexpectedly unavailable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum ArtifactUiProjectionError {
+    #[error("artifact UI contribution does not exist")]
+    NotFound,
+    #[error("host effective locale is invalid")]
+    InvalidLocale,
+    #[error("artifact UI contribution is unavailable in the host effective locale")]
+    LocaleUnavailable,
+    #[error("artifact UI contribution references unavailable admitted metadata")]
+    MetadataUnavailable,
 }
 
 /// Metadata for brokered namespaced data only. It never carries SQL, DDL, or
@@ -952,6 +942,120 @@ impl ModuleArtifactDescriptor {
         self.data_schema_digest
             .as_deref()
             .and_then(|digest| self.schema_document(digest))
+    }
+
+    /// Builds one localized UI contribution exclusively from the host-selected
+    /// effective locale. This method deliberately never walks a module-defined
+    /// fallback chain when a catalog has no exact locale entry.
+    pub fn project_ui_contribution(
+        &self,
+        contribution_id: &str,
+        locale: &str,
+    ) -> Result<ArtifactUiContributionView, ArtifactUiProjectionError> {
+        if !is_valid_locale_tag(locale) {
+            return Err(ArtifactUiProjectionError::InvalidLocale);
+        }
+        let contribution = self
+            .ui_contributions
+            .iter()
+            .find(|contribution| contribution.id == contribution_id)
+            .ok_or(ArtifactUiProjectionError::NotFound)?;
+        let catalog = self
+            .localization_catalogs
+            .iter()
+            .find(|catalog| catalog.digest == contribution.localization_digest)
+            .ok_or(ArtifactUiProjectionError::MetadataUnavailable)?;
+        let message = |key: &str| {
+            catalog
+                .message(locale, key)
+                .map(ToString::to_string)
+                .ok_or(ArtifactUiProjectionError::LocaleUnavailable)
+        };
+        let content = match &contribution.content {
+            ArtifactUiContributionContent::Settings {
+                title_key,
+                settings_schema_digest,
+            } => ArtifactUiContributionViewContent::Settings {
+                title: message(title_key)?,
+                schema: self
+                    .schema_document(settings_schema_digest)
+                    .cloned()
+                    .ok_or(ArtifactUiProjectionError::MetadataUnavailable)?,
+            },
+            ArtifactUiContributionContent::Action {
+                title_key,
+                confirmation,
+                destructive,
+                ..
+            } => ArtifactUiContributionViewContent::Action {
+                title: message(title_key)?,
+                confirmation: *confirmation,
+                destructive: *destructive,
+            },
+            ArtifactUiContributionContent::Status {
+                title_key,
+                status_key,
+            } => ArtifactUiContributionViewContent::Status {
+                title: message(title_key)?,
+                status: message(status_key)?,
+            },
+            ArtifactUiContributionContent::Help {
+                title_key,
+                body_key,
+            } => ArtifactUiContributionViewContent::Help {
+                title: message(title_key)?,
+                body: message(body_key)?,
+            },
+            ArtifactUiContributionContent::Navigation { title_key, route } => {
+                ArtifactUiContributionViewContent::Navigation {
+                    title: message(title_key)?,
+                    route: route.clone(),
+                }
+            }
+            ArtifactUiContributionContent::Table {
+                title_key,
+                schema_digest,
+            } => ArtifactUiContributionViewContent::Table {
+                title: message(title_key)?,
+                schema: self
+                    .schema_document(schema_digest)
+                    .cloned()
+                    .ok_or(ArtifactUiProjectionError::MetadataUnavailable)?,
+            },
+            ArtifactUiContributionContent::Form {
+                title_key,
+                binding_id,
+                confirmation,
+                destructive,
+                ..
+            } => {
+                let binding = self
+                    .bindings
+                    .iter()
+                    .find(|binding| binding.id == *binding_id)
+                    .ok_or(ArtifactUiProjectionError::MetadataUnavailable)?;
+                ArtifactUiContributionViewContent::Form {
+                    title: message(title_key)?,
+                    schema: self
+                        .schema_document(&binding.input_schema_digest)
+                        .cloned()
+                        .ok_or(ArtifactUiProjectionError::MetadataUnavailable)?,
+                    confirmation: *confirmation,
+                    destructive: *destructive,
+                }
+            }
+            ArtifactUiContributionContent::StorefrontSlot { title_key, slot } => {
+                ArtifactUiContributionViewContent::StorefrontSlot {
+                    title: message(title_key)?,
+                    slot: slot.clone(),
+                }
+            }
+        };
+        Ok(ArtifactUiContributionView {
+            id: contribution.id.clone(),
+            surface: contribution.surface,
+            content,
+        })
     }
 
     fn validate_schema_bundle(
@@ -1837,6 +1941,130 @@ mod tests {
             descriptor.validate(),
             Err(ModuleArtifactError::InvalidUiContribution(_))
         ));
+    }
+
+    #[test]
+    fn ui_projection_uses_only_the_exact_host_locale_and_hides_catalog_metadata() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.status.read".to_string(),
+            localizations: vec![permission_localization("Read status")],
+        }];
+        let messages = BTreeMap::from([
+            (
+                "en".to_string(),
+                BTreeMap::from([
+                    ("status.title".to_string(), "Status".to_string()),
+                    ("status.value".to_string(), "Available".to_string()),
+                ]),
+            ),
+            (
+                "ru".to_string(),
+                BTreeMap::from([
+                    ("status.title".to_string(), "Status in Russian".to_string()),
+                    (
+                        "status.value".to_string(),
+                        "Available in Russian".to_string(),
+                    ),
+                ]),
+            ),
+        ]);
+        let catalog = ArtifactLocalizationCatalog {
+            digest: canonical_schema_digest(
+                &serde_json::to_value(&messages).expect("localization catalog serializes"),
+            ),
+            messages,
+        };
+        descriptor.localization_catalogs = vec![catalog.clone()];
+        descriptor.ui_contributions = vec![ArtifactUiContribution {
+            id: "status".to_string(),
+            surface: ArtifactUiSurface::AdminStatus,
+            localization_digest: catalog.digest,
+            permission: "sample_module.status.read".to_string(),
+            content: ArtifactUiContributionContent::Status {
+                title_key: "status.title".to_string(),
+                status_key: "status.value".to_string(),
+            },
+        }];
+        descriptor.validate().expect("admitted descriptor");
+
+        let projected = descriptor
+            .project_ui_contribution("status", "ru")
+            .expect("exact host locale");
+        assert_eq!(
+            projected.content,
+            ArtifactUiContributionViewContent::Status {
+                title: "Status in Russian".to_string(),
+                status: "Available in Russian".to_string(),
+            }
+        );
+        let encoded = serde_json::to_string(&projected).expect("projection serializes");
+        assert!(!encoded.contains("localization_digest"));
+        assert!(!encoded.contains("status.title"));
+        assert!(matches!(
+            descriptor.project_ui_contribution("status", "ru-RU"),
+            Err(ArtifactUiProjectionError::LocaleUnavailable)
+        ));
+    }
+
+    #[test]
+    fn form_projection_uses_the_admitted_input_schema_without_exposing_binding_identity() {
+        let mut descriptor = descriptor(ArtifactPayloadKind::Rhai, "1.0.0", 'a');
+        let input_schema = schema_document("form_input");
+        let output_schema = schema_document("form_output");
+        descriptor.permissions = vec![ArtifactPermissionDescriptor {
+            key: "sample_module.form.submit".to_string(),
+            localizations: vec![permission_localization("Submit form")],
+        }];
+        descriptor.bindings = vec![ModuleRuntimeBinding {
+            id: "submit_profile".to_string(),
+            kind: ModuleRuntimeBindingKind::Command,
+            entrypoint: "forms.submit_profile".to_string(),
+            input_schema_digest: input_schema.digest.clone(),
+            output_schema_digest: output_schema.digest.clone(),
+            permission: "sample_module.form.submit".to_string(),
+            idempotency: ModuleBindingIdempotency::Required,
+            limit_profile: "command".to_string(),
+            capabilities: Vec::new(),
+            event_topics: Vec::new(),
+            schedule: None,
+            http: None,
+        }];
+        descriptor.schema_documents = vec![input_schema.clone(), output_schema];
+        let catalog = localization_catalog(&[("form.title", "Profile")]);
+        descriptor.localization_catalogs = vec![catalog.clone()];
+        descriptor.ui_contributions = vec![ArtifactUiContribution {
+            id: "profile_form".to_string(),
+            surface: ArtifactUiSurface::AdminForm,
+            localization_digest: catalog.digest,
+            permission: "sample_module.form.submit".to_string(),
+            content: ArtifactUiContributionContent::Form {
+                title_key: "form.title".to_string(),
+                binding_id: "submit_profile".to_string(),
+                confirmation: ArtifactUiActionConfirmation::None,
+                destructive: false,
+                audit_policy: ArtifactUiAuditPolicy::Required,
+            },
+        }];
+        descriptor.validate().expect("admitted descriptor");
+
+        let projected = descriptor
+            .project_ui_contribution("profile_form", "en")
+            .expect("form projection");
+        assert_eq!(
+            projected.content,
+            ArtifactUiContributionViewContent::Form {
+                title: "Profile".to_string(),
+                schema: input_schema.document,
+                confirmation: ArtifactUiActionConfirmation::None,
+                destructive: false,
+            }
+        );
+        assert!(
+            !serde_json::to_string(&projected)
+                .expect("projection serializes")
+                .contains("submit_profile")
+        );
     }
 
     #[test]

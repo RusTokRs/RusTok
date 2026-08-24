@@ -2,18 +2,18 @@ import type { Metadata } from "next";
 
 import { defaultLocale, getSiteUrl, localizedPath, locales } from "./site";
 
-export type SeoAlternateLink = {
+type SeoAlternateLink = {
   locale: string;
   href: string;
   xDefault?: boolean;
 };
 
-export type SeoRedirectDecision = {
+type SeoRedirectDecision = {
   targetUrl: string;
   statusCode: number;
 };
 
-export type SeoRouteContext = {
+type SeoRouteContext = {
   targetKind?: string | null;
   targetId?: string | null;
   requestedLocale?: string | null;
@@ -23,7 +23,7 @@ export type SeoRouteContext = {
   alternates?: SeoAlternateLink[] | null;
 };
 
-export type SeoImageAsset = {
+type SeoImageAsset = {
   url: string;
   alt?: string | null;
   width?: number | null;
@@ -31,7 +31,7 @@ export type SeoImageAsset = {
   mimeType?: string | null;
 };
 
-export type SeoOpenGraph = {
+type SeoOpenGraph = {
   title?: string | null;
   description?: string | null;
   kind?: string | null;
@@ -41,7 +41,7 @@ export type SeoOpenGraph = {
   images?: SeoImageAsset[] | null;
 };
 
-export type SeoTwitterCard = {
+type SeoTwitterCard = {
   card?: string | null;
   title?: string | null;
   description?: string | null;
@@ -50,24 +50,24 @@ export type SeoTwitterCard = {
   images?: SeoImageAsset[] | null;
 };
 
-export type SeoVerificationTag = {
+type SeoVerificationTag = {
   name: string;
   value: string;
 };
 
-export type SeoVerification = {
+type SeoVerification = {
   google?: string[] | null;
   yandex?: string[] | null;
   yahoo?: string[] | null;
   other?: SeoVerificationTag[] | null;
 };
 
-export type SeoPagination = {
+type SeoPagination = {
   prevUrl?: string | null;
   nextUrl?: string | null;
 };
 
-export type SeoStructuredDataBlock = {
+type SeoStructuredDataBlock = {
   id?: string | null;
   schemaKind?: string | null;
   schemaType?: string | null;
@@ -76,14 +76,14 @@ export type SeoStructuredDataBlock = {
   payload: unknown;
 };
 
-export type SeoMetaTag = {
+type SeoMetaTag = {
   name?: string | null;
   property?: string | null;
   httpEquiv?: string | null;
   content: string;
 };
 
-export type SeoLinkTag = {
+type SeoLinkTag = {
   rel: string;
   href: string;
   hreflang?: string | null;
@@ -92,7 +92,7 @@ export type SeoLinkTag = {
   title?: string | null;
 };
 
-export type SeoRobots = {
+type SeoRobots = {
   index: boolean;
   follow: boolean;
   noarchive?: boolean;
@@ -105,7 +105,7 @@ export type SeoRobots = {
   custom?: string[] | null;
 };
 
-export type SeoDocument = {
+type SeoDocument = {
   title: string;
   description?: string | null;
   robots: SeoRobots;

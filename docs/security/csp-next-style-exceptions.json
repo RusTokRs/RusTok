@@ -5,7 +5,7 @@
     "runtime_style_directive": "style-src 'self' 'nonce-<per-response>'",
     "owner": "Platform security and Next UI maintainers",
     "approved_on": "2026-07-18",
-    "review_by": "2026-08-15",
+    "review_by": "2027-07-18",
     "exit_criteria": "Every registered JSX style prop is replaced by a reviewed class, native attribute, bounded DOM adapter, or another representation compatible with style-src-attr 'none'; every runtime style element is removed or receives the exact per-response nonce through a reviewed host boundary."
   },
   "exceptions": []

@@ -1,7 +1,6 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_api::{TenantContext, graphql::require_module_enabled};
-use sea_orm::DatabaseConnection;
+use rustok_api::graphql::{extract_graphql_context, require_module_enabled};
 use uuid::Uuid;
 
 use crate::WorkflowService;
@@ -15,8 +14,7 @@ pub struct WorkflowQuery;
 impl WorkflowQuery {
     async fn workflows(&self, ctx: &Context<'_>) -> Result<Vec<GqlWorkflowSummary>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
 
         require_workflow_permission(
             ctx,
@@ -35,8 +33,7 @@ impl WorkflowQuery {
 
     async fn workflow(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<GqlWorkflow>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
 
         require_workflow_permission(
             ctx,
@@ -58,8 +55,7 @@ impl WorkflowQuery {
         workflow_id: Uuid,
     ) -> Result<Vec<GqlWorkflowExecution>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
 
         require_workflow_permission(
             ctx,
@@ -82,8 +78,7 @@ impl WorkflowQuery {
         execution_id: Uuid,
     ) -> Result<Option<GqlWorkflowExecution>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
 
         require_workflow_permission(
             ctx,
@@ -111,8 +106,7 @@ impl WorkflowQuery {
         workflow_id: Uuid,
     ) -> Result<Vec<GqlWorkflowVersionSummary>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
 
         require_workflow_permission(
             ctx,
@@ -136,8 +130,7 @@ impl WorkflowQuery {
         version: i32,
     ) -> Result<Option<GqlWorkflowVersionDetail>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
 
         require_workflow_permission(
             ctx,

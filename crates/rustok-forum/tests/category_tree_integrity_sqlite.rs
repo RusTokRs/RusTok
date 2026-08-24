@@ -1,5 +1,7 @@
 use rustok_core::MigrationSource;
 use rustok_forum::ForumModule;
+use rustok_outbox::OutboxModule;
+use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -75,16 +77,9 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
     execute(
         &db,
         r#"
-CREATE TABLE taxonomy_terms (
-    id TEXT PRIMARY KEY NOT NULL,
-    tenant_id TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    scope_type TEXT NOT NULL,
-    scope_value TEXT NOT NULL DEFAULT '',
-    canonical_key TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE users (
+    id TEXT NOT NULL PRIMARY KEY,
+    tenant_id TEXT NOT NULL
 )
 "#
         .to_string(),
@@ -92,6 +87,12 @@ CREATE TABLE taxonomy_terms (
     .await?;
 
     let manager = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration.up(&manager).await?;
+    }
+    for migration in TaxonomyModule.migrations() {
+        migration.up(&manager).await?;
+    }
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }

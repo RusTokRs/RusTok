@@ -105,25 +105,25 @@ pub(super) async fn sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         r#"CREATE TRIGGER forum_80_category_subscription_insert_event AFTER INSERT ON forum_category_subscriptions
         FOR EACH ROW BEGIN INSERT INTO forum_domain_events
         (event_id,tenant_id,aggregate_type,aggregate_id,event_type,schema_version,actor_id,payload)
-        VALUES (lower(hex(randomblob(4)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(6))),
+        VALUES (randomblob(16),
         NEW.tenant_id,'category',NEW.category_id,'forum.category.subscription_changed',1,NEW.user_id,
         json_object('category_id',lower(hex(NEW.category_id)),'user_id',lower(hex(NEW.user_id)),'subscribed',1)); END"#,
         r#"CREATE TRIGGER forum_80_category_subscription_delete_event AFTER DELETE ON forum_category_subscriptions
         FOR EACH ROW BEGIN INSERT INTO forum_domain_events
         (event_id,tenant_id,aggregate_type,aggregate_id,event_type,schema_version,actor_id,payload)
-        VALUES (lower(hex(randomblob(4)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(6))),
+        VALUES (randomblob(16),
         OLD.tenant_id,'category',OLD.category_id,'forum.category.subscription_changed',1,OLD.user_id,
         json_object('category_id',lower(hex(OLD.category_id)),'user_id',lower(hex(OLD.user_id)),'subscribed',0)); END"#,
         r#"CREATE TRIGGER forum_80_topic_subscription_insert_event AFTER INSERT ON forum_topic_subscriptions
         FOR EACH ROW BEGIN INSERT INTO forum_domain_events
         (event_id,tenant_id,aggregate_type,aggregate_id,event_type,schema_version,actor_id,payload)
-        VALUES (lower(hex(randomblob(4)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(6))),
+        VALUES (randomblob(16),
         NEW.tenant_id,'topic',NEW.topic_id,'forum.topic.subscription_changed',1,NEW.user_id,
         json_object('topic_id',lower(hex(NEW.topic_id)),'user_id',lower(hex(NEW.user_id)),'subscribed',1)); END"#,
         r#"CREATE TRIGGER forum_80_topic_subscription_delete_event AFTER DELETE ON forum_topic_subscriptions
         FOR EACH ROW BEGIN INSERT INTO forum_domain_events
         (event_id,tenant_id,aggregate_type,aggregate_id,event_type,schema_version,actor_id,payload)
-        VALUES (lower(hex(randomblob(4)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(2)))||'-'||lower(hex(randomblob(6))),
+        VALUES (randomblob(16),
         OLD.tenant_id,'topic',OLD.topic_id,'forum.topic.subscription_changed',1,OLD.user_id,
         json_object('topic_id',lower(hex(OLD.topic_id)),'user_id',lower(hex(OLD.user_id)),'subscribed',0)); END"#,
         "DROP TABLE IF EXISTS forum_subscription_policies",

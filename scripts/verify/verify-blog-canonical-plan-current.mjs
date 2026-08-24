@@ -171,15 +171,18 @@ if (evidence) {
     tracks.tag_mutation_atomic_reindex?.must_not_reopen_as_source_gap !== true
   ) failures.push(`${files.evidence}: tag mutation atomic-reindex track drift`);
   if (
-    tracks.post_category_name_projection?.status !== 'source_ready_maintainer_execution_pending' ||
+    tracks.post_category_name_projection?.status !== 'taxonomy_owner_cutover_source_ready_maintainer_execution_pending' ||
     tracks.post_category_name_projection?.slice !== files.slice105 ||
     tracks.post_category_name_projection?.evidence !== files.postCategoryName ||
     tracks.post_category_name_projection?.category_identity_source !== 'blog_posts.category_id' ||
-    tracks.post_category_name_projection?.category_name_source !== 'blog_category_translations.name' ||
+    tracks.post_category_name_projection?.category_name_source !== 'taxonomy_owner_category.name' ||
+    tracks.post_category_name_projection?.typed_binding_source !== 'blog_category_taxonomy_bindings' ||
+    tracks.post_category_name_projection?.taxonomy_scope !== 'module/blog' ||
     tracks.post_category_name_projection?.detail_projection_present !== true ||
     tracks.post_category_name_projection?.authenticated_list_projection_present !== true ||
     tracks.post_category_name_projection?.public_list_projection_present !== true ||
     tracks.post_category_name_projection?.list_batch_projection !== true ||
+    tracks.post_category_name_projection?.legacy_category_translation_read_removed !== true ||
     tracks.post_category_name_projection?.category_translation_readiness_promoted !== false ||
     tracks.post_category_name_projection?.must_not_reopen_as_source_gap !== true
   ) failures.push(`${files.evidence}: post category-name projection track drift`);
@@ -273,14 +276,18 @@ if (
   postCategoryName?.status !== 'source_verified_no_compile' ||
   postCategoryName?.runtime_status !== 'not_run' ||
   postCategoryName?.source_contract?.category_identity_source !== 'blog_posts.category_id' ||
-  postCategoryName?.source_contract?.category_name_source !== 'blog_category_translations.name' ||
-  postCategoryName?.source_contract?.tenant_bound_translation_query !== true ||
+  postCategoryName?.source_contract?.category_name_source !== 'taxonomy_owner_category.name' ||
+  postCategoryName?.source_contract?.typed_binding_source !== 'blog_category_taxonomy_bindings' ||
+  postCategoryName?.source_contract?.taxonomy_scope !== 'module/blog' ||
+  postCategoryName?.source_contract?.tenant_bound_binding_query !== true ||
   postCategoryName?.source_contract?.detail_projection_present !== true ||
   postCategoryName?.source_contract?.authenticated_list_projection_present !== true ||
   postCategoryName?.source_contract?.public_list_projection_present !== true ||
   postCategoryName?.source_contract?.list_projection_uses_batch_category_query !== true ||
+  postCategoryName?.source_contract?.legacy_category_translation_read_removed !== true ||
   postCategoryName?.source_contract?.category_translation_readiness_promoted !== false ||
   postCategoryName?.planning_result?.post_category_name_source_complete !== true ||
+  postCategoryName?.planning_result?.legacy_blog_category_translation_projection_retired !== true ||
   postCategoryName?.planning_result?.additional_category_name_projection_scaffolding_required !== false ||
   !Array.isArray(postCategoryName?.execution) || postCategoryName.execution.length !== 0
 ) failures.push(`${files.postCategoryName}: post category-name projection source evidence drift`);

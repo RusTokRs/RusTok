@@ -6,13 +6,12 @@ use std::{
     time::Instant,
 };
 
-use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
+use async_graphql::{Context, Object, Result};
 use prometheus::{IntCounterVec, Opts};
 use rustok_api::{
-    AuthContext, RequestContext, TenantContext,
-    graphql::{GraphQLError, PaginationInput, require_module_enabled, resolve_graphql_locale},
+    RequestContext, TenantContext,
+    graphql::{PaginationInput, require_module_enabled, resolve_graphql_locale},
 };
-use rustok_channel::ChannelService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
@@ -51,12 +50,12 @@ impl ForumStorefrontAudienceTopicsQuery {
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<ForumTopicConnection> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_public_forum_channel_enabled(ctx).await?;
+        super::require_public_forum_channel_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let request = ctx.data_opt::<RequestContext>();
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
@@ -163,47 +162,7 @@ fn observe_storefront_topic_list_locale_resolution(items: &[TopicListItem]) {
     }
 }
 
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
-    }
-}
 
-async fn require_public_forum_channel_enabled(ctx: &Context<'_>) -> Result<()> {
-    if ctx.data_opt::<AuthContext>().is_some() {
-        return Ok(());
-    }
-
-    let Some(request) = ctx.data_opt::<RequestContext>() else {
-        return Ok(());
-    };
-    let Some(channel_id) = request.channel_id else {
-        return Ok(());
-    };
-
-    let db = ctx.data::<DatabaseConnection>()?;
-    let enabled = ChannelService::new(db.clone())
-        .is_module_enabled(channel_id, MODULE_SLUG)
-        .await
-        .map_err(|error| {
-            async_graphql::Error::new(format!("Channel module check failed: {error}"))
-                .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR"))
-        })?;
-    if enabled {
-        Ok(())
-    } else {
-        Err(
-            async_graphql::Error::new("Forum module is not enabled for this channel")
-                .extend_with(|_, extension| extension.set("code", "FORBIDDEN")),
-        )
-    }
-}
 
 fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopicListItem {
     GqlForumTopicListItem {

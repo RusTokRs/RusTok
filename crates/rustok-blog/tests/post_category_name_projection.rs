@@ -3,11 +3,12 @@ use std::sync::Arc;
 use rustok_blog::{
     BlogModule, BlogPostStatus, CategoryService, CreateCategoryInput, CreatePostInput,
     PostListQuery, PostService,
+    entities::blog_category_translation,
 };
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
@@ -101,10 +102,17 @@ async fn post_category_name_projects_across_detail_and_list_paths() {
         .await
         .expect("post should be created");
 
+    blog_category_translation::Entity::delete_many()
+        .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+        .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+        .exec(&db)
+        .await
+        .expect("legacy Blog category translations should be removable for ownership proof");
+
     let detail = post_service
         .get_post_with_locale_fallback(tenant_id, admin.clone(), post_id, "fr", Some("de"))
         .await
-        .expect("detail should resolve category name through fallback");
+        .expect("detail should resolve Taxonomy category name through fallback");
     assert_eq!(detail.category_id, Some(category_id));
     assert_eq!(detail.category_name.as_deref(), Some("Nachrichten"));
 
@@ -121,7 +129,7 @@ async fn post_category_name_projects_across_detail_and_list_paths() {
             Some("de"),
         )
         .await
-        .expect("authenticated list should resolve category name");
+        .expect("authenticated list should resolve Taxonomy category name");
     assert_eq!(listed.items.len(), 1);
     assert_eq!(listed.items[0].category_id, Some(category_id));
     assert_eq!(
@@ -143,7 +151,7 @@ async fn post_category_name_projects_across_detail_and_list_paths() {
             None,
         )
         .await
-        .expect("public list should resolve category name");
+        .expect("public list should resolve Taxonomy category name");
     assert_eq!(public.items.len(), 1);
     assert_eq!(public.items[0].category_id, Some(category_id));
     assert_eq!(

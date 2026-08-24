@@ -20,6 +20,7 @@ pub mod forum_category_reply_create_audience_policy;
 pub mod forum_category_reply_create_audience_role;
 pub mod forum_category_reply_create_audience_user;
 pub mod forum_category_subscription;
+pub mod forum_category_taxonomy_binding;
 pub mod forum_category_topic_create_audience_channel;
 pub mod forum_category_topic_create_audience_group;
 pub mod forum_category_topic_create_audience_policy;
@@ -72,6 +73,10 @@ pub use forum_category_lifecycle::Entity as ForumCategoryLifecycle;
 pub use forum_category_moderation_audience_policy::Entity as ForumCategoryModerationAudiencePolicyEntity;
 pub use forum_category_policy::Entity as ForumCategoryPolicy;
 pub use forum_category_reply_create_audience_policy::Entity as ForumCategoryReplyCreateAudiencePolicyEntity;
+pub use forum_category_taxonomy_binding::{
+    Entity as ForumCategoryTaxonomyBindingEntity, ForumCategoryTaxonomyBinding,
+    ForumCategoryTaxonomyBindingService,
+};
 pub use forum_category_topic_create_audience_policy::Entity as ForumCategoryTopicCreateAudiencePolicyEntity;
 pub use forum_domain_event::Entity as ForumDomainEvent;
 pub use forum_relation_revision::Entity as ForumRelationRevision;

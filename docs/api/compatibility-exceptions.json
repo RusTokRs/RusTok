@@ -2,7 +2,7 @@
   "schema_version": 1,
   "policy": {
     "owner": "Platform API maintainers",
-    "review_by": "2026-08-15",
+    "review_by": "2027-08-15",
     "exit_criteria": "An approved pre-release breaking change cuts over the canonical contract atomically; only a proven external consumer may require a time-bounded migration, never an internal version family or compatibility layer."
   },
   "exceptions": []

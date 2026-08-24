@@ -6,7 +6,6 @@ license.workspace = true
 description = "Test utilities for RusToK - fixtures, mocks, and helpers for testing"
 
 [dependencies]
-rustok-api.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true
@@ -17,7 +16,6 @@ sea-orm-migration = { workspace = true, features = ["sqlx-sqlite"] }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

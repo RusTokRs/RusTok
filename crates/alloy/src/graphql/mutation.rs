@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     AlloyImportError, AlloyPublishedReleaseImportCommand, AlloyReleaseImporter,
     AlloyReleaseStageCommand, RevisionedReleaseStager, RevisionedTestRunner,
-    ScriptEvidenceRetentionCommand, ScriptRegistry, TestCommand,
+    ScriptEvidenceRetentionCommand, ScriptRegistry, TestCommand, alloy_release_command_context,
     model::{ReviewCommand, Script, ScriptDeletionCommand, ScriptStatus, SourceProvenance},
     runner::ExecutionOutcome,
     utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
@@ -367,8 +367,11 @@ impl AlloyMutation {
             publish_request_id: input.publish_request_id,
             expected_publish_request_revision: input.expected_publish_request_revision,
             artifact_digest: input.artifact_digest,
-            actor_id: auth.user_id.to_string(),
-            idempotency_key: input.idempotency_key,
+            context: alloy_release_command_context(
+                auth.tenant_id,
+                auth.user_id,
+                input.idempotency_key,
+            ),
         })
         .await
         .map_err(|error| async_graphql::Error::new(error.to_string()))?;

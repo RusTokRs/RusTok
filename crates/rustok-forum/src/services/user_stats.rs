@@ -188,32 +188,69 @@ impl UserStatsService {
     ) -> ForumResult<()> {
         Self::adjust_topic_count_in_tx(txn, tenant_id, topic_author_id, -1).await?;
 
-        let approved_count = format!(
-            "SELECT COUNT(*) FROM forum_replies AS replies \
-             WHERE replies.tenant_id = '{tenant_id}' \
-               AND replies.topic_id = '{topic_id}' \
-               AND replies.author_id = forum_user_stats.user_id \
-               AND replies.status = 'approved' \
-               AND replies.deleted_at IS NULL"
-        );
-        txn.execute_unprepared(&format!(
-            "UPDATE forum_user_stats \
-             SET reply_count = CASE \
-                 WHEN reply_count > ({approved_count}) \
-                 THEN reply_count - ({approved_count}) \
-                 ELSE 0 \
-             END, updated_at = CURRENT_TIMESTAMP \
-             WHERE tenant_id = '{tenant_id}' \
-               AND EXISTS (\
-                   SELECT 1 FROM forum_replies AS replies \
-                   WHERE replies.tenant_id = '{tenant_id}' \
-                     AND replies.topic_id = '{topic_id}' \
-                     AND replies.author_id = forum_user_stats.user_id \
-                     AND replies.status = 'approved' \
-                     AND replies.deleted_at IS NULL\
-               )"
-        ))
-        .await?;
+        let stmt = match txn.get_database_backend() {
+            DatabaseBackend::Postgres => Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE forum_user_stats \
+                 SET reply_count = CASE \
+                     WHEN reply_count > ( \
+                         SELECT COUNT(*) FROM forum_replies AS replies \
+                         WHERE replies.tenant_id = $1 \
+                           AND replies.topic_id = $2 \
+                           AND replies.author_id = forum_user_stats.user_id \
+                           AND replies.status = 'approved' \
+                     ) \
+                     THEN reply_count - ( \
+                         SELECT COUNT(*) FROM forum_replies AS replies \
+                         WHERE replies.tenant_id = $1 \
+                           AND replies.topic_id = $2 \
+                           AND replies.author_id = forum_user_stats.user_id \
+                           AND replies.status = 'approved' \
+                     ) \
+                     ELSE 0 \
+                 END, updated_at = CURRENT_TIMESTAMP \
+                 WHERE tenant_id = $1 \
+                   AND EXISTS ( \
+                       SELECT 1 FROM forum_replies AS replies \
+                       WHERE replies.tenant_id = $1 \
+                         AND replies.topic_id = $2 \
+                         AND replies.author_id = forum_user_stats.user_id \
+                         AND replies.status = 'approved' \
+                   )",
+                vec![tenant_id.into(), topic_id.into()],
+            ),
+            _ => Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                "UPDATE forum_user_stats \
+                 SET reply_count = CASE \
+                     WHEN reply_count > ( \
+                         SELECT COUNT(*) FROM forum_replies AS replies \
+                         WHERE replies.tenant_id = ?1 \
+                           AND replies.topic_id = ?2 \
+                           AND replies.author_id = forum_user_stats.user_id \
+                           AND replies.status = 'approved' \
+                     ) \
+                     THEN reply_count - ( \
+                         SELECT COUNT(*) FROM forum_replies AS replies \
+                         WHERE replies.tenant_id = ?1 \
+                           AND replies.topic_id = ?2 \
+                           AND replies.author_id = forum_user_stats.user_id \
+                           AND replies.status = 'approved' \
+                     ) \
+                     ELSE 0 \
+                 END, updated_at = CURRENT_TIMESTAMP \
+                 WHERE tenant_id = ?1 \
+                   AND EXISTS ( \
+                       SELECT 1 FROM forum_replies AS replies \
+                       WHERE replies.tenant_id = ?1 \
+                         AND replies.topic_id = ?2 \
+                         AND replies.author_id = forum_user_stats.user_id \
+                         AND replies.status = 'approved' \
+                   )",
+                vec![tenant_id.into(), topic_id.into()],
+            ),
+        };
+        txn.execute(stmt).await?;
 
         Self::adjust_solution_count_in_tx(txn, tenant_id, solution_author_id, -1).await?;
         Ok(())

@@ -115,7 +115,6 @@ rustok-core = { workspace = true, optional = true }
 rustok-api.workspace = true
 tracing = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
-thiserror.workspace = true
 rustok-content = { workspace = true, optional = true }
 rustok-seo = { workspace = true, optional = true }
 rustok-seo-render = { workspace = true, optional = true }
@@ -192,4 +191,29 @@ normal = [
   "rustok-profiles-storefront",
   "rustok-region-storefront",
   "rustok-search-storefront",
+]
+
+[package.metadata.cargo-machete]
+ignored = [
+  "futures",
+  "leptos-hook-form",
+  "leptos-next-metadata",
+  "leptos-shadcn-pagination",
+  "leptos-table",
+  "leptos-ui-routing",
+  "leptos-use",
+  "leptos-zod",
+  "leptos-zustand",
+  "leptos_i18n",
+  "leptos_query",
+  "leptos_router",
+  "rustok-cart-storefront",
+  "rustok-commerce-storefront",
+  "rustok-fulfillment-storefront",
+  "rustok-groups-storefront",
+  "rustok-order-storefront",
+  "rustok-payment-storefront",
+  "rustok-pricing-storefront",
+  "rustok-profiles-storefront",
+  "rustok-region-storefront",
 ]

@@ -17,6 +17,8 @@ impl MigrationTrait for Migration {
                     installation_id UUID NOT NULL REFERENCES module_artifact_installations(installation_id),\
                     expected_revision BIGINT NOT NULL CHECK (expected_revision > 0),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     idempotency_key UUID NOT NULL UNIQUE,\
                     committed_at TIMESTAMPTZ NOT NULL\
@@ -51,6 +53,8 @@ impl MigrationTrait for Migration {
                     installation_revision BIGINT NOT NULL CHECK (installation_revision > 0),\
                     predecessor_revision BIGINT NULL CHECK (predecessor_revision IS NULL OR predecessor_revision > 0),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     idempotency_key UUID NOT NULL UNIQUE,\
                     committed_at TIMESTAMPTZ NOT NULL,\
@@ -129,6 +133,8 @@ impl MigrationTrait for Migration {
                     expected_settings_revision BIGINT NOT NULL CHECK (expected_settings_revision > 0),\
                     recovery_point_id UUID NOT NULL UNIQUE,\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     idempotency_key UUID NOT NULL,\
                     committed_at TIMESTAMPTZ NOT NULL,\
@@ -150,6 +156,8 @@ impl MigrationTrait for Migration {
                     expected_settings_revision BIGINT NOT NULL CHECK (expected_settings_revision > 0),\
                     tombstone_revision BIGINT NOT NULL CHECK (tombstone_revision > 0),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     idempotency_key UUID NOT NULL,\
                     committed_at TIMESTAMPTZ NOT NULL,\
@@ -187,6 +195,8 @@ impl MigrationTrait for Migration {
                     expected_target_installation_revision BIGINT NULL CHECK (expected_target_installation_revision IS NULL OR expected_target_installation_revision > 0),\
                     settings_instance_id UUID NOT NULL,\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     idempotency_key UUID NOT NULL,\
                     committed_at TIMESTAMPTZ NOT NULL,\
@@ -214,6 +224,8 @@ impl MigrationTrait for Migration {
                     incident_hold BOOLEAN NOT NULL,\
                     policy_snapshot_id TEXT NOT NULL CHECK (length(trim(policy_snapshot_id)) > 0 AND length(policy_snapshot_id) <= 128),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     committed_at TIMESTAMPTZ NOT NULL,\
                     UNIQUE (tenant_id, idempotency_key),\
@@ -232,6 +244,8 @@ impl MigrationTrait for Migration {
                     previous_key_version TEXT NOT NULL CHECK (length(trim(previous_key_version)) > 0 AND length(previous_key_version) <= 256),\
                     key_version TEXT NOT NULL CHECK (length(trim(key_version)) > 0 AND length(key_version) <= 256),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     committed_at TIMESTAMPTZ NOT NULL,\
                     UNIQUE (tenant_id, idempotency_key),\
@@ -248,6 +262,9 @@ impl MigrationTrait for Migration {
                     recovery_point_id UUID NOT NULL UNIQUE,\
                     policy_snapshot_id TEXT NOT NULL CHECK (length(trim(policy_snapshot_id)) > 0 AND length(policy_snapshot_id) <= 128),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
+                    idempotency_key UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     collecting_at TIMESTAMPTZ NOT NULL,\
                     completed_at TIMESTAMPTZ NULL,\
@@ -266,6 +283,8 @@ impl MigrationTrait for Migration {
                     expected_target_installation_revision BIGINT NOT NULL CHECK (expected_target_installation_revision > 0),\
                     settings_instance_id UUID NOT NULL,\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     idempotency_key UUID NOT NULL,\
                     committed_at TIMESTAMPTZ NOT NULL,\
@@ -284,6 +303,8 @@ impl MigrationTrait for Migration {
                     installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
                     expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     idempotency_key TEXT NOT NULL UNIQUE,\
                     committed_at TEXT NOT NULL\
@@ -304,6 +325,8 @@ impl MigrationTrait for Migration {
                     installation_revision INTEGER NOT NULL CHECK (installation_revision > 0),\
                     predecessor_revision INTEGER NULL CHECK (predecessor_revision IS NULL OR predecessor_revision > 0),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     idempotency_key TEXT NOT NULL UNIQUE,\
                     committed_at TEXT NOT NULL,\
@@ -365,6 +388,8 @@ impl MigrationTrait for Migration {
                     expected_settings_revision INTEGER NOT NULL CHECK (expected_settings_revision > 0),\
                     recovery_point_id TEXT NOT NULL UNIQUE,\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     idempotency_key TEXT NOT NULL,\
                     committed_at TEXT NOT NULL,\
@@ -380,6 +405,8 @@ impl MigrationTrait for Migration {
                     expected_settings_revision INTEGER NOT NULL CHECK (expected_settings_revision > 0),\
                     tombstone_revision INTEGER NOT NULL CHECK (tombstone_revision > 0),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     idempotency_key TEXT NOT NULL,\
                     committed_at TEXT NOT NULL,\
@@ -407,6 +434,8 @@ impl MigrationTrait for Migration {
                     expected_target_installation_revision INTEGER NULL CHECK (expected_target_installation_revision IS NULL OR expected_target_installation_revision > 0),\
                     settings_instance_id TEXT NOT NULL,\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     idempotency_key TEXT NOT NULL,\
                     committed_at TEXT NOT NULL,\
@@ -429,6 +458,8 @@ impl MigrationTrait for Migration {
                     incident_hold INTEGER NOT NULL CHECK (incident_hold IN (0, 1)),\
                     policy_snapshot_id TEXT NOT NULL CHECK (length(trim(policy_snapshot_id)) > 0 AND length(policy_snapshot_id) <= 128),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     committed_at TEXT NOT NULL,\
                     UNIQUE (tenant_id, idempotency_key),\
@@ -442,6 +473,8 @@ impl MigrationTrait for Migration {
                     previous_key_version TEXT NOT NULL CHECK (length(trim(previous_key_version)) > 0 AND length(previous_key_version) <= 256),\
                     key_version TEXT NOT NULL CHECK (length(trim(key_version)) > 0 AND length(key_version) <= 256),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     committed_at TEXT NOT NULL,\
                     UNIQUE (tenant_id, idempotency_key),\
@@ -453,6 +486,9 @@ impl MigrationTrait for Migration {
                     recovery_point_id TEXT NOT NULL UNIQUE,\
                     policy_snapshot_id TEXT NOT NULL CHECK (length(trim(policy_snapshot_id)) > 0 AND length(policy_snapshot_id) <= 128),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
+                    idempotency_key TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     collecting_at TEXT NOT NULL,\
                     completed_at TEXT NULL,\
@@ -466,6 +502,8 @@ impl MigrationTrait for Migration {
                     expected_target_installation_revision INTEGER NOT NULL CHECK (expected_target_installation_revision > 0),\
                     settings_instance_id TEXT NOT NULL,\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0 AND length(reason) <= 2000),\
                     idempotency_key TEXT NOT NULL,\
                     committed_at TEXT NOT NULL,\

@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, TopicService,
     entities::{forum_topic, forum_topic_tag},
 };
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
     entities::taxonomy_term,
 };
 use sea_orm::{
-    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
-use tokio::sync::broadcast;
 use uuid::Uuid;
 
 async fn setup_forum_test_db() -> DatabaseConnection {
@@ -35,17 +35,30 @@ async fn setup_forum_test_db() -> DatabaseConnection {
 async fn setup() -> (
     DatabaseConnection,
     TransactionalEventBus,
-    broadcast::Receiver<rustok_events::EventEnvelope>,
     Uuid,
 ) {
     let db = setup_forum_test_db().await;
     let schema = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
             .await
             .expect("taxonomy migration should apply");
     }
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         migration
             .up(&schema)
@@ -53,10 +66,8 @@ async fn setup() -> (
             .expect("forum migration should apply");
     }
 
-    let transport = MemoryTransport::new();
-    let receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    (db, event_bus, receiver, Uuid::new_v4())
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    (db, event_bus, Uuid::new_v4())
 }
 
 async fn create_category(
@@ -86,7 +97,7 @@ async fn create_category(
 
 #[tokio::test]
 async fn topic_tags_are_synced_into_forum_topic_tags_without_legacy_json() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
+    let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus);
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -125,6 +136,7 @@ async fn topic_tags_are_synced_into_forum_topic_tags_without_legacy_json() {
 
     let terms = taxonomy_term::Entity::find()
         .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
         .all(&db)
         .await
         .expect("taxonomy terms should load");
@@ -146,7 +158,7 @@ async fn topic_tags_are_synced_into_forum_topic_tags_without_legacy_json() {
 
 #[tokio::test]
 async fn topic_tag_sync_reuses_existing_global_taxonomy_term() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
+    let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus);
     let taxonomy_service = TaxonomyService::new(db.clone());
@@ -206,6 +218,7 @@ async fn topic_tag_sync_reuses_existing_global_taxonomy_term() {
         .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
         .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
         .filter(taxonomy_term::Column::ScopeValue.eq("forum"))
+        .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
         .all(&db)
         .await
         .expect("forum-scoped terms should load");

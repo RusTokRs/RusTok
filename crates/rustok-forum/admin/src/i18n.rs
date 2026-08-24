@@ -22,7 +22,7 @@ mod tests {
     fn message_keys(source: &str) -> BTreeSet<String> {
         let messages = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(source)
             .expect("Forum locale catalog must be a JSON object");
-        messages.into_keys().collect()
+        messages.into_iter().map(|(key, _)| key).collect()
     }
 
     #[test]

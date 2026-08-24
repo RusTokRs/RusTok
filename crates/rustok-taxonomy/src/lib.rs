@@ -3,6 +3,9 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod category_delete;
+mod category_hierarchy;
+mod category_presentation;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -10,23 +13,46 @@ pub mod migrations;
 mod module_term_lookup;
 pub mod module_term_mutation;
 mod normalization;
+mod owner_category_read;
+mod owner_category_route_sync;
+mod owner_category_sync;
+mod owner_identity;
 mod owner_read;
 mod route_key_registry;
 pub mod services;
 mod translation_evidence;
 pub mod translation_target;
 
+pub use category_delete::TaxonomyCategoryDeleteCleanupPort;
+pub use category_hierarchy::MAX_TAXONOMY_CATEGORY_DEPTH;
+pub use category_presentation::{
+    TAXONOMY_CATEGORY_ICON_KEY_MAX_BYTES, TaxonomyCategoryMediaReferenceValidator,
+    normalize_taxonomy_category_color, normalize_taxonomy_category_icon_key,
+};
 pub use dto::{
     ApplyExactTaxonomyTranslationInput, CreateTaxonomyTermInput, ListTaxonomyTermsFilter,
-    ResolveTaxonomyTermInput, TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermListItem,
+    ResolveTaxonomyTermInput, SetTaxonomyCategoryPlacementInput,
+    SetTaxonomyCategoryPresentationInput, TaxonomyCategoryMediaId, TaxonomyCategoryPlacement,
+    TaxonomyCategoryPresentation, TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermListItem,
     TaxonomyTermResponse, TaxonomyTranslationApplyResult, UpdateTaxonomyTermInput,
 };
 pub use error::{TaxonomyError, TaxonomyResult};
+pub use module_term_lookup::TaxonomyModuleRouteMatch;
 pub use module_term_mutation::{
     ModuleTermMutationResult, ModuleTermUpdateInput, delete_module_term_in_tx,
     update_module_term_in_tx,
 };
 pub use normalization::{normalize_term_locale, normalize_term_route_key};
+pub use owner_category_read::{TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader};
+pub use owner_category_route_sync::{
+    TaxonomyModuleCategoryLocaleCopy, load_module_category_locale_copy_in_tx,
+    sync_module_category_structure_with_owned_copy_in_tx,
+    sync_module_category_with_owned_aliases_in_tx,
+};
+pub use owner_category_sync::{
+    SyncModuleCategoryInput, SyncModuleCategoryResult, sync_module_category_in_tx,
+};
+pub use owner_identity::taxonomy_term_identity_exists;
 pub use owner_read::{TaxonomyOwnerReader, TaxonomyOwnerTerm, TaxonomyOwnerTermNames};
 pub use services::TaxonomyService;
 pub use translation_target::TaxonomyTranslationTargetProvider;

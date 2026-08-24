@@ -76,6 +76,21 @@ GraphQL remains:
 
 Security and allow/deny policies for sensitive admin operations must be determined by the server-side runtime layer, not by client-supplied `operationName` or app-local heuristics.
 
+## Contract Evolution
+
+GraphQL and native server functions each expose one current repository-owned
+contract. Repository code must change that contract atomically: do not add
+version-suffixed GraphQL routes, root fields, input/output types, native server
+functions, or parallel old/new adapters. `#[server]` is a host-internal
+transport selection, not an API compatibility bridge.
+
+When an independently deployed external API requires a version at its boundary,
+the boundary adapter maps it immediately to the same canonical owner command or
+projection. Version labels must not fork domain policy, authorization, or DTO
+semantics inside the repository. GraphQL and native paths preserve parity by
+sharing owner-issued facts and framework-neutral DTOs, not by keeping fallback
+implementations alive.
+
 ## Host Application Responsibilities
 
 ### `apps/admin`

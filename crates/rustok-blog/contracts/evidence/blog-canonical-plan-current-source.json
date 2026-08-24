@@ -72,15 +72,18 @@
       "must_not_reopen_as_source_gap": true
     },
     "post_category_name_projection": {
-      "status": "source_ready_maintainer_execution_pending",
+      "status": "taxonomy_owner_cutover_source_ready_maintainer_execution_pending",
       "slice": "crates/rustok-blog/docs/implementation-plan-slice-105.md",
       "evidence": "crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json",
       "category_identity_source": "blog_posts.category_id",
-      "category_name_source": "blog_category_translations.name",
+      "category_name_source": "taxonomy_owner_category.name",
+      "typed_binding_source": "blog_category_taxonomy_bindings",
+      "taxonomy_scope": "module/blog",
       "detail_projection_present": true,
       "authenticated_list_projection_present": true,
       "public_list_projection_present": true,
       "list_batch_projection": true,
+      "legacy_category_translation_read_removed": true,
       "category_translation_readiness_promoted": false,
       "must_not_reopen_as_source_gap": true
     }

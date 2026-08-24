@@ -78,18 +78,18 @@ npm ci --prefix "$repo_root/apps/admin" --no-audit --no-fund
 rm -rf "$repo_root/apps/admin/dist"
 
 trunk_args=(
-  --no-default-features
-  --features hydrate
   build
   --release
+  --no-default-features
+  --features hydrate
 )
 trunk_env=(env -u RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN)
 if [[ $pages_inline_edit_launch -eq 1 ]]; then
   trunk_args=(
-    --no-default-features
-    --features hydrate,pages-inline-edit-launch
     build
     --release
+    --no-default-features
+    --features hydrate,pages-inline-edit-launch
   )
   trunk_env=(env RUSTOK_PAGES_INLINE_EDIT_ADMIN_SAME_ORIGIN=true)
 fi

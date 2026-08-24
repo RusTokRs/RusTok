@@ -10,6 +10,11 @@
 
 import { registerAdminModule } from '@/modules/registry';
 import type { NavItem } from '@/types';
+import {
+  graphqlRequest,
+  type AdminGraphqlExecutor,
+  type GqlOpts
+} from '@/lib/graphql';
 
 export const productNavItems: NavItem[] = [
   {
@@ -96,7 +101,7 @@ export type ProductCatalogSearchOption = {
   label: string;
 };
 
-type ProductAttributeSummary = {
+export type ProductAttributeSummary = {
   id: string;
   code: string;
   valueType: string;
@@ -105,7 +110,7 @@ type ProductAttributeSummary = {
   label: string;
 };
 
-type CatalogCategorySummary = {
+export type CatalogCategorySummary = {
   id: string;
   parentId: string | null;
   code: string;
@@ -114,21 +119,6 @@ type CatalogCategorySummary = {
   kind: string;
   name: string;
 };
-
-type GqlOpts = {
-  graphql: AdminGraphqlExecutor;
-  token?: string | null;
-  tenantSlug?: string | null;
-  tenantId?: string | null;
-};
-
-export type AdminGraphqlExecutor = <V, T>(
-  query: string,
-  variables?: V,
-  token?: string | null,
-  tenantSlug?: string | null,
-  options?: { graphqlUrl?: string; tenantId?: string | null }
-) => Promise<T>;
 
 const PRODUCTS_QUERY = `
 query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) {
@@ -256,7 +246,8 @@ export async function listProducts(
     throw new Error('Sign in again to manage products.');
   }
 
-  const data = await opts.graphql<
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
     {
       tenantId: string;
       locale?: string;
@@ -282,7 +273,8 @@ export async function getProduct(opts: GqlOpts, id: string, locale?: string) {
     throw new Error('Sign in again to manage products.');
   }
 
-  const data = await opts.graphql<
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
     { tenantId: string; id: string; locale?: string },
     ProductResponse
   >(
@@ -303,7 +295,8 @@ export async function listCatalogCategorySearchOptions(
     return [];
   }
 
-  const data = await opts.graphql<
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
     { tenantId: string; locale: string },
     CatalogCategoriesResponse
   >(
@@ -327,7 +320,8 @@ export async function listCatalogAttributeSearchOptions(
     return [];
   }
 
-  const data = await opts.graphql<
+  const executor = opts.graphql ?? graphqlRequest;
+  const data = await executor<
     { tenantId: string; locale: string },
     ProductAttributesResponse
   >(

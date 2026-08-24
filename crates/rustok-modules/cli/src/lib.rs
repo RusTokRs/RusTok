@@ -195,17 +195,10 @@ impl ModuleCommandProvider {
         ])?;
         let source = args.one_positional("module build")?;
         let validation = validate_project(Path::new(source))?;
-        let context = ModuleCommandContext {
-            actor_id: args.required_option("actor_id")?.to_string(),
-            tenant_id: Some(parse_uuid_option(&args, "tenant_id")?),
-            trace_id: args.required_option("trace_id")?.to_string(),
-            correlation_id: args.required_option("correlation_id")?.to_string(),
-            idempotency_key: args.required_option("idempotency_key")?.to_string(),
-        };
+        let context = parse_tenant_command_context(&args)?;
         let project_id = args.required_option("project_id")?.to_string();
 
         if request.dry_run {
-            context.validate().map_err(invalid_input)?;
             return Ok(
                 CommandOutcome::success("Remote module build plan is valid").with_data(
                     serde_json::json!({
@@ -299,13 +292,7 @@ impl ModuleCommandProvider {
         ])?;
         let source = args.one_positional("module publish")?;
         let validation = validate_project(Path::new(source))?;
-        let context = ModuleCommandContext {
-            actor_id: args.required_option("actor_id")?.to_string(),
-            tenant_id: Some(parse_uuid_option(&args, "tenant_id")?),
-            trace_id: args.required_option("trace_id")?.to_string(),
-            correlation_id: args.required_option("correlation_id")?.to_string(),
-            idempotency_key: parse_uuid_option(&args, "idempotency_key")?.to_string(),
-        };
+        let context = parse_tenant_command_context(&args)?;
         let mut marketplace_tags = args
             .option("tags")
             .map(|tags| {
@@ -1331,6 +1318,22 @@ fn parse_uuid_option(args: &NormalizedArgs<'_>, name: &str) -> CliCoreResult<Uui
     Ok(parsed)
 }
 
+/// Parses the canonical, tenant-scoped owner evidence used by both module
+/// authoring commands. The CLI must reject malformed evidence before creating
+/// a source archive or publication bundle, so owner services never receive a
+/// string-backed alternate command context.
+fn parse_tenant_command_context(args: &NormalizedArgs<'_>) -> CliCoreResult<ModuleCommandContext> {
+    let context = ModuleCommandContext {
+        actor_id: parse_uuid_option(args, "actor_id")?,
+        tenant_id: Some(parse_uuid_option(args, "tenant_id")?),
+        trace_id: args.required_option("trace_id")?.to_string(),
+        correlation_id: parse_uuid_option(args, "correlation_id")?,
+        idempotency_key: parse_uuid_option(args, "idempotency_key")?,
+    };
+    context.validate().map_err(invalid_input)?;
+    Ok(context)
+}
+
 fn reserve_build_archive_root() -> CliCoreResult<PathBuf> {
     let temporary = std::env::temp_dir();
     let metadata = fs::symlink_metadata(&temporary).map_err(command_failed)?;
@@ -1654,6 +1657,48 @@ mod tests {
         assert!(commands[5].supports_dry_run);
         assert_eq!(commands[6].name, "inspect");
         assert!(!commands[6].supports_dry_run);
+    }
+
+    #[test]
+    fn tenant_command_context_requires_uuid_backed_owner_evidence() {
+        let actor_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let correlation_id = Uuid::new_v4();
+        let idempotency_key = Uuid::new_v4();
+        let valid_input = serde_json::json!({
+            "options": {
+                "actor_id": actor_id,
+                "tenant_id": tenant_id,
+                "trace_id": "cli:module-authoring",
+                "correlation_id": correlation_id,
+                "idempotency_key": idempotency_key
+            },
+            "positionals": []
+        });
+        let valid = NormalizedArgs::parse(&valid_input).expect("valid command arguments");
+        assert_eq!(
+            parse_tenant_command_context(&valid).expect("valid command context"),
+            ModuleCommandContext {
+                actor_id,
+                tenant_id: Some(tenant_id),
+                trace_id: "cli:module-authoring".to_string(),
+                correlation_id,
+                idempotency_key,
+            }
+        );
+
+        let invalid_input = serde_json::json!({
+            "options": {
+                "actor_id": "operator:module-author",
+                "tenant_id": tenant_id,
+                "trace_id": "cli:module-authoring",
+                "correlation_id": correlation_id,
+                "idempotency_key": idempotency_key
+            },
+            "positionals": []
+        });
+        let invalid = NormalizedArgs::parse(&invalid_input).expect("invalid command arguments");
+        assert!(parse_tenant_command_context(&invalid).is_err());
     }
 
     #[tokio::test]

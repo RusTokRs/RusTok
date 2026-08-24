@@ -2,36 +2,36 @@ import { GraphqlError, graphqlRequest } from './graphql';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
 
-export type SeoTargetCapabilityKind =
+type SeoTargetCapabilityKind =
   'AUTHORING' | 'ROUTING' | 'BULK' | 'SITEMAPS';
 
-export type SeoBulkJobStatusValue =
+type SeoBulkJobStatusValue =
   'queued' | 'running' | 'completed' | 'partial' | 'failed';
 
-export type SeoDiagnosticSeverity = 'info' | 'warning' | 'error';
+type SeoDiagnosticSeverity = 'info' | 'warning' | 'error';
 
-export interface SeoTargetCapabilities {
+interface SeoTargetCapabilities {
   authoring: boolean;
   routing: boolean;
   bulk: boolean;
   sitemaps: boolean;
 }
 
-export interface SeoTargetRegistryEntry {
+interface SeoTargetRegistryEntry {
   slug: string;
   displayName: string;
   ownerModuleSlug: string;
   capabilities: SeoTargetCapabilities;
 }
 
-export interface SeoSitemapFileRecord {
+interface SeoSitemapFileRecord {
   id: string;
   path: string;
   urlCount: number;
   createdAt: string;
 }
 
-export interface SeoSitemapStatusRecord {
+interface SeoSitemapStatusRecord {
   enabled: boolean;
   latestJobId: string | null;
   status: SeoBulkJobStatusValue | null;
@@ -40,7 +40,7 @@ export interface SeoSitemapStatusRecord {
   files: SeoSitemapFileRecord[];
 }
 
-export interface SeoSitemapJobRecord {
+interface SeoSitemapJobRecord {
   id: string;
   status: SeoBulkJobStatusValue;
   fileCount: number;
@@ -52,7 +52,7 @@ export interface SeoSitemapJobRecord {
   files: SeoSitemapFileRecord[];
 }
 
-export interface SeoBulkArtifactRecord {
+interface SeoBulkArtifactRecord {
   id: string;
   jobId: string;
   kind: string;
@@ -61,7 +61,7 @@ export interface SeoBulkArtifactRecord {
   createdAt: string;
 }
 
-export interface SeoBulkJobRecord {
+interface SeoBulkJobRecord {
   id: string;
   operationKind: string;
   status: SeoBulkJobStatusValue;
@@ -81,12 +81,12 @@ export interface SeoBulkJobRecord {
   artifacts: SeoBulkArtifactRecord[];
 }
 
-export interface SeoDiagnosticCountRecord {
+interface SeoDiagnosticCountRecord {
   key: string;
   count: number;
 }
 
-export interface SeoDiagnosticIssueRecord {
+interface SeoDiagnosticIssueRecord {
   code: string;
   severity: SeoDiagnosticSeverity;
   targetKind: string;
@@ -99,7 +99,7 @@ export interface SeoDiagnosticIssueRecord {
   source: string;
 }
 
-export interface SeoDiagnosticsSummaryRecord {
+interface SeoDiagnosticsSummaryRecord {
   locale: string;
   totalTargets: number;
   readinessScore: number;
@@ -114,14 +114,14 @@ export interface SeoDiagnosticsSummaryRecord {
   issues: SeoDiagnosticIssueRecord[];
 }
 
-export type SeoIndexReplayMode =
+type SeoIndexReplayMode =
   | 'not_started'
   | 'repair_only'
   | 'replay_requested'
   | 'replaying'
   | 'replay_completed';
 
-export interface SeoIndexCursorRecord {
+interface SeoIndexCursorRecord {
   targetType: string;
   initialCursorAt: string;
   highWaterMarkAt: string;
@@ -131,7 +131,7 @@ export interface SeoIndexCursorRecord {
   replayCompletedAt: string | null;
 }
 
-export interface SeoIndexFailureSampleRecord {
+interface SeoIndexFailureSampleRecord {
   targetType: string;
   targetId: string | null;
   status: string;

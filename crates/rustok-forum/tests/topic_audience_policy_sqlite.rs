@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumAudienceConstraints,
     ForumCategoryAudiencePolicyService, ForumError, ForumModule, ForumTopicAudiencePolicyService,
     SetForumCategoryAudiencePolicyInput, SetForumTopicAudiencePolicyInput, TopicService,
 };
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
@@ -28,19 +28,33 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus) {
         .await
         .expect("forum topic audience sqlite database should connect");
     let schema = SchemaManager::new(&db);
+        for migration in OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
             .await
             .expect("taxonomy migration should apply");
     }
+        db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         migration
             .up(&schema)
             .await
             .expect("forum migration should apply");
     }
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     (db, event_bus)
 }
 
@@ -267,8 +281,8 @@ async fn topic_audience_layer_narrows_inherited_category_layers_and_remains_boun
             DatabaseBackend::Sqlite,
             "INSERT INTO forum_topic_audience_channels (tenant_id, topic_id, channel_slug) VALUES (?, ?, ?)",
             [
-                tenant_id.to_string().into(),
-                topic.to_string().into(),
+                tenant_id.into(),
+                topic.into(),
                 "topic-channel-32".into(),
             ],
         ))
@@ -284,8 +298,8 @@ async fn topic_audience_layer_narrows_inherited_category_layers_and_remains_boun
             "UPDATE forum_topic_audience_channels SET channel_slug = ? WHERE tenant_id = ? AND topic_id = ? AND channel_slug = ?",
             [
                 "changed".into(),
-                tenant_id.to_string().into(),
-                topic.to_string().into(),
+                tenant_id.into(),
+                topic.into(),
                 "topic-channel-00".into(),
             ],
         ))
@@ -301,8 +315,8 @@ async fn topic_audience_layer_narrows_inherited_category_layers_and_remains_boun
             "UPDATE forum_topic_audience_policies SET minimum_trust_level = ? WHERE tenant_id = ? AND topic_id = ?",
             [
                 9.into(),
-                tenant_id.to_string().into(),
-                topic.to_string().into(),
+                tenant_id.into(),
+                topic.into(),
             ],
         ))
         .await;
@@ -316,8 +330,8 @@ async fn topic_audience_layer_narrows_inherited_category_layers_and_remains_boun
             DatabaseBackend::Sqlite,
             "INSERT INTO forum_topic_audience_policies (tenant_id, topic_id, minimum_trust_level, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
             [
-                foreign_tenant_id.to_string().into(),
-                topic.to_string().into(),
+                foreign_tenant_id.into(),
+                topic.into(),
                 1.into(),
             ],
         ))
@@ -330,7 +344,7 @@ async fn topic_audience_layer_narrows_inherited_category_layers_and_remains_boun
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO forum_topic_audience_policies (tenant_id, topic_id, minimum_trust_level, updated_at) VALUES (?, ?, NULL, CURRENT_TIMESTAMP)",
-        [tenant_id.to_string().into(), empty_topic.to_string().into()],
+        [tenant_id.into(), empty_topic.into()],
     ))
     .await
     .expect("direct empty layer fixture should insert");

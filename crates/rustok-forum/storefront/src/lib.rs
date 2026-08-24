@@ -14,4 +14,4 @@ pub use transport::{
     fetch_storefront_topic_current_revision, resolve_storefront_category_route,
     resolve_storefront_topic_route,
 };
-pub use ui::locale_boundary::ForumView;
+pub use ui::ForumView;

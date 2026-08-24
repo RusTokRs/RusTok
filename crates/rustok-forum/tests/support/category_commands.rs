@@ -3,7 +3,7 @@ use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumError, MoveCategoryInput,
     ReorderCategorySiblingsInput, UpdateCategoryInput,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use super::{TestResult, test_error};
@@ -124,7 +124,7 @@ pub async fn exercise_category_commands(db: &DatabaseConnection) -> TestResult<(
                 create_category_input("foreign-parent", Some(foreign_root)),
             )
             .await,
-        "parent",
+        "Category not found",
     )?;
 
     let mut deepest_parent = child;
@@ -166,17 +166,27 @@ async fn seed_category(
     parent_id: Option<Uuid>,
     position: i32,
 ) -> TestResult<Uuid> {
-    let id = Uuid::new_v4();
-    let parent = parent_id
-        .map(|parent_id| format!("'{parent_id}'"))
-        .unwrap_or_else(|| "NULL".to_string());
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_categories \
-         (id, tenant_id, parent_id, position, moderated, topic_count, reply_count) \
-         VALUES ('{id}', '{tenant_id}', {parent}, {position}, FALSE, 0, 0);"
-    ))
-    .await?;
-    Ok(id)
+    let service = CategoryService::new(db.clone());
+    let security = SecurityContext::system();
+    let slug = format!("cat-{}", Uuid::new_v4().simple());
+    let category = service
+        .create(
+            tenant_id,
+            security,
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: slug.clone(),
+                slug,
+                description: None,
+                icon: None,
+                color: None,
+                parent_id,
+                position: Some(position),
+                moderated: false,
+            },
+        )
+        .await?;
+    Ok(category.id)
 }
 
 async fn assert_placement(
@@ -186,20 +196,16 @@ async fn assert_placement(
     expected_parent_id: Option<Uuid>,
     expected_position: i32,
 ) -> TestResult<()> {
-    let row = db
-        .query_one(Statement::from_string(
-            db.get_database_backend(),
-            format!(
-                "SELECT parent_id, position FROM forum_categories \
-                 WHERE tenant_id = '{tenant_id}' AND id = '{category_id}'"
-            ),
-        ))
+    use rustok_forum::entities::forum_category;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let model = forum_category::Entity::find_by_id(category_id)
+        .filter(forum_category::Column::TenantId.eq(tenant_id))
+        .one(db)
         .await?
         .ok_or_else(|| test_error(format!("missing category {category_id}")))?;
-    let parent_id: Option<Uuid> = row.try_get("", "parent_id")?;
-    let position: i32 = row.try_get("", "position")?;
-    assert_eq!(parent_id, expected_parent_id);
-    assert_eq!(position, expected_position);
+    assert_eq!(model.parent_id, expected_parent_id);
+    assert_eq!(model.position, expected_position);
     Ok(())
 }
 
@@ -217,10 +223,17 @@ fn assert_validation_contains<T>(result: Result<T, ForumError>, expected: &str) 
 
 fn assert_error_contains<T>(result: Result<T, ForumError>, expected: &str) -> TestResult<()> {
     match result {
-        Err(error) if error.to_string().contains(expected) => Ok(()),
-        Err(error) => Err(test_error(format!(
-            "expected error containing {expected:?}, got {error}"
-        ))),
+        Err(error) => {
+            let debug_repr = format!("{error:?}");
+            let display_repr = error.to_string();
+            if debug_repr.contains(expected) || display_repr.contains(expected) {
+                Ok(())
+            } else {
+                Err(test_error(format!(
+                    "expected error containing {expected:?}, got {debug_repr}"
+                )))
+            }
+        }
         Ok(_) => Err(test_error(format!(
             "expected error containing {expected:?}, got success"
         ))),

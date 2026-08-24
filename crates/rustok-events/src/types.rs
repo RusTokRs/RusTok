@@ -1061,6 +1061,7 @@ impl DomainEvent {
                 | Self::ModuleArtifactNodeAssignmentObserved { .. }
                 | Self::ModuleArtifactNodeReconciliationStatusChanged { .. }
                 | Self::ModuleArtifactSecurityStateChanged { .. }
+                | Self::BuildRequested { .. }
         )
     }
 
@@ -3832,6 +3833,20 @@ mod tests {
                 artifact_digest: "sha256:artifact".to_string(),
                 media_type: "application/vnd.rustok.wasm.component.v1+wasm".to_string(),
                 size_bytes: 1,
+            },
+        );
+
+        assert!(envelope.validate_registered_schema().is_ok());
+    }
+
+    #[test]
+    fn platform_scoped_build_event_accepts_the_root_tenant_sentinel() {
+        let envelope = EventEnvelope::new(
+            Uuid::nil(),
+            None,
+            DomainEvent::BuildRequested {
+                build_id: Uuid::new_v4(),
+                requested_by: "operator".to_string(),
             },
         );
 

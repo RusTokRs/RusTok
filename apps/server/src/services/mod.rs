@@ -1,9 +1,11 @@
 pub mod app_lifecycle;
 pub mod app_router;
 pub mod app_runtime;
+pub(crate) mod artifact_binding;
 pub mod artifact_delivery_tenants;
 pub mod artifact_mcp;
 pub mod artifact_runtime;
+pub mod artifact_ui;
 pub mod auth_admin_mutation_provider;
 pub mod auth_invite;
 pub mod auth_lifecycle;

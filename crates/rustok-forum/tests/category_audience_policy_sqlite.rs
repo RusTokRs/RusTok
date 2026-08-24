@@ -24,7 +24,23 @@ async fn setup() -> DatabaseConnection {
     let db = Database::connect(options)
         .await
         .expect("forum category audience sqlite database should connect");
+    db.execute_unprepared(
+        r#"
+        CREATE TABLE users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        )
+        "#,
+    )
+    .await
+    .expect("SQLite platform user fixture should be created");
     let schema = SchemaManager::new(&db);
+    for migration in rustok_outbox::OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
@@ -218,8 +234,8 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
             DatabaseBackend::Sqlite,
             "INSERT INTO forum_category_audience_channels (tenant_id, category_id, channel_slug) VALUES (?, ?, ?)",
             [
-                tenant_id.to_string().into(),
-                root.to_string().into(),
+                tenant_id.into(),
+                root.into(),
                 "channel-32".into(),
             ],
         ))
@@ -235,8 +251,8 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
             "UPDATE forum_category_audience_channels SET channel_slug = ? WHERE tenant_id = ? AND category_id = ? AND channel_slug = ?",
             [
                 "changed".into(),
-                tenant_id.to_string().into(),
-                root.to_string().into(),
+                tenant_id.into(),
+                root.into(),
                 "channel-00".into(),
             ],
         ))
@@ -252,8 +268,8 @@ async fn category_audience_layers_inherit_conjunctively_and_remain_bounded() {
             "UPDATE forum_category_audience_policies SET minimum_trust_level = ? WHERE tenant_id = ? AND category_id = ?",
             [
                 9.into(),
-                tenant_id.to_string().into(),
-                root.to_string().into(),
+                tenant_id.into(),
+                root.into(),
             ],
         ))
         .await;

@@ -16,7 +16,6 @@ function forbid(text, marker, label) {
 
 const files = {
   services: "crates/rustok-forum/src/services/mod.rs",
-  categoryRaw: "crates/rustok-forum/src/services/category_locale_enumeration.rs",
   categoryFacade: "crates/rustok-forum/src/services/category_owner_locale_enumeration.rs",
   topicRaw: "crates/rustok-forum/src/services/topic_locale_enumeration.rs",
   topicFacade: "crates/rustok-forum/src/services/topic_facade_locale_enumeration.rs",
@@ -27,64 +26,70 @@ const files = {
 const source = Object.fromEntries(Object.entries(files).map(([key, path]) => [key, read(path)]));
 
 for (const marker of [
-  'include!("category_locale_enumeration.rs");',
   'include!("category_owner_locale_enumeration.rs");',
   'include!("topic_locale_enumeration.rs");',
   'include!("topic_facade_locale_enumeration.rs");',
 ]) need(source.services, marker, "services module graph");
+forbid(
+  source.services,
+  'include!("category_locale_enumeration.rs");',
+  "services module graph must retire legacy category locale enumeration",
+);
 
-for (const [label, text, kind, entity, translationLoader] of [
-  ["category raw", source.categoryRaw, "CATEGORY", "forum_category", "load_translations_map_for_categories"],
-  ["topic raw", source.topicRaw, "TOPIC", "forum_topic", "load_translations_map_for_topics"],
-]) {
-  for (const marker of [
-    `MAX_FORUM_${kind}_LOCALE_ENUMERATION_IDS: usize = 512`,
-    "pub(crate) async fn available_locales_for_",
-    "Action::Manage",
-    "tenant_id.is_nil()",
-    ".is_nil()",
-    "!seen.insert(*",
-    `${entity}::Entity::find()`,
-    `${entity}::Column::TenantId.eq(tenant_id)`,
-    `${entity}::Column::Id.is_in(",
-    translationLoader,
-    "available_locales_from(",
-    "has no stored locale translation",
-    "result.push((*",
-  ]) need(text, marker, label);
+for (const marker of [
+  "MAX_FORUM_CATEGORY_LOCALE_ENUMERATION_IDS: usize = 512",
+  "pub async fn available_locales_for_categories(",
+  "security.is_public_read()",
+  "authenticated operator context",
+  "Action::Manage",
+  "tenant_id.is_nil()",
+  "!seen.insert(*category_id)",
+  "forum_category::Entity::find()",
+  "forum_category_taxonomy_binding::Entity::find()",
+  "TaxonomyOwnerCategoryReader::new",
+  "TaxonomyScopeType::Module",
+  'Some("forum")',
+  "projection.available_locales",
+  "has no Taxonomy Category binding",
+  "Taxonomy Category",
+]) need(source.categoryFacade, marker, "category Taxonomy locale API");
+for (const marker of [
+  "forum_category_translation",
+  "load_translations_map_for_categories",
+  "available_locales_from(",
+  "resolve_by_locale_with_fallback",
+  "self.inner.available_locales_for_categories",
+]) forbid(source.categoryFacade, marker, "category Taxonomy locale API");
 
-  for (const marker of [
-    "resolve_by_locale_with_fallback",
-    ".get_with_locale_fallback(",
-    ".get(",
-    "VoteService",
-    "SubscriptionService",
-    "TaxonomyService",
-    "Serialize",
-    "Deserialize",
-  ]) forbid(text, marker, label);
+for (const marker of [
+  "MAX_FORUM_TOPIC_LOCALE_ENUMERATION_IDS: usize = 512",
+  "pub(crate) async fn available_locales_for_topics(",
+  "Action::Manage",
+  "tenant_id.is_nil()",
+  "forum_topic::Entity::find()",
+  "load_translations_map_for_topics",
+  "available_locales_from(",
+  "has no stored locale translation",
+]) need(source.topicRaw, marker, "topic raw locale API");
+for (const marker of [
+  "resolve_by_locale_with_fallback",
+  ".get_with_locale_fallback(",
+  "VoteService",
+  "SubscriptionService",
+  "Serialize",
+  "Deserialize",
+]) forbid(source.topicRaw, marker, "topic raw locale API");
 
-  const existenceQueries = text.split("::Entity::find()").length - 1;
-  if (existenceQueries !== 1) {
-    throw new Error(`${label}: expected one direct existence query, found ${existenceQueries}`);
-  }
-}
-
-for (const [label, text, kind, method] of [
-  ["category facade", source.categoryFacade, "CATEGORY", "available_locales_for_categories"],
-  ["topic facade", source.topicFacade, "TOPIC", "available_locales_for_topics"],
-]) {
-  for (const marker of [
-    `MAX_FORUM_${kind}_LOCALE_ENUMERATION_IDS`,
-    `pub async fn ${method}(`,
-    "security.is_public_read()",
-    "authenticated operator context",
-    "Action::Manage",
-    `.${method}(`,
-  ]) need(text, marker, label);
-  for (const marker of ["sea_orm", "crate::entities", "::Entity::find()", "Serialize", "Deserialize"]) {
-    forbid(text, marker, label);
-  }
+for (const marker of [
+  "MAX_FORUM_TOPIC_LOCALE_ENUMERATION_IDS",
+  "pub async fn available_locales_for_topics(",
+  "security.is_public_read()",
+  "authenticated operator context",
+  "Action::Manage",
+  ".available_locales_for_topics(",
+]) need(source.topicFacade, marker, "topic facade locale API");
+for (const marker of ["sea_orm", "crate::entities", "::Entity::find()", "Serialize", "Deserialize"]) {
+  forbid(source.topicFacade, marker, "topic facade locale API");
 }
 
 for (const marker of [
@@ -97,15 +102,8 @@ for (const marker of [
   "FORUM-34G",
   "FORUM-34A through FORUM-34F",
   "effective `Manage` permission satisfies narrower actions",
-  "still labels `FORUM-34` as `planned`",
-  "more than 512 IDs",
-  "one tenant-scoped bounded existence query",
-  "one existing batched translation loader",
-  "does not claim that an archived/deleted/otherwise non-presentable owner row is export-readable",
-  "no per-ID owner `get`",
   "all three current Forum export shapes",
-  "next safe Forum-owned slice can compose",
   "no tests, Cargo commands",
-]) need(source.packet, marker, "FORUM-34G packet");
+]) need(source.packet, marker, "FORUM-34G historical packet");
 
-console.log("Forum FORUM-34G category/topic locale enumeration source: ok");
+console.log("Forum category/topic locale enumeration ownership source: ok");

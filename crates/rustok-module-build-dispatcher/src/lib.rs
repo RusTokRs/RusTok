@@ -156,11 +156,15 @@ impl ModuleBuildDeliverySource for IggyModuleBuildDeliverySource {
 }
 
 /// Result of one delivery attempt. A terminal result may already have been
-/// persisted when a broker redelivers an older queue notification.
+/// persisted when a broker redelivers an older queue notification. A duplicate
+/// notification may also encounter the durable claim held by another
+/// dispatcher; acknowledging that duplicate is safe because only the claim
+/// owner may make the terminal transition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ModuleBuildDeliveryResult {
     Persisted(ModuleBuildResultRecord),
     AlreadySettled,
+    ClaimedElsewhere,
 }
 
 /// Coordinates an external broker delivery with the owner-side queue/result
@@ -190,10 +194,7 @@ where
             .await
         {
             Ok(record) => Ok(ModuleBuildDeliveryResult::Persisted(record)),
-            Err(ModuleBuildProtocolError::NotQueued) => {
-                Ok(ModuleBuildDeliveryResult::AlreadySettled)
-            }
-            Err(error) => Err(error),
+            Err(error) => map_delivery_error(error),
         }
     }
 
@@ -216,12 +217,27 @@ where
     }
 }
 
+/// Maps terminal and live-claim replay errors to safe broker acknowledgements.
+/// All other owner errors must remain visible so the broker can redeliver.
+fn map_delivery_error(
+    error: ModuleBuildProtocolError,
+) -> Result<ModuleBuildDeliveryResult, ModuleBuildProtocolError> {
+    match error {
+        ModuleBuildProtocolError::NotQueued => Ok(ModuleBuildDeliveryResult::AlreadySettled),
+        ModuleBuildProtocolError::ExecutionInProgress => {
+            Ok(ModuleBuildDeliveryResult::ClaimedElsewhere)
+        }
+        error => Err(error),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rustok_events::{DomainEvent, EventEnvelope};
+    use rustok_modules::ModuleBuildProtocolError;
     use uuid::Uuid;
 
-    use super::validate_delivery_envelope;
+    use super::{ModuleBuildDeliveryResult, map_delivery_error, validate_delivery_envelope};
 
     fn queued_envelope() -> EventEnvelope {
         let tenant_id = Uuid::new_v4();
@@ -257,5 +273,17 @@ mod tests {
             attempt: 1,
         };
         assert!(validate_delivery_envelope(&invalid_payload).is_err());
+    }
+
+    #[test]
+    fn live_execution_claim_is_acknowledged_without_a_second_build() {
+        assert_eq!(
+            map_delivery_error(ModuleBuildProtocolError::ExecutionInProgress),
+            Ok(ModuleBuildDeliveryResult::ClaimedElsewhere)
+        );
+        assert_eq!(
+            map_delivery_error(ModuleBuildProtocolError::NotQueued),
+            Ok(ModuleBuildDeliveryResult::AlreadySettled)
+        );
     }
 }

@@ -23,10 +23,9 @@ const verifier = path.join(
 const files = [
   'crates/rustok-blog/contracts/evidence/blog-post-category-name-projection-source.json',
   'crates/rustok-blog/src/services/post.rs',
+  'crates/rustok-blog/src/services/category_name_projection.rs',
   'crates/rustok-blog/src/dto/post.rs',
   'crates/rustok-blog/tests/post_category_name_projection.rs',
-  'crates/rustok-blog/docs/implementation-plan-slice-105.md',
-  'crates/rustok-blog/docs/implementation-plan-current.md',
 ];
 
 function fixture() {
@@ -58,7 +57,7 @@ function expectFailure(root, message) {
   assert.notEqual(result.status, 0, `${message}\nstdout=${result.stdout}\nstderr=${result.stderr}`);
 }
 
-test('canonical category-name projection source passes', () => {
+test('canonical Taxonomy category-name projection source passes', () => {
   const root = fixture();
   try {
     const result = run(root);
@@ -80,46 +79,70 @@ test('rejects restoring permanent None category projection', () => {
   }
 });
 
-test('rejects dropping tenant binding from category translation query', () => {
+test('rejects restoring legacy Blog category translation reads', () => {
   const root = fixture();
   try {
     mutate(root, 'crates/rustok-blog/src/services/post.rs', (source) =>
       source.replace(
-        '.filter(blog_category_translation::Column::TenantId.eq(tenant_id))',
+        'use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};',
+        'use crate::entities::{blog_category_translation, blog_post, blog_post_channel_visibility, blog_post_translation};',
+      ),
+    );
+    expectFailure(root, 'legacy Blog category translation reads must fail');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects dropping tenant binding from typed Category lookup', () => {
+  const root = fixture();
+  try {
+    mutate(root, 'crates/rustok-blog/src/services/category_name_projection.rs', (source) =>
+      source.replace(
+        '.filter(blog_category_taxonomy_binding::Column::TenantId.eq(tenant_id))',
         '',
       ),
     );
-    expectFailure(root, 'cross-tenant category projection must fail');
+    expectFailure(root, 'cross-tenant Category binding projection must fail');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('rejects replacing batch category lookup with non-batch lookup', () => {
+test('rejects replacing batch binding lookup with one Category', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/rustok-blog/src/services/post.rs', (source) =>
+    mutate(root, 'crates/rustok-blog/src/services/category_name_projection.rs', (source) =>
       source.replace(
-        'blog_category_translation::Column::CategoryId.is_in(category_ids.clone())',
-        'blog_category_translation::Column::CategoryId.eq(category_ids[0])',
+        'BlogCategoryId.is_in(category_ids.clone())',
+        'BlogCategoryId.eq(category_ids[0])',
       ),
     );
-    expectFailure(root, 'non-batch category lookup must fail');
+    expectFailure(root, 'non-batch Category binding lookup must fail');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('rejects dropping caller fallback locale', () => {
+test('rejects dropping caller fallback locale from Taxonomy projection', () => {
   const root = fixture();
   try {
-    mutate(root, 'crates/rustok-blog/src/services/post.rs', (source) =>
-      source.replace(
-        'translations,\n                locale,\n                fallback_locale,',
-        'translations,\n                locale,\n                None,',
-      ),
+    mutate(root, 'crates/rustok-blog/src/services/category_name_projection.rs', (source) =>
+      source.replace('            fallback_locale,', '            None,'),
     );
     expectFailure(root, 'fallback removal must fail');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects removing legacy-row deletion from ownership harness', () => {
+  const root = fixture();
+  try {
+    mutate(root, 'crates/rustok-blog/tests/post_category_name_projection.rs', (source) =>
+      source.replace('blog_category_translation::Entity::delete_many()', 'blog_category_translation::Entity::find()'),
+    );
+    expectFailure(root, 'ownership proof must delete legacy category translations');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -134,21 +157,6 @@ test('rejects fake execution promotion', () => {
       (source) => source.replace('"execution": []', '"execution": ["fake"]'),
     );
     expectFailure(root, 'fake execution claim must fail');
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('rejects current cursor rollback before slice 105', () => {
-  const root = fixture();
-  try {
-    mutate(root, 'crates/rustok-blog/docs/implementation-plan-current.md', (source) =>
-      source.replace(
-        'canonical_source_cursor_actualized_through_slice_105',
-        'canonical_source_cursor_actualized_through_slice_104',
-      ),
-    );
-    expectFailure(root, 'cursor rollback must fail');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

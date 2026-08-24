@@ -496,7 +496,6 @@ fn validate_key_id(key_id: &str) -> Result<(), IndexSourceContinuationError> {
 mod tests {
     use std::{collections::BTreeMap, time::Duration};
 
-    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
     use chrono::{TimeZone, Utc};
     use serde_json::json;
     use uuid::Uuid;

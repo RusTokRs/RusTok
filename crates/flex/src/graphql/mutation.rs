@@ -6,10 +6,11 @@ use rustok_events::EventEnvelope;
 use uuid::Uuid;
 
 use super::{
-    CreateFieldDefinitionInput, CreateFlexEntryInput, CreateFlexSchemaInput,
+    AttachedValuesObject, CreateFieldDefinitionInput, CreateFlexEntryInput, CreateFlexSchemaInput,
     DeleteFieldDefinitionPayload, DeleteFlexPayload, FieldDefinitionObject, FlexEntryObject,
-    FlexSchemaObject, UpdateFieldDefinitionInput, UpdateFlexEntryInput, UpdateFlexSchemaInput,
-    bad_user_input, map_flex_error, require_access, resolve_entity_type, runtime::runtime,
+    FlexSchemaObject, UpdateAttachedValuesInput, UpdateFieldDefinitionInput, UpdateFlexEntryInput,
+    UpdateFlexSchemaInput, bad_user_input, map_flex_error, require_access, resolve_entity_type,
+    runtime::runtime,
 };
 use crate::{
     CreateFieldDefinitionCommand, CreateFlexEntryCommand, CreateFlexSchemaCommand,
@@ -195,6 +196,54 @@ impl FlexMutation {
         invalidate_field_def_cache(runtime, tenant.id, &entity_type).await;
 
         Ok(rows.into_iter().map(FieldDefinitionObject::from).collect())
+    }
+
+    /// Validate and persist attached custom-field values for one real donor instance.
+    async fn update_attached_values(
+        &self,
+        ctx: &Context<'_>,
+        input: UpdateAttachedValuesInput,
+    ) -> Result<AttachedValuesObject> {
+        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_UPDATE)?;
+        let runtime = runtime(ctx)?;
+        let entity_type = resolve_entity_type(input.entity_type)?;
+        let values = runtime
+            .attached_values()
+            .update_values(
+                tenant.id,
+                &entity_type,
+                input.entity_id,
+                &input.locale,
+                input.values,
+            )
+            .await
+            .map_err(map_flex_error)?;
+
+        Ok(AttachedValuesObject {
+            entity_type,
+            entity_id: input.entity_id,
+            values,
+        })
+    }
+
+    /// Remove all attached custom-field values for one real donor instance.
+    async fn delete_attached_values(
+        &self,
+        ctx: &Context<'_>,
+        entity_type: Option<String>,
+        entity_id: Uuid,
+    ) -> Result<DeleteFlexPayload> {
+        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_DELETE)?;
+        let runtime = runtime(ctx)?;
+        let entity_type = resolve_entity_type(entity_type)?;
+
+        runtime
+            .attached_values()
+            .delete_values(tenant.id, &entity_type, entity_id)
+            .await
+            .map_err(map_flex_error)?;
+
+        Ok(DeleteFlexPayload { success: true })
     }
 
     /// Create a standalone Flex schema.

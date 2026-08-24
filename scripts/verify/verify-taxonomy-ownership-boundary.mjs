@@ -23,7 +23,7 @@ function walkRust(relative) {
 
 function requireMarkers(relative, markers) {
   if (!exists(relative)) {
-    failures.push(`missing owner-owned Taxonomy consumer artifact: ${relative}`);
+    failures.push(`missing Taxonomy ownership artifact: ${relative}`);
     return;
   }
   const source = read(relative);
@@ -44,24 +44,10 @@ const taxonomyPersistenceFiles = taxonomySourceFiles.filter(
     relative.includes("/src/entities/") || relative.includes("/src/migrations/"),
 );
 
-const forbiddenHierarchy = [
-  { pattern: /\bparent_id\b/, label: "generic parent_id" },
-  { pattern: /\bParentId\b/, label: "generic ParentId identifier" },
-  { pattern: /\bcategory_parent\b/i, label: "category-parent storage" },
-  { pattern: /\bcategory_closure\b/i, label: "category closure storage" },
-];
-
-for (const relative of taxonomySourceFiles) {
-  const source = read(relative);
-  for (const { pattern, label } of forbiddenHierarchy) {
-    if (pattern.test(source)) {
-      failures.push(
-        `${relative}: Taxonomy must remain a flat vocabulary layer; found ${label}`,
-      );
-    }
-  }
-}
-
+// Shared Category hierarchy and canonical presentation are accepted Taxonomy capabilities. What
+// remains forbidden is moving consumer attachment/binding storage into Taxonomy or introducing an
+// untyped polymorphic owner table. Blog/Forum/Product/Profile relations remain typed owner-module
+// contracts.
 const forbiddenConsumerRelations = [
   "blog_post_tags",
   "forum_topic_tags",
@@ -90,11 +76,27 @@ for (const relative of taxonomyPersistenceFiles) {
 }
 
 requireMarkers(
+  "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md",
+  [
+    "`rustok-taxonomy` becomes the canonical Category owner",
+    "Taxonomy does not",
+    "generic polymorphic `owner_type/owner_id` attachment table",
+  ],
+);
+requireMarkers(
+  "docs/architecture/taxonomy-flex-category-platform-plan.md",
+  [
+    "Taxonomy owns shared Category hierarchy",
+    "canonical presentation such as icon key, color and Media-owned image/cover references",
+    "Consumer relation/binding tables stay with the consumer",
+    "Flex is the only runtime custom-fields mechanism",
+  ],
+);
+
+requireMarkers(
   "crates/rustok-blog/src/migrations/m20260328_000002_create_blog_taxonomy_tables.rs",
   [
     ".table(BlogPostTags::Table)",
-    "BlogCategories::ParentId",
-    ".table(BlogCategoryTranslations::Table)",
     ".to(TaxonomyTerms::Table, TaxonomyTerms::Id)",
   ],
 );
@@ -102,15 +104,6 @@ requireMarkers("crates/rustok-blog/src/entities/blog_post_tag.rs", [
   'table_name = "blog_post_tags"',
 ]);
 
-requireMarkers(
-  "crates/rustok-forum/src/migrations/m20260328_000001_create_forum_tables.rs",
-  [
-    ".table(ForumCategories::Table)",
-    "ForumCategories::ParentId",
-    ".table(ForumCategoryTranslations::Table)",
-    "ForumCategoryTranslations::Locale",
-  ],
-);
 requireMarkers(
   "crates/rustok-forum/src/migrations/m20260329_000005_create_forum_topic_tags.rs",
   [
@@ -136,20 +129,6 @@ requireMarkers(
 requireMarkers("crates/rustok-product/src/entities/product_tag.rs", [
   'table_name = "product_tags"',
 ]);
-requireMarkers(
-  "crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs",
-  [
-    "CREATE TABLE IF NOT EXISTS catalog_categories",
-    "parent_id UUID REFERENCES catalog_categories(id)",
-    "CREATE TABLE IF NOT EXISTS catalog_category_closure",
-    "CREATE TABLE IF NOT EXISTS product_categories",
-  ],
-);
-requireMarkers("crates/rustok-product/docs/category-locale-contract.md", [
-  "Product catalog categories remain a Product-owned tree/closure aggregate.",
-  "Product owns category parent/child relations, closure rows, moves, deletion",
-  "Taxonomy owns shared vocabulary identities and localized taxonomy route keys",
-]);
 
 requireMarkers(
   "crates/rustok-profiles/src/migrations/m20260330_000002_create_profile_tags.rs",
@@ -171,5 +150,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Taxonomy ownership boundary checks passed: ${taxonomySourceFiles.length} Taxonomy Rust source files are flat-vocabulary-only; Blog, Forum, Product, and Profiles retain their owner-side attachment/category storage.`,
+  `Taxonomy ownership boundary checks passed: ${taxonomySourceFiles.length} Taxonomy Rust source files may own shared Category hierarchy/presentation; Blog, Forum, Product, and Profiles retain typed consumer attachment relations and generic polymorphic attachment storage remains forbidden.`,
 );

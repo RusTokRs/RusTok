@@ -3,13 +3,21 @@ name: Taxonomy Lookup Contract
 on:
   pull_request:
     paths:
+      - "crates/rustok-taxonomy/src/category_hierarchy.rs"
+      - "crates/rustok-taxonomy/src/category_presentation.rs"
       - "crates/rustok-taxonomy/src/dto.rs"
+      - "crates/rustok-taxonomy/src/entities/taxonomy_category_presentation.rs"
+      - "crates/rustok-taxonomy/src/lib.rs"
       - "crates/rustok-taxonomy/src/services.rs"
       - "crates/rustok-taxonomy/src/module_term_lookup.rs"
       - "crates/rustok-taxonomy/src/normalization.rs"
+      - "crates/rustok-taxonomy/src/owner_category_read.rs"
       - "crates/rustok-taxonomy/src/route_key_registry.rs"
       - "crates/rustok-taxonomy/src/migrations/**"
+      - "crates/rustok-taxonomy/tests/category_hierarchy.rs"
+      - "crates/rustok-taxonomy/tests/category_presentation.rs"
       - "crates/rustok-taxonomy/tests/localized_route_lookup.rs"
+      - "crates/rustok-taxonomy/tests/owner_category_read.rs"
       - "crates/rustok-taxonomy/tests/route_key_registry.rs"
       - "crates/rustok-taxonomy/docs/route-registry-recovery.md"
       - "crates/rustok-taxonomy/docs/sql/route-registry-drift.sql"
@@ -23,13 +31,21 @@ on:
     branches:
       - main
     paths:
+      - "crates/rustok-taxonomy/src/category_hierarchy.rs"
+      - "crates/rustok-taxonomy/src/category_presentation.rs"
       - "crates/rustok-taxonomy/src/dto.rs"
+      - "crates/rustok-taxonomy/src/entities/taxonomy_category_presentation.rs"
+      - "crates/rustok-taxonomy/src/lib.rs"
       - "crates/rustok-taxonomy/src/services.rs"
       - "crates/rustok-taxonomy/src/module_term_lookup.rs"
       - "crates/rustok-taxonomy/src/normalization.rs"
+      - "crates/rustok-taxonomy/src/owner_category_read.rs"
       - "crates/rustok-taxonomy/src/route_key_registry.rs"
       - "crates/rustok-taxonomy/src/migrations/**"
+      - "crates/rustok-taxonomy/tests/category_hierarchy.rs"
+      - "crates/rustok-taxonomy/tests/category_presentation.rs"
       - "crates/rustok-taxonomy/tests/localized_route_lookup.rs"
+      - "crates/rustok-taxonomy/tests/owner_category_read.rs"
       - "crates/rustok-taxonomy/tests/route_key_registry.rs"
       - "crates/rustok-taxonomy/docs/route-registry-recovery.md"
       - "crates/rustok-taxonomy/docs/sql/route-registry-drift.sql"
@@ -68,13 +84,16 @@ jobs:
         run: node scripts/verify/verify-taxonomy-route-registry-recovery.mjs
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Run localized route and registry contract
+      - name: Run Category hierarchy/presentation/owner, localized route and registry contracts
         shell: bash
         run: |
           set -o pipefail
           status=0
           cargo test --locked -p rustok-taxonomy \
+            --test category_hierarchy \
+            --test category_presentation \
             --test localized_route_lookup \
+            --test owner_category_read \
             --test route_key_registry \
             -- --nocapture 2>&1 \
             | tee taxonomy-lookup-contract.log || status=$?

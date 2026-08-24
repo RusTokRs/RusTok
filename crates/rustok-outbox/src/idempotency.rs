@@ -26,7 +26,8 @@ mod entity {
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub id: Uuid,
-        pub tenant_id: Uuid,
+        pub tenant_id: Option<Uuid>,
+        pub scope_key: String,
         pub owner_slug: String,
         pub idempotency_key: String,
         pub operation: String,
@@ -60,12 +61,39 @@ pub struct Lease {
     pub token: Uuid,
 }
 
+/// Durable ownership scope for an idempotent operation receipt.
+///
+/// Platform operations deliberately have no tenant identity. Their stable
+/// `scope_key` keeps uniqueness and request hashing separate from every tenant
+/// without introducing a sentinel tenant UUID.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OwnerOperationScope {
+    Platform,
+    Tenant(Uuid),
+}
+
+impl OwnerOperationScope {
+    fn tenant_id(self) -> Option<Uuid> {
+        match self {
+            Self::Platform => None,
+            Self::Tenant(tenant_id) => Some(tenant_id),
+        }
+    }
+
+    fn scope_key(self) -> String {
+        match self {
+            Self::Platform => "platform".to_string(),
+            Self::Tenant(tenant_id) => format!("tenant:{tenant_id}"),
+        }
+    }
+}
+
 /// Atomically admits an owner-scoped idempotent operation or returns its
-/// stored terminal result. The same tenant, owner, and key cannot be rebound
-/// to another operation or request payload.
+/// stored terminal result. The same explicit owner scope, owner, and key
+/// cannot be rebound to another operation or request payload.
 pub async fn admit<T: Serialize>(
     database: &DatabaseConnection,
-    tenant_id: Uuid,
+    scope: OwnerOperationScope,
     owner_slug: &str,
     idempotency_key: &str,
     operation: &str,
@@ -74,9 +102,10 @@ pub async fn admit<T: Serialize>(
     let owner_slug = validate_identity(owner_slug, "owner_slug")?;
     let idempotency_key = validate_identity(idempotency_key, "idempotency_key")?;
     let operation = validate_identity(operation, "operation")?;
-    let request_hash = request_hash(&owner_slug, &operation, tenant_id, request)?;
+    let scope_key = scope.scope_key();
+    let request_hash = request_hash(&owner_slug, &operation, &scope_key, request)?;
 
-    if let Some(existing) = find(database, tenant_id, &owner_slug, &idempotency_key).await? {
+    if let Some(existing) = find(database, &scope_key, &owner_slug, &idempotency_key).await? {
         return inspect_or_reclaim(database, existing, &operation, &request_hash).await;
     }
 
@@ -85,7 +114,8 @@ pub async fn admit<T: Serialize>(
     let lease_token = generate_id();
     let insert = entity::ActiveModel {
         id: Set(id),
-        tenant_id: Set(tenant_id),
+        tenant_id: Set(scope.tenant_id()),
+        scope_key: Set(scope_key.clone()),
         owner_slug: Set(owner_slug.clone()),
         idempotency_key: Set(idempotency_key.clone()),
         operation: Set(operation.clone()),
@@ -107,7 +137,7 @@ pub async fn admit<T: Serialize>(
             token: lease_token,
         })),
         Err(error) if is_unique_constraint(&error) => {
-            let existing = find(database, tenant_id, &owner_slug, &idempotency_key)
+            let existing = find(database, &scope_key, &owner_slug, &idempotency_key)
                 .await?
                 .ok_or_else(|| database_error(error))?;
             inspect_or_reclaim(database, existing, &operation, &request_hash).await
@@ -289,12 +319,12 @@ async fn inspect_or_reclaim(
 
 async fn find(
     database: &DatabaseConnection,
-    tenant_id: Uuid,
+    scope_key: &str,
     owner_slug: &str,
     idempotency_key: &str,
 ) -> Result<Option<entity::Model>, PortError> {
     entity::Entity::find()
-        .filter(entity::Column::TenantId.eq(tenant_id))
+        .filter(entity::Column::ScopeKey.eq(scope_key))
         .filter(entity::Column::OwnerSlug.eq(owner_slug))
         .filter(entity::Column::IdempotencyKey.eq(idempotency_key))
         .one(database)
@@ -316,7 +346,7 @@ fn validate_identity(value: &str, field: &'static str) -> Result<String, PortErr
 fn request_hash<T: Serialize>(
     owner_slug: &str,
     operation: &str,
-    tenant_id: Uuid,
+    scope_key: &str,
     request: &T,
 ) -> Result<String, PortError> {
     let request = serde_json::to_value(request).map_err(|error| {
@@ -328,7 +358,7 @@ fn request_hash<T: Serialize>(
     let value = serde_json::json!({
         "owner_slug": owner_slug,
         "operation": operation,
-        "tenant_id": tenant_id,
+        "scope_key": scope_key,
         "request": canonical_json(&request),
     });
     let bytes = serde_json::to_vec(&value).map_err(|error| {
@@ -388,7 +418,7 @@ mod tests {
         let request = serde_json::json!({"translation": "one"});
         let lease = match admit(
             &database,
-            tenant_id,
+            OwnerOperationScope::Tenant(tenant_id),
             "media",
             "owner-receipt-1",
             "apply_translation",
@@ -408,7 +438,7 @@ mod tests {
 
         let replay = admit(
             &database,
-            tenant_id,
+            OwnerOperationScope::Tenant(tenant_id),
             "media",
             "owner-receipt-1",
             "apply_translation",
@@ -422,7 +452,7 @@ mod tests {
 
         let distinct_owner = admit(
             &database,
-            tenant_id,
+            OwnerOperationScope::Tenant(tenant_id),
             "taxonomy",
             "owner-receipt-1",
             "apply_translation",

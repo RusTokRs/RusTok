@@ -18,7 +18,7 @@ use crate::{
     AlloyImportError, AlloyPublishedReleaseImportCommand, AlloyPublishedRhaiSourceProviderHandle,
     AlloyReleaseGovernanceHandle, AlloyReleaseImporter, RevisionedReleaseStager,
     RevisionedTestRunner, ScopedAlloyRuntime, ScriptError, ScriptEvidenceRetentionCommand,
-    SharedAlloyRuntime, TestCommand,
+    SharedAlloyRuntime, TestCommand, alloy_release_command_context,
     api::{
         CreateScriptRequest, DeleteScriptRequest, EntityInput, ExecutionLogResponse,
         ImportPublishedReleaseRequest, ImportPublishedReleaseResponse, ListExecutionLogQuery,
@@ -245,10 +245,10 @@ fn scripts_manage_actor(
         .to_string())
 }
 
-fn release_actor(
+fn release_auth(
     auth: Option<Extension<AuthContextExtension>>,
     tenant: &TenantContext,
-) -> HttpResult<String> {
+) -> HttpResult<AuthContextExtension> {
     let auth = scripts_manage_auth(auth, tenant, "Alloy release staging")?;
     let modules_manage = Permission::new(Resource::Modules, Action::Manage);
     if !has_any_effective_permission(&auth.0.permissions, &[modules_manage]) {
@@ -257,7 +257,14 @@ fn release_actor(
             "Alloy release staging requires modules.manage permission",
         ));
     }
-    Ok(auth.0.user_id.to_string())
+    Ok(auth)
+}
+
+fn release_actor(
+    auth: Option<Extension<AuthContextExtension>>,
+    tenant: &TenantContext,
+) -> HttpResult<String> {
+    Ok(release_auth(auth, tenant)?.0.user_id.to_string())
 }
 
 fn entity_to_proxy(entity: EntityInput) -> EntityProxy {
@@ -746,7 +753,7 @@ pub async fn stage_release(
     Path(id): Path<Uuid>,
     Json(request): Json<StageReleaseRequest>,
 ) -> HttpResult<Json<StageReleaseResponse>> {
-    let actor_id = release_actor(auth, &tenant)?;
+    let auth = release_auth(auth, &tenant)?;
     let governance = runtime.release_governance.0.clone();
     let runtime = runtime.scoped(tenant.id)?;
     let stager =
@@ -758,8 +765,11 @@ pub async fn stage_release(
             publish_request_id: request.publish_request_id,
             expected_publish_request_revision: request.expected_publish_request_revision,
             artifact_digest: request.artifact_digest,
-            actor_id,
-            idempotency_key: request.idempotency_key,
+            context: alloy_release_command_context(
+                tenant.id,
+                auth.0.user_id,
+                request.idempotency_key,
+            ),
         })
         .await
         .map_err(release_error)?;

@@ -15,7 +15,8 @@ pub mod snapshot;
 pub use build::{BuildStage, BuildStatus, DeploymentProfile};
 pub use control::{BuildControl, SharedBuildControl};
 pub use events::{
-    BuildEvent, BuildEventPublisher, EventBusBuildEventPublisher, NoopBuildEventPublisher,
+    BuildEvent, BuildEventPublicationContext, BuildEventPublisher, BuildEventScope,
+    EventBusBuildEventPublisher, NoopBuildEventPublisher,
 };
 pub use execution::{BuildCommandSpec, build_manifest_snapshot_path, run_build_command};
 pub use executor::BuildExecutionService;

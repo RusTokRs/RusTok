@@ -18,8 +18,14 @@ impl MigrationTrait for Migration {
                     target_installation_id UUID NOT NULL REFERENCES module_artifact_installations(installation_id),\
                     expected_revision BIGINT NOT NULL CHECK (expected_revision > 0),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     idempotency_key UUID NOT NULL UNIQUE,\
+                    target_capability_grant_revision BIGINT NOT NULL CHECK (target_capability_grant_revision > 0),\
+                    migration_rollback_mode TEXT NOT NULL CHECK (migration_rollback_mode IN ('reversible', 'compensating', 'prohibited')),\
+                    source_revision BIGINT NOT NULL CHECK (source_revision > 0),\
+                    target_revision BIGINT NOT NULL CHECK (target_revision > 0),\
                     committed_at TIMESTAMPTZ NOT NULL\
                 )",
                 "CREATE INDEX module_artifact_rollback_operations_installation_idx ON module_artifact_rollback_operations (installation_id, committed_at DESC)",
@@ -36,8 +42,14 @@ impl MigrationTrait for Migration {
                     target_installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
                     expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     idempotency_key TEXT NOT NULL UNIQUE,\
+                    target_capability_grant_revision INTEGER NOT NULL CHECK (target_capability_grant_revision > 0),\
+                    migration_rollback_mode TEXT NOT NULL CHECK (migration_rollback_mode IN ('reversible', 'compensating', 'prohibited')),\
+                    source_revision INTEGER NOT NULL CHECK (source_revision > 0),\
+                    target_revision INTEGER NOT NULL CHECK (target_revision > 0),\
                     committed_at TEXT NOT NULL\
                 )",
                 "CREATE INDEX module_artifact_rollback_operations_installation_idx ON module_artifact_rollback_operations (installation_id, committed_at DESC)",

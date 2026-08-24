@@ -1,10 +1,8 @@
-use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
+use async_graphql::{Context, Object, Result};
 use rustok_api::{
     AuthContext, Permission, RequestContext, TenantContext,
-    graphql::{GraphQLError, PaginationInput, require_module_enabled, resolve_graphql_locale},
-    has_any_effective_permission,
+    graphql::{PaginationInput, require_module_enabled, resolve_graphql_locale},
 };
-use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_telemetry::metrics;
@@ -38,7 +36,7 @@ impl ForumReplyAudienceQuery {
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<ForumReplyConnection> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let auth = require_forum_permission(
+        let auth = super::require_forum_permission(
             ctx,
             &[Permission::FORUM_REPLIES_LIST],
             "Permission denied: forum_replies:list required",
@@ -46,7 +44,7 @@ impl ForumReplyAudienceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
@@ -54,7 +52,7 @@ impl ForumReplyAudienceQuery {
             ForumReplyReadTransport::Graphql,
             ForumReplyReadOperation::ReplyList,
             tenant_id,
-            &auth,
+            auth,
             ctx.data_opt::<RequestContext>(),
             locale.as_str(),
         )?;
@@ -118,11 +116,11 @@ impl ForumReplyAudienceQuery {
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<ForumReplyConnection> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_public_forum_channel_enabled(ctx).await?;
+        super::require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
@@ -208,11 +206,11 @@ impl ForumReplyAudienceQuery {
         locale: Option<String>,
     ) -> Result<Option<String>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_public_forum_channel_enabled(ctx).await?;
+        super::require_public_forum_channel_enabled(ctx).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let runtime = ctx
             .data_opt::<ForumGraphqlRuntimeData>()
@@ -262,63 +260,8 @@ impl ForumReplyAudienceQuery {
     }
 }
 
-fn require_forum_permission(
-    ctx: &Context<'_>,
-    permissions: &[Permission],
-    message: &str,
-) -> Result<AuthContext> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-        .clone();
-    if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(<FieldError as GraphQLError>::permission_denied(message));
-    }
-    Ok(auth)
-}
-
 fn forum_security(auth: &AuthContext) -> SecurityContext {
     SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
-    }
-}
-
-async fn require_public_forum_channel_enabled(ctx: &Context<'_>) -> Result<()> {
-    if ctx.data_opt::<AuthContext>().is_some() {
-        return Ok(());
-    }
-    let Some(request) = ctx.data_opt::<RequestContext>() else {
-        return Ok(());
-    };
-    let Some(channel_id) = request.channel_id else {
-        return Ok(());
-    };
-    let db = ctx.data::<DatabaseConnection>()?;
-    let enabled = ChannelService::new(db.clone())
-        .is_module_enabled(channel_id, MODULE_SLUG)
-        .await
-        .map_err(|error| {
-            async_graphql::Error::new(format!("Channel module check failed: {error}"))
-                .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR"))
-        })?;
-    if enabled {
-        Ok(())
-    } else {
-        Err(
-            async_graphql::Error::new("Forum module is not enabled for this channel")
-                .extend_with(|_, extension| extension.set("code", "FORBIDDEN")),
-        )
-    }
 }
 
 fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {

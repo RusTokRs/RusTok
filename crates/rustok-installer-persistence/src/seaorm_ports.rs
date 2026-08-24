@@ -55,8 +55,13 @@ async fn import_base_distribution(
         .import(
             rustok_modules::ModuleStaticDistributionBootstrapImportCommand {
                 receipt: receipt.clone(),
-                actor_id,
-                idempotency_key,
+                context: rustok_modules::ModuleCommandContext {
+                    actor_id,
+                    tenant_id: None,
+                    trace_id: format!("installer:static-distribution-bootstrap:{idempotency_key}"),
+                    correlation_id: idempotency_key,
+                    idempotency_key,
+                },
             },
         )
         .await

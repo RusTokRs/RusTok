@@ -50,5 +50,3 @@ export function FormCardSkeleton() {
     </Card>
   );
 }
-
-export default FormCardSkeleton;

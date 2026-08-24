@@ -21,6 +21,8 @@ interface FormInputProps<
   step?: string | number;
   min?: string | number;
   max?: string | number;
+  lang?: string;
+  dir?: 'auto' | 'ltr' | 'rtl';
 }
 
 function FormInput<
@@ -37,6 +39,8 @@ function FormInput<
   step,
   min,
   max,
+  lang,
+  dir,
   disabled,
   className
 }: FormInputProps<TFieldValues, TName>) {
@@ -59,6 +63,8 @@ function FormInput<
               step={step}
               min={min}
               max={max}
+              lang={lang}
+              dir={dir}
               disabled={disabled}
               {...field}
               onChange={(e) => {

@@ -4,7 +4,6 @@ mod bounded_compat;
 mod category {
     include!("category_import.rs");
     include!("category.rs");
-    include!("category_locale_enumeration.rs");
     include!("category_projection_owner.rs");
     include!("category_visibility_list.rs");
 }
@@ -41,13 +40,6 @@ mod category_search_scope {
     include!("category_search_scope.rs");
 }
 mod category_topic_create_audience;
-mod category_translation_evidence;
-mod category_translation_progress;
-mod category_translation_target;
-mod category_tree {
-    include!("category_tree.rs");
-    include!("category_tree_visibility.rs");
-}
 mod category_visibility;
 mod counter_reconciliation;
 pub mod event;
@@ -85,7 +77,12 @@ pub(crate) mod projection_invalidation;
 mod public_discovery;
 mod quote_command;
 mod rbac;
-pub mod read_model;
+#[path = "read_model.rs"]
+mod read_model_legacy;
+mod read_model_owner;
+pub mod read_model {
+    pub use super::read_model_owner::ForumReadModelService;
+}
 pub mod read_tracking {
     include!("read_tracking.rs");
     include!("read_tracking_audience.rs");
@@ -197,7 +194,6 @@ pub use category_topic_create_audience::{
     ForumCategoryTopicCreateAudiencePolicy, ForumCategoryTopicCreateAudiencePolicyLayer,
     ForumCategoryTopicCreateAudiencePolicyService, SetForumCategoryTopicCreateAudiencePolicyInput,
 };
-pub use category_translation_progress::ForumCategoryTranslationTargetProvider;
 pub use category_visibility::{
     ForumCategoryVisibilityPolicy, ForumCategoryVisibilityPolicyService,
     SetForumCategoryVisibilityPolicyInput,

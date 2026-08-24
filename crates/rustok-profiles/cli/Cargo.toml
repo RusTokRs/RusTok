@@ -13,7 +13,6 @@ rustok-auth.workspace = true
 rustok-cli-core.workspace = true
 rustok-core.workspace = true
 rustok-customer.workspace = true
-rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles.workspace = true
 rustok-runtime.workspace = true

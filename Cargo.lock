@@ -12461,7 +12461,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "thiserror 2.0.20",
  "tokio",
  "toml 1.1.4+spec-1.1.0",
  "tower",
@@ -12477,7 +12476,6 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm 0.11.0",
  "alloy",
- "anyhow",
  "async-graphql",
  "async-trait",
  "base64 0.23.1",
@@ -12575,7 +12573,6 @@ dependencies = [
  "athanor-runtime-defaults",
  "rustok-ai",
  "serde_json",
- "thiserror 2.0.20",
  "tokio",
  "toml 1.1.4+spec-1.1.0",
  "uuid",
@@ -12825,7 +12822,6 @@ dependencies = [
  "rustok-content",
  "rustok-core",
  "rustok-events",
- "rustok-media",
  "rustok-outbox",
  "rustok-profiles",
  "rustok-reactions-api",
@@ -12951,7 +12947,6 @@ dependencies = [
  "async-trait",
  "futures-util",
  "hex",
- "moka",
  "postcard",
  "prometheus",
  "redis",
@@ -13584,7 +13579,6 @@ version = "0.1.0"
 dependencies = [
  "rustok-api",
  "serde",
- "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -14625,7 +14619,6 @@ dependencies = [
  "rustok-ui-core",
  "rustok-ui-transport",
  "serde",
- "thiserror 2.0.20",
  "web-sys",
 ]
 
@@ -15056,7 +15049,6 @@ dependencies = [
 name = "rustok-pricing-persistence"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "rust_decimal",
  "rustok-core",
  "sea-orm",
@@ -15242,7 +15234,6 @@ dependencies = [
  "rustok-cli-core",
  "rustok-core",
  "rustok-customer",
- "rustok-events",
  "rustok-outbox",
  "rustok-profiles",
  "rustok-runtime",
@@ -15718,7 +15709,6 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "anyhow",
- "argon2",
  "async-graphql",
  "async-graphql-value",
  "async-trait",
@@ -15739,13 +15729,11 @@ dependencies = [
  "moka",
  "object_store 0.14.1",
  "once_cell",
- "password-hash 0.6.1",
  "rand 0.10.2",
  "redis",
  "reqwest 0.12.28",
  "rhai",
  "rust-embed",
- "rust_decimal",
  "rustok-admin",
  "rustok-ai",
  "rustok-api",
@@ -15981,7 +15969,6 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "sha2 0.11.0",
- "thiserror 2.0.20",
  "tokio",
  "toml 1.1.4+spec-1.1.0",
  "tracing",
@@ -16095,7 +16082,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
- "rustok-api",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
@@ -16103,7 +16089,6 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
  "tokio",
  "tokio-test",
  "uuid",
@@ -16259,7 +16244,6 @@ dependencies = [
  "axum",
  "rustok-api",
  "serde",
- "serde_json",
  "sha2 0.11.0",
  "thiserror 2.0.20",
  "uuid",
@@ -16289,8 +16273,6 @@ dependencies = [
  "reqwest 0.13.4",
  "rustok-api",
  "rustok-core",
- "rustok-events",
- "rustok-outbox",
  "rustok-tenant",
  "rustok-web",
  "sea-orm",

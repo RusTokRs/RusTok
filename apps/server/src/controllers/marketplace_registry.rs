@@ -69,7 +69,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::context::AuthContextExtension;
 use rustok_api::request::RequestContext;
 use rustok_modules::{
-    ModuleExternalSourceEvidence, ModuleGovernanceError, ModuleGovernanceErrorCategory,
+    ModuleCommandContext, ModuleExternalSourceEvidence, ModuleGovernanceError,
+    ModuleGovernanceErrorCategory,
 };
 use rustok_web::HttpError;
 
@@ -487,6 +488,11 @@ async fn stage_external_prebuilt(
             "External prebuilt staging requires modules.manage authority",
         )));
     }
+    let command_context = auth
+        .map(|auth| registry_platform_command_context(auth, request.idempotency_key))
+        .ok_or_else(|| {
+            Error::Unauthorized("External prebuilt staging requires authentication".into())
+        })?;
     let governance = RegistryGovernanceService::new(ctx.db_clone());
     let snapshot = governance
         .publish_request_status_snapshot_for_authority(&request_id, Some(&authority))
@@ -515,6 +521,7 @@ async fn stage_external_prebuilt(
             &request_id,
             &authority,
             RegistryExternalPrebuiltStageInput {
+                context: command_context,
                 artifact_digest: request.artifact_digest,
                 source_evidence,
                 provenance_reference: request.provenance_reference,
@@ -522,7 +529,6 @@ async fn stage_external_prebuilt(
                 provenance_policy_revision: request.provenance_policy_revision,
                 quarantine_review_reference: request.quarantine_review_reference,
                 quarantine_policy_revision: request.quarantine_policy_revision,
-                idempotency_key: request.idempotency_key,
             },
         )
         .await
@@ -593,8 +599,8 @@ async fn stage_platform_build(
             "Platform build staging requires modules.manage authority",
         )));
     }
-    let tenant_id = auth
-        .map(|AuthContextExtension(context)| context.tenant_id)
+    let command_context = auth
+        .map(|auth| registry_tenant_command_context(auth, request.idempotency_key))
         .ok_or_else(|| {
             Error::Unauthorized("Platform build staging requires authentication".into())
         })?;
@@ -626,9 +632,8 @@ async fn stage_platform_build(
             &request_id,
             &authority,
             RegistryPlatformBuildStageInput {
-                tenant_id,
+                context: command_context,
                 build_request_id: request.build_request_id,
-                idempotency_key: request.idempotency_key,
             },
         )
         .await
@@ -2539,6 +2544,44 @@ fn optional_authority_from_auth(
         }
         _ => None,
     })
+}
+
+/// Builds the sole command-evidence representation accepted by tenant-scoped
+/// registry staging. Every field originates from the authenticated request or
+/// server telemetry; none is accepted from the registry payload.
+fn registry_tenant_command_context(
+    auth: &AuthContextExtension,
+    idempotency_key: Uuid,
+) -> ModuleCommandContext {
+    let trace_id = rustok_telemetry::current_trace_id()
+        .filter(|trace_id| !trace_id.trim().is_empty())
+        .unwrap_or_else(|| format!("registry:{idempotency_key}"));
+    ModuleCommandContext {
+        actor_id: auth.0.user_id,
+        tenant_id: Some(auth.0.tenant_id),
+        trace_id,
+        correlation_id: idempotency_key,
+        idempotency_key,
+    }
+}
+
+/// Builds platform-scoped evidence for a mutation of the global registry
+/// aggregate. The authenticated tenant authorizes the session but never
+/// becomes registry ownership or command scope.
+fn registry_platform_command_context(
+    auth: &AuthContextExtension,
+    idempotency_key: Uuid,
+) -> ModuleCommandContext {
+    let trace_id = rustok_telemetry::current_trace_id()
+        .filter(|trace_id| !trace_id.trim().is_empty())
+        .unwrap_or_else(|| format!("registry:{idempotency_key}"));
+    ModuleCommandContext {
+        actor_id: auth.0.user_id,
+        tenant_id: None,
+        trace_id,
+        correlation_id: idempotency_key,
+        idempotency_key,
+    }
 }
 
 fn require_remote_executor_access(

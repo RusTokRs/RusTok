@@ -15,7 +15,6 @@ tags = ["community", "content", "discussions"]
 [dependencies]
 content = { version_req = ">=0.1.0" }
 taxonomy = { version_req = ">=0.1.0" }
-page_builder = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "ForumModule"

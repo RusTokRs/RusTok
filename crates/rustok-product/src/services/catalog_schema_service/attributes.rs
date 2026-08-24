@@ -203,7 +203,7 @@ impl ProductCatalogSchemaService {
     ) -> Result<idempotency::Admission, PortError> {
         idempotency::admit(
             &self.db,
-            tenant_id,
+            idempotency::OwnerOperationScope::Tenant(tenant_id),
             PRODUCT_SCHEMA_RECEIPT_OWNER,
             idempotency_key,
             operation,

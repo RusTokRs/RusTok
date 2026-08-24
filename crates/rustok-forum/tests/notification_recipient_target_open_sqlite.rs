@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{Permission, PortActor, PortCallPolicy, PortContext, PortError};
-use rustok_core::{MemoryTransport, MigrationSource, ModuleRegistry, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, ModuleRegistry, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
     ForumAudienceConstraints, ForumModule, ForumNotificationRecipientContextPort,
@@ -14,9 +14,9 @@ use rustok_notifications_api::{
     AuthorizeNotificationTargetRequest, NotificationOpenAuthorization, NotificationSourceSlug,
     NotificationTargetKind, NotificationTargetRef, materialize_notification_source_registry,
 };
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -224,18 +224,32 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus) {
         .await
         .expect("notification recipient target-open database should connect");
     let manager = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
             .await
             .expect("taxonomy migration should apply");
     }
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         migration
             .up(&manager)
             .await
             .expect("forum migration should apply");
     }
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     (db, event_bus)
 }

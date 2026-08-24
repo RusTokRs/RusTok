@@ -1,24 +1,15 @@
-use std::ops::Deref;
-
-use super::category_route::{FORUM_CATEGORY_RENAMED_ROUTE_REASON, ForumCategoryRouteService};
-
-/// Transactional owner facade for category content mutations.
+/// Transactional owner facade for canonical Forum Category mutations.
 ///
-/// Read methods remain delegated to the established category service. Create,
-/// update and compatibility delete reuse the same private validators and tree
-/// helpers from this module while adding a full Forum projection invalidation
-/// before commit because category copy and ancestry affect topic documents.
+/// Forum owns membership, policy/counters and command authorization; Taxonomy
+/// owns canonical localized copy, routes, hierarchy and presentation. Public
+/// reads are composed separately through Taxonomy-backed read adapters.
 pub(super) struct CategoryProjectionOwnerService {
-    inner: CategoryService,
     db: DatabaseConnection,
 }
 
 impl CategoryProjectionOwnerService {
     pub(super) fn new(db: DatabaseConnection) -> Self {
-        Self {
-            inner: CategoryService::new(db.clone()),
-            db,
-        }
+        Self { db }
     }
 
     #[instrument(skip(self, security, input))]
@@ -27,11 +18,13 @@ impl CategoryProjectionOwnerService {
         tenant_id: Uuid,
         security: SecurityContext,
         input: CreateCategoryInput,
-    ) -> ForumResult<CategoryResponse> {
+    ) -> ForumResult<Uuid> {
         enforce_scope(&security, Resource::ForumCategories, Action::Create)?;
         validate_category_name(&input.name)?;
         let locale = normalize_locale(&input.locale)?;
         let slug = normalize_required_slug(&input.slug)?;
+        let canonical_name = input.name.clone();
+        let canonical_description = input.description.clone();
         let requested_position = input.position.unwrap_or(0);
         if requested_position < 0 {
             return Err(ForumError::Validation(
@@ -67,30 +60,17 @@ impl CategoryProjectionOwnerService {
         .insert(&txn)
         .await?;
 
-        ForumCategoryRouteService::ensure_current_route_key_available_in_tx(
-            &txn, tenant_id, id, &locale, &slug,
-        )
-        .await?;
-        forum_category_translation::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            category_id: Set(id),
-            tenant_id: Set(tenant_id),
-            locale: Set(locale.clone()),
-            name: Set(input.name),
-            slug: Set(slug),
-            description: Set(input.description),
-        }
-        .insert(&txn)
-        .await?;
-
-        super::category_translation_evidence::record_category_translation_change_in_tx(
+        taxonomy_sync::sync_category_copy_in_tx(
             &txn,
             tenant_id,
             id,
-            "create",
-            rustok_translation_targets::TranslationResourceLifecycle::Active,
+            locale,
+            canonical_name,
+            slug,
+            canonical_description,
         )
         .await?;
+        taxonomy_sync::sync_siblings_for_parent_in_tx(&txn, tenant_id, input.parent_id).await?;
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,
@@ -98,7 +78,7 @@ impl CategoryProjectionOwnerService {
         )
         .await?;
         txn.commit().await?;
-        self.inner.get(tenant_id, security, id, &locale).await
+        Ok(id)
     }
 
     #[instrument(skip(self, security, input))]
@@ -108,11 +88,12 @@ impl CategoryProjectionOwnerService {
         category_id: Uuid,
         security: SecurityContext,
         input: UpdateCategoryInput,
-    ) -> ForumResult<CategoryResponse> {
+    ) -> ForumResult<()> {
         enforce_scope(&security, Resource::ForumCategories, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
-        let translation_requested =
-            input.name.is_some() || input.slug.is_some() || input.description.is_some();
+        let requested_name = input.name.clone();
+        let requested_slug = input.slug.clone();
+        let requested_description = input.description.clone();
         let txn = self.db.begin().await?;
         let category = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
@@ -136,154 +117,54 @@ impl CategoryProjectionOwnerService {
         }
         active.update(&txn).await?;
 
-        let existing_translation = forum_category_translation::Entity::find()
-            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-            .filter(forum_category_translation::Column::CategoryId.eq(category_id))
-            .filter(forum_category_translation::Column::Locale.eq(&locale))
-            .one(&txn)
-            .await?;
-
-        match existing_translation {
-            Some(existing_translation) => {
-                let previous_slug = normalize_required_slug(&existing_translation.slug)?;
-                let next_slug = match input.slug.as_deref() {
+        let existing_canonical = taxonomy_sync::load_category_locale_copy_in_tx(
+            &txn,
+            tenant_id,
+            category_id,
+            &locale,
+        )
+        .await?;
+        let (canonical_name, canonical_slug, canonical_description) = match existing_canonical {
+            Some(existing) => {
+                let name = requested_name.clone().unwrap_or(existing.name);
+                validate_category_name(&name)?;
+                let slug = match requested_slug.as_deref() {
                     Some(slug) => normalize_required_slug(slug)?,
-                    None => match input.name.as_deref() {
-                        Some(name) => {
-                            validate_category_name(name)?;
-                            normalize_required_slug(name)?
-                        }
-                        None => previous_slug.clone(),
-                    },
+                    None if requested_name.is_some() => normalize_required_slug(&name)?,
+                    None => normalize_required_slug(&existing.slug)?,
                 };
-                let slug_changed = previous_slug != next_slug;
-                if slug_changed {
-                    ForumCategoryRouteService::prepare_slug_rename_in_tx(
-                        &txn,
-                        tenant_id,
-                        category_id,
-                        &locale,
-                        &previous_slug,
-                        &next_slug,
-                    )
-                    .await?;
-                }
-
-                let mut active: forum_category_translation::ActiveModel =
-                    existing_translation.into();
-                if let Some(name) = input.name {
-                    validate_category_name(&name)?;
-                    active.name = Set(name);
-                }
-                if slug_changed {
-                    active.slug = Set(next_slug);
-                }
-                if input.description.is_some() {
-                    active.description = Set(input.description);
-                }
-                active.update(&txn).await?;
-
-                if slug_changed {
-                    ForumCategoryRouteService::record_slug_rename_alias_in_tx(
-                        &txn,
-                        tenant_id,
-                        category_id,
-                        &locale,
-                        &previous_slug,
-                        FORUM_CATEGORY_RENAMED_ROUTE_REASON,
-                    )
-                    .await?;
-                }
+                let description = if requested_description.is_some() {
+                    requested_description.clone()
+                } else {
+                    existing.description
+                };
+                (name, slug, description)
             }
             None => {
-                let name = input.name.ok_or_else(|| {
+                let name = requested_name.clone().ok_or_else(|| {
                     ForumError::Validation("Category name is required".to_string())
                 })?;
                 validate_category_name(&name)?;
-                let slug = input
-                    .slug
+                let slug = requested_slug
                     .as_deref()
                     .map(normalize_required_slug)
                     .transpose()?
                     .unwrap_or_else(|| normalize_slug(&name));
                 let slug = normalize_required_slug(&slug)?;
-
-                ForumCategoryRouteService::ensure_current_route_key_available_in_tx(
-                    &txn,
-                    tenant_id,
-                    category_id,
-                    &locale,
-                    &slug,
-                )
-                .await?;
-                forum_category_translation::ActiveModel {
-                    id: Set(Uuid::new_v4()),
-                    category_id: Set(category_id),
-                    tenant_id: Set(tenant_id),
-                    locale: Set(locale.clone()),
-                    name: Set(name),
-                    slug: Set(slug),
-                    description: Set(input.description),
-                }
-                .insert(&txn)
-                .await?;
+                (name, slug, requested_description.clone())
             }
-        }
+        };
 
-        if translation_requested {
-            super::category_translation_evidence::record_category_translation_change_in_tx(
-                &txn,
-                tenant_id,
-                category_id,
-                "update",
-                rustok_translation_targets::TranslationResourceLifecycle::Active,
-            )
-            .await?;
-        }
-        super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
-            &txn,
-            tenant_id,
-            security.user_id,
-        )
-        .await?;
-        txn.commit().await?;
-        self.inner
-            .get(tenant_id, security, category_id, &locale)
-            .await
-    }
-
-    #[instrument(skip(self, security))]
-    pub(super) async fn delete(
-        &self,
-        tenant_id: Uuid,
-        category_id: Uuid,
-        security: SecurityContext,
-    ) -> ForumResult<()> {
-        enforce_scope(&security, Resource::ForumCategories, Action::Delete)?;
-        let txn = self.db.begin().await?;
-        let category = forum_category::Entity::find_by_id(category_id)
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(ForumError::CategoryNotFound(category_id))?;
-
-        super::category_translation_evidence::record_category_translation_change_in_tx(
+        taxonomy_sync::sync_category_copy_in_tx(
             &txn,
             tenant_id,
             category_id,
-            "delete",
-            rustok_translation_targets::TranslationResourceLifecycle::Deleted,
+            locale,
+            canonical_name,
+            canonical_slug,
+            canonical_description,
         )
         .await?;
-        forum_category_translation::Entity::delete_many()
-            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-            .filter(forum_category_translation::Column::CategoryId.eq(category_id))
-            .exec(&txn)
-            .await?;
-        forum_category::Entity::delete_by_id(category.id)
-            .exec(&txn)
-            .await?;
-
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,
@@ -295,10 +176,6 @@ impl CategoryProjectionOwnerService {
     }
 }
 
-impl Deref for CategoryProjectionOwnerService {
-    type Target = CategoryService;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
+pub(super) mod taxonomy_sync {
+    include!("category_taxonomy_sync.rs");
 }

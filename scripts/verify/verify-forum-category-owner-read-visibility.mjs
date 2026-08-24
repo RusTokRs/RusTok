@@ -146,7 +146,8 @@ for (const marker of [
 }
 
 for (const marker of [
-  "pub(crate) async fn list_paginated_with_locale_fallback_and_hidden_categories(",
+  "TaxonomyOwnerCategoryReader",
+  "pub(in crate::services) async fn list_paginated_with_locale_fallback_and_hidden_categories(",
   "forum_category::Column::Id.is_not_in(hidden_category_ids.to_vec())",
   "let paginator = query",
   "let total = paginator.num_items().await?",
@@ -167,11 +168,10 @@ if (
 }
 
 for (const marker of [
+  "TaxonomyOwnerCategoryReader",
   "pub(super) async fn read_with_hidden_categories(",
-  "let mut response = self.read(tenant_id, security, query).await?",
-  "retain_visible_category_nodes(&mut response.roots, &hidden)",
-  "response.total_nodes = total_nodes",
-  "response.max_depth = max_depth",
+  "let hidden = hidden_category_ids.iter().copied().collect::<HashSet<_>>()",
+  "let (total_nodes, max_depth) = retain_visible_nodes(&mut roots, &hidden)",
   "nodes.retain(|node| !hidden.contains(&node.id))",
   "node.children_count = node.children.len() as u32",
   "node.has_children = !node.children.is_empty()",
@@ -179,11 +179,22 @@ for (const marker of [
   requireText(categoryTreeFilter, marker, `category tree visibility is missing ${marker}`);
 }
 
-for (const marker of [
-  "include!(\"category_visibility_list.rs\");",
-  "include!(\"category_tree_visibility.rs\");",
+requireText(
+  services,
+  'include!("category_visibility_list.rs");',
+  "services composition must retain the Taxonomy read adapter include",
+);
+requireText(
+  categoryFacade,
+  '#[path = "category_taxonomy_tree_read.rs"]',
+  "category facade must compose the Taxonomy tree reader",
+);
+for (const forbidden of [
+  'include!("category_locale_enumeration.rs");',
+  'include!("category_tree.rs");',
+  'include!("category_tree_visibility.rs");',
 ]) {
-  requireText(services, marker, `services composition is missing ${marker}`);
+  rejectText(services, forbidden, `services composition must retire ${forbidden}`);
 }
 
 for (const marker of [

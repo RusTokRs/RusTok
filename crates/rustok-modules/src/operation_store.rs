@@ -320,7 +320,7 @@ impl ModuleOperationJournal {
                 request.idempotency_key.into(),
                 request
                     .expected_revision
-                    .map(|value| i64::try_from(value))
+                    .map(i64::try_from)
                     .transpose()
                     .map_err(|_| ModuleOperationStoreError::Database(
                         "static lifecycle expected revision exceeds storage range".to_string(),
@@ -1090,24 +1090,6 @@ mod tests {
             .await
             .expect("tenant modules table");
         database
-    }
-
-    async fn stored_settings(
-        database: &sea_orm::DatabaseConnection,
-        tenant_id: Uuid,
-        module_slug: &str,
-    ) -> serde_json::Value {
-        database
-            .query_one(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "SELECT settings FROM tenant_modules WHERE tenant_id = ?1 AND module_slug = ?2",
-                vec![tenant_id.into(), module_slug.into()],
-            ))
-            .await
-            .expect("read settings")
-            .expect("settings row")
-            .try_get("", "settings")
-            .expect("settings json")
     }
 
     #[tokio::test]

@@ -182,7 +182,7 @@ impl SeaOrmModuleAuthoringPublishService {
             ui_packages: serde_json::json!({"admin": null, "storefront": null}),
             name: command.name.clone(),
             description: command.description.clone(),
-            actor_principal: author_principal(&command.context.actor_id),
+            actor_principal: author_principal(command.context.actor_id),
             actor_can_manage_modules: false,
         };
         request.validate()?;
@@ -363,8 +363,6 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
             .context
             .tenant_id
             .ok_or(ModuleAuthoringPublishError::InvalidCommand)?;
-        let idempotency_key = Uuid::parse_str(&command.context.idempotency_key)
-            .map_err(|_| ModuleAuthoringPublishError::InvalidCommand)?;
         let completed = self
             .builds
             .load_completed(tenant_id, command.build_request_id)
@@ -393,7 +391,7 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
             .governance
             .create_publish_request(Self::create_command(&command)?)
             .await?;
-        let actor_principal = author_principal(&command.context.actor_id);
+        let actor_principal = author_principal(command.context.actor_id);
         let artifact_command = ModulePublishArtifactAttachCommand {
             request_id: request_id.clone(),
             expected_revision: 1,
@@ -428,9 +426,8 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
             .stage_platform_build(ModulePublishPlatformBuildStageCommand {
                 request_id: request_id.clone(),
                 expected_revision: 2,
-                tenant_id,
+                context: command.context.clone(),
                 build_request_id: command.build_request_id,
-                idempotency_key,
                 actor_principal: actor_principal.clone(),
                 actor_can_manage_modules: false,
             })
@@ -490,10 +487,7 @@ impl ModuleAuthoringPublishCommand {
         tags.sort();
         tags.dedup();
         if !matches!(self.context.tenant_id, Some(tenant_id) if !tenant_id.is_nil())
-            || !matches!(
-                Uuid::parse_str(&self.context.idempotency_key),
-                Ok(idempotency_key) if !idempotency_key.is_nil()
-            )
+            || self.context.idempotency_key.is_nil()
             || self.build_request_id.is_nil()
             || !is_valid_module_slug(&self.slug)
             || Version::parse(&self.version).is_err()
@@ -531,7 +525,7 @@ impl ModuleAuthoringPublishCommand {
     }
 }
 
-fn author_principal(actor_id: &str) -> serde_json::Value {
+fn author_principal(actor_id: Uuid) -> serde_json::Value {
     serde_json::json!({"kind": "user", "id": actor_id})
 }
 
@@ -624,11 +618,11 @@ mod tests {
     fn command() -> ModuleAuthoringBuildCommand {
         ModuleAuthoringBuildCommand {
             context: ModuleCommandContext {
-                actor_id: "user:author".to_string(),
+                actor_id: Uuid::new_v4(),
                 tenant_id: Some(Uuid::new_v4()),
                 trace_id: "trace:authoring-build".to_string(),
-                correlation_id: "correlation:authoring-build".to_string(),
-                idempotency_key: "authoring-build:sample:1".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
             },
             project_id: "project:sample".to_string(),
             source_digest: digest('a'),
@@ -644,11 +638,11 @@ mod tests {
     fn publish_command() -> ModuleAuthoringPublishCommand {
         ModuleAuthoringPublishCommand {
             context: ModuleCommandContext {
-                actor_id: "user:author".to_string(),
+                actor_id: Uuid::new_v4(),
                 tenant_id: Some(Uuid::new_v4()),
                 trace_id: "trace:authoring-publish".to_string(),
-                correlation_id: "correlation:authoring-publish".to_string(),
-                idempotency_key: Uuid::new_v4().to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
             },
             build_request_id: Uuid::new_v4(),
             slug: "sample_module".to_string(),
@@ -736,7 +730,7 @@ mod tests {
         assert!(unsorted_tags.validate().is_err());
 
         let mut nil_idempotency = publish_command();
-        nil_idempotency.context.idempotency_key = Uuid::nil().to_string();
+        nil_idempotency.context.idempotency_key = Uuid::nil();
         assert!(nil_idempotency.validate().is_err());
     }
 }

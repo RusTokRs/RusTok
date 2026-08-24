@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
     ForumAudienceConstraints, ForumCategoryReplyCreateAudiencePolicyService, ForumError,
@@ -9,9 +9,10 @@ use rustok_forum::{
     SetForumCategoryReplyCreateAudiencePolicyInput, SetForumTopicAudiencePolicyInput,
     SetForumTopicReplyCreateAudiencePolicyInput, TopicService,
 };
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
+    ConnectionTrait,
     ActiveModelTrait, ActiveValue::Set, ConnectOptions, Database, DatabaseConnection, EntityTrait,
     IntoActiveModel, PaginatorTrait,
 };
@@ -32,19 +33,33 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus) {
         .await
         .expect("forum topic reply-create audience sqlite database should connect");
     let schema = SchemaManager::new(&db);
+        for migration in OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
             .await
             .expect("taxonomy migration should apply");
     }
+        db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         migration
             .up(&schema)
             .await
             .expect("forum migration should apply");
     }
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     (db, event_bus)
 }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import type { AdminGraphqlExecutor } from '@/lib/graphql';
 
 export type McpAdminPageProps = {
   graphql: AdminGraphqlExecutor;
@@ -8,14 +9,6 @@ export type McpAdminPageProps = {
   tenantSlug?: string | null;
   graphqlUrl?: string;
 };
-
-export type AdminGraphqlExecutor = <V, T>(
-  query: string,
-  variables?: V,
-  token?: string | null,
-  tenantSlug?: string | null,
-  options?: { graphqlUrl?: string; tenantId?: string | null }
-) => Promise<T>;
 
 type McpScaffoldDraft = {
   id: string;
@@ -1046,5 +1039,3 @@ function formatJsonForDisplay(value: string): string {
     return value;
   }
 }
-
-export default McpAdminPage;

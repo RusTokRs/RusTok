@@ -2,385 +2,372 @@
 
 ## Current state
 
-`rustok-taxonomy` owns tenant-scoped dictionary terms, translations, aliases,
-canonical keys, and global/module scope rules. It is a vocabulary layer, not
-shared product storage: blog, forum, product, and profiles retain their own
-attachment tables and public domain contracts.
+`rustok-taxonomy` is the canonical shared classification capability. It owns stable term identity,
+localized copy and routes, aliases, scope rules and the shared Category model. Consumer modules keep
+their own relations/bindings and domain policy; Taxonomy must not become a generic polymorphic
+`owner_type/owner_id` attachment store.
 
-Term identity is locale-independent. Locale normalization and fallback use the
-shared content contract. New consumers must attach terms through an explicit
-owner-module relation table.
+The accepted kind surface is:
 
-Taxonomy terms have no soft-deprecated/archive state. A persisted term is the
-current canonical term identity. Removal is an actual delete; owner relation
-foreign keys and route-key reservations must make deletion effects explicit
-rather than hiding an unusable term behind a lifecycle flag. Historical
-`archived` Taxonomy translation-change evidence is normalized to `active` by
-the retained status-removal migration; real deletions remain `deleted`.
+- `Tag` — flat shared vocabulary used by Blog, Forum, Product, Profiles and other consumers;
+- `Category` — shared hierarchical classification reused across Forum, Blog, Product and future
+  modules.
 
-Localized route keys have one lookup namespace per
-`tenant + kind + scope + locale`: a translation slug on one term cannot be
-shadowed by an alias on another term, and vice versa. Module lookup prefers the
-module scope over the global scope and follows requested locale -> explicit
-fallback -> platform fallback. Owner transaction lookup uses the same existing
-term identity and creates a new module term only when neither a route key nor a
-canonical key resolves.
+This plan follows `DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md` and
+`docs/architecture/taxonomy-flex-category-platform-plan.md`. Those decisions supersede historical
+Tag-only/flat-vocabulary text that kept category identity, hierarchy and canonical translations in
+consumer modules.
 
-`taxonomy_term_route_keys` is the storage-level route ownership authority. Its
-composite primary key is the complete localized route identity
-(`tenant + kind + scope_type + scope_value + locale + route_key`) and `term_id`
-is the owner. The migration preflights existing translation and alias rows
-before creating the registry: same-term duplicate representations are
-deduplicated, while a cross-term collision blocks migration with a deterministic
-diagnostic instead of choosing a winner. Runtime localized mutation
-finalization reconciles translation+alias rows with registry reservations in
-the same transaction. Missing reservations are inserted before stale
-reservations are released, so a concurrent claimant must win the single
-database key or roll its mutation back. Term deletion removes reservations via
-the composite tenant/term foreign-key cascade.
+Term identity is locale-independent. Locale normalization and fallback use `rustok-content`.
+Localized route keys have one storage namespace per `tenant + kind + scope + locale`, with
+`taxonomy_term_route_keys` as the route ownership authority. Taxonomy terms retain hard-delete
+semantics rather than a hidden archived lifecycle.
 
-Service and consumer route resolution read `taxonomy_term_route_keys` directly.
-The old translation-first/alias-second lookup path is not a second authority:
-translation and alias tables hold localized content, while the registry owns
-route identity and collision serialization.
+`TaxonomyTranslationTargetProvider` remains the single Translation owner for canonical Taxonomy
+copy. Category reuses that provider; Forum, Blog and Product must not retain duplicate category
+Translation providers after their cutovers.
 
-Category hierarchy is deliberately outside the shared dictionary contract.
-Parent/child category edges, ordering, cycle rules, and domain-specific category
-metadata belong to the module that owns the category aggregate and its public
-contract. Taxonomy must not acquire a generic `parent_id`, category tree, or
-polymorphic relation table merely to centralize hierarchy. If a future domain
-needs a shared hierarchical vocabulary, that requires a separate demonstrated
-kind/ownership decision and explicit migration contract.
+## Category ownership contract
 
-`TaxonomyTranslationTargetProvider` is registered by server composition as
-`taxonomy/term`. It exposes exact source/target snapshots for `name`, `slug`,
-and optional `description`; applies one target locale through resource/source/
-target revision CAS; reports exact source/target progress; and reads the
-append-only owner change cursor. Existing terms always expose
-`TranslationResourceLifecycle::Active`; actual term deletion produces a
-`deleted` change record. `slug` remains review-only for machine translation.
-Provider apply uses the shared Outbox receipt ledger under owner slug
-`taxonomy`, while Taxonomy retains authorization, validation, and the owner
-transaction. The provider records durable owner change evidence but does not
-claim a global `translation.target.changed` event contract.
+Taxonomy-owned Category data includes:
 
-The Profiles consumer now has demonstrated pressure for a per-profile locale
-preference between requested locale and tenant default when presenting attached
-Taxonomy tags. Taxonomy therefore exposes a tenant/kind-bounded owner read
-projection for localized term names while Profiles keeps `profile_tags`, the
-per-profile preference order, and batching semantics. This does not add a new
-Taxonomy kind, generic relation storage, category hierarchy, or a second route
-identity authority.
+- stable UUID and `canonical_key`;
+- tenant and `global | module` scope;
+- localized `name`, `slug`, `description` and aliases;
+- parent/child hierarchy and sibling ordering;
+- cycle, maximum-depth and same-scope invariants;
+- canonical presentation: bounded semantic icon key, canonical color and typed Media identities;
+- revision/change evidence used by Translation/cache consumers;
+- opt-in Flex extension capability for tenant-defined fields.
 
-## FFA/FBA boundary
+A Category without an explicit hierarchy placement is a root category with default position `0`.
+Hierarchy is typed Category storage, not a generic term relation: Tags do not acquire parent/child
+semantics merely because they share the Taxonomy term table.
 
-- FFA status: `not_started`
-- FBA status: `boundary_ready`
-- Structural shape: `no_ui_boundary`
-- This dictionary module has no module-owned UI. Its owner-neutral Translation
-  target SPI is an embedded capability boundary; no Taxonomy-specific UI or
-  external transport is implied.
+Canonical Category presentation is also separate typed storage. An absent presentation reads as an
+empty canonical presentation at revision `0`. Presentation has its own optimistic revision because a
+color/icon/image change must not invalidate the Taxonomy term revision used by Translation CAS.
+Media remains the binary lifecycle owner: Taxonomy stores only typed Media identities and runtime
+composition must validate same-tenant active public images before a write. Delivery URLs, storage
+paths and blob lifecycle are never copied into Taxonomy.
 
-## Tracked results
+Consumer-owned state stays outside Taxonomy. Examples include Forum moderation/audience/posting
+policy and counters, Product merchandising/navigation assignment semantics, Blog placement policy,
+and every module's typed relation/binding between its domain objects and a Taxonomy category.
 
-Results 1-4 are complete for the currently demonstrated contracts. The
-Profiles-driven Taxonomy owner-read source change was a semantic runtime-input
-change under the retained fingerprint policy, so Result 4 was deliberately
-reopened until both a fully green exact-head pull-request run and a fully green
-post-merge main run existed for the replacement fingerprint set. Those proofs
-are now recorded. Future consumer pressure, a genuinely new vocabulary kind, or
-a new operational incident class must extend the tracked contract with explicit
-ownership and evidence rather than weakening these established baselines.
+## Flex boundary
 
-1. **Keep dictionary and consumer contracts synchronized. — COMPLETE.** Update
-   taxonomy terms, scope rules, consumer integrations, and manifest metadata
-   atomically.
-   **Depends on:** the change-owning consumer module.
-   **Done when:** an owning module, rather than taxonomy, owns each attachment
-   table and public relation contract.
+`flex` is the platform custom-fields capability. Taxonomy must not build a second custom-fields
+engine.
 
-   `scripts/verify/verify-taxonomy-ownership-boundary.mjs` is the continuous
-   source guard for this boundary. It keeps Taxonomy production source free of
-   generic category hierarchy and polymorphic consumer attachment storage, and
-   requires the known Blog, Forum, Product, and Profiles relation tables to
-   remain owner-module artifacts. Product category tree/closure storage plus
-   Blog and Forum category hierarchy/translation storage are pinned to their
-   owner modules. The lightweight `Taxonomy Ownership Boundary` workflow runs
-   this guard whenever Taxonomy or one of those ownership-defining artifacts
-   changes.
+After canonical Category presentation is stable, `taxonomy.category` becomes an explicit Flex donor.
+Built-in Category identity, hierarchy, localization, routes and canonical presentation remain
+normalized Taxonomy fields. Flex supplies administrator-defined extension fields, validation,
+localized values, transport and generic admin schema-builder behavior.
 
-   `scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs` proves the
-   guard fails closed on representative regressions: a Taxonomy `parent_id`, a
-   consumer relation table moved into Taxonomy persistence, generic
-   `owner_type/owner_id` attachment storage, missing Forum category translation
-   ownership, missing Product category closure storage, and a missing owner-side
-   profile relation artifact. The dedicated workflow runs this fixture suite
-   before the real repository scan, and both checks are available through
-   `scripts/verify/verify-all.sh` for local parity.
+Forum Topic remains an intentional Flex donor for optional tenant-defined topic fields. That does not
+move Forum business invariants such as route identity, moderation state, category binding, accepted
+solution, counters or access policy into Flex.
 
-   `scripts/verify/verify-taxonomy-contract-matrix.mjs` closes the consumer
-   metadata/public-contract side of the same ownership result. It requires Blog,
-   Forum, Product, and Profiles to declare `taxonomy >=0.1.0` in their module
-   manifests and to retain public documentation that names the module-owned
-   relation (`blog_post_tags`, `forum_topic_tags`, `product_tags`, or
-   `profile_tags`) while Taxonomy remains the shared vocabulary owner. The
-   matrix also source-locks its own focused workflow triggers so a manifest or
-   public relation-contract change cannot silently bypass the ownership gate.
-   `verify-taxonomy-contract-matrix.test.mjs` proves manifest dependency drift,
-   public relation-contract drift, and workflow-trigger drift fail closed.
+## Current implementation sequence
 
-   Production consumers are separately kept off Taxonomy SeaORM persistence by
-   `scripts/verify/verify-taxonomy-persistence-boundary.mjs` and its negative
-   fixture suite in the repository-wide `Hardening Gates` workflow. Owner-side
-   relation reads/writes therefore remain with the consumer module while shared
-   vocabulary access stays behind Taxonomy owner/service boundaries.
+### TAXONOMY-CAT-1 — ownership decision and guardrails — COMPLETE
 
-   Result 1 is complete for the current Blog/Forum/Product/Profiles consumer
-   set after PR #3565. Exact-head run `31826897482` (`Taxonomy Ownership
-   Boundary`), job `94853039929`, succeeded on
-   `1a8d2b0fd5ac4183438e5890427b8238f0180853`, including the legacy ownership
-   self-test/scan and the new contract-matrix self-test/real-repository scan.
+PR #3680 accepted Taxonomy as the canonical shared Category owner and Flex as the only runtime
+custom-fields capability. The Taxonomy ownership/kind guardrails allow the intentional Category kind
+and typed shared hierarchy while still rejecting generic polymorphic consumer storage.
 
-2. **Expand kinds and lookup semantics only for demonstrated domain pressure. — COMPLETE.**
-   Do not add speculative vocabulary kinds or polymorphic attachment storage.
-   The current tag lookup baseline requires locale-aware route ownership,
-   module-before-global precedence, shared locale fallback, registry-authority
-   lookup, hard-delete-only term removal, and storage-level route-key
-   reservation. Category parent/child hierarchy remains owner-domain state
-   rather than an implicit taxonomy kind.
-   **Depends on:** a concrete domain requirement and scope decision.
-   **Done when:** canonical-key, alias/slug, tenant, module-scope, locale,
-   deletion, and any newly demonstrated kind semantics are defined and tested.
+### TAXONOMY-CAT-2 — Category kind + hierarchy foundation — COMPLETE
 
-   Owner-write batch semantics are exercised in
-   `tests/localized_route_lookup.rs`: equivalent case/whitespace labels collapse
-   to one normalized route identity, module scope wins before global even when
-   the requested locale must use the platform fallback, and a global term is
-   reused without creating a shadow module term when no module owner exists.
-   Canonical-key fallback preserves the same module-before-global and tenant
-   boundaries: a module canonical key wins before a global route, a global
-   canonical key is reused without creating a shadow module term, and identical
-   canonical keys in different tenants resolve only inside their own tenant.
-   Module scope labels and locale tags are normalized at the Taxonomy boundary;
-   owner modules may preserve their own input ordering/display casing without
-   becoming a second identity authority.
+PR #3681 added `TaxonomyTermKind::Category`, Taxonomy-owned hierarchy persistence, bounded placement
+APIs and storage-level hierarchy enforcement. Category writers are tenant/scope bounded, Tags are
+rejected, position is non-negative, depth is capped at 16, and cycle prevention is enforced in both
+service and storage boundaries. PostgreSQL hierarchy mutations serialize per tenant so concurrent
+opposite moves cannot both commit an invalid cycle.
 
-   Hard deletion is also a route-identity lifecycle boundary. After a term is
-   deleted, its localized route must stop resolving and its route, alias, and
-   canonical identities must be available to a later replacement in the same
-   tenant and scope. `tests/route_key_registry.rs` exercises the full
-   resolve -> hard delete -> no result -> replacement reuse path in addition to
-   the storage-level reservation cascade assertions.
+Retained focused evidence:
 
-   `.github/workflows/taxonomy-lookup-contract.yml` is the path-filtered Rust
-   gate for these lookup, owner-write, and route-registry semantics. It runs
-   both the localized lookup and route-registry integration suites whenever
-   Taxonomy lookup, route-key, locale-normalization, migration, dependency-lock,
-   kind DTO, or test inputs change, independently of unrelated workspace build
-   jobs. `crates/rustok-taxonomy/src/dto.rs` is an explicit trigger, so adding a
-   new `TaxonomyTermKind` cannot bypass the focused lookup suite.
+- `Taxonomy Ownership Boundary` and `Taxonomy Lookup Contract` passed on the final PR head;
+- exact-head `Taxonomy PostgreSQL Evidence` run `32571095910` passed source contract, canonical
+  PostgreSQL 16 migrations, Category hierarchy contention, route-registry contention evidence,
+  Translation-target CAS/change-cursor evidence and the final gate;
+- PR #3681 was squash-merged as `8746be7d5adcee0fd33005cb90065b92e3ba2cda`.
 
-   The contract matrix pins the currently demonstrated kind surface to exactly
-   `Tag` and requires the established registry-authority, normalization,
-   module/global precedence, locale fallback, canonical-key, tenant isolation,
-   database route-ownership, and hard-delete-reuse regression cases to remain
-   present. Its negative fixtures prove an unreviewed `Category` addition or
-   removal of the `dto.rs` workflow trigger fails closed. This is not a claim
-   that Taxonomy can never gain another kind: a future kind must arrive with a
-   concrete domain requirement, explicit ownership decision, lookup/lifecycle
-   semantics, migrations where required, and dedicated executable evidence.
+### TAXONOMY-CAT-3 — canonical Category presentation — COMPLETE
 
-   Result 2 is complete for the demonstrated Tag baseline after PR #3565.
-   Exact-head run `31826897506` (`Taxonomy Lookup Contract`), job
-   `94853039807`, succeeded on
-   `1a8d2b0fd5ac4183438e5890427b8238f0180853`: the route-registry recovery
-   diagnostic passed and both `localized_route_lookup` and
-   `route_key_registry` integration binaries completed successfully.
+PR #3682 added `taxonomy_category_presentations` as canonical Taxonomy-owned storage with:
 
-3. **Maintain dictionary operational guidance. — COMPLETE.** Add documentation
-   and runbooks when a changed vocabulary contract introduces drift or
-   integration recovery risk. Route-registry migration failures must be repaired
-   by resolving the reported cross-term owner collision, never by deleting an
-   arbitrary winner.
-   **Depends on:** an actual runtime or consumer incident class.
-   **Done when:** operators can reconcile terms, aliases, registry reservations,
-   and owner attachments without inventing shared relation ownership.
+- `icon_key` — normalized bounded ASCII kebab-case design token, maximum 64 bytes;
+- `color` — normalized lower-case `#rrggbb` or `#rrggbbaa`, accepting short/long hex input only;
+- `image_media_id` and `cover_media_id` — typed Media identities, never copied delivery URLs;
+- independent presentation `revision` with full-replacement compare-and-swap semantics;
+- empty revision `0` when no canonical presentation row exists;
+- normalized no-op writes that do not advance presentation revision;
+- Category-only read/write APIs; Tags cannot acquire Category presentation;
+- an owner-neutral `TaxonomyCategoryMediaReferenceValidator` boundary. Runtime composition must
+  delegate validation to the Media public-image owner contract and reject cross-tenant or non-public
+  assets. Taxonomy does not add a hard compile/runtime dependency on Media merely to store optional
+  identities.
 
-   `docs/route-registry-recovery.md` is the retained recovery procedure for the
-   concrete registry-drift incident class exposed by registry-authority lookup.
-   Operators diagnose the complete
-   `tenant + kind + scope_type + scope_value + locale + route_key` tuple with
-   read-only queries, then repair missing/stale reservations through the normal
-   Taxonomy owner/service mutation path. Direct production writes to
-   `taxonomy_term_route_keys` are explicitly forbidden: localized mutation
-   finalization reconciles desired reservations before durable change evidence
-   commits, and a conflicting registry owner must make the repair fail closed.
+The presentation revision is deliberately distinct from `taxonomy_terms.revision`. Translation
+resource/source/target CAS remains about localized text; a presentation change must not invalidate a
+text proposal. Consumer-specific presentation overrides remain future binding policy and must layer
+over canonical Taxonomy values rather than copying them when a binding is created.
 
-   The runbook also keeps attachment repair with Blog (`blog_post_tags`), Forum
-   (`forum_topic_tags`), Product (`product_tags`), and Profiles (`profile_tags`),
-   and keeps Blog/Forum/Product category hierarchy in those owner modules.
-   `tests/route_key_registry.rs` proves all three concrete recovery outcomes: a
-   normal owner-service update restores a deliberately missing reservation; an
-   unchanged authoritative re-save releases a deliberately stale registry-only
-   route while preserving desired slug/alias ownership and lookup; and a
-   cross-term collision rejects the losing repair without stealing the existing
-   registry owner. No generic Taxonomy relation table or `parent_id` is part of
-   recovery.
+Retained focused evidence:
 
-   Result 3 is complete for the demonstrated route-registry drift incident
-   class after PRs #3549, #3550, and #3559. Exact-head PR #3559 run
-   `31818118097` (`Taxonomy Lookup Contract`) and run `31818118039`
-   (`Taxonomy Ownership Boundary`) succeeded on
-   `5912fb172006b707b083260c0636bc8c6ea945f5`; PostgreSQL evidence run
-   `31818118093` also succeeded on that same head. A future distinct incident
-   class can add new guidance without reopening or weakening the established
-   missing/stale/cross-term recovery contract.
+- final head `c397dda2bc04a32974077dd2dbfd418797b56e1a` passed `Taxonomy Ownership Boundary` and
+  `Taxonomy Lookup Contract`;
+- exact-head `Taxonomy PostgreSQL Evidence` run `32572959402` passed the canonical PostgreSQL 16
+  migration graph plus direct Category presentation storage guard/same-revision CAS evidence;
+- PR #3682 was squash-merged as `7bb105d10fc99cb5271d008d3cb62395dee5cacf`.
 
-4. **Collect production target and route-registry evidence. — COMPLETE.** Run
-   the canonical server migration graph, including the owner-operation receipt
-   dependency and retained Taxonomy migrations, plus PostgreSQL concurrent
-   localized-write, translation apply, and change-cursor scenarios before
-   treating the route registry and `taxonomy/term` target as production-proven
-   under replicas.
-   **Depends on:** a production-like PostgreSQL runtime.
-   **Done when:** retained migration/backfill, two-writer route-key contention,
-   translation apply CAS, and cursor-recovery evidence prove that exactly one
-   route owner can commit and the registered provider remains correct under
-   multi-replica conditions, with both an exact-head pull-request run and a
-   post-merge main run over the same fingerprinted runtime inputs.
+### TAXONOMY-CAT-4 — Flex Category donor — COMPLETE
 
-   Source evidence for the two-writer route-key contention portion is executable
-   in `tests/route_registry_contention_postgres.rs`. With
-   `RUSTOK_TAXONOMY_TEST_DATABASE_URL` it creates an isolated PostgreSQL schema,
-   runs the retained Taxonomy migrations, uses two independent writer
-   connections, forces both localized writers past route preflight before
-   releasing their translation-row locks, and verifies that the registry key
-   admits exactly one commit while the losing translation rolls back.
+PR #3683 delivered the reusable backend donor foundation. It intentionally extends Flex rather than
+adding a Taxonomy-specific custom-fields engine:
 
-   Source evidence for translation-target CAS and cursor recovery is executable
-   in `tests/translation_target_postgres.rs`. It requires the canonical
-   PostgreSQL schema produced by the canonical server Migrator and refuses to
-   run if the owner-operation receipt ledger or required Taxonomy tables are
-   absent. The scenarios use unique tenant identities and independent
-   single-session connections, then race two applies from the same exact
-   source/target snapshot and expected revisions. Exactly one stale-revision
-   candidate may commit; the loser must close as a conflict, leaving one
-   resource/target revision advance and one durable winning change fact. A
-   separate recovery scenario resumes from the create cursor after provider
-   reconstruction, applies an exact target, reconstructs again around hard
-   deletion, resumes the `deleted` lifecycle change, drains after the latest
-   cursor, and verifies progress exposes that latest durable owner cursor.
-   Sequential recovery writes are separated across ULID milliseconds for
-   deterministic cursor ordering; this does not claim an arbitrary concurrent
-   transaction commit-order guarantee.
+- `taxonomy.category` is a namespaced Flex entity type;
+- Flex owns generic attached field-definition persistence keyed by tenant and donor entity type;
+- Flex owns optional generic shared attached values while reusing the existing localized-value store;
+- the server field-definition registry registers `taxonomy.category` when Taxonomy is compiled;
+- the server value adapter validates the real owner identity as the same-tenant
+  `TaxonomyTermKind::Category` before reading or writing generic Flex rows;
+- shared and localized prepared writes/deletes are committed atomically through a host transaction;
+- generic definitions reuse the existing validation, event and durable cache-generation contracts;
+- exact-locale authoring remains separate from read fallback, so editing one locale cannot seed
+  another locale with fallback text.
 
-   `.github/workflows/taxonomy-postgres-evidence.yml` is the retained runtime
-   path. It provisions PostgreSQL 16, checks out the exact pull-request head (or
-   exact push SHA), activates and asserts Rust `1.96.0`, runs `rustok-migrate up`
-   against the ephemeral database, executes both Taxonomy PostgreSQL harnesses,
-   archives migration/test provenance and logs, and requires the source/runtime
-   gate. During an evidence refresh, the runtime job may still collect proof
-   after a deliberately stale source snapshot fails; the final gate remains
-   fail-closed until the snapshot itself is updated.
+PR #3684 completed the real Category instance boundary through the existing generic Flex surface:
 
-   The previous Result 4 completion remains historical evidence: exact-head run
-   `31738994542` and post-merge main run `31745429243` proved the earlier
-   fingerprint set. The Profiles-driven owner-read source change invalidated
-   that set exactly as the source verifiers are designed to do; those old runs
-   are not reused as proof for the current runtime inputs.
+- Flex owns the attached-value GraphQL read/update/delete port and transport types;
+- tenant identity and tenant-default locale come from trusted GraphQL context rather than caller
+  payload;
+- the server adapter rejects Tags, foreign-tenant Categories and stale UUIDs before any attached Flex
+  value read/write;
+- shared and localized Category values resolve through the existing generic Flex schema/validation
+  path, including requested-locale to tenant-default fallback;
+- Taxonomy hard-delete invokes an injected cleanup port inside the owner transaction, while Flex alone
+  deletes its generic shared/localized value rows;
+- Taxonomy still owns no duplicate field-definition service, validator, localized-value engine or
+  custom form/schema-builder implementation.
 
-   Fresh exact-head refresh run `31845977594` exercised
-   `0118ddd0dc73edceefb01eb2e82e29f03a4dc228` on PostgreSQL 16 with an asserted
-   Rust `1.96.0` toolchain. Runtime job `94912907567` successfully applied the
-   canonical server migrations, passed the two-writer route-key contention
-   harness, and passed both translation-target CAS/cursor scenarios. Artifact
-   `9236159727`, named
-   `taxonomy-postgres-evidence-31845977594-0118ddd0dc73edceefb01eb2e82e29f03a4dc228`,
-   records digest
-   `sha256:6c42063e312f9113eb0cc3d014c28b227d4ae952440e4b52085b4ad8e46117a2`.
-   Its metadata records identical expected/actual head SHAs and the active
-   `1.96.0-x86_64-unknown-linux-gnu` directory override. The refresh run's
-   source job `94912365639` and gate `94914729792` failed by design against the
-   stale pre-refresh snapshot; the runtime job itself succeeded and produced the
-   replacement runtime proof used to advance the evidence snapshot.
+Retained focused evidence:
 
-   Final exact-head pull-request run `31847950553` then proved the updated
-   snapshot on `881390e04b0913fc5146c47028c57a1ebed5005e`. Source-contract job
-   `94919665168`, PostgreSQL runtime job `94919713676`, and evidence Gate
-   `94921419733` all completed successfully. The runtime asserted Rust `1.96.0`,
-   applied the canonical server migrations, passed the two-writer route-key
-   contention harness and both translation-target CAS/cursor scenarios, and
-   archived artifact `9236910817`, named
-   `taxonomy-postgres-evidence-31847950553-881390e04b0913fc5146c47028c57a1ebed5005e`,
-   with digest
-   `sha256:ea62a105395c7ca1cc49085acd759dbd265d4e3e3d85270c2962f20c35a3e55c`.
+- PR #3683 final head `532444698ee3d1451603bd734ef3ef308c718044` passed `Taxonomy Category Flex Donor Contract`
+  run `32587184715` and `Taxonomy PostgreSQL Evidence` run `32587184591`, then squash-merged as
+  `5f063e5fcc56fa1af7859ede19aa3b345f05d218`;
+- PR #3684 exact head `1c9e79a790cac08005b82a73aa44c98a5194f5c0` passed `Taxonomy Category Flex Donor Contract`
+  run `32597360518`: source boundary, scoped Rust 1.96 formatting, generic definition/value contracts,
+  bounded Taxonomy owner identity, server host compile, generic PostgreSQL donor roundtrip and the
+  real Category PostgreSQL transport/hard-delete E2E all succeeded;
+- the same #3684 head passed `Taxonomy Ownership Boundary` run `32597360409` and complete
+  `Taxonomy PostgreSQL Evidence` run `32597360469`, including canonical PostgreSQL 16 migrations,
+  Category presentation CAS, hierarchy contention, route-registry contention, Translation-target
+  evidence and the final gate;
+- PR #3684 was squash-merged as `4ea8a0362ef9210294750c4c9766787a7191914f`.
 
-   Post-merge main run `31857567129` repeated that complete evidence path on
-   exact main commit `a4cd8b03239c2070f695d11557573cc865799200`. Source-contract
-   job `94945097376`, PostgreSQL runtime job `94945619395`, and evidence Gate
-   `94947092429` all completed successfully. The runtime again asserted Rust
-   `1.96.0`, applied the canonical server migrations, passed route contention
-   and both translation-target scenarios, and archived artifact `9239718183`,
-   named
-   `taxonomy-postgres-evidence-31857567129-a4cd8b03239c2070f695d11557573cc865799200`,
-   with digest
-   `sha256:ac6dc10fd6ee17665fba036ff36343d51e0bacada7a59e1c1b4bf71ca7135637`.
-   The artifact metadata records identical expected/actual main SHAs and the
-   active `1.96.0-x86_64-unknown-linux-gnu` directory override.
+**Done:** a tenant can add, edit, localize, resolve and remove custom fields on real Categories through
+the platform Flex transport/schema-builder boundary, with tenant/kind ownership and hard-delete
+cleanup proved, while Taxonomy implements no second field-definition service, validator or custom
+form engine.
 
-   Result 4 is complete for the current runtime input fingerprints. Both
-   evidence contracts record the fully green exact-head pull-request proof and
-   fully green post-merge main proof, and `remaining_open_result_4_evidence` is
-   empty. No Taxonomy production source, vocabulary kind, route ownership,
-   lifecycle, attachment ownership, or category hierarchy contract is changed
-   by this evidence-only closure.
+### TAXONOMY-CAT-5 — Forum category cutover — IN PROGRESS
 
-   Both source verifiers compare recorded runtime input fingerprints with the
-   current Git blob/tree identities, so any later semantic runtime-input change
-   invalidates the recorded evidence and requires another fresh PostgreSQL run.
-   This evidence remains production-like PostgreSQL 16 CI evidence; it does not
-   claim observation of live production traffic or arbitrary concurrent
-   transaction commit ordering.
+Forum is the first consumer migration because FORUM-25 exposed the ownership conflict.
+
+Migration rules:
+
+- preserve existing Forum category UUIDs as Taxonomy term UUIDs where possible;
+- backfill canonical localized copy, routes, hierarchy and presentation into Taxonomy;
+- replace Forum category identity with a typed Taxonomy Category binding/reference;
+- keep only Forum-specific policy, counters and demonstrated presentation overrides in Forum;
+- remove `forum_category_translations` and `ForumCategoryTranslationTargetProvider` only after
+  deterministic backfill/read-write cutover evidence;
+- make Forum admin/storefront consume Taxonomy `requested_locale`/`effective_locale` projections;
+- keep Topic Flex support independent of Category migration;
+- complete mounted multilingual/RTL browser parity only against Taxonomy-owned Category data.
+
+**Backend cutover status: COMPLETE.** Forum Category canonical identity, localized copy, routes,
+aliases, hierarchy, sibling ordering and presentation are Taxonomy-owned. Forum retains typed
+membership/binding plus Forum-specific policy, counters, moderation, subscriptions and lifecycle.
+The duplicate Forum Category Translation provider is retired, canonical reads/writes/search no longer
+consume the donor tables, and migration `m20260824_000031_retire_forum_category_legacy_storage`
+removes the old translation/route-alias/change-cursor tables only after a fail-closed same-ID
+Taxonomy ownership preflight.
+
+Accepted CAT-5 slices already in `main`:
+
+- PR #3686 added the tenant-safe one-to-one Forum → Taxonomy Category binding seam; PR #3688 added
+  deterministic same-UUID backfill of localized copy, routes/aliases, hierarchy and presentation;
+  PR #3689 exposed the bounded Taxonomy Category owner projection; PR #3690 added transactional
+  Taxonomy Category owner-sync.
+- PR #3691 moved Forum Category commands to transactional Taxonomy dual-write. PR #3693 moved public
+  Category get/list reads to the Taxonomy projection. PR #3695 exposed the module route-match
+  projection used by the Forum route cutover. PR #3696 moved Category tree reads and public mutation
+  responses to Taxonomy-backed projections.
+- PR #3697 moved Category route reads to the Taxonomy route registry. PR #3698 made Taxonomy the
+  authoritative route-write/collision owner. PR #3699 moved append-only Category alias history into
+  Taxonomy so Forum stopped reading/writing `forum_category_route_aliases` at runtime.
+- PR #3700 removed `forum_category_translations` as a command-copy/placement donor: create/update use
+  command input plus exact Taxonomy copy, while move/reorder synchronize structure over Taxonomy-owned
+  copy. PR #3701 retired `ForumCategoryTranslationTargetProvider`, Forum Category Translation
+  progress/change-cursor ownership and switched operator locale enumeration to Taxonomy.
+- PR #3702 moved Search Category locale/candidate enumeration to typed bindings plus Taxonomy
+  `available_locales`. PR #3703 moved public Category cursor-page materialization, ordering,
+  hierarchy and presentation to a Taxonomy-backed read-model owner wrapper.
+- PR #3704 stopped canonical create/update/import writes to the legacy Forum translation mirror.
+  PR #3705 removed more than one thousand lines of dead private Category CRUD/locale/tree runtime and
+  left the old Category persistence module only with transaction helpers still needed by Forum-owned
+  policy/counter/import workflows.
+- PR #3706 added irreversible legacy-storage retirement after the deterministic backfill. The
+  migration requires every current Forum Category to have a same-ID, same-tenant Taxonomy Category in
+  `module/forum` scope, removes obsolete cross-table route guards, then drops
+  `forum_category_route_aliases`, `forum_category_translations` and `forum_translation_changes`.
+
+Retained focused evidence for the foundation:
+
+- PR #3686 exact head `7e64eb9d3fc3af4d8e7b7ec1063cf45ea8859c58` passed `Forum Taxonomy Category Binding Contract`
+  run `32659255474` and `Migration Compatibility` run `32659255365`, then squash-merged as
+  `9af3a113c28ecb964dd9ff1737a7ddd69e916f23`;
+- PR #3688 exact head `70f2ca9778fa4bd472e6b7f2e2c980013ba2dbef` passed
+  `Forum Taxonomy Category Backfill Contract` run `32665020688` and `Migration Compatibility` run
+  `32665020664`, then squash-merged as `feeaa0b5a16ea2898fb7b7d222e7b30d55605870`;
+- PR #3689 exact head `4ee5fa31bd9f96bada3cb6aea6c3dd8ef846fc53` passed `Taxonomy Lookup Contract` run
+  `32668871962`, `Taxonomy Ownership Boundary` run `32668871968` and `Taxonomy PostgreSQL Evidence`
+  run `32668871894`, then squash-merged as `5f9c875ab91ec536a08a6b6ec60de7bf315da6f6`;
+- PR #3690 exact head `3c33324b2d6389295eb4fe6f0d0a035ad1905f67` passed
+  `Taxonomy Category Owner Sync Contract` run `32683541704`, `Taxonomy Ownership Boundary` run
+  `32683541614`, `Taxonomy Lookup Contract` run `32683541624` and `Taxonomy PostgreSQL Evidence` run
+  `32683541607`, then squash-merged as `0b09edd2a07f19cd0e8cf4820681a3ed73d09c09`.
+
+Later CAT-5 runtime slices include focused source/integration contracts, but the implementation agent
+intentionally did not execute their tests under the current maintainer instruction. Their merge does
+not substitute for the still-required mounted browser parity proof.
+
+**Next:** prove mounted multilingual and RTL Forum Category admin/storefront behavior against the
+Taxonomy-owned projection, including requested/effective locale fallback, canonical localized routes,
+hierarchy/order and presentation. No backend donor/storage cutover remains. Cleanup of unreachable
+private legacy code is non-blocking and must not be confused with ownership completeness.
+
+**Done when:** the backend ownership/storage cutover above remains intact and mounted multilingual/RTL
+browser evidence confirms that Forum Category behavior uses the shared Taxonomy identity/copy/routes
+without losing Forum-specific policy.
+
+### TAXONOMY-CAT-6 — Blog/Product and later consumers — PLANNED
+
+Migrate each consumer separately from fresh `main`; do not combine unrelated category models into one
+large cutover. Preserve module-specific bindings and policy, reuse Taxonomy identity/hierarchy/copy,
+and validate tenant isolation and route semantics for every consumer.
+
+Product and Blog follow Forum, but their navigation/merchandising/placement semantics remain their own
+bounded contracts rather than being blindly moved into Taxonomy.
+
+## Lookup and Translation invariants
+
+The existing route and Translation machinery remains authoritative for both demonstrated kinds:
+
+- `taxonomy_term_route_keys` serializes localized slug/alias ownership;
+- module scope is preferred before global scope where module lookup semantics apply;
+- requested locale -> explicit fallback -> platform fallback remains the presentation order;
+- `requested_locale` and `effective_locale` must both survive owner projections;
+- localized authoring never copies fallback content into the target locale;
+- hard delete releases canonical/route identities through owner-controlled persistence semantics;
+- Translation applies use resource/source/target revision CAS and durable owner change cursors.
+
+A richer bounded resolver must preserve each resolved term's `effective_locale`; consumers must not
+label fallback text with the requested/content locale when Taxonomy resolved another locale.
+
+## PostgreSQL evidence policy
+
+`Taxonomy PostgreSQL Evidence` is the production-like runtime gate for the canonical migration graph,
+Category presentation storage guards/CAS, Category hierarchy concurrency, route-registry contention
+and Translation CAS/cursor behavior.
+
+Checked-in evidence snapshots are retained provenance, but runtime-input changes intentionally make
+them stale. Staleness must trigger a fresh PostgreSQL run; it must not prevent the runtime job from
+starting. The compatibility source wrapper may bridge only known superseded historical plan
+assertions and stale runtime fingerprints while validating the current Category plan markers. Any
+structural verifier failure remains fatal. The workflow gate remains closed unless the current-head
+PostgreSQL runtime job succeeds.
+
+The runtime job must continue to:
+
+- check out the exact PR head/push SHA;
+- assert Rust `1.96.0`;
+- apply the canonical server Migrator to PostgreSQL 16;
+- execute Category presentation storage-guard and same-revision CAS evidence;
+- execute Category hierarchy contention evidence;
+- execute route-registry contention evidence;
+- execute Translation-target CAS/change-cursor evidence;
+- archive exact-head metadata and logs.
+
+### Recorded route-registry contention evidence
+
+The route-registry contention test target is
+`crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs`. The test proves
+two-writer route-key contention under real PostgreSQL 16 lock semantics: two independent writer
+connections both complete the route preflight before one is released, contention is forced after
+the translation row pre-lock, and the route registry primary key is the storage authority that
+ensures exactly one writer commits. The losing writer reports concurrent route claim; its
+translation update rolls back. The winner's translation and route reservation commit together, and
+exactly one durable route owner remains. This is the translation apply CAS boundary for route key
+ownership.
+
+Recorded runtime evidence runs:
+
+- Final exact-head pull-request run `32708155467` (HEAD `a102c224888459ddab8ab4875083b656e97a56f3`):
+  source boundary, route contention harness, translation apply CAS, and the gate all succeeded.
+- Post-merge main run `32712523041` (HEAD `e8d228cd1bd74a3ad42d6a9947114024896daeee`):
+  canonical PostgreSQL 16 migrations, route-registry contention, translation apply CAS and gate
+  all succeeded. Result 4 is complete for the current runtime input fingerprints.
+
+The `evidence.json` runtime input fingerprints record the exact git object SHAs for all runtime
+inputs at the time of the post-merge main run. When any of these inputs changes, the verifier
+requires fresh PostgreSQL evidence to be collected and the fingerprints updated.
 
 ## Verification
 
+Focused commands for the Category program:
+
 - `cargo xtask module validate taxonomy`
-- `cargo xtask module test taxonomy`
 - `node scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs`
 - `node scripts/verify/verify-taxonomy-ownership-boundary.mjs`
 - `node scripts/verify/verify-taxonomy-contract-matrix.test.mjs`
 - `node scripts/verify/verify-taxonomy-contract-matrix.mjs`
-- `node scripts/verify/verify-taxonomy-persistence-boundary.test.mjs`
-- `node scripts/verify/verify-taxonomy-persistence-boundary.mjs`
-- `cargo test -p rustok-taxonomy --test localized_route_lookup`
-- `cargo test -p rustok-taxonomy --test route_key_registry`
-- Targeted term CRUD, cross slug/alias collision, scope restriction, locale
-  fallback, owner-write batch identity, canonical-key tenant isolation,
-  registry-authority lookup, hard-delete route lookup/reuse, route-registry
-  reservation/release/cascade/recovery, status-removal migration, and
-  consumer-integration tests.
-- `cargo test -p rustok-taxonomy --lib`
-- `DATABASE_URL=postgresql://... cargo run --locked -p rustok-migrations --bin rustok-migrate -- up`
-- `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test route_registry_contention_postgres -- --nocapture`
-- `RUSTOK_TAXONOMY_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-taxonomy --test translation_target_postgres -- --nocapture`
-- Recorded PostgreSQL runtime provenance remains guarded by both Taxonomy
-  evidence verifiers and runtime input fingerprints; future semantic changes
-  must produce fresh evidence rather than silently reusing recorded runs.
-- Result 4 completion requires both the recorded fully green exact-head proof
-  and post-merge main proof to remain consistent with the current fingerprinted
-  runtime inputs; either verifier must fail closed on later semantic drift.
+- `node scripts/verify/verify-taxonomy-category-flex-donor.mjs`
+- `cargo test --locked -p rustok-taxonomy --test category_hierarchy --test category_presentation --test localized_route_lookup --test route_key_registry -- --nocapture`
+- `cargo test --locked -p rustok-taxonomy --test owner_identity -- --nocapture`
+- `cargo test --locked -p flex --test generic_attached_definitions --test generic_attached_storage -- --nocapture`
+- `cargo test --locked -p rustok-taxonomy --test category_presentation_postgres -- --nocapture` with `RUSTOK_TAXONOMY_TEST_DATABASE_URL` set to PostgreSQL;
+- `cargo test --locked -p flex --test postgres_generic_attached_storage -- --ignored --nocapture` with `RUSTOK_FLEX_TEST_POSTGRES_URL` set to PostgreSQL;
+- `cargo test --locked -p rustok-taxonomy --lib`
+- PostgreSQL commands retained in `.github/workflows/taxonomy-postgres-evidence.yml` and
+  `.github/workflows/taxonomy-category-flex-donor-contract.yml`.
+
+Consumer cutovers add their own focused owner, migration, transport, multilingual/RTL and browser
+evidence. Unrelated/common workspace CI failures are not a reason to expand a Category PR's scope.
 
 ## Change rules
 
-1. Keep dictionary terms and scope policy in this module.
-2. Keep parent/child category hierarchy, ordering, cycle validation, and
-   domain-specific category metadata with the owning module unless an explicit
-   shared-hierarchy ADR changes ownership.
-3. Keep localized route mutations and `taxonomy_term_route_keys` reservations
-   in one database transaction; never repair collisions by table-order
-   precedence or backend-specific trigger behavior.
-4. Do not add a soft-deprecated term state. A term either exists as the current
-   identity or is deleted through the explicit owner/storage contract.
-5. Update local docs, `rustok-module.toml`, and consumer docs with a taxonomy
-   contract change.
-6. Update `docs/modules/registry.md` with any ownership or module-status change.
+1. Taxonomy owns shared Category identity, hierarchy, localized copy, aliases/routes and canonical
+   presentation.
+2. Consumer modules own typed bindings/relations and domain-specific policy/state.
+3. Do not add generic polymorphic `owner_type/owner_id` consumer persistence to Taxonomy.
+4. Do not create duplicate Forum/Blog/Product category Translation providers after Taxonomy is the
+   canonical owner.
+5. Flex is the only runtime custom-fields engine; `taxonomy.category` opts in rather than rebuilding
+   definitions/validation/localization/transport.
+6. Built-in business invariants remain normalized owner fields even for Flex-enabled entities.
+7. Preserve category UUIDs during consumer backfills where possible.
+8. Never drop legacy category data before deterministic backfill and read/write cutover evidence.
+9. Media owns binary lifecycle; Taxonomy/Flex store typed Media references.
+10. Every slice starts from fresh `main`, stays narrow, and fixes only failures caused by its own
+    boundary.
+
+## References
+
+- [`DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md`](../../../DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md)
+- [`docs/architecture/taxonomy-flex-category-platform-plan.md`](../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
+- [`docs/route-registry-recovery.md`](./route-registry-recovery.md)
+- [`../README.md`](../README.md)

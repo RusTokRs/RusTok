@@ -19,6 +19,7 @@ use rustok_events::DomainEvent;
 
 use crate::{
     ControlPlaneInfrastructure, ModuleBuildOutcome, ModuleBuildRequest, ModuleBuildResult,
+    ModuleCommandContext,
     data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
 };
 
@@ -82,8 +83,7 @@ pub struct ModuleStaticPromotionRequestCommand {
     pub source_reference: String,
     pub source_digest: String,
     pub dependency_lock_digest: String,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,8 +106,7 @@ pub struct ModuleStaticPromotionApprovalCommand {
     pub promotion_id: Uuid,
     pub expected_revision: u64,
     pub evidence: ModuleStaticPromotionApprovalEvidence,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[async_trait]
@@ -154,14 +153,8 @@ where
         self.authorizer.authorize_request(&command).await?;
         let request_digest = digest_json(&command)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
-        if let Some(receipt) = reserve_operation(
-            &transaction,
-            "request",
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?
+        if let Some(receipt) =
+            reserve_operation(&transaction, "request", &command.context, &request_digest).await?
         {
             transaction.commit().await.map_err(store_error)?;
             return Ok(receipt);
@@ -210,7 +203,7 @@ where
                     command.source_reference.clone().into(),
                     command.source_digest.clone().into(),
                     command.dependency_lock_digest.clone().into(),
-                    uuid_value(command.actor_id, backend),
+                    uuid_value(command.context.actor_id, backend),
                 ],
             ))
             .await
@@ -220,7 +213,7 @@ where
         }
         complete_operation(
             &transaction,
-            command.idempotency_key,
+            command.context.idempotency_key,
             promotion_id,
             1,
             ModuleStaticPromotionStatus::Requested,
@@ -229,9 +222,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &command.context,
                     DomainEvent::ModuleStaticPromotionRequested {
                         promotion_id,
                         release_id: command.release_id,
@@ -261,14 +253,8 @@ where
         let request_digest = digest_json(&command)?;
         let review_digest = digest_json(&command.evidence)?;
         let transaction = self.db.begin().await.map_err(store_error)?;
-        if let Some(receipt) = reserve_operation(
-            &transaction,
-            "approve",
-            command.idempotency_key,
-            &request_digest,
-            command.actor_id,
-        )
-        .await?
+        if let Some(receipt) =
+            reserve_operation(&transaction, "approve", &command.context, &request_digest).await?
         {
             transaction.commit().await.map_err(store_error)?;
             return Ok(receipt);
@@ -279,7 +265,7 @@ where
         {
             return Err(ModuleStaticPromotionError::RevisionConflict);
         }
-        if promotion.requested_by == command.actor_id {
+        if promotion.requested_by == command.context.actor_id {
             return Err(ModuleStaticPromotionError::ApprovalAuthorityConflict);
         }
         let pinned = load_platform_build_evidence(&transaction, &promotion.release_id).await?;
@@ -339,7 +325,7 @@ where
                     command.evidence.static_review.digest.clone().into(),
                     command.evidence.policy_revision.clone().into(),
                     review_digest.into(),
-                    uuid_value(command.actor_id, backend),
+                    uuid_value(command.context.actor_id, backend),
                 ],
             ))
             .await
@@ -359,7 +345,7 @@ where
                 ),
                 vec![
                     revision_value(next_revision)?,
-                    uuid_value(command.actor_id, backend),
+                    uuid_value(command.context.actor_id, backend),
                     uuid_value(command.promotion_id, backend),
                     revision_value(command.expected_revision)?,
                 ],
@@ -371,7 +357,7 @@ where
         }
         complete_operation(
             &transaction,
-            command.idempotency_key,
+            command.context.idempotency_key,
             command.promotion_id,
             next_revision,
             ModuleStaticPromotionStatus::Approved,
@@ -380,9 +366,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &command.context,
                     DomainEvent::ModuleStaticPromotionApproved {
                         promotion_id: command.promotion_id,
                         release_id: promotion.release_id,
@@ -603,9 +588,8 @@ pub(crate) async fn load_platform_build_evidence<C: ConnectionTrait>(
 async fn reserve_operation(
     transaction: &DatabaseTransaction,
     operation_kind: &str,
-    idempotency_key: Uuid,
+    context: &ModuleCommandContext,
     request_digest: &str,
-    actor_id: Uuid,
 ) -> Result<Option<ModuleStaticPromotionReceipt>, ModuleStaticPromotionError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
@@ -613,19 +597,23 @@ async fn reserve_operation(
             backend,
             format!(
                 "INSERT INTO module_static_promotion_operations
-                 (idempotency_key, operation_kind, request_digest, actor_id, created_at)
-                 VALUES ({}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
+                 (idempotency_key, operation_kind, request_digest, actor_id, trace_id, correlation_id, created_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
                 placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
                 now_expression(backend),
             ),
             vec![
-                uuid_value(idempotency_key, backend),
+                uuid_value(context.idempotency_key, backend),
                 operation_kind.to_owned().into(),
                 request_digest.to_owned().into(),
-                uuid_value(actor_id, backend),
+                uuid_value(context.actor_id, backend),
+                context.trace_id.clone().into(),
+                uuid_value(context.correlation_id, backend),
             ],
         ))
         .await
@@ -637,13 +625,13 @@ async fn reserve_operation(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_kind, request_digest, actor_id, promotion_id,
+                "SELECT operation_kind, request_digest, actor_id, trace_id, correlation_id, promotion_id,
                         result_revision, result_status,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
                  FROM module_static_promotion_operations WHERE idempotency_key = {}",
                 placeholder(backend, 1),
             ),
-            vec![uuid_value(idempotency_key, backend)],
+            vec![uuid_value(context.idempotency_key, backend)],
         ))
         .await
         .map_err(store_error)?
@@ -651,7 +639,17 @@ async fn reserve_operation(
     let stored_kind: String = row.try_get("", "operation_kind").map_err(store_error)?;
     let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
     let stored_actor = uuid_from_row(&row, "actor_id", backend).map_err(store_error)?;
-    if stored_kind != operation_kind || stored_digest != request_digest || stored_actor != actor_id
+    let stored_context = ModuleCommandContext {
+        actor_id: stored_actor,
+        tenant_id: None,
+        trace_id: row.try_get("", "trace_id").map_err(store_error)?,
+        correlation_id: uuid_from_row(&row, "correlation_id", backend).map_err(store_error)?,
+        idempotency_key: context.idempotency_key,
+    };
+    if stored_kind != operation_kind
+        || stored_digest != request_digest
+        || !valid_platform_command_context(&stored_context)
+        || stored_context != *context
     {
         return Err(ModuleStaticPromotionError::IdempotencyConflict);
     }
@@ -902,8 +900,7 @@ fn validate_request_command(
         || command.release_id.chars().any(char::is_control)
         || !valid_cas_source_reference(&command.source_reference, &command.source_digest)
         || !valid_digest(&command.dependency_lock_digest)
-        || command.actor_id.is_nil()
-        || command.idempotency_key.is_nil()
+        || !valid_platform_command_context(&command.context)
     {
         return Err(ModuleStaticPromotionError::InvalidCommand);
     }
@@ -915,8 +912,7 @@ fn validate_approval_command(
 ) -> Result<(), ModuleStaticPromotionError> {
     if command.promotion_id.is_nil()
         || command.expected_revision == 0
-        || command.actor_id.is_nil()
-        || command.idempotency_key.is_nil()
+        || !valid_platform_command_context(&command.context)
         || command.evidence.policy_revision.trim().is_empty()
         || command.evidence.policy_revision.trim() != command.evidence.policy_revision
         || command.evidence.policy_revision.len() > MAX_POLICY_REVISION_BYTES
@@ -929,6 +925,10 @@ fn validate_approval_command(
         return Err(ModuleStaticPromotionError::InvalidCommand);
     }
     validate_approval_evidence(&command.evidence)
+}
+
+fn valid_platform_command_context(context: &ModuleCommandContext) -> bool {
+    context.tenant_id.is_none() && context.validate().is_ok()
 }
 
 fn validate_approval_evidence(
@@ -1132,13 +1132,25 @@ mod tests {
                 },
                 policy_revision: digest('e'),
             },
-            actor_id: Uuid::new_v4(),
-            idempotency_key: Uuid::new_v4(),
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: None,
+                trace_id: "test:static-promotion".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
         };
 
         assert!(matches!(
             validate_approval_command(&command),
             Err(ModuleStaticPromotionError::InvalidEvidence)
+        ));
+
+        let mut tenant_scoped_command = command;
+        tenant_scoped_command.context.tenant_id = Some(Uuid::new_v4());
+        assert!(matches!(
+            validate_approval_command(&tenant_scoped_command),
+            Err(ModuleStaticPromotionError::InvalidCommand)
         ));
     }
 

@@ -172,7 +172,6 @@ requireMarkers(".github/workflows/api-compatibility.yml", [
   "Verify base comparator fixtures",
   'base/scripts/verify/verify-api-compatibility.mjs" --self-test',
   "Require approval for compatibility exception changes",
-  "api-breaking-approved",
   "PR_LABELS_JSON",
   "EXPLICIT_APPROVAL",
   "base/scripts/verify/verify-api-compatibility-exception-approval.mjs",

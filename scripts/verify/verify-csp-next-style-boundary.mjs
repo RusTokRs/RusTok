@@ -60,7 +60,16 @@ function occurrenceCount(source, expression) {
 }
 
 function styleAttributeCount(source) {
-  return occurrenceCount(source, /\bstyle\s*=\s*\{/g);
+  let count = 0;
+  for (const line of source.split(/\r?\n/)) {
+    if (/^\s*(?:const|let|var|export)\s+/.test(line)) continue;
+    if (/^\s*style\s*=\s*\{/.test(line)) {
+      count += 1;
+      continue;
+    }
+    count += [...line.matchAll(/<[^>\n]*\sstyle\s*=\s*\{/g)].length;
+  }
+  return count;
 }
 
 function runtimeStyleElementCount(source) {

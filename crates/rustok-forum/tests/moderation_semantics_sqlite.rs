@@ -102,10 +102,21 @@ async fn apply_migrations(db: &DatabaseConnection) -> TestResult<()> {
     for migration in TaxonomyModule.migrations() {
         migration.up(&manager).await?;
     }
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await?;
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }
     Ok(())
+}
+
+fn sql_uuid(id: Uuid) -> String {
+    format!("X'{}'", hex::encode(id.as_bytes()))
 }
 
 async fn seed_forum(
@@ -119,21 +130,19 @@ async fn seed_forum(
         topic_id: Uuid::new_v4(),
         author_id: Uuid::new_v4(),
     };
+    let cat_id = sql_uuid(seed.category_id);
+    let tenant_id = sql_uuid(seed.tenant_id);
+    let top_id = sql_uuid(seed.topic_id);
     db.execute_unprepared(&format!(
         "INSERT INTO forum_categories
             (id, tenant_id, position, moderated, topic_count, reply_count)
          VALUES
-            ('{}', '{}', 0, {}, 1, 0);
+            ({cat_id}, {tenant_id}, 0, {}, 1, 0);
          INSERT INTO forum_topics
             (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
          VALUES
-            ('{}', '{}', '{}', 'open', '{{}}', {}, {}, 0);",
-        seed.category_id,
-        seed.tenant_id,
+            ({top_id}, {tenant_id}, {cat_id}, 'open', '{{}}', {}, {}, 0);",
         if moderated { 1 } else { 0 },
-        seed.topic_id,
-        seed.tenant_id,
-        seed.category_id,
         0,
         if locked { 1 } else { 0 },
     ))
@@ -147,33 +156,28 @@ async fn assert_public_state(
     expected_count: i64,
     expected_replied_events: i64,
 ) -> TestResult<()> {
+    let tid = sql_uuid(seed.tenant_id);
+    let topid = sql_uuid(seed.topic_id);
+    let cid = sql_uuid(seed.category_id);
+    let uid = sql_uuid(seed.author_id);
     let topic_count = scalar_i64(
         db,
         format!(
-            "SELECT CAST(reply_count AS INTEGER) AS value
-             FROM forum_topics
-             WHERE tenant_id = '{}' AND id = '{}'",
-            seed.tenant_id, seed.topic_id
+            "SELECT CAST(COALESCE((SELECT reply_count FROM forum_topics WHERE tenant_id = {tid} AND id = {topid}), 0) AS INTEGER) AS value",
         ),
     )
     .await?;
     let category_count = scalar_i64(
         db,
         format!(
-            "SELECT CAST(reply_count AS INTEGER) AS value
-             FROM forum_categories
-             WHERE tenant_id = '{}' AND id = '{}'",
-            seed.tenant_id, seed.category_id
+            "SELECT CAST(COALESCE((SELECT reply_count FROM forum_categories WHERE tenant_id = {tid} AND id = {cid}), 0) AS INTEGER) AS value",
         ),
     )
     .await?;
     let user_count = scalar_i64(
         db,
         format!(
-            "SELECT CAST(reply_count AS INTEGER) AS value
-             FROM forum_user_stats
-             WHERE tenant_id = '{}' AND user_id = '{}'",
-            seed.tenant_id, seed.author_id
+            "SELECT CAST(COALESCE((SELECT reply_count FROM forum_user_stats WHERE tenant_id = {tid} AND user_id = {uid}), 0) AS INTEGER) AS value",
         ),
     )
     .await?;

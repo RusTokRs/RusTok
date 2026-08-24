@@ -1,17 +1,10 @@
-import { graphqlRequest } from '@/lib/graphql';
-
-// ---------- GqlOpts ----------
-
-export interface GqlOpts {
-  token?: string | null;
-  tenantSlug?: string | null;
-  tenantId?: string | null;
-}
+import { graphqlRequest, type GqlOpts } from '@/lib/graphql';
+export type { GqlOpts };
 
 // ---------- Types ----------
 
-export type WorkflowStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
-export type StepType =
+type WorkflowStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
+type StepType =
   | 'ACTION'
   | 'CONDITION'
   | 'DELAY'
@@ -20,9 +13,9 @@ export type StepType =
   | 'HTTP'
   | 'NOTIFY'
   | 'TRANSFORM';
-export type OnError = 'STOP' | 'SKIP' | 'RETRY';
-export type ExecutionStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'TIMED_OUT';
-export type StepExecutionStatus =
+type OnError = 'STOP' | 'SKIP' | 'RETRY';
+type ExecutionStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'TIMED_OUT';
+type StepExecutionStatus =
   'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
 
 export interface WorkflowSummary {
@@ -62,7 +55,7 @@ export interface WorkflowResponse {
   steps: WorkflowStep[];
 }
 
-export interface StepExecution {
+interface StepExecution {
   id: string;
   executionId: string;
   stepId: string;
@@ -91,7 +84,7 @@ export interface CreateWorkflowInput {
   name: string;
   description?: string;
   triggerConfig: Record<string, unknown>;
-  webhookSlug?: string | null;
+  webhookSlug?: string;
 }
 
 export interface UpdateWorkflowInput {
@@ -99,7 +92,7 @@ export interface UpdateWorkflowInput {
   description?: string;
   status?: WorkflowStatus;
   triggerConfig?: Record<string, unknown>;
-  webhookSlug?: string | null;
+  webhookSlug?: string;
 }
 
 // ---------- Phase 4 Types ----------
@@ -125,7 +118,7 @@ export interface CreateStepInput {
   timeoutMs?: number;
 }
 
-export interface UpdateStepInput {
+interface UpdateStepInput {
   position?: number;
   stepType?: StepType;
   config?: Record<string, unknown>;

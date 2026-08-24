@@ -3,8 +3,8 @@ use rustok_api::{Permission, graphql::PaginationInput};
 use uuid::Uuid;
 
 use super::{
-    FieldDefinitionObject, FlexEntryObject, FlexSchemaObject, map_flex_error, require_access,
-    resolve_entity_type, runtime::runtime,
+    AttachedValuesObject, FieldDefinitionObject, FlexEntryObject, FlexSchemaObject, map_flex_error,
+    require_access, resolve_entity_type, runtime::runtime,
 };
 use crate::FieldDefinitionView;
 
@@ -58,6 +58,36 @@ impl FlexQuery {
         .await
         .map(|row| row.map(FieldDefinitionObject::from))
         .map_err(map_flex_error)
+    }
+
+    /// Resolve attached custom-field values for one real donor instance.
+    async fn attached_values(
+        &self,
+        ctx: &Context<'_>,
+        entity_type: Option<String>,
+        entity_id: Uuid,
+        preferred_locale: String,
+    ) -> Result<AttachedValuesObject> {
+        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_READ)?;
+        let runtime = runtime(ctx)?;
+        let entity_type = resolve_entity_type(entity_type)?;
+        let values = runtime
+            .attached_values()
+            .resolve_values(
+                tenant.id,
+                &entity_type,
+                entity_id,
+                &preferred_locale,
+                &tenant.default_locale,
+            )
+            .await
+            .map_err(map_flex_error)?;
+
+        Ok(AttachedValuesObject {
+            entity_type,
+            entity_id,
+            values,
+        })
     }
 
     /// List standalone Flex schemas for the authenticated tenant.

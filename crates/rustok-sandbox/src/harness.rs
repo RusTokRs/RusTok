@@ -359,6 +359,7 @@ mod tests {
                 tenant_id: None,
                 actor_id: None,
                 trace_id: None,
+                audit_label: None,
             },
             payload: SandboxPayload {
                 executor: SandboxExecutorKind::Rhai,

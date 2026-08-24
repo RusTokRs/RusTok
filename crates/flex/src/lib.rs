@@ -8,7 +8,10 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod attached;
+pub mod attached_definitions;
+pub mod attached_storage;
 pub mod cache_generation;
+pub mod entity_type;
 pub mod errors;
 pub mod events;
 pub mod graphql;
@@ -25,6 +28,20 @@ pub use attached::{
     AttachedEntityRef, PreparedAttachedValuesWrite, delete_attached_localized_values,
     load_exact_locale_values, load_localized_values_by_locale, persist_localized_values,
     prepare_attached_values_create, prepare_attached_values_update, resolve_attached_payload,
+};
+pub use attached_definitions::{
+    GENERIC_ATTACHED_FIELD_DEFINITIONS_TABLE, GenericAttachedFieldDefinitionService,
+    MAX_GENERIC_ATTACHED_FIELDS_PER_TENANT,
+};
+pub use attached_storage::{
+    GENERIC_ATTACHED_VALUES_TABLE, delete_generic_attached_values,
+    load_generic_attached_shared_values, persist_generic_attached_shared_values,
+    persist_prepared_generic_attached_values, prepare_generic_attached_values_update,
+    resolve_generic_attached_values,
+};
+pub use entity_type::{
+    MAX_FLEX_ENTITY_TYPE_BYTES, TAXONOMY_CATEGORY_ENTITY_TYPE, is_valid_flex_entity_type,
+    normalize_flex_entity_type,
 };
 pub use errors::{FlexMappedError, FlexMappedErrorKind, map_flex_error};
 pub use orchestration::{

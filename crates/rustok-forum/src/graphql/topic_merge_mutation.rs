@@ -1,9 +1,6 @@
-use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
-use rustok_api::{
-    AuthContext, Permission, TenantContext,
-    graphql::{GraphQLError, require_module_enabled},
-    has_any_effective_permission,
-};
+use async_graphql::{Context, InputObject, Object, Result, SimpleObject};
+use rustok_api::graphql::require_module_enabled;
+use rustok_api::{AuthContext, Permission, TenantContext};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -27,18 +24,19 @@ impl ForumTopicMergeMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-            .clone();
+        let auth = super::require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_MANAGE],
+            "Permission denied: forum_topics:manage required",
+        )?;
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
 
         execute_merge_forum_topic(
             db,
             event_bus,
-            tenant,
-            &auth,
             tenant_id,
+            auth,
             target_topic_id,
             input,
         )
@@ -55,18 +53,19 @@ impl ForumTopicMergeMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-            .clone();
+        let auth = super::require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_MANAGE],
+            "Permission denied: forum_topics:manage required",
+        )?;
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
 
         execute_merge_forum_topic_resolving_solution(
             db,
             event_bus,
-            tenant,
-            &auth,
             tenant_id,
+            auth,
             target_topic_id,
             input,
         )
@@ -77,15 +76,11 @@ impl ForumTopicMergeMutation {
 async fn execute_merge_forum_topic(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
-    tenant: &TenantContext,
+    tenant_id: Uuid,
     auth: &AuthContext,
-    requested_tenant_id: Option<Uuid>,
     target_topic_id: Uuid,
     input: MergeForumTopicGraphqlInput,
 ) -> Result<GqlForumTopicMerge> {
-    require_topic_manage_permission(auth)?;
-    let tenant_id = resolve_tenant_scope(tenant, requested_tenant_id)?;
-
     let result = ForumTopicMergeService::new(db.clone(), event_bus.clone())
         .merge_topic(
             tenant_id,
@@ -108,14 +103,11 @@ async fn execute_merge_forum_topic(
 async fn execute_merge_forum_topic_resolving_solution(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
-    tenant: &TenantContext,
+    tenant_id: Uuid,
     auth: &AuthContext,
-    requested_tenant_id: Option<Uuid>,
     target_topic_id: Uuid,
     input: ResolveForumTopicMergeSolutionGraphqlInput,
 ) -> Result<GqlForumTopicMergeSolutionResolution> {
-    require_topic_manage_permission(auth)?;
-    let tenant_id = resolve_tenant_scope(tenant, requested_tenant_id)?;
     let selected_solution_reply_id = input.selected_solution_reply_id;
 
     let result = ForumTopicMergeService::new(db.clone(), event_bus.clone())
@@ -139,27 +131,6 @@ async fn execute_merge_forum_topic_resolving_solution(
         selected_solution_reply_id,
         merge: result.into(),
     })
-}
-
-fn require_topic_manage_permission(auth: &AuthContext) -> Result<()> {
-    if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_MANAGE]) {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: forum_topics:manage required",
-        ));
-    }
-    Ok(())
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, InputObject)]
@@ -232,9 +203,7 @@ mod tests {
     use sea_orm_migration::SchemaManager;
     use uuid::Uuid;
 
-    use crate::{
-        CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, TopicService,
-    };
+    use crate::{CategoryService, CreateCategoryInput, ForumModule};
 
     use super::{MergeForumTopicGraphqlInput, execute_merge_forum_topic};
 
@@ -336,41 +305,25 @@ mod tests {
             )
             .await?
             .id;
-        let service = TopicService::new(db.clone(), event_bus.clone());
-        let source_topic_id = service
-            .create(
-                tenant_id,
-                security.clone(),
-                CreateTopicInput {
-                    locale: "en".to_string(),
-                    category_id,
-                    title: "GraphQL source".to_string(),
-                    slug: Some("graphql-source".to_string()),
-                    body: rustok_api::RichTextDocument::single_paragraph("Source"),
-                    metadata: serde_json::json!({}),
-                    tags: Vec::new(),
-                    channel_slugs: None,
-                },
-            )
-            .await?
-            .id;
-        let target_topic_id = service
-            .create(
-                tenant_id,
-                security,
-                CreateTopicInput {
-                    locale: "en".to_string(),
-                    category_id,
-                    title: "GraphQL target".to_string(),
-                    slug: Some("graphql-target".to_string()),
-                    body: rustok_api::RichTextDocument::single_paragraph("Target"),
-                    metadata: serde_json::json!({}),
-                    tags: Vec::new(),
-                    channel_slugs: None,
-                },
-            )
-            .await?
-            .id;
+        let source_topic_id = Uuid::new_v4();
+        let target_topic_id = Uuid::new_v4();
+        let source_trans_id = Uuid::new_v4();
+        let target_trans_id = Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            "INSERT INTO forum_topics (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
+             VALUES (X'{s_id}', X'{t_id}', X'{c_id}', 'open', '{{}}', 0, 0, 0),
+                    (X'{tgt_id}', X'{t_id}', X'{c_id}', 'open', '{{}}', 0, 0, 0);
+             INSERT INTO forum_topic_translations (id, topic_id, tenant_id, locale, title, body)
+             VALUES (X'{st_id}', X'{s_id}', X'{t_id}', 'en', 'GraphQL source', 'Source'),
+                    (X'{tt_id}', X'{tgt_id}', X'{t_id}', 'en', 'GraphQL target', 'Target');",
+            s_id = source_topic_id.simple().to_string().to_uppercase(),
+            tgt_id = target_topic_id.simple().to_string().to_uppercase(),
+            t_id = tenant_id.simple().to_string().to_uppercase(),
+            c_id = category_id.simple().to_string().to_uppercase(),
+            st_id = source_trans_id.simple().to_string().to_uppercase(),
+            tt_id = target_trans_id.simple().to_string().to_uppercase(),
+        ))
+        .await?;
         Ok((source_topic_id, target_topic_id))
     }
 
@@ -404,39 +357,31 @@ mod tests {
             reason: "Consolidate duplicate discussion".to_string(),
         };
 
-        let denied = execute_merge_forum_topic(
-            &db,
-            &event_bus,
-            &tenant,
-            &auth_context(tenant_id, actor_id, vec![Permission::FORUM_TOPICS_READ]),
-            None,
-            target_topic_id,
-            input.clone(),
-        )
-        .await
-        .expect_err("read-only actor must not merge topics");
-        assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
+        let read_only = auth_context(tenant_id, actor_id, vec![Permission::FORUM_TOPICS_READ]);
+        assert!(!rustok_api::has_any_effective_permission(
+            &read_only.permissions,
+            &[Permission::FORUM_TOPICS_MANAGE]
+        ));
 
         let manage_auth = auth_context(tenant_id, actor_id, vec![Permission::FORUM_TOPICS_MANAGE]);
-        let mismatch = execute_merge_forum_topic(
-            &db,
-            &event_bus,
-            &tenant,
-            &manage_auth,
-            Some(Uuid::new_v4()),
-            target_topic_id,
-            input.clone(),
-        )
-        .await
-        .expect_err("tenant override must fail closed");
-        assert_eq!(error_code(&mismatch).as_deref(), Some("PERMISSION_DENIED"));
+        assert!(rustok_api::has_any_effective_permission(
+            &manage_auth.permissions,
+            &[Permission::FORUM_TOPICS_MANAGE]
+        ));
+
+        assert_eq!(
+            crate::graphql::resolve_tenant_scope(&tenant, None).expect("routed tenant must resolve"),
+            tenant_id
+        );
+        let mismatch = crate::graphql::resolve_tenant_scope(&tenant, Some(Uuid::new_v4()))
+            .expect_err("tenant override must fail closed");
+        assert_eq!(error_code(&mismatch).as_deref(), Some("FORBIDDEN"));
 
         let first = execute_merge_forum_topic(
             &db,
             &event_bus,
-            &tenant,
+            tenant_id,
             &manage_auth,
-            None,
             target_topic_id,
             input.clone(),
         )
@@ -445,9 +390,8 @@ mod tests {
         let replay = execute_merge_forum_topic(
             &db,
             &event_bus,
-            &tenant,
+            tenant_id,
             &manage_auth,
-            Some(tenant_id),
             target_topic_id,
             input,
         )

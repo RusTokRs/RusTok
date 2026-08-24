@@ -3,8 +3,9 @@ use std::ops::Deref;
 use chrono::Utc;
 use flex::delete_attached_localized_values;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, Statement,
+    TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -188,6 +189,7 @@ impl TopicService {
             .exec(&txn)
             .await?;
 
+        mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?;
         UserStatsService::decrement_topic_thread_aggregated_in_tx(
             &txn,
             tenant_id,
@@ -196,7 +198,6 @@ impl TopicService {
             solution_author_id,
         )
         .await?;
-        mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?;
 
         CategoryService::adjust_counters_in_tx(
             &txn,
@@ -309,13 +310,23 @@ async fn claim_topic_delete_in_tx(
     tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ForumResult<()> {
-    let result = txn
-        .execute_unprepared(&format!(
+    let stmt = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
             "UPDATE forum_topics \
              SET updated_at = updated_at \
-             WHERE tenant_id = '{tenant_id}' AND id = '{topic_id}' AND deleted_at IS NULL"
-        ))
-        .await?;
+             WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
+            vec![tenant_id.into(), topic_id.into()],
+        ),
+        _ => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE forum_topics \
+             SET updated_at = updated_at \
+             WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL",
+            vec![tenant_id.into(), topic_id.into()],
+        ),
+    };
+    let result = txn.execute(stmt).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::TopicDeleted);
     }
@@ -327,21 +338,43 @@ async fn mark_topic_thread_deleted_in_tx(
     tenant_id: Uuid,
     topic_id: Uuid,
 ) -> ForumResult<()> {
-    txn.execute_unprepared(&format!(
-        "UPDATE forum_replies \
-         SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP \
-         WHERE tenant_id = '{tenant_id}' AND topic_id = '{topic_id}' AND deleted_at IS NULL"
-    ))
-    .await?;
+    let update_replies_stmt = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE forum_replies \
+             SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP \
+             WHERE tenant_id = $1 AND topic_id = $2 AND deleted_at IS NULL",
+            vec![tenant_id.into(), topic_id.into()],
+        ),
+        _ => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE forum_replies \
+             SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP \
+             WHERE tenant_id = ?1 AND topic_id = ?2 AND deleted_at IS NULL",
+            vec![tenant_id.into(), topic_id.into()],
+        ),
+    };
+    txn.execute(update_replies_stmt).await?;
 
-    let result = txn
-        .execute_unprepared(&format!(
+    let update_topics_stmt = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
             "UPDATE forum_topics \
              SET status = 'archived', is_locked = TRUE, reply_count = 0, last_reply_at = NULL, \
                  deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP \
-             WHERE tenant_id = '{tenant_id}' AND id = '{topic_id}' AND deleted_at IS NULL"
-        ))
-        .await?;
+             WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
+            vec![tenant_id.into(), topic_id.into()],
+        ),
+        _ => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE forum_topics \
+             SET status = 'archived', is_locked = TRUE, reply_count = 0, last_reply_at = NULL, \
+                 deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP \
+             WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL",
+            vec![tenant_id.into(), topic_id.into()],
+        ),
+    };
+    let result = txn.execute(update_topics_stmt).await?;
     if result.rows_affected() != 1 {
         return Err(ForumError::TopicDeleted);
     }

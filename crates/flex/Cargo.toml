@@ -17,9 +17,9 @@ serde_json.workspace = true
 utoipa = { workspace = true, features = ["uuid"] }
 uuid.workspace = true
 async-trait.workspace = true
+chrono.workspace = true
 regex = "1"
 tracing.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
-chrono.workspace = true

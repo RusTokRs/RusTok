@@ -20,13 +20,13 @@ use crate::{
     ModuleStaticDistributionAuthorizer, ModuleStaticDistributionReleaseAuthorizer,
     ModuleStaticDistributionReleaseVerifier, ModuleStaticDistributionRolloutAuthorizer,
     ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionWorkerAuthorizer,
-    ModuleStaticPromotionAuthorizer, SeaOrmArtifactBindingIdempotencyStore,
-    SeaOrmArtifactDataCapabilityBrokerResolver, SeaOrmArtifactDataExportService,
-    SeaOrmArtifactDataObjectCapabilityBrokerResolver, SeaOrmArtifactDataObjectGcService,
-    SeaOrmArtifactDataPurgeService, SeaOrmArtifactDataSnapshotCollectionService,
-    SeaOrmArtifactDataSnapshotRetentionService, SeaOrmArtifactDataSnapshotService,
-    SeaOrmArtifactEventSubscriptionProjector, SeaOrmArtifactExecutionObserver,
-    SeaOrmArtifactInstallationStore, SeaOrmArtifactNodeReadiness,
+    ModuleStaticPromotionAuthorizer, SeaOrmArtifactBindingExecutionAuditReader,
+    SeaOrmArtifactBindingIdempotencyStore, SeaOrmArtifactDataCapabilityBrokerResolver,
+    SeaOrmArtifactDataExportService, SeaOrmArtifactDataObjectCapabilityBrokerResolver,
+    SeaOrmArtifactDataObjectGcService, SeaOrmArtifactDataPurgeService,
+    SeaOrmArtifactDataSnapshotCollectionService, SeaOrmArtifactDataSnapshotRetentionService,
+    SeaOrmArtifactDataSnapshotService, SeaOrmArtifactEventSubscriptionProjector,
+    SeaOrmArtifactExecutionObserver, SeaOrmArtifactInstallationStore, SeaOrmArtifactNodeReadiness,
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactScheduleDeliveryQueue,
     SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretHandlePolicy,
     SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
@@ -400,6 +400,12 @@ impl ModuleControlPlane {
     /// audit evidence.
     pub fn artifact_execution_audit(&self) -> SeaOrmArtifactExecutionObserver {
         SeaOrmArtifactExecutionObserver::new(self.db.clone())
+    }
+
+    /// Returns the tenant-scoped reader for redacted audit evidence belonging
+    /// to one exact admitted artifact binding.
+    pub fn artifact_binding_execution_audit(&self) -> SeaOrmArtifactBindingExecutionAuditReader {
+        SeaOrmArtifactBindingExecutionAuditReader::new(self.db.clone())
     }
 
     /// Returns the owner projector that turns a durable platform event into

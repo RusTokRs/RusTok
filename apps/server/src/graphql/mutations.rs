@@ -1,16 +1,23 @@
-use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
+use async_graphql::{Context, ErrorExtensions, FieldError, Json, Object, Result};
+use axum::http::StatusCode;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
-use crate::graphql::artifact_tenant_lifecycle::map_artifact_tenant_lifecycle_error;
+use crate::error::Error as ServerError;
+use crate::graphql::artifact_lifecycle::{
+    map_artifact_installation_lifecycle_error, map_artifact_tenant_lifecycle_error,
+};
+use crate::graphql::queries::ensure_modules_read_permission;
 use crate::graphql::types::{
-    ArtifactTenantLifecycle, BuildJob, CreateUserInput, DeleteUserPayload,
+    ArtifactActivation, ArtifactDeactivation, ArtifactMigrationRollbackMode, ArtifactRollback,
+    ArtifactTenantLifecycle, ArtifactUninstall, BuildJob, CreateUserInput, DeleteUserPayload,
     ModuleOperationRecoveryPlan, TenantModule, UpdateUserInput, User,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
 use crate::modules::ManifestError;
+use crate::services::artifact_ui::execute_artifact_ui_action as execute_artifact_ui_action_service;
 #[cfg(test)]
 use crate::services::auth_lifecycle::AuthLifecycleError;
 use crate::services::build_event_hub::{
@@ -32,17 +39,21 @@ use crate::services::platform_composition::{
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
-use rustok_api::{Permission, PortError, PortErrorKind};
+use rustok_api::{AuthPrincipalContext, Permission, PortError, PortErrorKind};
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationRuntime, UserMutationRecord,
 };
-use rustok_build::EventBusBuildEventPublisher;
-use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
+use rustok_build::{BuildEventPublicationContext, BuildEventScope, EventBusBuildEventPublisher};
+use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions, UserRole};
 use rustok_modules::{
-    ArtifactTenantDisableRequest, ArtifactTenantEnableRequest, ModuleCompositionError,
-    ModuleControlPlane,
+    ArtifactActivationRequest, ArtifactDeactivationRequest,
+    ArtifactMigrationRollbackMode as InstallationArtifactMigrationRollbackMode,
+    ArtifactRollbackRequest, ArtifactTenantDisableRequest, ArtifactTenantEnableRequest,
+    ArtifactUninstallRequest, ModuleCommandContext, ModuleCompositionError, ModuleControlPlane,
+    ModuleInstallationScope,
 };
+use rustok_rbac::{RbacControlPlanePrincipal, require_direct_control_plane_user};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -294,9 +305,140 @@ async fn ensure_modules_manage_permission(
     Ok((auth, tenant))
 }
 
+/// Platform-native composition changes have global effect. They are therefore
+/// available only to a direct SuperAdmin authenticated for the current tenant;
+/// ordinary tenant `modules:manage` permission is intentionally insufficient.
+async fn ensure_platform_composition_operator(ctx: &Context<'_>) -> Result<AuthContext> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
+        .clone();
+    let tenant = ctx.data::<TenantContext>()?.clone();
+    let principal_context = *ctx
+        .data::<AuthPrincipalContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+    let db = ctx.data::<DatabaseConnection>()?;
+    let role = RbacService::get_user_role(db, &tenant.id, &auth.user_id)
+        .await
+        .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+    let can_manage_modules =
+        RbacService::has_permission(db, &tenant.id, &auth.user_id, &Permission::MODULES_MANAGE)
+            .await
+            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+    require_platform_composition_operator(
+        &auth,
+        principal_context,
+        tenant.id,
+        role,
+        can_manage_modules,
+    )?;
+
+    Ok(auth)
+}
+
+fn require_platform_composition_operator(
+    auth: &AuthContext,
+    principal_context: AuthPrincipalContext,
+    tenant_id: Uuid,
+    role: UserRole,
+    can_manage_modules: bool,
+) -> Result<()> {
+    let principal = RbacControlPlanePrincipal {
+        tenant_id: auth.tenant_id,
+        principal_kind: principal_context.kind,
+    };
+    require_direct_control_plane_user(principal, tenant_id).map_err(|error| {
+        <FieldError as GraphQLError>::permission_denied(&format!(
+            "Platform composition requires a direct SuperAdmin: {error}"
+        ))
+    })?;
+    if role != UserRole::SuperAdmin {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Platform composition requires the SuperAdmin role",
+        ));
+    }
+    if !can_manage_modules {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Permission denied: modules:manage required",
+        ));
+    }
+    Ok(())
+}
+
+fn artifact_lifecycle_expected_revision(
+    installation_id: Uuid,
+    expected_revision: i64,
+    reason: &str,
+    idempotency_key: Uuid,
+) -> Result<u64> {
+    if installation_id.is_nil() || idempotency_key.is_nil() || expected_revision <= 0 {
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "Artifact lifecycle requires non-nil installation and idempotency identities plus a positive expected revision",
+        ));
+    }
+    if reason.trim().is_empty() {
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "Artifact lifecycle requires a non-empty reason",
+        ));
+    }
+    u64::try_from(expected_revision).map_err(|_| {
+        <FieldError as GraphQLError>::bad_user_input(
+            "Artifact lifecycle revision is outside the supported range",
+        )
+    })
+}
+
+fn artifact_lifecycle_revision(revision: u64) -> Result<i64> {
+    i64::try_from(revision).map_err(|_| {
+        <FieldError as GraphQLError>::internal_error(
+            "Artifact lifecycle revision is outside the GraphQL range",
+        )
+    })
+}
+
+fn tenant_artifact_scope(tenant_id: Uuid) -> ModuleInstallationScope {
+    ModuleInstallationScope::Tenant { tenant_id }
+}
+
+/// The GraphQL adapter preserves the active distributed trace when one exists.
+/// A deterministic local root is retained for deployments that have not yet
+/// installed a tracing subscriber, so every durable owner command remains
+/// traceable and idempotent without a transport-specific fallback DTO.
+fn module_command_context(
+    actor_id: Uuid,
+    tenant_id: Option<Uuid>,
+    idempotency_key: Uuid,
+) -> ModuleCommandContext {
+    let trace_id = rustok_telemetry::current_trace_id()
+        .filter(|trace_id| !trace_id.trim().is_empty())
+        .unwrap_or_else(|| format!("graphql:{idempotency_key}"));
+    ModuleCommandContext {
+        actor_id,
+        tenant_id,
+        trace_id,
+        correlation_id: idempotency_key,
+        idempotency_key,
+    }
+}
+
+fn artifact_migration_rollback_mode(
+    mode: ArtifactMigrationRollbackMode,
+) -> InstallationArtifactMigrationRollbackMode {
+    match mode {
+        ArtifactMigrationRollbackMode::Reversible => {
+            InstallationArtifactMigrationRollbackMode::Reversible
+        }
+        ArtifactMigrationRollbackMode::Compensating => {
+            InstallationArtifactMigrationRollbackMode::Compensating
+        }
+        ArtifactMigrationRollbackMode::Prohibited => {
+            InstallationArtifactMigrationRollbackMode::Prohibited
+        }
+    }
+}
+
 async fn request_module_composition_build(
     runtime_ctx: &ServerRuntimeContext,
-    tenant_id: Uuid,
     registry: &ModuleRegistry,
     mutation: PlatformCompositionModuleMutation,
 ) -> Result<BuildJob> {
@@ -306,7 +448,12 @@ async fn request_module_composition_build(
         ))),
         Arc::new(EventBusBuildEventPublisher::new(
             event_bus_from_context(runtime_ctx),
-            tenant_id,
+            BuildEventScope::Platform,
+            BuildEventPublicationContext {
+                actor_id: mutation.context.actor_id,
+                correlation_id: mutation.context.correlation_id,
+                trace_id: mutation.context.trace_id.clone(),
+            },
         )),
     ]));
 
@@ -489,9 +636,9 @@ fn map_platform_composition_error(error: PlatformCompositionError) -> FieldError
         other @ (PlatformCompositionError::Owner(
             ModuleCompositionError::InvalidExpectedRevision,
         )
-        | PlatformCompositionError::Owner(
-            ModuleCompositionError::InvalidOperationIdentity { .. },
-        )) => <FieldError as GraphQLError>::bad_user_input(&other.to_string()),
+        | PlatformCompositionError::Owner(ModuleCompositionError::InvalidOperationScope)) => {
+            <FieldError as GraphQLError>::bad_user_input(&other.to_string())
+        }
         PlatformCompositionError::Manifest(error) => map_manifest_error(error),
         other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
     }
@@ -512,6 +659,39 @@ fn map_composition_operation_receipt_error(error: PortError) -> FieldError {
         PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
             "Module composition operation requires operator review",
         ),
+    }
+}
+
+fn map_artifact_ui_action_error(error: ServerError) -> FieldError {
+    match error {
+        ServerError::NotFound => {
+            <FieldError as GraphQLError>::not_found("Artifact UI action is unavailable")
+        }
+        ServerError::BadRequest(_) | ServerError::Validation(_) => {
+            <FieldError as GraphQLError>::bad_user_input("Artifact UI action input is invalid")
+        }
+        ServerError::Http(error) if error.status == StatusCode::FORBIDDEN => {
+            <FieldError as GraphQLError>::permission_denied(
+                "Permission denied for artifact UI action",
+            )
+        }
+        ServerError::Http(error) if error.status == StatusCode::CONFLICT => {
+            FieldError::new("Artifact UI action conflicts with the current operation state")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "ARTIFACT_UI_ACTION_CONFLICT");
+                    extensions.set("retryable_issue", false);
+                })
+        }
+        ServerError::Http(error)
+            if error.status == StatusCode::PAYLOAD_TOO_LARGE
+                || error.status == StatusCode::UNSUPPORTED_MEDIA_TYPE =>
+        {
+            <FieldError as GraphQLError>::bad_user_input("Artifact UI action input is invalid")
+        }
+        error => {
+            tracing::error!(%error, "artifact UI action GraphQL mutation failed");
+            <FieldError as GraphQLError>::internal_error("Artifact UI action is unavailable")
+        }
     }
 }
 
@@ -641,18 +821,15 @@ impl RootMutation {
         expected_revision: i64,
         idempotency_key: Uuid,
     ) -> Result<BuildJob> {
-        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let auth = ensure_platform_composition_operator(ctx).await?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
         request_module_composition_build(
             runtime_ctx,
-            tenant.id,
             registry,
             PlatformCompositionModuleMutation {
-                tenant_id: tenant.id,
-                actor_id: auth.user_id,
-                idempotency_key,
+                context: module_command_context(auth.user_id, None, idempotency_key),
                 expected_revision,
                 change: PlatformCompositionModuleChange::Install {
                     module_slug: slug,
@@ -670,18 +847,15 @@ impl RootMutation {
         expected_revision: i64,
         idempotency_key: Uuid,
     ) -> Result<BuildJob> {
-        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let auth = ensure_platform_composition_operator(ctx).await?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
         request_module_composition_build(
             runtime_ctx,
-            tenant.id,
             registry,
             PlatformCompositionModuleMutation {
-                tenant_id: tenant.id,
-                actor_id: auth.user_id,
-                idempotency_key,
+                context: module_command_context(auth.user_id, None, idempotency_key),
                 expected_revision,
                 change: PlatformCompositionModuleChange::Uninstall { module_slug: slug },
             },
@@ -697,18 +871,15 @@ impl RootMutation {
         expected_revision: i64,
         idempotency_key: Uuid,
     ) -> Result<BuildJob> {
-        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let auth = ensure_platform_composition_operator(ctx).await?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
         request_module_composition_build(
             runtime_ctx,
-            tenant.id,
             registry,
             PlatformCompositionModuleMutation {
-                tenant_id: tenant.id,
-                actor_id: auth.user_id,
-                idempotency_key,
+                context: module_command_context(auth.user_id, None, idempotency_key),
                 expected_revision,
                 change: PlatformCompositionModuleChange::Upgrade {
                     module_slug: slug,
@@ -798,15 +969,16 @@ impl RootMutation {
         })?;
         let db = ctx.data::<DatabaseConnection>()?;
         let installation = ModuleControlPlane::new(db.clone()).installation();
+        let command_context =
+            module_command_context(auth.user_id, Some(tenant.id), idempotency_key);
         let revision = if enabled {
             installation
                 .enable_artifact_for_tenant(ArtifactTenantEnableRequest {
                     installation_id,
                     tenant_id: tenant.id,
                     expected_revision,
-                    actor_id: auth.user_id,
+                    context: command_context,
                     reason,
-                    idempotency_key,
                 })
                 .await
                 .map(|result| result.revision)
@@ -816,9 +988,8 @@ impl RootMutation {
                     installation_id,
                     tenant_id: tenant.id,
                     expected_revision,
-                    actor_id: auth.user_id,
+                    context: command_context,
                     reason,
-                    idempotency_key,
                 })
                 .await
                 .map(|result| result.revision)
@@ -835,6 +1006,214 @@ impl RootMutation {
             revision,
             expected_revision: revision,
         })
+    }
+
+    /// Activates one admitted artifact only in the authenticated tenant scope.
+    /// Platform-scope activation has no tenant-derived authorization fallback.
+    async fn activate_tenant_artifact(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+        expected_revision: i64,
+        reason: String,
+        idempotency_key: Uuid,
+    ) -> Result<ArtifactActivation> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let expected_revision = artifact_lifecycle_expected_revision(
+            installation_id,
+            expected_revision,
+            &reason,
+            idempotency_key,
+        )?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let result = ModuleControlPlane::new(db.clone())
+            .installation()
+            .activate_artifact(ArtifactActivationRequest {
+                installation_id,
+                scope: tenant_artifact_scope(tenant.id),
+                expected_revision,
+                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
+                reason,
+            })
+            .await
+            .map_err(map_artifact_installation_lifecycle_error)?;
+
+        Ok(ArtifactActivation {
+            installation_id,
+            operation_id: result.operation_id,
+            predecessor_installation_id: result.predecessor_installation_id,
+            installation_revision: artifact_lifecycle_revision(result.installation_revision)?,
+            predecessor_revision: result
+                .predecessor_revision
+                .map(artifact_lifecycle_revision)
+                .transpose()?,
+        })
+    }
+
+    /// Removes runtime bindings for one active artifact only in the authenticated
+    /// tenant scope. It does not delete retained data or evidence.
+    async fn deactivate_tenant_artifact(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+        expected_revision: i64,
+        reason: String,
+        idempotency_key: Uuid,
+    ) -> Result<ArtifactDeactivation> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let expected_revision = artifact_lifecycle_expected_revision(
+            installation_id,
+            expected_revision,
+            &reason,
+            idempotency_key,
+        )?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let result = ModuleControlPlane::new(db.clone())
+            .installation()
+            .deactivate_artifact(ArtifactDeactivationRequest {
+                installation_id,
+                scope: tenant_artifact_scope(tenant.id),
+                expected_revision,
+                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
+                reason,
+            })
+            .await
+            .map_err(map_artifact_installation_lifecycle_error)?;
+
+        Ok(ArtifactDeactivation {
+            installation_id,
+            operation_id: result.operation_id,
+            revision: artifact_lifecycle_revision(result.revision)?,
+        })
+    }
+
+    /// Removes one inactive artifact selection only in the authenticated tenant
+    /// scope. CAS and retained data collection remain separate owner policies.
+    async fn uninstall_tenant_artifact(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+        expected_revision: i64,
+        reason: String,
+        idempotency_key: Uuid,
+    ) -> Result<ArtifactUninstall> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let expected_revision = artifact_lifecycle_expected_revision(
+            installation_id,
+            expected_revision,
+            &reason,
+            idempotency_key,
+        )?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let result = ModuleControlPlane::new(db.clone())
+            .installation()
+            .uninstall_artifact(ArtifactUninstallRequest {
+                installation_id,
+                scope: tenant_artifact_scope(tenant.id),
+                expected_revision,
+                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
+                reason,
+            })
+            .await
+            .map_err(map_artifact_installation_lifecycle_error)?;
+
+        Ok(ArtifactUninstall {
+            installation_id,
+            operation_id: result.operation_id,
+            revision: artifact_lifecycle_revision(result.revision)?,
+        })
+    }
+
+    /// Rolls back only to the retained direct predecessor in the authenticated
+    /// tenant scope. The client cannot supply a target installation selector.
+    async fn rollback_tenant_artifact(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+        expected_revision: i64,
+        reason: String,
+        idempotency_key: Uuid,
+        target_capability_grant_revision: i64,
+        migration_rollback_mode: ArtifactMigrationRollbackMode,
+    ) -> Result<ArtifactRollback> {
+        let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
+        let expected_revision = artifact_lifecycle_expected_revision(
+            installation_id,
+            expected_revision,
+            &reason,
+            idempotency_key,
+        )?;
+        if target_capability_grant_revision <= 0 {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Artifact rollback requires a positive target capability-grant revision",
+            ));
+        }
+        let target_capability_grant_revision = u64::try_from(target_capability_grant_revision)
+            .map_err(|_| {
+                <FieldError as GraphQLError>::bad_user_input(
+                    "Artifact rollback capability-grant revision is outside the supported range",
+                )
+            })?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let result = ModuleControlPlane::new(db.clone())
+            .installation()
+            .rollback_artifact(ArtifactRollbackRequest {
+                installation_id,
+                scope: tenant_artifact_scope(tenant.id),
+                expected_revision,
+                context: module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
+                reason,
+                target_capability_grant_revision,
+                migration_rollback_mode: artifact_migration_rollback_mode(migration_rollback_mode),
+            })
+            .await
+            .map_err(map_artifact_installation_lifecycle_error)?;
+
+        Ok(ArtifactRollback {
+            operation_id: result.operation_id,
+            source_installation_id: installation_id,
+            target_installation_id: result.target_installation_id,
+            source_revision: artifact_lifecycle_revision(result.source_revision)?,
+            target_revision: artifact_lifecycle_revision(result.target_revision)?,
+        })
+    }
+
+    /// Executes exactly the admitted Command binding selected by an Action or
+    /// Form contribution. The host never receives a raw dynamic-binding
+    /// mutation: contribution lookup, dynamic RBAC, schema validation,
+    /// idempotency, and audited sandbox execution share the HTTP adapter.
+    async fn execute_artifact_ui_action(
+        &self,
+        ctx: &Context<'_>,
+        installation_id: Uuid,
+        contribution_id: String,
+        input: Json<serde_json::Value>,
+        idempotency_key: Uuid,
+    ) -> Result<Json<serde_json::Value>> {
+        ensure_modules_read_permission(ctx).await?;
+        if installation_id.is_nil() || contribution_id.trim().is_empty() || idempotency_key.is_nil()
+        {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Artifact UI action requires non-nil installation and idempotency identities plus a contribution ID",
+            ));
+        }
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
+        let output = execute_artifact_ui_action_service(
+            runtime_ctx,
+            tenant.id,
+            auth.user_id,
+            installation_id,
+            &contribution_id,
+            input.0,
+            Some(idempotency_key.to_string()),
+        )
+        .await
+        .map_err(map_artifact_ui_action_error)?;
+        Ok(Json(output))
     }
 
     async fn retry_failed_module_operation_post_hook(
@@ -1053,18 +1432,69 @@ mod tests {
         PlatformCompositionError, TOGGLE_ERR_UNKNOWN_MODULE, ToggleModuleError,
         map_create_user_error, map_manifest_error, map_platform_composition_build_error,
         map_platform_composition_error, map_toggle_module_error, prepare_user_custom_fields_write,
-        toggle_err_core_module_cannot_be_disabled, toggle_err_has_dependents,
-        toggle_err_hook_failed, toggle_err_missing_dependencies, validate_custom_fields,
+        require_platform_composition_operator, toggle_err_core_module_cannot_be_disabled,
+        toggle_err_has_dependents, toggle_err_hook_failed, toggle_err_missing_dependencies,
+        validate_custom_fields,
     };
-    use crate::graphql::artifact_tenant_lifecycle::map_artifact_tenant_lifecycle_error;
+    use crate::graphql::artifact_lifecycle::{
+        map_artifact_installation_lifecycle_error, map_artifact_tenant_lifecycle_error,
+    };
     use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
     use async_graphql::ErrorExtensions;
+    use rustok_api::{AuthContext, AuthPrincipalContext, AuthPrincipalKind, Permission};
+    use rustok_core::UserRole;
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         ActiveModelTrait, DatabaseConnection, Set, entity::prelude::DateTimeWithTimeZone,
     };
     use uuid::Uuid;
+
+    fn platform_operator_auth(tenant_id: Uuid) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::MODULES_MANAGE],
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+        }
+    }
+
+    #[test]
+    fn platform_composition_requires_a_direct_super_admin_with_modules_manage() {
+        let tenant_id = Uuid::new_v4();
+        let auth = platform_operator_auth(tenant_id);
+        assert!(
+            require_platform_composition_operator(
+                &auth,
+                AuthPrincipalContext::new(AuthPrincipalKind::DirectUser),
+                tenant_id,
+                UserRole::SuperAdmin,
+                true,
+            )
+            .is_ok()
+        );
+
+        for (principal_kind, role, can_manage_modules) in [
+            (AuthPrincipalKind::DelegatedUser, UserRole::SuperAdmin, true),
+            (AuthPrincipalKind::Service, UserRole::SuperAdmin, true),
+            (AuthPrincipalKind::DirectUser, UserRole::Admin, true),
+            (AuthPrincipalKind::DirectUser, UserRole::SuperAdmin, false),
+        ] {
+            assert!(
+                require_platform_composition_operator(
+                    &auth,
+                    AuthPrincipalContext::new(principal_kind),
+                    tenant_id,
+                    role,
+                    can_manage_modules,
+                )
+                .is_err()
+            );
+        }
+    }
 
     fn field_definition_model(
         tenant_id: Uuid,
@@ -1141,6 +1571,21 @@ mod tests {
         assert_eq!(
             error_code(&mapped),
             Some("ARTIFACT_TENANT_LIFECYCLE_CONFLICT".to_string())
+        );
+        assert_eq!(extension_bool(&mapped, "retryable_issue"), Some(false));
+        assert!(!mapped.message.contains("stale"));
+    }
+
+    #[test]
+    fn artifact_installation_lifecycle_conflicts_are_sanitized_and_non_retryable() {
+        let mapped = map_artifact_installation_lifecycle_error(
+            rustok_modules::ModuleInstallationError::AdmissionRevisionConflict(
+                "artifact installation revision is stale".to_string(),
+            ),
+        );
+        assert_eq!(
+            error_code(&mapped),
+            Some("ARTIFACT_INSTALLATION_LIFECYCLE_CONFLICT".to_string())
         );
         assert_eq!(extension_bool(&mapped, "retryable_issue"), Some(false));
         assert!(!mapped.message.contains("stale"));

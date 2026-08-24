@@ -3655,4 +3655,3 @@ function responseFacts(response: TranslationResponse): Array<[string, string]> {
 export { executeTranslationOperation } from './api';
 export { translationNavItems } from './nav';
 export type * from './types';
-export default TranslationAdminPage;

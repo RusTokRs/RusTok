@@ -176,7 +176,7 @@ impl ReactionsService {
         let tenant_id = command.request.subject.tenant_id();
         let lease = match idempotency::admit(
             self.database(),
-            tenant_id,
+            idempotency::OwnerOperationScope::Tenant(tenant_id),
             REACTION_OWNER_SLUG,
             expected_key.as_str(),
             RECONCILE_REACTION_SUBJECT_OPERATION,

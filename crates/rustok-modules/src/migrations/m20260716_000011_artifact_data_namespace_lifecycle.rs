@@ -34,6 +34,8 @@ impl MigrationTrait for Migration {
                     expected_namespace_revision BIGINT NOT NULL CHECK (expected_namespace_revision > 0),\
                     namespace_revision BIGINT NOT NULL CHECK (namespace_revision > 0),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id UUID NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     purged_records BIGINT NOT NULL CHECK (purged_records >= 0),\
                     completed_at TIMESTAMPTZ NOT NULL,\
@@ -64,6 +66,8 @@ impl MigrationTrait for Migration {
                     expected_namespace_revision INTEGER NOT NULL CHECK (expected_namespace_revision > 0),\
                     namespace_revision INTEGER NOT NULL CHECK (namespace_revision > 0),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) > 0 AND length(trace_id) <= 512),\
+                    correlation_id TEXT NOT NULL,\
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     purged_records INTEGER NOT NULL CHECK (purged_records >= 0),\
                     completed_at TEXT NOT NULL,\
