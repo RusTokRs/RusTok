@@ -1,14 +1,14 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumModule, MoveCategoryInput,
-    ReorderCategorySiblingsInput, UpdateCategoryInput,
-    entities::forum_category_taxonomy_binding,
+    ReorderCategorySiblingsInput, UpdateCategoryInput, entities::forum_category_taxonomy_binding,
 };
 use rustok_taxonomy::{
-    TaxonomyModule, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
-    entities::taxonomy_term_alias,
+    TaxonomyModule, TaxonomyOwnerCategoryReader, TaxonomyScopeType, entities::taxonomy_term_alias,
 };
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait};
+use sea_orm::{
+    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
+};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -60,7 +60,10 @@ async fn forum_category_writes_keep_taxonomy_category_mirror_current() -> TestRe
     assert_eq!(projected.name, "Support");
     assert_eq!(projected.slug, "support");
     assert_eq!(projected.parent_id, Some(root.id));
-    assert_eq!(projected.position, 1, "second create shifts Support after Lounge");
+    assert_eq!(
+        projected.position, 1,
+        "second create shifts Support after Lounge"
+    );
     assert_eq!(projected.icon_key.as_deref(), Some("life-buoy"));
     assert_eq!(projected.color.as_deref(), Some("#112233"));
 
@@ -85,7 +88,10 @@ async fn forum_category_writes_keep_taxonomy_category_mirror_current() -> TestRe
     let projected = load_category(&reader, tenant_id, support.id).await?;
     assert_eq!(projected.name, "Help & Support");
     assert_eq!(projected.slug, "help-support");
-    assert_eq!(projected.description.as_deref(), Some("Get help from the community"));
+    assert_eq!(
+        projected.description.as_deref(),
+        Some("Get help from the community")
+    );
     assert_eq!(projected.icon_key.as_deref(), Some("headphones"));
     assert_eq!(projected.color.as_deref(), Some("#445566"));
 
