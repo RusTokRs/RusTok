@@ -26,7 +26,7 @@ const packageJson = JSON.parse(read("apps/next-admin/package.json"));
 const adminUi = read("crates/rustok-forum/admin/src/ui/category_dnd.rs");
 const storefrontUi = read("crates/rustok-forum/storefront/src/ui/leptos.rs");
 const treeOwner = read("crates/rustok-forum/src/services/category_taxonomy_tree_read.rs");
-const routeOwner = read("crates/rustok-forum/storefront/src/category_route.rs");
+const routeMount = read("apps/storefront/src/forum_category_route.rs");
 
 if (contract.status !== "source_ready_maintainer_execution_pending") {
   throw new Error("CAT-5 browser contract must not claim execution");
@@ -136,8 +136,9 @@ for (const marker of [
   "resolve_storefront_category_route",
   "StorefrontForumCategoryRouteDisposition::Redirect",
   "canonical.path",
+  "private_permanent_redirect",
 ]) {
-  need(routeOwner, marker, "Taxonomy-backed Forum Category route owner");
+  need(routeMount, marker, "mounted Forum Category canonical route");
 }
 
 for (const legacy of [
@@ -146,7 +147,7 @@ for (const legacy of [
   "ForumCategoryTranslationTargetProvider",
 ]) {
   forbid(treeOwner, legacy, "Taxonomy-backed Forum Category tree owner");
-  forbid(routeOwner, legacy, "Taxonomy-backed Forum Category route owner");
+  forbid(routeMount, legacy, "mounted Forum Category canonical route");
 }
 
 console.log("Forum Category Taxonomy multilingual/RTL browser evidence source: ok");
