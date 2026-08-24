@@ -81,4 +81,6 @@ impl CategoryService {
     }
 }
 
-include!("category_taxonomy_read.rs");
+pub(super) mod taxonomy_read {
+    include!("category_taxonomy_read.rs");
+}
