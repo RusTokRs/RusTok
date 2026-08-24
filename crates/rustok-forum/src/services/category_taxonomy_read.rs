@@ -2,9 +2,7 @@ use std::collections::HashMap;
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
-use rustok_taxonomy::{
-    TaxonomyError, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
-};
+use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
     sea_query::{Expr, Query, SelectStatement},
