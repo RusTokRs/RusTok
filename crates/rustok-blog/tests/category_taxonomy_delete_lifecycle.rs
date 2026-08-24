@@ -67,11 +67,8 @@ fn service(
 ) {
     let transport = MemoryTransport::new();
     let receiver = transport.subscribe();
-    let service = CategoryService::new(
-        db.clone(),
-        TransactionalEventBus::new(Arc::new(transport)),
-    )
-    .with_category_delete_cleanup(cleanup);
+    let service = CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)))
+        .with_category_delete_cleanup(cleanup);
     (service, receiver)
 }
 
