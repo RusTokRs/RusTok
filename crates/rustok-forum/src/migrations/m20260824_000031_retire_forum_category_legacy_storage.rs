@@ -27,6 +27,7 @@ impl MigrationTrait for Migration {
         }
 
         ensure_complete_taxonomy_ownership(manager).await?;
+        drop_legacy_route_triggers(manager).await?;
 
         manager
             .drop_table(
@@ -152,6 +153,43 @@ async fn ensure_complete_taxonomy_ownership(manager: &SchemaManager<'_>) -> Resu
     }
 
     Ok(())
+}
+
+async fn drop_legacy_route_triggers(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let sql = match manager.get_database_backend() {
+        DatabaseBackend::Postgres => {
+            r#"
+DROP TRIGGER IF EXISTS forum_category_route_alias_insert_guard
+    ON forum_category_route_aliases;
+DROP TRIGGER IF EXISTS forum_category_translation_route_alias_guard
+    ON forum_category_translations;
+DROP TRIGGER IF EXISTS forum_category_route_alias_delete
+    ON forum_category_route_aliases;
+DROP TRIGGER IF EXISTS forum_category_route_alias_update
+    ON forum_category_route_aliases;
+"#
+        }
+        DatabaseBackend::Sqlite => {
+            r#"
+DROP TRIGGER IF EXISTS forum_category_route_alias_insert_guard;
+DROP TRIGGER IF EXISTS forum_category_translation_route_alias_update_guard;
+DROP TRIGGER IF EXISTS forum_category_translation_route_alias_insert_guard;
+DROP TRIGGER IF EXISTS forum_category_route_alias_delete;
+DROP TRIGGER IF EXISTS forum_category_route_alias_update;
+"#
+        }
+        backend => {
+            return Err(DbErr::Custom(format!(
+                "Forum Category legacy-storage trigger retirement does not support {backend:?}",
+            )));
+        }
+    };
+
+    manager
+        .get_connection()
+        .execute_unprepared(sql)
+        .await
+        .map(|_| ())
 }
 
 #[derive(Iden)]
