@@ -82,7 +82,12 @@ pub(crate) mod projection_invalidation;
 mod public_discovery;
 mod quote_command;
 mod rbac;
-pub mod read_model;
+#[path = "read_model.rs"]
+mod read_model_legacy;
+mod read_model_owner;
+pub mod read_model {
+    pub use super::read_model_owner::ForumReadModelService;
+}
 pub mod read_tracking {
     include!("read_tracking.rs");
     include!("read_tracking_audience.rs");
