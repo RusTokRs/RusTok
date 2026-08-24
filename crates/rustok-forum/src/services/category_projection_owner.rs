@@ -1,7 +1,5 @@
 use std::ops::Deref;
 
-use super::category_route::{FORUM_CATEGORY_RENAMED_ROUTE_REASON, ForumCategoryRouteService};
-
 /// Transactional owner facade for category content mutations.
 ///
 /// Read methods remain delegated to the established category service. Create,
@@ -79,9 +77,6 @@ impl CategoryProjectionOwnerService {
         .insert(&txn)
         .await?;
 
-        // Taxonomy owns the route namespace. Its owner-sync runs in this same
-        // transaction, so a canonical/alias collision rolls the compatibility
-        // Forum rows back atomically instead of relying on a duplicate preflight.
         taxonomy_sync::sync_siblings_for_parent_in_tx(&txn, tenant_id, input.parent_id).await?;
         super::category_translation_evidence::record_category_translation_change_in_tx(
             &txn,
@@ -171,21 +166,6 @@ impl CategoryProjectionOwnerService {
                     active.description = Set(input.description);
                 }
                 active.update(&txn).await?;
-
-                // Keep the compatibility alias log only as the append-only
-                // history donor for owner-sync. Taxonomy, not this table,
-                // decides whether the route key can commit.
-                if slug_changed {
-                    ForumCategoryRouteService::record_slug_rename_alias_in_tx(
-                        &txn,
-                        tenant_id,
-                        category_id,
-                        &locale,
-                        &previous_slug,
-                        FORUM_CATEGORY_RENAMED_ROUTE_REASON,
-                    )
-                    .await?;
-                }
             }
             None => {
                 let name = input.name.ok_or_else(|| {
