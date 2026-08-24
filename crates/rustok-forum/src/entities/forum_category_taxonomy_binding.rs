@@ -1,7 +1,7 @@
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -51,79 +51,93 @@ impl ForumCategoryTaxonomyBindingService {
         forum_category_id: Uuid,
         taxonomy_category_id: Uuid,
     ) -> ForumResult<ForumCategoryTaxonomyBinding> {
-        if tenant_id.is_nil() || forum_category_id.is_nil() || taxonomy_category_id.is_nil() {
-            return Err(ForumError::Validation(
-                "Forum Taxonomy category binding requires non-nil tenant and category IDs"
-                    .to_string(),
-            ));
-        }
-
         let txn = self.db.begin().await?;
-        let taxonomy_exists = rustok_taxonomy::taxonomy_term_identity_exists(
+        let binding = bind_in_tx(
             &txn,
             tenant_id,
-            rustok_taxonomy::TaxonomyTermKind::Category,
-            taxonomy_category_id,
-        )
-        .await
-        .map_err(map_taxonomy_error)?;
-        if !taxonomy_exists {
-            return Err(ForumError::Validation(
-                "Forum category binding must reference a same-tenant Taxonomy Category".to_string(),
-            ));
-        }
-
-        let forum_exists = forum_category::Entity::find_by_id(forum_category_id)
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .is_some();
-        if !forum_exists {
-            return Err(ForumError::CategoryNotFound(forum_category_id));
-        }
-
-        if let Some(existing) = Entity::find_by_id((tenant_id, forum_category_id))
-            .one(&txn)
-            .await?
-        {
-            if existing.taxonomy_category_id == taxonomy_category_id {
-                txn.commit().await?;
-                return Ok(ForumCategoryTaxonomyBinding {
-                    forum_category_id,
-                    taxonomy_category_id,
-                });
-            }
-            return Err(ForumError::Validation(
-                "Forum category is already bound to a different Taxonomy Category".to_string(),
-            ));
-        }
-
-        let duplicate = Entity::find()
-            .filter(Column::TenantId.eq(tenant_id))
-            .filter(Column::TaxonomyCategoryId.eq(taxonomy_category_id))
-            .one(&txn)
-            .await?;
-        if duplicate.is_some() {
-            return Err(ForumError::Validation(
-                "Taxonomy Category is already bound to another Forum category".to_string(),
-            ));
-        }
-
-        ActiveModel {
-            tenant_id: Set(tenant_id),
-            forum_category_id: Set(forum_category_id),
-            taxonomy_category_id: Set(taxonomy_category_id),
-            created_at: Set(chrono::Utc::now().into()),
-        }
-        .insert(&txn)
-        .await?;
-        txn.commit().await?;
-
-        Ok(ForumCategoryTaxonomyBinding {
             forum_category_id,
             taxonomy_category_id,
-        })
+        )
+        .await?;
+        txn.commit().await?;
+        Ok(binding)
     }
+}
+
+pub(crate) async fn bind_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    forum_category_id: Uuid,
+    taxonomy_category_id: Uuid,
+) -> ForumResult<ForumCategoryTaxonomyBinding> {
+    if tenant_id.is_nil() || forum_category_id.is_nil() || taxonomy_category_id.is_nil() {
+        return Err(ForumError::Validation(
+            "Forum Taxonomy category binding requires non-nil tenant and category IDs".to_string(),
+        ));
+    }
+
+    let taxonomy_exists = rustok_taxonomy::taxonomy_term_identity_exists(
+        txn,
+        tenant_id,
+        rustok_taxonomy::TaxonomyTermKind::Category,
+        taxonomy_category_id,
+    )
+    .await
+    .map_err(map_taxonomy_error)?;
+    if !taxonomy_exists {
+        return Err(ForumError::Validation(
+            "Forum category binding must reference a same-tenant Taxonomy Category".to_string(),
+        ));
+    }
+
+    let forum_exists = forum_category::Entity::find_by_id(forum_category_id)
+        .filter(forum_category::Column::TenantId.eq(tenant_id))
+        .one(txn)
+        .await?
+        .is_some();
+    if !forum_exists {
+        return Err(ForumError::CategoryNotFound(forum_category_id));
+    }
+
+    if let Some(existing) = Entity::find_by_id((tenant_id, forum_category_id))
+        .one(txn)
+        .await?
+    {
+        if existing.taxonomy_category_id == taxonomy_category_id {
+            return Ok(ForumCategoryTaxonomyBinding {
+                forum_category_id,
+                taxonomy_category_id,
+            });
+        }
+        return Err(ForumError::Validation(
+            "Forum category is already bound to a different Taxonomy Category".to_string(),
+        ));
+    }
+
+    let duplicate = Entity::find()
+        .filter(Column::TenantId.eq(tenant_id))
+        .filter(Column::TaxonomyCategoryId.eq(taxonomy_category_id))
+        .one(txn)
+        .await?;
+    if duplicate.is_some() {
+        return Err(ForumError::Validation(
+            "Taxonomy Category is already bound to another Forum category".to_string(),
+        ));
+    }
+
+    ActiveModel {
+        tenant_id: Set(tenant_id),
+        forum_category_id: Set(forum_category_id),
+        taxonomy_category_id: Set(taxonomy_category_id),
+        created_at: Set(chrono::Utc::now().into()),
+    }
+    .insert(txn)
+    .await?;
+
+    Ok(ForumCategoryTaxonomyBinding {
+        forum_category_id,
+        taxonomy_category_id,
+    })
 }
 
 fn map_taxonomy_error(error: rustok_taxonomy::TaxonomyError) -> ForumError {
