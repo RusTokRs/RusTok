@@ -7,6 +7,7 @@ on:
       - "crates/rustok-forum/src/services/category_command_owner.rs"
       - "crates/rustok-forum/src/services/category_taxonomy_sync.rs"
       - "crates/rustok-forum/tests/category_taxonomy_dual_write.rs"
+      - "crates/rustok-forum/tests/category_atomicity_sqlite.rs"
       - ".github/workflows/forum-taxonomy-category-dual-write.yml"
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - "crates/rustok-forum/src/services/category_command_owner.rs"
       - "crates/rustok-forum/src/services/category_taxonomy_sync.rs"
       - "crates/rustok-forum/tests/category_taxonomy_dual_write.rs"
+      - "crates/rustok-forum/tests/category_atomicity_sqlite.rs"
       - ".github/workflows/forum-taxonomy-category-dual-write.yml"
   workflow_dispatch:
 
@@ -54,5 +56,7 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Run Forum Taxonomy Category dual-write contract
         run: cargo +1.96.0 test --locked -p rustok-forum --test category_taxonomy_dual_write -- --nocapture
+      - name: Run Forum category atomicity regression
+        run: cargo +1.96.0 test --locked -p rustok-forum --test category_atomicity_sqlite -- --nocapture
       - name: Compile Forum category owner surface
         run: cargo +1.96.0 check --locked -p rustok-forum --lib
