@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CategoryTreeQuery, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
     ForumModule, ReplyService, TopicService,
     entities::{forum_category, forum_category_taxonomy_binding, forum_category_translation},
 };
-use rustok_outbox::{OutboxModule, TransactionalEventBus};
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
@@ -58,7 +58,7 @@ async fn forum_category_reads_use_taxonomy_copy_hierarchy_and_presentation() -> 
     ))
     .await?;
     let author = SecurityContext::new(UserRole::Admin, Some(author_id));
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
     let reply_service = ReplyService::new(db.clone(), event_bus);
     let topic = topic_service
