@@ -19,8 +19,8 @@ use crate::entities::{
 };
 use crate::error::{ForumError, ForumResult};
 
-use super::category_policy::CategoryTopicPolicyService;
-use super::subscription::SubscriptionService;
+use super::super::category_policy::CategoryTopicPolicyService;
+use super::super::subscription::SubscriptionService;
 
 struct BoundTaxonomyCategory {
     forum_category_id: Uuid,
@@ -36,22 +36,17 @@ struct BoundTaxonomyCategory {
     color: Option<String>,
 }
 
-/// CAT-5 read composer.
-///
-/// Canonical category identity, localized copy, hierarchy and presentation are
-/// read from the Taxonomy Category owner through the typed Forum binding. Forum
-/// rows remain the owner of moderation, counters, lifecycle, subscriptions and
-/// audience policy until those domain concerns are independently migrated.
-struct ForumCategoryTaxonomyReadService {
+/// Composes canonical Taxonomy Category data with Forum-owned policy/state.
+pub(super) struct ForumCategoryTaxonomyReadService {
     db: DatabaseConnection,
 }
 
 impl ForumCategoryTaxonomyReadService {
-    fn new(db: DatabaseConnection) -> Self {
+    pub(super) fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
 
-    async fn get(
+    pub(super) async fn get(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
@@ -99,7 +94,7 @@ impl ForumCategoryTaxonomyReadService {
         })
     }
 
-    async fn list_paginated(
+    pub(super) async fn list_paginated(
         &self,
         tenant_id: Uuid,
         locale: &str,
@@ -137,26 +132,25 @@ impl ForumCategoryTaxonomyReadService {
         let subscriptions = SubscriptionService::new(self.db.clone())
             .category_subscription_flags(tenant_id, &category_ids, user_id)
             .await?;
-
         let mut items = Vec::with_capacity(forums.len());
         for forum in forums {
-            let canonical = canonical.remove(&forum.id).ok_or_else(|| {
+            let projected = canonical.remove(&forum.id).ok_or_else(|| {
                 ForumError::Validation(format!(
                     "Forum category {} has no canonical Taxonomy Category projection",
                     forum.id
                 ))
             })?;
             items.push(CategoryListItem {
-                id: canonical.forum_category_id,
-                requested_locale: canonical.requested_locale.clone(),
-                locale: canonical.requested_locale,
-                effective_locale: canonical.effective_locale,
-                available_locales: canonical.available_locales,
-                name: canonical.name,
-                slug: canonical.slug,
-                description: canonical.description,
-                icon: canonical.icon,
-                color: canonical.color,
+                id: projected.forum_category_id,
+                requested_locale: projected.requested_locale.clone(),
+                locale: projected.requested_locale,
+                effective_locale: projected.effective_locale,
+                available_locales: projected.available_locales,
+                name: projected.name,
+                slug: projected.slug,
+                description: projected.description,
+                icon: projected.icon,
+                color: projected.color,
                 topic_count: forum.topic_count,
                 reply_count: forum.reply_count,
                 is_subscribed: subscriptions.get(&forum.id).copied().unwrap_or(false),
@@ -165,7 +159,7 @@ impl ForumCategoryTaxonomyReadService {
         Ok((items, total))
     }
 
-    async fn tree(
+    pub(super) async fn tree(
         &self,
         tenant_id: Uuid,
         query: CategoryTreeQuery,
@@ -392,7 +386,6 @@ impl ForumCategoryTaxonomyReadService {
             .iter()
             .map(|binding| (binding.taxonomy_category_id, binding.forum_category_id))
             .collect::<HashMap<_, _>>();
-
         let missing_parent_ids = projected_by_taxonomy_id
             .values()
             .filter_map(|category| category.parent_id)
