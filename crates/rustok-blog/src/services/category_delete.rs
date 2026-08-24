@@ -4,18 +4,14 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{
-    TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult,
-};
+use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
     DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Statement,
 };
 use uuid::Uuid;
 
-use crate::entities::{
-    blog_category, blog_category_taxonomy_binding, blog_category_translation,
-};
+use crate::entities::{blog_category, blog_category_taxonomy_binding, blog_category_translation};
 use crate::translation_evidence::{
     TRANSLATION_RESOURCE_KIND, TranslationChangeEvidence, record_translation_change_in_tx,
 };
@@ -59,18 +55,16 @@ impl BlogCategoryDeleteCleanup {
     ) -> BlogResult<()> {
         lock_category_tree_in_tx(txn, tenant_id).await?;
 
-        let binding = blog_category_taxonomy_binding::Entity::find_by_id((
-            tenant_id,
-            self.blog_category_id,
-        ))
-        .one(txn)
-        .await?
-        .ok_or_else(|| {
-            BlogError::validation(format!(
-                "Blog category {} has no Taxonomy Category binding",
-                self.blog_category_id
-            ))
-        })?;
+        let binding =
+            blog_category_taxonomy_binding::Entity::find_by_id((tenant_id, self.blog_category_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| {
+                    BlogError::validation(format!(
+                        "Blog category {} has no Taxonomy Category binding",
+                        self.blog_category_id
+                    ))
+                })?;
         if binding.taxonomy_category_id != taxonomy_category_id {
             return Err(BlogError::validation(format!(
                 "Blog category {} is bound to Taxonomy Category {}, not delete target {}",
@@ -174,10 +168,7 @@ impl TaxonomyCategoryDeleteCleanupPort for BlogCategoryDeleteCleanup {
     }
 }
 
-async fn lock_category_tree_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-) -> BlogResult<()> {
+async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> BlogResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
             txn.execute(Statement::from_sql_and_values(
