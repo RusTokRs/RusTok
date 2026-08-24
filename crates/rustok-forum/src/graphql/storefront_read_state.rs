@@ -1,9 +1,6 @@
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
-use rustok_api::{
-    AuthContext, Permission, RequestContext, TenantContext,
-    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
-    has_any_effective_permission,
-};
+use rustok_api::graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale};
+use rustok_api::{AuthContext, Permission, RequestContext, TenantContext};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -74,13 +71,13 @@ impl ForumStorefrontReadStateQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_forum_permission(
+        let auth = super::require_forum_permission(
             ctx,
             &[Permission::FORUM_TOPICS_LIST],
             "Permission denied: forum_topics:list required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let request = ctx.data::<RequestContext>()?;
         let limit = storefront_limit(limit)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
@@ -88,7 +85,7 @@ impl ForumStorefrontReadStateQuery {
             ForumTopicReadTransport::Graphql,
             ForumTopicReadOperation::TopicList,
             tenant_id,
-            &auth,
+            auth,
             Some(request),
             locale.as_str(),
         )?;
@@ -101,7 +98,7 @@ impl ForumStorefrontReadStateQuery {
             .storefront_read_state_service(db.clone(), event_bus.clone())
             .list_topics_with_unread_audience_visible(
                 tenant_id,
-                forum_security(&auth),
+                forum_security(auth),
                 audience_context,
                 ListTopicsFilter {
                     category_id,
@@ -136,19 +133,19 @@ impl ForumStorefrontReadStateMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_forum_permission(
+        let auth = super::require_forum_permission(
             ctx,
             &[Permission::FORUM_TOPICS_READ],
             "Permission denied: forum_topics:read required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let audience_context = topic_read_audience_port_context(
             ForumTopicReadTransport::Graphql,
             ForumTopicReadOperation::MarkRead,
             tenant_id,
-            &auth,
+            auth,
             ctx.data_opt::<RequestContext>(),
             locale.as_str(),
         )?;
@@ -162,7 +159,7 @@ impl ForumStorefrontReadStateMutation {
             .mark_topic_read_current_audience_visible(
                 tenant_id,
                 topic_id,
-                forum_security(&auth),
+                forum_security(auth),
                 audience_context,
                 Some(tenant.default_locale.as_str()),
             )
@@ -190,19 +187,19 @@ impl ForumStorefrontReadStateMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_forum_permission(
+        let auth = super::require_forum_permission(
             ctx,
             &[Permission::FORUM_TOPICS_READ],
             "Permission denied: forum_topics:read required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let audience_context = topic_read_audience_port_context(
             ForumTopicReadTransport::Graphql,
             ForumTopicReadOperation::MarkCategoryRead,
             tenant_id,
-            &auth,
+            auth,
             ctx.data_opt::<RequestContext>(),
             locale.as_str(),
         )?;
@@ -216,7 +213,7 @@ impl ForumStorefrontReadStateMutation {
             .mark_category_read_audience_visible(
                 tenant_id,
                 category_id,
-                forum_security(&auth),
+                forum_security(auth),
                 audience_context,
                 storefront_batch_input(input.unwrap_or_default())?,
             )
@@ -243,19 +240,19 @@ impl ForumStorefrontReadStateMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_forum_permission(
+        let auth = super::require_forum_permission(
             ctx,
             &[Permission::FORUM_TOPICS_READ],
             "Permission denied: forum_topics:read required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let audience_context = topic_read_audience_port_context(
             ForumTopicReadTransport::Graphql,
             ForumTopicReadOperation::MarkAllRead,
             tenant_id,
-            &auth,
+            auth,
             ctx.data_opt::<RequestContext>(),
             locale.as_str(),
         )?;
@@ -268,7 +265,7 @@ impl ForumStorefrontReadStateMutation {
             .storefront_read_state_service(db.clone(), event_bus.clone())
             .mark_all_read_audience_visible(
                 tenant_id,
-                forum_security(&auth),
+                forum_security(auth),
                 audience_context,
                 storefront_batch_input(input.unwrap_or_default())?,
             )
@@ -277,32 +274,7 @@ impl ForumStorefrontReadStateMutation {
     }
 }
 
-fn require_forum_permission(
-    ctx: &Context<'_>,
-    permissions: &[Permission],
-    message: &str,
-) -> Result<AuthContext> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-        .clone();
-    if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(<FieldError as GraphQLError>::permission_denied(message));
-    }
-    Ok(auth)
-}
 
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
-    }
-}
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
     rustok_core::SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)

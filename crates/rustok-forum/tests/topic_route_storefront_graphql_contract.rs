@@ -46,7 +46,7 @@ fn route_query_reuses_exact_audience_and_tombstone_decision_owners() {
     for marker in [
         "require_module_enabled(ctx, MODULE_SLUG).await?",
         "forum_channel_enabled(ctx).await?",
-        "Permission denied: tenant scope mismatch",
+        "resolve_tenant_scope",
         "ForumTopicRouteService::new(db.clone())",
         ".resolve(tenant_id, &locale, &short_id, &slug)",
         ".topic_audience_read_service(db.clone(), event_bus.clone())",

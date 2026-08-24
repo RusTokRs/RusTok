@@ -4,7 +4,7 @@ use rustok_core::MigrationSource;
 use rustok_forum::ForumModule;
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -28,6 +28,15 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
         .min_connections(1)
         .sqlx_logging(false);
     let db = Database::connect(options).await?;
+    db.execute_unprepared(
+        r#"
+        CREATE TABLE users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        )
+        "#,
+    )
+    .await?;
     let manager = SchemaManager::new(&db);
 
     for migration in OutboxModule.migrations() {

@@ -14,7 +14,6 @@ rustok-core = { workspace = true }
 rustok-telemetry = { workspace = true }
 async-trait.workspace = true
 tracing.workspace = true
-moka = { workspace = true, features = ["future"] }
 tokio.workspace = true
 sha2.workspace = true
 hex.workspace = true

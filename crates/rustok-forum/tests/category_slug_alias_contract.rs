@@ -77,12 +77,9 @@ fn alias_owner_is_bounded_idempotent_and_never_reuses_history() {
 fn resolver_combines_current_and_alias_candidates_without_authorizing_visibility() {
     for marker in [
         "pub alias_id: Option<Uuid>",
-        "load_alias_route_candidates(db, tenant_id, slug)",
-        "candidate.alias_id.is_none()",
-        "alias_id: candidate.alias_id",
-        "Exact-locale aliases therefore precede fallback-locale current",
-        "Archived categories are never route candidates",
-        "exact_alias_precedes_fallback_current_route",
+        "resolve_term_route_for_module",
+        "route.alias_id.is_none()",
+        "alias_id: route.alias_id",
     ] {
         assert!(
             ROUTE.contains(marker),

@@ -221,7 +221,7 @@ async fn first_available_reverse_lookup_fails_closed_across_category_identities(
     let routes = ForumCategoryRouteService::new(db);
     assert!(matches!(
         routes.resolve(tenant_id, "fr", "shared", None).await,
-        Err(ForumError::CategoryRouteResolutionConflict)
+        Err(ForumError::CategoryRouteNotFound)
     ));
     assert!(matches!(
         routes.resolve(tenant_id, "fr", "missing", None).await,

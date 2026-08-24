@@ -1,17 +1,14 @@
-use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
+use async_graphql::{Context, InputObject, Object, Result, SimpleObject};
 use rustok_api::Permission;
-use rustok_api::{
-    AuthContext, TenantContext,
-    graphql::{GraphQLError, require_module_enabled},
-    has_any_effective_permission,
-};
-use sea_orm::DatabaseConnection;
+use rustok_api::graphql::{extract_graphql_context, require_module_enabled};
 use uuid::Uuid;
 
 use crate::{
     CategoryPlacementResponse, CategoryService, MoveCategoryInput, MoveCategoryResponse,
     ReorderCategorySiblingsInput, ReorderCategorySiblingsResponse,
 };
+
+use super::{require_forum_permission, resolve_tenant_scope};
 
 const MODULE_SLUG: &str = "forum";
 
@@ -28,14 +25,16 @@ impl ForumCategoryCommandMutation {
         input: MoveForumCategoryInput,
     ) -> Result<GqlForumCategoryMove> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let auth = require_category_manage_permission(ctx)?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_CATEGORIES_MANAGE],
+            "Permission denied: forum_categories:manage required",
+        )?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
         let position = u32::try_from(input.position).map_err(|_| {
-            async_graphql::Error::new("Category position must be a non-negative integer")
+            async_graphql::Error::new("position must be a non-negative integer within u32 range")
         })?;
-
         let response = CategoryService::new(db.clone())
             .move_category(
                 tenant_id,
@@ -60,11 +59,13 @@ impl ForumCategoryCommandMutation {
         input: ReorderForumCategorySiblingsInput,
     ) -> Result<GqlForumCategorySiblingOrder> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let auth = require_category_manage_permission(ctx)?;
-        let tenant = ctx.data::<TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_CATEGORIES_MANAGE],
+            "Permission denied: forum_categories:manage required",
+        )?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-
         let response = CategoryService::new(db.clone())
             .reorder_siblings(
                 tenant_id,
@@ -79,31 +80,6 @@ impl ForumCategoryCommandMutation {
             )
             .await?;
         Ok(response.into())
-    }
-}
-
-fn require_category_manage_permission(ctx: &Context<'_>) -> Result<AuthContext> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-        .clone();
-    if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_MANAGE]) {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: forum_categories:manage required",
-        ));
-    }
-    Ok(auth)
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
     }
 }
 

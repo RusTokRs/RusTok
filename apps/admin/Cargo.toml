@@ -162,7 +162,6 @@ log = "0.4"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
-thiserror = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
 sea-orm = { workspace = true, optional = true }
@@ -304,4 +303,45 @@ normal = [
   "rustok-translation-admin",
   "rustok-workflow-admin",
   "rustok-auth-admin",
+]
+
+[package.metadata.cargo-machete]
+ignored = [
+  "leptos-chartistry",
+  "leptos-forms",
+  "leptos-shadcn-pagination",
+  "leptos-struct-table",
+  "leptos-zod",
+  "leptos-zustand",
+  "leptos_query",
+  "rustok-blog-admin",
+  "rustok-channel-admin",
+  "rustok-comments",
+  "rustok-comments-admin",
+  "rustok-commerce-admin",
+  "rustok-customer-admin",
+  "rustok-events-admin",
+  "rustok-fulfillment-admin",
+  "rustok-groups-admin",
+  "rustok-iggy-connector-admin",
+  "rustok-index-admin",
+  "rustok-inventory-admin",
+  "rustok-marketplace-listing-admin",
+  "rustok-marketplace-seller-admin",
+  "rustok-media",
+  "rustok-media-admin",
+  "rustok-notifications-admin",
+  "rustok-order-admin",
+  "rustok-outbox-admin",
+  "rustok-pricing-admin",
+  "rustok-rbac",
+  "rustok-rbac-admin",
+  "rustok-region-admin",
+  "rustok-seo",
+  "rustok-seo-admin",
+  "rustok-storage",
+  "rustok-tenant",
+  "rustok-tenant-admin",
+  "rustok-translation-admin",
+  "rustok-workflow-admin",
 ]

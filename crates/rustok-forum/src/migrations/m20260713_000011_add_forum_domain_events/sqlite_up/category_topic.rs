@@ -14,11 +14,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'category', NEW.id,
         'forum.category.created', 1, NULL, json_object(
             'category_id', lower(hex(NEW.id)),
@@ -42,11 +38,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'category', NEW.id,
         'forum.category.updated', 1, NULL, json_object(
             'category_id', lower(hex(NEW.id)),
@@ -66,11 +58,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         OLD.tenant_id, 'category', OLD.id,
         'forum.category.deleted', 1, NULL, json_object('category_id', lower(hex(OLD.id)))
     );
@@ -90,11 +78,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'category', NEW.category_id,
         'forum.category.updated', 1, NULL, json_object('category_id', lower(hex(NEW.category_id)), 'change_scope', 'translation', 'locale', NEW.locale)
     );
@@ -111,11 +95,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'category', NEW.category_id,
         'forum.category.updated', 1, NULL, json_object('category_id', lower(hex(NEW.category_id)), 'change_scope', 'translation', 'locale', NEW.locale)
     );
@@ -129,11 +109,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'topic', NEW.id,
         'forum.topic.created', 1, NEW.author_id, json_object(
             'topic_id', lower(hex(NEW.id)),
@@ -154,11 +130,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'topic', NEW.id,
         'forum.topic.updated', 1, NULL, json_object('topic_id', lower(hex(NEW.id)), 'change_scope', 'topic', 'category_id', lower(hex(NEW.category_id)))
     );
@@ -173,11 +145,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'topic', NEW.id,
         'forum.topic.status_changed', 1, NULL, json_object('topic_id', lower(hex(NEW.id)), 'old_status', OLD.status, 'new_status', NEW.status)
     );
@@ -192,11 +160,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'topic', NEW.id,
         'forum.topic.pinned_changed', 1, NULL, json_object('topic_id', lower(hex(NEW.id)), 'is_pinned', NEW.is_pinned)
     );
@@ -211,11 +175,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'topic', NEW.id,
         'forum.topic.lock_changed', 1, NULL, json_object('topic_id', lower(hex(NEW.id)), 'is_locked', NEW.is_locked)
     );
@@ -230,11 +190,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'topic', NEW.id,
         'forum.topic.deleted', 1, NULL, json_object('topic_id', lower(hex(NEW.id)), 'deleted_at', NEW.deleted_at)
     );
@@ -254,11 +210,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'topic', NEW.topic_id,
         'forum.topic.updated', 1, NULL, json_object('topic_id', lower(hex(NEW.topic_id)), 'change_scope', 'translation', 'locale', NEW.locale)
     );
@@ -277,11 +229,7 @@ INSERT INTO forum_domain_events (
         event_id, tenant_id, aggregate_type, aggregate_id,
         event_type, schema_version, actor_id, payload
     ) VALUES (
-        lower(hex(randomblob(4))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(2))) || '-' ||
-               lower(hex(randomblob(6))),
+        randomblob(16),
         NEW.tenant_id, 'topic', NEW.topic_id,
         'forum.topic.updated', 1, NULL, json_object('topic_id', lower(hex(NEW.topic_id)), 'change_scope', 'translation', 'locale', NEW.locale)
     );

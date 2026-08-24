@@ -8,7 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-export type ProductCatalogSearchOption = {
+type ProductCatalogSearchOption = {
   value: string;
   label: string;
 };
@@ -26,7 +26,7 @@ export type ProductCatalogSearchOptionsRequest = {
   graphqlUrl?: string;
 };
 
-export type StorefrontGraphqlExecutor = typeof storefrontGraphql;
+type StorefrontGraphqlExecutor = typeof storefrontGraphql;
 
 type StorefrontCatalogSearchOptionsResponse = {
   storefrontCatalogSearchOptions: ProductCatalogSearchOptions;

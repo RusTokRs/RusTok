@@ -1,7 +1,6 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_api::graphql::require_module_enabled;
-use sea_orm::DatabaseConnection;
+use rustok_api::graphql::{extract_graphql_context, require_module_enabled};
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -24,8 +23,7 @@ impl WorkflowMutation {
         input: GqlCreateWorkflowInput,
     ) -> Result<Uuid> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         let auth = require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_CREATE],
@@ -55,8 +53,7 @@ impl WorkflowMutation {
         input: GqlUpdateWorkflowInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         let auth = require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_UPDATE],
@@ -85,8 +82,7 @@ impl WorkflowMutation {
 
     async fn delete_workflow(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_DELETE],
@@ -104,8 +100,7 @@ impl WorkflowMutation {
 
     async fn activate_workflow(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         let auth = require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_UPDATE],
@@ -131,8 +126,7 @@ impl WorkflowMutation {
 
     async fn pause_workflow(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         let auth = require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_UPDATE],
@@ -164,8 +158,7 @@ impl WorkflowMutation {
         force: Option<bool>,
     ) -> Result<Uuid> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         let auth = require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_EXECUTE],
@@ -192,8 +185,7 @@ impl WorkflowMutation {
         input: GqlCreateStepInput,
     ) -> Result<Uuid> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_UPDATE],
@@ -225,8 +217,7 @@ impl WorkflowMutation {
         input: GqlUpdateStepInput,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_UPDATE],
@@ -260,8 +251,7 @@ impl WorkflowMutation {
         step_id: Uuid,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_UPDATE],
@@ -284,8 +274,7 @@ impl WorkflowMutation {
         name: String,
     ) -> Result<Uuid> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         let auth = require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_CREATE],
@@ -306,8 +295,7 @@ impl WorkflowMutation {
         version: i32,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         let auth = require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_UPDATE],
@@ -329,8 +317,7 @@ impl WorkflowMutation {
         description: String,
     ) -> Result<Uuid> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let (db, tenant) = extract_graphql_context(ctx)?;
         let auth = require_workflow_permission(
             ctx,
             &[Permission::WORKFLOWS_CREATE],

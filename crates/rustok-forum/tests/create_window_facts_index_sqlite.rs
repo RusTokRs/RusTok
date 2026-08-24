@@ -1,5 +1,6 @@
 use rustok_core::MigrationSource;
 use rustok_forum::ForumModule;
+use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::SchemaManager;
@@ -34,6 +35,12 @@ async fn setup() -> sea_orm::DatabaseConnection {
     .expect("SQLite platform user fixture should be created");
 
     let schema = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)

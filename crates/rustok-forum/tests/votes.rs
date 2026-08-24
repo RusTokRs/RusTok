@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumError,
     ForumModule, ListRepliesFilter, ListTopicsFilter, ReplyService, TopicService, VoteService,
 };
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{
+    ConnectionTrait,ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
-use tokio::sync::broadcast;
 use uuid::Uuid;
 
 async fn setup_forum_test_db() -> DatabaseConnection {
@@ -30,17 +30,30 @@ async fn setup_forum_test_db() -> DatabaseConnection {
 async fn setup() -> (
     DatabaseConnection,
     TransactionalEventBus,
-    broadcast::Receiver<rustok_events::EventEnvelope>,
     Uuid,
 ) {
     let db = setup_forum_test_db().await;
     let schema = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
             .await
             .expect("taxonomy migration should apply");
     }
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     let module = ForumModule;
     for migration in module.migrations() {
         migration
@@ -49,10 +62,8 @@ async fn setup() -> (
             .expect("forum migration should apply");
     }
 
-    let transport = MemoryTransport::new();
-    let receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    (db, event_bus, receiver, Uuid::new_v4())
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
+    (db, event_bus, Uuid::new_v4())
 }
 
 async fn create_category(
@@ -83,7 +94,7 @@ async fn create_category(
 
 #[tokio::test]
 async fn topic_and_reply_votes_round_trip_through_read_paths() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
+    let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
     let reply_service = ReplyService::new(db.clone(), event_bus.clone());
@@ -229,7 +240,7 @@ async fn topic_and_reply_votes_round_trip_through_read_paths() {
 
 #[tokio::test]
 async fn vote_validation_rejects_invalid_values_and_pending_replies() {
-    let (db, event_bus, _events, tenant_id) = setup().await;
+    let (db, event_bus, tenant_id) = setup().await;
     let category_service = CategoryService::new(db.clone());
     let topic_service = TopicService::new(db.clone(), event_bus.clone());
     let reply_service = ReplyService::new(db.clone(), event_bus.clone());

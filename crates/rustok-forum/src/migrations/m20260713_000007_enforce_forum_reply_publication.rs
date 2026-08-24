@@ -362,8 +362,8 @@ WHEN NEW.event_type = 'forum.topic.replied'
  AND NOT EXISTS (
     SELECT 1
     FROM forum_replies reply
-    WHERE reply.id = json_extract(NEW.payload, '$.event.data.reply_id')
-      AND reply.tenant_id = json_extract(NEW.payload, '$.tenant_id')
+    WHERE hex(reply.id) = upper(replace(json_extract(NEW.payload, '$.event.data.reply_id'), '-', ''))
+      AND hex(reply.tenant_id) = upper(replace(json_extract(NEW.payload, '$.tenant_id'), '-', ''))
       AND reply.status = 'approved'
  )
 BEGIN

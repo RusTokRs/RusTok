@@ -34,9 +34,25 @@ type ApolloExecutionResult<T> = {
   };
 };
 
-interface GraphqlRequestOptions {
+export interface GraphqlRequestOptions {
   graphqlUrl?: string;
   tenantId?: string | null;
+}
+
+export type AdminGraphqlExecutor = <V, T>(
+  query: string,
+  variables?: V,
+  token?: string | null,
+  tenantSlug?: string | null,
+  options?: GraphqlRequestOptions
+) => Promise<T>;
+
+export interface GqlOpts {
+  graphql?: AdminGraphqlExecutor;
+  token?: string | null;
+  tenantSlug?: string | null;
+  tenantId?: string | null;
+  graphqlUrl?: string;
 }
 
 export class GraphqlError extends Error {

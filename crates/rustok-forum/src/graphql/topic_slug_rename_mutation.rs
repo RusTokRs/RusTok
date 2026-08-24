@@ -1,9 +1,6 @@
-use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
-use rustok_api::{
-    AuthContext, Permission, TenantContext,
-    graphql::{GraphQLError, require_module_enabled},
-    has_any_effective_permission,
-};
+use async_graphql::{Context, InputObject, Object, Result, SimpleObject};
+use rustok_api::graphql::require_module_enabled;
+use rustok_api::{AuthContext, Permission, TenantContext};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -29,29 +26,26 @@ impl ForumTopicSlugRenameMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-            .clone();
+        let auth = super::require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_UPDATE],
+            "Permission denied: forum_topics:update required",
+        )?;
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
 
-        execute_rename_forum_topic_slug(db, event_bus, tenant, &auth, tenant_id, topic_id, input)
-            .await
+        execute_rename_forum_topic_slug(db, event_bus, tenant_id, auth, topic_id, input).await
     }
 }
 
 async fn execute_rename_forum_topic_slug(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
-    tenant: &TenantContext,
+    tenant_id: Uuid,
     auth: &AuthContext,
-    requested_tenant_id: Option<Uuid>,
     topic_id: Uuid,
     input: RenameForumTopicSlugGraphqlInput,
 ) -> Result<GqlForumTopicSlugRename> {
-    require_topic_update_permission(auth)?;
-    let tenant_id = resolve_tenant_scope(tenant, requested_tenant_id)?;
-
     let result = TopicService::new(db.clone(), event_bus.clone())
         .rename_slug(
             tenant_id,
@@ -68,27 +62,6 @@ async fn execute_rename_forum_topic_slug(
         .await?;
 
     Ok(result.into())
-}
-
-fn require_topic_update_permission(auth: &AuthContext) -> Result<()> {
-    if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_UPDATE]) {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: forum_topics:update required",
-        ));
-    }
-    Ok(())
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, InputObject)]
@@ -147,10 +120,10 @@ impl From<ForumTopicSlugRenameResult> for GqlForumTopicSlugRename {
 
 #[cfg(test)]
 mod tests {
-    use rustok_api::{AuthContext, Permission, TenantContext};
+    use rustok_api::{AuthContext, Permission, TenantContext, has_any_effective_permission};
     use uuid::Uuid;
 
-    use super::{require_topic_update_permission, resolve_tenant_scope};
+    use crate::graphql::resolve_tenant_scope;
 
     fn auth_context(permissions: Vec<Permission>) -> AuthContext {
         AuthContext {
@@ -188,13 +161,17 @@ mod tests {
 
     #[test]
     fn rename_transport_requires_topic_update_permission() {
-        let denied =
-            require_topic_update_permission(&auth_context(vec![Permission::FORUM_TOPICS_READ]))
-                .expect_err("read-only actor must not rename a topic slug");
-        assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
+        let read_only = auth_context(vec![Permission::FORUM_TOPICS_READ]);
+        assert!(!has_any_effective_permission(
+            &read_only.permissions,
+            &[Permission::FORUM_TOPICS_UPDATE]
+        ));
 
-        require_topic_update_permission(&auth_context(vec![Permission::FORUM_TOPICS_UPDATE]))
-            .expect("topic update permission must be accepted");
+        let manager = auth_context(vec![Permission::FORUM_TOPICS_UPDATE]);
+        assert!(has_any_effective_permission(
+            &manager.permissions,
+            &[Permission::FORUM_TOPICS_UPDATE]
+        ));
     }
 
     #[test]
@@ -214,6 +191,6 @@ mod tests {
 
         let denied = resolve_tenant_scope(&tenant, Some(Uuid::new_v4()))
             .expect_err("mismatched tenant assertion must fail closed");
-        assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
+        assert_eq!(error_code(&denied).as_deref(), Some("FORBIDDEN"));
     }
 }

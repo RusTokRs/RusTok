@@ -25,8 +25,7 @@ pub const EXPECTED_FORUM_EVENT_TYPES: &[&str] = &[
     "forum.solution.unmarked",
     "forum.topic.vote_changed",
     "forum.reply.vote_changed",
-    "forum.category.subscription_changed",
-    "forum.topic.subscription_changed",
+    "forum.subscription.changed",
     "forum.topic.tags_changed",
 ];
 
@@ -42,6 +41,26 @@ pub async fn exercise_forum_event_contract(db: &DatabaseConnection) -> TestResul
     let solution_reply_id = Uuid::new_v4();
     let term_id = Uuid::new_v4();
 
+    let sql_uuid = |id: Uuid| -> String {
+        match db.get_database_backend() {
+            sea_orm::DatabaseBackend::Sqlite => {
+                format!("X'{}'", id.simple().to_string().to_uppercase())
+            }
+            _ => format!("'{id}'"),
+        }
+    };
+
+    let cat_id = sql_uuid(category_id);
+    let t_id = sql_uuid(tenant_id);
+    let foreign_t_id = sql_uuid(foreign_tenant_id);
+    let u_id = sql_uuid(user_id);
+    let empty_cat_id = sql_uuid(empty_category_id);
+    let foreign_cat_id = sql_uuid(foreign_category_id);
+    let top_id = sql_uuid(topic_id);
+    let rep_id = sql_uuid(reply_id);
+    let sol_rep_id = sql_uuid(solution_reply_id);
+    let trm_id = sql_uuid(term_id);
+
     execute(
         db,
         format!(
@@ -49,161 +68,164 @@ pub async fn exercise_forum_event_contract(db: &DatabaseConnection) -> TestResul
 INSERT INTO forum_categories
     (id, tenant_id, position, moderated, topic_count, reply_count)
 VALUES
-    ('{category_id}', '{tenant_id}', 0, FALSE, 0, 0);
+    ({cat_id}, {t_id}, 0, FALSE, 0, 0);
 
 INSERT INTO forum_category_translations
     (id, category_id, tenant_id, locale, name, slug)
 VALUES
-    ('{}', '{category_id}', '{tenant_id}', 'en', 'General', 'general');
+    ({}, {cat_id}, {t_id}, 'en', 'General', 'general');
 
 UPDATE forum_categories
 SET color = 'blue'
-WHERE tenant_id = '{tenant_id}' AND id = '{category_id}';
+WHERE tenant_id = {t_id} AND id = {cat_id};
 
 UPDATE forum_category_translations
 SET name = 'General discussion'
-WHERE tenant_id = '{tenant_id}'
-  AND category_id = '{category_id}'
+WHERE tenant_id = {t_id}
+  AND category_id = {cat_id}
   AND locale = 'en';
 
 INSERT INTO forum_topics
     (id, tenant_id, category_id, author_id, status, metadata,
      is_pinned, is_locked, reply_count)
 VALUES
-    ('{topic_id}', '{tenant_id}', '{category_id}', '{user_id}',
+    ({top_id}, {t_id}, {cat_id}, {u_id},
      'open', '{{}}', FALSE, FALSE, 0);
 
 INSERT INTO forum_topic_translations
     (id, tenant_id, topic_id, locale, title, slug, body)
 VALUES
-    ('{}', '{tenant_id}', '{topic_id}', 'en',
+    ({}, {t_id}, {top_id}, 'en',
      'Event contract', 'event-contract', 'Original body');
 
 UPDATE forum_topics
 SET metadata = '{{"contract":true}}'
-WHERE tenant_id = '{tenant_id}' AND id = '{topic_id}';
+WHERE tenant_id = {t_id} AND id = {top_id};
 
 UPDATE forum_topic_translations
 SET title = 'Updated event contract'
-WHERE tenant_id = '{tenant_id}'
-  AND topic_id = '{topic_id}'
+WHERE tenant_id = {t_id}
+  AND topic_id = {top_id}
   AND locale = 'en';
 
 UPDATE forum_topics
 SET status = 'closed'
-WHERE tenant_id = '{tenant_id}' AND id = '{topic_id}';
+WHERE tenant_id = {t_id} AND id = {top_id};
 
 UPDATE forum_topics
 SET status = 'open',
-    is_pinned = TRUE,
-    is_locked = TRUE
-WHERE tenant_id = '{tenant_id}' AND id = '{topic_id}';
+     is_pinned = TRUE,
+     is_locked = TRUE
+WHERE tenant_id = {t_id} AND id = {top_id};
 
 UPDATE forum_topics
 SET is_locked = FALSE
-WHERE tenant_id = '{tenant_id}' AND id = '{topic_id}';
+WHERE tenant_id = {t_id} AND id = {top_id};
 
 INSERT INTO forum_replies
     (id, tenant_id, topic_id, author_id, status, position)
 VALUES
-    ('{reply_id}', '{tenant_id}', '{topic_id}', '{user_id}', 'approved', 1);
+    ({rep_id}, {t_id}, {top_id}, {u_id}, 'approved', 1);
 
 INSERT INTO forum_reply_bodies
     (id, tenant_id, reply_id, locale, body)
 VALUES
-    ('{}', '{tenant_id}', '{reply_id}', 'en', 'Original reply');
+    ({}, {t_id}, {rep_id}, 'en', 'Original reply');
 
 UPDATE forum_reply_bodies
 SET body = 'Updated reply'
-WHERE tenant_id = '{tenant_id}'
-  AND reply_id = '{reply_id}'
+WHERE tenant_id = {t_id}
+  AND reply_id = {rep_id}
   AND locale = 'en';
 
 UPDATE forum_replies
 SET status = 'hidden'
-WHERE tenant_id = '{tenant_id}' AND id = '{reply_id}';
+WHERE tenant_id = {t_id} AND id = {rep_id};
 
 INSERT INTO forum_replies
     (id, tenant_id, topic_id, author_id, status, position)
 VALUES
-    ('{solution_reply_id}', '{tenant_id}', '{topic_id}', '{user_id}', 'approved', 2);
+    ({sol_rep_id}, {t_id}, {top_id}, {u_id}, 'approved', 2);
 
 INSERT INTO forum_solutions
     (tenant_id, topic_id, reply_id, marked_by_user_id)
 VALUES
-    ('{tenant_id}', '{topic_id}', '{solution_reply_id}', '{user_id}');
+    ({t_id}, {top_id}, {sol_rep_id}, {u_id});
 
 DELETE FROM forum_solutions
-WHERE tenant_id = '{tenant_id}' AND topic_id = '{topic_id}';
+WHERE tenant_id = {t_id} AND topic_id = {top_id};
 
 INSERT INTO taxonomy_terms
-    (id, tenant_id, kind, scope_type, scope_value, canonical_key, status)
+    (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision)
 VALUES
-    ('{term_id}', '{tenant_id}', 'tag', 'module', 'forum', 'event-contract', 'active');
+    ({trm_id}, {t_id}, 'tag', 'module', 'forum', 'event-contract', 1);
 
 INSERT INTO forum_topic_votes
     (topic_id, user_id, tenant_id, value)
 VALUES
-    ('{topic_id}', '{user_id}', '{tenant_id}', 1);
+    ({top_id}, {u_id}, {t_id}, 1);
 UPDATE forum_topic_votes
 SET value = -1
-WHERE topic_id = '{topic_id}' AND user_id = '{user_id}' AND tenant_id = '{tenant_id}';
+WHERE topic_id = {top_id} AND user_id = {u_id} AND tenant_id = {t_id};
 DELETE FROM forum_topic_votes
-WHERE topic_id = '{topic_id}' AND user_id = '{user_id}' AND tenant_id = '{tenant_id}';
+WHERE topic_id = {top_id} AND user_id = {u_id} AND tenant_id = {t_id};
 
 INSERT INTO forum_reply_votes
     (reply_id, user_id, tenant_id, value)
 VALUES
-    ('{solution_reply_id}', '{user_id}', '{tenant_id}', 1);
+    ({sol_rep_id}, {u_id}, {t_id}, 1);
 UPDATE forum_reply_votes
 SET value = -1
-WHERE reply_id = '{solution_reply_id}' AND user_id = '{user_id}' AND tenant_id = '{tenant_id}';
+WHERE reply_id = {sol_rep_id} AND user_id = {u_id} AND tenant_id = {t_id};
 DELETE FROM forum_reply_votes
-WHERE reply_id = '{solution_reply_id}' AND user_id = '{user_id}' AND tenant_id = '{tenant_id}';
+WHERE reply_id = {sol_rep_id} AND user_id = {u_id} AND tenant_id = {t_id};
 
 INSERT INTO forum_category_subscriptions
-    (category_id, user_id, tenant_id)
+    (category_id, user_id, tenant_id, level, notify_mentions, notify_replies, notify_new_topics, digest_mode, revision, updated_at)
 VALUES
-    ('{category_id}', '{user_id}', '{tenant_id}');
+    ({cat_id}, {u_id}, {t_id}, 'watching', 1, 1, 1, 'disabled', 1, CURRENT_TIMESTAMP);
 DELETE FROM forum_category_subscriptions
-WHERE category_id = '{category_id}' AND user_id = '{user_id}' AND tenant_id = '{tenant_id}';
+WHERE category_id = {cat_id} AND user_id = {u_id} AND tenant_id = {t_id};
+
+DELETE FROM forum_topic_subscriptions
+WHERE topic_id = {top_id} AND user_id = {u_id} AND tenant_id = {t_id};
 
 INSERT INTO forum_topic_subscriptions
-    (topic_id, user_id, tenant_id)
+    (topic_id, user_id, tenant_id, level, notify_mentions, notify_replies, digest_mode, revision, updated_at)
 VALUES
-    ('{topic_id}', '{user_id}', '{tenant_id}');
+    ({top_id}, {u_id}, {t_id}, 'watching', 1, 1, 'disabled', 1, CURRENT_TIMESTAMP);
 DELETE FROM forum_topic_subscriptions
-WHERE topic_id = '{topic_id}' AND user_id = '{user_id}' AND tenant_id = '{tenant_id}';
+WHERE topic_id = {top_id} AND user_id = {u_id} AND tenant_id = {t_id};
 
 INSERT INTO forum_topic_tags
     (id, topic_id, term_id, tenant_id)
 VALUES
-    ('{}', '{topic_id}', '{term_id}', '{tenant_id}');
+    ({}, {top_id}, {trm_id}, {t_id});
 DELETE FROM forum_topic_tags
-WHERE topic_id = '{topic_id}' AND term_id = '{term_id}' AND tenant_id = '{tenant_id}';
+WHERE topic_id = {top_id} AND term_id = {trm_id} AND tenant_id = {t_id};
 
 DELETE FROM forum_replies
-WHERE tenant_id = '{tenant_id}' AND id = '{reply_id}';
+WHERE tenant_id = {t_id} AND id = {rep_id};
 
 DELETE FROM forum_topics
-WHERE tenant_id = '{tenant_id}' AND id = '{topic_id}';
+WHERE tenant_id = {t_id} AND id = {top_id};
 
 INSERT INTO forum_categories
     (id, tenant_id, position, moderated, topic_count, reply_count)
 VALUES
-    ('{empty_category_id}', '{tenant_id}', 1, FALSE, 0, 0);
+    ({empty_cat_id}, {t_id}, 1, FALSE, 0, 0);
 DELETE FROM forum_categories
-WHERE tenant_id = '{tenant_id}' AND id = '{empty_category_id}';
+WHERE tenant_id = {t_id} AND id = {empty_cat_id};
 
 INSERT INTO forum_categories
     (id, tenant_id, position, moderated, topic_count, reply_count)
 VALUES
-    ('{foreign_category_id}', '{foreign_tenant_id}', 0, FALSE, 0, 0);
+    ({foreign_cat_id}, {foreign_t_id}, 0, FALSE, 0, 0);
 "#,
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            Uuid::new_v4(),
-            Uuid::new_v4(),
+            sql_uuid(Uuid::new_v4()),
+            sql_uuid(Uuid::new_v4()),
+            sql_uuid(Uuid::new_v4()),
+            sql_uuid(Uuid::new_v4()),
         ),
     )
     .await?;
@@ -322,7 +344,7 @@ VALUES
             format!(
                 "UPDATE forum_categories
                  SET color = 'contract-{index}'
-                 WHERE tenant_id = '{tenant_id}' AND id = '{category_id}'"
+                 WHERE tenant_id = {t_id} AND id = {cat_id}"
             ),
         )
         .await?;

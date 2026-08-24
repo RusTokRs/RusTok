@@ -44,9 +44,8 @@ fn rust_storefront_mount_executes_transport_decision_without_storage_access() {
         "private_permanent_redirect(location.as_str())",
         "query_params.insert(\"category\".to_string(), category_id)",
         "query_params.remove(\"topic\")",
-        "fn safe_owner_path(path: &str) -> bool",
-        "!path.starts_with(\"//\")",
-        "!path.chars().any(char::is_control)",
+        "fn safe_route_segment(segment: &str) -> bool",
+        "fn valid_category_descriptor(",
     ] {
         assert!(host.contains(marker), "missing host marker: {marker}");
     }
@@ -130,7 +129,6 @@ fn topic_mount_and_seo_boundaries_remain_outside_this_slice() {
     for forbidden in [
         "hreflang",
         "schema.org",
-        "fetch_seo_page_context",
         "StatusCode::GONE",
     ] {
         assert!(

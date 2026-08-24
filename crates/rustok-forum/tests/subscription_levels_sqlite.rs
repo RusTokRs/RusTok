@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::entities::forum_domain_event;
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumDigestMode,
     ForumModule, ForumSubscriptionLevel, ReplyService, SubscriptionService, TopicService,
     UpdateForumSubscriptionInput, UpdateForumSubscriptionPolicyInput,
 };
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
+    ConnectionTrait,
     ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
 };
 use sea_orm_migration::SchemaManager;
@@ -29,19 +30,33 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
         .await
         .expect("forum subscription sqlite database should connect");
     let schema = SchemaManager::new(&db);
+        for migration in OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
             .await
             .expect("taxonomy migration should apply");
     }
+        db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         migration
             .up(&schema)
             .await
             .expect("forum migration should apply");
     }
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     (db, event_bus, Uuid::new_v4())
 }
 
@@ -227,7 +242,7 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
 
     let events = forum_domain_event::Entity::find()
         .filter(forum_domain_event::Column::TenantId.eq(tenant_id))
-        .filter(forum_domain_event::Column::EventType.eq("forum.subscription.changed.v1"))
+        .filter(forum_domain_event::Column::EventType.eq("forum.subscription.changed"))
         .order_by_asc(forum_domain_event::Column::SequenceNo)
         .all(&db)
         .await
@@ -236,14 +251,16 @@ async fn subscription_levels_policy_auto_subscribe_and_events_are_consistent() {
         events.len() >= 4,
         "auto, mute, participant and clear events expected"
     );
-    let topic_id_text = topic.id.to_string();
-    let author_id_text = author_id.to_string();
     let mute_event = events
         .iter()
         .find(|event| {
-            event.payload["target_id"].as_str() == Some(topic_id_text.as_str())
-                && event.payload["user_id"].as_str() == Some(author_id_text.as_str())
-                && event.payload["level"].as_str() == Some("muted")
+            let target_match = event.payload["target_id"].as_str()
+                .map(|val| val == topic.id.to_string() || val == topic.id.simple().to_string())
+                .unwrap_or(false);
+            let user_match = event.payload["user_id"].as_str()
+                .map(|val| val == author_id.to_string() || val == author_id.simple().to_string())
+                .unwrap_or(false);
+            target_match && user_match && event.payload["level"].as_str() == Some("muted")
         })
         .expect("mute event should be present");
     assert_eq!(mute_event.schema_version, 1);

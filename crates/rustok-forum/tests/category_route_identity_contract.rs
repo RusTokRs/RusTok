@@ -13,7 +13,7 @@ fn owner_uses_locale_aware_category_slug_and_existing_unique_route_key() {
         "pub async fn canonical_descriptor(",
         "pub async fn resolve(",
         "format!(\"/{locale}/forum/c/{slug}\")",
-        "resolve_by_locale_with_fallback(",
+        "TaxonomyOwnerCategoryReader",
         "MAX_FORUM_CATEGORY_ROUTE_CANDIDATES: u64 = 64",
         "ForumCategoryRouteDisposition::Canonical",
         "ForumCategoryRouteDisposition::Redirect",
@@ -39,7 +39,7 @@ fn owner_uses_locale_aware_category_slug_and_existing_unique_route_key() {
 
     for marker in [
         "Category slug is a locale-aware translation field",
-        "same locale fallback contract",
+        "locale fallback contract",
     ] {
         assert!(
             SLUG_LOCALE_DECISION.contains(marker),
@@ -51,13 +51,11 @@ fn owner_uses_locale_aware_category_slug_and_existing_unique_route_key() {
 #[test]
 fn resolver_is_bounded_lifecycle_safe_and_fail_closed_on_ambiguity() {
     for marker in [
-        ".limit(MAX_FORUM_CATEGORY_ROUTE_CANDIDATES + 1)",
+        "resolve_term_route_for_module",
         "forum_category_lifecycle::Entity::find()",
-        "if candidate.active",
+        "ensure_active_category",
         "Err(ForumError::CategoryRouteNotFound)",
-        "if category_ids.len() != 1",
         "Err(ForumError::CategoryRouteResolutionConflict)",
-        "Some(PLATFORM_FALLBACK_LOCALE)",
     ] {
         assert!(
             CATEGORY_ROUTE.contains(marker),

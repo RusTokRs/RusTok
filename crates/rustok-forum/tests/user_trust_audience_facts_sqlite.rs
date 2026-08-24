@@ -21,13 +21,13 @@ async fn setup() -> (sea_orm::DatabaseConnection, Uuid, Uuid, Uuid) {
         r#"
 PRAGMA foreign_keys = ON;
 CREATE TABLE users (
-    id TEXT PRIMARY KEY NOT NULL,
-    tenant_id TEXT NOT NULL,
+    id BLOB PRIMARY KEY NOT NULL,
+    tenant_id BLOB NOT NULL,
     email TEXT NOT NULL
 );
 CREATE TABLE forum_user_stats (
-    tenant_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
+    tenant_id BLOB NOT NULL,
+    user_id BLOB NOT NULL,
     topic_count INTEGER NOT NULL DEFAULT 0,
     reply_count INTEGER NOT NULL DEFAULT 0,
     solution_count INTEGER NOT NULL DEFAULT 0,
@@ -52,8 +52,12 @@ CREATE TABLE forum_user_stats (
     let user_id = Uuid::new_v4();
     db.execute_unprepared(&format!(
         "INSERT INTO users (id, tenant_id, email) VALUES \
-         ('{actor_id}', '{tenant_id}', 'actor@example.invalid'), \
-         ('{user_id}', '{tenant_id}', 'member@example.invalid')"
+         (X'{}', X'{}', 'actor@example.invalid'), \
+         (X'{}', X'{}', 'member@example.invalid')",
+        actor_id.simple().to_string().to_uppercase(),
+        tenant_id.simple().to_string().to_uppercase(),
+        user_id.simple().to_string().to_uppercase(),
+        tenant_id.simple().to_string().to_uppercase(),
     ))
     .await
     .expect("trust facts users should be inserted");

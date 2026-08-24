@@ -1,6 +1,6 @@
 use rustok_core::{SecurityContext, UserRole};
-use rustok_forum::{CategoryService, ForumError, UpdateCategoryTopicPolicyInput};
-use sea_orm::{ConnectionTrait, DatabaseConnection};
+use rustok_forum::{CategoryService, CreateCategoryInput, ForumError, UpdateCategoryTopicPolicyInput};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
 
 use super::{TestResult, test_error};
@@ -8,16 +8,29 @@ use super::{TestResult, test_error};
 pub async fn exercise_category_topic_policy(db: &DatabaseConnection) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let foreign_tenant_id = Uuid::new_v4();
-    let category_id = Uuid::new_v4();
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_categories \
-         (id, tenant_id, parent_id, position, moderated, topic_count, reply_count) \
-         VALUES ('{category_id}', '{tenant_id}', NULL, 0, FALSE, 0, 0);"
-    ))
-    .await?;
 
     let service = CategoryService::new(db.clone());
     let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let category = service
+        .create(
+            tenant_id,
+            security.clone(),
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: "Test Category".to_string(),
+                slug: "test-category".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await?;
+    let category_id = category.id;
+
     let default_policy = service
         .topic_policy(tenant_id, category_id, security.clone())
         .await?;
@@ -37,16 +50,19 @@ pub async fn exercise_category_topic_policy(db: &DatabaseConnection) -> TestResu
 
     let blocked_topic_id = Uuid::new_v4();
     let blocked = db
-        .execute_unprepared(&format!(
+        .execute(Statement::from_sql_and_values(
+            db.get_database_backend(),
             "INSERT INTO forum_topics \
              (id, tenant_id, category_id, status, is_pinned, is_locked, reply_count) \
-             VALUES ('{blocked_topic_id}', '{tenant_id}', '{category_id}', 'open', FALSE, FALSE, 0);"
+             VALUES (?, ?, ?, 'open', FALSE, FALSE, 0)",
+            [blocked_topic_id.into(), tenant_id.into(), category_id.into()],
         ))
         .await;
     let error = blocked.expect_err("disabled category accepted a topic insert");
-    if !error.to_string().contains("does not allow topic creation") {
+    let error_message = format!("{error:?}");
+    if !error_message.contains("does not allow topic creation") && !error.to_string().contains("does not allow topic creation") {
         return Err(test_error(format!(
-            "unexpected category topic policy error: {error}"
+            "unexpected category topic policy error: {error_message}"
         )));
     }
 
@@ -81,10 +97,12 @@ pub async fn exercise_category_topic_policy(db: &DatabaseConnection) -> TestResu
         )
         .await?;
     let allowed_topic_id = Uuid::new_v4();
-    db.execute_unprepared(&format!(
+    db.execute(Statement::from_sql_and_values(
+        db.get_database_backend(),
         "INSERT INTO forum_topics \
          (id, tenant_id, category_id, status, is_pinned, is_locked, reply_count) \
-         VALUES ('{allowed_topic_id}', '{tenant_id}', '{category_id}', 'open', FALSE, FALSE, 0);"
+         VALUES (?, ?, ?, 'open', FALSE, FALSE, 0)",
+        [allowed_topic_id.into(), tenant_id.into(), category_id.into()],
     ))
     .await?;
 

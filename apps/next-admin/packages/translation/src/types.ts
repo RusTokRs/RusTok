@@ -1,10 +1,5 @@
-export type AdminGraphqlExecutor = <V, T>(
-  query: string,
-  variables?: V,
-  token?: string | null,
-  tenantSlug?: string | null,
-  options?: { graphqlUrl?: string; tenantId?: string | null }
-) => Promise<T>;
+import type { AdminGraphqlExecutor } from '@/lib/graphql';
+export type { AdminGraphqlExecutor };
 
 export type TranslationAdminPageProps = {
   graphql: AdminGraphqlExecutor;
@@ -31,23 +26,23 @@ export type TranslationTarget = {
   applyPermissionFloor: string[];
 };
 
-export type GlossaryBinding = {
+type GlossaryBinding = {
   glossaryId: string;
   revision: number;
 };
 
-export type GlossaryScope = {
+type GlossaryScope = {
   ownerSlug?: string | null;
   resourceKind?: string | null;
   fieldKey?: string | null;
 };
 
-export type GlossaryTermPolicy =
+type GlossaryTermPolicy =
   'PREFERRED' | 'ALLOWED' | 'FORBIDDEN' | 'DO_NOT_TRANSLATE';
 
-export type GlossaryMatchKind = 'EXACT' | 'WHOLE_WORD' | 'SUBSTRING';
+type GlossaryMatchKind = 'EXACT' | 'WHOLE_WORD' | 'SUBSTRING';
 
-export type GlossaryVariant = {
+type GlossaryVariant = {
   value: string;
   policy: GlossaryTermPolicy;
 };
@@ -79,9 +74,9 @@ export type Glossary = GlossarySummary & {
 export type MemoryRetentionPolicy =
   'OWNER_LIFECYCLE' | 'RETAIN_UNTIL' | 'LEGAL_HOLD';
 
-export type MemoryMatchKind = 'EXACT' | 'CONTEXTUAL_FUZZY' | 'FUZZY';
+type MemoryMatchKind = 'EXACT' | 'CONTEXTUAL_FUZZY' | 'FUZZY';
 
-export type MemoryMatchEvidence = {
+type MemoryMatchEvidence = {
   kind: MemoryMatchKind;
   sourceExact: boolean;
   contextMatch: boolean;
@@ -163,14 +158,14 @@ export type JobProgress = {
   [key: string]: unknown;
 };
 
-export type TranslationResourceIdentity = {
+type TranslationResourceIdentity = {
   ownerSlug: string;
   resourceKind: string;
   resourceId: string;
   subresourceId: string | null;
 };
 
-export type InterchangeField = {
+type InterchangeField = {
   key: string;
   sourceValue: string;
   exactTargetValue: string | null;
@@ -181,7 +176,7 @@ export type InterchangeField = {
   protectedTokens: string[];
 };
 
-export type InterchangeItem = {
+type InterchangeItem = {
   itemId: string;
   identity: TranslationResourceIdentity;
   sourceDigest: string;
@@ -198,12 +193,12 @@ export type InterchangeDocument = {
   items: InterchangeItem[];
 };
 
-export type InterchangeArtifactItemOutcome = {
+type InterchangeArtifactItemOutcome = {
   itemId: string;
   status: string;
 };
 
-export type InterchangeConflictReport = {
+type InterchangeConflictReport = {
   totalItems: number;
   acceptedItems: number;
   conflictItems: number;
@@ -318,7 +313,7 @@ export type Proposal = {
   [key: string]: unknown;
 };
 
-export type MachineTranslationAttempt = {
+type MachineTranslationAttempt = {
   attempt: number;
   providerProfileId: string;
   providerSlug: string;
@@ -326,7 +321,7 @@ export type MachineTranslationAttempt = {
   fallback: boolean;
 };
 
-export type MachineTranslationUsage = {
+type MachineTranslationUsage = {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
@@ -345,7 +340,7 @@ export type MachineTranslationEstimate = {
   reviewRequired: boolean;
 };
 
-export type MachineTranslationDiagnostic = {
+type MachineTranslationDiagnostic = {
   code: string;
   blocking: boolean;
   unitId: string | null;

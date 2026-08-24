@@ -7,7 +7,8 @@ fn function_source(name: &str) -> &str {
         .unwrap_or_else(|| panic!("missing category service function {name}"));
     let after_start = &SOURCE[start + marker.len()..];
     let end = after_start
-        .find("\n    pub async fn ")
+        .find("\n    pub ")
+        .or_else(|| after_start.find("\n    pub("))
         .unwrap_or(after_start.len());
     &SOURCE[start..start + marker.len() + end]
 }

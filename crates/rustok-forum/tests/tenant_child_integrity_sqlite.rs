@@ -1,5 +1,6 @@
 use rustok_core::MigrationSource;
 use rustok_forum::ForumModule;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
 };
@@ -177,6 +178,20 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
     )
     .await?;
     let manager = SchemaManager::new(&db);
+        for migration in OutboxModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
+    }
+        db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }

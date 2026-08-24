@@ -23,7 +23,6 @@ tracing.workspace = true
 chrono.workspace = true
 async-graphql = { workspace = true, optional = true }
 alloy = { path = "../alloy" }
-rhai.workspace = true
 
 [features]
 default = []

@@ -14,7 +14,7 @@ export interface ForumTopicSlugRenameCommand {
   slug: string;
 }
 
-export interface ForumTopicRouteDescriptor {
+interface ForumTopicRouteDescriptor {
   topicId: string;
   locale: string;
   shortId: string;

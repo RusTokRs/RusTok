@@ -12,6 +12,10 @@ use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+fn sql_uuid(id: Uuid) -> String {
+    format!("X'{}'", id.simple().to_string().to_uppercase())
+}
+
 #[tokio::test]
 async fn sqlite_enforces_unique_positive_reply_positions() -> TestResult<()> {
     let db = setup_sqlite().await?;
@@ -36,9 +40,10 @@ async fn sqlite_enforces_unique_positive_reply_positions() -> TestResult<()> {
             format!(
                 "SELECT CAST(position AS INTEGER) AS value
                  FROM forum_replies
-                 WHERE tenant_id = '{}' AND topic_id = '{}'
+                 WHERE tenant_id = {} AND topic_id = {}
                  ORDER BY position",
-                seed.tenant_id, seed.topic_id
+                sql_uuid(seed.tenant_id),
+                sql_uuid(seed.topic_id)
             ),
         ))
         .await?;
@@ -55,37 +60,39 @@ async fn sqlite_enforces_unique_positive_reply_positions() -> TestResult<()> {
     let first_id = scalar_text(
         &db,
         format!(
-            "SELECT CAST(id AS TEXT) AS value
+            "SELECT hex(id) AS value
              FROM forum_replies
-             WHERE tenant_id = '{}' AND topic_id = '{}'
+             WHERE tenant_id = {} AND topic_id = {}
              ORDER BY position
              LIMIT 1",
-            seed.tenant_id, seed.topic_id
+            sql_uuid(seed.tenant_id),
+            sql_uuid(seed.topic_id)
         ),
     )
     .await?;
     let last_id = scalar_text(
         &db,
         format!(
-            "SELECT CAST(id AS TEXT) AS value
+            "SELECT hex(id) AS value
              FROM forum_replies
-             WHERE tenant_id = '{}' AND topic_id = '{}'
+             WHERE tenant_id = {} AND topic_id = {}
              ORDER BY position DESC
              LIMIT 1",
-            seed.tenant_id, seed.topic_id
+            sql_uuid(seed.tenant_id),
+            sql_uuid(seed.topic_id)
         ),
     )
     .await?;
 
     assert_rejected(
         &db,
-        format!("UPDATE forum_replies SET position = 1 WHERE id = '{last_id}'"),
+        format!("UPDATE forum_replies SET position = 1 WHERE id = X'{last_id}'"),
         "duplicate reply position update",
     )
     .await?;
     assert_rejected(
         &db,
-        format!("UPDATE forum_replies SET position = 0 WHERE id = '{first_id}'"),
+        format!("UPDATE forum_replies SET position = 0 WHERE id = X'{first_id}'"),
         "non-positive reply position update",
     )
     .await?;
@@ -95,10 +102,10 @@ async fn sqlite_enforces_unique_positive_reply_positions() -> TestResult<()> {
             "INSERT INTO forum_replies
                 (id, tenant_id, topic_id, status, position)
              VALUES
-                ('{}', '{}', '{}', 'approved', 2)",
-            Uuid::new_v4(),
-            seed.tenant_id,
-            seed.topic_id
+                ({}, {}, {}, 'approved', 2)",
+            sql_uuid(Uuid::new_v4()),
+            sql_uuid(seed.tenant_id),
+            sql_uuid(seed.topic_id)
         ),
         "duplicate reply position insert",
     )
@@ -135,6 +142,13 @@ async fn apply_migrations(db: &DatabaseConnection) -> TestResult<()> {
     for migration in TaxonomyModule.migrations() {
         migration.up(&manager).await?;
     }
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await?;
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }
@@ -151,12 +165,16 @@ async fn seed_forum(db: &DatabaseConnection) -> TestResult<ForumSeed> {
         "INSERT INTO forum_categories
             (id, tenant_id, position, moderated, topic_count, reply_count)
          VALUES
-            ('{}', '{}', 0, 0, 1, 0);
+            ({}, {}, 0, 0, 1, 0);
          INSERT INTO forum_topics
             (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
          VALUES
-            ('{}', '{}', '{}', 'open', '{{}}', 0, 0, 0);",
-        seed.category_id, seed.tenant_id, seed.topic_id, seed.tenant_id, seed.category_id,
+            ({}, {}, {}, 'open', '{{}}', 0, 0, 0);",
+        sql_uuid(seed.category_id),
+        sql_uuid(seed.tenant_id),
+        sql_uuid(seed.topic_id),
+        sql_uuid(seed.tenant_id),
+        sql_uuid(seed.category_id),
     ))
     .await?;
     Ok(seed)

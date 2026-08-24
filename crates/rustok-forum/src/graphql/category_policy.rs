@@ -1,10 +1,6 @@
-use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
+use async_graphql::{Context, InputObject, Object, Result, SimpleObject};
 use rustok_api::Permission;
-use rustok_api::{
-    AuthContext, TenantContext,
-    graphql::{GraphQLError, require_module_enabled},
-    has_any_effective_permission,
-};
+use rustok_api::{TenantContext, graphql::require_module_enabled};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -25,13 +21,13 @@ impl ForumCategoryTopicPolicyQuery {
     ) -> Result<GqlForumCategoryTopicPolicy> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let auth = require_permission(
+        let auth = super::require_forum_permission(
             ctx,
             &[Permission::FORUM_CATEGORIES_READ],
             "Permission denied: forum_categories:read required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let policy = CategoryService::new(db.clone())
             .topic_policy(
                 tenant_id,
@@ -60,13 +56,13 @@ impl ForumCategoryTopicPolicyMutation {
     ) -> Result<GqlForumCategoryTopicPolicy> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let auth = require_permission(
+        let auth = super::require_forum_permission(
             ctx,
             &[Permission::FORUM_CATEGORIES_MANAGE],
             "Permission denied: forum_categories:manage required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let policy = CategoryService::new(db.clone())
             .set_topic_policy(
                 tenant_id,
@@ -101,32 +97,5 @@ impl From<crate::CategoryTopicPolicyResponse> for GqlForumCategoryTopicPolicy {
             category_id: value.category_id,
             allows_topics: value.allows_topics,
         }
-    }
-}
-
-fn require_permission(
-    ctx: &Context<'_>,
-    permissions: &[Permission],
-    message: &str,
-) -> Result<AuthContext> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-        .clone();
-    if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(<FieldError as GraphQLError>::permission_denied(message));
-    }
-    Ok(auth)
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
     }
 }

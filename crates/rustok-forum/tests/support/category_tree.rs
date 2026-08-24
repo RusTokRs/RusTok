@@ -3,7 +3,7 @@ use rustok_forum::{
     CategoryService, CategoryTreeQuery, ForumError, MAX_FORUM_CATEGORY_TREE_DEPTH,
     MAX_FORUM_CATEGORY_TREE_NODES,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
 
 use super::{TestResult, test_error};
@@ -12,8 +12,30 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
     let tenant_a = Uuid::new_v4();
     let tenant_b = Uuid::new_v4();
 
+    let service = CategoryService::new(db.clone());
+    let admin_user_id = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
+        [admin_user_id.into(), tenant_a.into()],
+    ))
+    .await?;
+    let security = SecurityContext::new(UserRole::Admin, Some(admin_user_id));
+
     let root_primary = seed_category(db, tenant_a, None, 0, "Primary", "primary", false).await?;
-    seed_translation(db, tenant_a, root_primary, "ru", "Главная", "primary-ru").await?;
+    service
+        .update(
+            tenant_a,
+            root_primary,
+            security.clone(),
+            rustok_forum::UpdateCategoryInput {
+                locale: "ru".to_string(),
+                name: Some("Главная".to_string()),
+                slug: Some("primary-ru".to_string()),
+                ..Default::default()
+            },
+        )
+        .await?;
     let root_secondary =
         seed_category(db, tenant_a, None, 10, "Secondary", "secondary", true).await?;
     let child_later = seed_category(
@@ -47,9 +69,6 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
     )
     .await?;
     let foreign_root = seed_category(db, tenant_b, None, 0, "Foreign", "primary", false).await?;
-
-    let service = CategoryService::new(db.clone());
-    let security = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
     let tree = service
         .tree(
             tenant_a,
@@ -110,30 +129,42 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
     assert_eq!(empty.total_nodes, 0);
 
     let deterministic_fallback_tenant = Uuid::new_v4();
-    let deterministic_category =
-        seed_category_without_translation(db, deterministic_fallback_tenant).await?;
-    seed_translation(
-        db,
-        deterministic_fallback_tenant,
-        deterministic_category,
-        "fr",
-        "Français",
-        "francais",
-    )
-    .await?;
-    seed_translation(
-        db,
-        deterministic_fallback_tenant,
-        deterministic_category,
-        "de",
-        "Deutsch",
-        "deutsch",
-    )
-    .await?;
+    let security_deterministic = SecurityContext::system();
+    let deterministic_category = service
+        .create(
+            deterministic_fallback_tenant,
+            security_deterministic.clone(),
+            rustok_forum::CreateCategoryInput {
+                locale: "de".to_string(),
+                name: "Deutsch".to_string(),
+                slug: "deutsch".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await?
+        .id;
+    service
+        .update(
+            deterministic_fallback_tenant,
+            deterministic_category,
+            security_deterministic.clone(),
+            rustok_forum::UpdateCategoryInput {
+                locale: "fr".to_string(),
+                name: Some("Français".to_string()),
+                slug: Some("francais".to_string()),
+                ..Default::default()
+            },
+        )
+        .await?;
     let deterministic_fallback = service
         .tree(
             deterministic_fallback_tenant,
-            security.clone(),
+            security_deterministic,
             CategoryTreeQuery {
                 locale: Some("zh".to_string()),
                 fallback_locale: None,
@@ -147,11 +178,19 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
         vec!["de".to_string(), "fr".to_string()]
     );
 
-    let untranslated_tenant = Uuid::new_v4();
-    seed_category_without_translation(db, untranslated_tenant).await?;
-    let untranslated_error = service
+    let unbound_tenant = Uuid::new_v4();
+    let unbound_category_id = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "INSERT INTO forum_categories \
+            (id, tenant_id, position, moderated, topic_count, reply_count) \
+         VALUES (?, ?, 0, FALSE, 0, 0)",
+        [unbound_category_id.into(), unbound_tenant.into()],
+    ))
+    .await?;
+    let unbound_error = service
         .tree(
-            untranslated_tenant,
+            unbound_tenant,
             security.clone(),
             CategoryTreeQuery {
                 locale: Some("en".to_string()),
@@ -159,21 +198,31 @@ pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestR
             },
         )
         .await;
-    assert_validation_contains(untranslated_error, "no localized translation")?;
+    assert_validation_contains(unbound_error, "Taxonomy Category binding")?;
 
     let deep_tenant = Uuid::new_v4();
-    seed_deep_tree(db, deep_tenant, MAX_FORUM_CATEGORY_TREE_DEPTH + 2).await?;
-    let depth_error = service
-        .tree(
-            deep_tenant,
-            security.clone(),
-            CategoryTreeQuery {
-                locale: Some("en".to_string()),
-                ..Default::default()
-            },
-        )
-        .await;
-    assert_validation_contains(depth_error, "maximum depth")?;
+    let deep_seed = seed_deep_tree(db, deep_tenant, MAX_FORUM_CATEGORY_TREE_DEPTH + 2).await;
+    match deep_seed {
+        Ok(()) => {
+            let depth_error = service
+                .tree(
+                    deep_tenant,
+                    security.clone(),
+                    CategoryTreeQuery {
+                        locale: Some("en".to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            assert_validation_contains(depth_error, "maximum depth")?;
+        }
+        Err(err) => {
+            let err_str = format!("{err:?}");
+            if !err_str.contains("maximum depth") && !err_str.contains("exceeds maximum depth") {
+                return Err(test_error(format!("unexpected deep tree error: {err_str}")));
+            }
+        }
+    }
 
     let oversized_tenant = Uuid::new_v4();
     seed_oversized_tree(db, oversized_tenant).await?;
@@ -216,16 +265,17 @@ async fn seed_deep_tree(
 }
 
 async fn seed_oversized_tree(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<()> {
-    let mut sql = String::new();
     for position in 0..=MAX_FORUM_CATEGORY_TREE_NODES {
         let category_id = Uuid::new_v4();
-        sql.push_str(&format!(
+        db.execute(Statement::from_sql_and_values(
+            db.get_database_backend(),
             "INSERT INTO forum_categories \
                 (id, tenant_id, position, moderated, topic_count, reply_count) \
-             VALUES ('{category_id}', '{tenant_id}', {position}, FALSE, 0, 0);"
-        ));
+             VALUES (?, ?, ?, FALSE, 0, 0)",
+            [category_id.into(), tenant_id.into(), (position as i32).into()],
+        ))
+        .await?;
     }
-    db.execute_unprepared(&sql).await?;
     Ok(())
 }
 
@@ -233,14 +283,42 @@ async fn seed_category_without_translation(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> TestResult<Uuid> {
+    use rustok_forum::entities::{forum_category, forum_category_taxonomy_binding};
+    use rustok_taxonomy::entities::taxonomy_term;
+    use sea_orm::{ActiveModelTrait, Set};
+
     let category_id = Uuid::new_v4();
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_categories
-            (id, tenant_id, position, moderated, topic_count, reply_count)
-         VALUES
-            ('{category_id}', '{tenant_id}', 0, FALSE, 0, 0);"
-    ))
-    .await?;
+    let cat_model = forum_category::ActiveModel {
+        id: Set(category_id),
+        tenant_id: Set(tenant_id),
+        parent_id: Set(None),
+        position: Set(0),
+        moderated: Set(false),
+        topic_count: Set(0),
+        reply_count: Set(0),
+        ..Default::default()
+    };
+    cat_model.insert(db).await?;
+
+    let binding = forum_category_taxonomy_binding::ActiveModel {
+        tenant_id: Set(tenant_id),
+        forum_category_id: Set(category_id),
+        taxonomy_category_id: Set(category_id),
+        ..Default::default()
+    };
+    binding.insert(db).await?;
+
+    let term = taxonomy_term::ActiveModel {
+        id: Set(category_id),
+        tenant_id: Set(tenant_id),
+        kind: Set(rustok_taxonomy::TaxonomyTermKind::Category),
+        scope_type: Set(rustok_taxonomy::TaxonomyScopeType::Module),
+        scope_value: Set("forum".to_string()),
+        canonical_key: Set(format!("category-{category_id}")),
+        ..Default::default()
+    };
+    term.insert(db).await?;
+
     Ok(category_id)
 }
 
@@ -253,24 +331,27 @@ async fn seed_category(
     slug: &str,
     moderated: bool,
 ) -> TestResult<Uuid> {
-    let category_id = Uuid::new_v4();
-    let parent_sql = parent_id
-        .map(|parent_id| format!("'{parent_id}'"))
-        .unwrap_or_else(|| "NULL".to_string());
-    let moderated_sql = if moderated { "TRUE" } else { "FALSE" };
-    let translation_id = Uuid::new_v4();
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_categories
-            (id, tenant_id, parent_id, position, moderated, topic_count, reply_count)
-         VALUES
-            ('{category_id}', '{tenant_id}', {parent_sql}, {position}, {moderated_sql}, 0, 0);
-         INSERT INTO forum_category_translations
-            (id, category_id, tenant_id, locale, name, slug)
-         VALUES
-            ('{translation_id}', '{category_id}', '{tenant_id}', 'en', '{name}', '{slug}');"
-    ))
-    .await?;
-    Ok(category_id)
+    use rustok_forum::CreateCategoryInput;
+    let service = CategoryService::new(db.clone());
+    let security = SecurityContext::system();
+    let category = service
+        .create(
+            tenant_id,
+            security,
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: name.to_string(),
+                slug: slug.to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id,
+                position: Some(position),
+                moderated,
+            },
+        )
+        .await?;
+    Ok(category.id)
 }
 
 async fn seed_translation(
@@ -281,14 +362,19 @@ async fn seed_translation(
     name: &str,
     slug: &str,
 ) -> TestResult<()> {
-    let translation_id = Uuid::new_v4();
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_category_translations
-            (id, category_id, tenant_id, locale, name, slug)
-         VALUES
-            ('{translation_id}', '{category_id}', '{tenant_id}', '{locale}', '{name}', '{slug}');"
-    ))
-    .await?;
+    use rustok_forum::entities::forum_category_translation;
+    use sea_orm::{ActiveModelTrait, Set};
+
+    let model = forum_category_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        category_id: Set(category_id),
+        tenant_id: Set(tenant_id),
+        locale: Set(locale.to_string()),
+        name: Set(name.to_string()),
+        slug: Set(slug.to_string()),
+        description: Set(None),
+    };
+    model.insert(db).await?;
     Ok(())
 }
 

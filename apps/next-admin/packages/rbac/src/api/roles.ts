@@ -13,12 +13,12 @@ export interface RoleInfo {
   permissions: string[];
 }
 
-export interface AssignUserRoleInput {
+interface AssignUserRoleInput {
   userId: string;
   role: string;
 }
 
-export interface AssignUserRolePayload {
+interface AssignUserRolePayload {
   success: boolean;
   userId: string;
   role: string;

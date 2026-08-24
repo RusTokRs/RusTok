@@ -417,6 +417,11 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS forum_user_trust_state_insert
 BEFORE INSERT ON forum_user_trust_states
+WHEN NOT EXISTS (
+    SELECT 1 FROM forum_user_trust_states state
+     WHERE state.tenant_id = NEW.tenant_id
+       AND state.user_id = NEW.user_id
+)
 BEGIN
     SELECT CASE WHEN NEW.revision <> 1 OR NOT EXISTS (
         SELECT 1 FROM forum_user_trust_revisions revision

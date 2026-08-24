@@ -94,7 +94,7 @@ async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data(
             SET name = 'STALE LEGACY UPDATE',
                 slug = 'stale-legacy-update',
                 description = 'stale legacy update'
-            WHERE category_id = '{}' AND locale = 'en';
+            WHERE hex(category_id) = upper(replace('{}', '-', '')) AND locale = 'en';
         END
         "#,
         support.id

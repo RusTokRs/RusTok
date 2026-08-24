@@ -11,12 +11,6 @@ import { Tenant } from '@/entities/tenant';
 
 export type AuthUser = User;
 
-export interface AuthSession {
-  accessToken: string;
-  refreshToken: string;
-  tenantSlug: string | null;
-}
-
 export type TenantInfo = Tenant;
 
 // Mutations

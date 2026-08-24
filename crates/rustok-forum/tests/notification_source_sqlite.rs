@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use rustok_api::HostRuntimeContext;
-use rustok_core::{MemoryTransport, MigrationSource, ModuleRegistry, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, ModuleRegistry, SecurityContext, UserRole};
 use rustok_forum::entities::{forum_domain_event, forum_relation_revision, forum_user_mention};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, ModerationService,
@@ -18,7 +18,7 @@ use rustok_notifications_api::{
     notification_source_factory_registry_from_extensions,
     notification_source_registry_from_extensions,
 };
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ActiveModelTrait,
@@ -435,18 +435,32 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus) {
         .await
         .expect("notification source sqlite database should connect");
     let manager = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
             .await
             .expect("taxonomy migration should apply");
     }
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         migration
             .up(&manager)
             .await
             .expect("forum migration should apply");
     }
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     (db, event_bus)
 }

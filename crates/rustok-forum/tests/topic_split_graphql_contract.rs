@@ -46,7 +46,7 @@ fn graphql_split_adapter_uses_routed_tenant_manage_scope_and_owner_service() {
         "require_module_enabled(ctx, MODULE_SLUG).await?",
         "Permission::FORUM_TOPICS_MANAGE",
         "Permission denied: forum_topics:manage required",
-        "Permission denied: tenant scope mismatch",
+        "resolve_tenant_scope",
         "ForumTopicSplitService::new(db.clone(), event_bus.clone())",
         ".split_selected_replies(",
         "SecurityContext::from_permission_snapshot",
