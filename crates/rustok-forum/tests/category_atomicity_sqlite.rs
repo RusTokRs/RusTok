@@ -1,5 +1,6 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{CategoryService, CreateCategoryInput, ForumModule, UpdateCategoryInput};
+use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
 };
@@ -327,25 +328,10 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
         .sqlx_logging(false);
     let db = Database::connect(options).await?;
 
-    execute(
-        &db,
-        r#"
-CREATE TABLE taxonomy_terms (
-    id TEXT PRIMARY KEY NOT NULL,
-    tenant_id TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    scope_type TEXT NOT NULL,
-    scope_value TEXT NOT NULL DEFAULT '',
-    canonical_key TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-"#,
-    )
-    .await?;
-
     let manager = SchemaManager::new(&db);
+    for migration in TaxonomyModule.migrations() {
+        migration.up(&manager).await?;
+    }
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }
