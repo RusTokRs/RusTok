@@ -8,7 +8,8 @@ use rustok_taxonomy::{
     TaxonomyModule, TaxonomyOwnerCategoryReader, TaxonomyScopeType, entities::taxonomy_term_alias,
 };
 use sea_orm::{
-    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -192,6 +193,14 @@ async fn setup() -> TestResult<DatabaseConnection> {
         .min_connections(1)
         .sqlx_logging(false);
     let db = Database::connect(options).await?;
+    db.execute_unprepared(
+        "CREATE TABLE users (\
+            id TEXT NOT NULL PRIMARY KEY, \
+            tenant_id TEXT NOT NULL, \
+            UNIQUE (tenant_id, id)\
+        )",
+    )
+    .await?;
     let manager = SchemaManager::new(&db);
 
     for migration in OutboxModule.migrations() {
