@@ -1,29 +1,12 @@
-use std::collections::BTreeSet;
-
-use rustok_api::PLATFORM_FALLBACK_LOCALE;
-use rustok_taxonomy::{SyncModuleCategoryInput, sync_module_category_in_tx};
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseTransaction, EntityTrait, QueryFilter,
-    QueryOrder, QueryResult, Statement,
-};
-use uuid::Uuid;
-
-use crate::{
-    entities::{
-        forum_category, forum_category_taxonomy_binding, forum_category_translation,
-    },
-    error::{ForumError, ForumResult},
-};
-
 const FORUM_TAXONOMY_SCOPE: &str = "forum";
 
-pub(crate) async fn sync_category_locale_in_tx(
+pub(crate) async fn sync_category_locale_to_taxonomy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
     locale: &str,
 ) -> ForumResult<()> {
-    let category = load_category_in_tx(txn, tenant_id, category_id).await?;
+    let category = load_category_for_taxonomy_sync_in_tx(txn, tenant_id, category_id).await?;
     let translation = forum_category_translation::Entity::find()
         .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
         .filter(forum_category_translation::Column::CategoryId.eq(category_id))
@@ -35,15 +18,15 @@ pub(crate) async fn sync_category_locale_in_tx(
                 "Forum category {category_id} has no localized translation for {locale}"
             ))
         })?;
-    sync_snapshot_in_tx(txn, tenant_id, category, translation).await
+    sync_category_snapshot_to_taxonomy_in_tx(txn, tenant_id, category, translation).await
 }
 
-pub(crate) async fn sync_category_placement_in_tx(
+pub(crate) async fn sync_category_placement_to_taxonomy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    let category = load_category_in_tx(txn, tenant_id, category_id).await?;
+    let category = load_category_for_taxonomy_sync_in_tx(txn, tenant_id, category_id).await?;
     let translations = forum_category_translation::Entity::find()
         .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
         .filter(forum_category_translation::Column::CategoryId.eq(category_id))
@@ -53,7 +36,7 @@ pub(crate) async fn sync_category_placement_in_tx(
         .await?;
     let translation = translations
         .iter()
-        .find(|translation| translation.locale == PLATFORM_FALLBACK_LOCALE)
+        .find(|translation| translation.locale == rustok_api::PLATFORM_FALLBACK_LOCALE)
         .or_else(|| translations.first())
         .cloned()
         .ok_or_else(|| {
@@ -61,10 +44,10 @@ pub(crate) async fn sync_category_placement_in_tx(
                 "Forum category {category_id} has no localized translation"
             ))
         })?;
-    sync_snapshot_in_tx(txn, tenant_id, category, translation).await
+    sync_category_snapshot_to_taxonomy_in_tx(txn, tenant_id, category, translation).await
 }
 
-pub(crate) async fn sync_category_placements_in_tx<I>(
+pub(crate) async fn sync_category_placements_to_taxonomy_in_tx<I>(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_ids: I,
@@ -72,14 +55,16 @@ pub(crate) async fn sync_category_placements_in_tx<I>(
 where
     I: IntoIterator<Item = Uuid>,
 {
-    let category_ids = category_ids.into_iter().collect::<BTreeSet<_>>();
+    let category_ids = category_ids
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
     for category_id in category_ids {
-        sync_category_placement_in_tx(txn, tenant_id, category_id).await?;
+        sync_category_placement_to_taxonomy_in_tx(txn, tenant_id, category_id).await?;
     }
     Ok(())
 }
 
-pub(crate) async fn sync_sibling_range_from_position_in_tx(
+pub(crate) async fn sync_sibling_range_to_taxonomy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     parent_id: Option<Uuid>,
@@ -107,10 +92,15 @@ pub(crate) async fn sync_sibling_range_from_position_in_tx(
                 .await?
         }
     };
-    sync_category_placements_in_tx(txn, tenant_id, categories.into_iter().map(|row| row.id)).await
+    sync_category_placements_to_taxonomy_in_tx(
+        txn,
+        tenant_id,
+        categories.into_iter().map(|row| row.id),
+    )
+    .await
 }
 
-async fn sync_snapshot_in_tx(
+async fn sync_category_snapshot_to_taxonomy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category: forum_category::Model,
@@ -121,13 +111,19 @@ async fn sync_snapshot_in_tx(
             "Forum category localized snapshot does not match its owner".to_string(),
         ));
     }
-    let aliases = load_alias_slugs_in_tx(txn, tenant_id, category.id, &translation.locale).await?;
-    let category_id = category.id;
-
-    sync_module_category_in_tx(
+    let aliases = load_category_alias_slugs_for_taxonomy_sync_in_tx(
         txn,
         tenant_id,
-        SyncModuleCategoryInput {
+        category.id,
+        &translation.locale,
+    )
+    .await?;
+    let category_id = category.id;
+
+    rustok_taxonomy::sync_module_category_in_tx(
+        txn,
+        tenant_id,
+        rustok_taxonomy::SyncModuleCategoryInput {
             category_id,
             module_scope: FORUM_TAXONOMY_SCOPE.to_string(),
             canonical_key: format!("forum-category-{category_id}"),
@@ -144,11 +140,17 @@ async fn sync_snapshot_in_tx(
     )
     .await?;
 
-    forum_category_taxonomy_binding::bind_in_tx(txn, tenant_id, category_id, category_id).await?;
+    crate::entities::forum_category_taxonomy_binding::bind_in_tx(
+        txn,
+        tenant_id,
+        category_id,
+        category_id,
+    )
+    .await?;
     Ok(())
 }
 
-async fn load_category_in_tx(
+async fn load_category_for_taxonomy_sync_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -160,7 +162,7 @@ async fn load_category_in_tx(
         .ok_or(ForumError::CategoryNotFound(category_id))
 }
 
-async fn load_alias_slugs_in_tx(
+async fn load_category_alias_slugs_for_taxonomy_sync_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -197,10 +199,6 @@ async fn load_alias_slugs_in_tx(
     txn.query_all(statement)
         .await?
         .into_iter()
-        .map(alias_slug_from_row)
+        .map(|row| row.try_get("", "slug").map_err(ForumError::from))
         .collect()
-}
-
-fn alias_slug_from_row(row: QueryResult) -> ForumResult<String> {
-    row.try_get("", "slug").map_err(ForumError::from)
 }
