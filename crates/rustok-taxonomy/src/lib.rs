@@ -36,6 +36,7 @@ pub use dto::{
     TaxonomyTermResponse, TaxonomyTranslationApplyResult, UpdateTaxonomyTermInput,
 };
 pub use error::{TaxonomyError, TaxonomyResult};
+pub use module_term_lookup::TaxonomyModuleRouteMatch;
 pub use module_term_mutation::{
     ModuleTermMutationResult, ModuleTermUpdateInput, delete_module_term_in_tx,
     update_module_term_in_tx,
