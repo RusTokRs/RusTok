@@ -30,6 +30,8 @@ impl CategoryProjectionOwnerService {
         validate_category_name(&input.name)?;
         let locale = normalize_locale(&input.locale)?;
         let slug = normalize_required_slug(&input.slug)?;
+        let canonical_name = input.name.clone();
+        let canonical_description = input.description.clone();
         let requested_position = input.position.unwrap_or(0);
         if requested_position < 0 {
             return Err(ForumError::Validation(
@@ -70,13 +72,23 @@ impl CategoryProjectionOwnerService {
             category_id: Set(id),
             tenant_id: Set(tenant_id),
             locale: Set(locale.clone()),
-            name: Set(input.name),
-            slug: Set(slug),
-            description: Set(input.description),
+            name: Set(canonical_name.clone()),
+            slug: Set(slug.clone()),
+            description: Set(canonical_description.clone()),
         }
         .insert(&txn)
         .await?;
 
+        taxonomy_sync::sync_category_copy_in_tx(
+            &txn,
+            tenant_id,
+            id,
+            locale.clone(),
+            canonical_name,
+            slug,
+            canonical_description,
+        )
+        .await?;
         taxonomy_sync::sync_siblings_for_parent_in_tx(&txn, tenant_id, input.parent_id).await?;
         super::category_translation_evidence::record_category_translation_change_in_tx(
             &txn,
@@ -106,8 +118,12 @@ impl CategoryProjectionOwnerService {
     ) -> ForumResult<CategoryResponse> {
         enforce_scope(&security, Resource::ForumCategories, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
-        let translation_requested =
-            input.name.is_some() || input.slug.is_some() || input.description.is_some();
+        let requested_name = input.name.clone();
+        let requested_slug = input.slug.clone();
+        let requested_description = input.description.clone();
+        let translation_requested = requested_name.is_some()
+            || requested_slug.is_some()
+            || requested_description.is_some();
         let txn = self.db.begin().await?;
         let category = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
@@ -131,70 +147,83 @@ impl CategoryProjectionOwnerService {
         }
         active.update(&txn).await?;
 
-        let existing_translation = forum_category_translation::Entity::find()
-            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-            .filter(forum_category_translation::Column::CategoryId.eq(category_id))
-            .filter(forum_category_translation::Column::Locale.eq(&locale))
-            .one(&txn)
-            .await?;
-
-        match existing_translation {
-            Some(existing_translation) => {
-                let previous_slug = normalize_required_slug(&existing_translation.slug)?;
-                let next_slug = match input.slug.as_deref() {
+        let existing_canonical = taxonomy_sync::load_category_locale_copy_in_tx(
+            &txn,
+            tenant_id,
+            category_id,
+            &locale,
+        )
+        .await?;
+        let (canonical_name, canonical_slug, canonical_description) = match existing_canonical {
+            Some(existing) => {
+                let name = requested_name.clone().unwrap_or(existing.name);
+                validate_category_name(&name)?;
+                let slug = match requested_slug.as_deref() {
                     Some(slug) => normalize_required_slug(slug)?,
-                    None => match input.name.as_deref() {
-                        Some(name) => {
-                            validate_category_name(name)?;
-                            normalize_required_slug(name)?
-                        }
-                        None => previous_slug.clone(),
-                    },
+                    None if requested_name.is_some() => normalize_required_slug(&name)?,
+                    None => normalize_required_slug(&existing.slug)?,
                 };
-                let slug_changed = previous_slug != next_slug;
-
-                let mut active: forum_category_translation::ActiveModel =
-                    existing_translation.into();
-                if let Some(name) = input.name {
-                    validate_category_name(&name)?;
-                    active.name = Set(name);
-                }
-                if slug_changed {
-                    active.slug = Set(next_slug);
-                }
-                if input.description.is_some() {
-                    active.description = Set(input.description);
-                }
-                active.update(&txn).await?;
+                let description = if requested_description.is_some() {
+                    requested_description.clone()
+                } else {
+                    existing.description
+                };
+                (name, slug, description)
             }
             None => {
-                let name = input.name.ok_or_else(|| {
+                let name = requested_name.clone().ok_or_else(|| {
                     ForumError::Validation("Category name is required".to_string())
                 })?;
                 validate_category_name(&name)?;
-                let slug = input
-                    .slug
+                let slug = requested_slug
                     .as_deref()
                     .map(normalize_required_slug)
                     .transpose()?
                     .unwrap_or_else(|| normalize_slug(&name));
                 let slug = normalize_required_slug(&slug)?;
+                (name, slug, requested_description.clone())
+            }
+        };
 
+        let existing_compatibility = forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
+            .filter(forum_category_translation::Column::CategoryId.eq(category_id))
+            .filter(forum_category_translation::Column::Locale.eq(&locale))
+            .one(&txn)
+            .await?;
+        match existing_compatibility {
+            Some(existing) => {
+                let mut active: forum_category_translation::ActiveModel = existing.into();
+                active.name = Set(canonical_name.clone());
+                active.slug = Set(canonical_slug.clone());
+                active.description = Set(canonical_description.clone());
+                active.update(&txn).await?;
+            }
+            None => {
                 forum_category_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     category_id: Set(category_id),
                     tenant_id: Set(tenant_id),
                     locale: Set(locale.clone()),
-                    name: Set(name),
-                    slug: Set(slug),
-                    description: Set(input.description),
+                    name: Set(canonical_name.clone()),
+                    slug: Set(canonical_slug.clone()),
+                    description: Set(canonical_description.clone()),
                 }
                 .insert(&txn)
                 .await?;
             }
         }
 
-        taxonomy_sync::sync_category_locale_in_tx(&txn, tenant_id, category_id, &locale).await?;
+        taxonomy_sync::sync_category_copy_in_tx(
+            &txn,
+            tenant_id,
+            category_id,
+            locale.clone(),
+            canonical_name,
+            canonical_slug,
+            canonical_description,
+        )
+        .await?;
         if translation_requested {
             super::category_translation_evidence::record_category_translation_change_in_tx(
                 &txn,
