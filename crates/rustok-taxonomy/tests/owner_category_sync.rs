@@ -1,8 +1,8 @@
 use rustok_core::MigrationSource;
 use rustok_taxonomy::{
-    SyncModuleCategoryInput, TaxonomyModule, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
     entities::{taxonomy_category_presentation, taxonomy_term_alias, translation_change},
-    sync_module_category_in_tx,
+    sync_module_category_in_tx, SyncModuleCategoryInput, TaxonomyModule,
+    TaxonomyOwnerCategoryReader, TaxonomyScopeType,
 };
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{
@@ -300,6 +300,12 @@ async fn owner_sync_rejects_alias_removal_and_cross_scope_parent() {
     )
     .await
     .expect_err("cross-scope parent must fail");
-    assert!(parent_error.to_string().contains("same tenant and module scope"));
-    txn.rollback().await.expect("failed parent sync should roll back");
+    assert!(
+        parent_error
+            .to_string()
+            .contains("same tenant and module scope")
+    );
+    txn.rollback()
+        .await
+        .expect("failed parent sync should roll back");
 }
