@@ -47,14 +47,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.96.0"
-          components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Check owner sync Rust formatting only
-        run: |
-          rustfmt +1.96.0 --check --edition 2024 \
-            crates/rustok-taxonomy/src/owner_category_sync.rs \
-            crates/rustok-taxonomy/tests/owner_category_sync.rs
+      - name: Check canonical workspace formatting
+        run: cargo fmt --all -- --check
       - name: Run transactional Category owner sync contract
-        run: cargo test --locked -p rustok-taxonomy --test owner_category_sync -- --nocapture
+        run: cargo +1.96.0 test --locked -p rustok-taxonomy --test owner_category_sync -- --nocapture
       - name: Compile Taxonomy owner sync surface
-        run: cargo check --locked -p rustok-taxonomy --lib
+        run: cargo +1.96.0 check --locked -p rustok-taxonomy --lib
