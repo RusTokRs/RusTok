@@ -24,16 +24,16 @@ use crate::services::subscription::SubscriptionService;
 /// Forum still owns category membership, lifecycle/visibility, moderation,
 /// counters and subscription state. Canonical localized copy and presentation
 /// are read only through the typed Forum -> Taxonomy Category binding.
-pub(super) struct CategoryTaxonomyReadService {
+pub(in crate::services) struct CategoryTaxonomyReadService {
     db: DatabaseConnection,
 }
 
 impl CategoryTaxonomyReadService {
-    pub(super) fn new(db: DatabaseConnection) -> Self {
+    pub(in crate::services) fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
 
-    pub(super) async fn get_with_locale_fallback(
+    pub(in crate::services) async fn get_with_locale_fallback(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
@@ -104,7 +104,7 @@ impl CategoryTaxonomyReadService {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) async fn list_paginated_with_locale_fallback_and_hidden_categories(
+    pub(in crate::services) async fn list_paginated_with_locale_fallback_and_hidden_categories(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
