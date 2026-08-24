@@ -80,3 +80,5 @@ impl CategoryService {
         Ok((items, total))
     }
 }
+
+include!("category_taxonomy_read.rs");
