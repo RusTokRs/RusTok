@@ -15,7 +15,8 @@ use uuid::Uuid;
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::test]
-async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data() -> TestResult<()> {
+async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data() -> TestResult<()>
+{
     let db = setup().await?;
     let service = CategoryService::new(db.clone());
     let tenant_id = Uuid::new_v4();
