@@ -25,7 +25,7 @@ impl CategoryProjectionOwnerService {
         tenant_id: Uuid,
         security: SecurityContext,
         input: CreateCategoryInput,
-    ) -> ForumResult<CategoryResponse> {
+    ) -> ForumResult<Uuid> {
         enforce_scope(&security, Resource::ForumCategories, Action::Create)?;
         validate_category_name(&input.name)?;
         let locale = normalize_locale(&input.locale)?;
@@ -83,21 +83,13 @@ impl CategoryProjectionOwnerService {
             &txn,
             tenant_id,
             id,
-            locale.clone(),
+            locale,
             canonical_name,
             slug,
             canonical_description,
         )
         .await?;
         taxonomy_sync::sync_siblings_for_parent_in_tx(&txn, tenant_id, input.parent_id).await?;
-        super::category_translation_evidence::record_category_translation_change_in_tx(
-            &txn,
-            tenant_id,
-            id,
-            "create",
-            rustok_translation_targets::TranslationResourceLifecycle::Active,
-        )
-        .await?;
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,
@@ -105,7 +97,7 @@ impl CategoryProjectionOwnerService {
         )
         .await?;
         txn.commit().await?;
-        self.inner.get(tenant_id, security, id, &locale).await
+        Ok(id)
     }
 
     #[instrument(skip(self, security, input))]
@@ -115,15 +107,12 @@ impl CategoryProjectionOwnerService {
         category_id: Uuid,
         security: SecurityContext,
         input: UpdateCategoryInput,
-    ) -> ForumResult<CategoryResponse> {
+    ) -> ForumResult<()> {
         enforce_scope(&security, Resource::ForumCategories, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
         let requested_name = input.name.clone();
         let requested_slug = input.slug.clone();
         let requested_description = input.description.clone();
-        let translation_requested = requested_name.is_some()
-            || requested_slug.is_some()
-            || requested_description.is_some();
         let txn = self.db.begin().await?;
         let category = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
@@ -218,22 +207,12 @@ impl CategoryProjectionOwnerService {
             &txn,
             tenant_id,
             category_id,
-            locale.clone(),
+            locale,
             canonical_name,
             canonical_slug,
             canonical_description,
         )
         .await?;
-        if translation_requested {
-            super::category_translation_evidence::record_category_translation_change_in_tx(
-                &txn,
-                tenant_id,
-                category_id,
-                "update",
-                rustok_translation_targets::TranslationResourceLifecycle::Active,
-            )
-            .await?;
-        }
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,
@@ -241,9 +220,7 @@ impl CategoryProjectionOwnerService {
         )
         .await?;
         txn.commit().await?;
-        self.inner
-            .get(tenant_id, security, category_id, &locale)
-            .await
+        Ok(())
     }
 
     #[instrument(skip(self, security))]
@@ -261,19 +238,6 @@ impl CategoryProjectionOwnerService {
             .await?
             .ok_or(ForumError::CategoryNotFound(category_id))?;
 
-        super::category_translation_evidence::record_category_translation_change_in_tx(
-            &txn,
-            tenant_id,
-            category_id,
-            "delete",
-            rustok_translation_targets::TranslationResourceLifecycle::Deleted,
-        )
-        .await?;
-        forum_category_translation::Entity::delete_many()
-            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-            .filter(forum_category_translation::Column::CategoryId.eq(category_id))
-            .exec(&txn)
-            .await?;
         forum_category::Entity::delete_by_id(category.id)
             .exec(&txn)
             .await?;
