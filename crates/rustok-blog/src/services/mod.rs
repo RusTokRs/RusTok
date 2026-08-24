@@ -2,6 +2,7 @@
 
 mod category;
 mod category_command;
+pub(crate) mod category_taxonomy_sync;
 mod comment;
 mod comment_projection;
 mod post;
