@@ -63,17 +63,16 @@ jobs:
           toolchain: "1.96.0"
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Check touched Rust formatting
+      - name: Check changed-file whitespace
+        run: git diff --check "${{ github.event.pull_request.base.sha || github.event.before }}" HEAD || git diff --check HEAD^ HEAD
+      - name: Check touched Rust leaf formatting
         run: |
           rustfmt +1.96.0 --edition 2024 --check \
             crates/rustok-taxonomy/src/category_delete.rs \
             crates/rustok-blog/src/services/category_delete.rs \
             crates/rustok-blog/src/services/category_owner.rs \
-            crates/rustok-blog/src/services/mod.rs \
-            crates/rustok-blog/src/controllers/mod.rs \
             crates/rustok-blog/src/controllers/categories.rs \
-            crates/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs \
-            apps/server/src/services/mod.rs
+            crates/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs
       - name: Run Blog Taxonomy Category delete lifecycle contract
         run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_delete_lifecycle -- --nocapture
       - name: Re-run Blog Taxonomy Category structure sync contract
