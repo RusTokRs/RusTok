@@ -16,7 +16,8 @@ impl ForumCategoryRouteService {
     /// Reserves one current route key for category create or a new translation.
     ///
     /// Historical route keys are never reusable, including by the category that
-    /// originally owned them. This keeps old localized URLs deterministic.
+    /// originally owned them. This keeps old localized URLs deterministic while
+    /// CAT-5 still dual-writes legacy Forum persistence and Taxonomy.
     pub(crate) async fn ensure_current_route_key_available_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -157,75 +158,6 @@ impl ForumCategoryRouteService {
         }
         Ok(existing.alias_id)
     }
-}
-
-async fn load_alias_route_candidates(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    slug: &str,
-) -> ForumResult<Vec<CategoryRouteCandidate>> {
-    let statement = match db.get_database_backend() {
-        DatabaseBackend::Postgres => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
-            SELECT alias_id, category_id, locale, slug, reason
-            FROM forum_category_route_aliases
-            WHERE tenant_id = $1 AND slug = $2
-            ORDER BY locale, alias_id
-            LIMIT 65
-            "#,
-            vec![tenant_id.into(), slug.into()],
-        ),
-        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            r#"
-            SELECT alias_id, category_id, locale, slug, reason
-            FROM forum_category_route_aliases
-            WHERE tenant_id = ? AND slug = ?
-            ORDER BY locale, alias_id
-            LIMIT 65
-            "#,
-            vec![tenant_id.into(), slug.into()],
-        ),
-        backend => return Err(unsupported_category_route_backend(backend)),
-    };
-    let aliases = db
-        .query_all(statement)
-        .await?
-        .into_iter()
-        .map(stored_category_route_alias_from_row)
-        .collect::<ForumResult<Vec<_>>>()?;
-    if aliases.len() > MAX_FORUM_CATEGORY_ROUTE_CANDIDATES as usize {
-        return Err(ForumError::CategoryRouteResolutionConflict);
-    }
-    if aliases.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let category_ids = aliases
-        .iter()
-        .map(|alias| alias.category_id)
-        .collect::<HashSet<_>>();
-    let (existing_ids, archived_ids) =
-        load_category_route_state(db, tenant_id, &category_ids).await?;
-    if existing_ids != category_ids {
-        return Err(ForumError::CategoryRouteResolutionConflict);
-    }
-
-    aliases
-        .into_iter()
-        .map(|alias| {
-            if alias.slug != slug {
-                return Err(ForumError::CategoryRouteResolutionConflict);
-            }
-            Ok(CategoryRouteCandidate {
-                category_id: alias.category_id,
-                locale: alias.locale,
-                active: !archived_ids.contains(&alias.category_id),
-                alias_id: Some(alias.alias_id),
-            })
-        })
-        .collect()
 }
 
 async fn load_exact_current_route_owners<C>(
