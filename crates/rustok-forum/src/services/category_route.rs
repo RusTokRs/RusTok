@@ -13,6 +13,7 @@ use crate::error::{ForumError, ForumResult};
 
 pub const MAX_FORUM_CATEGORY_ROUTE_LOCALE_LEN: usize = 64;
 pub const MAX_FORUM_CATEGORY_ROUTE_SLUG_LEN: usize = 255;
+pub const MAX_FORUM_CATEGORY_ROUTE_CANDIDATES: u64 = 64;
 const FORUM_TAXONOMY_SCOPE: &str = "forum";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

@@ -28,7 +28,7 @@ mod topic_slug_rename_mutation;
 mod topic_split_mutation;
 mod types;
 
-use async_graphql::MergedObject;
+use async_graphql::{ErrorExtensions, MergedObject};
 
 pub use category_command_mutation::{
     GqlForumCategoryMove, GqlForumCategoryPlacement, GqlForumCategorySiblingOrder,
@@ -105,7 +105,7 @@ pub struct ForumQuery(
 
 #[derive(MergedObject, Default)]
 pub struct ForumMutation(
-    mutation::ForumMutation,
+    mutation::ForumContentMutation,
     category_command_mutation::ForumCategoryCommandMutation,
     category_lifecycle_mutation::ForumCategoryLifecycleMutation,
     category_policy::ForumCategoryTopicPolicyMutation,
@@ -119,3 +119,57 @@ pub struct ForumMutation(
     topic_slug_rename_mutation::ForumTopicSlugRenameMutation,
     topic_split_mutation::ForumTopicSplitMutation,
 );
+
+pub(crate) fn require_forum_permission<'a>(
+    ctx: &'a async_graphql::Context<'_>,
+    permissions: &[rustok_api::Permission],
+    message: &str,
+) -> async_graphql::Result<&'a rustok_api::AuthContext> {
+    rustok_api::graphql::require_graphql_auth(ctx, permissions, message)
+}
+
+pub(crate) fn resolve_tenant_scope(
+    tenant: &rustok_api::TenantContext,
+    requested_tenant_id: Option<uuid::Uuid>,
+) -> async_graphql::Result<uuid::Uuid> {
+    match requested_tenant_id {
+        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
+            Err(async_graphql::Error::new("Permission denied: tenant scope mismatch")
+                .extend_with(|_, ext| ext.set("code", "FORBIDDEN")))
+        }
+        Some(requested_tenant_id) => Ok(requested_tenant_id),
+        None => Ok(tenant.id),
+    }
+}
+
+pub(crate) async fn require_public_forum_channel_enabled(
+    ctx: &async_graphql::Context<'_>,
+) -> async_graphql::Result<()> {
+    if ctx.data_opt::<rustok_api::AuthContext>().is_some() {
+        return Ok(());
+    }
+
+    let Some(request) = ctx.data_opt::<rustok_api::RequestContext>() else {
+        return Ok(());
+    };
+    let Some(channel_id) = request.channel_id else {
+        return Ok(());
+    };
+
+    let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+    let enabled = rustok_channel::ChannelService::new(db.clone())
+        .is_module_enabled(channel_id, "forum")
+        .await
+        .map_err(|error| {
+            async_graphql::Error::new(format!("Channel module check failed: {error}"))
+                .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR"))
+        })?;
+    if enabled {
+        Ok(())
+    } else {
+        Err(
+            async_graphql::Error::new("Forum module is not enabled for this channel")
+                .extend_with(|_, extension| extension.set("code", "FORBIDDEN")),
+        )
+    }
+}

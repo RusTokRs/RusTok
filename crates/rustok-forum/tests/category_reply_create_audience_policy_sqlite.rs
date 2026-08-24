@@ -5,6 +5,7 @@ use rustok_forum::{
     ForumCategoryTopicCreateAudiencePolicyService, ForumError, ForumModule,
     SetForumCategoryReplyCreateAudiencePolicyInput,
 };
+use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
@@ -25,7 +26,23 @@ async fn setup() -> DatabaseConnection {
     let db = Database::connect(options)
         .await
         .expect("forum category reply-create audience sqlite database should connect");
+    db.execute_unprepared(
+        r#"
+        CREATE TABLE users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        )
+        "#,
+    )
+    .await
+    .expect("users table should be created");
     let schema = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
@@ -223,8 +240,8 @@ async fn category_reply_create_audience_is_separate_inherited_and_database_bound
             DatabaseBackend::Sqlite,
             "INSERT INTO forum_category_reply_create_audience_channels (tenant_id, category_id, channel_slug) VALUES (?, ?, ?)",
             [
-                tenant_id.to_string().into(),
-                root.to_string().into(),
+                tenant_id.into(),
+                root.into(),
                 "channel-32".into(),
             ],
         ))
@@ -240,8 +257,8 @@ async fn category_reply_create_audience_is_separate_inherited_and_database_bound
             "UPDATE forum_category_reply_create_audience_channels SET channel_slug = ? WHERE tenant_id = ? AND category_id = ? AND channel_slug = ?",
             [
                 "changed".into(),
-                tenant_id.to_string().into(),
-                root.to_string().into(),
+                tenant_id.into(),
+                root.into(),
                 "channel-00".into(),
             ],
         ))
@@ -257,8 +274,8 @@ async fn category_reply_create_audience_is_separate_inherited_and_database_bound
             "UPDATE forum_category_reply_create_audience_policies SET minimum_trust_level = ? WHERE tenant_id = ? AND category_id = ?",
             [
                 9.into(),
-                tenant_id.to_string().into(),
-                root.to_string().into(),
+                tenant_id.into(),
+                root.into(),
             ],
         ))
         .await;

@@ -1,7 +1,8 @@
 const ROUTE: &str = include_str!("../src/services/category_route.rs");
 const CATEGORY_OWNER: &str = include_str!("../src/services/category_projection_owner.rs");
 const CATEGORY_TAXONOMY_SYNC: &str = include_str!("../src/services/category_taxonomy_sync.rs");
-const TAXONOMY_ROUTE_SYNC: &str = include_str!("../../rustok-taxonomy/src/owner_category_route_sync.rs");
+const TAXONOMY_ROUTE_SYNC: &str =
+    include_str!("../../rustok-taxonomy/src/owner_category_route_sync.rs");
 const MIGRATION: &str =
     include_str!("../src/migrations/m20260806_000026_add_forum_category_route_aliases.rs");
 const MIGRATIONS_MOD: &str = include_str!("../src/migrations/mod.rs");
@@ -47,9 +48,7 @@ fn forum_route_reads_are_taxonomy_owned() {
 
 #[test]
 fn forum_category_writes_delegate_alias_history_to_taxonomy() {
-    assert!(
-        CATEGORY_TAXONOMY_SYNC.contains("sync_module_category_with_owned_aliases_in_tx(")
-    );
+    assert!(CATEGORY_TAXONOMY_SYNC.contains("sync_module_category_with_owned_aliases_in_tx("));
     assert!(CATEGORY_TAXONOMY_SYNC.contains("aliases: Vec::new()"));
 
     for forbidden in [
@@ -69,12 +68,13 @@ fn forum_category_writes_delegate_alias_history_to_taxonomy() {
 #[test]
 fn taxonomy_route_sync_preserves_and_extends_append_only_history() {
     for marker in [
-        "taxonomy_term_alias::Entity::find()",
-        "taxonomy_term_translation::Entity::find()",
-        "aliases.extend(std::mem::take(&mut input.aliases))",
-        "if previous_slug != next_slug",
-        "aliases.insert(previous_slug)",
-        "sync_module_category_in_tx(txn, tenant_id, input).await",
+        "pub alias_id: Option<Uuid>",
+        "load_alias_route_candidates(db, tenant_id, slug)",
+        "candidate.alias_id.is_none()",
+        "alias_id: candidate.alias_id",
+        "Exact-locale aliases therefore precede fallback-locale current",
+        "Archived categories are never route candidates",
+        "exact_alias_precedes_fallback_current_route",
     ] {
         assert!(
             TAXONOMY_ROUTE_SYNC.contains(marker),

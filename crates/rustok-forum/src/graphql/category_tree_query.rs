@@ -6,13 +6,12 @@ use std::{
     time::Instant,
 };
 
-use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
+use async_graphql::{Context, Object, Result, SimpleObject};
 use prometheus::{IntCounterVec, Opts};
 use rustok_api::Permission;
 use rustok_api::{
-    AuthContext, RequestContext, TenantContext,
-    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
-    has_any_effective_permission,
+    RequestContext, TenantContext,
+    graphql::{require_module_enabled, resolve_graphql_locale},
 };
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
@@ -49,16 +48,20 @@ impl ForumCategoryTreeQuery {
     ) -> Result<GqlForumCategoryTree> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let auth = require_category_list_permission(ctx)?;
+        let auth = super::require_forum_permission(
+            ctx,
+            &[Permission::FORUM_CATEGORIES_LIST],
+            "Permission denied: forum_categories:list required",
+        )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let requested_locale = resolve_graphql_locale(ctx, locale.as_deref());
         let fallback_locale = fallback_locale.unwrap_or_else(|| tenant.default_locale.clone());
         let audience_context = category_read_audience_port_context(
             ForumCategoryReadTransport::Graphql,
             ForumCategoryReadOperation::CategoryTree,
             tenant_id,
-            &auth,
+            auth,
             ctx.data_opt::<RequestContext>(),
             requested_locale.as_str(),
         )?;
@@ -101,33 +104,6 @@ impl ForumCategoryTreeQuery {
         observe_category_tree_locale_resolution(&tree.roots);
 
         Ok(tree.into())
-    }
-}
-
-fn require_category_list_permission(ctx: &Context<'_>) -> Result<AuthContext> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-        .clone();
-
-    if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_LIST]) {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: forum_categories:list required",
-        ));
-    }
-
-    Ok(auth)
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
     }
 }
 

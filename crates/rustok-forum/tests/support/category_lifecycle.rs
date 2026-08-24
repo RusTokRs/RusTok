@@ -1,5 +1,5 @@
 use rustok_core::{SecurityContext, UserRole};
-use rustok_forum::{CategoryService, CategoryTreeQuery, ForumError};
+use rustok_forum::{CategoryService, CategoryTreeQuery, ForumError, TopicStatus};
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
 
@@ -52,10 +52,12 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
 
     let active_child_id = Uuid::new_v4();
     let active_child = db
-        .execute_unprepared(&format!(
+        .execute(Statement::from_sql_and_values(
+            db.get_database_backend(),
             "INSERT INTO forum_categories \
              (id, tenant_id, parent_id, position, moderated, topic_count, reply_count) \
-             VALUES ('{active_child_id}', '{tenant_id}', '{child_id}', 1, FALSE, 0, 0);"
+             VALUES (?, ?, ?, 1, FALSE, 0, 0)",
+            [active_child_id.into(), tenant_id.into(), child_id.into()],
         ))
         .await;
     assert_error_contains(active_child.map(|_| ()), "archived parent")?;
@@ -90,10 +92,12 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
     insert_topic(db, allowed_topic_id, tenant_id, grandchild_id).await?;
 
     let direct_parent_archive = db
-        .execute_unprepared(&format!(
+        .execute(Statement::from_sql_and_values(
+            db.get_database_backend(),
             "INSERT INTO forum_category_lifecycle \
              (category_id, tenant_id, archived_at, updated_at) \
-             VALUES ('{root_id}', '{tenant_id}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);"
+             VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            [root_id.into(), tenant_id.into()],
         ))
         .await;
     assert_error_contains(direct_parent_archive.map(|_| ()), "forum category")?;
@@ -102,17 +106,21 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
         .archive_subtree(tenant_id, root_id, security.clone())
         .await?;
     let partial_restore = db
-        .execute_unprepared(&format!(
-            "DELETE FROM forum_category_lifecycle WHERE category_id = '{grandchild_id}';"
+        .execute(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "DELETE FROM forum_category_lifecycle WHERE category_id = ?",
+            [grandchild_id.into()],
         ))
         .await;
     assert_error_contains(partial_restore.map(|_| ()), "archived parent")?;
 
     let tenant_mismatch = db
-        .execute_unprepared(&format!(
+        .execute(Statement::from_sql_and_values(
+            db.get_database_backend(),
             "INSERT INTO forum_category_lifecycle \
              (category_id, tenant_id, archived_at, updated_at) \
-             VALUES ('{root_id}', '{foreign_tenant_id}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);"
+             VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            [root_id.into(), foreign_tenant_id.into()],
         ))
         .await;
     assert_error_contains(tenant_mismatch.map(|_| ()), "lifecycle")?;
@@ -134,21 +142,27 @@ async fn seed_category(
     name: &str,
     slug: &str,
 ) -> TestResult<Uuid> {
-    let category_id = Uuid::new_v4();
-    let translation_id = Uuid::new_v4();
-    let parent_sql = parent_id
-        .map(|value| format!("'{value}'"))
-        .unwrap_or_else(|| "NULL".to_string());
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_categories \
-         (id, tenant_id, parent_id, position, moderated, topic_count, reply_count) \
-         VALUES ('{category_id}', '{tenant_id}', {parent_sql}, {position}, FALSE, 0, 0); \
-         INSERT INTO forum_category_translations \
-         (id, category_id, tenant_id, locale, name, slug) \
-         VALUES ('{translation_id}', '{category_id}', '{tenant_id}', 'en', '{name}', '{slug}');"
-    ))
-    .await?;
-    Ok(category_id)
+    use rustok_forum::CreateCategoryInput;
+    let service = CategoryService::new(db.clone());
+    let security = SecurityContext::system();
+    let category = service
+        .create(
+            tenant_id,
+            security,
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: name.to_string(),
+                slug: slug.to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id,
+                position: Some(position),
+                moderated: false,
+            },
+        )
+        .await?;
+    Ok(category.id)
 }
 
 async fn insert_topic(
@@ -157,36 +171,52 @@ async fn insert_topic(
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> TestResult<()> {
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_topics \
-         (id, tenant_id, category_id, status, is_pinned, is_locked, reply_count) \
-         VALUES ('{topic_id}', '{tenant_id}', '{category_id}', 'open', FALSE, FALSE, 0);"
-    ))
-    .await?;
+    use rustok_forum::entities::forum_topic;
+    use sea_orm::{ActiveModelTrait, Set};
+
+    let now = chrono::Utc::now();
+    let model = forum_topic::ActiveModel {
+        id: Set(topic_id),
+        tenant_id: Set(tenant_id),
+        category_id: Set(category_id),
+        status: Set(TopicStatus::Open),
+        is_pinned: Set(false),
+        is_locked: Set(false),
+        reply_count: Set(0),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+        ..Default::default()
+    };
+    model.insert(db).await?;
     Ok(())
 }
 
 async fn topic_count(db: &DatabaseConnection, topic_id: Uuid) -> TestResult<i64> {
-    let backend = db.get_database_backend();
-    let row = db
-        .query_one(Statement::from_string(
-            backend,
-            format!("SELECT COUNT(*) AS count FROM forum_topics WHERE id = '{topic_id}'"),
-        ))
-        .await?
-        .ok_or_else(|| test_error("topic count query returned no row"))?;
-    Ok(row.try_get("", "count")?)
+    use rustok_forum::entities::forum_topic;
+    use sea_orm::{EntityTrait, PaginatorTrait};
+
+    let count = forum_topic::Entity::find_by_id(topic_id)
+        .count(db)
+        .await?;
+    Ok(count as i64)
 }
 
 fn assert_error_contains<T, E>(result: Result<T, E>, expected: &str) -> TestResult<()>
 where
-    E: std::fmt::Display,
+    E: std::fmt::Debug + std::fmt::Display,
 {
     match result {
-        Err(error) if error.to_string().contains(expected) => Ok(()),
-        Err(error) => Err(test_error(format!(
-            "expected error containing {expected:?}, got {error}"
-        ))),
+        Err(error) => {
+            let debug_repr = format!("{error:?}");
+            let display_repr = error.to_string();
+            if debug_repr.contains(expected) || display_repr.contains(expected) {
+                Ok(())
+            } else {
+                Err(test_error(format!(
+                    "expected error containing {expected:?}, got {debug_repr}"
+                )))
+            }
+        }
         Ok(_) => Err(test_error(format!(
             "expected error containing {expected:?}, got success"
         ))),

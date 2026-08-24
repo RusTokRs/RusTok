@@ -1,10 +1,16 @@
 use rustok_core::MigrationSource;
 use rustok_forum::ForumModule;
+use rustok_outbox::OutboxModule;
+use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+fn sql_uuid(id: Uuid) -> String {
+    format!("X'{}'", id.simple().to_string().to_uppercase())
+}
 
 #[tokio::test]
 async fn sqlite_rejects_cross_tenant_forum_relation_rows() -> TestResult<()> {
@@ -24,26 +30,27 @@ async fn setup_sqlite() -> TestResult<DatabaseConnection> {
         .sqlx_logging(false);
     let db = Database::connect(options).await?;
 
-    execute(
-        &db,
-        r#"
-CREATE TABLE taxonomy_terms (
-    id TEXT PRIMARY KEY NOT NULL,
-    tenant_id TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    scope_type TEXT NOT NULL,
-    scope_value TEXT NOT NULL DEFAULT '',
-    canonical_key TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-"#
-        .to_string(),
-    )
-    .await?;
-
     let manager = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
+    }
+    for migration in TaxonomyModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("taxonomy migration should apply");
+    }
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         migration.up(&manager).await?;
     }
@@ -72,29 +79,39 @@ async fn exercise_relation_constraints(db: &DatabaseConnection) -> TestResult<()
 INSERT INTO forum_categories
     (id, tenant_id, position, moderated, topic_count, reply_count)
 VALUES
-    ('{category_a}', '{tenant_a}', 0, 0, 0, 0),
-    ('{category_b}', '{tenant_b}', 0, 0, 0, 0);
+    ({}, {}, 0, 0, 0, 0),
+    ({}, {}, 0, 0, 0, 0);
 
 INSERT INTO forum_topics
     (id, tenant_id, category_id, status, metadata, is_pinned, is_locked, reply_count)
 VALUES
-    ('{topic_a}', '{tenant_a}', '{category_a}', 'open', '{{}}', 0, 0, 0),
-    ('{topic_a2}', '{tenant_a}', '{category_a}', 'open', '{{}}', 0, 0, 0),
-    ('{topic_b}', '{tenant_b}', '{category_b}', 'open', '{{}}', 0, 0, 0);
+    ({}, {}, {}, 'open', '{{}}', 0, 0, 0),
+    ({}, {}, {}, 'open', '{{}}', 0, 0, 0),
+    ({}, {}, {}, 'open', '{{}}', 0, 0, 0);
 
 INSERT INTO forum_replies
     (id, tenant_id, topic_id, status, position)
 VALUES
-    ('{reply_a}', '{tenant_a}', '{topic_a}', 'approved', 1),
-    ('{reply_a2}', '{tenant_a}', '{topic_a2}', 'approved', 1),
-    ('{reply_b}', '{tenant_b}', '{topic_b}', 'approved', 1);
+    ({}, {}, {}, 'approved', 1),
+    ({}, {}, {}, 'approved', 1),
+    ({}, {}, {}, 'approved', 1);
 
 INSERT INTO taxonomy_terms
-    (id, tenant_id, kind, scope_type, scope_value, canonical_key, status)
+    (id, tenant_id, kind, scope_type, scope_value, canonical_key, revision)
 VALUES
-    ('{term_a}', '{tenant_a}', 'tag', 'module', 'forum', 'tenant-a-tag', 'active'),
-    ('{term_b}', '{tenant_b}', 'tag', 'module', 'forum', 'tenant-b-tag', 'active');
-"#
+    ({}, {}, 'tag', 'module', 'forum', 'tenant-a-tag', 1),
+    ({}, {}, 'tag', 'module', 'forum', 'tenant-b-tag', 1);
+"#,
+            sql_uuid(category_a), sql_uuid(tenant_a),
+            sql_uuid(category_b), sql_uuid(tenant_b),
+            sql_uuid(topic_a), sql_uuid(tenant_a), sql_uuid(category_a),
+            sql_uuid(topic_a2), sql_uuid(tenant_a), sql_uuid(category_a),
+            sql_uuid(topic_b), sql_uuid(tenant_b), sql_uuid(category_b),
+            sql_uuid(reply_a), sql_uuid(tenant_a), sql_uuid(topic_a),
+            sql_uuid(reply_a2), sql_uuid(tenant_a), sql_uuid(topic_a2),
+            sql_uuid(reply_b), sql_uuid(tenant_b), sql_uuid(topic_b),
+            sql_uuid(term_a), sql_uuid(tenant_a),
+            sql_uuid(term_b), sql_uuid(tenant_b),
         ),
     )
     .await?;
@@ -102,51 +119,57 @@ VALUES
     for (sql, label) in [
         (
             format!(
-                "INSERT INTO forum_topic_votes (topic_id, user_id, tenant_id, value) VALUES ('{topic_a}', '{user_id}', '{tenant_b}', 1)"
+                "INSERT INTO forum_topic_votes (topic_id, user_id, tenant_id, value) VALUES ({}, {}, {}, 1)",
+                sql_uuid(topic_a), sql_uuid(user_id), sql_uuid(tenant_b)
             ),
             "cross-tenant topic vote",
         ),
         (
             format!(
-                "INSERT INTO forum_reply_votes (reply_id, user_id, tenant_id, value) VALUES ('{reply_a}', '{user_id}', '{tenant_b}', 1)"
+                "INSERT INTO forum_reply_votes (reply_id, user_id, tenant_id, value) VALUES ({}, {}, {}, 1)",
+                sql_uuid(reply_a), sql_uuid(user_id), sql_uuid(tenant_b)
             ),
             "cross-tenant reply vote",
         ),
         (
             format!(
-                "INSERT INTO forum_category_subscriptions (category_id, user_id, tenant_id) VALUES ('{category_a}', '{user_id}', '{tenant_b}')"
+                "INSERT INTO forum_category_subscriptions (category_id, user_id, tenant_id, updated_at) VALUES ({}, {}, {}, CURRENT_TIMESTAMP)",
+                sql_uuid(category_a), sql_uuid(user_id), sql_uuid(tenant_b)
             ),
             "cross-tenant category subscription",
         ),
         (
             format!(
-                "INSERT INTO forum_topic_subscriptions (topic_id, user_id, tenant_id) VALUES ('{topic_a}', '{user_id}', '{tenant_b}')"
+                "INSERT INTO forum_topic_subscriptions (topic_id, user_id, tenant_id, updated_at) VALUES ({}, {}, {}, CURRENT_TIMESTAMP)",
+                sql_uuid(topic_a), sql_uuid(user_id), sql_uuid(tenant_b)
             ),
             "cross-tenant topic subscription",
         ),
         (
             format!(
-                "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) VALUES ('{topic_a}', '{tenant_b}', '{reply_b}')"
+                "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) VALUES ({}, {}, {})",
+                sql_uuid(topic_a), sql_uuid(tenant_b), sql_uuid(reply_b)
             ),
             "cross-tenant solution",
         ),
         (
             format!(
-                "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) VALUES ('{topic_a}', '{tenant_a}', '{reply_a2}')"
+                "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) VALUES ({}, {}, {})",
+                sql_uuid(topic_a), sql_uuid(tenant_a), sql_uuid(reply_a2)
             ),
             "solution reply from another topic",
         ),
         (
             format!(
-                "INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id) VALUES ('{}', '{topic_a}', '{term_a}', '{tenant_b}')",
-                Uuid::new_v4()
+                "INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id) VALUES ({}, {}, {}, {})",
+                sql_uuid(Uuid::new_v4()), sql_uuid(topic_a), sql_uuid(term_a), sql_uuid(tenant_b)
             ),
             "cross-tenant topic tag",
         ),
         (
             format!(
-                "INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id) VALUES ('{}', '{topic_a}', '{term_b}', '{tenant_a}')",
-                Uuid::new_v4()
+                "INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id) VALUES ({}, {}, {}, {})",
+                sql_uuid(Uuid::new_v4()), sql_uuid(topic_a), sql_uuid(term_b), sql_uuid(tenant_a)
             ),
             "cross-tenant taxonomy term",
         ),
@@ -159,19 +182,24 @@ VALUES
         format!(
             r#"
 INSERT INTO forum_topic_votes (topic_id, user_id, tenant_id, value)
-VALUES ('{topic_a}', '{user_id}', '{tenant_a}', 1);
+VALUES ({}, {}, {}, 1);
 INSERT INTO forum_reply_votes (reply_id, user_id, tenant_id, value)
-VALUES ('{reply_a}', '{user_id}', '{tenant_a}', 1);
-INSERT INTO forum_category_subscriptions (category_id, user_id, tenant_id)
-VALUES ('{category_a}', '{user_id}', '{tenant_a}');
-INSERT INTO forum_topic_subscriptions (topic_id, user_id, tenant_id)
-VALUES ('{topic_a}', '{user_id}', '{tenant_a}');
+VALUES ({}, {}, {}, 1);
+INSERT INTO forum_category_subscriptions (category_id, user_id, tenant_id, updated_at)
+VALUES ({}, {}, {}, CURRENT_TIMESTAMP);
+INSERT INTO forum_topic_subscriptions (topic_id, user_id, tenant_id, updated_at)
+VALUES ({}, {}, {}, CURRENT_TIMESTAMP);
 INSERT INTO forum_solutions (topic_id, tenant_id, reply_id)
-VALUES ('{topic_a}', '{tenant_a}', '{reply_a}');
+VALUES ({}, {}, {});
 INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id)
-VALUES ('{}', '{topic_a}', '{term_a}', '{tenant_a}');
+VALUES ({}, {}, {}, {});
 "#,
-            Uuid::new_v4()
+            sql_uuid(topic_a), sql_uuid(user_id), sql_uuid(tenant_a),
+            sql_uuid(reply_a), sql_uuid(user_id), sql_uuid(tenant_a),
+            sql_uuid(category_a), sql_uuid(user_id), sql_uuid(tenant_a),
+            sql_uuid(topic_a), sql_uuid(user_id), sql_uuid(tenant_a),
+            sql_uuid(topic_a), sql_uuid(tenant_a), sql_uuid(reply_a),
+            sql_uuid(Uuid::new_v4()), sql_uuid(topic_a), sql_uuid(term_a), sql_uuid(tenant_a),
         ),
     )
     .await?;

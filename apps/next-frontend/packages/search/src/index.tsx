@@ -25,14 +25,14 @@ export type SearchStorefrontPageProps = {
   attributeOptions?: SearchCatalogFilterOption[];
 };
 
-export type StorefrontGraphqlExecutor = typeof storefrontGraphql;
+type StorefrontGraphqlExecutor = typeof storefrontGraphql;
 
 export type SearchCatalogFilterOption = {
   value: string;
   label: string;
 };
 
-export type SearchCatalogFilters = {
+type SearchCatalogFilters = {
   channelId: string;
   categoryIds: string;
   attributeCode: string;
@@ -679,5 +679,3 @@ function CatalogField(props: {
     </label>
   );
 }
-
-export default SearchStorefrontPage;

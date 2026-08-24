@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import type { AdminGraphqlExecutor } from '@/lib/graphql';
 
 type SearchAdminTab = 'overview' | 'playground' | 'analytics' | 'dictionaries';
 
@@ -15,14 +16,6 @@ export type SearchAdminPageProps = {
   categoryOptions?: SearchCatalogFilterOption[];
   attributeOptions?: SearchCatalogFilterOption[];
 };
-
-export type AdminGraphqlExecutor = <V, T>(
-  query: string,
-  variables?: V,
-  token?: string | null,
-  tenantSlug?: string | null,
-  options?: { graphqlUrl?: string; tenantId?: string | null }
-) => Promise<T>;
 
 export type SearchCatalogFilterOption = {
   value: string;
@@ -2918,5 +2911,3 @@ function EmptyPanel({
     </article>
   );
 }
-
-export default SearchAdminPage;

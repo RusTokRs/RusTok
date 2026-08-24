@@ -47,26 +47,8 @@ declare module '@tanstack/react-table' {
   }
 }
 
-export type AppTable<TData extends RowData = any> = TanStackTable<
-  StockFeatures,
-  TData
->;
-export type AppColumn<
-  TData extends RowData = any,
-  TValue = unknown
-> = TanStackColumn<StockFeatures, TData, TValue>;
-export type AppRow<TData extends RowData = any> = TanStackRow<
-  StockFeatures,
-  TData
->;
-export type AppHeader<
-  TData extends RowData = any,
-  TValue = unknown
-> = TanStackHeader<StockFeatures, TData, TValue>;
-export type AppColumnDef<
-  TData extends RowData = any,
-  TValue = unknown
-> = TanStackColumnDef<StockFeatures, TData, TValue>;
+export type FilterOperator = DataTableConfig['operators'][number];
+export type FilterVariant = DataTableConfig['filterVariants'][number];
 
 export interface Option {
   label: string;
@@ -75,19 +57,10 @@ export interface Option {
   icon?: React.FC<React.SVGProps<SVGSVGElement>>;
 }
 
-export type FilterOperator = DataTableConfig['operators'][number];
-export type FilterVariant = DataTableConfig['filterVariants'][number];
-export type JoinOperator = DataTableConfig['joinOperators'][number];
-
 export interface ExtendedColumnSort<TData> extends Omit<ColumnSort, 'id'> {
   id: Extract<keyof TData, string>;
 }
 
 export interface ExtendedColumnFilter<TData> extends FilterItemSchema {
   id: Extract<keyof TData, string>;
-}
-
-export interface DataTableRowAction<TData extends RowData = any> {
-  row: TanStackRow<StockFeatures, TData>;
-  variant: 'update' | 'delete';
 }

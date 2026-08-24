@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{Permission, PortActor, PortCallPolicy, PortContext, PortError};
-use rustok_core::{MemoryTransport, MigrationSource, ModuleRegistry, SecurityContext, UserRole};
+use rustok_core::{MigrationSource, ModuleRegistry, SecurityContext, UserRole};
 use rustok_forum::entities::{forum_domain_event, forum_relation_revision, forum_user_mention};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
@@ -16,13 +16,13 @@ use rustok_notifications_api::{
     DescribeNotificationRequest, NotificationSourceEventRef, ResolveNotificationAudienceRequest,
     materialize_notification_source_registry,
 };
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set},
-    ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -284,7 +284,7 @@ async fn seed_user_mention_event(
         source_locale: Set("en".to_string()),
         source_revision_id: Set(revision.revision_id),
         mentioned_user_id: Set(mentioned_user_id),
-        handle_snapshot: Set(format!("member-{mentioned_user_id}")),
+        handle_snapshot: Set(format!("member_{}", &mentioned_user_id.simple().to_string()[..12])),
         created_at: Set(Utc::now().into()),
     }
     .insert(db)
@@ -361,18 +361,32 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus) {
         .await
         .expect("notification recipient mention database should connect");
     let manager = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&manager)
             .await
             .expect("taxonomy migration should apply");
     }
+    db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         migration
             .up(&manager)
             .await
             .expect("forum migration should apply");
     }
-    let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
+    let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
     (db, event_bus)
 }

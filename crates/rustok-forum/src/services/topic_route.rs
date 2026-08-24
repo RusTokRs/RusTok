@@ -920,7 +920,7 @@ where
               AND translation.locale = ?
               AND translation.slug IS NOT NULL
               AND length(translation.slug) > 0
-              AND substr(replace(lower(topic.id), '-', ''), 1, 12) = ?
+              AND substr(lower(hex(topic.id)), 1, 12) = ?
             ORDER BY topic.id
             LIMIT 2
             "#,

@@ -7,8 +7,8 @@ use rustok_forum::{
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
-    EntityTrait, QueryFilter, Statement,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -138,12 +138,6 @@ async fn delete_legacy_route_copy(
         .filter(forum_category_translation::Column::CategoryId.eq(category_id))
         .exec(db)
         .await?;
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Sqlite,
-        "DELETE FROM forum_category_route_aliases WHERE tenant_id = ? AND category_id = ?",
-        vec![tenant_id.into(), category_id.into()],
-    ))
-    .await?;
     Ok(())
 }
 

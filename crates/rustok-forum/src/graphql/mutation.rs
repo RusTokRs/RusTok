@@ -1,10 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result, dataloader::DataLoader};
 use rustok_api::Permission;
-use rustok_api::{
-    AuthContext, TenantContext,
-    graphql::{GraphQLError, require_module_enabled},
-    has_any_effective_permission,
-};
+use rustok_api::graphql::{GraphQLError, require_module_enabled};
+use rustok_api::{AuthContext, TenantContext};
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
     ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader,
@@ -24,17 +21,15 @@ use crate::{
     CategoryResponse, CategoryService, ReplyService, SubscriptionService, TopicService, VoteService,
 };
 
-use super::ForumGraphqlRuntimeData;
-
-use super::types::*;
+use super::{ForumGraphqlRuntimeData, require_forum_permission, resolve_tenant_scope, types::*};
 
 const MODULE_SLUG: &str = "forum";
 
 #[derive(Default)]
-pub struct ForumMutation;
+pub struct ForumContentMutation;
 
 #[Object]
-impl ForumMutation {
+impl ForumContentMutation {
     async fn create_forum_topic(
         &self,
         ctx: &Context<'_>,
@@ -939,34 +934,7 @@ impl ForumMutation {
     }
 }
 
-fn require_forum_permission(
-    ctx: &Context<'_>,
-    permissions: &[Permission],
-    message: &str,
-) -> Result<AuthContext> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-        .clone();
 
-    if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(<FieldError as GraphQLError>::permission_denied(message));
-    }
-
-    Ok(auth)
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
-    }
-}
 
 async fn load_author_profile(
     ctx: &Context<'_>,

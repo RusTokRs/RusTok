@@ -115,6 +115,7 @@ fn valid_topic_descriptor(
     let locale = canonical.locale.trim();
     let short_id = canonical.short_id.trim();
     let slug = canonical.slug.trim();
+    let path = &canonical.path;
 
     !canonical.topic_id.trim().is_empty()
         && canonical.locale == locale
@@ -126,6 +127,8 @@ fn valid_topic_descriptor(
             .bytes()
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
         && safe_route_segment(slug)
+        && !path.starts_with("//")
+        && !path.chars().any(char::is_control)
         && canonical.path == format!("/{locale}/forum/t/{short_id}/{slug}")
 }
 

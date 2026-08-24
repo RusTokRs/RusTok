@@ -2,7 +2,8 @@
 
 import React from "react";
 
-import SearchStorefrontPage, {
+import {
+  SearchStorefrontPage,
   type SearchCatalogFilterOption,
 } from "../../../../packages/search/src";
 import { fetchCatalogSearchOptions } from "../../../../packages/rustok-product/src";

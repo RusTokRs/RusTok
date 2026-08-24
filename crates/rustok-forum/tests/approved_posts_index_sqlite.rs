@@ -1,5 +1,6 @@
 use rustok_core::MigrationSource;
 use rustok_forum::ForumModule;
+use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DbBackend, Statement};
 use sea_orm_migration::SchemaManager;
@@ -37,6 +38,12 @@ async fn setup() -> sea_orm::DatabaseConnection {
     .expect("SQLite platform user fixture should be created");
 
     let schema = SchemaManager::new(&db);
+    for migration in OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
@@ -58,34 +65,33 @@ async fn approved_posts_aggregate_uses_partial_author_indexes_on_sqlite() {
     let tenant_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
 
+    let sql = format!(
+        r#"
+        EXPLAIN QUERY PLAN
+        SELECT
+            (
+                SELECT COUNT(*)
+                FROM forum_topics topic INDEXED BY idx_forum_topics_tenant_author_retained
+                WHERE topic.tenant_id = '{tenant_id}'
+                  AND topic.author_id = '{user_id}'
+                  AND topic.deleted_at IS NULL
+            ) AS approved_topics,
+            (
+                SELECT COUNT(*)
+                FROM forum_replies reply INDEXED BY idx_forum_replies_tenant_author_approved_retained
+                JOIN forum_topics topic
+                  ON topic.tenant_id = reply.tenant_id
+                 AND topic.id = reply.topic_id
+                WHERE reply.tenant_id = '{tenant_id}'
+                  AND reply.author_id = '{user_id}'
+                  AND reply.status = 'approved'
+                  AND reply.deleted_at IS NULL
+                  AND topic.deleted_at IS NULL
+            ) AS approved_replies
+        "#
+    );
     let rows = db
-        .query_all(Statement::from_sql_and_values(
-            DbBackend::Sqlite,
-            r#"
-            EXPLAIN QUERY PLAN
-            SELECT
-                (
-                    SELECT COUNT(*)
-                    FROM forum_topics topic
-                    WHERE topic.tenant_id = ?1
-                      AND topic.author_id = ?2
-                      AND topic.deleted_at IS NULL
-                ) AS approved_topics,
-                (
-                    SELECT COUNT(*)
-                    FROM forum_replies reply
-                    JOIN forum_topics topic
-                      ON topic.tenant_id = reply.tenant_id
-                     AND topic.id = reply.topic_id
-                    WHERE reply.tenant_id = ?1
-                      AND reply.author_id = ?2
-                      AND reply.status = 'approved'
-                      AND reply.deleted_at IS NULL
-                      AND topic.deleted_at IS NULL
-                ) AS approved_replies
-            "#,
-            vec![tenant_id.into(), user_id.into()],
-        ))
+        .query_all(Statement::from_string(DbBackend::Sqlite, sql))
         .await
         .expect("approved-post EXPLAIN QUERY PLAN should succeed");
 

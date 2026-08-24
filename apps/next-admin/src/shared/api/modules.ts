@@ -1,4 +1,5 @@
-import { graphqlRequest } from './graphql';
+import { graphqlRequest, type GqlOpts } from './graphql';
+export type { GqlOpts };
 
 export interface ModuleInfo {
   moduleSlug: string;
@@ -50,7 +51,7 @@ export interface MarketplaceModule {
   updateAvailable: boolean;
 }
 
-export interface MarketplaceModuleVersion {
+interface MarketplaceModuleVersion {
   version: string;
   changelog?: string | null;
   yanked: boolean;
@@ -85,15 +86,10 @@ export interface BuildJob {
   finishedAt?: string | null;
 }
 
-export interface BuildOrchestrationSnapshot {
+interface BuildOrchestrationSnapshot {
   activeBuild: BuildJob | null;
   buildHistory: BuildJob[];
   marketplaceModules: MarketplaceModule[];
-}
-
-export interface GqlOpts {
-  token?: string | null;
-  tenantSlug?: string | null;
 }
 
 const ENABLED_MODULES_QUERY = `

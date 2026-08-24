@@ -603,9 +603,6 @@ mod tests {
     };
     use rustok_core::SecurityContext;
     use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
-    use rustok_taxonomy::entities::{
-        taxonomy_term, taxonomy_term_alias, taxonomy_term_translation,
-    };
     use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use std::sync::Arc;
@@ -643,18 +640,11 @@ mod tests {
         .await
         .expect("identity owner table should exist for forum tests");
 
-        let builder = db.get_database_backend();
-        let schema = sea_orm::Schema::new(builder);
-        for create in [
-            schema.create_table_from_entity(taxonomy_term::Entity),
-            schema.create_table_from_entity(taxonomy_term_translation::Entity),
-            schema.create_table_from_entity(taxonomy_term_alias::Entity),
-        ] {
-            let mut create = create;
-            create.if_not_exists();
-            db.execute(builder.build(&create))
+        for migration in rustok_taxonomy::migrations::migrations() {
+            migration
+                .up(&manager)
                 .await
-                .expect("taxonomy tables should exist for forum tests");
+                .expect("taxonomy migration should apply");
         }
 
         for migration in migrations::migrations() {

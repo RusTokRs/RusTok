@@ -22,5 +22,4 @@ rustok-tenant = { workspace = true, optional = true }
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
 serde = { workspace = true, features = ["derive"] }
-thiserror.workspace = true
 web-sys = { version = "0.3", features = ["Location", "Window"] }

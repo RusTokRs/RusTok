@@ -14,8 +14,7 @@ use rustok_notifications_api::{
     NotificationTemplateKey, NotificationTypeKey, ResolveNotificationAudienceRequest,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Statement,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::Deserialize;
 use uuid::Uuid;
@@ -393,20 +392,27 @@ impl ForumNotificationSourceProvider {
     async fn row_is_active(
         &self,
         table: &'static str,
-        id_column: &'static str,
+        _id_column: &'static str,
         tenant_id: Uuid,
         id: Uuid,
     ) -> NotificationProviderResult<bool> {
-        self.db
-            .query_one(Statement::from_string(
-                self.db.get_database_backend(),
-                format!(
-                    "SELECT 1 AS active FROM {table} WHERE tenant_id = '{tenant_id}' AND {id_column} = '{id}' AND deleted_at IS NULL"
-                ),
-            ))
-            .await
-            .map(|row| row.is_some())
-            .map_err(retryable_database_error)
+        match table {
+            "forum_topics" => forum_topic::Entity::find()
+                .filter(forum_topic::Column::TenantId.eq(tenant_id))
+                .filter(forum_topic::Column::Id.eq(id))
+                .one(&self.db)
+                .await
+                .map(|row| row.is_some())
+                .map_err(retryable_database_error),
+            "forum_replies" => forum_reply::Entity::find()
+                .filter(forum_reply::Column::TenantId.eq(tenant_id))
+                .filter(forum_reply::Column::Id.eq(id))
+                .one(&self.db)
+                .await
+                .map(|row| row.is_some())
+                .map_err(retryable_database_error),
+            _ => Err(NotificationProviderError::InvalidEvent),
+        }
     }
 
     fn parse_user_mention(

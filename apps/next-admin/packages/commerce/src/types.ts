@@ -98,7 +98,7 @@ export type ExchangeDifferenceRefundInput = {
   metadata?: string | null;
 };
 
-export type OrderReturnSummary = {
+type OrderReturnSummary = {
   id: string;
   orderId: string;
   status: string;
@@ -112,7 +112,7 @@ export type OrderReturnSummary = {
   cancelledAt: string | null;
 };
 
-export type RefundSummary = {
+type RefundSummary = {
   id: string;
   status: string;
   currencyCode: string;
@@ -123,7 +123,7 @@ export type RefundSummary = {
   updatedAt: string | null;
 };
 
-export type CreateReturnDecisionItemInput = {
+type CreateReturnDecisionItemInput = {
   lineItemId: string;
   quantity: number;
   reason?: string | null;

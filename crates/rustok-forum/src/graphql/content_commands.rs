@@ -1,9 +1,6 @@
-use async_graphql::{Context, FieldError, InputObject, Object, Result};
-use rustok_api::{
-    AuthContext, Permission, RichTextDocument, TenantContext,
-    graphql::{GraphQLError, require_module_enabled},
-    has_any_effective_permission,
-};
+use async_graphql::{Context, InputObject, Object, Result};
+use rustok_api::graphql::require_module_enabled;
+use rustok_api::{AuthContext, Permission, RichTextDocument, TenantContext};
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{ProfileService, ProfilesReader, graphql::GqlProfileSummary};
 use sea_orm::DatabaseConnection;
@@ -84,17 +81,17 @@ impl ForumContentCommandMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_permission(
+        let auth = super::require_forum_permission(
             ctx,
-            Permission::FORUM_TOPICS_CREATE,
+            &[Permission::FORUM_TOPICS_CREATE],
             "Permission denied: forum_topics:create required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let audience_context = topic_create_audience_port_context(
             ForumTopicCreateTransport::Graphql,
             tenant_id,
-            &auth,
+            auth,
             ctx.data_opt::<rustok_api::RequestContext>(),
             tenant.default_locale.as_str(),
         )?;
@@ -106,7 +103,7 @@ impl ForumContentCommandMutation {
             .topic_service(db.clone(), event_bus.clone())
             .create_command_with_audience_context(
                 tenant_id,
-                security(&auth),
+                security(auth),
                 audience_context,
                 CreateTopicCommandInput {
                     locale: input.locale,
@@ -136,18 +133,18 @@ impl ForumContentCommandMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_permission(
+        let auth = super::require_forum_permission(
             ctx,
-            Permission::FORUM_TOPICS_UPDATE,
+            &[Permission::FORUM_TOPICS_UPDATE],
             "Permission denied: forum_topics:update required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let topic = TopicService::new(db.clone(), event_bus.clone())
             .update_command(
                 tenant_id,
                 topic_id,
-                security(&auth),
+                security(auth),
                 UpdateTopicCommandInput {
                     locale: input.locale,
                     title: input.title,
@@ -174,17 +171,17 @@ impl ForumContentCommandMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_permission(
+        let auth = super::require_forum_permission(
             ctx,
-            Permission::FORUM_REPLIES_CREATE,
+            &[Permission::FORUM_REPLIES_CREATE],
             "Permission denied: forum_replies:create required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let audience_context = reply_create_audience_port_context(
             ForumReplyCreateTransport::Graphql,
             tenant_id,
-            &auth,
+            auth,
             ctx.data_opt::<rustok_api::RequestContext>(),
             tenant.default_locale.as_str(),
         )?;
@@ -196,7 +193,7 @@ impl ForumContentCommandMutation {
             .reply_service(db.clone(), event_bus.clone())
             .create_command_with_audience_context(
                 tenant_id,
-                security(&auth),
+                security(auth),
                 topic_id,
                 audience_context,
                 CreateReplyCommandInput {
@@ -222,18 +219,18 @@ impl ForumContentCommandMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_permission(
+        let auth = super::require_forum_permission(
             ctx,
-            Permission::FORUM_REPLIES_UPDATE,
+            &[Permission::FORUM_REPLIES_UPDATE],
             "Permission denied: forum_replies:update required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let reply = ReplyService::new(db.clone(), event_bus.clone())
             .update_command(
                 tenant_id,
                 reply_id,
-                security(&auth),
+                security(auth),
                 UpdateReplyCommandInput {
                     locale: input.locale,
                     content: input.content,
@@ -244,33 +241,6 @@ impl ForumContentCommandMutation {
         let author_profile =
             load_author_profile(db, tenant_id, reply.author_id, &reply.effective_locale).await?;
         Ok(map_reply(reply, author_profile))
-    }
-}
-
-fn require_permission(
-    ctx: &Context<'_>,
-    permission: Permission,
-    message: &str,
-) -> Result<AuthContext> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-        .clone();
-    if !has_any_effective_permission(&auth.permissions, &[permission]) {
-        return Err(<FieldError as GraphQLError>::permission_denied(message));
-    }
-    Ok(auth)
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested: Option<Uuid>) -> Result<Uuid> {
-    match requested {
-        Some(requested) if requested != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested) => Ok(requested),
-        None => Ok(tenant.id),
     }
 }
 

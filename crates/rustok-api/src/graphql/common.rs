@@ -215,6 +215,33 @@ pub fn resolve_graphql_locale(ctx: &Context<'_>, requested: Option<&str>) -> Str
         .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
 }
 
+pub fn extract_graphql_context<'a>(
+    ctx: &'a Context<'_>,
+) -> Result<(&'a DatabaseConnection, &'a TenantContext)> {
+    let db = ctx.data::<DatabaseConnection>()?;
+    let tenant = ctx.data::<TenantContext>()?;
+    Ok((db, tenant))
+}
+
+pub fn require_graphql_auth<'a>(
+    ctx: &'a Context<'_>,
+    permissions: &[crate::Permission],
+    denied_message: &str,
+) -> Result<&'a crate::AuthContext> {
+    use crate::graphql::GraphQLError;
+    use async_graphql::FieldError;
+
+    let auth = ctx
+        .data::<crate::AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+    if !crate::has_any_effective_permission(&auth.permissions, permissions) {
+        return Err(<FieldError as GraphQLError>::permission_denied(denied_message));
+    }
+
+    Ok(auth)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

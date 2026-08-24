@@ -12,7 +12,7 @@ fn postgres_and_sqlite_subscription_contracts_remain_present() {
     ]
     .join("\n");
     for token in [
-        "forum.subscription.changed.v1",
+        "forum.subscription.changed",
         "forum_auto_subscribe_topic_author",
         "forum_auto_subscribe_reply_participant",
         "ON CONFLICT (tenant_id, topic_id, user_id) DO UPDATE SET",

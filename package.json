@@ -1,5 +1,9 @@
 {
   "scripts": {
+    "audit:deps": "cargo machete",
+    "audit:deadcode": "npx knip --directory apps/next-admin",
+    "audit:clones": "npx jscpd crates/ apps/ --min-tokens 50",
+    "audit:all": "npm run audit:deps && npm run audit:deadcode && npm run audit:clones",
     "format:next-admin": "npm --prefix apps/next-admin run format",
     "format:next-admin:check": "npm --prefix apps/next-admin run format:check",
     "test:e2e:rust": "cargo test -p rustok-e2e-rust --test leptos_admin_smoke -- --nocapture",

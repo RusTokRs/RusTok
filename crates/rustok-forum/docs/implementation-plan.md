@@ -1069,3 +1069,7 @@ authorized Moderation admin transport/RBAC plus an explicit fresh producer
 revision -> new case -> new immutable decision re-review workflow. Do not add
 Forum-owned case queues, recovery state, audit, scheduler state or a duplicate
 worker loop.
+
+## Verification checklist
+
+- [x] Contract tests cover the current public use-cases.

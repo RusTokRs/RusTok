@@ -45,7 +45,7 @@ fn resolution_adapter_uses_routed_manager_context_and_same_owner() {
         "require_module_enabled(ctx, MODULE_SLUG).await?",
         "Permission::FORUM_TOPICS_MANAGE",
         "Permission denied: forum_topics:manage required",
-        "Permission denied: tenant scope mismatch",
+        "resolve_tenant_scope",
         "execute_merge_forum_topic_resolving_solution",
         "selected_solution_reply_id = input.selected_solution_reply_id",
         "ForumTopicMergeService::new(db.clone(), event_bus.clone())",

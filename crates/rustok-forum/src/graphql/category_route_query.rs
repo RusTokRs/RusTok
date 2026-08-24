@@ -1,8 +1,6 @@
-use async_graphql::{Context, Enum, ErrorExtensions, FieldError, Object, Result, SimpleObject};
-use rustok_api::{
-    AuthContext, RequestContext, TenantContext,
-    graphql::{GraphQLError, require_module_enabled},
-};
+use async_graphql::{Context, Enum, ErrorExtensions, Object, Result, SimpleObject};
+use rustok_api::graphql::require_module_enabled;
+use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
 use sea_orm::DatabaseConnection;
@@ -84,7 +82,7 @@ async fn resolve_authorized_public_category_route(
 
     let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
-    let tenant_id = resolve_tenant_scope(tenant, requested_tenant_id)?;
+    let tenant_id = super::resolve_tenant_scope(tenant, requested_tenant_id)?;
     if !forum_channel_enabled(ctx).await? {
         return Ok(None);
     }
@@ -186,18 +184,6 @@ async fn forum_channel_enabled(ctx: &Context<'_>) -> Result<bool> {
 fn internal_error(message: impl Into<String>) -> async_graphql::Error {
     async_graphql::Error::new(message.into())
         .extend_with(|_, extension| extension.set("code", "INTERNAL_SERVER_ERROR"))
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
-    }
 }
 
 #[cfg(test)]

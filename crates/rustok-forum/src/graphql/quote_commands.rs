@@ -1,6 +1,6 @@
-use async_graphql::{Context, Enum, FieldError, InputObject, Object, Result, SimpleObject};
-use rustok_api::graphql::{GraphQLError, require_module_enabled};
-use rustok_api::{AuthContext, Permission, TenantContext, has_any_effective_permission};
+use async_graphql::{Context, Enum, InputObject, Object, Result, SimpleObject};
+use rustok_api::graphql::require_module_enabled;
+use rustok_api::{Permission, TenantContext};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -63,13 +63,13 @@ impl ForumQuoteCommandMutation {
     ) -> Result<GqlForumRelationSnapshot> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let auth = require_permission(
+        let auth = super::require_forum_permission(
             ctx,
-            Permission::FORUM_TOPICS_UPDATE,
+            &[Permission::FORUM_TOPICS_UPDATE],
             "Permission denied: forum_topics:update required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let response = ForumQuoteCommandService::new(db.clone())
             .set_topic_quotes(
                 tenant_id,
@@ -93,13 +93,13 @@ impl ForumQuoteCommandMutation {
     ) -> Result<GqlForumRelationSnapshot> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let auth = require_permission(
+        let auth = super::require_forum_permission(
             ctx,
-            Permission::FORUM_REPLIES_UPDATE,
+            &[Permission::FORUM_REPLIES_UPDATE],
             "Permission denied: forum_replies:update required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
         let response = ForumQuoteCommandService::new(db.clone())
             .set_reply_quotes(
                 tenant_id,
@@ -112,33 +112,6 @@ impl ForumQuoteCommandMutation {
             )
             .await?;
         Ok(map_response(response))
-    }
-}
-
-fn require_permission(
-    ctx: &Context<'_>,
-    permission: Permission,
-    message: &str,
-) -> Result<AuthContext> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-        .clone();
-    if !has_any_effective_permission(&auth.permissions, &[permission]) {
-        return Err(<FieldError as GraphQLError>::permission_denied(message));
-    }
-    Ok(auth)
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested) if requested != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested) => Ok(requested),
-        None => Ok(tenant.id),
     }
 }
 

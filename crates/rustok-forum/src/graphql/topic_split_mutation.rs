@@ -1,9 +1,6 @@
-use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
-use rustok_api::{
-    AuthContext, Permission, TenantContext,
-    graphql::{GraphQLError, require_module_enabled},
-    has_any_effective_permission,
-};
+use async_graphql::{Context, InputObject, Object, Result, SimpleObject};
+use rustok_api::graphql::require_module_enabled;
+use rustok_api::{AuthContext, Permission, TenantContext};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -27,18 +24,19 @@ impl ForumTopicSplitMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
-            .clone();
+        let auth = super::require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_MANAGE],
+            "Permission denied: forum_topics:manage required",
+        )?;
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
 
         execute_split_forum_topic_replies(
             db,
             event_bus,
-            tenant,
-            &auth,
             tenant_id,
+            auth,
             source_topic_id,
             input,
         )
@@ -49,15 +47,11 @@ impl ForumTopicSplitMutation {
 async fn execute_split_forum_topic_replies(
     db: &DatabaseConnection,
     event_bus: &TransactionalEventBus,
-    tenant: &TenantContext,
+    tenant_id: Uuid,
     auth: &AuthContext,
-    requested_tenant_id: Option<Uuid>,
     source_topic_id: Uuid,
     input: SplitForumTopicRepliesGraphqlInput,
 ) -> Result<GqlForumTopicSplit> {
-    require_topic_manage_permission(auth)?;
-    let tenant_id = resolve_tenant_scope(tenant, requested_tenant_id)?;
-
     let result = ForumTopicSplitService::new(db.clone(), event_bus.clone())
         .split_selected_replies(
             tenant_id,
@@ -79,27 +73,6 @@ async fn execute_split_forum_topic_replies(
         .await?;
 
     Ok(result.into())
-}
-
-fn require_topic_manage_permission(auth: &AuthContext) -> Result<()> {
-    if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_MANAGE]) {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: forum_topics:manage required",
-        ));
-    }
-    Ok(())
-}
-
-fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
-    match requested_tenant_id {
-        Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
-            Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: tenant scope mismatch",
-            ))
-        }
-        Some(requested_tenant_id) => Ok(requested_tenant_id),
-        None => Ok(tenant.id),
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, InputObject)]
@@ -152,10 +125,10 @@ impl From<ForumTopicSplitResult> for GqlForumTopicSplit {
 
 #[cfg(test)]
 mod tests {
-    use rustok_api::{AuthContext, Permission, TenantContext};
+    use rustok_api::{AuthContext, Permission, TenantContext, has_any_effective_permission};
     use uuid::Uuid;
 
-    use super::{require_topic_manage_permission, resolve_tenant_scope};
+    use crate::graphql::resolve_tenant_scope;
 
     fn auth_context(permissions: Vec<Permission>) -> AuthContext {
         AuthContext {
@@ -193,13 +166,17 @@ mod tests {
 
     #[test]
     fn split_transport_requires_topic_manage_permission() {
-        let denied =
-            require_topic_manage_permission(&auth_context(vec![Permission::FORUM_TOPICS_READ]))
-                .expect_err("read-only actor must not split topics");
-        assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
+        let read_only = auth_context(vec![Permission::FORUM_TOPICS_READ]);
+        assert!(!has_any_effective_permission(
+            &read_only.permissions,
+            &[Permission::FORUM_TOPICS_MANAGE]
+        ));
 
-        require_topic_manage_permission(&auth_context(vec![Permission::FORUM_TOPICS_MANAGE]))
-            .expect("manager permission must be accepted");
+        let manager = auth_context(vec![Permission::FORUM_TOPICS_MANAGE]);
+        assert!(has_any_effective_permission(
+            &manager.permissions,
+            &[Permission::FORUM_TOPICS_MANAGE]
+        ));
     }
 
     #[test]
@@ -219,6 +196,6 @@ mod tests {
 
         let denied = resolve_tenant_scope(&tenant, Some(Uuid::new_v4()))
             .expect_err("mismatched tenant assertion must fail closed");
-        assert_eq!(error_code(&denied).as_deref(), Some("PERMISSION_DENIED"));
+        assert_eq!(error_code(&denied).as_deref(), Some("FORBIDDEN"));
     }
 }

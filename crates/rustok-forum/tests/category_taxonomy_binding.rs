@@ -2,6 +2,7 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     ForumCategoryTaxonomyBindingService, ForumModule, entities::forum_category_taxonomy_binding,
 };
+use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
 };
@@ -31,6 +32,12 @@ async fn setup() -> DatabaseConnection {
         .await
         .expect("forum Taxonomy binding database should connect");
     let schema = SchemaManager::new(&db);
+        for migration in OutboxModule.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("outbox migration should apply");
+    }
     for migration in TaxonomyModule.migrations() {
         migration
             .up(&schema)
@@ -39,6 +46,14 @@ async fn setup() -> DatabaseConnection {
     }
 
     let mut applied_forum_migrations = 0usize;
+        db.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL
+        );",
+    )
+    .await
+    .expect("users table fixture should apply");
     for migration in ForumModule.migrations() {
         if FORUM_BINDING_SCHEMA_MIGRATIONS.contains(&migration.name()) {
             migration

@@ -7,7 +7,6 @@ description = "Pricing-owned ORM entities and transaction-aware persistence boot
 
 [dependencies]
 rustok-core.workspace = true
-chrono.workspace = true
 rust_decimal.workspace = true
 sea-orm.workspace = true
 serde.workspace = true
