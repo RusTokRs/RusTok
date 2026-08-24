@@ -105,18 +105,6 @@ impl CategoryLifecycleProjectionOwnerService {
                     .exec(&txn)
                     .await?;
             }
-            super::category_translation_evidence::record_category_translation_change_in_tx(
-                &txn,
-                tenant_id,
-                category_id,
-                if archived { "archive" } else { "restore" },
-                if archived {
-                    rustok_translation_targets::TranslationResourceLifecycle::Archived
-                } else {
-                    rustok_translation_targets::TranslationResourceLifecycle::Active
-                },
-            )
-            .await?;
             changed.insert(category_id);
         }
 
