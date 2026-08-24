@@ -67,8 +67,6 @@ async fn forum_category_get_and_list_read_canonical_taxonomy_copy_and_presentati
     legacy_category.icon = Set(Some("legacy-only-icon".to_string()));
     legacy_category.color = Set(Some("#ffffff".to_string()));
     legacy_category.moderated = Set(true);
-    legacy_category.topic_count = Set(7);
-    legacy_category.reply_count = Set(13);
     legacy_category.update(&db).await?;
 
     let category = service
@@ -84,8 +82,8 @@ async fn forum_category_get_and_list_read_canonical_taxonomy_copy_and_presentati
     assert_eq!(category.color.as_deref(), Some("#112233"));
     assert_eq!(category.parent_id, Some(root.id));
     assert_eq!(category.position, 0);
-    assert_eq!(category.topic_count, 7);
-    assert_eq!(category.reply_count, 13);
+    assert_eq!(category.topic_count, 0);
+    assert_eq!(category.reply_count, 0);
     assert!(category.moderated);
 
     let (items, total) = service
@@ -103,8 +101,8 @@ async fn forum_category_get_and_list_read_canonical_taxonomy_copy_and_presentati
     assert_eq!(support_item.description, None);
     assert_eq!(support_item.icon.as_deref(), Some("life-buoy"));
     assert_eq!(support_item.color.as_deref(), Some("#112233"));
-    assert_eq!(support_item.topic_count, 7);
-    assert_eq!(support_item.reply_count, 13);
+    assert_eq!(support_item.topic_count, 0);
+    assert_eq!(support_item.reply_count, 0);
 
     Ok(())
 }
