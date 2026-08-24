@@ -188,35 +188,49 @@ Migration rules:
 - keep Topic Flex support independent of Category migration;
 - complete mounted multilingual/RTL browser parity only against Taxonomy-owned Category data.
 
-First accepted slice, PR #3686, adds only the data-preserving typed binding seam:
+Accepted CAT-5 slices already in `main`:
 
-- Forum owns `forum_category_taxonomy_bindings`; the relation is tenant-safe and one-to-one inside a
-  tenant while Taxonomy remains the canonical Category identity owner;
-- the binding service validates the target through the public Taxonomy identity contract as an exact
-  same-tenant `TaxonomyTermKind::Category`; Tags, foreign-tenant identities and stale UUIDs fail
-  closed;
-- the appended Forum migration is explicitly classified as `mode: none` because this slice creates an
-  empty relation and deliberately performs no category data backfill;
-- legacy Forum category identity, hierarchy, localized copy, presentation and
-  `ForumCategoryTranslationTargetProvider` remain authoritative until deterministic backfill and
-  read/write cutover evidence exists;
-- no Taxonomy scope (`global` versus `module=forum`) is selected by the low-level binding seam; that
-  policy remains a backfill/cutover decision.
+- PR #3686 adds the data-preserving typed binding seam. Forum owns
+  `forum_category_taxonomy_bindings`; the relation is tenant-safe and one-to-one inside a tenant,
+  while Taxonomy remains the canonical Category identity owner. The binding service validates an
+  exact same-tenant `TaxonomyTermKind::Category`; Tags, foreign-tenant identities and stale UUIDs fail
+  closed. Legacy Forum category storage and Translation ownership remain live during migration.
+- PR #3688 adds the deterministic Forum Category → Taxonomy Category backfill. It preserves Forum
+  category UUIDs, selects `scope_type=module` / `scope_value=forum`, copies localized copy, current
+  routes, append-only aliases, hierarchy/order and canonical presentation, records Taxonomy
+  Translation evidence, creates same-ID Forum→Taxonomy bindings, and fails closed on incompatible
+  existing Taxonomy identity/copy/route/hierarchy/presentation/binding ownership. Legacy Forum rows
+  and the legacy Translation provider are retained after backfill.
+- PR #3689 exposes a Category-specific Taxonomy owner read projection for consumer-owned typed
+  bindings. The reader batches canonical localized copy, available locales, hierarchy and canonical
+  presentation, preserves requested/effective locale fallback, and enforces tenant + Category + scope
+  isolation without making already-authorized consumer reads depend on Taxonomy RBAC.
+- PR #3690 adds the transactional Category owner-sync port needed by consumer dual-write. It preserves
+  exact Category UUIDs while synchronizing canonical localized copy, append-only aliases, hierarchy
+  and canonical icon/color presentation; localized Translation evidence is recorded only when copy
+  changes, Media image/cover references survive consumer icon/color sync, incompatible owner identity
+  and cross-scope/cross-tenant hierarchy fail closed, and replay avoids unnecessary revision churn.
 
 Retained focused evidence:
 
 - PR #3686 exact head `7e64eb9d3fc3af4d8e7b7ec1063cf45ea8859c58` passed `Forum Taxonomy Category Binding Contract`
-  run `32659255474`: exact-head source guard, scoped Rust 1.96 formatting, real runtime bind/idempotency
-  and rebind/duplicate/Tag/foreign-tenant/stale-identity rejection evidence, plus
-  `cargo check --locked -p rustok-forum --lib`;
-- the same #3686 head passed `Migration Compatibility` run `32659255365`: harness preflight,
-  append-only migration plan, PostgreSQL N-1 to head upgrade, fresh incremental/apply-all migration
-  smoke and rollback-latest all succeeded;
-- PR #3686 was squash-merged as `9af3a113c28ecb964dd9ff1737a7ddd69e916f23`.
+  run `32659255474` and `Migration Compatibility` run `32659255365`, then squash-merged as
+  `9af3a113c28ecb964dd9ff1737a7ddd69e916f23`;
+- PR #3688 exact head `70f2ca9778fa4bd472e6b7f2e2c980013ba2dbef` passed
+  `Forum Taxonomy Category Backfill Contract` run `32665020688` and `Migration Compatibility` run
+  `32665020664`, then squash-merged as `feeaa0b5a16ea2898fb7b7d222e7b30d55605870`;
+- PR #3689 exact head `4ee5fa31bd9f96bada3cb6aea6c3dd8ef846fc53` passed `Taxonomy Lookup Contract` run
+  `32668871962`, `Taxonomy Ownership Boundary` run `32668871968` and `Taxonomy PostgreSQL Evidence`
+  run `32668871894`, then squash-merged as `5f9c875ab91ec536a08a6b6ec60de7bf315da6f6`;
+- PR #3690 exact head `3c33324b2d6389295eb4fe6f0d0a035ad1905f67` passed
+  `Taxonomy Category Owner Sync Contract` run `32683541704`, `Taxonomy Ownership Boundary` run
+  `32683541614`, `Taxonomy Lookup Contract` run `32683541624` and `Taxonomy PostgreSQL Evidence` run
+  `32683541607`, then squash-merged as `0b09edd2a07f19cd0e8cf4820681a3ed73d09c09`.
 
-**Next:** implement deterministic, resumable Forum category backfill/reuse from fresh `main`, choose
-and document the Taxonomy scope policy there, and preserve legacy Forum hierarchy/translations/provider
-until the subsequent read/write cutover proves parity.
+**Next:** land Forum category command dual-write through the Taxonomy owner-sync port without removing
+legacy Forum persistence, then prove a Taxonomy-backed read cutover against the deterministic backfill
+before removing duplicate Forum category translations/provider/storage. Every runtime slice starts
+from fresh `main`; an in-flight dual-write branch is not a base for later work until it is merged.
 
 **Done when:** Forum no longer owns a duplicate canonical category entity or Translation provider and
 all Forum category behaviors use the shared Taxonomy identity without losing Forum-specific policy.
