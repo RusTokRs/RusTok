@@ -15,7 +15,7 @@ use uuid::Uuid;
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::test]
-async fn command_copy_and_structure_ignore_legacy_translation_state() -> TestResult<()> {
+async fn canonical_category_commands_do_not_write_legacy_translation_mirror() -> TestResult<()> {
     let db = setup().await?;
     let service = CategoryService::new(db.clone());
     let reader = TaxonomyOwnerCategoryReader::new(db.clone());
@@ -43,11 +43,14 @@ async fn command_copy_and_structure_ignore_legacy_translation_state() -> TestRes
         )
         .await?;
 
-    forum_category_translation::Entity::delete_many()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(support.id))
-        .exec(&db)
-        .await?;
+    assert!(
+        forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
+            .all(&db)
+            .await?
+            .is_empty(),
+        "canonical Category create must not populate the retired Forum translation mirror"
+    );
 
     service
         .update(
@@ -74,22 +77,26 @@ async fn command_copy_and_structure_ignore_legacy_translation_state() -> TestRes
         projected.description.as_deref(),
         Some("Canonical Taxonomy copy")
     );
+    assert!(
+        forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
+            .all(&db)
+            .await?
+            .is_empty(),
+        "canonical Category update must not recreate the retired Forum translation mirror"
+    );
 
-    let compatibility = forum_category_translation::Entity::find()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(support.id))
-        .filter(forum_category_translation::Column::Locale.eq("en"))
-        .one(&db)
-        .await?
-        .expect("compatibility mirror should be recreated after canonical update");
-    assert_eq!(compatibility.name, "Help & Support");
-    assert_eq!(compatibility.slug, "help-support");
-
-    let mut poisoned: forum_category_translation::ActiveModel = compatibility.into();
-    poisoned.name = Set("LEGACY POISON".to_string());
-    poisoned.slug = Set("legacy-poison".to_string());
-    poisoned.description = Set(Some("must never become canonical".to_string()));
-    poisoned.update(&db).await?;
+    forum_category_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        category_id: Set(support.id),
+        tenant_id: Set(tenant_id),
+        locale: Set("en".to_string()),
+        name: Set("LEGACY POISON".to_string()),
+        slug: Set("legacy-poison".to_string()),
+        description: Set(Some("must never become canonical".to_string())),
+    }
+    .insert(&db)
+    .await?;
 
     service
         .update(
@@ -117,18 +124,18 @@ async fn command_copy_and_structure_ignore_legacy_translation_state() -> TestRes
         Some("Canonical Taxonomy copy")
     );
 
-    let healed = forum_category_translation::Entity::find()
+    let poison = forum_category_translation::Entity::find()
         .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
         .filter(forum_category_translation::Column::CategoryId.eq(support.id))
         .filter(forum_category_translation::Column::Locale.eq("en"))
         .one(&db)
         .await?
-        .expect("compatibility mirror should be healed from Taxonomy copy");
-    assert_eq!(healed.name, "Help & Support");
-    assert_eq!(healed.slug, "help-support");
+        .expect("legacy poison fixture should remain present until schema cleanup");
+    assert_eq!(poison.name, "LEGACY POISON");
+    assert_eq!(poison.slug, "legacy-poison");
     assert_eq!(
-        healed.description.as_deref(),
-        Some("Canonical Taxonomy copy")
+        poison.description.as_deref(),
+        Some("must never become canonical")
     );
 
     forum_category_translation::Entity::delete_many()
@@ -180,10 +187,14 @@ async fn command_copy_and_structure_ignore_legacy_translation_state() -> TestRes
 }
 
 #[test]
-fn taxonomy_sync_adapter_has_no_legacy_translation_copy_dependency() {
+fn category_owner_writes_have_no_legacy_translation_dependency() {
     const ADAPTER: &str = include_str!("../src/services/category_taxonomy_sync.rs");
+    const OWNER: &str = include_str!("../src/services/category_projection_owner.rs");
+    const IMPORT: &str = include_str!("../src/services/category_import.rs");
 
     assert!(!ADAPTER.contains("forum_category_translation"));
+    assert!(!OWNER.contains("forum_category_translation"));
+    assert!(!IMPORT.contains("forum_category_translation"));
     assert!(ADAPTER.contains("load_module_category_locale_copy_in_tx"));
     assert!(ADAPTER.contains("sync_module_category_structure_with_owned_copy_in_tx"));
     assert!(ADAPTER.contains("sync_module_category_with_owned_aliases_in_tx"));
