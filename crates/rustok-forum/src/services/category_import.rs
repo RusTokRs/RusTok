@@ -63,6 +63,18 @@ impl CategoryService {
         .insert(txn)
         .await?;
 
+        forum_category_translation::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            category_id: Set(record.id),
+            tenant_id: Set(tenant_id),
+            locale: Set(locale.clone()),
+            name: Set(record.name.clone()),
+            slug: Set(slug.clone()),
+            description: Set(record.description.clone()),
+        }
+        .insert(txn)
+        .await?;
+
         taxonomy_sync::sync_category_copy_in_tx(
             txn,
             tenant_id,
