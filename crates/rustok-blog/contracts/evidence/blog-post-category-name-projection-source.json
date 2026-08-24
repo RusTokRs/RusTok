@@ -8,8 +8,10 @@
   "owner": "rustok-blog",
   "source_contract": {
     "category_identity_source": "blog_posts.category_id",
-    "category_name_source": "blog_category_translations.name",
-    "tenant_bound_translation_query": true,
+    "category_name_source": "taxonomy_owner_category.name",
+    "typed_binding_source": "blog_category_taxonomy_bindings",
+    "taxonomy_scope": "module/blog",
+    "tenant_bound_binding_query": true,
     "detail_projection_present": true,
     "authenticated_list_projection_present": true,
     "public_list_projection_present": true,
@@ -20,7 +22,8 @@
     "tenant_fallback_precedence": true,
     "platform_fallback_precedence": true,
     "first_available_fallback_retained": true,
-    "missing_category_or_translation_returns_none": true,
+    "incomplete_binding_or_projection_fails_closed": true,
+    "legacy_category_translation_read_removed": true,
     "category_translation_write_semantics_changed": false,
     "category_translation_readiness_promoted": false,
     "search_projection_source_changed": false,
@@ -31,6 +34,7 @@
     "fba_promoted": false
   },
   "production_source": "crates/rustok-blog/src/services/post.rs",
+  "category_projection_source": "crates/rustok-blog/src/services/category_name_projection.rs",
   "dto_source": "crates/rustok-blog/src/dto/post.rs",
   "source_harness": {
     "path": "crates/rustok-blog/tests/post_category_name_projection.rs",
@@ -42,6 +46,7 @@
   "self_test": "scripts/verify/verify-blog-post-category-name-projection-source.test.mjs",
   "planning_result": {
     "post_category_name_source_complete": true,
+    "legacy_blog_category_translation_projection_retired": true,
     "additional_category_name_projection_scaffolding_required": false,
     "next_autonomous_source_work_requires_fresh_audit": true
   },

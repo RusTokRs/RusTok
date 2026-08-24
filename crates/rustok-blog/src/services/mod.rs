@@ -2,6 +2,7 @@
 
 mod category;
 mod category_command;
+mod category_name_projection;
 mod category_owner;
 pub(crate) mod category_taxonomy_sync;
 mod comment;
