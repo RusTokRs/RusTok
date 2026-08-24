@@ -1,53 +1,59 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, Statement,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter,
+    QueryOrder,
 };
 use uuid::Uuid;
 
-use crate::entities::{
-    forum_category, forum_category_taxonomy_binding, forum_category_translation,
-};
+use crate::entities::{forum_category, forum_category_taxonomy_binding};
 use crate::error::{ForumError, ForumResult};
 
 const FORUM_TAXONOMY_SCOPE: &str = "forum";
 
-pub(in crate::services) async fn sync_category_locale_in_tx(
+pub(in crate::services) async fn load_category_locale_copy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
     locale: &str,
+) -> ForumResult<Option<rustok_taxonomy::TaxonomyModuleCategoryLocaleCopy>> {
+    rustok_taxonomy::load_module_category_locale_copy_in_tx(
+        txn,
+        tenant_id,
+        category_id,
+        FORUM_TAXONOMY_SCOPE,
+        locale,
+    )
+    .await
+    .map_err(map_taxonomy_error)
+}
+
+pub(in crate::services) async fn sync_category_copy_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    locale: String,
+    name: String,
+    slug: String,
+    description: Option<String>,
 ) -> ForumResult<()> {
     let category = forum_category::Entity::find_by_id(category_id)
         .filter(forum_category::Column::TenantId.eq(tenant_id))
         .one(txn)
         .await?
         .ok_or(ForumError::CategoryNotFound(category_id))?;
-    let translation = forum_category_translation::Entity::find()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(category_id))
-        .filter(forum_category_translation::Column::Locale.eq(locale))
-        .one(txn)
-        .await?
-        .ok_or_else(|| {
-            ForumError::Validation(format!(
-                "Forum category {category_id} has no localized copy for Taxonomy synchronization"
-            ))
-        })?;
-    let aliases = load_aliases_for_locale_in_tx(txn, tenant_id, category_id, locale).await?;
 
-    rustok_taxonomy::sync_module_category_in_tx(
+    rustok_taxonomy::sync_module_category_with_owned_aliases_in_tx(
         txn,
         tenant_id,
         rustok_taxonomy::SyncModuleCategoryInput {
             category_id,
             module_scope: FORUM_TAXONOMY_SCOPE.to_string(),
             canonical_key: canonical_key_for_forum_category(category_id),
-            locale: translation.locale,
-            name: translation.name,
-            slug: translation.slug,
-            aliases,
-            description: translation.description,
+            locale,
+            name,
+            slug,
+            aliases: Vec::new(),
+            description,
             parent_id: category.parent_id,
             position: category.position,
             icon_key: category.icon,
@@ -60,24 +66,32 @@ pub(in crate::services) async fn sync_category_locale_in_tx(
     ensure_same_id_binding_in_tx(txn, tenant_id, category_id).await
 }
 
-pub(in crate::services) async fn sync_category_any_locale_in_tx(
+pub(in crate::services) async fn sync_category_structure_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> ForumResult<()> {
-    let translation = forum_category_translation::Entity::find()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(category_id))
-        .order_by_asc(forum_category_translation::Column::Locale)
-        .order_by_asc(forum_category_translation::Column::Id)
+    let category = forum_category::Entity::find_by_id(category_id)
+        .filter(forum_category::Column::TenantId.eq(tenant_id))
         .one(txn)
         .await?
-        .ok_or_else(|| {
-            ForumError::Validation(format!(
-                "Forum category {category_id} has no localized copy for Taxonomy synchronization"
-            ))
-        })?;
-    sync_category_locale_in_tx(txn, tenant_id, category_id, &translation.locale).await
+        .ok_or(ForumError::CategoryNotFound(category_id))?;
+
+    rustok_taxonomy::sync_module_category_structure_with_owned_copy_in_tx(
+        txn,
+        tenant_id,
+        category_id,
+        FORUM_TAXONOMY_SCOPE,
+        canonical_key_for_forum_category(category_id),
+        category.parent_id,
+        category.position,
+        category.icon,
+        category.color,
+    )
+    .await
+    .map_err(map_taxonomy_error)?;
+
+    ensure_same_id_binding_in_tx(txn, tenant_id, category_id).await
 }
 
 pub(in crate::services) async fn sync_siblings_for_parent_in_tx(
@@ -95,7 +109,7 @@ pub(in crate::services) async fn sync_siblings_for_parent_in_tx(
         .into_iter()
         .filter(|category| category.parent_id == parent_id)
     {
-        sync_category_any_locale_in_tx(txn, tenant_id, category.id).await?;
+        sync_category_structure_in_tx(txn, tenant_id, category.id).await?;
     }
     Ok(())
 }
@@ -139,47 +153,6 @@ async fn ensure_same_id_binding_in_tx(
     .insert(txn)
     .await?;
     Ok(())
-}
-
-async fn load_aliases_for_locale_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    category_id: Uuid,
-    locale: &str,
-) -> ForumResult<Vec<String>> {
-    let statement = match txn.get_database_backend() {
-        DatabaseBackend::Postgres => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
-            SELECT slug
-            FROM forum_category_route_aliases
-            WHERE tenant_id = $1 AND category_id = $2 AND locale = $3
-            ORDER BY created_at, alias_id
-            "#,
-            vec![tenant_id.into(), category_id.into(), locale.into()],
-        ),
-        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            r#"
-            SELECT slug
-            FROM forum_category_route_aliases
-            WHERE tenant_id = ? AND category_id = ? AND locale = ?
-            ORDER BY created_at, alias_id
-            "#,
-            vec![tenant_id.into(), category_id.into(), locale.into()],
-        ),
-        backend => {
-            return Err(ForumError::Validation(format!(
-                "Forum Category Taxonomy synchronization does not support database backend {backend:?}"
-            )));
-        }
-    };
-
-    let mut aliases = Vec::new();
-    for row in txn.query_all(statement).await? {
-        aliases.push(row.try_get("", "slug")?);
-    }
-    Ok(aliases)
 }
 
 fn canonical_key_for_forum_category(category_id: Uuid) -> String {

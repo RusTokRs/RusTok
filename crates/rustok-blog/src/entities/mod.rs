@@ -1,6 +1,7 @@
 //! Blog module entities.
 
 pub mod blog_category;
+pub mod blog_category_taxonomy_binding;
 pub mod blog_category_translation;
 pub mod blog_comment_projection_delivery;
 pub mod blog_post;
@@ -10,6 +11,10 @@ pub mod blog_post_translation;
 pub mod translation_change;
 
 pub use blog_category::Entity as BlogCategory;
+pub use blog_category_taxonomy_binding::{
+    BlogCategoryTaxonomyBinding, BlogCategoryTaxonomyBindingService,
+    Entity as BlogCategoryTaxonomyBindingEntity,
+};
 pub use blog_category_translation::Entity as BlogCategoryTranslation;
 pub use blog_comment_projection_delivery::Entity as BlogCommentProjectionDelivery;
 pub use blog_post::Entity as BlogPost;

@@ -18,9 +18,9 @@ const registry = 'crates/rustok-forum/src/migrations/mod.rs';
 const contracts = 'docs/migrations/backfill-contracts.json';
 const legacyCategory = 'crates/rustok-forum/src/entities/forum_category.rs';
 const legacyTranslation = 'crates/rustok-forum/src/entities/forum_category_translation.rs';
-const legacyProvider = 'crates/rustok-forum/src/services/mod.rs';
+const forumServices = 'crates/rustok-forum/src/services/mod.rs';
 
-for (const path of [migration, registry, contracts, legacyCategory, legacyTranslation, legacyProvider]) {
+for (const path of [migration, registry, contracts, legacyCategory, legacyTranslation, forumServices]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 
@@ -50,8 +50,8 @@ if (failures.length === 0) {
   requireMarker(contracts, '"mode": "fixture"', 'runtime backfill fixture mode');
 
   requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'legacy hierarchy retained');
-  requireMarker(legacyTranslation, 'forum_category_translations', 'legacy localized copy retained');
-  requireMarker(legacyProvider, 'ForumCategoryTranslationTargetProvider', 'legacy Translation provider retained');
+  requireMarker(legacyTranslation, 'forum_category_translations', 'compatibility localized copy retained until search/read-model cutover');
+  rejectMarker(forumServices, 'ForumCategoryTranslationTargetProvider', 'retired duplicate Forum Translation provider');
 }
 
 if (failures.length > 0) {

@@ -169,10 +169,15 @@ requireAll(
   [
     "CategoryProjectionOwnerService",
     "pub(super) async fn update",
-    "forum_category_translation::ActiveModel",
+    "taxonomy_sync::sync_category_copy_in_tx",
     "publish_forum_projection_scope_direct_in_tx",
     "txn.commit().await?",
   ],
+  "category translation owner",
+);
+forbidAll(
+  categoryOwner,
+  ["forum_category_translation"],
   "category translation owner",
 );
 
@@ -207,7 +212,9 @@ const projectionSource = read(projectionSourcePath);
 requireAll(
   projectionSource,
   [
-    "forum_category_translation::Entity::find()",
+    "forum_category_taxonomy_binding::Entity::find()",
+    "TaxonomyOwnerCategoryReader",
+    "projection.available_locales",
     "forum_topic_translation::Entity::find()",
     "forum_reply_body::Entity::find()",
     "ReplyStatus::Approved",
@@ -216,6 +223,11 @@ requireAll(
     '"category_id": topic.category_id',
     '"topic_id": topic.id',
   ],
+  "Forum Search projection source",
+);
+forbidAll(
+  projectionSource,
+  ["forum_category_translation::Entity::find()"],
   "Forum Search projection source",
 );
 

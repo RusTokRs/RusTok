@@ -20,7 +20,7 @@ const relation = 'crates/rustok-forum/src/entities/forum_category_taxonomy_bindi
 const runtimeTest = 'crates/rustok-forum/tests/category_taxonomy_binding.rs';
 const entities = 'crates/rustok-forum/src/entities/mod.rs';
 const legacyCategory = 'crates/rustok-forum/src/entities/forum_category.rs';
-const legacyProvider = 'crates/rustok-forum/src/services/mod.rs';
+const forumServices = 'crates/rustok-forum/src/services/mod.rs';
 
 for (const path of [
   migration,
@@ -30,7 +30,7 @@ for (const path of [
   runtimeTest,
   entities,
   legacyCategory,
-  legacyProvider,
+  forumServices,
 ]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
@@ -63,7 +63,7 @@ if (failures.length === 0) {
 
   rejectMarker(legacyCategory, 'taxonomy_category_id', 'binding state embedded in legacy category row');
   requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'legacy hierarchy retained during staged cutover');
-  requireMarker(legacyProvider, 'ForumCategoryTranslationTargetProvider', 'legacy Translation provider retained before verified cutover');
+  rejectMarker(forumServices, 'ForumCategoryTranslationTargetProvider', 'retired duplicate Forum Translation provider');
 }
 
 if (failures.length > 0) {

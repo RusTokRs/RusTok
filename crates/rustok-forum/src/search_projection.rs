@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -8,6 +8,7 @@ use rustok_core::search_projection::{
 };
 use rustok_core::{Error, Result};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
@@ -15,7 +16,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::entities::{
-    forum_category, forum_category_translation, forum_reply_body, forum_topic_translation,
+    forum_category, forum_category_taxonomy_binding, forum_reply_body, forum_topic_translation,
 };
 use crate::search_projection_author::{
     load_public_author_summary, public_author_handle, public_author_id, public_author_keywords,
@@ -29,6 +30,7 @@ const FORUM_CATEGORY_ENTITY_TYPE: &str = "forum_category";
 const FORUM_TOPIC_ENTITY_TYPE: &str = "forum_topic";
 const FORUM_REPLY_ENTITY_TYPE: &str = "forum_reply";
 const MAX_ENTITY_LOCALES: u64 = 32;
+const CATEGORY_LOCALE_PROJECTION_REQUEST_LOCALE: &str = "en";
 
 #[derive(Clone, Default)]
 pub struct ForumSearchProjectionSourceFactory;
@@ -70,29 +72,10 @@ impl ForumSearchProjectionSource {
             cursor.as_ref(),
             Some(ProjectionCursor::Topic { .. } | ProjectionCursor::Reply { .. })
         ) {
-            let mut query = forum_category_translation::Entity::find()
-                .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-                .order_by_asc(forum_category_translation::Column::CategoryId)
-                .order_by_asc(forum_category_translation::Column::Locale)
-                .limit(limit as u64);
-            if let Some(ProjectionCursor::Category { entity_id, locale }) = cursor.as_ref() {
-                query = query.filter(
-                    Condition::any()
-                        .add(forum_category_translation::Column::CategoryId.gt(*entity_id))
-                        .add(
-                            Condition::all()
-                                .add(forum_category_translation::Column::CategoryId.eq(*entity_id))
-                                .add(forum_category_translation::Column::Locale.gt(locale.clone())),
-                        ),
-                );
-            }
-            let rows = query.all(&self.db).await.map_err(Error::Database)?;
-            for row in rows {
-                candidates.push(ProjectionCandidate::Category {
-                    entity_id: row.category_id,
-                    locale: row.locale,
-                });
-            }
+            candidates.extend(
+                self.category_candidates(tenant_id, cursor.as_ref(), limit)
+                    .await?,
+            );
         }
 
         let remaining = limit.saturating_sub(candidates.len());
@@ -153,6 +136,121 @@ impl ForumSearchProjectionSource {
                 entity_id: row.reply_id,
                 locale: row.locale,
             });
+        }
+        Ok(candidates)
+    }
+
+    async fn category_candidates(
+        &self,
+        tenant_id: Uuid,
+        cursor: Option<&ProjectionCursor>,
+        limit: usize,
+    ) -> Result<Vec<ProjectionCandidate>> {
+        let include_cursor_category = matches!(cursor, Some(ProjectionCursor::Category { .. }));
+        let category_limit = limit.saturating_add(usize::from(include_cursor_category));
+        let category_limit = u64::try_from(category_limit).map_err(|_| {
+            Error::Validation("Forum Search category candidate bound overflow".to_string())
+        })?;
+
+        let mut query = forum_category::Entity::find()
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .order_by_asc(forum_category::Column::Id)
+            .limit(category_limit);
+        if let Some(ProjectionCursor::Category { entity_id, .. }) = cursor {
+            query = query.filter(forum_category::Column::Id.gte(*entity_id));
+        }
+        let categories = query.all(&self.db).await.map_err(Error::Database)?;
+        if categories.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let category_ids = categories
+            .iter()
+            .map(|category| category.id)
+            .collect::<Vec<_>>();
+        let bindings = forum_category_taxonomy_binding::Entity::find()
+            .filter(forum_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
+            .filter(
+                forum_category_taxonomy_binding::Column::ForumCategoryId
+                    .is_in(category_ids.clone()),
+            )
+            .all(&self.db)
+            .await
+            .map_err(Error::Database)?;
+        let binding_by_forum_id = bindings
+            .iter()
+            .map(|binding| (binding.forum_category_id, binding.taxonomy_category_id))
+            .collect::<HashMap<_, _>>();
+        for category_id in &category_ids {
+            if !binding_by_forum_id.contains_key(category_id) {
+                return Err(Error::External(format!(
+                    "Forum Search category {category_id} has no Taxonomy Category binding"
+                )));
+            }
+        }
+
+        let taxonomy_ids = bindings
+            .iter()
+            .map(|binding| binding.taxonomy_category_id)
+            .collect::<Vec<_>>();
+        let projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
+            .load_scoped_categories(
+                tenant_id,
+                TaxonomyScopeType::Module,
+                Some("forum"),
+                Some(&taxonomy_ids),
+                CATEGORY_LOCALE_PROJECTION_REQUEST_LOCALE,
+                None,
+            )
+            .await
+            .map_err(map_taxonomy_category_error)?;
+        let projection_by_taxonomy_id = projections
+            .into_iter()
+            .map(|projection| (projection.id, projection))
+            .collect::<HashMap<_, _>>();
+
+        let mut candidates = Vec::with_capacity(limit);
+        for category in categories {
+            let taxonomy_id = *binding_by_forum_id.get(&category.id).ok_or_else(|| {
+                Error::External(format!(
+                    "Forum Search category {} lost its Taxonomy Category binding",
+                    category.id
+                ))
+            })?;
+            let projection = projection_by_taxonomy_id.get(&taxonomy_id).ok_or_else(|| {
+                Error::External(format!(
+                    "Forum Search category {} Taxonomy Category {taxonomy_id} projection is missing",
+                    category.id
+                ))
+            })?;
+            ensure_locale_bound(projection.available_locales.len())?;
+            if projection.available_locales.is_empty() {
+                return Err(Error::External(format!(
+                    "Forum Search category {} Taxonomy Category {taxonomy_id} has no canonical locales",
+                    category.id
+                )));
+            }
+
+            for locale in &projection.available_locales {
+                if let Some(ProjectionCursor::Category {
+                    entity_id,
+                    locale: after_locale,
+                }) = cursor
+                {
+                    if category.id < *entity_id
+                        || (category.id == *entity_id && locale <= after_locale)
+                    {
+                        continue;
+                    }
+                }
+                candidates.push(ProjectionCandidate::Category {
+                    entity_id: category.id,
+                    locale: locale.clone(),
+                });
+                if candidates.len() == limit {
+                    return Ok(candidates);
+                }
+            }
         }
         Ok(candidates)
     }
@@ -434,21 +532,59 @@ impl ForumSearchProjectionSource {
     ) -> Result<Vec<ProjectionCandidate>> {
         match entity_type {
             FORUM_CATEGORY_ENTITY_TYPE => {
-                let rows = forum_category_translation::Entity::find()
-                    .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-                    .filter(forum_category_translation::Column::CategoryId.eq(entity_id))
-                    .order_by_asc(forum_category_translation::Column::Locale)
-                    .limit(MAX_ENTITY_LOCALES + 1)
-                    .all(&self.db)
+                let category = forum_category::Entity::find_by_id(entity_id)
+                    .filter(forum_category::Column::TenantId.eq(tenant_id))
+                    .one(&self.db)
                     .await
                     .map_err(Error::Database)?;
-                ensure_locale_bound(rows.len())?;
-                Ok(rows
+                if category.is_none() {
+                    return Ok(Vec::new());
+                }
+                let binding = forum_category_taxonomy_binding::Entity::find_by_id((
+                    tenant_id,
+                    entity_id,
+                ))
+                .one(&self.db)
+                .await
+                .map_err(Error::Database)?
+                .ok_or_else(|| {
+                    Error::External(format!(
+                        "Forum Search category {entity_id} has no Taxonomy Category binding"
+                    ))
+                })?;
+                let mut projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
+                    .load_scoped_categories(
+                        tenant_id,
+                        TaxonomyScopeType::Module,
+                        Some("forum"),
+                        Some(&[binding.taxonomy_category_id]),
+                        CATEGORY_LOCALE_PROJECTION_REQUEST_LOCALE,
+                        None,
+                    )
+                    .await
+                    .map_err(map_taxonomy_category_error)?;
+                let projection = projections.pop().ok_or_else(|| {
+                    Error::External(format!(
+                        "Forum Search category {entity_id} Taxonomy Category {} projection is missing",
+                        binding.taxonomy_category_id
+                    ))
+                })?;
+                if !projections.is_empty() || projection.id != binding.taxonomy_category_id {
+                    return Err(Error::External(format!(
+                        "Forum Search category {entity_id} Taxonomy projection returned an inconsistent identity"
+                    )));
+                }
+                ensure_locale_bound(projection.available_locales.len())?;
+                if projection.available_locales.is_empty() {
+                    return Err(Error::External(format!(
+                        "Forum Search category {entity_id} Taxonomy Category {} has no canonical locales",
+                        binding.taxonomy_category_id
+                    )));
+                }
+                Ok(projection
+                    .available_locales
                     .into_iter()
-                    .map(|row| ProjectionCandidate::Category {
-                        entity_id,
-                        locale: row.locale,
-                    })
+                    .map(|locale| ProjectionCandidate::Category { entity_id, locale })
                     .collect())
             }
             FORUM_TOPIC_ENTITY_TYPE => {
@@ -654,4 +790,13 @@ fn parse_timestamp(value: &str, field: &str) -> Result<DateTime<Utc>> {
 
 fn map_forum_error(error: crate::ForumError) -> Error {
     Error::External(format!("Forum Search projection source failed: {error}"))
+}
+
+fn map_taxonomy_category_error(error: TaxonomyError) -> Error {
+    match error {
+        TaxonomyError::Database(error) => Error::Database(error),
+        other => Error::External(format!(
+            "Forum Search Taxonomy category projection failed: {other}"
+        )),
+    }
 }

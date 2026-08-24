@@ -108,7 +108,9 @@ for (const marker of [
 
 for (const marker of [
   "ForumPublicDiscoveryService",
-  "forum_category_translation::Entity::find()",
+  "forum_category_taxonomy_binding::Entity::find()",
+  "TaxonomyOwnerCategoryReader",
+  "projection.available_locales",
   "forum_topic_translation::Entity::find()",
   "forum_reply_body::Entity::find()",
   "get_public_category_with_locale_fallback",
@@ -128,6 +130,7 @@ for (const marker of [
   requireMarker(provider, marker, providerPath);
 }
 for (const forbidden of [
+  "forum_category_translation::Entity::find()",
   "forum_reply::Entity::find()",
   "ForumAudienceEvaluator",
   "forum_category_audience_policies",

@@ -27,6 +27,7 @@ use taxonomy_tree_read::CategoryTaxonomyTreeReadService;
 /// kept crate-private so callers cannot bypass placement, lifecycle or policy
 /// commands through `Deref`.
 pub struct CategoryService {
+    db: DatabaseConnection,
     inner: category::CategoryProjectionOwnerService,
     read: category::taxonomy_read::CategoryTaxonomyReadService,
     commands: category_command::CategoryCommandProjectionOwnerService,
@@ -39,6 +40,7 @@ pub struct CategoryService {
 impl CategoryService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
+            db: db.clone(),
             inner: category::CategoryProjectionOwnerService::new(db.clone()),
             read: category::taxonomy_read::CategoryTaxonomyReadService::new(db.clone()),
             commands: category_command::CategoryCommandProjectionOwnerService::new(db.clone()),
@@ -56,11 +58,11 @@ impl CategoryService {
         input: CreateCategoryInput,
     ) -> ForumResult<CategoryResponse> {
         let locale = input.locale.clone();
-        let created = self
+        let category_id = self
             .inner
             .create(tenant_id, security.clone(), input)
             .await?;
-        self.get(tenant_id, security, created.id, &locale).await
+        self.get(tenant_id, security, category_id, &locale).await
     }
 
     pub async fn get(

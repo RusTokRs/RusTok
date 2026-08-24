@@ -14,6 +14,7 @@ mod module_term_lookup;
 pub mod module_term_mutation;
 mod normalization;
 mod owner_category_read;
+mod owner_category_route_sync;
 mod owner_category_sync;
 mod owner_identity;
 mod owner_read;
@@ -43,6 +44,11 @@ pub use module_term_mutation::{
 };
 pub use normalization::{normalize_term_locale, normalize_term_route_key};
 pub use owner_category_read::{TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader};
+pub use owner_category_route_sync::{
+    TaxonomyModuleCategoryLocaleCopy, load_module_category_locale_copy_in_tx,
+    sync_module_category_structure_with_owned_copy_in_tx,
+    sync_module_category_with_owned_aliases_in_tx,
+};
 pub use owner_category_sync::{
     SyncModuleCategoryInput, SyncModuleCategoryResult, sync_module_category_in_tx,
 };
