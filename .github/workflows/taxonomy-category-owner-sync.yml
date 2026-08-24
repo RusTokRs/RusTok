@@ -51,7 +51,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check owner sync Rust formatting only
         run: |
-          cargo fmt --check -- \
+          rustfmt +1.96.0 --check --edition 2024 \
             crates/rustok-taxonomy/src/owner_category_sync.rs \
             crates/rustok-taxonomy/tests/owner_category_sync.rs
       - name: Run transactional Category owner sync contract
