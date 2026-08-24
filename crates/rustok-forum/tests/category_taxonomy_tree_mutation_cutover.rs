@@ -32,7 +32,7 @@ async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data(
     db.execute_unprepared(
         r#"
         CREATE TRIGGER stale_forum_category_create_response
-        AFTER INSERT ON sys_events
+        AFTER INSERT ON forum_translation_changes
         BEGIN
             UPDATE forum_category_translations
             SET name = 'STALE LEGACY CREATE',
@@ -88,7 +88,7 @@ async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data(
     db.execute_unprepared(&format!(
         r#"
         CREATE TRIGGER stale_forum_category_update_response
-        AFTER INSERT ON sys_events
+        AFTER INSERT ON forum_translation_changes
         BEGIN
             UPDATE forum_category_translations
             SET name = 'STALE LEGACY UPDATE',
