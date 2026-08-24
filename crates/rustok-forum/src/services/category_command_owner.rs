@@ -82,6 +82,17 @@ impl CategoryCommandProjectionOwnerService {
                 )
             })?;
 
+        let mut mirrored = HashSet::new();
+        for placement in &updated {
+            if mirrored.insert(placement.id) {
+                super::category::taxonomy_sync::sync_category_any_locale_in_tx(
+                    &txn,
+                    tenant_id,
+                    placement.id,
+                )
+                .await?;
+            }
+        }
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,
@@ -136,6 +147,14 @@ impl CategoryCommandProjectionOwnerService {
         }
 
         let siblings = persist_sibling_order(&txn, &models, input.parent_id, &requested).await?;
+        for placement in &siblings {
+            super::category::taxonomy_sync::sync_category_any_locale_in_tx(
+                &txn,
+                tenant_id,
+                placement.id,
+            )
+            .await?;
+        }
         super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
             &txn,
             tenant_id,

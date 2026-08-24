@@ -83,6 +83,7 @@ impl CategoryProjectionOwnerService {
         .insert(&txn)
         .await?;
 
+        taxonomy_sync::sync_siblings_for_parent_in_tx(&txn, tenant_id, input.parent_id).await?;
         super::category_translation_evidence::record_category_translation_change_in_tx(
             &txn,
             tenant_id,
@@ -230,6 +231,7 @@ impl CategoryProjectionOwnerService {
             }
         }
 
+        taxonomy_sync::sync_category_locale_in_tx(&txn, tenant_id, category_id, &locale).await?;
         if translation_requested {
             super::category_translation_evidence::record_category_translation_change_in_tx(
                 &txn,
@@ -301,4 +303,8 @@ impl Deref for CategoryProjectionOwnerService {
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
+}
+
+pub(super) mod taxonomy_sync {
+    include!("category_taxonomy_sync.rs");
 }
