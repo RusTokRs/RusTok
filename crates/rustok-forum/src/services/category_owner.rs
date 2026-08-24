@@ -15,7 +15,7 @@ use crate::error::{ForumError, ForumResult};
 
 use super::category_visibility::ForumCategoryVisibilityPolicyService;
 use super::rbac::enforce_scope;
-use super::{category, category_command, category_lifecycle, category_policy, category_tree};
+use super::{category, category_command, category_lifecycle, category_policy};
 
 /// Public owner facade for forum categories.
 ///
@@ -27,7 +27,7 @@ pub struct CategoryService {
     commands: category_command::CategoryCommandProjectionOwnerService,
     lifecycle: category_lifecycle::CategoryLifecycleProjectionOwnerService,
     policy: category_policy::CategoryTopicPolicyService,
-    tree: category_tree::CategoryTreeService,
+    read: ForumCategoryTaxonomyReadService,
     visibility: ForumCategoryVisibilityPolicyService,
 }
 
@@ -38,7 +38,7 @@ impl CategoryService {
             commands: category_command::CategoryCommandProjectionOwnerService::new(db.clone()),
             lifecycle: category_lifecycle::CategoryLifecycleProjectionOwnerService::new(db.clone()),
             policy: category_policy::CategoryTopicPolicyService::new(db.clone()),
-            tree: category_tree::CategoryTreeService::new(db.clone()),
+            read: ForumCategoryTaxonomyReadService::new(db.clone()),
             visibility: ForumCategoryVisibilityPolicyService::new(db),
         }
     }
@@ -49,7 +49,12 @@ impl CategoryService {
         security: SecurityContext,
         input: CreateCategoryInput,
     ) -> ForumResult<CategoryResponse> {
-        self.inner.create(tenant_id, security, input).await
+        let locale = input.locale.clone();
+        let created = self
+            .inner
+            .create(tenant_id, security.clone(), input)
+            .await?;
+        self.get(tenant_id, security, created.id, &locale).await
     }
 
     pub async fn get(
@@ -79,8 +84,14 @@ impl CategoryService {
         {
             return Err(ForumError::CategoryNotFound(category_id));
         }
-        self.inner
-            .get_with_locale_fallback(tenant_id, security, category_id, locale, fallback_locale)
+        self.read
+            .get(
+                tenant_id,
+                category_id,
+                locale,
+                fallback_locale,
+                security.user_id,
+            )
             .await
     }
 
@@ -109,8 +120,8 @@ impl CategoryService {
             .visibility
             .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
             .await?;
-        self.tree
-            .read_with_hidden_categories(tenant_id, security, query, &hidden_category_ids)
+        self.read
+            .tree(tenant_id, query, &hidden_category_ids, security.user_id)
             .await
     }
 
@@ -193,9 +204,11 @@ impl CategoryService {
                 "Category position must be changed through move/reorder commands".to_string(),
             ));
         }
+        let locale = input.locale.clone();
         self.inner
-            .update(tenant_id, category_id, security, input)
-            .await
+            .update(tenant_id, category_id, security.clone(), input)
+            .await?;
+        self.get(tenant_id, security, category_id, &locale).await
     }
 
     pub async fn list(
@@ -251,15 +264,15 @@ impl CategoryService {
             .visibility
             .hidden_category_ids_for_viewer(tenant_id, !security.is_public_read())
             .await?;
-        self.inner
-            .list_paginated_with_locale_fallback_and_hidden_categories(
+        self.read
+            .list_paginated(
                 tenant_id,
-                security,
                 locale,
                 page,
                 bounded_forum_read_limit(Some(per_page)),
                 fallback_locale,
                 &hidden_category_ids,
+                security.user_id,
             )
             .await
     }
@@ -289,3 +302,5 @@ impl CategoryService {
         .await
     }
 }
+
+include!("category_owner_taxonomy_read.rs");
