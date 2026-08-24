@@ -384,7 +384,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         let groups = None;
 
         let audience_facts =
-            crate::services::forum_audience_facts::ServerForumAudienceGroupFactsPort::shared(
+            crate::services::forum_audience_facts::ServerForumAudienceFactsPort::shared(
                 db.clone(),
                 groups,
             );
@@ -624,9 +624,8 @@ mod tests {
         #[cfg(feature = "mod-notifications")]
         assert!(
             rustok_notifications::api::notification_source_registry_from_extensions(
-                extensions.as_ref()
-            )
-            .is_some()
+                extensions.as_ref())
+                .is_some()
         );
         #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
         assert!(
