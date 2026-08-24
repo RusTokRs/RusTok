@@ -1,22 +1,15 @@
-use std::ops::Deref;
-
-/// Transactional owner facade for category content mutations.
+/// Transactional owner facade for canonical Forum Category mutations.
 ///
-/// Read methods remain delegated to the established category service. Create,
-/// update and compatibility delete reuse the same private validators and tree
-/// helpers from this module while adding a full Forum projection invalidation
-/// before commit because category copy and ancestry affect topic documents.
+/// Forum owns membership, policy/counters and command authorization; Taxonomy
+/// owns canonical localized copy, routes, hierarchy and presentation. Public
+/// reads are composed separately through Taxonomy-backed read adapters.
 pub(super) struct CategoryProjectionOwnerService {
-    inner: CategoryService,
     db: DatabaseConnection,
 }
 
 impl CategoryProjectionOwnerService {
     pub(super) fn new(db: DatabaseConnection) -> Self {
-        Self {
-            inner: CategoryService::new(db.clone()),
-            db,
-        }
+        Self { db }
     }
 
     #[instrument(skip(self, security, input))]
@@ -180,43 +173,6 @@ impl CategoryProjectionOwnerService {
         .await?;
         txn.commit().await?;
         Ok(())
-    }
-
-    #[instrument(skip(self, security))]
-    pub(super) async fn delete(
-        &self,
-        tenant_id: Uuid,
-        category_id: Uuid,
-        security: SecurityContext,
-    ) -> ForumResult<()> {
-        enforce_scope(&security, Resource::ForumCategories, Action::Delete)?;
-        let txn = self.db.begin().await?;
-        let category = forum_category::Entity::find_by_id(category_id)
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(ForumError::CategoryNotFound(category_id))?;
-
-        forum_category::Entity::delete_by_id(category.id)
-            .exec(&txn)
-            .await?;
-
-        super::projection_invalidation::publish_forum_projection_scope_direct_in_tx(
-            &txn,
-            tenant_id,
-            security.user_id,
-        )
-        .await?;
-        txn.commit().await?;
-        Ok(())
-    }
-}
-
-impl Deref for CategoryProjectionOwnerService {
-    type Target = CategoryService;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
     }
 }
 
