@@ -25,7 +25,7 @@ impl CategoryProjectionOwnerService {
         tenant_id: Uuid,
         security: SecurityContext,
         input: CreateCategoryInput,
-    ) -> ForumResult<CategoryResponse> {
+    ) -> ForumResult<Uuid> {
         enforce_scope(&security, Resource::ForumCategories, Action::Create)?;
         validate_category_name(&input.name)?;
         let locale = normalize_locale(&input.locale)?;
@@ -71,7 +71,7 @@ impl CategoryProjectionOwnerService {
             &txn,
             tenant_id,
             id,
-            locale.clone(),
+            locale,
             canonical_name,
             slug,
             canonical_description,
@@ -85,7 +85,7 @@ impl CategoryProjectionOwnerService {
         )
         .await?;
         txn.commit().await?;
-        self.inner.get(tenant_id, security, id, &locale).await
+        Ok(id)
     }
 
     #[instrument(skip(self, security, input))]
@@ -95,7 +95,7 @@ impl CategoryProjectionOwnerService {
         category_id: Uuid,
         security: SecurityContext,
         input: UpdateCategoryInput,
-    ) -> ForumResult<CategoryResponse> {
+    ) -> ForumResult<()> {
         enforce_scope(&security, Resource::ForumCategories, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
         let requested_name = input.name.clone();
@@ -166,7 +166,7 @@ impl CategoryProjectionOwnerService {
             &txn,
             tenant_id,
             category_id,
-            locale.clone(),
+            locale,
             canonical_name,
             canonical_slug,
             canonical_description,
@@ -179,9 +179,7 @@ impl CategoryProjectionOwnerService {
         )
         .await?;
         txn.commit().await?;
-        self.inner
-            .get(tenant_id, security, category_id, &locale)
-            .await
+        Ok(())
     }
 
     #[instrument(skip(self, security))]
