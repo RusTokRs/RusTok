@@ -1,0 +1,60 @@
+name: Forum Taxonomy Category Tree Mutation Cutover Contract
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-forum/src/services/category_owner.rs"
+      - "crates/rustok-forum/src/services/category_taxonomy_tree_read.rs"
+      - "crates/rustok-forum/tests/category_taxonomy_tree_mutation_cutover.rs"
+      - ".github/workflows/forum-taxonomy-category-tree-mutation-cutover.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-forum/src/services/category_owner.rs"
+      - "crates/rustok-forum/src/services/category_taxonomy_tree_read.rs"
+      - "crates/rustok-forum/tests/category_taxonomy_tree_mutation_cutover.rs"
+      - ".github/workflows/forum-taxonomy-category-tree-mutation-cutover.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forum-taxonomy-category-tree-mutation-cutover-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  tree-mutation-cutover-contract:
+    name: Forum Taxonomy Category tree/mutation Rust contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@v2
+      - name: Check canonical workspace formatting
+        run: cargo fmt --all -- --check
+      - name: Run Forum Taxonomy Category tree/mutation cutover contract
+        run: cargo +1.96.0 test --locked -p rustok-forum --test category_taxonomy_tree_mutation_cutover -- --nocapture
+      - name: Re-run Forum Taxonomy Category read cutover contract
+        run: cargo +1.96.0 test --locked -p rustok-forum --test category_taxonomy_read_cutover -- --nocapture
+      - name: Re-run Forum Taxonomy Category dual-write contract
+        run: cargo +1.96.0 test --locked -p rustok-forum --test category_taxonomy_dual_write -- --nocapture
+      - name: Compile Forum category owner surface
+        run: cargo +1.96.0 check --locked -p rustok-forum --lib
