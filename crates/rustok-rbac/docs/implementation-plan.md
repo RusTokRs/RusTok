@@ -235,7 +235,7 @@ close the component.
   `31836046621`, 1/1 pass.
 - [x] Execute #2856 Redis available/outage/restart recovery — PR #3579 run
   `31842014975`, 1/1 pass; artifact `9235209675`.
-- [x] Execute #2862 registered-CLI repair propagation — PR #3590 exact-head run
+- [x] Execute #2862 registered-CLI repair propagation — PR #3590 run
   `31885429843`, 1/1 pass; merged run `32004633206`; artifact `9280508296`.
 - [x] Retain one same-revision result set within documented bounds for all required
   multi-replica packets — PR #3590 run `31885429843` at

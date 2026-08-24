@@ -9,7 +9,7 @@ use rustok_taxonomy::{
     normalize_term_route_key,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseBackend, EntityTrait,
     QueryFilter, QueryOrder, TransactionTrait,
 };
 use sea_orm_migration::prelude::*;

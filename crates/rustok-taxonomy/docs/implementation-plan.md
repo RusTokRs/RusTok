@@ -283,6 +283,30 @@ The runtime job must continue to:
 - execute Translation-target CAS/change-cursor evidence;
 - archive exact-head metadata and logs.
 
+### Recorded route-registry contention evidence
+
+The route-registry contention test target is
+`crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs`. The test proves
+two-writer route-key contention under real PostgreSQL 16 lock semantics: two independent writer
+connections both complete the route preflight before one is released, contention is forced after
+the translation row pre-lock, and the route registry primary key is the storage authority that
+ensures exactly one writer commits. The losing writer reports concurrent route claim; its
+translation update rolls back. The winner's translation and route reservation commit together, and
+exactly one durable route owner remains. This is the translation apply CAS boundary for route key
+ownership.
+
+Recorded runtime evidence runs:
+
+- Final exact-head pull-request run `32708155467` (HEAD `a102c224888459ddab8ab4875083b656e97a56f3`):
+  source boundary, route contention harness, translation apply CAS, and the gate all succeeded.
+- Post-merge main run `32712523041` (HEAD `e8d228cd1bd74a3ad42d6a9947114024896daeee`):
+  canonical PostgreSQL 16 migrations, route-registry contention, translation apply CAS and gate
+  all succeeded. Result 4 is complete for the current runtime input fingerprints.
+
+The `evidence.json` runtime input fingerprints record the exact git object SHAs for all runtime
+inputs at the time of the post-merge main run. When any of these inputs changes, the verifier
+requires fresh PostgreSQL evidence to be collected and the fingerprints updated.
+
 ## Verification
 
 Focused commands for the Category program:

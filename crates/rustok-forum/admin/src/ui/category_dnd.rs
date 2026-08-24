@@ -177,11 +177,18 @@ pub(super) fn CategoryDndGrid(
                 let before_target = item.id.clone();
                 let inside_target = item.id.clone();
                 let drag_item_id = item.id.clone();
-                let depth_style = format!("margin-left: {}rem", f32::from(item.depth) * 1.25);
+                let depth_class = match item.depth {
+                    0 => "ml-0",
+                    1 => "ml-5",
+                    2 => "ml-10",
+                    3 => "ml-14",
+                    4 => "ml-20",
+                    _ => "ml-24",
+                };
                 let before_drop = execute_drop;
                 let inside_drop = execute_drop;
                 view! {
-                    <div style=depth_style class="space-y-2">
+                    <div class=format!("{depth_class} space-y-2")>
                         <div
                             class="h-2 rounded-full border border-dashed border-transparent transition hover:border-primary/50 hover:bg-primary/10"
                             title=before_label.clone()
