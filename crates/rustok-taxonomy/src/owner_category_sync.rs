@@ -2,12 +2,14 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use chrono::Utc;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseBackend, DatabaseTransaction, EntityTrait, QueryFilter, Statement,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseTransaction, EntityTrait, QueryFilter, Statement, sea_query::Expr,
 };
 use uuid::Uuid;
 
 use crate::{
+    MAX_TAXONOMY_CATEGORY_DEPTH, TaxonomyError, TaxonomyResult, TaxonomyScopeType,
+    TaxonomyTermKind,
     entities::{
         taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
         taxonomy_term_alias, taxonomy_term_translation,
@@ -15,9 +17,7 @@ use crate::{
     normalize_taxonomy_category_color, normalize_taxonomy_category_icon_key, normalize_term_locale,
     normalize_term_route_key,
     route_key_registry::{ensure_route_key_available_in_tx, reconcile_route_keys_for_locale_in_tx},
-    translation_evidence::{record_translation_change_in_tx, TranslationChangeEvidence},
-    TaxonomyError, TaxonomyResult, TaxonomyScopeType, TaxonomyTermKind,
-    MAX_TAXONOMY_CATEGORY_DEPTH,
+    translation_evidence::{TranslationChangeEvidence, record_translation_change_in_tx},
 };
 
 /// Exact canonical Category snapshot supplied by a module that already owns and
