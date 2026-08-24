@@ -9,6 +9,7 @@ use rustok_blog::{
     entities::blog_category,
 };
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_events::EventEnvelope;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
     TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyModule, TaxonomyResult,
@@ -60,12 +61,18 @@ async fn setup() -> DatabaseConnection {
 fn service(
     db: &DatabaseConnection,
     cleanup: Arc<dyn TaxonomyCategoryDeleteCleanupPort>,
-) -> CategoryService {
-    CategoryService::new(
+) -> (
+    CategoryService,
+    tokio::sync::broadcast::Receiver<EventEnvelope>,
+) {
+    let transport = MemoryTransport::new();
+    let receiver = transport.subscribe();
+    let service = CategoryService::new(
         db.clone(),
-        TransactionalEventBus::new(Arc::new(MemoryTransport::new())),
+        TransactionalEventBus::new(Arc::new(transport)),
     )
-    .with_category_delete_cleanup(cleanup)
+    .with_category_delete_cleanup(cleanup);
+    (service, receiver)
 }
 
 fn admin() -> SecurityContext {
@@ -88,7 +95,7 @@ fn create_input(name: &str, position: i32) -> CreateCategoryInput {
 async fn delete_removes_blog_binding_and_taxonomy_owner_and_replays_sibling_position() {
     let db = setup().await;
     let calls = Arc::new(AtomicUsize::new(0));
-    let service = service(
+    let (service, _events) = service(
         &db,
         Arc::new(RecordingCleanup {
             calls: calls.clone(),
@@ -153,7 +160,7 @@ async fn delete_removes_blog_binding_and_taxonomy_owner_and_replays_sibling_posi
 async fn host_cleanup_failure_rolls_back_blog_and_taxonomy_deletion() {
     let db = setup().await;
     let calls = Arc::new(AtomicUsize::new(0));
-    let service = service(
+    let (service, _events) = service(
         &db,
         Arc::new(RecordingCleanup {
             calls: calls.clone(),
