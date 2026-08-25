@@ -565,13 +565,11 @@ mod tests {
         );
         #[cfg(feature = "mod-blog")]
         assert!(
-            rustok_translation_targets::translation_target_registry(extensions.as_ref()).map_or(
-                true,
-                |registry| !registry.descriptors().iter().any(|descriptor| {
+            !rustok_translation_targets::translation_target_registry(extensions.as_ref())
+                .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "blog"
                         && descriptor.resource_kind.as_str() == "category"
-                })
-            )
+                }))
         );
         #[cfg(feature = "mod-navigation")]
         assert!(
