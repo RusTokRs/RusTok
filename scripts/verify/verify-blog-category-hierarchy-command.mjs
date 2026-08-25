@@ -171,10 +171,10 @@ requireMarkers("crates/rustok-blog/tests/category_hierarchy.rs", [
   "parent should become deletable after all children are removed",
 ]);
 
-requireMarkers("crates/rustok-blog/src/translation_target_tests.rs", [
-  "category_update_advances_exact_locale_and_owner_change_revisions",
+requireMarkers("crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs", [
+  "update_response_comes_from_taxonomy_without_requiring_read_permission",
   "position: None",
-  "assert_eq!(updated.position, 0)",
+  "assert_eq!(response.position, 0)",
 ]);
 
 requireMarkers("crates/rustok-blog/docs/category-hierarchy-contract.md", [
