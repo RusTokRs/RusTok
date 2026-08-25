@@ -4,8 +4,8 @@ use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, TenantLocale};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    TaxonomyCategoryDeleteCleanupPort, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader,
-    TaxonomyScopeType, TaxonomyService,
+    TaxonomyCategoryDeleteCleanupPort, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
+    TaxonomyService,
 };
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
@@ -84,48 +84,8 @@ impl CategoryService {
         locale: &str,
     ) -> BlogResult<CategoryResponse> {
         enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
-        let locale = normalize_locale(locale)?;
-        let category = blog_category::Entity::find_by_id(category_id)
-            .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        let binding = load_binding(&self.db, tenant_id, category_id).await?;
-        let taxonomy_ids = [binding.taxonomy_category_id];
-        let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
-            .load_scoped_categories(
-                tenant_id,
-                TaxonomyScopeType::Module,
-                Some(BLOG_TAXONOMY_SCOPE),
-                Some(&taxonomy_ids),
-                &locale,
-                Some(PLATFORM_FALLBACK_LOCALE),
-            )
-            .await?
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                BlogError::validation(format!(
-                    "Blog category {category_id} binding points to a missing Taxonomy Category"
-                ))
-            })?;
-        let parent_id = resolve_parent_binding(&self.db, tenant_id, canonical.parent_id).await?;
-
-        Ok(CategoryResponse {
-            id: category.id,
-            tenant_id,
-            locale: canonical.requested_locale,
-            effective_locale: canonical.effective_locale,
-            available_locales: canonical.available_locales,
-            name: canonical.name,
-            slug: canonical.slug,
-            description: canonical.description,
-            parent_id,
-            position: canonical.position,
-            settings: category.settings,
-            created_at: category.created_at.into(),
-            updated_at: category.updated_at.into(),
-        })
+        self.load_category_response(tenant_id, category_id, locale)
+            .await
     }
 
     pub async fn update(
@@ -135,8 +95,11 @@ impl CategoryService {
         security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> BlogResult<CategoryResponse> {
+        let response_locale = input.locale.clone();
         self.legacy
             .update(tenant_id, category_id, security, input)
+            .await?;
+        self.load_category_response(tenant_id, category_id, &response_locale)
             .await
     }
 
@@ -328,6 +291,56 @@ impl CategoryService {
         self.legacy
             .apply_exact_translation_in_tx(txn, tenant_id, category_id, input)
             .await
+    }
+
+    async fn load_category_response(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        locale: &str,
+    ) -> BlogResult<CategoryResponse> {
+        let locale = normalize_locale(locale)?;
+        let category = blog_category::Entity::find_by_id(category_id)
+            .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| BlogError::category_not_found(category_id))?;
+        let binding = load_binding(&self.db, tenant_id, category_id).await?;
+        let taxonomy_ids = [binding.taxonomy_category_id];
+        let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
+            .load_scoped_categories(
+                tenant_id,
+                TaxonomyScopeType::Module,
+                Some(BLOG_TAXONOMY_SCOPE),
+                Some(&taxonomy_ids),
+                &locale,
+                Some(PLATFORM_FALLBACK_LOCALE),
+            )
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                BlogError::validation(format!(
+                    "Blog category {category_id} binding points to a missing Taxonomy Category"
+                ))
+            })?;
+        let parent_id = resolve_parent_binding(&self.db, tenant_id, canonical.parent_id).await?;
+
+        Ok(CategoryResponse {
+            id: category.id,
+            tenant_id,
+            locale: canonical.requested_locale,
+            effective_locale: canonical.effective_locale,
+            available_locales: canonical.available_locales,
+            name: canonical.name,
+            slug: canonical.slug,
+            description: canonical.description,
+            parent_id,
+            position: canonical.position,
+            settings: category.settings,
+            created_at: category.created_at.into(),
+            updated_at: category.updated_at.into(),
+        })
     }
 }
 

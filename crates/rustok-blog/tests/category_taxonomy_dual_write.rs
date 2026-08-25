@@ -6,6 +6,7 @@ use rustok_blog::{
     entities::{blog_category, blog_category_taxonomy_binding},
 };
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
+use rustok_events::EventEnvelope;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
     SyncModuleCategoryInput, TaxonomyModule,
@@ -36,11 +37,16 @@ async fn setup() -> DatabaseConnection {
     db
 }
 
-fn service(db: &DatabaseConnection) -> CategoryService {
-    CategoryService::new(
-        db.clone(),
-        TransactionalEventBus::new(Arc::new(MemoryTransport::new())),
-    )
+fn service(
+    db: &DatabaseConnection,
+) -> (
+    CategoryService,
+    tokio::sync::broadcast::Receiver<EventEnvelope>,
+) {
+    let transport = MemoryTransport::new();
+    let receiver = transport.subscribe();
+    let service = CategoryService::new(db.clone(), TransactionalEventBus::new(Arc::new(transport)));
+    (service, receiver)
 }
 
 fn admin() -> SecurityContext {
@@ -62,7 +68,7 @@ fn create_input(name: &str, slug: &str) -> CreateCategoryInput {
 #[tokio::test]
 async fn category_create_and_update_dual_write_copy_routes_and_binding() {
     let db = setup().await;
-    let service = service(&db);
+    let (service, _events) = service(&db);
     let tenant_id = Uuid::new_v4();
 
     let category_id = service
@@ -135,17 +141,23 @@ async fn category_create_and_update_dual_write_copy_routes_and_binding() {
         .one(&db)
         .await
         .expect("Taxonomy alias read should succeed");
-    assert!(old_route.is_some(), "Taxonomy must own historical Blog route aliases");
+    assert!(
+        old_route.is_some(),
+        "Taxonomy must own historical Blog route aliases"
+    );
 }
 
 #[tokio::test]
 async fn taxonomy_route_conflict_rolls_back_blog_create() {
     let db = setup().await;
-    let service = service(&db);
+    let (service, _events) = service(&db);
     let tenant_id = Uuid::new_v4();
     let taxonomy_owner_id = Uuid::new_v4();
 
-    let txn = db.begin().await.expect("Taxonomy owner transaction should begin");
+    let txn = db
+        .begin()
+        .await
+        .expect("Taxonomy owner transaction should begin");
     sync_module_category_with_owned_aliases_in_tx(
         &txn,
         tenant_id,
