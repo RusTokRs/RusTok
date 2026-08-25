@@ -4,8 +4,8 @@ use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, TenantLocale};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    TaxonomyCategoryDeleteCleanupPort, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader,
-    TaxonomyScopeType, TaxonomyService,
+    TaxonomyCategoryDeleteCleanupPort, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
+    TaxonomyService,
 };
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
