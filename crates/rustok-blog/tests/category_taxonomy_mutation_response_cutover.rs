@@ -146,7 +146,10 @@ async fn update_response_comes_from_taxonomy_without_requiring_read_permission()
     assert_eq!(response.description.as_deref(), Some("Help centre"));
     assert_eq!(response.settings, serde_json::json!({"layout": "updated"}));
     assert!(
-        response.available_locales.iter().any(|locale| locale == "fr"),
+        response
+            .available_locales
+            .iter()
+            .any(|locale| locale == "fr"),
         "mutation response must expose the Taxonomy-only locale and therefore cannot come from the legacy Blog translation mirror"
     );
 
