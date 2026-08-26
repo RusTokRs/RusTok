@@ -90,7 +90,7 @@ protoc-bin-vendored = "3.2"
 prost = "0.14.3"
 
 # Database
-sea-orm = { version = "1.1", default-features = false, features = [
+sea-orm = { version = "2.0", default-features = false, features = [
     "sqlx-postgres",
     "sqlx-sqlite",
     "runtime-tokio-rustls",
@@ -102,17 +102,17 @@ sea-orm = { version = "1.1", default-features = false, features = [
     "with-bigdecimal",
     "with-time",
 ] }
-sea-orm-migration = { version = "1.1", default-features = false, features = ["runtime-tokio-rustls", "sqlx-postgres", "sqlx-sqlite"] }
+sea-orm-migration = { version = "2.0", default-features = false, features = ["runtime-tokio-rustls", "sqlx-postgres", "sqlx-sqlite"] }
 
 # GraphQL
 async-graphql = { version = "7.2.1", features = ["uuid", "chrono"] }
 async-graphql-value = "7.2.1"
-base64 = "0.22"
+base64 = "0.23"
 ed25519-dalek = "3.0.0"
 
 # IDs
 uuid = { version = "1.23.3", features = ["v4", "serde", "js"] }
-ulid = "2.0"
+ulid = "3.0"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -125,19 +125,19 @@ rmp-serde = "1.3"
 csv = "1.3"
 
 # Validation
-validator = { version = "0.20", features = ["derive"] }
+validator = { version = "0.21", features = ["derive"] }
 
 # Error Handling
 thiserror = "2.0.18"
 anyhow = "1.0"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 
 # Benchmarking
 criterion = { version = "0.8", features = ["html_reports"] }
 
 # Property-based testing
 proptest = "1.11"
-playwright-rs = "0.14"
+playwright-rs = "0.16"
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
@@ -166,7 +166,7 @@ leptos-next-metadata = "1.5.0"
 leptos_query = "0.5.3"
 leptos-chartistry = "0.2"
 gloo-storage = "0.4.0"
-serde_qs = "0.15"
+serde_qs = "1.1"
 serde_urlencoded = "0.7.1"
 chrono-humanize = "0.2.3"
 
@@ -201,13 +201,13 @@ utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
 moka = { version = "0.12", features = ["future"] }
 rhai = "1.25.0"
 argon2 = "0.5"
-jsonwebtoken = { version = "10.4.0", features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 rand = "0.10.1"
 password-hash = "0.6"
 sha2 = "0.11"
-wasmparser = "0.253"
-wit-parser = "0.251"
-wit-bindgen = "0.57.1"
+wasmparser = "0.256"
+wit-parser = "0.257"
+wit-bindgen = "0.60.0"
 oci-distribution = "0.11.0"
 once_cell = "1.21"
 hex = "0.4"
@@ -220,10 +220,10 @@ prometheus = "0.14"
 lazy_static = "1.5"
 secrecy = { version = "0.10", features = ["serde"] }
 rig = { package = "rig-core", version = "=0.40.0", features = ["audio", "image", "rmcp"] }
-rig-bedrock = "=0.40.0"
-rig-fastembed = "=0.40.0"
-rig-gemini-grpc = "=0.40.0"
-rig-vertexai = "=0.40.0"
+rig-bedrock = "=0.42.0"
+rig-fastembed = "=0.42.0"
+rig-gemini-grpc = "=0.42.0"
+rig-vertexai = "=0.42.0"
 
 # Internal crates
 rustok-core = { path = "crates/rustok-core" }
