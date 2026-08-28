@@ -66,9 +66,9 @@ jobs:
       - name: Check scoped Rust formatting
         run: |
           rustfmt +1.96.0 --edition 2024 --check --config skip_children=true \
-            crates/rustok-blog/src/lib.rs
+            crates/rustok-blog/src/lib.rs \
+            crates/rustok-blog/src/services/mod.rs
           rustfmt +1.96.0 --edition 2024 --check \
-            crates/rustok-blog/src/services/mod.rs \
             crates/rustok-blog/src/translation_evidence.rs \
             crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs \
             crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs
