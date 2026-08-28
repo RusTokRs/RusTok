@@ -115,8 +115,8 @@ async fn sync_siblings_for_parent_in_tx(
     tenant_id: Uuid,
     parent_id: Option<Uuid>,
 ) -> BlogResult<()> {
-    let mut query = blog_category::Entity::find()
-        .filter(blog_category::Column::TenantId.eq(tenant_id));
+    let mut query =
+        blog_category::Entity::find().filter(blog_category::Column::TenantId.eq(tenant_id));
     query = match parent_id {
         Some(parent_id) => query.filter(blog_category::Column::ParentId.eq(parent_id)),
         None => query.filter(blog_category::Column::ParentId.is_null()),
