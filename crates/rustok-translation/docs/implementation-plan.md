@@ -3,7 +3,7 @@ id: doc://crates/rustok-translation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-08-13
+last_reviewed: 2026-08-28
 ---
 
 # Translation implementation plan
@@ -78,18 +78,21 @@ selection.
   workload groups nonterminal work by current assignee, including unassigned
   work. Both reads fail closed on inconsistent workflow evidence and enforce
   explicit queue and workload bounds.
-- Media, Taxonomy, Blog category, Navigation menu, and Pages metadata are registered owner
+- Media, Taxonomy, Navigation menu, and Pages metadata are registered owner
   providers with durable change-cursor repair and exact-locale aggregate
   coverage. Taxonomy applies term `name`, review-only `slug`, and optional
   `description` through owner CAS and the shared Outbox receipt ledger. Blog
-  applies category copy through its service and publishes its existing Search
-  reindex request. Navigation applies its menu name and every item title as one
-  CAS-guarded locale aggregate through `MenuService`, using a content-free
-  cursor journal without claiming a generic menu event. Pages applies exact
-  title, review-only slug, and optional SEO metadata through `PageService`,
-  keeping Fly/GrapesJS bodies outside this pilot. Translation validates provider
-  facts and reports tenant-scoped projection freshness as `current`, `behind`,
-  or `unknown` by opaque cursor equality.
+  Category canonical copy is consumed through the same-ID Blog-to-Taxonomy
+  Category binding and the `taxonomy/term` provider; the former `blog/category`
+  provider, Blog Category change journal, and Blog-local Category translation
+  storage are retired and must not be recreated. Navigation applies its menu
+  name and every item title as one CAS-guarded locale aggregate through
+  `MenuService`, using a content-free cursor journal without claiming a generic
+  menu event. Pages applies exact title, review-only slug, and optional SEO
+  metadata through `PageService`, keeping Fly/GrapesJS bodies outside this
+  pilot. Translation validates provider facts and reports tenant-scoped
+  projection freshness as `current`, `behind`, or `unknown` by opaque cursor
+  equality.
 - `TranslationPolicyService` owns a revisioned, tenant-scoped required-target
   locale subset. It validates through `TenantLocalePolicyPort`, rejects
   disabled/duplicate locales, stores the Tenant policy revision, and uses
