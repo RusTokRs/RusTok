@@ -1,13 +1,9 @@
-use chrono::Utc;
-use rustok_core::generate_id;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::{
     BlogError, BlogResult,
-    entities::{
-        blog_category_translation, translation_change::ActiveModel as TranslationChangeActiveModel,
-    },
+    entities::blog_category_translation,
 };
 
 pub(crate) const TRANSLATION_RESOURCE_KIND: &str = "category";
@@ -23,29 +19,33 @@ pub(crate) struct TranslationChangeEvidence<'a> {
     pub lifecycle: &'a str,
 }
 
+/// Transitional Category mirror bridge after retirement of the duplicate Blog Translation
+/// provider. Blog no longer writes `blog_translation_changes`; active compatibility mirror
+/// upserts are synchronously replayed into canonical Taxonomy in the same owner transaction.
+/// Delete journal evidence is retired because canonical Category deletion is already owned by
+/// Taxonomy's module-owner lifecycle. Remove this shim together with the compatibility mirror.
 pub(crate) async fn record_translation_change_in_tx(
     transaction: &DatabaseTransaction,
     evidence: TranslationChangeEvidence<'_>,
 ) -> BlogResult<()> {
-    TranslationChangeActiveModel {
-        id: Set(generate_id()),
-        tenant_id: Set(evidence.tenant_id),
-        resource_kind: Set(evidence.resource_kind.to_string()),
-        resource_id: Set(evidence.resource_id),
-        locale: Set(evidence.locale.to_string()),
-        resource_revision: Set(evidence.resource_revision),
-        target_revision: Set(evidence.target_revision),
-        operation: Set(evidence.operation.to_string()),
-        lifecycle: Set(evidence.lifecycle.to_string()),
-        created_at: Set(Utc::now().fixed_offset()),
+    if evidence.resource_kind != TRANSLATION_RESOURCE_KIND {
+        return Err(BlogError::validation(format!(
+            "Unsupported Blog Translation compatibility resource kind {}",
+            evidence.resource_kind
+        )));
     }
-    .insert(transaction)
-    .await?;
+    if evidence.resource_revision <= 0 || evidence.target_revision < 0 {
+        return Err(BlogError::validation(
+            "Blog Category compatibility revisions must remain non-negative",
+        ));
+    }
 
-    if evidence.resource_kind == TRANSLATION_RESOURCE_KIND
-        && evidence.operation == "upsert"
-        && evidence.lifecycle == "active"
-    {
+    if evidence.operation == "upsert" && evidence.lifecycle == "active" {
+        if evidence.target_revision == 0 {
+            return Err(BlogError::validation(
+                "Active Blog Category compatibility copy requires a positive target revision",
+            ));
+        }
         let translation = blog_category_translation::Entity::find()
             .filter(blog_category_translation::Column::TenantId.eq(evidence.tenant_id))
             .filter(blog_category_translation::Column::CategoryId.eq(evidence.resource_id))
@@ -54,7 +54,7 @@ pub(crate) async fn record_translation_change_in_tx(
             .await?
             .ok_or_else(|| {
                 BlogError::Validation(format!(
-                    "Category translation evidence cannot synchronize missing locale {} for category {}",
+                    "Category compatibility copy cannot synchronize missing locale {} for category {}",
                     evidence.locale, evidence.resource_id
                 ))
             })?;
@@ -69,7 +69,15 @@ pub(crate) async fn record_translation_change_in_tx(
             translation.description,
         )
         .await?;
+        return Ok(());
     }
 
-    Ok(())
+    if evidence.operation == "delete" && evidence.lifecycle == "deleted" {
+        return Ok(());
+    }
+
+    Err(BlogError::validation(format!(
+        "Unsupported Blog Category compatibility transition {}/{}",
+        evidence.operation, evidence.lifecycle
+    )))
 }
