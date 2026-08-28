@@ -53,14 +53,11 @@ requireMarkers("crates/rustok-blog/src/services/category.rs", [
   "Blog category tree cannot exceed",
   "if input.position.is_some()",
   "Category position is structural; use the category move command",
-  "ensure_category_is_leaf_in_tx(&txn, tenant_id, category_id).await?",
-  "Category must be a leaf before deletion; move or delete its children first",
-  "canonicalize_siblings_in_tx",
   'format!("blog-category-tree:{tenant_id}")',
 ]);
 
 const updateStart = categoryService.indexOf("pub async fn update(");
-const updateEnd = categoryService.indexOf("pub async fn delete(", updateStart);
+const updateEnd = categoryService.indexOf("pub(crate) async fn ensure_exists_in_tx", updateStart);
 const updateBody =
   updateStart >= 0 && updateEnd > updateStart
     ? categoryService.slice(updateStart, updateEnd)
@@ -71,32 +68,34 @@ if (updateBody.includes("Column::Position")) {
   );
 }
 
-const deleteStart = categoryService.indexOf("pub async fn delete(");
-const deleteEnd = categoryService.indexOf("pub async fn list(", deleteStart);
-const deleteBody =
-  deleteStart >= 0 && deleteEnd > deleteStart
-    ? categoryService.slice(deleteStart, deleteEnd)
-    : "";
-for (const marker of [
-  "lock_category_tree_in_tx(&txn, tenant_id).await?",
-  "ensure_category_is_leaf_in_tx(&txn, tenant_id, category_id).await?",
-  "canonicalize_siblings_in_tx",
-  "publish_blog_reindex_in_tx",
-  "txn.commit().await",
-]) {
-  if (!deleteBody.includes(marker)) {
-    failures.push(
-      `crates/rustok-blog/src/services/category.rs: delete path missing ${marker}`,
-    );
-  }
-}
-const leafCheck = deleteBody.indexOf("ensure_category_is_leaf_in_tx");
-const deleteExec = deleteBody.indexOf("blog_category::Entity::delete_many()");
+const deleteCleanup = read("crates/rustok-blog/src/services/category_delete.rs");
+requireMarkers("crates/rustok-blog/src/services/category_delete.rs", [
+  "ensure_category_is_leaf_in_tx(txn, tenant_id, self.blog_category_id).await?",
+  "Category must be a leaf before deletion; move or delete its children first",
+  "blog_category::Entity::delete_many()",
+  "canonicalize_siblings_in_tx(txn, tenant_id, category.parent_id).await?",
+  "sync_category_structures_in_tx(txn, tenant_id, &sibling_ids).await?",
+  "publish_in_tx",
+]);
+const leafCheck = deleteCleanup.indexOf("ensure_category_is_leaf_in_tx");
+const deleteExec = deleteCleanup.indexOf("blog_category::Entity::delete_many()");
 if (leafCheck < 0 || deleteExec < 0 || leafCheck > deleteExec) {
   failures.push(
-    "crates/rustok-blog/src/services/category.rs: leaf validation must happen before category deletion",
+    "crates/rustok-blog/src/services/category_delete.rs: leaf validation must happen before Blog membership deletion",
   );
 }
+
+requireMarkers("crates/rustok-blog/src/services/category_owner.rs", [
+  "TaxonomyService::new(self.db.clone())",
+  ".delete_module_category_with_cleanup(",
+  "BlogCategoryDeleteCleanup::new(",
+  "Blog Category delete requires host-composed Taxonomy capability cleanup",
+]);
+rejectMarkers("crates/rustok-blog/src/services/category.rs", [
+  "pub async fn delete(",
+  "ensure_category_is_leaf_in_tx",
+  "blog_category_translation",
+]);
 
 requireMarkers("crates/rustok-blog/src/services/category_command.rs", [
   "pub struct CategoryCommandService",
@@ -169,6 +168,11 @@ requireMarkers("crates/rustok-blog/tests/category_hierarchy.rs", [
   "a category with children must not be deleted",
   "leaf deletion should succeed",
   "parent should become deletable after all children are removed",
+]);
+
+requireMarkers("crates/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs", [
+  "category_delete_is_owned_by_taxonomy_and_rolls_back_blog_cleanup",
+  "Blog Category delete requires host-composed Taxonomy capability cleanup",
 ]);
 
 requireMarkers("crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs", [
