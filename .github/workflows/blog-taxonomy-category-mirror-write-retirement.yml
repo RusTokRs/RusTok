@@ -13,6 +13,7 @@ on:
       - "crates/rustok-blog/src/translation_evidence.rs"
       - "crates/rustok-blog/tests/category_taxonomy_dual_write.rs"
       - "scripts/verify/verify-blog-taxonomy-category-dual-write.mjs"
+      - "scripts/verify/verify-blog-taxonomy-category-structure-sync.mjs"
       - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
       - ".github/workflows/blog-taxonomy-category-mirror-write-retirement.yml"
   push:
@@ -29,6 +30,7 @@ on:
       - "crates/rustok-blog/src/translation_evidence.rs"
       - "crates/rustok-blog/tests/category_taxonomy_dual_write.rs"
       - "scripts/verify/verify-blog-taxonomy-category-dual-write.mjs"
+      - "scripts/verify/verify-blog-taxonomy-category-structure-sync.mjs"
       - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
       - ".github/workflows/blog-taxonomy-category-mirror-write-retirement.yml"
   workflow_dispatch:
@@ -78,6 +80,8 @@ jobs:
             crates/rustok-blog/tests/category_taxonomy_dual_write.rs
       - name: Verify Category mirror writer retirement boundary
         run: node scripts/verify/verify-blog-taxonomy-category-dual-write.mjs
+      - name: Verify Category structure sync boundary
+        run: node scripts/verify/verify-blog-taxonomy-category-structure-sync.mjs
       - name: Verify hierarchy source ownership boundary
         run: node scripts/verify/verify-blog-category-hierarchy-command.mjs
       - name: Run Category mirror writer retirement contract
