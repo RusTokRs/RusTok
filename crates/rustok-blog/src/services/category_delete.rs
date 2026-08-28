@@ -11,10 +11,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::{blog_category, blog_category_taxonomy_binding, blog_category_translation};
-use crate::translation_evidence::{
-    TRANSLATION_RESOURCE_KIND, TranslationChangeEvidence, record_translation_change_in_tx,
-};
+use crate::entities::{blog_category, blog_category_taxonomy_binding};
 use crate::{BlogError, BlogResult};
 
 use super::category_taxonomy_sync::sync_category_structures_in_tx;
@@ -22,9 +19,9 @@ use super::category_taxonomy_sync::sync_category_structures_in_tx;
 /// Blog-owned cleanup that participates in Taxonomy's canonical Category delete transaction.
 ///
 /// The outer Taxonomy owner deletes the canonical term only after this cleanup succeeds. Blog
-/// removes its membership row, compacts and replays sibling placement, records its temporary
-/// compatibility Translation evidence, publishes reindex evidence and finally delegates to the
-/// host-owned capability cleanup (Flex in the server composition).
+/// removes its membership row, compacts and replays sibling placement, publishes reindex evidence
+/// and finally delegates to the host-owned capability cleanup (Flex in the server composition).
+/// The retired Blog Translation change journal is intentionally not part of this lifecycle.
 pub(crate) struct BlogCategoryDeleteCleanup {
     blog_category_id: Uuid,
     actor_id: Option<Uuid>,
@@ -78,46 +75,6 @@ impl BlogCategoryDeleteCleanup {
             .await?
             .ok_or_else(|| BlogError::category_not_found(self.blog_category_id))?;
         ensure_category_is_leaf_in_tx(txn, tenant_id, self.blog_category_id).await?;
-
-        let translations = blog_category_translation::Entity::find()
-            .filter(blog_category_translation::Column::CategoryId.eq(self.blog_category_id))
-            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
-            .all(txn)
-            .await?;
-        let (locale, target_revision) = translations
-            .iter()
-            .min_by(|left, right| {
-                left.locale
-                    .cmp(&right.locale)
-                    .then_with(|| left.id.cmp(&right.id))
-            })
-            .map(|translation| (translation.locale.clone(), translation.revision))
-            .unwrap_or_else(|| (rustok_api::PLATFORM_FALLBACK_LOCALE.to_string(), 0));
-        let resource_revision = category
-            .revision
-            .checked_add(1)
-            .filter(|revision| category.revision > 0 && *revision > 0)
-            .ok_or_else(|| {
-                BlogError::conflict(format!(
-                    "blog category {} has an invalid or exhausted resource revision",
-                    category.id
-                ))
-            })?;
-
-        record_translation_change_in_tx(
-            txn,
-            TranslationChangeEvidence {
-                tenant_id,
-                resource_kind: TRANSLATION_RESOURCE_KIND,
-                resource_id: self.blog_category_id,
-                locale: &locale,
-                resource_revision,
-                target_revision,
-                operation: "delete",
-                lifecycle: "deleted",
-            },
-        )
-        .await?;
 
         let deleted = blog_category::Entity::delete_many()
             .filter(blog_category::Column::Id.eq(self.blog_category_id))

@@ -11,26 +11,39 @@ const rejectMarker = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
 
-const evidencePath = 'crates/rustok-blog/src/translation_evidence.rs';
+const bridgePath = 'crates/rustok-blog/src/translation_evidence.rs';
+const deletePath = 'crates/rustok-blog/src/services/category_delete.rs';
 const syncPath = 'crates/rustok-blog/src/services/category_taxonomy_sync.rs';
 const servicesPath = 'crates/rustok-blog/src/services/mod.rs';
 const runtimePath = 'crates/rustok-blog/tests/category_taxonomy_dual_write.rs';
 
-for (const path of [evidencePath, syncPath, servicesPath, runtimePath]) {
+for (const path of [bridgePath, deletePath, syncPath, servicesPath, runtimePath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 
 if (failures.length === 0) {
-  const evidence = read(evidencePath);
+  const bridge = read(bridgePath);
+  const categoryDelete = read(deletePath);
   const sync = read(syncPath);
   const services = read(servicesPath);
   const runtime = read(runtimePath);
 
-  requireMarker(evidence, 'evidence.operation == "upsert"', 'active upsert gate');
-  requireMarker(evidence, 'evidence.lifecycle == "active"', 'active lifecycle gate');
-  requireMarker(evidence, 'blog_category_translation::Entity::find()', 'exact Blog copy reread');
-  requireMarker(evidence, 'category_taxonomy_sync::sync_category_copy_in_tx', 'transactional Taxonomy copy hook');
-  rejectMarker(evidence, 'evidence.operation == "delete"', 'premature delete cutover');
+  requireMarker(bridge, 'evidence.operation == "upsert"', 'active compatibility upsert gate');
+  requireMarker(bridge, 'evidence.lifecycle == "active"', 'active compatibility lifecycle gate');
+  requireMarker(bridge, 'blog_category_translation::Entity::find()', 'exact Blog compatibility copy reread');
+  requireMarker(bridge, 'category_taxonomy_sync::sync_category_copy_in_tx', 'transactional Taxonomy copy hook');
+  requireMarker(bridge, 'evidence.operation == "delete"', 'retired legacy delete transition compatibility');
+  requireMarker(bridge, 'evidence.lifecycle == "deleted"', 'retired legacy delete lifecycle compatibility');
+  requireMarker(bridge, 'Delete journal evidence is retired', 'explicit delete evidence retirement');
+  rejectMarker(bridge, 'TranslationChangeActiveModel', 'retired Blog Translation change writer');
+  rejectMarker(bridge, 'translation_change::', 'retired Blog Translation change entity dependency');
+  rejectMarker(bridge, 'generate_id()', 'retired Blog Translation change id generation');
+  rejectMarker(bridge, '.insert(transaction)', 'retired Blog Translation change insert');
+
+  requireMarker(categoryDelete, 'The retired Blog Translation change journal is intentionally not part of this lifecycle.', 'live delete evidence retirement');
+  rejectMarker(categoryDelete, 'record_translation_change_in_tx', 'live delete Blog Translation evidence write');
+  rejectMarker(categoryDelete, 'TranslationChangeEvidence', 'live delete Blog Translation evidence payload');
+  rejectMarker(categoryDelete, 'blog_category_translation::Entity::find()', 'live delete compatibility translation reread');
 
   requireMarker(sync, 'sync_module_category_with_owned_aliases_in_tx', 'Taxonomy-owned route history sync');
   requireMarker(sync, 'module_scope: BLOG_TAXONOMY_SCOPE.to_string()', 'module/blog scope');
@@ -41,6 +54,9 @@ if (failures.length === 0) {
 
   requireMarker(services, 'pub(crate) mod category_taxonomy_sync;', 'owner sync seam registration');
   requireMarker(runtime, 'category_create_and_update_dual_write_copy_routes_and_binding', 'create/update runtime proof');
+  requireMarker(runtime, 'Blog compatibility mirror should remain during staged retirement', 'temporary mirror retention proof');
+  requireMarker(runtime, 'retired Blog Category Translation evidence must not append change-journal rows', 'create journal retirement proof');
+  requireMarker(runtime, 'canonical dual-write must no longer depend on the retired Blog change journal', 'update journal retirement proof');
   requireMarker(runtime, 'taxonomy_route_conflict_rolls_back_blog_create', 'transaction rollback proof');
   requireMarker(runtime, 'Taxonomy must own historical Blog route aliases', 'Taxonomy alias ownership proof');
 }
@@ -51,4 +67,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('[blog-taxonomy-category-dual-write] transactional localized-copy boundary verified');
+console.log('[blog-taxonomy-category-dual-write] canonical copy sync remains atomic without Blog Translation change-journal writes');

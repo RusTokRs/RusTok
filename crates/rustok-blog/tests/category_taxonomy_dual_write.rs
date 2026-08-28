@@ -3,7 +3,10 @@ use std::sync::Arc;
 use rustok_blog::{
     BlogCategoryTaxonomyBindingEntity, BlogError, BlogModule, CategoryService, CreateCategoryInput,
     UpdateCategoryInput,
-    entities::{blog_category, blog_category_taxonomy_binding},
+    entities::{
+        blog_category, blog_category_taxonomy_binding, blog_category_translation,
+        translation_change,
+    },
 };
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_events::EventEnvelope;
@@ -76,6 +79,26 @@ async fn category_create_and_update_dual_write_copy_routes_and_binding() {
         .await
         .expect("Blog category create should dual-write to Taxonomy");
 
+    let mirror = blog_category_translation::Entity::find()
+        .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+        .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+        .filter(blog_category_translation::Column::Locale.eq("en"))
+        .one(&db)
+        .await
+        .expect("Blog compatibility mirror read should succeed")
+        .expect("Blog compatibility mirror should remain during staged retirement");
+    assert_eq!(mirror.name, "Support");
+    assert_eq!(mirror.slug, "support");
+    assert_eq!(
+        translation_change::Entity::find()
+            .filter(translation_change::Column::TenantId.eq(tenant_id))
+            .count(&db)
+            .await
+            .expect("Blog Translation change count should succeed"),
+        0,
+        "retired Blog Category Translation evidence must not append change-journal rows"
+    );
+
     let term = taxonomy_term::Entity::find_by_id(category_id)
         .one(&db)
         .await
@@ -120,6 +143,26 @@ async fn category_create_and_update_dual_write_copy_routes_and_binding() {
         )
         .await
         .expect("Blog category update should dual-write to Taxonomy");
+
+    let updated_mirror = blog_category_translation::Entity::find()
+        .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+        .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+        .filter(blog_category_translation::Column::Locale.eq("en"))
+        .one(&db)
+        .await
+        .expect("updated Blog compatibility mirror read should succeed")
+        .expect("Blog compatibility mirror should remain after update");
+    assert_eq!(updated_mirror.name, "Help");
+    assert_eq!(updated_mirror.slug, "help");
+    assert_eq!(
+        translation_change::Entity::find()
+            .filter(translation_change::Column::TenantId.eq(tenant_id))
+            .count(&db)
+            .await
+            .expect("Blog Translation change count after update should succeed"),
+        0,
+        "canonical dual-write must no longer depend on the retired Blog change journal"
+    );
 
     let updated = taxonomy_term_translation::Entity::find()
         .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
