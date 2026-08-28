@@ -16,8 +16,9 @@ const platformPlanPath = 'docs/architecture/taxonomy-flex-category-platform-plan
 const databasePath = 'docs/architecture/database.md';
 const adrPath = 'DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md';
 const blogCursorPath = 'crates/rustok-blog/docs/implementation-plan-current.md';
+const taxonomyPlanPath = 'crates/rustok-taxonomy/docs/implementation-plan.md';
 
-for (const path of [platformPlanPath, databasePath, adrPath, blogCursorPath]) {
+for (const path of [platformPlanPath, databasePath, adrPath, blogCursorPath, taxonomyPlanPath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 
@@ -26,6 +27,8 @@ if (failures.length === 0) {
   const database = read(databasePath);
   const adr = read(adrPath);
   const blogCursor = read(blogCursorPath);
+  const taxonomyPlan = read(taxonomyPlanPath);
+  const normalizedTaxonomyPlan = normalizeWhitespace(taxonomyPlan);
 
   requireMarker(
     platformPlan,
@@ -46,6 +49,42 @@ if (failures.length === 0) {
     platformPlan,
     'Product and Blog follow with their own domain-specific binding semantics',
     'stale Blog-pending migration wording',
+  );
+
+  requireMarker(
+    normalizedTaxonomyPlan,
+    '### Blog consumer cutover — COMPLETE',
+    'Taxonomy live plan completed Blog consumer cutover heading',
+  );
+  requireMarker(
+    normalizedTaxonomyPlan,
+    'The Blog Category source/storage cutover is complete through TAXONOMY-CAT-12',
+    'Taxonomy live plan Blog source/storage completion',
+  );
+  requireMarker(
+    normalizedTaxonomyPlan,
+    'The owner-scoped Blog documentation cursor is actualized through TAXONOMY-CAT-17',
+    'Taxonomy live plan Blog documentation cursor',
+  );
+  requireMarker(
+    normalizedTaxonomyPlan,
+    '### TAXONOMY-CAT-6 — Product and later consumers — PLANNED',
+    'Taxonomy live plan remaining consumer cursor',
+  );
+  requireMarker(
+    normalizedTaxonomyPlan,
+    'Product remains the next Category consumer migration',
+    'Taxonomy live plan Product-next cursor',
+  );
+  rejectMarker(
+    normalizedTaxonomyPlan,
+    '### TAXONOMY-CAT-6 — Blog/Product and later consumers — PLANNED',
+    'stale Blog-pending Taxonomy CAT-6 heading',
+  );
+  rejectMarker(
+    normalizedTaxonomyPlan,
+    'Product and Blog follow Forum',
+    'stale Blog-pending Taxonomy consumer wording',
   );
 
   requireMarker(
@@ -94,5 +133,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '[blog-taxonomy-category-cross-owner-docs] platform plan and database summary match CAT-12 ownership',
+  '[blog-taxonomy-category-cross-owner-docs] platform, Taxonomy live plan and database summary match completed Blog Category ownership',
 );

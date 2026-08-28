@@ -1,0 +1,73 @@
+name: CAT22 Apply Taxonomy Consumer Cursor
+
+on:
+  push:
+    branches:
+      - agent/cat22-taxonomy-plan-consumer-cursor
+    paths:
+      - ".github/workflows/cat22-apply-taxonomy-consumer-cursor.yml"
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  patch-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/cat22-taxonomy-plan-consumer-cursor
+      - name: Patch Taxonomy consumer cursor
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/rustok-taxonomy/docs/implementation-plan.md')
+          text = path.read_text()
+          old = (
+              "### TAXONOMY-CAT-6 — Blog/Product and later consumers — PLANNED\n\n"
+              "Migrate each consumer separately from fresh `main`; do not combine unrelated category models into one\n"
+              "large cutover. Preserve module-specific bindings and policy, reuse Taxonomy identity/hierarchy/copy,\n"
+              "and validate tenant isolation and route semantics for every consumer.\n\n"
+              "Product and Blog follow Forum, but their navigation/merchandising/placement semantics remain their own\n"
+              "bounded contracts rather than being blindly moved into Taxonomy.\n"
+          )
+          new = (
+              "### Blog consumer cutover — COMPLETE\n\n"
+              "The Blog Category source/storage cutover is complete through TAXONOMY-CAT-12. Canonical localized\n"
+              "copy, route history, hierarchy projection and Translation ownership are Taxonomy-owned through the\n"
+              "same-ID Blog-to-Taxonomy binding; Blog retains only its typed binding plus module-specific\n"
+              "membership/settings/revision state. The former `blog/category` provider, Blog Category change\n"
+              "journal and Blog-local donor translation storage are retired. The owner-scoped Blog documentation\n"
+              "cursor is actualized through TAXONOMY-CAT-17.\n\n"
+              "### TAXONOMY-CAT-6 — Product and later consumers — PLANNED\n\n"
+              "Product remains the next Category consumer migration. Migrate Product and each later consumer\n"
+              "separately from fresh `main`; do not combine unrelated category models into one large cutover.\n"
+              "Preserve module-specific bindings and policy, reuse Taxonomy identity/hierarchy/copy, and validate\n"
+              "tenant isolation and route semantics for every consumer.\n\n"
+              "Product navigation/merchandising/placement semantics remain its own bounded contract rather than\n"
+              "being blindly moved into Taxonomy.\n"
+          )
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one stale Taxonomy consumer cursor, got {count}')
+          text = text.replace(old, new)
+          path.write_text(text)
+          PY
+
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "crates/rustok-taxonomy/docs/implementation-plan.md"
+          node scripts/verify/verify-blog-taxonomy-category-cross-owner-docs.mjs
+
+          git config user.name "CAT-22 docs bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/rustok-taxonomy/docs/implementation-plan.md
+          git commit -m "docs(taxonomy): advance consumer cursor past Blog cutover"
+          git push origin HEAD:agent/cat22-taxonomy-plan-consumer-cursor
