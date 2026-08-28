@@ -1,10 +1,7 @@
 use sea_orm::{ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::{
-    BlogError, BlogResult,
-    entities::blog_category_translation,
-};
+use crate::{BlogError, BlogResult, entities::blog_category_translation};
 
 pub(crate) const TRANSLATION_RESOURCE_KIND: &str = "category";
 
