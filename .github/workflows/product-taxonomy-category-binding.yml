@@ -1,0 +1,47 @@
+name: Product Taxonomy Category Binding
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-product/src/migrations/m20260828_000015_add_product_taxonomy_category_binding.rs"
+      - "crates/rustok-product/src/migrations/m20260701_000002_add_product_catalog_tenant_consistency_constraints.rs"
+      - "crates/rustok-product/src/migrations/mod.rs"
+      - "crates/rustok-product/docs/category-taxonomy-binding.md"
+      - "scripts/verify/verify-product-taxonomy-category-binding.mjs"
+      - ".github/workflows/product-taxonomy-category-binding.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: product-taxonomy-category-binding-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  binding-contract:
+    name: Product Taxonomy Category binding
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: |
+          expected="${{ github.event.pull_request.head.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - name: Verify Product Category binding seam
+        run: node scripts/verify/verify-product-taxonomy-category-binding.mjs
+      - name: Check Product formatting
+        run: cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
+      - name: Compile Product migration seam
+        run: cargo check -p rustok-product --lib
