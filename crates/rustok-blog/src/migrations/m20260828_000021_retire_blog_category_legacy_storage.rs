@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
-use rustok_taxonomy::{
-    TaxonomyScopeType, TaxonomyTermKind,
-    entities::taxonomy_term,
-};
+use rustok_taxonomy::{TaxonomyScopeType, TaxonomyTermKind, entities::taxonomy_term};
 use sea_orm::{ColumnTrait, DatabaseBackend, EntityTrait, QueryFilter};
 use sea_orm_migration::prelude::*;
 
