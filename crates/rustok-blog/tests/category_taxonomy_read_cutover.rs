@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rustok_blog::BlogModule;
 use rustok_blog::dto::{CreateCategoryInput, ListCategoriesFilter};
-use rustok_blog::entities::{blog_category, blog_category_translation};
+use rustok_blog::entities::blog_category;
 use rustok_blog::services::CategoryService;
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::TransactionalEventBus;
@@ -69,8 +69,16 @@ async fn create_category(
 }
 
 #[tokio::test]
-async fn public_get_and_list_ignore_poisoned_legacy_copy_and_placement() {
+async fn public_get_and_list_use_taxonomy_copy_and_placement_after_storage_retirement() {
     let db = setup().await;
+    let manager = SchemaManager::new(&db);
+    assert!(
+        !manager
+            .has_table("blog_category_translations")
+            .await
+            .expect("legacy translation table lookup should succeed")
+    );
+
     let service = service(&db);
     let tenant_id = Uuid::new_v4();
 
@@ -102,26 +110,12 @@ async fn public_get_and_list_ignore_poisoned_legacy_copy_and_placement() {
     )
     .await;
 
-    blog_category_translation::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        category_id: Set(child),
-        tenant_id: Set(tenant_id),
-        locale: Set("en".to_string()),
-        name: Set("POISON LEGACY NAME".to_string()),
-        slug: Set("poison-legacy-route".to_string()),
-        description: Set(Some("must never become canonical".to_string())),
-        revision: Set(1),
-    }
-    .insert(&db)
-    .await
-    .expect("poisoned legacy translation should be injected independently of canonical create");
-
     let category = blog_category::Entity::find_by_id(child)
         .filter(blog_category::Column::TenantId.eq(tenant_id))
         .one(&db)
         .await
-        .expect("legacy category read should succeed")
-        .expect("legacy category should exist");
+        .expect("Blog category read should succeed")
+        .expect("Blog category should exist");
     let mut poisoned_category: blog_category::ActiveModel = category.into();
     poisoned_category.parent_id = Set(Some(other_root));
     poisoned_category.position = Set(77);
