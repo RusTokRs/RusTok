@@ -63,14 +63,8 @@ impl CategoryService {
         if let Some(parent_id) = parent_id {
             Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
         }
-        canonicalize_siblings_for_insert_in_tx(
-            &txn,
-            tenant_id,
-            parent_id,
-            requested_position,
-            now,
-        )
-        .await?;
+        canonicalize_siblings_for_insert_in_tx(&txn, tenant_id, parent_id, requested_position, now)
+            .await?;
 
         blog_category::ActiveModel {
             id: Set(id),
@@ -135,10 +129,7 @@ impl CategoryService {
             .clone()
             .unwrap_or_else(|| category.settings.clone());
         let resource_updated = blog_category::Entity::update_many()
-            .col_expr(
-                blog_category::Column::Settings,
-                Expr::value(settings),
-            )
+            .col_expr(blog_category::Column::Settings, Expr::value(settings))
             .col_expr(
                 blog_category::Column::Revision,
                 Expr::value(next_resource_revision),
@@ -176,9 +167,9 @@ impl CategoryService {
                 (name, slug, description)
             }
             None => {
-                let name = requested_name.clone().ok_or_else(|| {
-                    BlogError::validation("Category name is required")
-                })?;
+                let name = requested_name
+                    .clone()
+                    .ok_or_else(|| BlogError::validation("Category name is required"))?;
                 validate_category_name(&name)?;
                 let slug = requested_slug
                     .as_deref()
