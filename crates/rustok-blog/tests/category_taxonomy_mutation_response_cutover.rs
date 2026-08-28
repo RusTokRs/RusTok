@@ -1,17 +1,14 @@
 use std::sync::Arc;
 
 use rustok_api::{Action, Permission, Resource};
-use rustok_blog::{
-    BlogModule, CategoryService, CreateCategoryInput, UpdateCategoryInput,
-    entities::blog_category_translation,
-};
+use rustok_blog::{BlogModule, CategoryService, CreateCategoryInput, UpdateCategoryInput};
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_events::EventEnvelope;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
     SyncModuleCategoryInput, TaxonomyModule, sync_module_category_with_owned_aliases_in_tx,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
+use sea_orm::{DatabaseConnection, TransactionTrait};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -60,6 +57,15 @@ fn update_only() -> SecurityContext {
 #[tokio::test]
 async fn update_response_comes_from_taxonomy_without_requiring_read_permission() {
     let db = setup().await;
+    let manager = SchemaManager::new(&db);
+    assert!(
+        !manager
+            .has_table("blog_category_translations")
+            .await
+            .expect("legacy translation table lookup should succeed"),
+        "the mutation response contract must run after donor storage retirement"
+    );
+
     let (service, _events) = service(&db);
     let tenant_id = Uuid::new_v4();
 
@@ -108,18 +114,6 @@ async fn update_response_comes_from_taxonomy_without_requiring_read_permission()
         .await
         .expect("Taxonomy-only locale should commit");
 
-    let legacy_fr = blog_category_translation::Entity::find()
-        .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(blog_category_translation::Column::CategoryId.eq(category_id))
-        .filter(blog_category_translation::Column::Locale.eq("fr"))
-        .one(&db)
-        .await
-        .expect("legacy Blog translation lookup should succeed");
-    assert!(
-        legacy_fr.is_none(),
-        "the discriminator locale must exist only in canonical Taxonomy storage"
-    );
-
     let restricted = update_only();
     let response = service
         .update(
@@ -151,7 +145,7 @@ async fn update_response_comes_from_taxonomy_without_requiring_read_permission()
             .available_locales
             .iter()
             .any(|locale| locale == "fr"),
-        "mutation response must expose the Taxonomy-only locale and therefore cannot come from the legacy Blog translation mirror"
+        "mutation response must expose the Taxonomy-only locale after donor storage retirement"
     );
 
     let read_error = service
