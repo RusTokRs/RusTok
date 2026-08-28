@@ -87,46 +87,57 @@ jobs:
           plan_path.write_text(plan)
 
           registry_path = Path("docs/modules/translation-surfaces.json")
-          registry = registry_path.read_text()
-          old_surface = '''    {
-              "id": "forum_categories",
-              "owner_slug": "forum",
-              "resource_kind": "category",
-              "readiness": "pilot_candidate",
-              "provider_status": "registered",
-              "field_profiles": ["plain_text"],
-              "data_classification": ["public"],
-              "ai_export": "restricted",
-              "evidence_paths": [
-                "crates/rustok-forum/docs/implementation-plan.md",
-                "crates/rustok-forum/src/services/category_translation_target.rs",
-                "crates/rustok-forum/src/services/category_translation_progress.rs",
-                "crates/rustok-forum/tests/category_translation_target_postgres.rs",
-                "apps/server/src/services/module_event_dispatcher.rs"
-              ],
-              "blockers": ["Retain registered-host/runtime evidence before enabling this pilot in production."]
-            }'''
-          new_surface = '''    {
-              "id": "forum_categories",
-              "owner_slug": "forum",
-              "resource_kind": "category",
-              "readiness": "excluded",
-              "provider_status": "not_registered",
-              "field_profiles": ["plain_text", "slug"],
-              "data_classification": ["public"],
-              "ai_export": "forbidden",
-              "evidence_paths": [
-                "crates/rustok-forum/docs/implementation-plan.md",
-                "crates/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs",
-                "docs/architecture/taxonomy-flex-category-platform-plan.md",
-                "crates/rustok-taxonomy/src/translation_target.rs"
-              ],
-              "exclusion_reason": "Forum Category canonical localized copy, routes, hierarchy and presentation are Taxonomy-owned after the verified CAT-5 cutover. Forum keeps a typed same-ID Category binding plus Forum policy, counters and lifecycle state and must not register a duplicate forum/category Translation target."
-            }'''
-          count = registry.count(old_surface)
-          if count != 1:
-              raise SystemExit(f"registry forum_categories block expected once, got {count}")
-          registry = registry.replace(old_surface, new_surface)
+          lines = registry_path.read_text().splitlines(keepends=True)
+          id_matches = [i for i, line in enumerate(lines) if '"id": "forum_categories"' in line]
+          if len(id_matches) != 1:
+              raise SystemExit(f"expected one forum_categories id, got {len(id_matches)}")
+          id_index = id_matches[0]
+          start = id_index - 1
+          if start < 0 or lines[start].strip() != "{":
+              raise SystemExit("forum_categories object start not found")
+          depth = 0
+          end = None
+          for i in range(start, len(lines)):
+              depth += lines[i].count("{") - lines[i].count("}")
+              if depth == 0:
+                  end = i
+                  break
+          if end is None:
+              raise SystemExit("forum_categories object end not found")
+          old_block = "".join(lines[start:end + 1])
+          for marker in [
+              '"readiness": "pilot_candidate"',
+              '"provider_status": "registered"',
+              '"crates/rustok-forum/src/services/category_translation_target.rs"',
+              '"crates/rustok-forum/src/services/category_translation_progress.rs"',
+              '"crates/rustok-forum/tests/category_translation_target_postgres.rs"',
+          ]:
+              if marker not in old_block:
+                  raise SystemExit(f"forum_categories stale block missing expected marker: {marker}")
+
+          indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
+          inner = indent + "  "
+          new_block = "".join([
+              f"{indent}{{\n",
+              f'{inner}"id": "forum_categories",\n',
+              f'{inner}"owner_slug": "forum",\n',
+              f'{inner}"resource_kind": "category",\n',
+              f'{inner}"readiness": "excluded",\n',
+              f'{inner}"provider_status": "not_registered",\n',
+              f'{inner}"field_profiles": ["plain_text", "slug"],\n',
+              f'{inner}"data_classification": ["public"],\n',
+              f'{inner}"ai_export": "forbidden",\n',
+              f'{inner}"evidence_paths": [\n',
+              f'{inner}  "crates/rustok-forum/docs/implementation-plan.md",\n',
+              f'{inner}  "crates/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs",\n',
+              f'{inner}  "docs/architecture/taxonomy-flex-category-platform-plan.md",\n',
+              f'{inner}  "crates/rustok-taxonomy/src/translation_target.rs"\n',
+              f'{inner}],\n',
+              f'{inner}"exclusion_reason": "Forum Category canonical localized copy, routes, hierarchy and presentation are Taxonomy-owned after the verified CAT-5 cutover. Forum keeps a typed same-ID Category binding plus Forum policy, counters and lifecycle state and must not register a duplicate forum/category Translation target."\n',
+              f"{indent}}}" + ("," if lines[end].rstrip().endswith(",") else "") + "\n",
+          ])
+          lines[start:end + 1] = [new_block]
+          registry = "".join(lines)
           for marker in [
               "crates/rustok-forum/src/services/category_translation_target.rs",
               "crates/rustok-forum/src/services/category_translation_progress.rs",
