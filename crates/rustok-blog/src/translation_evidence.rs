@@ -10,7 +10,6 @@ use crate::{
     entities::{blog_category_translation, translation_change::ActiveModel as TranslationChangeActiveModel},
 };
 
-pub(crate) const TRANSLATION_OWNER_SLUG: &str = "blog";
 pub(crate) const TRANSLATION_RESOURCE_KIND: &str = "category";
 
 pub(crate) struct TranslationChangeEvidence<'a> {
