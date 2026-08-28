@@ -1,16 +1,15 @@
 use chrono::Utc;
 use rustok_core::generate_id;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
 use crate::{
     BlogError, BlogResult,
-    entities::{blog_category_translation, translation_change::ActiveModel as TranslationChangeActiveModel},
+    entities::{
+        blog_category_translation, translation_change::ActiveModel as TranslationChangeActiveModel,
+    },
 };
 
-pub(crate) const TRANSLATION_OWNER_SLUG: &str = "blog";
 pub(crate) const TRANSLATION_RESOURCE_KIND: &str = "category";
 
 pub(crate) struct TranslationChangeEvidence<'a> {

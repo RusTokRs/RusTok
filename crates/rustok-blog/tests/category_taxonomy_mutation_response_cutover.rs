@@ -144,6 +144,7 @@ async fn update_response_comes_from_taxonomy_without_requiring_read_permission()
     assert_eq!(response.name, "Help");
     assert_eq!(response.slug, "help");
     assert_eq!(response.description.as_deref(), Some("Help centre"));
+    assert_eq!(response.position, 0);
     assert_eq!(response.settings, serde_json::json!({"layout": "updated"}));
     assert!(
         response

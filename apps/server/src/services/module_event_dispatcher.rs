@@ -243,21 +243,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     }
 
     #[cfg(feature = "mod-blog")]
-    {
-        blog_public_comments_snapshot::register(&mut extensions, &runtime_ctx);
-        let event_bus = rustok_outbox::TransactionalEventBus::new(Arc::new(
-            rustok_outbox::OutboxTransport::new(db.clone()),
-        ));
-        let provider = rustok_blog::BlogCategoryTranslationTargetProvider::new(Arc::new(
-            rustok_blog::CategoryService::new(db.clone(), event_bus),
-        ));
-        rustok_translation_targets::register_translation_target_provider(&mut extensions, provider)
-            .map_err(|error| {
-                Error::Message(format!(
-                    "Blog category translation target provider registration failed: {error}"
-                ))
-            })?;
-    }
+    blog_public_comments_snapshot::register(&mut extensions, &runtime_ctx);
 
     #[cfg(feature = "mod-navigation")]
     {
@@ -579,7 +565,7 @@ mod tests {
         );
         #[cfg(feature = "mod-blog")]
         assert!(
-            rustok_translation_targets::translation_target_registry(extensions.as_ref())
+            !rustok_translation_targets::translation_target_registry(extensions.as_ref())
                 .is_some_and(|registry| registry.descriptors().iter().any(|descriptor| {
                     descriptor.owner_slug.as_str() == "blog"
                         && descriptor.resource_kind.as_str() == "category"

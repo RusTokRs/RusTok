@@ -63,16 +63,12 @@ mod seo_targets;
 pub mod services;
 pub mod state_machine;
 mod translation_evidence;
-pub mod translation_target;
 
 #[cfg(test)]
 mod state_machine_proptest;
 
 #[cfg(test)]
 mod tag_tenant_integrity_tests;
-
-#[cfg(test)]
-mod translation_target_tests;
 
 pub use dto::{
     CategoryListItem, CategoryListResponse, CategoryResponse, CommentListItem, CommentResponse,
@@ -97,7 +93,6 @@ pub use services::{CategoryService, CommentService, PostService, TagService};
 pub use state_machine::{
     Archived, BlogPost, BlogPostStatus, CommentStatus, Draft, Published, ToBlogPostStatus,
 };
-pub use translation_target::BlogCategoryTranslationTargetProvider;
 
 pub struct BlogModule;
 
