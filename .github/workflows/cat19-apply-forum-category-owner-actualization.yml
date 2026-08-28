@@ -118,6 +118,6 @@ jobs:
 
           git config user.name "CAT-19 docs bot"
           git config user.email "actions@users.noreply.github.com"
-          git add crates/rustok-forum/docs/implementation-plan.md docs/modules/translation-surfaces.json crates/rustok-forum/tests/category_translation_target_postgres.rs
+          git add crates/rustok-forum/docs/implementation-plan.md docs/modules/translation-surfaces.json
           git commit -m "docs(forum): align Category Translation owner with Taxonomy"
           git push origin HEAD:agent/cat19-forum-category-translation-owner-actualization
