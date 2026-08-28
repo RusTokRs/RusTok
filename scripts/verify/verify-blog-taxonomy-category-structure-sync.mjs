@@ -13,17 +13,21 @@ const rejectMarker = (source, marker, label = marker) => {
 
 const commandPath = 'crates/rustok-blog/src/services/category_command.rs';
 const syncPath = 'crates/rustok-blog/src/services/category_taxonomy_sync.rs';
+const libPath = 'crates/rustok-blog/src/lib.rs';
 const evidencePath = 'crates/rustok-blog/src/translation_evidence.rs';
 const runtimePath = 'crates/rustok-blog/tests/category_taxonomy_structure_sync.rs';
 
-for (const path of [commandPath, syncPath, evidencePath, runtimePath]) {
+for (const path of [commandPath, syncPath, libPath, runtimePath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
+}
+if (fs.existsSync(evidencePath)) {
+  failures.push(`${evidencePath}: retired Category Translation evidence bridge must be absent`);
 }
 
 if (failures.length === 0) {
   const command = read(commandPath);
   const sync = read(syncPath);
-  const evidence = read(evidencePath);
+  const lib = read(libPath);
   const runtime = read(runtimePath);
 
   requireMarker(command, 'touched.iter().copied().collect::<Vec<_>>()', 'bounded touched placement set');
@@ -38,8 +42,7 @@ if (failures.length === 0) {
   rejectMarker(sync, 'category.settings', 'Blog-owned settings copied into Taxonomy');
   rejectMarker(sync, 'post_count', 'Blog-owned counters copied into Taxonomy');
 
-  requireMarker(evidence, 'evidence.operation == "upsert"', 'localized-copy upsert gate remains');
-  rejectMarker(evidence, 'evidence.operation == "delete"', 'premature delete lifecycle cutover');
+  rejectMarker(lib, 'mod translation_evidence;', 'retired Category Translation evidence bridge registration');
 
   requireMarker(runtime, 'create_at_index_keeps_taxonomy_sibling_positions_dense', 'create insertion runtime proof');
   requireMarker(runtime, 'move_reparent_syncs_taxonomy_parent_and_both_sibling_sets', 'move/reparent runtime proof');
@@ -52,4 +55,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('[blog-taxonomy-category-structure-sync] transactional hierarchy boundary verified');
+console.log('[blog-taxonomy-category-structure-sync] transactional hierarchy boundary verified with retired Translation evidence source absent');
