@@ -1,15 +1,9 @@
 //! Services for the Blog module
 
-// CAT-8 retires the duplicate Translation provider while the compatibility
-// Category mirror writer stays alive until the next bounded retirement slice.
-// Some legacy read/lifecycle/provider-only seams therefore remain temporarily
-// unreachable and are removed together with that mirror writer in CAT-9.
-#[allow(dead_code)]
 mod category;
 mod category_command;
 mod category_delete;
 mod category_name_projection;
-#[allow(dead_code)]
 mod category_owner;
 pub(crate) mod category_taxonomy_sync;
 mod comment;
