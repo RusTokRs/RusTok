@@ -33,7 +33,7 @@ if (failures.length === 0) {
   requireMarker(command, 'load_category_locale_copy_in_tx', 'transactional canonical patch read');
   requireMarker(command, 'sync_category_copy_in_tx', 'transactional canonical copy write');
   requireMarker(command, 'The retired `blog_category_translation` table is not a command source or sink.', 'explicit mirror retirement boundary');
-  rejectMarker(command, 'blog_category_translation', 'legacy Blog Category translation dependency');
+  rejectMarker(command, 'blog_category_translation::', 'legacy Blog Category translation entity dependency');
   rejectMarker(command, 'TranslationChangeEvidence', 'retired Blog Translation evidence dependency');
   rejectMarker(command, 'record_translation_change_in_tx', 'retired Blog Translation bridge call');
   rejectMarker(command, 'apply_exact_translation_in_tx', 'retired provider-era exact apply seam');
@@ -46,8 +46,8 @@ if (failures.length === 0) {
 
   requireMarker(bridge, 'Retired Blog Category Translation bridge.', 'inert bridge marker');
   rejectMarker(bridge, 'record_translation_change_in_tx', 'retired Blog Translation bridge implementation');
-  rejectMarker(bridge, 'blog_category_translation', 'retired bridge mirror dependency');
-  rejectMarker(bridge, 'translation_change', 'retired bridge journal dependency');
+  rejectMarker(bridge, 'blog_category_translation::', 'retired bridge mirror entity dependency');
+  rejectMarker(bridge, 'translation_change::', 'retired bridge journal entity dependency');
 
   requireMarker(sync, 'load_module_category_locale_copy_in_tx', 'Taxonomy owner locale read seam');
   requireMarker(sync, 'sync_module_category_with_owned_aliases_in_tx', 'Taxonomy-owned route history sync');
