@@ -31,30 +31,30 @@ jobs:
           text = path.read_text()
           replacements = [
               (
-                  """  claim a global owner-event contract. Blog Category copy now follows that
-  canonical Taxonomy provider through the same-ID Blog-to-Taxonomy Category
-  binding. The former `blog/category` provider, Blog change cursor/journal, and
-  Blog-local Category translation storage were retired by TAXONOMY-CAT-8..12
-  and are historical migration evidence only.""",
-                  """  claim a global owner-event contract. Blog Category copy now follows that
-  canonical Taxonomy provider through the same-ID Blog-to-Taxonomy Category
-  binding. Forum Category copy also follows the canonical Taxonomy provider
-  through the same-ID Forum-to-Taxonomy Category binding. The former
-  `blog/category` provider, Blog change cursor/journal, and Blog-local Category
-  translation storage were retired by TAXONOMY-CAT-8..12; the duplicate Forum
-  `forum/category` provider, change cursor/progress runtime, and donor translation
-  storage are retired after the verified CAT-5 cutover. Those consumer-local
-  provider/storage paths remain historical migration evidence only.""",
+                  "  claim a global owner-event contract. Blog Category copy now follows that\n"
+                  "  canonical Taxonomy provider through the same-ID Blog-to-Taxonomy Category\n"
+                  "  binding. The former `blog/category` provider, Blog change cursor/journal, and\n"
+                  "  Blog-local Category translation storage were retired by TAXONOMY-CAT-8..12\n"
+                  "  and are historical migration evidence only.",
+                  "  claim a global owner-event contract. Blog Category copy now follows that\n"
+                  "  canonical Taxonomy provider through the same-ID Blog-to-Taxonomy Category\n"
+                  "  binding. Forum Category copy also follows the canonical Taxonomy provider\n"
+                  "  through the same-ID Forum-to-Taxonomy Category binding. The former\n"
+                  "  `blog/category` provider, Blog change cursor/journal, and Blog-local Category\n"
+                  "  translation storage were retired by TAXONOMY-CAT-8..12; the duplicate Forum\n"
+                  "  `forum/category` provider, change cursor/progress runtime, and donor translation\n"
+                  "  storage are retired after the verified CAT-5 cutover. Those consumer-local\n"
+                  "  provider/storage paths remain historical migration evidence only.",
               ),
               (
-                  """   duplicate localized owner after an accepted ownership cutover: in particular,
-   Blog Category localized copy is Taxonomy-owned and Blog retains only its typed
-   Category binding plus Blog-specific state.""",
-                  """   duplicate localized owner after an accepted ownership cutover: in particular,
-   Blog Category localized copy is Taxonomy-owned and Blog retains only its typed
-   Category binding plus Blog-specific state; Forum Category localized copy,
-   routes, hierarchy and presentation are Taxonomy-owned and Forum retains only
-   its typed same-ID binding plus Forum policy, counters and lifecycle state.""",
+                  "   duplicate localized owner after an accepted ownership cutover: in particular,\n"
+                  "   Blog Category localized copy is Taxonomy-owned and Blog retains only its typed\n"
+                  "   Category binding plus Blog-specific state.",
+                  "   duplicate localized owner after an accepted ownership cutover: in particular,\n"
+                  "   Blog Category localized copy is Taxonomy-owned and Blog retains only its typed\n"
+                  "   Category binding plus Blog-specific state; Forum Category localized copy,\n"
+                  "   routes, hierarchy and presentation are Taxonomy-owned and Forum retains only\n"
+                  "   its typed same-ID binding plus Forum policy, counters and lifecycle state.",
               ),
               (
                   "| Owner identity | Pages/Navigation, Content/SEO, and Product/Commerce Foundation still contain ownership drift or duplicate schema evidence; Blog Category/Taxonomy ownership is resolved | Assign exactly one owner and remove superseded schema/entity paths before target registration; do not reintroduce a Blog-local Category Translation owner |",
