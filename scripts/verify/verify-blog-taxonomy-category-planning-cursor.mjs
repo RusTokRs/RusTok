@@ -28,7 +28,7 @@ for (const path of [
   docsReadmePath,
   entitiesPath,
   'crates/rustok-blog/docs/implementation-plan-slice-98.md',
-  'crates/rustok-blog/src/migrations/m20260828_000020_backfill_blog_categories_to_taxonomy.rs',
+  'crates/rustok-blog/src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs',
   'crates/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs',
   'crates/rustok-blog/src/entities/blog_category_translation.rs',
   'crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs',
