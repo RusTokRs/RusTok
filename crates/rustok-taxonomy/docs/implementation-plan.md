@@ -254,14 +254,24 @@ private legacy code is non-blocking and must not be confused with ownership comp
 browser evidence confirms that Forum Category behavior uses the shared Taxonomy identity/copy/routes
 without losing Forum-specific policy.
 
-### TAXONOMY-CAT-6 — Blog/Product and later consumers — PLANNED
+### Blog consumer cutover — COMPLETE
 
-Migrate each consumer separately from fresh `main`; do not combine unrelated category models into one
-large cutover. Preserve module-specific bindings and policy, reuse Taxonomy identity/hierarchy/copy,
-and validate tenant isolation and route semantics for every consumer.
+The Blog Category source/storage cutover is complete through TAXONOMY-CAT-12. Canonical localized
+copy, route history, hierarchy projection and Translation ownership are Taxonomy-owned through the
+same-ID Blog-to-Taxonomy binding; Blog retains only its typed binding plus module-specific
+membership/settings/revision state. The former `blog/category` provider, Blog Category change
+journal and Blog-local donor translation storage are retired. The owner-scoped Blog documentation
+cursor is actualized through TAXONOMY-CAT-17.
 
-Product and Blog follow Forum, but their navigation/merchandising/placement semantics remain their own
-bounded contracts rather than being blindly moved into Taxonomy.
+### TAXONOMY-CAT-6 — Product and later consumers — PLANNED
+
+Product remains the next Category consumer migration. Migrate Product and each later consumer
+separately from fresh `main`; do not combine unrelated category models into one large cutover.
+Preserve module-specific bindings and policy, reuse Taxonomy identity/hierarchy/copy, and validate
+tenant isolation and route semantics for every consumer.
+
+Product navigation/merchandising/placement semantics remain its own bounded contract rather than
+being blindly moved into Taxonomy.
 
 ## Lookup and Translation invariants
 
