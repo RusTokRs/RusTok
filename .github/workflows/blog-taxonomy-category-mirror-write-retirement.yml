@@ -3,6 +3,9 @@ name: Blog Taxonomy Category Mirror Write Retirement
 on:
   pull_request:
     paths:
+      - "crates/rustok-blog/src/lib.rs"
+      - "crates/rustok-blog/src/entities/mod.rs"
+      - "crates/rustok-blog/src/entities/translation_change.rs"
       - "crates/rustok-blog/src/services/category.rs"
       - "crates/rustok-blog/src/services/category_owner.rs"
       - "crates/rustok-blog/src/services/category_taxonomy_sync.rs"
@@ -16,6 +19,9 @@ on:
     branches:
       - main
     paths:
+      - "crates/rustok-blog/src/lib.rs"
+      - "crates/rustok-blog/src/entities/mod.rs"
+      - "crates/rustok-blog/src/entities/translation_change.rs"
       - "crates/rustok-blog/src/services/category.rs"
       - "crates/rustok-blog/src/services/category_owner.rs"
       - "crates/rustok-blog/src/services/category_taxonomy_sync.rs"
@@ -62,12 +68,13 @@ jobs:
       - name: Check touched Rust formatting
         run: |
           rustfmt +1.96.0 --edition 2024 --check --config skip_children=true \
+            crates/rustok-blog/src/lib.rs \
+            crates/rustok-blog/src/entities/mod.rs \
             crates/rustok-blog/src/services/mod.rs
           rustfmt +1.96.0 --edition 2024 --check \
             crates/rustok-blog/src/services/category.rs \
             crates/rustok-blog/src/services/category_owner.rs \
             crates/rustok-blog/src/services/category_taxonomy_sync.rs \
-            crates/rustok-blog/src/translation_evidence.rs \
             crates/rustok-blog/tests/category_taxonomy_dual_write.rs
       - name: Verify Category mirror writer retirement boundary
         run: node scripts/verify/verify-blog-taxonomy-category-dual-write.mjs
