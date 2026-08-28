@@ -94,7 +94,7 @@ requireMarkers("crates/rustok-blog/src/services/category_owner.rs", [
 rejectMarkers("crates/rustok-blog/src/services/category.rs", [
   "pub async fn delete(",
   "ensure_category_is_leaf_in_tx",
-  "blog_category_translation",
+  "blog_category_translation::",
 ]);
 
 requireMarkers("crates/rustok-blog/src/services/category_command.rs", [
@@ -171,8 +171,8 @@ requireMarkers("crates/rustok-blog/tests/category_hierarchy.rs", [
 ]);
 
 requireMarkers("crates/rustok-blog/tests/category_taxonomy_delete_lifecycle.rs", [
-  "category_delete_is_owned_by_taxonomy_and_rolls_back_blog_cleanup",
-  "Blog Category delete requires host-composed Taxonomy capability cleanup",
+  "delete_removes_blog_binding_and_taxonomy_owner_and_replays_sibling_position",
+  "host_cleanup_failure_rolls_back_blog_and_taxonomy_deletion",
 ]);
 
 requireMarkers("crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs", [
