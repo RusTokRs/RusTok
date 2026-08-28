@@ -6,6 +6,7 @@ on:
       - "crates/rustok-forum/docs/implementation-plan.md"
       - "crates/rustok-forum/tests/category_translation_target_postgres.rs"
       - "crates/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs"
+      - "crates/rustok-translation/docs/implementation-plan.md"
       - "docs/modules/translation-implementation-plan.md"
       - "docs/modules/translation-surfaces.json"
       - "scripts/verify/verify-forum-taxonomy-category-translation-owner.mjs"

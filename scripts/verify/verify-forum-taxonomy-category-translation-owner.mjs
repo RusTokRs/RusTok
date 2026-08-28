@@ -13,6 +13,7 @@ const normalizeWhitespace = (source) => source.replace(/\s+/g, ' ').trim();
 
 const planPath = 'crates/rustok-forum/docs/implementation-plan.md';
 const centralPlanPath = 'docs/modules/translation-implementation-plan.md';
+const modulePlanPath = 'crates/rustok-translation/docs/implementation-plan.md';
 const registryPath = 'docs/modules/translation-surfaces.json';
 const parityPath = 'crates/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md';
 const retirementTest = 'crates/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs';
@@ -22,7 +23,7 @@ const retiredPaths = [
   'crates/rustok-forum/tests/category_translation_target_postgres.rs',
 ];
 
-for (const path of [planPath, centralPlanPath, registryPath, parityPath, retirementTest]) {
+for (const path of [planPath, centralPlanPath, modulePlanPath, registryPath, parityPath, retirementTest]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 for (const path of retiredPaths) {
@@ -32,7 +33,9 @@ for (const path of retiredPaths) {
 if (failures.length === 0) {
   const plan = fs.readFileSync(planPath, 'utf8');
   const centralPlan = fs.readFileSync(centralPlanPath, 'utf8');
+  const modulePlan = fs.readFileSync(modulePlanPath, 'utf8');
   const normalizedCentralPlan = normalizeWhitespace(centralPlan);
+  const normalizedModulePlan = normalizeWhitespace(modulePlan);
   const parity = fs.readFileSync(parityPath, 'utf8');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
 
@@ -88,6 +91,32 @@ if (failures.length === 0) {
     normalizedCentralPlan,
     'do not reintroduce a Blog-local Category Translation owner',
     'Blog-only Category ownership guard wording',
+  );
+
+  requireText(
+    normalizedModulePlan,
+    'Blog Category canonical copy is consumed through the same-ID Blog-to-Taxonomy Category binding and the `taxonomy/term` provider',
+    'module Translation plan Blog-to-Taxonomy provider boundary',
+  );
+  requireText(
+    normalizedModulePlan,
+    'Forum Category canonical copy is consumed through the same-ID Forum-to-Taxonomy Category binding and the same `taxonomy/term` provider',
+    'module Translation plan Forum-to-Taxonomy provider boundary',
+  );
+  requireText(
+    normalizedModulePlan,
+    'The duplicate `forum/category` provider, Forum Category change/progress runtime, and Forum-local donor translation storage are retired and must not be recreated',
+    'module Translation plan retired Forum provider boundary',
+  );
+  requireText(
+    normalizedModulePlan,
+    'Forum topic/reply Translation remains a separate opt-in UGC onboarding track',
+    'module Translation plan Forum UGC separation',
+  );
+  rejectText(
+    normalizedModulePlan,
+    'Category binding and the `taxonomy/term` provider; the former `blog/category` provider',
+    'Blog-only module Category provider boundary',
   );
 
   requireText(parity, 'The backend ownership/storage cutover is already complete');

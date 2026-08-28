@@ -1,0 +1,67 @@
+name: CAT21 Apply Translation Module Forum Category Owner
+
+on:
+  push:
+    branches:
+      - agent/cat21-translation-module-plan-forum-category-owner
+    paths:
+      - ".github/workflows/cat21-apply-translation-module-forum-category-owner.yml"
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  patch-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/cat21-translation-module-plan-forum-category-owner
+      - name: Patch Translation module plan
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/rustok-translation/docs/implementation-plan.md')
+          text = path.read_text()
+          old = (
+              "  Category canonical copy is consumed through the same-ID Blog-to-Taxonomy\n"
+              "  Category binding and the `taxonomy/term` provider; the former `blog/category`\n"
+              "  provider, Blog Category change journal, and Blog-local Category translation\n"
+              "  storage are retired and must not be recreated. Navigation applies its menu\n"
+          )
+          new = (
+              "  Category canonical copy is consumed through the same-ID Blog-to-Taxonomy\n"
+              "  Category binding and the `taxonomy/term` provider. Forum Category canonical\n"
+              "  copy is consumed through the same-ID Forum-to-Taxonomy Category binding and\n"
+              "  the same `taxonomy/term` provider. The former `blog/category` provider, Blog\n"
+              "  Category change journal, and Blog-local Category translation storage are\n"
+              "  retired and must not be recreated. The duplicate `forum/category` provider,\n"
+              "  Forum Category change/progress runtime, and Forum-local donor translation\n"
+              "  storage are retired and must not be recreated. Forum topic/reply Translation\n"
+              "  remains a separate opt-in UGC onboarding track. Navigation applies its menu\n"
+          )
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one module-plan Blog-only Category boundary, got {count}')
+          text = text.replace(old, new)
+          path.write_text(text)
+          PY
+
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "crates/rustok-translation/docs/implementation-plan.md"
+          node scripts/verify/verify-translation-surface-registry.mjs
+          node scripts/verify/verify-forum-taxonomy-category-translation-owner.mjs
+
+          git config user.name "CAT-21 docs bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/rustok-translation/docs/implementation-plan.md
+          git commit -m "docs(translation): align module plan with Forum Category Taxonomy owner"
+          git push origin HEAD:agent/cat21-translation-module-plan-forum-category-owner
