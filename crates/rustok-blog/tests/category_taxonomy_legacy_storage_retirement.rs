@@ -1,11 +1,9 @@
-const MIGRATION: &str = include_str!(
-    "../src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs"
-);
+const MIGRATION: &str =
+    include_str!("../src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs");
 const REGISTRY: &str = include_str!("../src/migrations/mod.rs");
 const ENTITIES: &str = include_str!("../src/entities/mod.rs");
-const BACKFILL: &str = include_str!(
-    "../src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs"
-);
+const BACKFILL: &str =
+    include_str!("../src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs");
 
 #[test]
 fn legacy_category_storage_retires_only_after_taxonomy_identity_cutover() {
@@ -21,7 +19,10 @@ fn legacy_category_storage_retires_only_after_taxonomy_identity_cutover() {
         "BlogTranslationChanges::Table",
         "Intentionally irreversible",
     ] {
-        assert!(MIGRATION.contains(marker), "missing retirement marker: {marker}");
+        assert!(
+            MIGRATION.contains(marker),
+            "missing retirement marker: {marker}"
+        );
     }
 
     let translations = MIGRATION
@@ -44,12 +45,11 @@ fn legacy_category_storage_retires_only_after_taxonomy_identity_cutover() {
         );
     }
 
-    assert!(REGISTRY.contains(
-        "mod m20260828_000021_retire_blog_category_legacy_storage;"
-    ));
-    assert!(REGISTRY.contains(
-        "Box::new(m20260828_000021_retire_blog_category_legacy_storage::Migration)"
-    ));
+    assert!(REGISTRY.contains("mod m20260828_000021_retire_blog_category_legacy_storage;"));
+    assert!(
+        REGISTRY
+            .contains("Box::new(m20260828_000021_retire_blog_category_legacy_storage::Migration)")
+    );
     assert!(REGISTRY.contains(
         "MigrationDependencyDescriptor::new(\n            \"m20260828_000021_retire_blog_category_legacy_storage\",\n            vec![\"m20260824_000020_backfill_blog_categories_to_taxonomy\"]"
     ));
