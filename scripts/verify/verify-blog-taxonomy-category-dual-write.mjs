@@ -12,16 +12,18 @@ const rejectMarker = (source, marker, label = marker) => {
 };
 
 const bridgePath = 'crates/rustok-blog/src/translation_evidence.rs';
+const deletePath = 'crates/rustok-blog/src/services/category_delete.rs';
 const syncPath = 'crates/rustok-blog/src/services/category_taxonomy_sync.rs';
 const servicesPath = 'crates/rustok-blog/src/services/mod.rs';
 const runtimePath = 'crates/rustok-blog/tests/category_taxonomy_dual_write.rs';
 
-for (const path of [bridgePath, syncPath, servicesPath, runtimePath]) {
+for (const path of [bridgePath, deletePath, syncPath, servicesPath, runtimePath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 
 if (failures.length === 0) {
   const bridge = read(bridgePath);
+  const categoryDelete = read(deletePath);
   const sync = read(syncPath);
   const services = read(servicesPath);
   const runtime = read(runtimePath);
@@ -30,13 +32,18 @@ if (failures.length === 0) {
   requireMarker(bridge, 'evidence.lifecycle == "active"', 'active compatibility lifecycle gate');
   requireMarker(bridge, 'blog_category_translation::Entity::find()', 'exact Blog compatibility copy reread');
   requireMarker(bridge, 'category_taxonomy_sync::sync_category_copy_in_tx', 'transactional Taxonomy copy hook');
-  requireMarker(bridge, 'evidence.operation == "delete"', 'retired delete-journal transition');
-  requireMarker(bridge, 'evidence.lifecycle == "deleted"', 'retired delete-journal lifecycle');
+  requireMarker(bridge, 'evidence.operation == "delete"', 'retired legacy delete transition compatibility');
+  requireMarker(bridge, 'evidence.lifecycle == "deleted"', 'retired legacy delete lifecycle compatibility');
   requireMarker(bridge, 'Delete journal evidence is retired', 'explicit delete evidence retirement');
   rejectMarker(bridge, 'TranslationChangeActiveModel', 'retired Blog Translation change writer');
   rejectMarker(bridge, 'translation_change::', 'retired Blog Translation change entity dependency');
   rejectMarker(bridge, 'generate_id()', 'retired Blog Translation change id generation');
   rejectMarker(bridge, '.insert(transaction)', 'retired Blog Translation change insert');
+
+  requireMarker(categoryDelete, 'The retired Blog Translation change journal is intentionally not part of this lifecycle.', 'live delete evidence retirement');
+  rejectMarker(categoryDelete, 'record_translation_change_in_tx', 'live delete Blog Translation evidence write');
+  rejectMarker(categoryDelete, 'TranslationChangeEvidence', 'live delete Blog Translation evidence payload');
+  rejectMarker(categoryDelete, 'blog_category_translation::Entity::find()', 'live delete compatibility translation reread');
 
   requireMarker(sync, 'sync_module_category_with_owned_aliases_in_tx', 'Taxonomy-owned route history sync');
   requireMarker(sync, 'module_scope: BLOG_TAXONOMY_SCOPE.to_string()', 'module/blog scope');
