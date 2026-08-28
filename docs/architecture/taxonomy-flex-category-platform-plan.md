@@ -1,7 +1,7 @@
 # Taxonomy category ownership and Flex extension plan
 
 **Status:** accepted architecture, staged implementation
-**Reviewed:** 2026-08-22
+**Reviewed:** 2026-08-28
 
 ## Decision
 
@@ -18,11 +18,23 @@ modules:
 Flex is opt-in. A domain entity is a Flex donor only when the product explicitly allows runtime
 extension; a JSON/metadata column alone does not imply support.
 
+## Implementation status
+
+The architecture remains staged across consumers, but Blog is no longer a pending Category owner
+migration. The Blog migration is complete through TAXONOMY-CAT-12: canonical localized copy, route
+history, hierarchy projection and Translation ownership are Taxonomy-owned; Blog retains its typed
+binding plus module-specific membership/settings/revision state. The former Blog Category Translation
+provider, live donor mirror/journal, and their runtime source files are retired. Historical Blog
+backfill/migration records remain only for upgrade provenance.
+
+Forum established the first consumer migration precedent. Blog now follows that precedent in `main`;
+Product remains a separate consumer migration with its own domain-specific binding semantics.
+
 ## Why this replaces the current category boundary
 
-The current repository has a historical Tag-only Taxonomy contract and separate category aggregates
-inside Forum, Blog and Product. That produces multiple implementations of hierarchy, localization,
-presentation and translation ownership. It also prevents a tenant from defining one shared category
+The repository historically had a Tag-only Taxonomy contract and separate category aggregates inside
+Forum, Blog and Product. That produced multiple implementations of hierarchy, localization,
+presentation and translation ownership. It also prevented a tenant from defining one shared category
 library and reusing category identity across modules.
 
 The accepted target is therefore:
@@ -67,7 +79,7 @@ Examples of domain-owned state that does **not** move into Taxonomy:
 
 - Forum moderation/audience/topic-create/reply-create policy and Forum counters;
 - Product merchandising, primary/navigation assignment semantics and product-specific projections;
-- Blog-specific placement/visibility state;
+- Blog-specific membership/settings/revision state;
 - any consumer's relation between its own entity and a Taxonomy category.
 
 ## Flex contract
@@ -167,9 +179,9 @@ For each consumer:
 - update admin/storefront projections to use Taxonomy `requested_locale` / `effective_locale`;
 - run tenant-isolation, route, hierarchy and multilingual/RTL evidence.
 
-Forum is the first migration because the current FORUM-25 Translation work exposed the ownership
-conflict. Product and Blog follow with their own domain-specific binding semantics rather than a
-blind table rename.
+Forum established the first migration precedent. Blog has completed this consumer migration through
+TAXONOMY-CAT-12. Product follows with its own domain-specific binding semantics rather than a blind
+table rename.
 
 ## Forum-specific target
 
