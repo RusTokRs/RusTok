@@ -13,6 +13,7 @@ mod m20260812_000017_enforce_blog_category_hierarchy;
 mod m20260813_000018_enforce_blog_post_tag_tenant_integrity;
 mod m20260824_000019_add_blog_taxonomy_category_binding;
 mod m20260824_000020_backfill_blog_categories_to_taxonomy;
+mod m20260828_000021_retire_blog_category_legacy_storage;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -34,6 +35,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260813_000018_enforce_blog_post_tag_tenant_integrity::Migration),
         Box::new(m20260824_000019_add_blog_taxonomy_category_binding::Migration),
         Box::new(m20260824_000020_backfill_blog_categories_to_taxonomy::Migration),
+        Box::new(m20260828_000021_retire_blog_category_legacy_storage::Migration),
     ]
 }
 
@@ -64,6 +66,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
                 "m20260822_000010_create_taxonomy_category_hierarchy",
                 "m20260824_000019_add_blog_taxonomy_category_binding",
             ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260828_000021_retire_blog_category_legacy_storage",
+            vec!["m20260824_000020_backfill_blog_categories_to_taxonomy"],
         ),
     ]
 }

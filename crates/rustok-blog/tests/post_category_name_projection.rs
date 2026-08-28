@@ -3,12 +3,11 @@ use std::sync::Arc;
 use rustok_blog::{
     BlogModule, BlogPostStatus, CategoryService, CreateCategoryInput, CreatePostInput,
     PostListQuery, PostService,
-    entities::blog_category_translation,
 };
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
@@ -55,6 +54,14 @@ fn event_bus(db: &DatabaseConnection) -> TransactionalEventBus {
 async fn post_category_name_projects_across_detail_and_list_paths() {
     let db = setup_blog_test_db().await;
     ensure_schema(&db).await;
+    let manager = SchemaManager::new(&db);
+    assert!(
+        !manager
+            .has_table("blog_category_translations")
+            .await
+            .expect("legacy translation table lookup should succeed"),
+        "post Category projection contract must run after donor storage retirement"
+    );
 
     let bus = event_bus(&db);
     let category_service = CategoryService::new(db.clone(), bus.clone());
@@ -101,13 +108,6 @@ async fn post_category_name_projects_across_detail_and_list_paths() {
         )
         .await
         .expect("post should be created");
-
-    blog_category_translation::Entity::delete_many()
-        .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(blog_category_translation::Column::CategoryId.eq(category_id))
-        .exec(&db)
-        .await
-        .expect("legacy Blog category translations should be removable for ownership proof");
 
     let detail = post_service
         .get_post_with_locale_fallback(tenant_id, admin.clone(), post_id, "fr", Some("de"))

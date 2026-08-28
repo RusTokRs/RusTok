@@ -60,14 +60,15 @@ if (failures.length === 0) {
   requireMarker(services, 'pub(crate) mod category_taxonomy_sync;', 'owner sync seam registration');
   rejectMarker(services, '#[allow(dead_code)]', 'retired Category dead-code allowance');
 
-  requireMarker(runtime, 'category_commands_do_not_write_legacy_translation_mirror', 'mirror retirement runtime proof');
-  requireMarker(runtime, 'LEGACY POISON', 'poisoned legacy mirror discriminator');
-  requireMarker(runtime, 'must never become canonical', 'poison isolation proof');
-  requireMarker(runtime, 'canonical Category create must not populate the retired Blog translation mirror', 'create mirror retirement proof');
-  requireMarker(runtime, 'canonical Category update must not recreate the retired Blog translation mirror', 'update mirror retirement proof');
-  requireMarker(runtime, 'settings-only update must read its copy from canonical Taxonomy', 'canonical patch source proof');
+  requireMarker(runtime, 'category_commands_use_taxonomy_after_legacy_storage_retirement', 'post-retirement command runtime proof');
+  requireMarker(runtime, '.has_table("blog_category_translations")', 'physical donor translation retirement proof');
+  requireMarker(runtime, '.has_table("blog_translation_changes")', 'physical donor journal retirement proof');
+  requireMarker(runtime, 'settings-only update must read canonical copy without donor tables', 'canonical patch source proof');
   requireMarker(runtime, 'taxonomy_route_conflict_rolls_back_blog_create', 'transaction rollback proof');
   requireMarker(runtime, 'Taxonomy must own historical Blog route aliases', 'Taxonomy alias ownership proof');
+  rejectMarker(runtime, 'LEGACY POISON', 'obsolete poison fixture after physical storage retirement');
+  rejectMarker(runtime, 'blog_category_translation::', 'retired donor entity runtime dependency');
+  rejectMarker(runtime, 'translation_change::', 'retired donor journal runtime dependency');
 }
 
 if (failures.length > 0) {
@@ -76,4 +77,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('[blog-taxonomy-category-command-copy] canonical commands are independent of the retired Blog translation mirror');
+console.log('[blog-taxonomy-category-command-copy] canonical commands remain live after Blog donor storage retirement');
