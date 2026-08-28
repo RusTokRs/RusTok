@@ -62,7 +62,6 @@ pub mod richtext;
 mod seo_targets;
 pub mod services;
 pub mod state_machine;
-mod translation_evidence;
 
 #[cfg(test)]
 mod state_machine_proptest;
