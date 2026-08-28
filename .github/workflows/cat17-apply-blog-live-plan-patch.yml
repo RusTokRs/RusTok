@@ -1,0 +1,110 @@
+name: CAT17 Apply Blog Live Plan Patch
+
+on:
+  push:
+    branches:
+      - agent/cat17-blog-live-plan-category-owner
+    paths:
+      - ".github/workflows/cat17-apply-blog-live-plan-patch.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cat17-apply-blog-live-plan-patch
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  patch-live-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/cat17-blog-live-plan-category-owner
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Patch active Blog Category ownership text
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("crates/rustok-blog/docs/implementation-plan.md")
+          text = path.read_text()
+
+          old_opening = """`rustok-blog` owns localized posts, Blog categories and tags, channel-aware
+publication visibility, GraphQL/HTTP/native adapters, and admin/storefront
+packages. It consumes `rustok-comments` through `CommentsThreadPort`; native
+`#[server]` and GraphQL remain parallel transports over the same owner services."""
+          new_opening = """`rustok-blog` owns localized posts, Blog Category membership/settings,
+Blog-owned post-term relations, channel-aware publication visibility,
+GraphQL/HTTP/native adapters, and admin/storefront packages. Canonical Blog
+Category localized identity, route history, and hierarchy are Taxonomy-owned
+through the same-ID binding. Blog consumes `rustok-comments` through
+`CommentsThreadPort`; native `#[server]` and GraphQL remain parallel transports
+over the same owner services."""
+          if text.count(old_opening) != 1:
+              raise SystemExit(f"expected one active ownership opening, got {text.count(old_opening)}")
+          text = text.replace(old_opening, new_opening)
+
+          start = "### Blog category Translation target pilot\n\n"
+          end = "\n\nGraphQL load protection is field-aware over the host `SharedApiRateLimiter`."
+          if text.count(start) != 1 or text.count(end) != 1:
+              raise SystemExit(f"expected unique Translation section boundaries: start={text.count(start)} end={text.count(end)}")
+          before, rest = text.split(start, 1)
+          stale_section, after = rest.split(end, 1)
+          replacement = """### Blog Category Taxonomy ownership\n\nThe former Blog-owned Category Translation pilot is retired. Historical migration
+`m20260803_000016_add_blog_category_translation_target_support` remains upgrade
+provenance only; later TAXONOMY-CAT slices moved canonical Category localized
+copy, route history, hierarchy, Translation apply/progress, and change-cursor
+ownership to Taxonomy. `BlogCategoryTranslationTargetProvider`, the Blog Category
+Translation change journal, the live translation mirror, provider-era tests, and
+provider PostgreSQL evidence are no longer runtime or readiness surfaces.\n\nBlog keeps the same-ID Taxonomy Category binding plus Blog-owned membership,
+settings, owner revision, and local command invariants. Category reads and
+mutation responses project canonical Taxonomy state; create/update/hierarchy
+commands synchronize Taxonomy in the owner transaction; delete delegates
+canonical lifecycle cleanup to Taxonomy. Translation-control-plane work for
+Category copy uses the registered `taxonomy/term` provider and its Taxonomy-owned
+CAS/receipt/cursor evidence. Blog post translation remains a separate future
+Blog-owned editorial surface. Do not reintroduce a second `blog/category`
+provider or direct Blog Category localized storage."""
+          text = before + replacement + end + after
+
+          stale_markers = [
+              "`BlogCategoryTranslationTargetProvider` is registered by the server",
+              "The focused SQLite suite in `src/translation_target_tests.rs`",
+              "This is a registered pilot, not a production-enablement claim.",
+              "`blog_translation_changes` owner journal",
+          ]
+          for marker in stale_markers:
+              if marker in text:
+                  raise SystemExit(f"stale live-plan marker survived: {marker}")
+
+          required = [
+              "### Blog Category Taxonomy ownership",
+              "Translation-control-plane work for\nCategory copy uses the registered `taxonomy/term` provider",
+              "Do not reintroduce a second `blog/category`\nprovider",
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f"missing replacement marker: {marker}")
+
+          path.write_text(text)
+      - name: Verify bounded diff
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git diff --name-only)" = "crates/rustok-blog/docs/implementation-plan.md"
+          git diff -- crates/rustok-blog/docs/implementation-plan.md
+      - name: Commit active-plan patch
+        shell: bash
+        run: |
+          git config user.name "CAT-17 docs bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/rustok-blog/docs/implementation-plan.md
+          git commit -m "docs(blog): align live plan with Taxonomy Category owner"
+          git push origin HEAD:agent/cat17-blog-live-plan-category-owner
