@@ -1,0 +1,53 @@
+name: Blog Taxonomy Category Cross-owner Docs
+
+on:
+  pull_request:
+    paths:
+      - "docs/architecture/taxonomy-flex-category-platform-plan.md"
+      - "docs/architecture/database.md"
+      - "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md"
+      - "crates/rustok-blog/docs/implementation-plan-current.md"
+      - "scripts/verify/verify-blog-taxonomy-category-cross-owner-docs.mjs"
+      - ".github/workflows/blog-taxonomy-category-cross-owner-docs.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/architecture/taxonomy-flex-category-platform-plan.md"
+      - "docs/architecture/database.md"
+      - "DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md"
+      - "crates/rustok-blog/docs/implementation-plan-current.md"
+      - "scripts/verify/verify-blog-taxonomy-category-cross-owner-docs.mjs"
+      - ".github/workflows/blog-taxonomy-category-cross-owner-docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-taxonomy-category-cross-owner-docs-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  cross-owner-docs-contract:
+    name: Blog Taxonomy Category cross-owner docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - name: Verify Blog Category cross-owner docs
+        run: node scripts/verify/verify-blog-taxonomy-category-cross-owner-docs.mjs
