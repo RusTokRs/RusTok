@@ -194,18 +194,28 @@ Principle:
 
 ## Blog-family Storage
 
-Blog category localization follows the same base-plus-exact-translation model:
+Blog Category storage follows the canonical Taxonomy ownership boundary rather
+than a live Blog-local translation mirror:
 
-- `blog_categories` owns language-agnostic hierarchy, settings, and a positive
-  resource revision;
-- `blog_category_translations` owns exact `name`, localized `slug`, optional
-  `description`, and a positive per-locale revision;
-- `blog_translation_changes` is Blog's append-only, content-free owner change
-  journal for Translation cursor repair. It records resource/target revisions,
-  operation, lifecycle, and locale but not copy values.
+- `blog_categories` remains Blog-owned for module membership, settings, positive
+  owner revision, and local command invariants;
+- the typed Blog-to-Taxonomy Category binding preserves the consumer ownership
+  boundary and rejects cross-tenant drift;
+- canonical Category localized `name`, `slug`, `description`, route aliases and
+  hierarchy projection live in Taxonomy-owned Category storage;
+- historical migration `m20260824_000020_backfill_blog_categories_to_taxonomy`
+  copies donor Category data into same-ID Taxonomy ownership for upgrades;
+- forward migration `m20260828_000021_retire_blog_category_legacy_storage`
+  fails closed until matching same-ID Taxonomy ownership is proven, then
+  irreversibly drops `blog_category_translations` and
+  `blog_translation_changes`;
+- the remaining crate-private Blog Category translation entity is an upgrade-only
+  donor seam for historical `000020`, not a runtime storage contract.
 
-Translation applies category copy through Blog's service; it does not obtain a
-cross-module foreign key or direct write path into these tables.
+The former Blog `blog/category` Translation provider and Blog Category change
+journal are retired. Translation of canonical Blog Category copy is Taxonomy-owned;
+no control-plane apply path should recreate direct writes to the dropped Blog
+donor tables.
 
 ## Navigation-family Storage
 
