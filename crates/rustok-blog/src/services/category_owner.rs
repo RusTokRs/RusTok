@@ -8,15 +8,11 @@ use rustok_taxonomy::{
     TaxonomyService,
 };
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use uuid::Uuid;
 
-use super::category::{
-    ApplyExactCategoryTranslationInput, CategoryService as LegacyCategoryService,
-    CategoryTranslationApplyResult,
-};
+use super::category::CategoryService as CategoryCommandCore;
 use super::category_delete::BlogCategoryDeleteCleanup;
 use super::rbac::enforce_scope;
 use crate::dto::{
@@ -30,12 +26,11 @@ const BLOG_TAXONOMY_SCOPE: &str = "blog";
 
 /// Public Blog Category owner facade.
 ///
-/// Blog keeps membership, settings, timestamps and domain mutations. Canonical
-/// Category identity/copy/hierarchy is materialized through the typed Taxonomy
-/// binding so public reads no longer depend on `blog_category_translations` or
-/// Blog-owned placement columns.
+/// Blog keeps membership, settings, timestamps and command authorization. Canonical
+/// Category identity/copy/hierarchy is owned by Taxonomy through the typed binding;
+/// neither public reads nor command writes depend on the retired Blog translation mirror.
 pub struct CategoryService {
-    legacy: LegacyCategoryService,
+    commands: CategoryCommandCore,
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     category_delete_cleanup: Option<Arc<dyn TaxonomyCategoryDeleteCleanupPort>>,
@@ -44,7 +39,7 @@ pub struct CategoryService {
 impl CategoryService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            legacy: LegacyCategoryService::new(db.clone(), event_bus.clone()),
+            commands: CategoryCommandCore::new(db.clone(), event_bus.clone()),
             db,
             event_bus,
             category_delete_cleanup: None,
@@ -53,8 +48,7 @@ impl CategoryService {
 
     /// Attach the host-owned cleanup required before a canonical Taxonomy Category is deleted.
     ///
-    /// Delete fails closed when this port is absent; reads, writes and Translation compatibility
-    /// paths do not require it.
+    /// Delete fails closed when this port is absent; reads and other writes do not require it.
     pub fn with_category_delete_cleanup(
         mut self,
         cleanup: Arc<dyn TaxonomyCategoryDeleteCleanupPort>,
@@ -63,17 +57,13 @@ impl CategoryService {
         self
     }
 
-    pub(crate) fn database(&self) -> &DatabaseConnection {
-        &self.db
-    }
-
     pub async fn create(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         input: CreateCategoryInput,
     ) -> BlogResult<Uuid> {
-        self.legacy.create(tenant_id, security, input).await
+        self.commands.create(tenant_id, security, input).await
     }
 
     pub async fn get(
@@ -96,7 +86,7 @@ impl CategoryService {
         input: UpdateCategoryInput,
     ) -> BlogResult<CategoryResponse> {
         let response_locale = input.locale.clone();
-        self.legacy
+        self.commands
             .update(tenant_id, category_id, security, input)
             .await?;
         self.load_category_response(tenant_id, category_id, &response_locale)
@@ -279,18 +269,6 @@ impl CategoryService {
             .collect();
 
         Ok((items, total))
-    }
-
-    pub(crate) async fn apply_exact_translation_in_tx(
-        &self,
-        txn: &DatabaseTransaction,
-        tenant_id: Uuid,
-        category_id: Uuid,
-        input: ApplyExactCategoryTranslationInput,
-    ) -> BlogResult<CategoryTranslationApplyResult> {
-        self.legacy
-            .apply_exact_translation_in_tx(txn, tenant_id, category_id, input)
-            .await
     }
 
     async fn load_category_response(
