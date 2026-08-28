@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const failures = [];
 const read = (path) => fs.readFileSync(path, 'utf8');
+const normalizeWhitespace = (source) => source.replace(/\s+/g, ' ').trim();
 const requireMarker = (source, marker, label = marker) => {
   if (!source.includes(marker)) failures.push(`missing ${label}`);
 };
@@ -32,7 +33,7 @@ if (failures.length === 0) {
     'completed Blog consumer migration status',
   );
   requireMarker(
-    platformPlan,
+    normalizeWhitespace(platformPlan),
     'The former Blog Category Translation provider, live donor mirror/journal, and their runtime source files are retired.',
     'retired Blog provider boundary',
   );

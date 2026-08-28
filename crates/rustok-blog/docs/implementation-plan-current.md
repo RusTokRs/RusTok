@@ -1,22 +1,28 @@
 # rustok-blog canonical implementation cursor
 
-Status: `canonical_source_cursor_actualized_through_taxonomy_cat_12`.
+Status: `canonical_source_cursor_actualized_through_taxonomy_cat_17_docs`.
 
 This document is the canonical **current** source cursor for `rustok-blog`.
 `crates/rustok-blog/docs/implementation-plan.md` and the standalone
 `implementation-plan-slice-*.md` files are historical implementation records.
 They remain useful for provenance, but statements in them about a live Blog
 Category Translation provider, Blog Category translation donor tables, or a
-pending slice-98 PostgreSQL execution gate are superseded by this file.
+pending slice-98 PostgreSQL execution gate are superseded by this file. The
+owner-scoped documentation cleanup that followed the source cutover is complete
+through TAXONOMY-CAT-17.
 
 ## Current Category ownership
 
 The Blog Category migration to canonical Taxonomy is source-complete through
-TAXONOMY-CAT-12.
+TAXONOMY-CAT-12. CAT-13..CAT-17 actualize the owner-scoped planning, Translation,
+registry, database-map, and long-form documentation around that completed source
+boundary; they do not move the production cutover past CAT-12.
 
 Canonical interpretation:
 
 `blog_category_taxonomy_cutover = source_complete_through_cat12`
+
+`blog_category_documentation_cursor = owner_scoped_actualized_through_cat17`
 
 The retained ownership boundary is:
 
@@ -52,12 +58,25 @@ The continuation after the historical Blog cursor is:
   then drop `blog_category_translations` and `blog_translation_changes`;
 - CAT-12: remove the inert Translation bridge module and unregistered change
   entity, while retaining only the crate-private donor translation entity
-  needed by the historical `000020` upgrade backfill.
+  needed by the historical `000020` upgrade backfill;
+- CAT-13: actualize the canonical Blog planning cursor and active Blog README
+  surfaces, retire orphaned provider-era PostgreSQL evidence/verifier sources,
+  and guard the post-cutover source boundary;
+- CAT-14: actualize cross-owner Taxonomy/Flex planning and the central database
+  map while preserving the accepted no-duplicate-provider ownership ADR;
+- CAT-15: actualize central/module Translation plans and the machine-readable
+  Translation surface registry so `blog_categories` is `excluded` /
+  `not_registered` and `taxonomy_terms` remains the canonical registered owner;
+- CAT-16: actualize the central module registry and remove the obsolete
+  Blog-specific Category Translation recovery/readiness gate;
+- CAT-17: align the long-form Blog plan's live ownership summary and former
+  Translation-pilot section with canonical Taxonomy ownership and add a focused
+  exact-head guard against provider-era drift.
 
 Focused exact-head contracts for the completed continuation cover canonical
 commands, mutation responses, reads, post category-name projection, hierarchy,
-delete lifecycle, donor-storage retirement and `rustok-blog --lib` compilation
-with warnings denied.
+delete lifecycle, donor-storage retirement, `rustok-blog --lib` compilation with
+warnings denied, and the CAT-13..CAT-17 owner/documentation boundaries.
 
 ## Superseded Category Translation pilot
 
@@ -121,18 +140,23 @@ Translation provider or its deleted PostgreSQL harness.
 
 ## Documentation follow-up
 
-Blog-owned live documentation is expected to describe the post-CAT-12 boundary.
-Cross-cutting Translation/database overview documents may contain historical
-provider-era wording until their own owner-scoped cleanup slice is merged; such
-wording must not override this Blog cursor or current production source.
+The owner-scoped Blog Category cleanup is complete through CAT-17. Active Blog,
+Translation, Taxonomy/database-map, central module-registry, and long-form Blog
+ownership surfaces now describe canonical Taxonomy ownership without treating a
+second `blog/category` provider, donor tables, or provider PostgreSQL evidence as
+live readiness contracts.
+
+Historical migrations and standalone slice records remain provenance and may
+name retired provider/storage concepts in historical context. Any future stale
+live claim discovered outside these owner-scoped surfaces is a new independent
+documentation gap and must be handled from a fresh `main` under the owning
+module's boundary.
 
 ## Next cursor
 
-The next bounded source task is a cross-cutting documentation actualization:
-remove live claims that Blog still registers `BlogCategoryTranslationTargetProvider`
-or owns `blog_category_translations` / `blog_translation_changes`, while
-preserving historical migrations and slice-98 provenance.
-
-After that, continue only from a fresh repository audit that identifies a new
-independent source gap. Do not manufacture work by reopening CAT-1..CAT-12 or
-by recreating the retired Blog Category Translation provider.
+There is no predeclared Blog Category Translation cleanup slice after CAT-17.
+Continue only from a fresh repository audit that identifies a new independent
+source, registry, or live-documentation gap. Do not manufacture work by
+reopening CAT-1..CAT-17, by recreating the retired Blog Category Translation
+provider, or by treating historical migration/slice provenance as a live
+contract.
