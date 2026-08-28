@@ -83,9 +83,14 @@ selection.
   coverage. Taxonomy applies term `name`, review-only `slug`, and optional
   `description` through owner CAS and the shared Outbox receipt ledger. Blog
   Category canonical copy is consumed through the same-ID Blog-to-Taxonomy
-  Category binding and the `taxonomy/term` provider; the former `blog/category`
-  provider, Blog Category change journal, and Blog-local Category translation
-  storage are retired and must not be recreated. Navigation applies its menu
+  Category binding and the `taxonomy/term` provider. Forum Category canonical
+  copy is consumed through the same-ID Forum-to-Taxonomy Category binding and
+  the same `taxonomy/term` provider. The former `blog/category` provider, Blog
+  Category change journal, and Blog-local Category translation storage are
+  retired and must not be recreated. The duplicate `forum/category` provider,
+  Forum Category change/progress runtime, and Forum-local donor translation
+  storage are retired and must not be recreated. Forum topic/reply Translation
+  remains a separate opt-in UGC onboarding track. Navigation applies its menu
   name and every item title as one CAS-guarded locale aggregate through
   `MenuService`, using a content-free cursor journal without claiming a generic
   menu event. Pages applies exact title, review-only slug, and optional SEO
