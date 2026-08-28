@@ -9,8 +9,10 @@ const requireText = (source, marker, label = marker) => {
 const rejectText = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
+const normalizeWhitespace = (source) => source.replace(/\s+/g, ' ').trim();
 
 const planPath = 'crates/rustok-forum/docs/implementation-plan.md';
+const centralPlanPath = 'docs/modules/translation-implementation-plan.md';
 const registryPath = 'docs/modules/translation-surfaces.json';
 const parityPath = 'crates/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md';
 const retirementTest = 'crates/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs';
@@ -20,7 +22,7 @@ const retiredPaths = [
   'crates/rustok-forum/tests/category_translation_target_postgres.rs',
 ];
 
-for (const path of [planPath, registryPath, parityPath, retirementTest]) {
+for (const path of [planPath, centralPlanPath, registryPath, parityPath, retirementTest]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 for (const path of retiredPaths) {
@@ -29,6 +31,8 @@ for (const path of retiredPaths) {
 
 if (failures.length === 0) {
   const plan = fs.readFileSync(planPath, 'utf8');
+  const centralPlan = fs.readFileSync(centralPlanPath, 'utf8');
+  const normalizedCentralPlan = normalizeWhitespace(centralPlan);
   const parity = fs.readFileSync(parityPath, 'utf8');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
 
@@ -52,6 +56,38 @@ if (failures.length === 0) {
     plan,
     'Retain registered-host/runtime provider evidence plus mounted multilingual/RTL browser parity',
     'retired Forum provider runtime gate',
+  );
+
+  requireText(
+    normalizedCentralPlan,
+    'Forum Category copy also follows the canonical Taxonomy provider through the same-ID Forum-to-Taxonomy Category binding',
+    'central Translation plan Forum-to-Taxonomy provider boundary',
+  );
+  requireText(
+    normalizedCentralPlan,
+    'Blog Category/Taxonomy and Forum Category/Taxonomy ownership are resolved',
+    'central Translation owner-drift status',
+  );
+  requireText(
+    normalizedCentralPlan,
+    'Forum Category canonical copy is not a Forum Translation target.',
+    'central Forum onboarding exclusion',
+  );
+  requireText(
+    normalizedCentralPlan,
+    'including canonical Category copy consumed by Blog and Forum',
+    'Taxonomy Category consumer scope',
+  );
+  requireText(
+    normalizedCentralPlan,
+    'Blog and Forum Category do not add a second provider or evidence gate',
+    'central no-duplicate Category provider rule',
+  );
+  rejectText(normalizedCentralPlan, 'Category may onboard early;', 'stale direct Forum Category onboarding');
+  rejectText(
+    normalizedCentralPlan,
+    'do not reintroduce a Blog-local Category Translation owner',
+    'Blog-only Category ownership guard wording',
   );
 
   requireText(parity, 'The backend ownership/storage cutover is already complete');
