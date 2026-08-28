@@ -1,0 +1,49 @@
+name: Blog Taxonomy Category Central Registry
+
+on:
+  pull_request:
+    paths:
+      - "docs/modules/registry.md"
+      - "docs/modules/translation-surfaces.json"
+      - "scripts/verify/verify-blog-taxonomy-category-central-registry.mjs"
+      - ".github/workflows/blog-taxonomy-category-central-registry.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/modules/registry.md"
+      - "docs/modules/translation-surfaces.json"
+      - "scripts/verify/verify-blog-taxonomy-category-central-registry.mjs"
+      - ".github/workflows/blog-taxonomy-category-central-registry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-taxonomy-category-central-registry-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  central-registry-contract:
+    name: Blog Category central registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - name: Verify central Blog Category ownership row
+        run: node scripts/verify/verify-blog-taxonomy-category-central-registry.mjs
