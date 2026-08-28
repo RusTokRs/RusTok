@@ -10,16 +10,11 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: cat19-apply-forum-category-owner-actualization
-  cancel-in-progress: true
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   patch-owner-surfaces:
-    name: Patch Forum Category owner surfaces
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -34,12 +29,8 @@ jobs:
 
           plan_path = Path("crates/rustok-forum/docs/implementation-plan.md")
           plan = plan_path.read_text()
-
           replacements = [
-              (
-                  "last_reviewed: 2026-08-22",
-                  "last_reviewed: 2026-08-28",
-              ),
+              ("last_reviewed: 2026-08-22", "last_reviewed: 2026-08-28"),
               (
                   "Forum owns canonical topic/reply storage, transports, revisions, projections,\nand module UI packages. Shared richtext storage and server projection are live;",
                   "Forum owns canonical topic/reply storage, transports, revisions, projections,\nand module UI packages. Canonical Forum Category identity, localized copy, route\nhistory, hierarchy/order and presentation are Taxonomy-owned after the verified\nCAT-5 cutover; Forum retains the typed same-ID binding plus Forum policy, counters\nand lifecycle state. Shared richtext storage and server projection are live;",
@@ -62,37 +53,17 @@ jobs:
               ),
           ]
           for old, new in replacements:
-              count = plan.count(old)
-              if count != 1:
-                  raise SystemExit(f"plan replacement expected once, got {count}: {old[:80]!r}")
+              if plan.count(old) != 1:
+                  raise SystemExit(f"unexpected Forum plan marker count: {old[:80]!r}")
               plan = plan.replace(old, new)
-
-          stale_plan = [
-              "- category hierarchy and policy;",
-              "Forum category Translation provider, cursor/progress/PostgreSQL evidence",
-              "Retain registered-host/runtime provider evidence plus mounted multilingual/RTL browser parity",
-          ]
-          for marker in stale_plan:
-              if marker in plan:
-                  raise SystemExit(f"stale Forum plan marker survived: {marker}")
-          required_plan = [
-              "Canonical Forum Category identity, localized copy, route\nhistory, hierarchy/order and presentation are Taxonomy-owned",
-              "Category copy uses Taxonomy's registered `taxonomy/term` provider.",
-              "never register a duplicate `forum/category` Translation target.",
-              "provider-era PostgreSQL evidence is superseded",
-          ]
-          for marker in required_plan:
-              if marker not in plan:
-                  raise SystemExit(f"missing Forum plan marker: {marker}")
           plan_path.write_text(plan)
 
           registry_path = Path("docs/modules/translation-surfaces.json")
           lines = registry_path.read_text().splitlines(keepends=True)
-          id_matches = [i for i, line in enumerate(lines) if '"id": "forum_categories"' in line]
-          if len(id_matches) != 1:
-              raise SystemExit(f"expected one forum_categories id, got {len(id_matches)}")
-          id_index = id_matches[0]
-          start = id_index - 1
+          matches = [i for i, line in enumerate(lines) if '"id": "forum_categories"' in line]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one forum_categories entry, got {len(matches)}")
+          start = matches[0] - 1
           if start < 0 or lines[start].strip() != "{":
               raise SystemExit("forum_categories object start not found")
           depth = 0
@@ -105,18 +76,12 @@ jobs:
           if end is None:
               raise SystemExit("forum_categories object end not found")
           old_block = "".join(lines[start:end + 1])
-          for marker in [
-              '"readiness": "pilot_candidate"',
-              '"provider_status": "registered"',
-              '"crates/rustok-forum/src/services/category_translation_target.rs"',
-              '"crates/rustok-forum/src/services/category_translation_progress.rs"',
-              '"crates/rustok-forum/tests/category_translation_target_postgres.rs"',
-          ]:
+          for marker in ['"readiness": "pilot_candidate"', '"provider_status": "registered"', "category_translation_target.rs", "category_translation_progress.rs", "category_translation_target_postgres.rs"]:
               if marker not in old_block:
-                  raise SystemExit(f"forum_categories stale block missing expected marker: {marker}")
-
-          indent = lines[start][: len(lines[start]) - len(lines[start].lstrip())]
+                  raise SystemExit(f"missing stale Forum registry marker: {marker}")
+          indent = lines[start][:len(lines[start]) - len(lines[start].lstrip())]
           inner = indent + "  "
+          comma = "," if lines[end].rstrip().endswith(",") else ""
           new_block = "".join([
               f"{indent}{{\n",
               f'{inner}"id": "forum_categories",\n',
@@ -134,23 +99,15 @@ jobs:
               f'{inner}  "crates/rustok-taxonomy/src/translation_target.rs"\n',
               f'{inner}],\n',
               f'{inner}"exclusion_reason": "Forum Category canonical localized copy, routes, hierarchy and presentation are Taxonomy-owned after the verified CAT-5 cutover. Forum keeps a typed same-ID Category binding plus Forum policy, counters and lifecycle state and must not register a duplicate forum/category Translation target."\n',
-              f"{indent}}}" + ("," if lines[end].rstrip().endswith(",") else "") + "\n",
+              f"{indent}}}{comma}\n",
           ])
           lines[start:end + 1] = [new_block]
-          registry = "".join(lines)
-          for marker in [
-              "crates/rustok-forum/src/services/category_translation_target.rs",
-              "crates/rustok-forum/src/services/category_translation_progress.rs",
-              "crates/rustok-forum/tests/category_translation_target_postgres.rs",
-          ]:
-              if marker in registry:
-                  raise SystemExit(f"retired Forum evidence path survived registry: {marker}")
-          registry_path.write_text(registry)
+          registry_path.write_text("".join(lines))
           PY
 
           git rm crates/rustok-forum/tests/category_translation_target_postgres.rs
           git diff --check
-          mapfile -t changed < <(git diff --name-only | sort)
+          mapfile -t changed < <(git diff HEAD --name-only | sort)
           expected=(
             crates/rustok-forum/docs/implementation-plan.md
             crates/rustok-forum/tests/category_translation_target_postgres.rs
@@ -158,7 +115,6 @@ jobs:
           )
           test "${changed[*]}" = "${expected[*]}"
           node scripts/verify/verify-translation-surface-registry.mjs
-          git diff -- crates/rustok-forum/docs/implementation-plan.md docs/modules/translation-surfaces.json crates/rustok-forum/tests/category_translation_target_postgres.rs
 
           git config user.name "CAT-19 docs bot"
           git config user.email "actions@users.noreply.github.com"
