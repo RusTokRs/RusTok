@@ -1,0 +1,42 @@
+name: Forum Taxonomy Category Translation Owner
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-forum/docs/implementation-plan.md"
+      - "crates/rustok-forum/tests/category_translation_target_postgres.rs"
+      - "crates/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs"
+      - "docs/modules/translation-surfaces.json"
+      - "scripts/verify/verify-forum-taxonomy-category-translation-owner.mjs"
+      - "scripts/verify/verify-translation-surface-registry.mjs"
+      - ".github/workflows/forum-taxonomy-category-translation-owner.yml"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  verify-owner:
+    name: Forum Taxonomy Category Translation owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: |
+          expected="${{ github.event.pull_request.head.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+      - uses: actions/setup-node@v7.0.0
+      - name: Verify global Translation surface registry
+        run: node scripts/verify/verify-translation-surface-registry.mjs
+      - name: Verify Forum Category canonical Translation owner
+        run: node scripts/verify/verify-forum-taxonomy-category-translation-owner.mjs
+      - name: Check patch whitespace
+        run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
