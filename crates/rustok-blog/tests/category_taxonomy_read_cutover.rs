@@ -102,21 +102,19 @@ async fn public_get_and_list_ignore_poisoned_legacy_copy_and_placement() {
     )
     .await;
 
-    let translation = blog_category_translation::Entity::find()
-        .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(blog_category_translation::Column::CategoryId.eq(child))
-        .filter(blog_category_translation::Column::Locale.eq("en"))
-        .one(&db)
-        .await
-        .expect("legacy translation read should succeed")
-        .expect("legacy translation should exist");
-    let mut poisoned_translation: blog_category_translation::ActiveModel = translation.into();
-    poisoned_translation.name = Set("POISON LEGACY NAME".to_string());
-    poisoned_translation.slug = Set("poison-legacy-route".to_string());
-    poisoned_translation
-        .update(&db)
-        .await
-        .expect("legacy translation poison should persist");
+    blog_category_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        category_id: Set(child),
+        tenant_id: Set(tenant_id),
+        locale: Set("en".to_string()),
+        name: Set("POISON LEGACY NAME".to_string()),
+        slug: Set("poison-legacy-route".to_string()),
+        description: Set(Some("must never become canonical".to_string())),
+        revision: Set(1),
+    }
+    .insert(&db)
+    .await
+    .expect("poisoned legacy translation should be injected independently of canonical create");
 
     let category = blog_category::Entity::find_by_id(child)
         .filter(blog_category::Column::TenantId.eq(tenant_id))

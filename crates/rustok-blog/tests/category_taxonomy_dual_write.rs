@@ -17,7 +17,8 @@ use rustok_taxonomy::{
     sync_module_category_with_owned_aliases_in_tx,
 };
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, TransactionTrait,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -69,7 +70,7 @@ fn create_input(name: &str, slug: &str) -> CreateCategoryInput {
 }
 
 #[tokio::test]
-async fn category_create_and_update_dual_write_copy_routes_and_binding() {
+async fn category_commands_do_not_write_legacy_translation_mirror() {
     let db = setup().await;
     let (service, _events) = service(&db);
     let tenant_id = Uuid::new_v4();
@@ -77,18 +78,17 @@ async fn category_create_and_update_dual_write_copy_routes_and_binding() {
     let category_id = service
         .create(tenant_id, admin(), create_input("Support", "support"))
         .await
-        .expect("Blog category create should dual-write to Taxonomy");
+        .expect("Blog category create should write canonical Taxonomy state");
 
-    let mirror = blog_category_translation::Entity::find()
-        .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(blog_category_translation::Column::CategoryId.eq(category_id))
-        .filter(blog_category_translation::Column::Locale.eq("en"))
-        .one(&db)
-        .await
-        .expect("Blog compatibility mirror read should succeed")
-        .expect("Blog compatibility mirror should remain during staged retirement");
-    assert_eq!(mirror.name, "Support");
-    assert_eq!(mirror.slug, "support");
+    assert_eq!(
+        blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .count(&db)
+            .await
+            .expect("Blog legacy mirror count should succeed"),
+        0,
+        "canonical Category create must not populate the retired Blog translation mirror"
+    );
     assert_eq!(
         translation_change::Entity::find()
             .filter(translation_change::Column::TenantId.eq(tenant_id))
@@ -96,7 +96,7 @@ async fn category_create_and_update_dual_write_copy_routes_and_binding() {
             .await
             .expect("Blog Translation change count should succeed"),
         0,
-        "retired Blog Category Translation evidence must not append change-journal rows"
+        "retired Blog Category Translation journal must remain empty"
     );
 
     let term = taxonomy_term::Entity::find_by_id(category_id)
@@ -127,7 +127,7 @@ async fn category_create_and_update_dual_write_copy_routes_and_binding() {
     assert_eq!(binding.blog_category_id, category_id);
     assert_eq!(binding.taxonomy_category_id, category_id);
 
-    service
+    let updated_response = service
         .update(
             tenant_id,
             category_id,
@@ -142,18 +142,20 @@ async fn category_create_and_update_dual_write_copy_routes_and_binding() {
             },
         )
         .await
-        .expect("Blog category update should dual-write to Taxonomy");
+        .expect("Blog category update should write canonical Taxonomy state");
+    assert_eq!(updated_response.name, "Help");
+    assert_eq!(updated_response.slug, "help");
+    assert_eq!(updated_response.description.as_deref(), Some("Help centre"));
 
-    let updated_mirror = blog_category_translation::Entity::find()
-        .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(blog_category_translation::Column::CategoryId.eq(category_id))
-        .filter(blog_category_translation::Column::Locale.eq("en"))
-        .one(&db)
-        .await
-        .expect("updated Blog compatibility mirror read should succeed")
-        .expect("Blog compatibility mirror should remain after update");
-    assert_eq!(updated_mirror.name, "Help");
-    assert_eq!(updated_mirror.slug, "help");
+    assert_eq!(
+        blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .count(&db)
+            .await
+            .expect("Blog legacy mirror count after update should succeed"),
+        0,
+        "canonical Category update must not recreate the retired Blog translation mirror"
+    );
     assert_eq!(
         translation_change::Entity::find()
             .filter(translation_change::Column::TenantId.eq(tenant_id))
@@ -161,7 +163,7 @@ async fn category_create_and_update_dual_write_copy_routes_and_binding() {
             .await
             .expect("Blog Translation change count after update should succeed"),
         0,
-        "canonical dual-write must no longer depend on the retired Blog change journal"
+        "canonical Category update must not recreate retired Blog change-journal evidence"
     );
 
     let updated = taxonomy_term_translation::Entity::find()
@@ -187,6 +189,75 @@ async fn category_create_and_update_dual_write_copy_routes_and_binding() {
     assert!(
         old_route.is_some(),
         "Taxonomy must own historical Blog route aliases"
+    );
+
+    blog_category_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        category_id: Set(category_id),
+        tenant_id: Set(tenant_id),
+        locale: Set("en".to_string()),
+        name: Set("LEGACY POISON".to_string()),
+        slug: Set("legacy-poison".to_string()),
+        description: Set(Some("must never become canonical".to_string())),
+        revision: Set(77),
+    }
+    .insert(&db)
+    .await
+    .expect("legacy poison fixture should insert while storage still exists");
+
+    let settings_only = service
+        .update(
+            tenant_id,
+            category_id,
+            admin(),
+            UpdateCategoryInput {
+                locale: "en".to_string(),
+                name: None,
+                slug: None,
+                description: None,
+                position: None,
+                settings: Some(serde_json::json!({"layout": "canonical-only"})),
+            },
+        )
+        .await
+        .expect("settings-only update must read its copy from canonical Taxonomy");
+    assert_eq!(settings_only.name, "Help");
+    assert_eq!(settings_only.slug, "help");
+    assert_eq!(settings_only.description.as_deref(), Some("Help centre"));
+    assert_eq!(
+        settings_only.settings,
+        serde_json::json!({"layout": "canonical-only"})
+    );
+
+    let poison = blog_category_translation::Entity::find()
+        .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+        .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+        .filter(blog_category_translation::Column::Locale.eq("en"))
+        .one(&db)
+        .await
+        .expect("legacy poison read should succeed")
+        .expect("legacy poison fixture should remain until schema cleanup");
+    assert_eq!(poison.name, "LEGACY POISON");
+    assert_eq!(poison.slug, "legacy-poison");
+    assert_eq!(poison.revision, 77);
+    assert_eq!(
+        poison.description.as_deref(),
+        Some("must never become canonical")
+    );
+
+    let canonical_after_poison = taxonomy_term_translation::Entity::find()
+        .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term_translation::Column::TermId.eq(category_id))
+        .filter(taxonomy_term_translation::Column::Locale.eq("en"))
+        .one(&db)
+        .await
+        .expect("canonical copy read after poison should succeed")
+        .expect("canonical copy must survive poison fixture");
+    assert_eq!(canonical_after_poison.name, "Help");
+    assert_eq!(canonical_after_poison.slug, "help");
+    assert_eq!(
+        canonical_after_poison.description.as_deref(),
+        Some("Help centre")
     );
 }
 

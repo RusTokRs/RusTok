@@ -11,6 +11,23 @@ use crate::error::{BlogError, BlogResult};
 
 const BLOG_TAXONOMY_SCOPE: &str = "blog";
 
+pub(crate) async fn load_category_locale_copy_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    locale: &str,
+) -> BlogResult<Option<rustok_taxonomy::TaxonomyModuleCategoryLocaleCopy>> {
+    rustok_taxonomy::load_module_category_locale_copy_in_tx(
+        txn,
+        tenant_id,
+        category_id,
+        BLOG_TAXONOMY_SCOPE,
+        locale,
+    )
+    .await
+    .map_err(map_taxonomy_error)
+}
+
 pub(crate) async fn sync_category_copy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -98,8 +115,8 @@ async fn sync_siblings_for_parent_in_tx(
     tenant_id: Uuid,
     parent_id: Option<Uuid>,
 ) -> BlogResult<()> {
-    let mut query = blog_category::Entity::find()
-        .filter(blog_category::Column::TenantId.eq(tenant_id));
+    let mut query =
+        blog_category::Entity::find().filter(blog_category::Column::TenantId.eq(tenant_id));
     query = match parent_id {
         Some(parent_id) => query.filter(blog_category::Column::ParentId.eq(parent_id)),
         None => query.filter(blog_category::Column::ParentId.is_null()),

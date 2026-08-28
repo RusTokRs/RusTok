@@ -4,14 +4,10 @@ on:
   pull_request:
     paths:
       - "crates/rustok-blog/src/lib.rs"
-      - "crates/rustok-blog/src/services/mod.rs"
-      - "crates/rustok-blog/src/translation_evidence.rs"
       - "crates/rustok-blog/src/translation_target.rs"
       - "crates/rustok-blog/src/translation_target_tests.rs"
       - "crates/rustok-blog/tests/category_translation_target_postgres_test.rs"
       - "crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
-      - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
       - "apps/server/src/services/module_event_dispatcher.rs"
       - ".github/workflows/blog-taxonomy-category-translation-provider-retirement.yml"
   push:
@@ -19,14 +15,10 @@ on:
       - main
     paths:
       - "crates/rustok-blog/src/lib.rs"
-      - "crates/rustok-blog/src/services/mod.rs"
-      - "crates/rustok-blog/src/translation_evidence.rs"
       - "crates/rustok-blog/src/translation_target.rs"
       - "crates/rustok-blog/src/translation_target_tests.rs"
       - "crates/rustok-blog/tests/category_translation_target_postgres_test.rs"
       - "crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs"
-      - "crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
-      - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
       - "apps/server/src/services/module_event_dispatcher.rs"
       - ".github/workflows/blog-taxonomy-category-translation-provider-retirement.yml"
   workflow_dispatch:
@@ -64,22 +56,9 @@ jobs:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Check scoped Rust formatting
-        run: |
-          rustfmt +1.96.0 --edition 2024 --check --config skip_children=true \
-            crates/rustok-blog/src/lib.rs \
-            crates/rustok-blog/src/services/mod.rs
-          rustfmt +1.96.0 --edition 2024 --check \
-            crates/rustok-blog/src/translation_evidence.rs \
-            crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs \
-            crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs
-      - name: Verify hierarchy separation after provider retirement
-        run: node scripts/verify/verify-blog-category-hierarchy-command.mjs
+        run: rustfmt +1.96.0 --edition 2024 --check crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs
       - name: Run Category Translation provider retirement contract
         run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_translation_provider_retirement -- --nocapture
-      - name: Re-run canonical Category mutation response contract
-        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_mutation_response_cutover -- --nocapture
-      - name: Re-run Blog Taxonomy Category read cutover contract
-        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_read_cutover -- --nocapture
       - name: Compile Blog owner surface with warnings denied
         env:
           RUSTFLAGS: -Dwarnings
