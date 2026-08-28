@@ -1,0 +1,87 @@
+name: Blog Taxonomy Category Mirror Write Retirement
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-blog/src/services/category.rs"
+      - "crates/rustok-blog/src/services/category_owner.rs"
+      - "crates/rustok-blog/src/services/category_taxonomy_sync.rs"
+      - "crates/rustok-blog/src/services/mod.rs"
+      - "crates/rustok-blog/src/translation_evidence.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_dual_write.rs"
+      - "scripts/verify/verify-blog-taxonomy-category-dual-write.mjs"
+      - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
+      - ".github/workflows/blog-taxonomy-category-mirror-write-retirement.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-blog/src/services/category.rs"
+      - "crates/rustok-blog/src/services/category_owner.rs"
+      - "crates/rustok-blog/src/services/category_taxonomy_sync.rs"
+      - "crates/rustok-blog/src/services/mod.rs"
+      - "crates/rustok-blog/src/translation_evidence.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_dual_write.rs"
+      - "scripts/verify/verify-blog-taxonomy-category-dual-write.mjs"
+      - "scripts/verify/verify-blog-category-hierarchy-command.mjs"
+      - ".github/workflows/blog-taxonomy-category-mirror-write-retirement.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-taxonomy-category-mirror-write-retirement-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  mirror-write-retirement-contract:
+    name: Blog Taxonomy Category mirror write retirement
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check touched Rust formatting
+        run: |
+          rustfmt +1.96.0 --edition 2024 --check --config skip_children=true \
+            crates/rustok-blog/src/services/mod.rs
+          rustfmt +1.96.0 --edition 2024 --check \
+            crates/rustok-blog/src/services/category.rs \
+            crates/rustok-blog/src/services/category_owner.rs \
+            crates/rustok-blog/src/services/category_taxonomy_sync.rs \
+            crates/rustok-blog/src/translation_evidence.rs \
+            crates/rustok-blog/tests/category_taxonomy_dual_write.rs
+      - name: Verify Category mirror writer retirement boundary
+        run: node scripts/verify/verify-blog-taxonomy-category-dual-write.mjs
+      - name: Verify hierarchy source ownership boundary
+        run: node scripts/verify/verify-blog-category-hierarchy-command.mjs
+      - name: Run Category mirror writer retirement contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_dual_write -- --nocapture
+      - name: Re-run canonical Category mutation response contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_mutation_response_cutover -- --nocapture
+      - name: Re-run Blog Taxonomy Category read cutover contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_read_cutover -- --nocapture
+      - name: Re-run Blog Taxonomy Category delete lifecycle contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_delete_lifecycle -- --nocapture
+      - name: Compile Blog owner surface with warnings denied
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: cargo +1.96.0 check --locked -p rustok-blog --lib
