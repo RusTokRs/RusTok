@@ -200,21 +200,25 @@ CAS revision and disabled-locale evidence, while required-target progress fails
 closed until an authorized replacement revalidates it.
 
 Registered pilot aggregates are `media/asset`, `taxonomy/term`,
-`blog/category`, `navigation/menu`, and `pages/page_metadata`.
-Translation never reads their tables: each owner supplies exact target facts and
-an opaque owner cursor. Media counts source-eligible active assets in a stable
-change window; Taxonomy counts active terms; Blog counts categories with an
-exact source row; Navigation counts only full exact menu aggregates; Pages
-counts active Pages with an exact source metadata row. Taxonomy and Blog expose
-exact `name`, review-only `slug`, and optional `description`; Navigation exposes
-a required menu name plus one required exact title per menu item; Pages exposes
-title, review-only slug, and optional SEO metadata. Blog applies through its
-category service and emits the existing Search reindex request transactionally;
-Navigation applies through `MenuService` and uses its content-free cursor
-journal rather than claiming a generic owner event; Pages applies through
-`PageService` and emits the existing `NodeUpdated` event. Runtime locale
-fallback does not contribute to any aggregate. All five pilots still require
-their documented production database evidence before inventory enablement.
+`navigation/menu`, and `pages/page_metadata`. Canonical Blog Category copy is
+not a separate Translation aggregate: Blog binds its categories to same-ID
+Taxonomy Category terms, so exact Category `name`, review-only `slug`, optional
+`description`, revision, apply, and change-cursor behavior are supplied only by
+`taxonomy/term`. The former `blog/category` provider, Blog Category Translation
+change journal, and Blog-local Category translation storage are retired and
+must not be recreated as a control-plane apply path.
+
+Translation never reads owner tables directly: each registered owner supplies
+exact target facts and an opaque owner cursor. Media counts source-eligible
+active assets in a stable change window; Taxonomy counts active terms including
+Category terms consumed by Blog; Navigation counts only full exact menu
+aggregates; Pages counts active Pages with an exact source metadata row.
+Navigation exposes a required menu name plus one required exact title per menu
+item; Pages exposes title, review-only slug, and optional SEO metadata. Runtime
+locale fallback does not contribute to any aggregate. Production enablement
+continues to require the documented provider-specific database evidence; Blog
+Category does not add a second provider evidence gate beyond the canonical
+Taxonomy owner.
 
 `rustok-translation-targets` remains a separate Cargo package even if its
 physical directory is later moved under `crates/rustok-translation/`. This
