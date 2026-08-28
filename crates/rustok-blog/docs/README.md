@@ -1,149 +1,139 @@
 # `rustok-blog` Documentation
 
-`rustok-blog` is the domain module for publication, Blog category, and comment
-scenarios. The module owns its persistence and uses shared platform contracts
-only across explicit boundaries.
-
-All Blog comment lifecycle operations consume the public `CommentsThreadPort`
-with typed actor, locale, deadline, idempotency where required, and error
-semantics. Comments lifecycle events are consumed by Blog's durable idempotent
-reply-count projection, which publishes `BlogPostUpdated` in the same projection
-transaction.
+`rustok-blog` is the Blog domain module for publications, Blog Category owner
+state, tags, and comment integration. The module owns its persistence where the
+Blog domain is authoritative and uses shared platform owners through explicit
+contracts.
 
 ## Planning cursor
 
 Use [Current Implementation Cursor](./implementation-plan-current.md) for the
 live Blog source status and next autonomous cursor. The long
-[Implementation Plan](./implementation-plan.md) is the historical baseline and
-embedded implementation log; its inline current-state and next-results sections
-predate the later standalone continuation slices and must not be treated as the
-live cursor without the current-cursor document.
+[Implementation Plan](./implementation-plan.md) and standalone slice files are
+historical implementation records; they must not override the current cursor
+when later bounded migrations retire an earlier design.
 
 ## Purpose
 
-- publish the canonical Blog runtime contract for posts, categories, and tag relations;
-- keep Blog-owned transport surfaces, domain services, and UI packages inside the module;
-- evolve the Blog as a channel-aware and taxonomy-aware domain without shared storage;
+- publish the canonical Blog runtime contract for posts, Blog Category owner
+  state, and tag relations;
+- keep Blog-owned transport surfaces, domain services, and UI packages inside
+  the module;
+- evolve Blog as a channel-aware and taxonomy-aware domain without shared-table
+  ownership drift;
 - expose distinct `blog_posts:*` and `blog_categories:*` authority resources.
 
 ## Scope
 
-- `PostService`, `CommentService`, `CategoryService`, `TagService`, and the Blog state machine;
-- Blog-owned storage for posts, translations, categories, and typed relations;
+- `PostService`, `CommentService`, `CategoryService`, `TagService`, and the Blog
+  state machine;
+- Blog-owned post storage, post translations, Blog Category membership/settings,
+  and typed relations;
 - GraphQL, REST, Leptos admin, and storefront transport surfaces;
-- REST handlers consume narrow `BlogHttpRuntime` state with explicit DB/event bus handles; `controllers::axum_router` builds that state from `HostRuntimeContext`;
-- category REST CRUD under `/api/blog/categories` requires `blog_categories:*`;
-- `CategoryService::new(db, event_bus)` is the only category service constructor;
-- category update/delete and tenant Blog-scope reindex publication share one transaction;
-- moderation REST surface `POST /api/blog/comments/{id}/moderate` uses `blog_posts:manage`;
+- REST handlers consume narrow `BlogHttpRuntime` state constructed from
+  `HostRuntimeContext`;
+- category REST CRUD under `/api/blog/categories` requires
+  `blog_categories:*`;
+- `CategoryService::new(db, event_bus)` is the Category service constructor;
+- category owner mutations and tenant Blog-scope Search reindex publication
+  share one transaction;
+- moderation REST uses `blog_posts:manage`;
 - channel visibility for publications and integration with `rustok-channel`;
-- shared taxonomy dictionary reuse via `blog_post_tags`, without transferring attachment ownership;
-- observability via `rustok-telemetry` read-path metrics and instrumented service methods.
+- shared Taxonomy dictionary reuse via `blog_post_tags`, without transferring
+  attachment ownership;
+- canonical Taxonomy ownership for Blog Category localized copy, routes and
+  Category projection.
 
 ## Multilingual storage contract
 
-Blog follows the platform language-agnostic storage model:
+Blog post localization remains owner-local:
 
 - `blog_posts` owns identity, lifecycle, relations, counters, publication state,
-  and the canonical route key;
-- `blog_posts.slug` is an explicitly locale-neutral canonical route identifier.
-  It is stable across requested locales and must not contain translated display
-  copy;
-- localized post title, excerpt, body, and SEO copy belong to
+  and the locale-neutral canonical route key;
+- localized post title, excerpt, body and SEO copy belong to
   `blog_post_translations`;
-- localized category name, slug, and description belong to
-  `blog_category_translations`;
-- `blog_categories.revision` is the positive owner resource revision for a
-  category, while `blog_category_translations.revision` is the positive exact
-  locale revision for its localized copy;
-- `blog_translation_changes` is Blog's append-only, content-free owner change
-  journal. Its `category` rows provide the opaque cursor used by Translation
-  inventory repair and progress framing;
-- post and category translation locale columns use the platform-safe
-  `VARCHAR(32)` contract after
-  `m20260721_000005_expand_blog_locale_storage_columns`;
-- tenant default/effective locale controls resolution only and does not own any
-  localized Blog field.
+- tenant locale policy controls resolution only and does not own localized Blog
+  fields.
 
-Changing the canonical post route key is a language-agnostic identity operation.
-A localized alternative URL must be modeled as an explicit alias/projection; it
-must not silently redefine ownership of `blog_posts.slug`.
+Blog Category localization no longer uses a live Blog translation mirror:
 
-## Translation target boundary
+- `blog_categories` remains Blog-owned for module membership, settings, owner
+  revision and local command invariants;
+- canonical Category localized copy and route history are Taxonomy-owned;
+- public/owner Category reads and Category mutation responses project canonical
+  Taxonomy state;
+- historical migration `000020` backfills donor Category copy into same-ID
+  Taxonomy ownership;
+- migration `000021` fails closed unless that ownership is present, then
+  irreversibly drops `blog_category_translations` and
+  `blog_translation_changes`;
+- the donor Category translation entity remains crate-private only for the
+  historical `000020` upgrade path. It is not a runtime source.
 
-`BlogCategoryTranslationTargetProvider` registers the exact `blog/category`
-owner target through the server host registry. It supports bounded discovery,
-exact resource reads, patch validation, resource/source/target revision CAS,
-durable owner-operation receipt replay, exact progress, and append-only change
-cursors.
+Changing the canonical post route key remains a language-agnostic identity
+operation. Localized alternative URLs must be explicit aliases/projections.
 
-- The exposed fields are public `name` (AI-exportable plain text), public
-  review-only `slug` (not AI-exportable), and optional public `description`
-  (AI-exportable plain text). Their maximum sizes are 255, 255, and 1000
-  characters respectively.
-- Runtime fallback never counts as an exact target value. Source and target
-  rows are always addressed with canonical `TenantLocale` values.
-- Apply delegates to `CategoryService::apply_exact_translation_in_tx`; it
-  validates the localized slug, performs owner CAS, records a `category`
-  change, and publishes the Blog Search reindex request. The provider completes
-  or replays the shared owner-operation receipt in that same transaction.
-- The host constructs this provider with the durable `OutboxTransport` because
-  target registration happens before the general event runtime is available.
-  The adapter never reads or writes Blog storage from `rustok-translation`.
-- Taxonomy-owned Blog tags and all Blog post fields remain outside this pilot.
-  Post title/body/SEO onboarding requires the separate editorial richtext
-  revision and segment-materialization wave.
+## Category Translation / Taxonomy boundary
+
+`BlogCategoryTranslationTargetProvider` is retired and is not registered by the
+server host. The provider-era Blog change writer, change entity, PostgreSQL
+harness and live donor tables have also been retired in later CAT slices.
+
+Current Category rules:
+
+- create/update commands synchronize canonical Taxonomy copy in the owner
+  transaction;
+- hierarchy commands synchronize canonical Taxonomy placement;
+- delete delegates canonical Category lifecycle cleanup to Taxonomy;
+- Blog reads do not fall back to retired donor translation storage;
+- post `category_name` projection reads the canonical Taxonomy Category label;
+- Translation-control-plane onboarding for Blog Category copy must use the
+  canonical Taxonomy owner contract rather than recreating a `blog/category`
+  provider.
+
+Historical slice-98 and migration files remain provenance records. Their old
+`source_ready_maintainer_execution_pending` language is superseded for this
+provider because the provider/harness no longer exists.
 
 ## Permission boundary
 
 `Resource::BlogCategories` serializes as `blog_categories`. Built-in roles,
 public-read authority, OAuth content scopes, module permission registration,
 HTTP preflight, and owner services use this resource. Catalog `categories:*`
-and post `blog_posts:*` permissions do not grant Blog category access.
+and post `blog_posts:*` permissions do not grant Blog Category access.
 
 ## Integration
 
-- uses `rustok-taxonomy` as a shared vocabulary for tag identity;
-- uses `rustok-comments` as a comment runtime contract;
+- uses `rustok-taxonomy` as the shared tag dictionary and canonical Blog
+  Category projection owner;
+- uses `rustok-comments` as the comment runtime contract;
 - uses `rustok-profiles` for author presentation;
-- the server GraphQL host binds `ProfileSummaryLoader` to the current anonymous,
-  authenticated-human, or trusted-service audience before Blog resolves
-  `authorProfile`; restricted, hidden, blocked, missing, and cross-tenant profile
-  summaries are omitted before localized profile/tag loading, without per-author
-  privacy reads;
-- standalone/custom GraphQL hosts must attach the same audience-bound loader;
-  `ProfileSummaryLoader::new` is anonymous and fail-closed by default;
-- uses `rustok-channel` for module-level and publication-level public visibility;
+- uses `rustok-channel` for module-level and publication-level public
+  visibility;
 - uses `rustok-telemetry` for read/write observability;
-- `rustok-blog/admin` embeds the owner-side post SEO panel through the shared `rustok-seo` capability contract.
+- `rustok-blog/admin` embeds the owner-side post SEO panel through the shared
+  `rustok-seo` capability contract.
 
-## Contract Tests
+## Contract tests
 
-Tests in `tests/contract_surface.rs`, `tests/module.rs`, and `tests/integration.rs` cover:
+Current focused contracts cover, among other Blog behavior:
 
-- **Post lifecycle**: create → draft → publish → archive → restore
-- **Locale resolution**: normalize → requested → en → first available
-- **Channel visibility**: typed `blog_post_channel_visibility` allowlists, empty = global
-- **Taxonomy sync**: Blog tags ↔ `rustok-taxonomy` vocabulary
-- **RBAC enforcement**: distinct post/category resources and denied cross-resource grants
-- **Category invariants**: mandatory event bus, tenant parent/translation scope, slug validation, pagination cap
-- **Category Translation target**: migration `up/down/up`, exact-locale CAS,
-  idempotent replay, cursor evidence, exact progress, and transactional Search
-  reindex outbox publication
-- **GraphQL read paths**: public vs authenticated channel gating and request-scoped profile author-card privacy
-- **Events**: Blog post lifecycle and category-triggered Search reindex
-- **Comments**: thread, locale resolution, status transitions, RBAC
-- **State machine**: BlogPost and CommentStatus transitions
+- post lifecycle and locale resolution;
+- channel visibility;
+- tag/Taxonomy dictionary ownership;
+- RBAC enforcement for distinct post/category resources;
+- Blog Category create/update/move/delete invariants;
+- canonical Taxonomy Category reads and mutation responses;
+- Category hierarchy synchronization;
+- Category Translation provider retirement;
+- donor mirror/journal write retirement;
+- physical donor storage retirement after same-ID Taxonomy ownership checks;
+- post Category-name projection from canonical Taxonomy state;
+- GraphQL read paths, events, Comments, and state-machine behavior.
 
-## Verification
-
-- `cargo xtask module validate blog`
-- `cargo xtask module test blog`
-- `node scripts/verify/verify-blog-category-search-reindex.mjs`
-- `cargo test -p rustok-blog translation_target --lib`
-- targeted tests for lifecycle, category authority, outbox rollback, Search refresh,
-  channel visibility, request-scoped author-summary filtering, and public/admin read
-  paths
+The retired Blog Category Translation provider PostgreSQL harness is not a live
+verification target and must not be recreated merely to satisfy historical
+slice text.
 
 ## Related documents
 

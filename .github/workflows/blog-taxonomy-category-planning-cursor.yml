@@ -1,0 +1,77 @@
+name: Blog Taxonomy Category Planning Cursor
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-blog/README.md"
+      - "crates/rustok-blog/docs/README.md"
+      - "crates/rustok-blog/docs/implementation-plan-current.md"
+      - "crates/rustok-blog/docs/implementation-plan-slice-98.md"
+      - "crates/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json"
+      - "crates/rustok-blog/src/entities/mod.rs"
+      - "crates/rustok-blog/src/entities/blog_category_translation.rs"
+      - "crates/rustok-blog/src/entities/translation_change.rs"
+      - "crates/rustok-blog/src/translation_target.rs"
+      - "crates/rustok-blog/src/translation_target_tests.rs"
+      - "crates/rustok-blog/src/translation_evidence.rs"
+      - "crates/rustok-blog/src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs"
+      - "crates/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs"
+      - "crates/rustok-blog/tests/category_translation_target_postgres_test.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs"
+      - "scripts/verify/verify-blog-category-translation-postgres-source.mjs"
+      - "scripts/verify/verify-blog-taxonomy-category-planning-cursor.mjs"
+      - ".github/workflows/blog-taxonomy-category-planning-cursor.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-blog/README.md"
+      - "crates/rustok-blog/docs/README.md"
+      - "crates/rustok-blog/docs/implementation-plan-current.md"
+      - "crates/rustok-blog/docs/implementation-plan-slice-98.md"
+      - "crates/rustok-blog/contracts/evidence/blog-category-translation-postgres-source.json"
+      - "crates/rustok-blog/src/entities/mod.rs"
+      - "crates/rustok-blog/src/entities/blog_category_translation.rs"
+      - "crates/rustok-blog/src/entities/translation_change.rs"
+      - "crates/rustok-blog/src/translation_target.rs"
+      - "crates/rustok-blog/src/translation_target_tests.rs"
+      - "crates/rustok-blog/src/translation_evidence.rs"
+      - "crates/rustok-blog/src/migrations/m20260824_000020_backfill_blog_categories_to_taxonomy.rs"
+      - "crates/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs"
+      - "crates/rustok-blog/tests/category_translation_target_postgres_test.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_translation_provider_retirement.rs"
+      - "scripts/verify/verify-blog-category-translation-postgres-source.mjs"
+      - "scripts/verify/verify-blog-taxonomy-category-planning-cursor.mjs"
+      - ".github/workflows/blog-taxonomy-category-planning-cursor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-taxonomy-category-planning-cursor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  planning-cursor-contract:
+    name: Blog Taxonomy Category planning cursor
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - name: Verify Blog Category planning cursor
+        run: node scripts/verify/verify-blog-taxonomy-category-planning-cursor.mjs
