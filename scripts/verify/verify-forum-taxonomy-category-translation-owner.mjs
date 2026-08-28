@@ -9,6 +9,7 @@ const requireText = (source, marker, label = marker) => {
 const rejectText = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`must not contain ${label}`);
 };
+const normalizeWhitespace = (source) => source.replace(/\s+/g, ' ').trim();
 
 const planPath = 'crates/rustok-forum/docs/implementation-plan.md';
 const centralPlanPath = 'docs/modules/translation-implementation-plan.md';
@@ -31,6 +32,7 @@ for (const path of retiredPaths) {
 if (failures.length === 0) {
   const plan = fs.readFileSync(planPath, 'utf8');
   const centralPlan = fs.readFileSync(centralPlanPath, 'utf8');
+  const normalizedCentralPlan = normalizeWhitespace(centralPlan);
   const parity = fs.readFileSync(parityPath, 'utf8');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
 
@@ -57,33 +59,33 @@ if (failures.length === 0) {
   );
 
   requireText(
-    centralPlan,
+    normalizedCentralPlan,
     'Forum Category copy also follows the canonical Taxonomy provider through the same-ID Forum-to-Taxonomy Category binding',
     'central Translation plan Forum-to-Taxonomy provider boundary',
   );
   requireText(
-    centralPlan,
+    normalizedCentralPlan,
     'Blog Category/Taxonomy and Forum Category/Taxonomy ownership are resolved',
     'central Translation owner-drift status',
   );
   requireText(
-    centralPlan,
+    normalizedCentralPlan,
     'Forum Category canonical copy is not a Forum Translation target.',
     'central Forum onboarding exclusion',
   );
   requireText(
-    centralPlan,
+    normalizedCentralPlan,
     'including canonical Category copy consumed by Blog and Forum',
     'Taxonomy Category consumer scope',
   );
   requireText(
-    centralPlan,
+    normalizedCentralPlan,
     'Blog and Forum Category do not add a second provider or evidence gate',
     'central no-duplicate Category provider rule',
   );
-  rejectText(centralPlan, 'Category may onboard early;', 'stale direct Forum Category onboarding');
+  rejectText(normalizedCentralPlan, 'Category may onboard early;', 'stale direct Forum Category onboarding');
   rejectText(
-    centralPlan,
+    normalizedCentralPlan,
     'do not reintroduce a Blog-local Category Translation owner',
     'Blog-only Category ownership guard wording',
   );

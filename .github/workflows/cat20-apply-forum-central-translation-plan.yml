@@ -1,4 +1,5 @@
 name: CAT20 Apply Forum Central Translation Plan
+# retrigger after whitespace-stable central-plan guard
 
 on:
   push:
