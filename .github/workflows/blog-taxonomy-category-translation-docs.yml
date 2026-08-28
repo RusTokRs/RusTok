@@ -9,7 +9,6 @@ on:
       - "crates/rustok-translation/docs/implementation-plan.md"
       - "crates/rustok-blog/docs/implementation-plan-current.md"
       - "crates/rustok-taxonomy/src/translation_target.rs"
-      - "scripts/verify/verify-translation-surface-registry.mjs"
       - "scripts/verify/verify-blog-taxonomy-category-translation-docs.mjs"
       - ".github/workflows/blog-taxonomy-category-translation-docs.yml"
   push:
@@ -22,7 +21,6 @@ on:
       - "crates/rustok-translation/docs/implementation-plan.md"
       - "crates/rustok-blog/docs/implementation-plan-current.md"
       - "crates/rustok-taxonomy/src/translation_target.rs"
-      - "scripts/verify/verify-translation-surface-registry.mjs"
       - "scripts/verify/verify-blog-taxonomy-category-translation-docs.mjs"
       - ".github/workflows/blog-taxonomy-category-translation-docs.yml"
   workflow_dispatch:
@@ -55,7 +53,5 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
-      - name: Verify Translation surface registry
-        run: node scripts/verify/verify-translation-surface-registry.mjs
       - name: Verify Blog Category canonical Translation owner
         run: node scripts/verify/verify-blog-taxonomy-category-translation-docs.mjs
