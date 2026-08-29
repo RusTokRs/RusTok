@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::{
     BindCategoryAttributeInput, CatalogCategoryKind, CatalogCategoryListRecord,
@@ -9,7 +9,7 @@ use super::{
     load_category_parent, parse_virtual_category_rule_v1,
     validate_virtual_category_rule_references,
 };
-use sea_orm::{ConnectionTrait, DatabaseTransaction, FromQueryResult, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -20,7 +20,10 @@ use crate::services::write_transaction::{
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
-use rustok_taxonomy::{SyncModuleCategoryInput, TaxonomyError, sync_module_category_in_tx};
+use rustok_taxonomy::{
+    SyncModuleCategoryInput, TaxonomyError, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader,
+    TaxonomyScopeType, sync_module_category_in_tx,
+};
 
 const PRODUCT_TAXONOMY_SCOPE: &str = "product";
 const TAXONOMY_CATEGORY_ROUTE_KEY_MAX_BYTES: usize = 120;
@@ -160,45 +163,10 @@ impl ProductCatalogSchemaService {
         let locale = normalize_locale_tag(locale).ok_or_else(|| {
             CommerceError::Validation("category locale must be a valid locale tag".into())
         })?;
-        CatalogCategoryListRow::find_by_statement(Statement::from_sql_and_values(
-            self.db.get_database_backend(),
-            r#"
-            SELECT
-                c.id,
-                c.parent_id,
-                c.code,
-                c.slug,
-                c.path,
-                c.kind,
-                COALESCE(t.name, c.code) AS name
-            FROM catalog_categories c
-            LEFT JOIN LATERAL (
-                SELECT translation.name
-                FROM catalog_category_translations translation
-                WHERE translation.category_id = c.id
-                ORDER BY
-                    CASE
-                        WHEN translation.locale = $2 THEN 0
-                        WHEN translation.locale = $3 THEN 1
-                        ELSE 2
-                    END,
-                    translation.locale ASC,
-                    translation.id ASC
-                LIMIT 1
-            ) t ON TRUE
-            WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
-            ORDER BY c.path ASC
-            "#,
-            vec![
-                tenant_id.into(),
-                locale.into(),
-                PLATFORM_FALLBACK_LOCALE.to_string().into(),
-            ],
-        ))
-        .all(&self.db)
-        .await
-        .map_err(Into::into)
-        .and_then(|rows| rows.into_iter().map(TryInto::try_into).collect())
+        if self.db.get_database_backend() == DatabaseBackend::Postgres {
+            return list_categories_from_taxonomy(self, tenant_id, &locale).await;
+        }
+        list_categories_from_product_donor(self, tenant_id, &locale).await
     }
 
     pub async fn create_category_group(
@@ -378,6 +346,189 @@ impl ProductCatalogSchemaService {
     }
 }
 
+#[derive(FromQueryResult)]
+struct ProductCategoryTaxonomyReadRow {
+    id: Uuid,
+    code: String,
+    path: String,
+    kind: String,
+    taxonomy_category_id: Option<Uuid>,
+}
+
+async fn list_categories_from_taxonomy(
+    service: &ProductCatalogSchemaService,
+    tenant_id: Uuid,
+    locale: &str,
+) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
+    let rows = ProductCategoryTaxonomyReadRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT
+            c.id,
+            c.code,
+            c.path,
+            c.kind,
+            binding.taxonomy_category_id
+        FROM catalog_categories c
+        LEFT JOIN product_catalog_category_taxonomy_bindings binding
+          ON binding.tenant_id = c.tenant_id
+         AND binding.catalog_category_id = c.id
+        WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
+        ORDER BY c.path ASC
+        "#,
+        vec![tenant_id.into()],
+    ))
+    .all(&service.db)
+    .await?;
+
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut taxonomy_category_ids = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let taxonomy_category_id = row.taxonomy_category_id.ok_or_else(|| {
+            CommerceError::Validation(format!(
+                "Product category {} is missing its Taxonomy Category binding",
+                row.id
+            ))
+        })?;
+        if taxonomy_category_id != row.id {
+            return Err(CommerceError::Validation(format!(
+                "Product category {} is bound to incompatible Taxonomy Category {taxonomy_category_id}",
+                row.id
+            )));
+        }
+        taxonomy_category_ids.push(taxonomy_category_id);
+    }
+
+    let owners = TaxonomyOwnerCategoryReader::new(service.db.clone())
+        .load_scoped_categories(
+            tenant_id,
+            TaxonomyScopeType::Module,
+            Some(PRODUCT_TAXONOMY_SCOPE),
+            Some(&taxonomy_category_ids),
+            locale,
+            Some(PLATFORM_FALLBACK_LOCALE),
+        )
+        .await
+        .map_err(map_taxonomy_category_read_error)?;
+
+    compose_taxonomy_category_list_records(rows, owners)
+}
+
+fn compose_taxonomy_category_list_records(
+    rows: Vec<ProductCategoryTaxonomyReadRow>,
+    owners: Vec<TaxonomyOwnerCategory>,
+) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
+    let mut owners = owners
+        .into_iter()
+        .map(|owner| (owner.id, owner))
+        .collect::<HashMap<_, _>>();
+
+    rows.into_iter()
+        .map(|row| {
+            let taxonomy_category_id = row.taxonomy_category_id.ok_or_else(|| {
+                CommerceError::Validation(format!(
+                    "Product category {} is missing its Taxonomy Category binding",
+                    row.id
+                ))
+            })?;
+            if taxonomy_category_id != row.id {
+                return Err(CommerceError::Validation(format!(
+                    "Product category {} is bound to incompatible Taxonomy Category {taxonomy_category_id}",
+                    row.id
+                )));
+            }
+
+            let owner = owners.remove(&taxonomy_category_id).ok_or_else(|| {
+                CommerceError::Validation(format!(
+                    "Product category {} is missing its Taxonomy owner projection",
+                    row.id
+                ))
+            })?;
+            let expected_key = canonical_key_for_product_category(row.id);
+            if owner.canonical_key != expected_key {
+                return Err(CommerceError::Validation(format!(
+                    "Product category {} has incompatible Taxonomy canonical key {}",
+                    row.id, owner.canonical_key
+                )));
+            }
+            if owner.scope_type != TaxonomyScopeType::Module
+                || owner.scope_value.as_deref() != Some(PRODUCT_TAXONOMY_SCOPE)
+            {
+                return Err(CommerceError::Validation(format!(
+                    "Product category {} has incompatible Taxonomy scope",
+                    row.id
+                )));
+            }
+            if owner.available_locales.is_empty() {
+                return Err(CommerceError::Validation(format!(
+                    "Product category {} has no canonical Taxonomy localized copy",
+                    row.id
+                )));
+            }
+
+            CatalogCategoryListRow {
+                id: row.id,
+                parent_id: owner.parent_id,
+                code: row.code,
+                slug: owner.slug,
+                path: row.path,
+                kind: row.kind,
+                name: owner.name,
+            }
+            .try_into()
+        })
+        .collect()
+}
+
+async fn list_categories_from_product_donor(
+    service: &ProductCatalogSchemaService,
+    tenant_id: Uuid,
+    locale: &str,
+) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
+    CatalogCategoryListRow::find_by_statement(Statement::from_sql_and_values(
+        service.db.get_database_backend(),
+        r#"
+        SELECT
+            c.id,
+            c.parent_id,
+            c.code,
+            c.slug,
+            c.path,
+            c.kind,
+            COALESCE(t.name, c.code) AS name
+        FROM catalog_categories c
+        LEFT JOIN LATERAL (
+            SELECT translation.name
+            FROM catalog_category_translations translation
+            WHERE translation.category_id = c.id
+            ORDER BY
+                CASE
+                    WHEN translation.locale = $2 THEN 0
+                    WHEN translation.locale = $3 THEN 1
+                    ELSE 2
+                END,
+                translation.locale ASC,
+                translation.id ASC
+            LIMIT 1
+        ) t ON TRUE
+        WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
+        ORDER BY c.path ASC
+        "#,
+        vec![
+            tenant_id.into(),
+            locale.to_owned().into(),
+            PLATFORM_FALLBACK_LOCALE.to_string().into(),
+        ],
+    ))
+    .all(&service.db)
+    .await
+    .map_err(Into::into)
+    .and_then(|rows| rows.into_iter().map(TryInto::try_into).collect())
+}
+
 async fn sync_created_category_to_taxonomy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -453,6 +604,15 @@ fn map_taxonomy_category_sync_error(error: TaxonomyError) -> CommerceError {
         TaxonomyError::Database(error) => CommerceError::Database(error),
         other => CommerceError::Validation(format!(
             "Product Category Taxonomy synchronization failed: {other}"
+        )),
+    }
+}
+
+fn map_taxonomy_category_read_error(error: TaxonomyError) -> CommerceError {
+    match error {
+        TaxonomyError::Database(error) => CommerceError::Database(error),
+        other => CommerceError::Validation(format!(
+            "Product Category Taxonomy read projection failed: {other}"
         )),
     }
 }
@@ -538,6 +698,44 @@ mod tests {
         }
     }
 
+    fn taxonomy_owner_category(
+        id: Uuid,
+        name: &str,
+        slug: &str,
+        parent_id: Option<Uuid>,
+    ) -> TaxonomyOwnerCategory {
+        TaxonomyOwnerCategory {
+            id,
+            scope_type: TaxonomyScopeType::Module,
+            scope_value: Some(PRODUCT_TAXONOMY_SCOPE.to_string()),
+            canonical_key: canonical_key_for_product_category(id),
+            requested_locale: "de".to_string(),
+            effective_locale: "en".to_string(),
+            available_locales: vec!["en".to_string()],
+            name: name.to_string(),
+            slug: slug.to_string(),
+            description: None,
+            parent_id,
+            position: 0,
+            icon_key: None,
+            color: None,
+            image_media_id: None,
+            cover_media_id: None,
+            presentation_revision: 0,
+            created_at: chrono::Utc::now(),
+        }
+    }
+
+    fn taxonomy_read_row(id: Uuid) -> ProductCategoryTaxonomyReadRow {
+        ProductCategoryTaxonomyReadRow {
+            id,
+            code: "product-code".to_string(),
+            path: "retained/product-path".to_string(),
+            kind: "structural".to_string(),
+            taxonomy_category_id: Some(id),
+        }
+    }
+
     #[test]
     fn category_translations_are_canonicalized() {
         let normalized = normalize_category_translations(&[
@@ -600,5 +798,56 @@ mod tests {
         let mut oversized_description = translation("en", "Name");
         oversized_description.description = Some("d".repeat(2_001));
         assert!(normalize_category_translations(&[oversized_description]).is_err());
+    }
+
+    #[test]
+    fn category_taxonomy_read_composes_owner_copy() {
+        let id = Uuid::new_v4();
+        let parent_id = Uuid::new_v4();
+        let records = compose_taxonomy_category_list_records(
+            vec![taxonomy_read_row(id)],
+            vec![taxonomy_owner_category(
+                id,
+                "Taxonomy name",
+                "taxonomy-slug",
+                Some(parent_id),
+            )],
+        )
+        .expect("Taxonomy-backed Product category list");
+
+        assert_eq!(records.len(), 1);
+        let record = &records[0];
+        assert_eq!(record.id, id);
+        assert_eq!(record.parent_id, Some(parent_id));
+        assert_eq!(record.name, "Taxonomy name");
+        assert_eq!(record.slug, "taxonomy-slug");
+        assert_eq!(record.code, "product-code");
+        assert_eq!(record.path, "retained/product-path");
+        assert!(matches!(record.kind, CatalogCategoryKind::Structural));
+    }
+
+    #[test]
+    fn category_taxonomy_read_rejects_missing_owner() {
+        let id = Uuid::new_v4();
+        let error = compose_taxonomy_category_list_records(vec![taxonomy_read_row(id)], Vec::new())
+            .expect_err("missing Taxonomy owner must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("missing its Taxonomy owner projection")
+        );
+
+        let mut missing_binding = taxonomy_read_row(id);
+        missing_binding.taxonomy_category_id = None;
+        let error = compose_taxonomy_category_list_records(
+            vec![missing_binding],
+            vec![taxonomy_owner_category(id, "Name", "slug", None)],
+        )
+        .expect_err("missing binding must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("missing its Taxonomy Category binding")
+        );
     }
 }
