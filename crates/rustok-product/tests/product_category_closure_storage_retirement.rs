@@ -26,8 +26,8 @@ async fn product_category_closure_storage_supports_up_down_up() {
     }
 }
 
-async fn run_product_category_closure_storage_lifecycle(
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_product_category_closure_storage_lifecycle() -> Result<(), Box<dyn std::error::Error>>
+{
     let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
     assert_postgres_url(&admin_url);
@@ -37,7 +37,9 @@ async fn run_product_category_closure_storage_lifecycle(
     assert_valid_postgres_database_name(&database_name);
     let target_url = postgres_database_url(&admin_url, &database_name);
     let keep_database = matches!(
-        std::env::var("RUSTOK_MIGRATION_SMOKE_KEEP_DB").ok().as_deref(),
+        std::env::var("RUSTOK_MIGRATION_SMOKE_KEEP_DB")
+            .ok()
+            .as_deref(),
         Some("1")
     );
 
@@ -79,7 +81,9 @@ async fn run_product_category_closure_storage_lifecycle(
                 .iter()
                 .map(|migration| migration.name().to_string())
                 .collect::<Vec<_>>();
-            return Err(format!("CAT-34 rollback must expose only CAT-34 as pending: {names:?}").into());
+            return Err(
+                format!("CAT-34 rollback must expose only CAT-34 as pending: {names:?}").into(),
+            );
         }
 
         ProductMigrator::up(&db, Some(1))
@@ -92,7 +96,10 @@ async fn run_product_category_closure_storage_lifecycle(
                 .iter()
                 .map(|migration| migration.name().to_string())
                 .collect::<Vec<_>>();
-            return Err(format!("CAT-34 reapply must leave no pending Product migrations: {names:?}").into());
+            return Err(format!(
+                "CAT-34 reapply must leave no pending Product migrations: {names:?}"
+            )
+            .into());
         }
 
         db.close().await?;
@@ -198,9 +205,7 @@ INSERT INTO catalog_category_closure (tenant_id, ancestor_id, descendant_id, dep
     Ok(())
 }
 
-async fn assert_cat33_storage(
-    db: &DatabaseConnection,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn assert_cat33_storage(db: &DatabaseConnection) -> Result<(), Box<dyn std::error::Error>> {
     db.execute_unprepared(
         r#"
 DO $$
@@ -226,9 +231,7 @@ $$;
     Ok(())
 }
 
-async fn assert_cat34_head(
-    db: &DatabaseConnection,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn assert_cat34_head(db: &DatabaseConnection) -> Result<(), Box<dyn std::error::Error>> {
     db.execute_unprepared(
         r#"
 DO $$
