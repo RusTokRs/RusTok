@@ -5,8 +5,10 @@ closure, merchandising and SEO, while canonical shared Category copy is Taxonomy
 on PostgreSQL. TAXONOMY-CAT-24 added the monotonic Taxonomy copy, TAXONOMY-CAT-25
 transactionally dual-writes new creates, TAXONOMY-CAT-26 switches the PostgreSQL
 Category list projection to Taxonomy-owned canonical localized copy and parent identity,
-TAXONOMY-CAT-27 isolates Product-only localized SEO into dedicated Product storage, and
-TAXONOMY-CAT-28 stops new PostgreSQL creates from writing the legacy canonical translation mirror.
+TAXONOMY-CAT-27 isolates Product-only localized SEO into dedicated Product storage,
+TAXONOMY-CAT-28 stops new PostgreSQL creates from writing the legacy canonical translation
+mirror, and TAXONOMY-CAT-29 physically retires that mirror on PostgreSQL after fail-closed
+ownership checks.
 
 ## Write contract
 
@@ -26,8 +28,9 @@ TAXONOMY-CAT-28 stops new PostgreSQL creates from writing the legacy canonical t
 - Category `position` must be non-negative because it is mirrored into Taxonomy
   hierarchy in the same create transaction.
 - Retained migration `m20260812_000013_normalize_catalog_category_translation_locales`
-  canonicalizes existing legacy category locales. Invalid locales, empty names, or a
-  normalized-locale collision block the migration instead of choosing a winner.
+  canonicalizes existing legacy category locales before the historical backfill and
+  retirement sequence. Invalid locales, empty names, or a normalized-locale collision
+  block that migration instead of choosing a winner.
 
 ## CAT-25 compatibility history
 
@@ -85,9 +88,10 @@ owner-sync. Therefore Product SEO and canonical Taxonomy copy could not partiall
 CAT-27 does **not** drop `catalog_category_translations` and does not stop compatibility
 writes; that historical state remains the retained CAT-27 evidence.
 
-## CAT-28 PostgreSQL write contract
+## CAT-28 compatibility history
 
-CAT-28 changes only the legacy canonical mirror behavior for new Category creates:
+TAXONOMY-CAT-28 stops new PostgreSQL creates from writing the legacy canonical translation mirror.
+Its bounded write contract remains:
 
 - `should_write_legacy_category_translation(DatabaseBackend::Postgres)` is false;
 - PostgreSQL therefore does not insert a new `catalog_category_translations` row;
@@ -104,6 +108,30 @@ CAT-28 changes only the legacy canonical mirror behavior for new Category create
 CAT-28 does not delete or rewrite historical legacy rows. It retires new PostgreSQL
 canonical mirror writes so a later PostgreSQL-only physical retirement migration can
 preflight and drop the table without racing newly-created donor rows.
+
+## CAT-29 PostgreSQL locale-storage retirement
+
+CAT-29 removes `catalog_category_translations` only on PostgreSQL. Before the drop, one
+transaction proves that every Product Category still has the expected same-ID Taxonomy
+owner in tenant/module scope and that all Product-owned SEO from historical locale rows
+was copied exactly into `catalog_category_seo_translations`.
+
+The SEO check resolves tenant identity through `catalog_categories` because the legacy
+translation row itself has no `tenant_id`. It joins SEO by the exact normalized
+`(tenant_id, category_id, locale)` identity and uses `IS DISTINCT FROM` for both SEO
+fields. A missing SEO row or different `meta_title` / `meta_description` blocks the
+migration. Legacy rows with no SEO do not require an empty SEO-only row.
+
+The retirement intentionally does not compare historical legacy `name` or `description`
+bytes with current Taxonomy copy. Taxonomy is already canonical and may legitimately
+have been edited after CAT-24/CAT-25; requiring stale donor equality would turn a valid
+canonical edit into a migration blocker. Same-ID tenant/kind/scope/canonical-key
+ownership is the fail-closed proof for canonical copy retirement.
+
+On successful PostgreSQL preflight, `catalog_category_translations` is dropped in the
+same transaction. The migration is irreversible and `down` does not recreate an empty
+localized donor. On SQLite/MySQL and other non-PostgreSQL backends CAT-29 is a no-op;
+their legacy translation table and donor list/write behavior remain live.
 
 ## CAT-24 Taxonomy projection history
 
@@ -130,7 +158,7 @@ retained as CAT-24 evidence even though CAT-26 advances the PostgreSQL list read
   true for the CAT-24 slice even though CAT-26 now consumes the Taxonomy owner projection
   on PostgreSQL.
 
-## Ownership boundary after CAT-28
+## Ownership boundary after CAT-29
 
 - Taxonomy is canonical for shared Category identity, hierarchy parent, localized
   `name`/`slug`/`description` and route ownership on the PostgreSQL Product path.
@@ -139,10 +167,10 @@ retained as CAT-24 evidence even though CAT-26 advances the PostgreSQL list read
   attribute/schema state and product/category assignment semantics.
 - Product localized `meta_title` / `meta_description` are Product-only SEO and live in
   `catalog_category_seo_translations` on PostgreSQL.
-- PostgreSQL Category create no longer writes `catalog_category_translations`; existing
-  rows are historical compatibility storage pending a later physical retirement slice.
+- PostgreSQL no longer has `catalog_category_translations` after CAT-29 migration
+  completion; new canonical writes had already stopped in CAT-28.
 - Non-PostgreSQL Product translation rows remain live donor storage and their reads/writes
-  are intentionally unchanged in CAT-28.
+  are intentionally unchanged.
 - Product `path` remains a commerce/navigation projection rather than canonical route
   authority. A future explicit path/navigation slice must decide how Taxonomy slug or
   hierarchy edits propagate before donor closure/path storage can be retired.
