@@ -1,6 +1,6 @@
 # Product Category → Taxonomy migration contract
 
-Status: **source-complete Product Category SEO seam; canonical donor storage retirement pending**
+Status: **source-complete PostgreSQL legacy canonical write retirement; physical donor retirement pending**
 
 TAXONOMY-CAT-23 introduced the tenant-safe Product-owned binding seam.
 TAXONOMY-CAT-24 added the PostgreSQL-only monotonic backfill of existing Product
@@ -8,9 +8,10 @@ Categories. TAXONOMY-CAT-25 closed the post-backfill creation gap with atomic
 Product → Taxonomy create synchronization. TAXONOMY-CAT-26 moved the bounded
 PostgreSQL Category list projection to Taxonomy-owned canonical localized copy,
 route slug and parent hierarchy while retaining Product-owned commerce fields.
-TAXONOMY-CAT-27 now splits localized Product-only Category SEO into dedicated
-Product storage so later canonical translation-donor retirement does not discard
-`meta_title` / `meta_description`.
+TAXONOMY-CAT-27 split localized Product-only Category SEO into dedicated Product
+storage. TAXONOMY-CAT-28 now stops new PostgreSQL creates from materializing the
+legacy canonical Product translation mirror while preserving non-PostgreSQL donor
+compatibility.
 
 ## CAT-23 compatibility history
 
@@ -64,9 +65,9 @@ Status: **source-complete PostgreSQL Taxonomy read projection; donor storage ret
 CAT-26 requires every live Product Category to have a same-ID binding. It materializes
 localized `name`, localized canonical `slug` and `parent_id` from the Taxonomy owner projection
 and retains Product `code`, `kind` and `path` while preserving Product path ordering.
-Missing binding/owner/canonical localized state fails closed; the PostgreSQL list path no longer
-reads `catalog_category_translations` as a hidden canonical fallback. Other backends continue using
-the retained Product donor list path.
+The PostgreSQL list path no longer reads `catalog_category_translations`; missing
+binding/owner/canonical localized state fails closed instead of reviving donor truth.
+Other backends continue using the retained Product donor list path.
 
 ## Binding and backend boundary
 
@@ -80,12 +81,15 @@ donor list path until they acquire an equivalent tenant-safe binding prerequisit
 
 ## CAT-27 localized SEO seam
 
+CAT-27 closed with this bounded state:
+Status: **source-complete Product Category SEO seam; canonical donor storage retirement pending**.
+
 `catalog_category_translations` historically mixes two ownership classes:
 canonical Category localized copy (`name` / `description`) and Product-only localized
 SEO (`meta_title` / `meta_description`). Taxonomy owns the first class after CAT-26,
 but Taxonomy intentionally has no Product SEO fields. CAT-27 therefore introduces
-PostgreSQL-only `catalog_category_seo_translations` as dedicated Product-owned SEO
-storage keyed by `(tenant_id, category_id, locale)`.
+PostgreSQL-only `catalog_category_seo_translations` as dedicated Product-owned SEO storage
+keyed by `(tenant_id, category_id, locale)`.
 
 The CAT-27 migration is additive and deterministic:
 
@@ -103,20 +107,33 @@ The CAT-27 migration is additive and deterministic:
 - no canonical `name`, `description`, slug, route, hierarchy or Taxonomy copy is stored
   in the SEO table.
 
-New PostgreSQL Product Category creates now write any localized Product SEO into
-`catalog_category_seo_translations` inside the existing `ProductWriteTransaction`.
-The compatibility `catalog_category_translations` write remains in CAT-27, then the SEO
-write occurs, then the existing Taxonomy owner-sync/binding/event/commit sequence
-continues. Any SEO insert or later Taxonomy failure rolls the whole Product create back.
-Non-PostgreSQL creates do not write the new table because the seam is not installed on
-those backends.
+At CAT-27 completion new PostgreSQL Product Category creates still wrote the compatibility
+`catalog_category_translations` row, then wrote localized SEO, then performed the existing
+Taxonomy owner-sync/binding/event/commit sequence. Any SEO insert or later Taxonomy failure rolls the whole Product create back.
+CAT-27 does **not** drop `catalog_category_translations` and does not itself stop compatibility
+writes; it makes that later write retirement safe for Product-only SEO.
 
-CAT-27 does **not** drop `catalog_category_translations`, does not stop its compatibility
-writes, and does not claim canonical donor retirement. A later retirement slice must
-first prove there is no remaining PostgreSQL runtime dependency on canonical Product
-translation rows and must preserve the non-PostgreSQL donor boundary explicitly.
+## CAT-28 PostgreSQL canonical write retirement
 
-## Product-owned state retained after CAT-27
+CAT-28 advances only the PostgreSQL create path. For each normalized Category locale:
+
+- PostgreSQL does **not** insert a new `catalog_category_translations` row;
+- Product-only SEO still writes to `catalog_category_seo_translations` when present;
+- canonical `name` / `description`, route and hierarchy continue through the existing
+  transaction-bound Taxonomy owner-sync;
+- the same-ID binding, `CatalogCategoryCreated`, operation receipt and transaction commit
+  retain their existing ordering and rollback behavior;
+- non-PostgreSQL backends still write `catalog_category_translations` because their list
+  path remains donor-backed and the PostgreSQL-only Taxonomy binding/SEO seams are absent.
+
+This is write retirement, not physical storage retirement. Existing PostgreSQL legacy
+rows remain untouched for historical migration provenance. A later PostgreSQL-only
+retirement migration may drop `catalog_category_translations` only after a fail-closed
+preflight proves canonical Taxonomy ownership and the CAT-27 SEO copy are sufficient.
+The non-PostgreSQL schema/runtime contract must remain explicit and must not be broken by
+that PostgreSQL-only retirement.
+
+## Product-owned state retained after CAT-28
 
 Product continues to own:
 
@@ -125,13 +142,13 @@ Product continues to own:
 - Product `path` and closure storage used by current Product hierarchy/form and
   merchandising logic. `path` is a retained Product projection, not a replacement
   Taxonomy route authority;
-- localized `meta_title` / `meta_description`, now additionally isolated in
+- localized `meta_title` / `meta_description` in
   `catalog_category_seo_translations` on PostgreSQL;
 - category-bound attribute/schema state;
 - product/category membership, primary/navigation/collection/virtual assignment
   semantics and Product projections;
-- compatibility `catalog_category_translations` storage until a later verified
-  retirement slice removes only the ownership already superseded by Taxonomy.
+- non-PostgreSQL `catalog_category_translations` donor storage until those backends gain
+  an equivalent verified Taxonomy cutover.
 
 ## Locale and route behavior
 
@@ -145,13 +162,15 @@ still only guarantees base-slug uniqueness per parent. CAT-24/CAT-25 fail-closed
 checks remain required; CAT-26 consumes the Taxonomy canonical localized slug instead
 of rebuilding or flattening Product `path` into a route key.
 
-CAT-27 reuses the already-normalized Product Category locale for SEO identity. It does
-not introduce a second fallback policy or a Product Category Translation provider.
+CAT-27 reuses the already-normalized Product Category locale for SEO identity. CAT-28
+reuses that same normalized input for Taxonomy and Product SEO without creating a second
+localized canonical copy on PostgreSQL.
 
 ## Translation ownership boundary
 
 No `product/category` Translation provider is introduced. Canonical Category localized
 copy is synchronized and read under the registered Taxonomy `taxonomy/term` provider on
 PostgreSQL. `catalog_category_seo_translations` is Product SEO storage, not a Translation
-provider and not canonical Category copy. The legacy Product translation rows remain
-compatibility storage until a later verified retirement slice.
+provider and not canonical Category copy. Legacy Product translation rows are no longer
+written by PostgreSQL Category creates after CAT-28; they remain live only for the
+explicit non-PostgreSQL donor compatibility boundary until later backend-specific work.

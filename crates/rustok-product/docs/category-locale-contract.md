@@ -1,23 +1,23 @@
 # Product category locale contract
 
 Product catalog categories remain a Product-owned commerce aggregate for policy,
-closure, merchandising and SEO, while canonical shared Category copy is moving to
-Taxonomy. TAXONOMY-CAT-24 added the monotonic Taxonomy copy, TAXONOMY-CAT-25
+closure, merchandising and SEO, while canonical shared Category copy is Taxonomy-owned
+on PostgreSQL. TAXONOMY-CAT-24 added the monotonic Taxonomy copy, TAXONOMY-CAT-25
 transactionally dual-writes new creates, TAXONOMY-CAT-26 switches the PostgreSQL
 Category list projection to Taxonomy-owned canonical localized copy and parent identity,
-and TAXONOMY-CAT-27 isolates Product-only localized SEO into dedicated Product storage.
+TAXONOMY-CAT-27 isolates Product-only localized SEO into dedicated Product storage, and
+TAXONOMY-CAT-28 stops new PostgreSQL creates from writing the legacy canonical translation mirror.
 
 ## Write contract
 
-- Every `catalog_category_translation.locale` is stored as the canonical locale tag
-  returned by `rustok_api::normalize_locale_tag`.
+- Every normalized Category input locale uses the canonical locale tag returned by
+  `rustok_api::normalize_locale_tag`.
 - Category creation rejects invalid locale tags and two input translations that
   normalize to the same locale (for example `en_us` and `en-US`).
 - New Category translation names are trimmed and must contain 1..120 characters,
   matching the canonical Taxonomy Category owner-sync bound.
 - New Category descriptions are trimmed; blank descriptions become `None`, and
-  non-empty descriptions are limited to 2000 characters before either Product or
-  Taxonomy persistence occurs.
+  non-empty descriptions are limited to 2000 characters before persistence occurs.
 - `meta_title` is bounded to 255 characters and `meta_description` to 500. They remain
   Product-only SEO and are never sent through Taxonomy canonical-copy sync.
 - The one Product base category slug must already equal Taxonomy's canonical route
@@ -26,7 +26,7 @@ and TAXONOMY-CAT-27 isolates Product-only localized SEO into dedicated Product s
 - Category `position` must be non-negative because it is mirrored into Taxonomy
   hierarchy in the same create transaction.
 - Retained migration `m20260812_000013_normalize_catalog_category_translation_locales`
-  canonicalizes existing category locales. Invalid locales, empty names, or a
+  canonicalizes existing legacy category locales. Invalid locales, empty names, or a
   normalized-locale collision block the migration instead of choosing a winner.
 
 ## CAT-25 compatibility history
@@ -42,7 +42,7 @@ descriptions become `None`.
 ## CAT-26 PostgreSQL read contract
 
 `ProductCatalogSchemaService::list_categories` still validates the requested locale
-through `normalize_locale_tag`, but PostgreSQL canonical materialization is now split by
+through `normalize_locale_tag`, but PostgreSQL canonical materialization is split by
 ownership:
 
 - Product supplies the live Category set, stable UUID, `code`, `kind`, retained `path`
@@ -66,10 +66,10 @@ exist.
 
 ## CAT-27 localized SEO contract
 
-On PostgreSQL, `catalog_category_seo_translations` is the Product-owned localized SEO
-store. Its locale key is the same canonical locale already produced by Product Category
-input normalization; CAT-27 does not create a separate SEO locale normalizer or fallback
-policy.
+TAXONOMY-CAT-27 isolates Product-only localized SEO. On PostgreSQL,
+`catalog_category_seo_translations` is the Product-owned localized SEO store. Its locale
+key is the same canonical locale already produced by Product Category input normalization;
+CAT-27 does not create a separate SEO locale normalizer or fallback policy.
 
 The migration copies only rows where at least one of `meta_title` or `meta_description`
 is non-null. It preserves the exact persisted locale and SEO values, and fails closed if
@@ -77,23 +77,39 @@ an already-present SEO row for the same tenant/category/locale disagrees with th
 Product translation row. Compatible rows remain monotonic and no blank SEO-only row is
 created.
 
-For new PostgreSQL Category creates, each normalized translation still writes the
-compatibility `catalog_category_translations` row. If that locale has SEO, the same
-`ProductWriteTransaction` also inserts `(tenant_id, category_id, locale, meta_title,
+At CAT-27 completion, each new PostgreSQL locale still wrote the compatibility
+`catalog_category_translations` row. If that locale had SEO, the same
+`ProductWriteTransaction` also inserted `(tenant_id, category_id, locale, meta_title,
 meta_description)` into `catalog_category_seo_translations` before the existing Taxonomy
-owner-sync. Therefore Product SEO and canonical Taxonomy copy cannot partially commit on
-a successful create. Non-PostgreSQL backends keep the legacy path and do not reference
-the PostgreSQL-only SEO table.
+owner-sync. Therefore Product SEO and canonical Taxonomy copy could not partially commit.
+CAT-27 does **not** drop `catalog_category_translations` and does not stop compatibility
+writes; that historical state remains the retained CAT-27 evidence.
 
-CAT-27 is additive: it does **not** drop `catalog_category_translations` and does not stop
-compatibility writes. It only removes the storage-shape reason that Product-only SEO
-would otherwise block a later canonical translation-donor retirement.
+## CAT-28 PostgreSQL write contract
+
+CAT-28 changes only the legacy canonical mirror behavior for new Category creates:
+
+- `should_write_legacy_category_translation(DatabaseBackend::Postgres)` is false;
+- PostgreSQL therefore does not insert a new `catalog_category_translations` row;
+- each normalized locale still writes Product SEO to `catalog_category_seo_translations`
+  when SEO exists, before the existing Taxonomy owner-sync;
+- canonical normalized `name` and `description` are still sent to Taxonomy for every
+  locale; no localized canonical content is discarded;
+- non-PostgreSQL backends continue to insert the legacy Product translation row because
+  their `list_categories` path still reads that donor and they do not have the
+  PostgreSQL-only Taxonomy/SEO storage boundary;
+- event and commit ordering remain unchanged, so Taxonomy/SEO failure still rolls back
+  the Product Category create atomically.
+
+CAT-28 does not delete or rewrite historical legacy rows. It retires new PostgreSQL
+canonical mirror writes so a later PostgreSQL-only physical retirement migration can
+preflight and drop the table without racing newly-created donor rows.
 
 ## CAT-24 Taxonomy projection history
 
 At CAT-24 completion, Product categories remain a Product-owned **runtime** tree/closure
 aggregate until a verified Taxonomy read/write cutover. That historical boundary is
-retained as CAT-24 evidence even though CAT-26 now advances the PostgreSQL list read.
+retained as CAT-24 evidence even though CAT-26 advances the PostgreSQL list read.
 
 - Product stores one base category `slug`, not a localized slug. CAT-24 validates that
   route key canonically and projects the same one base Product category `slug` into
@@ -114,18 +130,19 @@ retained as CAT-24 evidence even though CAT-26 now advances the PostgreSQL list 
   true for the CAT-24 slice even though CAT-26 now consumes the Taxonomy owner projection
   on PostgreSQL.
 
-## Ownership boundary after CAT-27
+## Ownership boundary after CAT-28
 
 - Taxonomy is canonical for shared Category identity, hierarchy parent, localized
-  `name`/`slug`/`description` and route ownership on the PostgreSQL Product list path.
+  `name`/`slug`/`description` and route ownership on the PostgreSQL Product path.
 - Product continues to own `code`, `kind`, virtual-category `rule_config`, metadata,
   activation/deletion behavior, Product `path`, closure rows, category-bound
   attribute/schema state and product/category assignment semantics.
-- Product localized `meta_title` / `meta_description` are Product-only SEO. CAT-27
-  isolates them in `catalog_category_seo_translations` on PostgreSQL while retaining the
-  legacy mirror until a later retirement slice.
-- Product translation rows are retained as compatibility storage, but PostgreSQL
-  Category list display no longer reads them for canonical name or route slug.
+- Product localized `meta_title` / `meta_description` are Product-only SEO and live in
+  `catalog_category_seo_translations` on PostgreSQL.
+- PostgreSQL Category create no longer writes `catalog_category_translations`; existing
+  rows are historical compatibility storage pending a later physical retirement slice.
+- Non-PostgreSQL Product translation rows remain live donor storage and their reads/writes
+  are intentionally unchanged in CAT-28.
 - Product `path` remains a commerce/navigation projection rather than canonical route
   authority. A future explicit path/navigation slice must decide how Taxonomy slug or
   hierarchy edits propagate before donor closure/path storage can be retired.

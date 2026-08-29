@@ -1,31 +1,29 @@
-name: Product Category SEO Seam
+name: Product Category Legacy Write Retirement
 
 on:
   pull_request:
     paths:
-      - "crates/rustok-product/src/migrations/m20260829_000017_add_product_category_seo_translations.rs"
-      - "crates/rustok-product/src/migrations/mod.rs"
       - "crates/rustok-product/src/services/catalog_schema_service/categories.rs"
       - "crates/rustok-product/docs/category-taxonomy-binding.md"
       - "crates/rustok-product/docs/category-locale-contract.md"
       - "crates/rustok-taxonomy/docs/implementation-plan.md"
-      - "scripts/verify/verify-product-category-seo-seam.mjs"
+      - "scripts/verify/verify-product-category-legacy-write-retirement.mjs"
+      - ".github/workflows/product-category-legacy-write-retirement.yml"
       - ".github/workflows/product-category-seo-seam.yml"
-      - ".github/workflows/product-taxonomy-category-read-cutover.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: product-category-seo-seam-${{ github.event.pull_request.number || github.ref }}
+  group: product-category-legacy-write-retirement-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  seo-seam-contract:
-    name: Product Category SEO seam
+  legacy-write-retirement-contract:
+    name: Product Category legacy write retirement
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -42,34 +40,28 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
-      - name: Verify Product Category SEO seam contract
-        run: node scripts/verify/verify-product-category-seo-seam.mjs
+      - name: Verify Product Category legacy write retirement contract
+        run: node scripts/verify/verify-product-category-legacy-write-retirement.mjs
       - name: Fetch exact PR base
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           git fetch --no-tags --depth=1 origin "$base"
-      - name: Assert bounded CAT-27 file set when CAT-27 changes
+      - name: Assert bounded CAT-28 file set
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          migration='crates/rustok-product/src/migrations/m20260829_000017_add_product_category_seo_translations.rs'
-          verifier='scripts/verify/verify-product-category-seo-seam.mjs'
+          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|crates/rustok-taxonomy/docs/implementation-plan\.md|scripts/verify/verify-product-category-legacy-write-retirement\.mjs|\.github/workflows/product-category-legacy-write-retirement\.yml|\.github/workflows/product-category-seo-seam\.yml)$'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
-          if ! printf '%s\n' "$changed" | grep -Eq "^(${migration}|${verifier})$"; then
-            echo "CAT-27 migration/verifier unchanged; PR-wide CAT-27 slice restriction is not applicable."
-            exit 0
-          fi
-          allowed='^(crates/rustok-product/src/migrations/m20260829_000017_add_product_category_seo_translations\.rs|crates/rustok-product/src/migrations/mod\.rs|crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|crates/rustok-taxonomy/docs/implementation-plan\.md|scripts/verify/verify-product-category-seo-seam\.mjs|\.github/workflows/product-category-seo-seam\.yml|\.github/workflows/product-taxonomy-category-read-cutover\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Product formatting
         run: cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
-      - name: Run Product Category SEO unit regression
-        run: cargo test -p rustok-product --lib category_seo_detects -- --nocapture
-      - name: Compile Product Category SEO seam
+      - name: Run Product Category legacy write backend regression
+        run: cargo test -p rustok-product --lib category_legacy_translation_write_is_non_postgres_only -- --nocapture
+      - name: Compile Product Category write retirement
         run: cargo check -p rustok-product --lib
       - name: Check full PR whitespace
         shell: bash
