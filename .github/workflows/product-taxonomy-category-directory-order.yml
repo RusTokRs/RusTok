@@ -51,9 +51,8 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           verifier='scripts/verify/verify-product-taxonomy-category-directory-order.mjs'
-          workflow='.github/workflows/product-taxonomy-category-directory-order.yml'
           changed="$(git diff --name-only "$base" "$head")"
-          if ! printf '%s\n' "$changed" | grep -Eq "^(${verifier}|${workflow})$"; then
+          if ! printf '%s\n' "$changed" | grep -Fxq "$verifier"; then
             echo "CAT-31 runtime/verifier unchanged; historical CAT-31 source verifier is not applicable."
             exit 0
           fi
@@ -64,10 +63,9 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           verifier='scripts/verify/verify-product-taxonomy-category-directory-order.mjs'
-          workflow='.github/workflows/product-taxonomy-category-directory-order.yml'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
-          if ! printf '%s\n' "$changed" | grep -Eq "^(${verifier}|${workflow})$"; then
+          if ! printf '%s\n' "$changed" | grep -Fxq "$verifier"; then
             echo "CAT-31 runtime/verifier unchanged; PR-wide CAT-31 slice restriction is not applicable."
             exit 0
           fi
