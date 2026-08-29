@@ -14,12 +14,11 @@ the Product domain event and commit.
 CAT-23 closed with this bounded state:
 Status: **source-complete additive seam; backfill and runtime cutover pending**.
 That slice does **not** backfill the binding and does **not** switch Product reads or writes.
-Its recorded next-step intent was preserving Product category UUIDs where possible;
-CAT-24 now implements the stricter same-ID copy contract. The physical binding table is
-currently created only on PostgreSQL because its tenant-safe Product prerequisite is
-PostgreSQL-only. No `product/category` Translation provider should be introduced by
-CAT-23 or later Category migration slices; canonical ownership remains Taxonomy
-`taxonomy/term`.
+Its recorded next-step intent was preserving Product category UUIDs where possible.
+The physical binding table is currently created only on PostgreSQL because its
+tenant-safe Product prerequisite is PostgreSQL-only. No `product/category`
+Translation provider should be introduced by CAT-23 or later Category migration
+slices; the registered Taxonomy `taxonomy/term` provider remains canonical.
 
 ## CAT-24 compatibility history
 
@@ -30,6 +29,17 @@ the live donor tables. Its backfill preserves existing Product category and tran
 UUIDs where compatible, copies hierarchy after identity/localized routes, and populates
 the same-ID binding last. The historical backfill remains monotonic; CAT-25 does not
 re-run or reinterpret it.
+
+For retained CAT-24 source evidence, the exact migration rules remain: the same
+canonical base slug is therefore projected into every imported locale; no localized
+slug is invented; the migration does not synthesize a `path`-derived slug; if two
+Product categories conflict under Taxonomy route ownership, the migration blocks as
+an incompatible route collision. Product `meta_title` / `meta_description`,
+activation/soft-delete lifecycle and other Product policy stay donor-owned. An
+incompatible Taxonomy UUID, canonical-key, localized-copy, translation UUID, route,
+hierarchy or binding ownership blocks the migration instead of choosing a winner.
+No `product/category` Translation provider is introduced; canonical Category copy is
+served by the registered Taxonomy `taxonomy/term` provider.
 
 ## Binding and backend boundary
 
