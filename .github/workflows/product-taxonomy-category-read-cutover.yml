@@ -47,14 +47,19 @@ jobs:
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           git fetch --no-tags --depth=1 origin "$base"
-      - name: Assert bounded CAT-26 file set
+      - name: Assert bounded CAT-26 file set when CAT-26 changes
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-create-sync\.mjs|scripts/verify/verify-product-taxonomy-category-read-cutover\.mjs|\.github/workflows/product-taxonomy-category-create-sync\.yml|\.github/workflows/product-taxonomy-category-read-cutover\.yml)$'
+          anchor='scripts/verify/verify-product-taxonomy-category-read-cutover.mjs'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
+          if ! printf '%s\n' "$changed" | grep -Fxq "$anchor"; then
+            echo "CAT-26 verifier unchanged; PR-wide CAT-26 slice restriction is not applicable."
+            exit 0
+          fi
+          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-create-sync\.mjs|scripts/verify/verify-product-taxonomy-category-read-cutover\.mjs|\.github/workflows/product-taxonomy-category-create-sync\.yml|\.github/workflows/product-taxonomy-category-read-cutover\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Product formatting
