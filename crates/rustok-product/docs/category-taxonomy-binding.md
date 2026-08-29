@@ -141,19 +141,21 @@ Other database backends return without changing schema because they still rely o
 legacy donor read/write path.
 
 On PostgreSQL the migration opens one transaction and refuses to drop the table unless
-both ownership proofs succeed:
+all ownership proofs succeed:
 
 - every Product Category, including historical/soft-deleted Product rows, has a typed
   Product → Taxonomy binding for the same UUID;
 - the bound Taxonomy term exists in the same tenant, has kind `Category`, module scope
   `product`, and canonical key `product-category-{uuid}`;
+- every historical legacy locale still has a same-tenant, same-ID Taxonomy localized row for that exact locale;
 - every legacy locale row containing `meta_title` or `meta_description` has an exact
   `(tenant_id, category_id, locale)` row in `catalog_category_seo_translations` with
   identical Product-owned SEO values; missing rows or `IS DISTINCT FROM` differences
   block retirement;
 - legacy `name` / `description` are deliberately **not** compared byte-for-byte with
   current Taxonomy copy, because Taxonomy became canonical before retirement and may
-  have legitimately evolved after the historical donor snapshot.
+  have legitimately evolved after the historical donor snapshot. Locale coverage proves
+  that the canonical owner still has the donor locale without requiring stale byte equality.
 
 Only after those checks succeed does the same transaction execute
 `DROP TABLE IF EXISTS catalog_category_translations` and commit. Any preflight or drop
