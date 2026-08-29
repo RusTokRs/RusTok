@@ -1033,7 +1033,11 @@ mod tests {
             vec![negative_owner],
         )
         .expect_err("negative canonical sibling position must fail closed");
-        assert!(error.to_string().contains("negative Taxonomy sibling position"));
+        assert!(
+            error
+                .to_string()
+                .contains("negative Taxonomy sibling position")
+        );
 
         let a = Uuid::new_v4();
         let b = Uuid::new_v4();
