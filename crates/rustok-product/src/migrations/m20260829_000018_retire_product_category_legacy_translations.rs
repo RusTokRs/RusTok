@@ -37,6 +37,7 @@ impl MigrationTrait for Migration {
 
         let txn = manager.get_connection().begin().await?;
         ensure_complete_taxonomy_ownership(&txn).await?;
+        ensure_complete_taxonomy_locale_ownership(&txn).await?;
         ensure_complete_product_seo_ownership(&txn).await?;
         txn.execute(Statement::from_string(
             DatabaseBackend::Postgres,
@@ -125,6 +126,37 @@ async fn ensure_complete_taxonomy_ownership(txn: &DatabaseTransaction) -> Result
                 "Product Category legacy-storage retirement blocked: Taxonomy term {taxonomy_id} has incompatible tenant/kind/scope/canonical-key ownership",
             )));
         }
+    }
+
+    Ok(())
+}
+
+async fn ensure_complete_taxonomy_locale_ownership(
+    txn: &DatabaseTransaction,
+) -> Result<(), DbErr> {
+    let missing = CountRow::find_by_statement(Statement::from_string(
+        DatabaseBackend::Postgres,
+        r#"
+            SELECT COUNT(*)::BIGINT AS count
+            FROM catalog_category_translations legacy
+            JOIN catalog_categories category
+              ON category.id = legacy.category_id
+            LEFT JOIN taxonomy_term_translations taxonomy_copy
+              ON taxonomy_copy.tenant_id = category.tenant_id
+             AND taxonomy_copy.term_id = category.id
+             AND taxonomy_copy.locale = legacy.locale
+            WHERE taxonomy_copy.term_id IS NULL
+        "#,
+    ))
+    .one(txn)
+    .await?
+    .map(|row| row.count)
+    .unwrap_or_default();
+
+    if missing != 0 {
+        return Err(DbErr::Migration(format!(
+            "Product Category legacy-storage retirement blocked: {missing} legacy localized row(s) have no same-locale Taxonomy canonical copy",
+        )));
     }
 
     Ok(())
