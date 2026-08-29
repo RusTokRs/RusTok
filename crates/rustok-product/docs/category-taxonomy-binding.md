@@ -259,7 +259,7 @@ Product continues to own:
 - Product `parent_id`, `path` and `level` projections. PostgreSQL no longer treats those
   fields or Product closure rows as canonical Category ancestry; `path` remains the
   Product navigation projection;
-- Product path and closure persistence remain compatibility state: historical PostgreSQL
+- Product `path` and closure persistence remain compatibility state: historical PostgreSQL
   closure rows are retained pending a separate physical retirement proof, while
   non-PostgreSQL backends retain active closure writes/reads;
 - localized `meta_title` / `meta_description` in
