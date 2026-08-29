@@ -1,43 +1,87 @@
-# Product Category → Taxonomy binding seam
+# Product Category → Taxonomy migration contract
 
-Status: **source-complete additive seam; backfill and runtime cutover pending**
+Status: **source-complete monotonic backfill; Product runtime cutover pending**
 
-TAXONOMY-CAT-23 introduces the Product-owned binding required before Product
-Category identity, hierarchy and localized canonical copy can move to Taxonomy.
-This slice is intentionally additive and data-preserving.
+TAXONOMY-CAT-23 introduced the tenant-safe Product-owned binding seam.
+TAXONOMY-CAT-24 adds the next bounded step: a PostgreSQL-only monotonic copy of
+Product Category canonical identity, localized copy, routes and hierarchy into
+Taxonomy while Product remains the live runtime donor.
 
-## Storage contract
+## CAT-23 compatibility history
 
-`product_catalog_category_taxonomy_bindings` is Product-owned relation storage.
-Each row contains:
+CAT-23 closed with this bounded state:
+Status: **source-complete additive seam; backfill and runtime cutover pending**.
+That slice does **not** backfill the binding and does **not** switch Product reads or writes.
+Its recorded next-step intent was preserving Product category UUIDs where possible;
+CAT-24 now implements the stricter same-ID copy contract. The physical binding table is
+currently created only on PostgreSQL because its tenant-safe Product prerequisite is
+PostgreSQL-only. No `product/category` Translation provider should be introduced by
+CAT-23 or later Category migration slices; canonical ownership remains Taxonomy
+`taxonomy/term`.
 
-- `tenant_id`;
-- `catalog_category_id`, referencing Product `catalog_categories(tenant_id, id)`;
-- `taxonomy_category_id`, referencing `taxonomy_terms(tenant_id, id)`;
-- `created_at`.
+## Binding and backend boundary
 
-The Product category identity is unique per tenant in the binding table and one
-Taxonomy category may bind to at most one Product catalog category per tenant.
-Cross-tenant bindings are rejected by composite foreign keys.
+`product_catalog_category_taxonomy_bindings` remains Product-owned relation
+storage with tenant-safe composite foreign keys. The physical binding and
+backfill are currently PostgreSQL-only because the retained Product
+`(tenant_id, id)` category identity prerequisite is installed by the
+PostgreSQL-only tenant-consistency migration. Other backends remain a no-op
+until they have an equivalent tenant-safe prerequisite.
 
-The physical binding table is currently created only on PostgreSQL because the
-retained Product `(tenant_id, id)` category identity prerequisite is installed
-by the PostgreSQL-only tenant-consistency migration. Other backends remain a
-no-op for this seam until they have an equivalent tenant-safe prerequisite.
+## Backfill contract
 
-## Current cutover boundary
+The backfill is deterministic and fail-closed:
 
-This slice does **not** backfill the binding and does **not** switch Product
-reads or writes. Product still owns the live `catalog_categories`,
-`catalog_category_translations`, hierarchy/closure, category-bound attribute
-schema, product/category membership and virtual-category behavior until later
-verified slices migrate those responsibilities deliberately.
+- Product Category UUID is preserved as the Taxonomy Category UUID;
+- Taxonomy uses `Category`, module scope `product`, and canonical key
+  `product-category-{uuid}`;
+- every Product category must have at least one canonical localized row;
+- Product translation UUIDs are preserved for Taxonomy localized rows;
+- Product stores one base category `slug`, not a localized slug. The same
+  canonical base slug is therefore projected into every imported locale and
+  reserved as that locale's Taxonomy route key; no localized slug is invented;
+- Product donor storage only requires `slug` uniqueness per parent, while the
+  Taxonomy route registry requires one owner for a route key across the whole
+  module scope and locale. CAT-24 does not synthesize a `path`-derived slug or
+  silently rename either category: if two Product categories project to the
+  same Taxonomy route key, the migration blocks as an incompatible route
+  collision and requires explicit donor remediation before cutover;
+- localized `name` and `description` are copied exactly after canonical locale
+  validation;
+- every Category identity/localized route is created before hierarchy rows;
+- Taxonomy hierarchy receives Product `parent_id` and `position` after all
+  identities exist;
+- the Product↔Taxonomy same-ID binding is populated only after identity,
+  localized copy, routes and hierarchy succeed;
+- incompatible Taxonomy UUID, canonical-key, localized-copy, translation UUID,
+  route, hierarchy or binding ownership blocks the migration instead of
+  choosing a winner;
+- the copy runs inside one transaction and rollback is intentionally monotonic:
+  copied Taxonomy truth is not deleted by `down()`.
 
-The next migration slice must deterministically backfill Taxonomy Category rows
-while preserving Product category UUIDs where possible, localized copy and
-hierarchy. It must fail closed on incompatible Taxonomy identity/route
-collisions and populate this binding before any Product runtime cutover.
+## Retained Product-owned state
 
-No `product/category` Translation provider should be introduced during the
-migration. Canonical Category Translation ownership after cutover is the
-registered Taxonomy `taxonomy/term` provider.
+CAT-24 does **not** switch Product reads or writes and does **not** remove or
+rewrite the live donor tables. Product continues to own and serve:
+
+- `catalog_categories` and `catalog_category_translations` until runtime cutover;
+- Product category closure and current mutation logic;
+- `kind`, virtual-category `rule_config`, activation/soft-delete lifecycle and
+  Product-specific metadata;
+- `meta_title` / `meta_description`, which have no Taxonomy Category field in
+  this slice and must remain truthful Product SEO data;
+- category-bound attribute/schema state;
+- product/category membership, primary/navigation/collection/virtual assignment
+  semantics and Product projections.
+
+Those retained fields must not be silently discarded or reinterpreted by the
+backfill. Later cutover slices must make their ownership/lifecycle decisions
+explicitly before retiring any donor storage.
+
+## Translation ownership boundary
+
+No `product/category` Translation provider is introduced. Canonical Category
+localized copy is being prepared under the registered Taxonomy `taxonomy/term`
+provider. Product remains the runtime source until a later verified read/write
+cutover, so CAT-24 alone is not permission to delete Product translations or
+change storefront/admin projections.
