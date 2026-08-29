@@ -1,6 +1,7 @@
 # Product Category → Taxonomy migration contract
 
-Status: **source-complete PostgreSQL Category hierarchy-consumer cutover; Product policy and non-PostgreSQL compatibility retained**
+Status: **source-complete PostgreSQL legacy Category translation storage retirement; non-PostgreSQL donor compatibility retained**
+Current migration cursor: **TAXONOMY-CAT-30 PostgreSQL Category hierarchy-consumer cutover; Product policy and non-PostgreSQL compatibility retained**.
 
 TAXONOMY-CAT-23 introduced the tenant-safe Product-owned binding seam.
 TAXONOMY-CAT-24 added the PostgreSQL-only monotonic backfill of existing Product
