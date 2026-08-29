@@ -257,15 +257,25 @@ Native product catalog attributes extend this baseline through
 product-owned tables:
 
 - `product_attributes`, `product_attribute_translations`, `product_attribute_options`
-- `catalog_categories`, `catalog_category_translations`, `catalog_category_closure`
+- `catalog_categories`, `catalog_category_closure`
+- `catalog_category_seo_translations` for Product-owned localized Category SEO on PostgreSQL
 - `product_attribute_schemas` and schema/group/binding tables
 - `category_attribute_schema_assignments`, `category_attributes`, `category_attribute_groups`
 - `product_categories`, `virtual_category_product_assignments`
 - `product_attribute_values`, `product_variant_attribute_values` and related localized value/option tables (with detached values tracked across category/schema rebinding)
 - read-side projection tables such as `index_product_attribute_values`
 
-And the same principle applies: base rows are language-agnostic, localized
-fields are moved to parallel records.
+Product Category canonical localization is a cross-module ownership exception to the usual
+module-local `*_translations` pattern. On PostgreSQL, same-ID Product Category bindings point at
+Taxonomy-owned Category identity, localized `name`/`slug`/`description`, routes and hierarchy.
+Migration `m20260829_000018_retire_product_category_legacy_translations` fails closed on incompatible
+Taxonomy ownership or Product SEO drift and then irreversibly drops the historical
+`catalog_category_translations` donor. Product keeps localized `meta_title`/`meta_description` in
+`catalog_category_seo_translations`. Non-PostgreSQL backends retain the legacy Product Category
+translation donor/read/write path until they acquire an equivalent Taxonomy cutover.
+
+And the same principle applies elsewhere: base rows are language-agnostic, and localized fields
+remain in their demonstrated owner-specific storage rather than being duplicated across modules.
 
 ## Registry / Marketplace
 
