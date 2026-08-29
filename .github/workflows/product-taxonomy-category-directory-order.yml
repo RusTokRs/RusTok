@@ -9,6 +9,7 @@ on:
       - "scripts/verify/verify-product-taxonomy-category-directory-order.mjs"
       - ".github/workflows/product-taxonomy-category-directory-order.yml"
       - ".github/workflows/product-taxonomy-category-hierarchy-consumers.yml"
+      - ".github/workflows/product-category-legacy-write-retirement.yml"
 
 permissions:
   contents: read
@@ -53,7 +54,7 @@ jobs:
           head="${{ github.event.pull_request.head.sha }}"
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
-          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-directory-order\.mjs|\.github/workflows/product-taxonomy-category-directory-order\.yml|\.github/workflows/product-taxonomy-category-hierarchy-consumers\.yml)$'
+          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-directory-order\.mjs|\.github/workflows/product-taxonomy-category-directory-order\.yml|\.github/workflows/product-taxonomy-category-hierarchy-consumers\.yml|\.github/workflows/product-category-legacy-write-retirement\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Product formatting
