@@ -1,12 +1,9 @@
 use std::collections::HashMap;
 
-use rustok_taxonomy::{
-    TaxonomyScopeType, TaxonomyTermKind,
-    entities::taxonomy_term,
-};
+use rustok_taxonomy::{TaxonomyScopeType, TaxonomyTermKind, entities::taxonomy_term};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseTransaction, EntityTrait, FromQueryResult,
-    QueryFilter, Statement, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseTransaction, EntityTrait,
+    FromQueryResult, QueryFilter, Statement, TransactionTrait,
 };
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
@@ -108,7 +105,9 @@ async fn ensure_complete_taxonomy_ownership(txn: &DatabaseTransaction) -> Result
         .collect::<HashMap<_, _>>();
 
     for category in categories {
-        let taxonomy_id = category.taxonomy_category_id.expect("binding checked above");
+        let taxonomy_id = category
+            .taxonomy_category_id
+            .expect("binding checked above");
         let term = term_by_id.get(&taxonomy_id).ok_or_else(|| {
             DbErr::Migration(format!(
                 "Product Category legacy-storage retirement blocked: Taxonomy Category {taxonomy_id} is missing for Product category {}",
@@ -131,9 +130,7 @@ async fn ensure_complete_taxonomy_ownership(txn: &DatabaseTransaction) -> Result
     Ok(())
 }
 
-async fn ensure_complete_taxonomy_locale_ownership(
-    txn: &DatabaseTransaction,
-) -> Result<(), DbErr> {
+async fn ensure_complete_taxonomy_locale_ownership(txn: &DatabaseTransaction) -> Result<(), DbErr> {
     let missing = CountRow::find_by_statement(Statement::from_string(
         DatabaseBackend::Postgres,
         r#"
