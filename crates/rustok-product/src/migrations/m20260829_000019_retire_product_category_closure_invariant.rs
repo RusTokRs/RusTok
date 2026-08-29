@@ -16,9 +16,6 @@ impl MigrationTrait for Migration {
             r#"
 SELECT rustok_product_assert_category_tree();
 
-DROP TRIGGER IF EXISTS trg_catalog_category_closure_validate_tree
-ON catalog_category_closure;
-
 CREATE OR REPLACE FUNCTION rustok_product_assert_category_tree()
 RETURNS VOID AS $$
 BEGIN
@@ -192,14 +189,6 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_catalog_category_closure_validate_tree
-ON catalog_category_closure;
-
-CREATE CONSTRAINT TRIGGER trg_catalog_category_closure_validate_tree
-AFTER INSERT OR UPDATE OR DELETE ON catalog_category_closure
-DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION rustok_product_validate_category_tree_trigger();
 
 SELECT rustok_product_assert_category_tree();
 "#,
