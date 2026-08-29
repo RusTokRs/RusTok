@@ -47,14 +47,19 @@ jobs:
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           git fetch --no-tags --depth=1 origin "$base"
-      - name: Assert bounded CAT-28 file set
+      - name: Assert bounded CAT-28 file set when CAT-28 changes
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|crates/rustok-taxonomy/docs/implementation-plan\.md|scripts/verify/verify-product-category-legacy-write-retirement\.mjs|\.github/workflows/product-category-legacy-write-retirement\.yml|\.github/workflows/product-category-seo-seam\.yml)$'
+          verifier='scripts/verify/verify-product-category-legacy-write-retirement.mjs'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
+          if ! printf '%s\n' "$changed" | grep -Fxq "$verifier"; then
+            echo "CAT-28 verifier unchanged; PR-wide CAT-28 slice restriction is not applicable."
+            exit 0
+          fi
+          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|crates/rustok-taxonomy/docs/implementation-plan\.md|scripts/verify/verify-product-category-legacy-write-retirement\.mjs|\.github/workflows/product-category-legacy-write-retirement\.yml|\.github/workflows/product-category-seo-seam\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Product formatting
