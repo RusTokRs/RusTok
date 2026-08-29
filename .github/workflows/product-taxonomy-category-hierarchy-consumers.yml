@@ -1,0 +1,75 @@
+name: Product Taxonomy Category Hierarchy Consumers
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-taxonomy/src/owner_category_read.rs"
+      - "crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs"
+      - "crates/rustok-product/docs/category-taxonomy-binding.md"
+      - "scripts/verify/verify-product-taxonomy-category-hierarchy-consumers.mjs"
+      - ".github/workflows/product-taxonomy-category-hierarchy-consumers.yml"
+      - ".github/workflows/product-category-legacy-storage-retirement.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: product-taxonomy-category-hierarchy-consumers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  hierarchy-consumer-contract:
+    name: Product Taxonomy Category hierarchy consumers
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: |
+          expected="${{ github.event.pull_request.head.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - name: Verify Product Category hierarchy consumer contract
+        run: node scripts/verify/verify-product-taxonomy-category-hierarchy-consumers.mjs
+      - name: Fetch exact PR base
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          git fetch --no-tags --depth=1 origin "$base"
+      - name: Assert bounded CAT-30 file set
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          changed="$(git diff --name-only "$base" "$head")"
+          printf '%s\n' "$changed"
+          allowed='^(crates/rustok-taxonomy/src/owner_category_read\.rs|crates/rustok-product/src/services/catalog_schema_service/effective_forms\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|scripts/verify/verify-product-taxonomy-category-hierarchy-consumers\.mjs|\.github/workflows/product-taxonomy-category-hierarchy-consumers\.yml|\.github/workflows/product-category-legacy-storage-retirement\.yml)$'
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
+          test -z "$unexpected"
+      - name: Check Taxonomy and Product formatting
+        shell: bash
+        run: |
+          cargo fmt --check --manifest-path crates/rustok-taxonomy/Cargo.toml
+          cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
+      - name: Run Product Category Taxonomy hierarchy unit regressions
+        run: cargo test -p rustok-product --lib category_taxonomy_hierarchy -- --nocapture
+      - name: Run Taxonomy owner reader unit regressions
+        run: cargo test -p rustok-taxonomy --lib owner_category_read -- --nocapture
+      - name: Compile Product Category hierarchy consumers
+        run: cargo check -p rustok-product --lib
+      - name: Check full PR whitespace
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git diff --check "$base" "$head"
