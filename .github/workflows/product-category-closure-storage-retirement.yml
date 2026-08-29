@@ -174,13 +174,13 @@ jobs:
       - name: Drop focused migration database
         if: always()
         env:
-          PGPASSWORD: rustok_migration
+          PGPASSWORD: postgres
         shell: bash
         run: >-
           dropdb
           --host localhost
           --port 5432
-          --username rustok_migration
+          --username postgres
           --if-exists
           --force
           "$RUSTOK_MIGRATION_SMOKE_DB_NAME"
