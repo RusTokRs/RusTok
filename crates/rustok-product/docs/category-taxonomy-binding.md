@@ -7,6 +7,18 @@ TAXONOMY-CAT-24 adds the next bounded step: a PostgreSQL-only monotonic copy of
 Product Category canonical identity, localized copy, routes and hierarchy into
 Taxonomy while Product remains the live runtime donor.
 
+## CAT-23 compatibility history
+
+CAT-23 closed with this bounded state:
+Status: **source-complete additive seam; backfill and runtime cutover pending**.
+That slice does **not** backfill the binding and does **not** switch Product reads or writes.
+Its recorded next-step intent was preserving Product category UUIDs where possible;
+CAT-24 now implements the stricter same-ID copy contract. The physical binding table is
+currently created only on PostgreSQL because its tenant-safe Product prerequisite is
+PostgreSQL-only. No `product/category` Translation provider should be introduced by
+CAT-23 or later Category migration slices; canonical ownership remains Taxonomy
+`taxonomy/term`.
+
 ## Binding and backend boundary
 
 `product_catalog_category_taxonomy_bindings` remains Product-owned relation
