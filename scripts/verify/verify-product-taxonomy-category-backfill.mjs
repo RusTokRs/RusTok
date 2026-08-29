@@ -119,7 +119,7 @@ if (failures.length === 0) {
     ['no localized slug is invented', 'no fabricated localized route data'],
     ['does not synthesize a `path`-derived slug', 'no fabricated path-derived route identity'],
     ['migration blocks as an incompatible route collision', 'Product-to-Taxonomy route incompatibility fail-closed'],
-    ['meta_title / meta_description', 'retained Product SEO ownership'],
+    ['`meta_title` / `meta_description`', 'retained Product SEO ownership'],
     ['activation/soft-delete lifecycle', 'retained Product lifecycle ownership'],
     ['does **not** switch Product reads or writes', 'no runtime cutover boundary'],
     ['No `product/category` Translation provider is introduced', 'no duplicate Translation provider'],
