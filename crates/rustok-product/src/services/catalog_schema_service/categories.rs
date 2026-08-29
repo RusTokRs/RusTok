@@ -81,30 +81,32 @@ impl ProductCatalogSchemaService {
         ))
         .await?;
 
-        txn.execute(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            r#"
-            INSERT INTO catalog_category_closure (tenant_id, ancestor_id, descendant_id, depth)
-            VALUES ($1, $2, $2, 0)
-            "#,
-            vec![tenant_id.into(), category_id.into()],
-        ))
-        .await?;
-
-        if let Some(parent_id) = input.parent_id {
+        if should_write_product_category_closure(txn.get_database_backend()) {
             txn.execute(Statement::from_sql_and_values(
                 txn.get_database_backend(),
                 r#"
-                INSERT INTO catalog_category_closure (
-                    tenant_id, ancestor_id, descendant_id, depth
-                )
-                SELECT tenant_id, ancestor_id, $3, depth + 1
-                FROM catalog_category_closure
-                WHERE tenant_id = $1 AND descendant_id = $2
+                INSERT INTO catalog_category_closure (tenant_id, ancestor_id, descendant_id, depth)
+                VALUES ($1, $2, $2, 0)
                 "#,
-                vec![tenant_id.into(), parent_id.into(), category_id.into()],
+                vec![tenant_id.into(), category_id.into()],
             ))
             .await?;
+
+            if let Some(parent_id) = input.parent_id {
+                txn.execute(Statement::from_sql_and_values(
+                    txn.get_database_backend(),
+                    r#"
+                    INSERT INTO catalog_category_closure (
+                        tenant_id, ancestor_id, descendant_id, depth
+                    )
+                    SELECT tenant_id, ancestor_id, $3, depth + 1
+                    FROM catalog_category_closure
+                    WHERE tenant_id = $1 AND descendant_id = $2
+                    "#,
+                    vec![tenant_id.into(), parent_id.into(), category_id.into()],
+                ))
+                .await?;
+            }
         }
 
         for translation in &translations {
@@ -646,6 +648,10 @@ fn should_write_legacy_category_translation(backend: DatabaseBackend) -> bool {
     backend != DatabaseBackend::Postgres
 }
 
+fn should_write_product_category_closure(backend: DatabaseBackend) -> bool {
+    backend != DatabaseBackend::Postgres
+}
+
 async fn sync_created_category_to_taxonomy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -1073,6 +1079,19 @@ mod tests {
             DatabaseBackend::Sqlite
         ));
         assert!(should_write_legacy_category_translation(
+            DatabaseBackend::MySql
+        ));
+    }
+
+    #[test]
+    fn category_closure_write_is_non_postgres_only() {
+        assert!(!should_write_product_category_closure(
+            DatabaseBackend::Postgres
+        ));
+        assert!(should_write_product_category_closure(
+            DatabaseBackend::Sqlite
+        ));
+        assert!(should_write_product_category_closure(
             DatabaseBackend::MySql
         ));
     }
