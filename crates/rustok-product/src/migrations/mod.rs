@@ -40,6 +40,7 @@ mod m20260812_000013_normalize_catalog_category_translation_locales;
 mod m20260813_000014_canonicalize_product_metadata_tags;
 mod m20260828_000015_add_product_taxonomy_category_binding;
 mod m20260829_000016_backfill_product_categories_to_taxonomy;
+mod m20260829_000017_add_product_category_seo_translations;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -84,6 +85,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260813_000014_canonicalize_product_metadata_tags::Migration),
         Box::new(m20260828_000015_add_product_taxonomy_category_binding::Migration),
         Box::new(m20260829_000016_backfill_product_categories_to_taxonomy::Migration),
+        Box::new(m20260829_000017_add_product_category_seo_translations::Migration),
     ]
 }
 
