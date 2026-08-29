@@ -13,6 +13,7 @@ const planPath = 'crates/rustok-taxonomy/docs/implementation-plan.md';
 const databaseDocPath = 'docs/architecture/database.md';
 const retainedWriteWorkflowPath =
   '.github/workflows/product-category-legacy-write-retirement.yml';
+const retainedSeoWorkflowPath = '.github/workflows/product-category-seo-seam.yml';
 
 const failures = [];
 const need = (source, marker, label = marker) => {
@@ -32,6 +33,7 @@ for (const path of [
   planPath,
   databaseDocPath,
   retainedWriteWorkflowPath,
+  retainedSeoWorkflowPath,
 ]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
@@ -47,6 +49,7 @@ if (failures.length === 0) {
   const plan = normalizeWhitespace(fs.readFileSync(planPath, 'utf8'));
   const databaseDoc = normalizeWhitespace(fs.readFileSync(databaseDocPath, 'utf8'));
   const retainedWriteWorkflow = fs.readFileSync(retainedWriteWorkflowPath, 'utf8');
+  const retainedSeoWorkflow = fs.readFileSync(retainedSeoWorkflowPath, 'utf8');
 
   for (const [marker, label] of [
     [
@@ -56,7 +59,11 @@ if (failures.length === 0) {
     ['manager.get_connection().begin().await?', 'single retirement transaction'],
     [
       'ensure_complete_taxonomy_ownership(&txn).await?',
-      'Taxonomy ownership preflight',
+      'Taxonomy identity ownership preflight',
+    ],
+    [
+      'ensure_complete_taxonomy_locale_ownership(&txn).await?',
+      'Taxonomy locale coverage preflight',
     ],
     [
       'ensure_complete_product_seo_ownership(&txn).await?',
@@ -98,10 +105,31 @@ if (failures.length === 0) {
       'canonical Product Category key ownership guard',
     ],
     [
-      'FROM catalog_category_translations legacy',
-      'legacy Product SEO evidence source',
+      'LEFT JOIN taxonomy_term_translations taxonomy_copy',
+      'Taxonomy localized copy coverage source',
     ],
-    ['JOIN catalog_categories category', 'tenant identity source for legacy SEO'],
+    [
+      'taxonomy_copy.tenant_id = category.tenant_id',
+      'Taxonomy localized copy tenant identity',
+    ],
+    [
+      'taxonomy_copy.term_id = category.id',
+      'Taxonomy localized copy term identity',
+    ],
+    [
+      'taxonomy_copy.locale = legacy.locale',
+      'Taxonomy same-locale coverage identity',
+    ],
+    ['WHERE taxonomy_copy.term_id IS NULL', 'missing Taxonomy locale guard'],
+    [
+      'legacy localized row(s) have no same-locale Taxonomy canonical copy',
+      'fail-closed Taxonomy locale coverage error',
+    ],
+    [
+      'FROM catalog_category_translations legacy',
+      'legacy Product Category evidence source',
+    ],
+    ['JOIN catalog_categories category', 'tenant identity source for legacy evidence'],
     [
       'LEFT JOIN catalog_category_seo_translations seo',
       'Product-owned SEO target preflight',
@@ -134,6 +162,9 @@ if (failures.length === 0) {
   const taxonomyPreflight = migration.indexOf(
     'ensure_complete_taxonomy_ownership(&txn).await?',
   );
+  const localePreflight = migration.indexOf(
+    'ensure_complete_taxonomy_locale_ownership(&txn).await?',
+  );
   const seoPreflight = migration.indexOf(
     'ensure_complete_product_seo_ownership(&txn).await?',
   );
@@ -143,21 +174,22 @@ if (failures.length === 0) {
   const commit = migration.indexOf('txn.commit().await?');
   if (
     taxonomyPreflight < 0 ||
+    localePreflight < 0 ||
     seoPreflight < 0 ||
     drop < 0 ||
     commit < 0 ||
-    !(taxonomyPreflight < seoPreflight && seoPreflight < drop && drop < commit)
+    !(
+      taxonomyPreflight < localePreflight &&
+      localePreflight < seoPreflight &&
+      seoPreflight < drop &&
+      drop < commit
+    )
   ) {
     failures.push(
-      'retirement must prove Taxonomy ownership, prove Product SEO parity, drop donor, then commit',
+      'retirement must prove Taxonomy identity, prove same-locale Taxonomy copy, prove Product SEO parity, drop donor, then commit',
     );
   }
 
-  forbid(
-    migration,
-    'taxonomy_term_translation',
-    'stale donor canonical-copy equality dependency',
-  );
   forbid(migration, 'legacy.name', 'legacy canonical name equality check');
   forbid(
     migration,
@@ -219,6 +251,10 @@ if (failures.length === 0) {
       'complete Product Category Taxonomy ownership preflight',
     ],
     [
+      'every historical legacy locale still has a same-tenant, same-ID Taxonomy localized row for that exact locale',
+      'complete Taxonomy locale coverage contract',
+    ],
+    [
       '`(tenant_id, category_id, locale)` row in `catalog_category_seo_translations`',
       'exact Product SEO identity contract',
     ],
@@ -246,6 +282,10 @@ if (failures.length === 0) {
     [
       'TAXONOMY-CAT-29 physically retires that mirror on PostgreSQL after fail-closed ownership checks',
       'CAT-29 locale status',
+    ],
+    [
+      'every historical donor locale has a Taxonomy localized row for the exact same tenant/category/locale identity',
+      'locale Taxonomy coverage contract',
     ],
     [
       'exact normalized `(tenant_id, category_id, locale)` identity',
@@ -318,17 +358,39 @@ if (failures.length === 0) {
     need(databaseDoc, marker, label);
   }
 
-  for (const [marker, label] of [
+  for (const [source, marker, label] of [
     [
-      'Assert bounded CAT-28 file set when CAT-28 changes',
-      'progression-safe retained CAT-28 scope step',
+      retainedWriteWorkflow,
+      'Verify Product Category legacy write retirement contract when CAT-28 changes',
+      'progression-safe retained CAT-28 verifier step',
     ],
     [
+      retainedWriteWorkflow,
+      'CAT-28 runtime/verifier unchanged; historical CAT-28 source verifier is not applicable.',
+      'CAT-28 verifier skip marker',
+    ],
+    [
+      retainedWriteWorkflow,
       'CAT-28 runtime/verifier unchanged; PR-wide CAT-28 slice restriction is not applicable.',
-      'CAT-28 progression-safe scope skip marker',
+      'CAT-28 scope skip marker',
+    ],
+    [
+      retainedSeoWorkflow,
+      'Verify Product Category SEO seam contract when CAT-27 changes',
+      'progression-safe retained CAT-27 verifier step',
+    ],
+    [
+      retainedSeoWorkflow,
+      'CAT-27 migration/verifier unchanged; historical CAT-27 source verifier is not applicable.',
+      'CAT-27 verifier skip marker',
+    ],
+    [
+      retainedSeoWorkflow,
+      'CAT-27 migration/verifier unchanged; PR-wide CAT-27 slice restriction is not applicable.',
+      'CAT-27 scope skip marker',
     ],
   ]) {
-    need(retainedWriteWorkflow, marker, label);
+    need(source, marker, label);
   }
 }
 
