@@ -12,9 +12,6 @@ const failures = [];
 const need = (source, marker, label = marker) => {
   if (!source.includes(marker)) failures.push(`missing ${label}: ${marker}`);
 };
-const forbid = (source, marker, label = marker) => {
-  if (source.includes(marker)) failures.push(`forbidden ${label}: ${marker}`);
-};
 const normalizeWhitespace = (source) => source.replace(/\s+/g, ' ').trim();
 
 for (const path of [categoriesPath, contractPath, localeContractPath, ownerSyncPath]) {
@@ -59,13 +56,12 @@ if (failures.length === 0) {
     }
 
     const listBody = categories.slice(listStart);
-    need(listBody, 'FROM catalog_categories c', 'Product donor-backed Category list');
+    need(listBody, 'FROM catalog_categories c', 'retained Product donor Category fallback');
     need(
       listBody,
       'FROM catalog_category_translations translation',
-      'Product donor-backed localized list fallback',
+      'retained Product donor localized fallback',
     );
-    forbid(listBody, 'TaxonomyOwnerCategoryReader', 'premature Product Category read cutover');
   }
 
   for (const [marker, label] of [
@@ -92,7 +88,9 @@ if (failures.length === 0) {
   ]) {
     need(categories, marker, label);
   }
-  forbid(categories, 'product/category', 'duplicate Product Category Translation provider');
+  if (categories.includes('product/category')) {
+    failures.push('forbidden duplicate Product Category Translation provider: product/category');
+  }
 
   for (const [marker, label] of [
     ['pub async fn sync_module_category_in_tx(', 'existing Taxonomy owner-sync public port'],
@@ -108,8 +106,8 @@ if (failures.length === 0) {
     ['every new Product Category create now mirrors canonical identity', 'post-backfill create gap closure'],
     ['only then may `CatalogCategoryCreated`', 'event-after-owner-sync contract'],
     ['rolls back the Product donor inserts as part of that same transaction', 'atomic failure contract'],
-    ['CAT-25 does **not** switch Product reads', 'no read cutover boundary'],
-    ['`TaxonomyOwnerCategoryReader`', 'declared later read projection'],
+    ['CAT-25 does **not** switch Product reads', 'historical no-read-cutover boundary'],
+    ['`TaxonomyOwnerCategoryReader`', 'declared subsequent read projection'],
     ['No `product/category` Translation provider is introduced', 'no duplicate Translation provider'],
   ]) {
     need(contract, marker, label);
@@ -120,7 +118,7 @@ if (failures.length === 0) {
     ['1..120 characters', 'locale contract canonical name bound'],
     ['blank descriptions become `None`', 'locale contract canonical description normalization'],
     ['same-ID Product ↔ Taxonomy binding is inserted only after every locale succeeds', 'locale contract binding-last order'],
-    ['`ProductCatalogSchemaService::list_categories` still reads the Product donor', 'locale contract donor read retention'],
+    ['`ProductCatalogSchemaService::list_categories` still reads the Product donor', 'historical donor read retention'],
     ['create dual-write is the prerequisite', 'read cutover sequencing'],
   ]) {
     need(localeContract, marker, label);
