@@ -163,8 +163,8 @@ async fn ensure_category_translations_and_routes(
     category: &ProductCategoryRow,
 ) -> Result<(), DbErr> {
     let route_key = exact_taxonomy_route_key(&category.slug, category.id)?;
-    let translations = ProductCategoryTranslationRow::find_by_statement(
-        Statement::from_sql_and_values(
+    let translations =
+        ProductCategoryTranslationRow::find_by_statement(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"
                 SELECT id, locale, name, description
@@ -173,10 +173,9 @@ async fn ensure_category_translations_and_routes(
                 ORDER BY locale, id
             "#,
             vec![category.id.into()],
-        ),
-    )
-    .all(txn)
-    .await?;
+        ))
+        .all(txn)
+        .await?;
 
     if translations.is_empty() {
         return Err(DbErr::Migration(format!(
@@ -206,9 +205,10 @@ async fn ensure_category_translations_and_routes(
                 )));
             }
             None => {
-                if let Some(id_owner) = taxonomy_term_translation::Entity::find_by_id(translation.id)
-                    .one(txn)
-                    .await?
+                if let Some(id_owner) =
+                    taxonomy_term_translation::Entity::find_by_id(translation.id)
+                        .one(txn)
+                        .await?
                 {
                     return Err(DbErr::Migration(format!(
                         "Product Category Taxonomy backfill blocked: translation UUID {} is already used by Taxonomy term {}",
