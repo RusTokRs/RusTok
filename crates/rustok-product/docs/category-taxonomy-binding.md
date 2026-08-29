@@ -61,12 +61,12 @@ read projection rather than bypassing Taxonomy persistence ownership.
 
 CAT-26 closed with this bounded state:
 Status: **source-complete PostgreSQL Taxonomy read projection; donor storage retirement pending**.
-On PostgreSQL, `ProductCatalogSchemaService::list_categories` requires a same-ID typed
-binding and consumes canonical localized `name`, canonical localized `slug` and
-`parent_id` from `TaxonomyOwnerCategoryReader`. Product retains `code`, `kind`, `path`
-and path ordering. Missing binding/owner/canonical localized state fails closed; the
-PostgreSQL list path no longer reads `catalog_category_translations` as a hidden
-canonical fallback. Other backends continue using the retained Product donor list path.
+CAT-26 requires every live Product Category to have a same-ID binding. It materializes
+localized `name`, localized canonical `slug` and `parent_id` from the Taxonomy owner projection
+and retains Product `code`, `kind` and `path` while preserving Product path ordering.
+Missing binding/owner/canonical localized state fails closed; the PostgreSQL list path no longer
+reads `catalog_category_translations` as a hidden canonical fallback. Other backends continue using
+the retained Product donor list path.
 
 ## Binding and backend boundary
 
