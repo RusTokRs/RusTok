@@ -233,6 +233,8 @@ merchandising placement or path lifecycle. Non-PostgreSQL donor reads retain Pro
 
 ## CAT-32 PostgreSQL closure write retirement
 
+Historical CAT-32 migration cursor: **TAXONOMY-CAT-32 PostgreSQL closure write retirement; Product navigation/path and non-PostgreSQL closure compatibility retained**.
+
 CAT-32 advances only the Product create compatibility mirror after CAT-30 removed its
 last PostgreSQL runtime consumer. PostgreSQL no longer materializes new
 `catalog_category_closure` rows when a Product Category is created. Canonical ancestry
