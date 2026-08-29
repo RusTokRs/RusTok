@@ -118,7 +118,7 @@ if (failures.length === 0) {
   for (const [marker, label] of [
     ['TAXONOMY-CAT-32 PostgreSQL closure write retirement', 'CAT-32 migration cursor'],
     ['PostgreSQL no longer materializes new `catalog_category_closure` rows', 'PostgreSQL closure write retirement contract'],
-    ['non-PostgreSQL backends continue to materialize Product closure rows', 'non-PostgreSQL closure compatibility'],
+    ['Non-PostgreSQL backends continue to materialize Product closure rows', 'non-PostgreSQL closure compatibility'],
     ['does **not** drop `catalog_category_closure`', 'no premature physical closure drop'],
     ['`parent_id`, `path` and `level` remain Product-owned projections', 'retained Product hierarchy/navigation projection'],
   ]) {
