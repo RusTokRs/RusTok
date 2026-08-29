@@ -280,16 +280,23 @@ Accepted Product slices already in `main`:
   `path` and path ordering. Missing/mismatched binding or owner state fails closed;
 - PR #3739 / TAXONOMY-CAT-27 isolated Product-only localized `meta_title` / `meta_description` into
   PostgreSQL `catalog_category_seo_translations`, deterministically backfilled legacy SEO, and kept
-  new SEO writes in the same Product transaction before Taxonomy owner-sync.
+  new SEO writes in the same Product transaction before Taxonomy owner-sync;
+- PR #3740 / TAXONOMY-CAT-28 stopped new PostgreSQL Product Category creates from writing
+  `catalog_category_translations`, while retaining non-PostgreSQL donor reads/writes and keeping
+  Product SEO plus Taxonomy owner-sync atomic.
 
-The remaining Product donor boundary is intentionally split by backend and ownership. Historical
-`catalog_category_translations` rows still contain Taxonomy-superseded canonical localized copy.
-TAXONOMY-CAT-27 isolates those SEO fields so PostgreSQL no longer needs that table for Product-only
-localized data. TAXONOMY-CAT-28 now retires new PostgreSQL canonical mirror writes while retaining the
-legacy insert/read path on non-PostgreSQL backends that have not acquired the Taxonomy binding/read
-cutover.
+TAXONOMY-CAT-29 is the bounded PostgreSQL physical donor-retirement slice. It requires every Product
+Category to retain its same-ID, same-tenant Taxonomy `Category` in `module/product` scope with the
+expected `product-category-{uuid}` canonical key. It independently proves exact Product-owned SEO
+parity for every historical donor locale that contains `meta_title` or `meta_description`, then drops
+`catalog_category_translations` in the same transaction. It deliberately does not require stale donor
+`name`/`description` equality with current Taxonomy copy because Taxonomy may legitimately evolve after
+the cutover. Non-PostgreSQL backends remain no-op and keep their donor storage/read/write path.
 
-**Next:** complete TAXONOMY-CAT-28 PostgreSQL legacy canonical write retirement, then run a separate fail-closed donor-retirement slice that proves every live PostgreSQL Product Category is same-ID Taxonomy-owned and Product SEO is isolated before dropping `catalog_category_translations` on PostgreSQL only. Non-PostgreSQL donor compatibility remains explicit.
+**Next:** complete TAXONOMY-CAT-29 PostgreSQL donor retirement, then audit the remaining Product-owned
+Category projections and policy surfaces: `path`/closure/navigation ordering, lifecycle, virtual rule
+state, schema/attribute bindings, product/category membership and merchandising semantics. Do not move
+those fields into Taxonomy merely because canonical identity/localization/hierarchy storage is shared.
 
 Product navigation/merchandising/placement semantics, Product `path`/closure, lifecycle, virtual rule
 state, schema/attribute bindings and product/category assignment semantics remain Product-owned
