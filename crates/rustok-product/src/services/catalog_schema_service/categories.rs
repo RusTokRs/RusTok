@@ -9,9 +9,7 @@ use super::{
     load_category_parent, parse_virtual_category_rule_v1,
     validate_virtual_category_rule_references,
 };
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -833,7 +831,11 @@ mod tests {
         let id = Uuid::new_v4();
         let error = compose_taxonomy_category_list_records(vec![taxonomy_read_row(id)], Vec::new())
             .expect_err("missing Taxonomy owner must fail closed");
-        assert!(error.to_string().contains("missing its Taxonomy owner projection"));
+        assert!(
+            error
+                .to_string()
+                .contains("missing its Taxonomy owner projection")
+        );
 
         let mut missing_binding = taxonomy_read_row(id);
         missing_binding.taxonomy_category_id = None;
@@ -842,6 +844,10 @@ mod tests {
             vec![taxonomy_owner_category(id, "Name", "slug", None)],
         )
         .expect_err("missing binding must fail closed");
-        assert!(error.to_string().contains("missing its Taxonomy Category binding"));
+        assert!(
+            error
+                .to_string()
+                .contains("missing its Taxonomy Category binding")
+        );
     }
 }
