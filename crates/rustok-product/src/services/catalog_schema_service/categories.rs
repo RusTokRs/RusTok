@@ -108,24 +108,26 @@ impl ProductCatalogSchemaService {
         }
 
         for translation in &translations {
-            txn.execute(Statement::from_sql_and_values(
-                txn.get_database_backend(),
-                r#"
-                INSERT INTO catalog_category_translations (
-                    id, category_id, locale, name, description, meta_title, meta_description
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-                "#,
-                vec![
-                    generate_id().into(),
-                    category_id.into(),
-                    translation.locale.clone().into(),
-                    translation.name.clone().into(),
-                    translation.description.clone().into(),
-                    translation.meta_title.clone().into(),
-                    translation.meta_description.clone().into(),
-                ],
-            ))
-            .await?;
+            if should_write_legacy_category_translation(txn.get_database_backend()) {
+                txn.execute(Statement::from_sql_and_values(
+                    txn.get_database_backend(),
+                    r#"
+                    INSERT INTO catalog_category_translations (
+                        id, category_id, locale, name, description, meta_title, meta_description
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    "#,
+                    vec![
+                        generate_id().into(),
+                        category_id.into(),
+                        translation.locale.clone().into(),
+                        translation.name.clone().into(),
+                        translation.description.clone().into(),
+                        translation.meta_title.clone().into(),
+                        translation.meta_description.clone().into(),
+                    ],
+                ))
+                .await?;
+            }
             write_category_seo_translation_in_tx(&txn, tenant_id, category_id, translation).await?;
         }
 
@@ -565,6 +567,10 @@ fn category_translation_has_seo(translation: &CategoryTranslationInput) -> bool 
     translation.meta_title.is_some() || translation.meta_description.is_some()
 }
 
+fn should_write_legacy_category_translation(backend: DatabaseBackend) -> bool {
+    backend != DatabaseBackend::Postgres
+}
+
 async fn sync_created_category_to_taxonomy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -898,5 +904,18 @@ mod tests {
         input.meta_title = None;
         input.meta_description = Some("SEO description".to_string());
         assert!(category_translation_has_seo(&input));
+    }
+
+    #[test]
+    fn category_legacy_translation_write_is_non_postgres_only() {
+        assert!(!should_write_legacy_category_translation(
+            DatabaseBackend::Postgres
+        ));
+        assert!(should_write_legacy_category_translation(
+            DatabaseBackend::Sqlite
+        ));
+        assert!(should_write_legacy_category_translation(
+            DatabaseBackend::MySql
+        ));
     }
 }
