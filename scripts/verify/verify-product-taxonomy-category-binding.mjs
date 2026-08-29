@@ -17,6 +17,7 @@ const forbid = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`forbidden ${label}: ${marker}`);
 };
 const occurrences = (source, marker) => source.split(marker).length - 1;
+const normalizeWhitespace = (source) => source.replace(/\s+/g, ' ').trim();
 
 for (const path of [migrationPath, registryPath, contractPath, tenantConstraintPath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
@@ -26,6 +27,7 @@ if (failures.length === 0) {
   const migration = fs.readFileSync(migrationPath, 'utf8');
   const registry = fs.readFileSync(registryPath, 'utf8');
   const contract = fs.readFileSync(contractPath, 'utf8');
+  const normalizedContract = normalizeWhitespace(contract);
   const tenantConstraints = fs.readFileSync(tenantConstraintPath, 'utf8');
   const postgresGuard = 'manager.get_database_backend() != DatabaseBackend::Postgres';
 
@@ -102,7 +104,7 @@ if (failures.length === 0) {
     ['registered Taxonomy `taxonomy/term` provider', 'canonical Translation owner'],
     ['physical binding table is currently created only on PostgreSQL', 'documented PostgreSQL storage boundary'],
   ]) {
-    need(contract, marker, label);
+    need(normalizedContract, marker, label);
   }
 }
 
