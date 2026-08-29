@@ -8,6 +8,7 @@ on:
       - "crates/rustok-product/docs/category-locale-contract.md"
       - "scripts/verify/verify-product-taxonomy-category-create-sync.mjs"
       - ".github/workflows/product-taxonomy-category-create-sync.yml"
+      - ".github/workflows/product-taxonomy-category-backfill.yml"
 
 permissions:
   contents: read
@@ -50,7 +51,7 @@ jobs:
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-create-sync\.mjs|\.github/workflows/product-taxonomy-category-create-sync\.yml)$'
+          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-create-sync\.mjs|\.github/workflows/product-taxonomy-category-create-sync\.yml|\.github/workflows/product-taxonomy-category-backfill\.yml)$'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
