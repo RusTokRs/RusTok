@@ -152,6 +152,9 @@ PostgreSQL-only fail-closed physical donor retirement implemented by CAT-29.
 
 ## CAT-29 PostgreSQL physical donor retirement
 
+Historical CAT-29 record:
+Status: **source-complete PostgreSQL legacy Category translation storage retirement; non-PostgreSQL donor compatibility retained**.
+
 Migration `m20260829_000018_retire_product_category_legacy_translations` is PostgreSQL-only.
 Other database backends return without changing schema because they still rely on the
 legacy donor read/write path.
@@ -185,6 +188,8 @@ non-PostgreSQL installs keep it because CAT-27 through CAT-29 storage migrations
 backend-bounded.
 
 ## CAT-30 PostgreSQL hierarchy-consumer cutover
+
+Historical CAT-30 boundary retained Product `path` and closure persistence as compatibility state outside canonical PostgreSQL hierarchy ownership.
 
 CAT-30 does not move Product attribute/schema business policy into Taxonomy. It changes
 only the canonical hierarchy source used by Product consumers that inherit along a
