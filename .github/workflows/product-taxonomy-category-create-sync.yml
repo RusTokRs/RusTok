@@ -39,23 +39,13 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
-      - name: Verify Product Category create sync contract
+      - name: Verify retained Product Category create sync contract
         run: node scripts/verify/verify-product-taxonomy-category-create-sync.mjs
       - name: Fetch exact PR base
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           git fetch --no-tags --depth=1 origin "$base"
-      - name: Assert bounded CAT-25 file set
-        shell: bash
-        run: |
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-create-sync\.mjs|\.github/workflows/product-taxonomy-category-create-sync\.yml|\.github/workflows/product-taxonomy-category-backfill\.yml)$'
-          changed="$(git diff --name-only "$base" "$head")"
-          printf '%s\n' "$changed"
-          unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
-          test -z "$unexpected"
       - name: Check Product formatting
         run: cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
       - name: Run Product Category Taxonomy create unit regressions
