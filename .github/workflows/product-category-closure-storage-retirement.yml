@@ -6,6 +6,7 @@ on:
       - "crates/rustok-product/src/migrations/m20260829_000020_retire_product_category_closure_storage.rs"
       - "crates/rustok-product/src/migrations/mod.rs"
       - "crates/rustok-product/docs/category-taxonomy-binding.md"
+      - "crates/rustok-product/tests/product_category_closure_storage_retirement.rs"
       - "docs/migrations/backfill-contracts.json"
       - "scripts/verify/verify-product-category-closure-storage-retirement.mjs"
       - ".github/workflows/product-category-closure-storage-retirement.yml"
@@ -74,7 +75,7 @@ jobs:
           head="${{ github.event.pull_request.head.sha }}"
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
-          allowed='^(crates/rustok-product/src/migrations/m20260829_000020_retire_product_category_closure_storage\.rs|crates/rustok-product/src/migrations/mod\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|docs/migrations/backfill-contracts\.json|scripts/verify/verify-product-category-closure-storage-retirement\.mjs|\.github/workflows/product-category-closure-storage-retirement\.yml|\.github/workflows/product-category-closure-invariant-retirement\.yml)$'
+          allowed='^(crates/rustok-product/src/migrations/m20260829_000020_retire_product_category_closure_storage\.rs|crates/rustok-product/src/migrations/mod\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/tests/product_category_closure_storage_retirement\.rs|docs/migrations/backfill-contracts\.json|scripts/verify/verify-product-category-closure-storage-retirement\.mjs|\.github/workflows/product-category-closure-storage-retirement\.yml|\.github/workflows/product-category-closure-invariant-retirement\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Product formatting
@@ -86,18 +87,15 @@ jobs:
           psql --host localhost --port 5432 --username postgres --dbname postgres \
             --set ON_ERROR_STOP=1 \
             --command "CREATE ROLE rustok_migration LOGIN PASSWORD 'rustok_migration' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8"
-      - name: Rehearse fresh PostgreSQL apply plus CAT-34 rollback and reapply
+      - name: Rehearse Product PostgreSQL CAT-33 to CAT-34 rollback and reapply
         env:
-          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
-          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "1"
           RUSTOK_MIGRATION_SMOKE_KEEP_DB: "1"
-          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
         run: >-
           cargo test
           --locked
-          -p rustok-migrations
-          --test postgres_zero_migration_smoke
-          postgres_zero_migration_smoke_applies_from_empty_database
+          -p rustok-product
+          --test product_category_closure_storage_retirement
+          product_category_closure_storage_supports_up_down_up
           --
           --ignored
           --nocapture
@@ -132,45 +130,6 @@ jobs:
               END IF;
           END;
           $$;
-
-          INSERT INTO tenants (id, name, slug)
-          VALUES ('41000000-0000-0000-0000-000000000001', 'CAT-34 runtime fixture', 'cat34-runtime-fixture');
-
-          INSERT INTO catalog_categories (
-              id, tenant_id, parent_id, code, slug, kind, path, level, position,
-              is_active, rule_config, metadata
-          ) VALUES (
-              '41000000-0000-0000-0000-000000000010',
-              '41000000-0000-0000-0000-000000000001',
-              NULL,
-              'cat34-root',
-              'cat34-root',
-              'structural',
-              'cat34-root',
-              0,
-              0,
-              TRUE,
-              '{}'::jsonb,
-              '{}'::jsonb
-          );
-
-          INSERT INTO catalog_categories (
-              id, tenant_id, parent_id, code, slug, kind, path, level, position,
-              is_active, rule_config, metadata
-          ) VALUES (
-              '41000000-0000-0000-0000-000000000011',
-              '41000000-0000-0000-0000-000000000001',
-              '41000000-0000-0000-0000-000000000010',
-              'cat34-child',
-              'cat34-child',
-              'structural',
-              'cat34-root/cat34-child',
-              1,
-              0,
-              TRUE,
-              '{}'::jsonb,
-              '{}'::jsonb
-          );
 
           SELECT rustok_product_assert_category_tree();
           SQL
