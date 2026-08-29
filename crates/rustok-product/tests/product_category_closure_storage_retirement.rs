@@ -123,15 +123,30 @@ async fn create_product_migration_prerequisites(
 CREATE TABLE tenants (
     id UUID PRIMARY KEY
 );
-CREATE TABLE taxonomy_terms (
-    id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    UNIQUE (tenant_id, id)
-);
 "#,
     )
     .await?;
+
     let manager = SchemaManager::new(db);
+    let required_taxonomy_migration = "m20260822_000010_create_taxonomy_category_hierarchy";
+    let mut taxonomy_hierarchy_ready = false;
+    for migration in rustok_taxonomy::migrations::migrations() {
+        let migration_name = migration.name().to_string();
+        migration.up(&manager).await.map_err(|error| {
+            format!("Taxonomy prerequisite migration {migration_name} failed: {error}")
+        })?;
+        if migration_name == required_taxonomy_migration {
+            taxonomy_hierarchy_ready = true;
+            break;
+        }
+    }
+    if !taxonomy_hierarchy_ready {
+        return Err(format!(
+            "Product CAT-16 requires Taxonomy migration {required_taxonomy_migration}"
+        )
+        .into());
+    }
+
     flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
     Ok(())
 }
