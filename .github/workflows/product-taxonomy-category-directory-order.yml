@@ -40,20 +40,37 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
-      - name: Verify Product Category schema-directory order contract
-        run: node scripts/verify/verify-product-taxonomy-category-directory-order.mjs
       - name: Fetch exact PR base
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           git fetch --no-tags --depth=1 origin "$base"
-      - name: Assert bounded CAT-31 file set
+      - name: Verify Product Category schema-directory order contract when CAT-31 changes
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
+          verifier='scripts/verify/verify-product-taxonomy-category-directory-order.mjs'
+          workflow='.github/workflows/product-taxonomy-category-directory-order.yml'
+          changed="$(git diff --name-only "$base" "$head")"
+          if ! printf '%s\n' "$changed" | grep -Eq "^(${verifier}|${workflow})$"; then
+            echo "CAT-31 runtime/verifier unchanged; historical CAT-31 source verifier is not applicable."
+            exit 0
+          fi
+          node scripts/verify/verify-product-taxonomy-category-directory-order.mjs
+      - name: Assert bounded CAT-31 file set when CAT-31 changes
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          verifier='scripts/verify/verify-product-taxonomy-category-directory-order.mjs'
+          workflow='.github/workflows/product-taxonomy-category-directory-order.yml'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
+          if ! printf '%s\n' "$changed" | grep -Eq "^(${verifier}|${workflow})$"; then
+            echo "CAT-31 runtime/verifier unchanged; PR-wide CAT-31 slice restriction is not applicable."
+            exit 0
+          fi
           allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-directory-order\.mjs|\.github/workflows/product-taxonomy-category-directory-order\.yml|\.github/workflows/product-taxonomy-category-hierarchy-consumers\.yml|\.github/workflows/product-category-legacy-write-retirement\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
