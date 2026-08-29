@@ -75,6 +75,35 @@ impl TaxonomyOwnerCategoryReader {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> TaxonomyResult<Vec<TaxonomyOwnerCategory>> {
+        Self::load_scoped_categories_in(
+            &self.db,
+            tenant_id,
+            scope_type,
+            scope_value,
+            term_ids,
+            locale,
+            fallback_locale,
+        )
+        .await
+    }
+
+    /// Transaction-compatible form of [`Self::load_scoped_categories`].
+    ///
+    /// Consumer modules that already hold a host transaction can reuse that
+    /// exact connection while Taxonomy still encapsulates its persistence
+    /// entities and hierarchy composition.
+    pub async fn load_scoped_categories_in<C>(
+        connection: &C,
+        tenant_id: Uuid,
+        scope_type: TaxonomyScopeType,
+        scope_value: Option<&str>,
+        term_ids: Option<&[Uuid]>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> TaxonomyResult<Vec<TaxonomyOwnerCategory>>
+    where
+        C: ConnectionTrait,
+    {
         if term_ids.is_some_and(|term_ids| term_ids.is_empty()) {
             return Ok(Vec::new());
         }
@@ -94,11 +123,11 @@ impl TaxonomyOwnerCategoryReader {
 
         let terms = query
             .order_by_asc(taxonomy_term::Column::CanonicalKey)
-            .all(&self.db)
+            .all(connection)
             .await?;
 
         materialize_categories(
-            &self.db,
+            connection,
             tenant_id,
             terms,
             &locale,
