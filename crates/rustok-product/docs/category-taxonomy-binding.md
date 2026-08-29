@@ -20,6 +20,11 @@ The Product category identity is unique per tenant in the binding table and one
 Taxonomy category may bind to at most one Product catalog category per tenant.
 Cross-tenant bindings are rejected by composite foreign keys.
 
+The physical binding table is currently created only on PostgreSQL because the
+retained Product `(tenant_id, id)` category identity prerequisite is installed
+by the PostgreSQL-only tenant-consistency migration. Other backends remain a
+no-op for this seam until they have an equivalent tenant-safe prerequisite.
+
 ## Current cutover boundary
 
 This slice does **not** backfill the binding and does **not** switch Product

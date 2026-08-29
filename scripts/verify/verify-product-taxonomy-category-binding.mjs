@@ -16,6 +16,7 @@ const need = (source, marker, label = marker) => {
 const forbid = (source, marker, label = marker) => {
   if (source.includes(marker)) failures.push(`forbidden ${label}: ${marker}`);
 };
+const occurrences = (source, marker) => source.split(marker).length - 1;
 
 for (const path of [migrationPath, registryPath, contractPath, tenantConstraintPath]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
@@ -26,6 +27,7 @@ if (failures.length === 0) {
   const registry = fs.readFileSync(registryPath, 'utf8');
   const contract = fs.readFileSync(contractPath, 'utf8');
   const tenantConstraints = fs.readFileSync(tenantConstraintPath, 'utf8');
+  const postgresGuard = 'manager.get_database_backend() != DatabaseBackend::Postgres';
 
   for (const [marker, label] of [
     ['product_catalog_category_taxonomy_bindings', 'binding table'],
@@ -38,8 +40,13 @@ if (failures.length === 0) {
     ['uq_product_catalog_category_taxonomy_binding_taxonomy', 'one-to-one Taxonomy binding'],
     ['ForeignKeyAction::Restrict', 'Taxonomy delete protection'],
     ['ForeignKeyAction::Cascade', 'Product binding lifecycle'],
+    ['use sea_orm_migration::sea_orm::DatabaseBackend;', 'explicit database backend boundary'],
   ]) {
     need(migration, marker, label);
+  }
+
+  if (occurrences(migration, postgresGuard) < 2) {
+    failures.push('binding migration must guard both up and down as PostgreSQL-only');
   }
 
   for (const [marker, label] of [
@@ -81,6 +88,11 @@ if (failures.length === 0) {
     'uq_catalog_categories_tenant_id UNIQUE (tenant_id, id)',
     'Product composite category identity prerequisite',
   );
+  need(
+    tenantConstraints,
+    postgresGuard,
+    'Product composite category identity prerequisite PostgreSQL boundary',
+  );
 
   for (const [marker, label] of [
     ['Status: **source-complete additive seam; backfill and runtime cutover pending**', 'bounded seam status'],
@@ -88,6 +100,7 @@ if (failures.length === 0) {
     ['preserving Product category UUIDs where possible', 'same-ID backfill intent'],
     ['No `product/category` Translation provider should be introduced', 'no duplicate Translation provider'],
     ['registered Taxonomy `taxonomy/term` provider', 'canonical Translation owner'],
+    ['physical binding table is currently created only on PostgreSQL', 'documented PostgreSQL storage boundary'],
   ]) {
     need(contract, marker, label);
   }
@@ -99,4 +112,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('[product-taxonomy-category-binding] additive tenant-safe binding seam verified');
+console.log('[product-taxonomy-category-binding] additive tenant-safe PostgreSQL binding seam verified');
