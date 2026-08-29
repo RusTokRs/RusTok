@@ -45,13 +45,18 @@ jobs:
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           git fetch --no-tags --depth=1 origin "$base"
-      - name: Assert bounded CAT-32 file set
+      - name: Assert bounded CAT-32 file set when CAT-32 runtime or verifier changes
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
+          anchors='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|scripts/verify/verify-product-category-closure-write-retirement\.mjs)$'
+          if ! printf '%s\n' "$changed" | grep -Eq "$anchors"; then
+            echo "CAT-32 runtime/verifier unchanged; PR-wide CAT-32 slice restriction is not applicable."
+            exit 0
+          fi
           allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|scripts/verify/verify-product-category-closure-write-retirement\.mjs|\.github/workflows/product-category-closure-write-retirement\.yml|\.github/workflows/product-taxonomy-category-directory-order\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
