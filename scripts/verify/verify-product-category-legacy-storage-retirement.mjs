@@ -11,6 +11,7 @@ const contractPath = 'crates/rustok-product/docs/category-taxonomy-binding.md';
 const localeContractPath = 'crates/rustok-product/docs/category-locale-contract.md';
 const planPath = 'crates/rustok-taxonomy/docs/implementation-plan.md';
 const databaseDocPath = 'docs/architecture/database.md';
+const backfillContractsPath = 'docs/migrations/backfill-contracts.json';
 const retainedWriteWorkflowPath =
   '.github/workflows/product-category-legacy-write-retirement.yml';
 const retainedSeoWorkflowPath = '.github/workflows/product-category-seo-seam.yml';
@@ -32,6 +33,7 @@ for (const path of [
   localeContractPath,
   planPath,
   databaseDocPath,
+  backfillContractsPath,
   retainedWriteWorkflowPath,
   retainedSeoWorkflowPath,
 ]) {
@@ -48,6 +50,9 @@ if (failures.length === 0) {
   );
   const plan = normalizeWhitespace(fs.readFileSync(planPath, 'utf8'));
   const databaseDoc = normalizeWhitespace(fs.readFileSync(databaseDocPath, 'utf8'));
+  const backfillContracts = JSON.parse(
+    fs.readFileSync(backfillContractsPath, 'utf8'),
+  );
   const retainedWriteWorkflow = fs.readFileSync(retainedWriteWorkflowPath, 'utf8');
   const retainedSeoWorkflow = fs.readFileSync(retainedSeoWorkflowPath, 'utf8');
 
@@ -213,6 +218,49 @@ if (failures.length === 0) {
     ],
   ]) {
     need(migrationsMod, marker, label);
+  }
+
+  const retirementFixture = backfillContracts.contracts?.find(
+    (entry) =>
+      entry.migration ===
+      'm20260829_000018_retire_product_category_legacy_translations',
+  );
+  if (!retirementFixture) {
+    failures.push('CAT-29 migration backfill fixture contract is required');
+  } else {
+    if (retirementFixture.id !== 'product-category-legacy-storage-retirement') {
+      failures.push('CAT-29 migration fixture must use the bounded Product retirement id');
+    }
+    if (retirementFixture.mode !== 'fixture') {
+      failures.push('CAT-29 migration must use a PostgreSQL N-1 fixture contract');
+    }
+    if (retirementFixture.owner !== 'rustok-product') {
+      failures.push('CAT-29 migration fixture must remain Product-owned');
+    }
+    for (const [marker, label] of [
+      ['Historical donor category', 'stale donor canonical copy fixture'],
+      ['Current Taxonomy category', 'independently evolved Taxonomy copy fixture'],
+      ['product_catalog_category_taxonomy_bindings', 'same-ID binding fixture'],
+      ['catalog_category_seo_translations', 'Product SEO fixture'],
+      ['Preserved SEO title', 'exact Product SEO title fixture'],
+      ['Preserved SEO description', 'exact Product SEO description fixture'],
+    ]) {
+      need(retirementFixture.setup_sql ?? '', marker, label);
+    }
+    for (const [marker, label] of [
+      [
+        "table_name = 'catalog_category_translations'",
+        'physical donor drop assertion',
+      ],
+      ['Current Taxonomy category', 'Taxonomy copy survival assertion'],
+      ['taxonomy_term_route_keys', 'Taxonomy route survival assertion'],
+      ['product_catalog_category_taxonomy_bindings', 'binding survival assertion'],
+      ['catalog_category_seo_translations', 'Product SEO survival assertion'],
+      ['Preserved SEO title', 'Product SEO title survival assertion'],
+      ['Preserved SEO description', 'Product SEO description survival assertion'],
+    ]) {
+      need(retirementFixture.assertion_sql ?? '', marker, label);
+    }
   }
 
   for (const [marker, label] of [
