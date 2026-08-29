@@ -1,6 +1,6 @@
 # Product Category → Taxonomy migration contract
 
-Status: **source-complete PostgreSQL legacy Category translation storage retirement; non-PostgreSQL donor compatibility retained**
+Status: **source-complete PostgreSQL Category hierarchy-consumer cutover; Product policy and non-PostgreSQL compatibility retained**
 
 TAXONOMY-CAT-23 introduced the tenant-safe Product-owned binding seam.
 TAXONOMY-CAT-24 added the PostgreSQL-only monotonic backfill of existing Product
@@ -10,9 +10,12 @@ PostgreSQL Category list projection to Taxonomy-owned canonical localized copy,
 route slug and parent hierarchy while retaining Product-owned commerce fields.
 TAXONOMY-CAT-27 split localized Product-only Category SEO into dedicated Product
 storage. TAXONOMY-CAT-28 stopped new PostgreSQL creates from materializing the
-legacy canonical Product translation mirror. TAXONOMY-CAT-29 now retires that
-legacy table physically on PostgreSQL after fail-closed Taxonomy/SEO ownership
-preflight while leaving the non-PostgreSQL donor contract untouched.
+legacy canonical Product translation mirror. TAXONOMY-CAT-29 retired that legacy
+table physically on PostgreSQL after fail-closed Taxonomy/SEO ownership preflight.
+TAXONOMY-CAT-30 now makes Product effective-form/schema inheritance and inherited
+attribute-group label ancestry consume Taxonomy-owned hierarchy on PostgreSQL while
+leaving Product schema/attribute policy, path/navigation projection and non-PostgreSQL
+hierarchy compatibility in Product.
 
 ## CAT-23 compatibility history
 
@@ -168,26 +171,56 @@ creation/backfill/SEO migrations in order and then retire the donor at CAT-29, w
 non-PostgreSQL installs keep it because CAT-27 through CAT-29 storage migrations are
 backend-bounded.
 
-## Product-owned state retained after CAT-29
+## CAT-30 PostgreSQL hierarchy-consumer cutover
+
+CAT-30 does not move Product attribute/schema business policy into Taxonomy. It changes
+only the canonical hierarchy source used by Product consumers that inherit along a
+Category ancestor chain.
+
+On PostgreSQL:
+
+- effective Product form/schema resolution still reads Product-owned category schema
+  assignments and attribute bindings, but each `CatalogCategorySchema.parent_category_id`
+  is composed from the same-ID Taxonomy `Category` owner projection rather than
+  `catalog_categories.parent_id`;
+- inherited category attribute-group labels traverse the Taxonomy root-to-leaf parent
+  chain instead of `catalog_category_closure`;
+- every live Product Category must retain a same-ID Product → Taxonomy binding, module
+  scope `product`, and canonical key `product-category-{uuid}`; missing or mismatched
+  owner state fails closed rather than silently falling back to Product hierarchy;
+- the Taxonomy owner reader exposes a generic `ConnectionTrait` entry point so Product
+  transaction-bound reads can reuse the host connection without reading Taxonomy
+  persistence entities directly;
+- no schema migration is required and no Product schema/attribute assignment,
+  membership, lifecycle, merchandising or virtual-rule ownership changes.
+
+On non-PostgreSQL backends the existing Product `parent_id`/closure hierarchy consumers
+remain active because those backends do not yet have the tenant-safe Taxonomy binding
+prerequisite.
+
+## Product-owned state retained after CAT-30
 
 Product continues to own:
 
 - Category `code`, `kind`, virtual-category `rule_config`, activation/soft-delete
   lifecycle and Product-specific metadata;
-- Product `path` and closure storage used by current Product hierarchy/form and
-  merchandising logic. `path` is a retained Product projection, not a replacement
-  Taxonomy route authority;
+- Product `path` and closure persistence used by retained Product path/navigation
+  projections and by non-PostgreSQL hierarchy consumers. Neither is a replacement for
+  Taxonomy canonical parent ownership on PostgreSQL;
 - localized `meta_title` / `meta_description` in
   `catalog_category_seo_translations` on PostgreSQL;
-- category-bound attribute/schema state;
+- category-bound attribute/schema definitions, assignments, inheritance semantics and
+  labels. CAT-30 changes their hierarchy source, not their Product ownership;
 - product/category membership, primary/navigation/collection/virtual assignment
   semantics and Product projections;
 - non-PostgreSQL `catalog_category_translations` donor storage until those backends gain
   an equivalent verified Taxonomy cutover.
 
 PostgreSQL no longer owns a Product-local canonical Category translation table after
-CAT-29. Taxonomy remains the canonical Category identity/localized-copy/route/hierarchy
-owner; Product relation/policy/SEO state stays Product-owned.
+CAT-29, and CAT-30 also stops Product effective-form/group-label consumers from treating
+Product-local parent/closure state as canonical ancestry. Taxonomy remains the canonical
+Category identity/localized-copy/route/hierarchy owner; Product relation/policy/SEO state
+stays Product-owned.
 
 ## Locale and route behavior
 
@@ -204,7 +237,8 @@ of rebuilding or flattening Product `path` into a route key.
 CAT-27 reuses the already-normalized Product Category locale for SEO identity. CAT-28
 reuses that same normalized input for Taxonomy and Product SEO without creating a second
 localized canonical copy on PostgreSQL. CAT-29 removes only the superseded PostgreSQL
-donor table; it does not change Taxonomy locale resolution or Product SEO locale identity.
+donor table; CAT-30 changes only hierarchy consumers and does not change Taxonomy locale
+resolution, Product route semantics or Product SEO locale identity.
 
 ## Translation ownership boundary
 
