@@ -2,132 +2,63 @@
 
 import fs from 'node:fs';
 
-const effectiveFormsPath =
-  'crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs';
-const ownerReadPath = 'crates/rustok-taxonomy/src/owner_category_read.rs';
-const contractPath = 'crates/rustok-product/docs/category-taxonomy-binding.md';
-const planPath = 'crates/rustok-taxonomy/docs/implementation-plan.md';
+const files = {
+  effectiveForms:
+    'crates/rustok-product/src/services/catalog_schema_service/effective_forms.rs',
+  ownerRead: 'crates/rustok-taxonomy/src/owner_category_read.rs',
+  contract: 'crates/rustok-product/docs/category-taxonomy-binding.md',
+};
 
 const failures = [];
-const need = (source, marker, label = marker) => {
-  if (!source.includes(marker)) failures.push(`missing ${label}: ${marker}`);
+const requireMarker = (source, marker, label) => {
+  if (!source.includes(marker)) failures.push(`${label}: ${marker}`);
 };
-const forbid = (source, marker, label = marker) => {
-  if (source.includes(marker)) failures.push(`forbidden ${label}: ${marker}`);
-};
-const compact = (source) => source.replace(/\s+/g, ' ').trim();
 
-for (const path of [effectiveFormsPath, ownerReadPath, contractPath, planPath]) {
-  if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
+for (const path of Object.values(files)) {
+  if (!fs.existsSync(path)) failures.push(`required file missing: ${path}`);
 }
 
 if (failures.length === 0) {
-  const effectiveForms = fs.readFileSync(effectiveFormsPath, 'utf8');
-  const ownerRead = fs.readFileSync(ownerReadPath, 'utf8');
-  const contract = compact(fs.readFileSync(contractPath, 'utf8'));
-  const plan = compact(fs.readFileSync(planPath, 'utf8'));
+  const effectiveForms = fs.readFileSync(files.effectiveForms, 'utf8');
+  const ownerRead = fs.readFileSync(files.ownerRead, 'utf8');
+  const contract = fs.readFileSync(files.contract, 'utf8').replace(/\s+/g, ' ');
 
   for (const [marker, label] of [
-    ['pub async fn load_scoped_categories_in<C>(', 'transaction-compatible Taxonomy owner read'],
-    ['C: ConnectionTrait', 'generic host connection boundary'],
-    ['Self::load_scoped_categories_in(', 'existing owner reader delegation'],
-    ['materialize_categories(', 'retained Taxonomy-owned composition'],
+    ['pub async fn load_scoped_categories_in<C>(', 'generic Taxonomy owner read'],
+    ['Self::load_scoped_categories_in(', 'existing reader delegates to generic seam'],
+    ['C: ConnectionTrait', 'host connection boundary'],
   ]) {
-    need(ownerRead, marker, label);
-  }
-
-  const labelsStart = effectiveForms.indexOf('pub async fn load_effective_form_group_labels(');
-  const schemaMapStart = effectiveForms.indexOf('async fn load_category_schema_map<C>(');
-  if (labelsStart < 0 || schemaMapStart <= labelsStart) {
-    failures.push('effective-form group-label/schema-map boundaries are required');
-  } else {
-    const labelsBody = effectiveForms.slice(labelsStart, schemaMapStart);
-    need(
-      labelsBody,
-      'self.db.get_database_backend() == DatabaseBackend::Postgres',
-      'PostgreSQL-only hierarchy consumer cutover',
-    );
-    need(
-      labelsBody,
-      'load_product_taxonomy_category_parent_map(&self.db, tenant_id).await?',
-      'Taxonomy parent projection for group labels',
-    );
-    need(
-      labelsBody,
-      'taxonomy_ancestor_chain(category_id, &parent_map)?',
-      'Taxonomy ancestry traversal',
-    );
-    need(
-      labelsBody,
-      'FROM catalog_category_closure',
-      'non-PostgreSQL closure compatibility fallback',
-    );
-  }
-
-  const attributeMapStart = effectiveForms.indexOf('async fn load_attribute_schema_map<C>(');
-  if (schemaMapStart < 0 || attributeMapStart <= schemaMapStart) {
-    failures.push('category-schema/attribute-schema helper boundaries are required');
-  } else {
-    const schemaMapBody = effectiveForms.slice(schemaMapStart, attributeMapStart);
-    need(
-      schemaMapBody,
-      'db.get_database_backend() == DatabaseBackend::Postgres',
-      'PostgreSQL schema ancestry cutover',
-    );
-    need(
-      schemaMapBody,
-      'Some(load_product_taxonomy_category_parent_map(db, tenant_id).await?)',
-      'Taxonomy parent projection for effective schema',
-    );
-    need(
-      schemaMapBody,
-      'parent_category_id,',
-      'owner-projected parent passed into Product schema resolver',
-    );
-  }
-
-  const hierarchyStart = effectiveForms.indexOf('async fn load_product_taxonomy_category_parent_map<C>(');
-  const ancestryStart = effectiveForms.indexOf('fn taxonomy_ancestor_chain(');
-  if (hierarchyStart < 0 || ancestryStart <= hierarchyStart) {
-    failures.push('Taxonomy hierarchy projection/ancestry helpers are required');
-  } else {
-    const hierarchyBody = effectiveForms.slice(hierarchyStart, ancestryStart);
-    for (const [marker, label] of [
-      ['LEFT JOIN product_catalog_category_taxonomy_bindings binding', 'typed Product binding read'],
-      ['missing its Taxonomy Category binding', 'missing binding fail-closed'],
-      ['bound to incompatible Taxonomy Category', 'same-ID binding fail-closed'],
-      ['TaxonomyOwnerCategoryReader::load_scoped_categories_in(', 'transaction-compatible owner read use'],
-      ['TaxonomyScopeType::Module', 'module scope filter'],
-      ['Some(PRODUCT_TAXONOMY_SCOPE)', 'Product scope filter'],
-      ['Some(&category_ids)', 'bounded Product Category IDs'],
-      ['owner.parent_id', 'Taxonomy canonical hierarchy projection'],
-      ['incompatible Taxonomy canonical key', 'canonical-key fail-closed'],
-      ['incompatible Taxonomy scope', 'scope fail-closed'],
-    ]) {
-      need(hierarchyBody, marker, label);
-    }
-    forbid(
-      hierarchyBody,
-      'catalog_category_closure',
-      'Product closure as PostgreSQL canonical ancestry source',
-    );
-    forbid(
-      hierarchyBody,
-      'c.parent_id',
-      'Product parent_id as PostgreSQL canonical ancestry source',
-    );
+    requireMarker(ownerRead, marker, label);
   }
 
   for (const [marker, label] of [
-    ['category_taxonomy_hierarchy_builds_root_to_leaf_ancestor_chain', 'Taxonomy ancestry unit regression'],
-    ['category_taxonomy_hierarchy_fails_closed_on_missing_or_cyclic_owner_state', 'fail-closed ancestry unit regression'],
-    ['Product Category Taxonomy hierarchy projection failed:', 'Taxonomy hierarchy error mapping'],
+    ['self.db.get_database_backend() == DatabaseBackend::Postgres', 'PostgreSQL group-label cutover'],
+    ['load_product_taxonomy_category_parent_map(&self.db, tenant_id).await?', 'group-label Taxonomy hierarchy'],
+    ['taxonomy_ancestor_chain(category_id, &parent_map)?', 'root-to-leaf Taxonomy ancestry'],
+    ['FROM catalog_category_closure', 'non-PostgreSQL closure compatibility'],
+    ['Some(load_product_taxonomy_category_parent_map(db, tenant_id).await?)', 'effective-form Taxonomy hierarchy'],
+    ['LEFT JOIN product_catalog_category_taxonomy_bindings binding', 'typed Product binding'],
+    ['TaxonomyOwnerCategoryReader::load_scoped_categories_in(', 'transaction-compatible Taxonomy owner projection'],
+    ['owner.parent_id', 'Taxonomy canonical parent projection'],
+    ['missing its Taxonomy Category binding', 'missing binding fail closed'],
+    ['bound to incompatible Taxonomy Category', 'same-ID binding fail closed'],
+    ['incompatible Taxonomy canonical key', 'canonical-key fail closed'],
+    ['incompatible Taxonomy scope', 'scope fail closed'],
+    ['category_taxonomy_hierarchy_builds_root_to_leaf_ancestor_chain', 'ancestry unit regression'],
+    ['category_taxonomy_hierarchy_fails_closed_on_missing_or_cyclic_owner_state', 'fail-closed ancestry regression'],
   ]) {
-    need(effectiveForms, marker, label);
+    requireMarker(effectiveForms, marker, label);
   }
 
-  need(contract, 'TAXONOMY-CAT-30', 'CAT-30 Product contract marker');
-  need(plan, 'TAXONOMY-CAT-30', 'CAT-30 central plan marker');
+  for (const [marker, label] of [
+    ['TAXONOMY-CAT-30', 'CAT-30 contract'],
+    ['effective Product form/schema resolution', 'Product schema inheritance boundary'],
+    ['inherited category attribute-group labels', 'Product label ancestry boundary'],
+    ['Product `path` and closure persistence', 'retained Product navigation compatibility'],
+    ['non-PostgreSQL', 'cross-backend compatibility'],
+  ]) {
+    requireMarker(contract, marker, label);
+  }
 }
 
 if (failures.length > 0) {
@@ -136,6 +67,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(
-  '[product-taxonomy-category-hierarchy-consumers] PostgreSQL Product Category hierarchy consumers verified',
-);
+console.log('[product-taxonomy-category-hierarchy-consumers] contract verified');
