@@ -126,6 +126,7 @@ impl ProductCatalogSchemaService {
                 ],
             ))
             .await?;
+            write_category_seo_translation_in_tx(&txn, tenant_id, category_id, translation).await?;
         }
 
         sync_created_category_to_taxonomy_in_tx(
@@ -529,6 +530,41 @@ async fn list_categories_from_product_donor(
     .and_then(|rows| rows.into_iter().map(TryInto::try_into).collect())
 }
 
+async fn write_category_seo_translation_in_tx(
+    txn: &ProductWriteTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    translation: &CategoryTranslationInput,
+) -> CommerceResult<()> {
+    if txn.get_database_backend() != DatabaseBackend::Postgres
+        || !category_translation_has_seo(translation)
+    {
+        return Ok(());
+    }
+
+    txn.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        INSERT INTO catalog_category_seo_translations (
+            tenant_id, category_id, locale, meta_title, meta_description
+        ) VALUES ($1, $2, $3, $4, $5)
+        "#,
+        vec![
+            tenant_id.into(),
+            category_id.into(),
+            translation.locale.clone().into(),
+            translation.meta_title.clone().into(),
+            translation.meta_description.clone().into(),
+        ],
+    ))
+    .await?;
+    Ok(())
+}
+
+fn category_translation_has_seo(translation: &CategoryTranslationInput) -> bool {
+    translation.meta_title.is_some() || translation.meta_description.is_some()
+}
+
 async fn sync_created_category_to_taxonomy_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -849,5 +885,18 @@ mod tests {
                 .to_string()
                 .contains("missing its Taxonomy Category binding")
         );
+    }
+
+    #[test]
+    fn category_seo_detects_localized_metadata() {
+        let mut input = translation("en", "Name");
+        assert!(!category_translation_has_seo(&input));
+
+        input.meta_title = Some("SEO title".to_string());
+        assert!(category_translation_has_seo(&input));
+
+        input.meta_title = None;
+        input.meta_description = Some("SEO description".to_string());
+        assert!(category_translation_has_seo(&input));
     }
 }
