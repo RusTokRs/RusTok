@@ -28,6 +28,12 @@ The backfill is deterministic and fail-closed:
 - Product stores one base category `slug`, not a localized slug. The same
   canonical base slug is therefore projected into every imported locale and
   reserved as that locale's Taxonomy route key; no localized slug is invented;
+- Product donor storage only requires `slug` uniqueness per parent, while the
+  Taxonomy route registry requires one owner for a route key across the whole
+  module scope and locale. CAT-24 does not synthesize a `path`-derived slug or
+  silently rename either category: if two Product categories project to the
+  same Taxonomy route key, the migration blocks as an incompatible route
+  collision and requires explicit donor remediation before cutover;
 - localized `name` and `description` are copied exactly after canonical locale
   validation;
 - every Category identity/localized route is created before hierarchy rows;

@@ -39,6 +39,11 @@ other localized read models.
 - Product stores one base category `slug`, not a localized slug. CAT-24 validates
   that route key canonically and projects the same one base Product category
   `slug` into every imported locale; it does not invent translated slugs.
+- Product currently guarantees category slug uniqueness only within a parent,
+  while Taxonomy route ownership is module-scope-wide per locale. CAT-24 does
+  not flatten Product `path` into a replacement route key and does not rename a
+  category automatically; an ambiguous projected Taxonomy route blocks the
+  backfill for explicit donor remediation.
 - CAT-24 backfills Product `parent_id` and `position` into the Taxonomy hierarchy
   only after every same-ID Category identity/localized route exists.
 - Product translation UUIDs are retained in Taxonomy localized rows; incompatible

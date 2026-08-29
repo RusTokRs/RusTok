@@ -9,6 +9,10 @@ const contractPath = 'crates/rustok-product/docs/category-taxonomy-binding.md';
 const localeContractPath = 'crates/rustok-product/docs/category-locale-contract.md';
 const bindingPath =
   'crates/rustok-product/src/migrations/m20260828_000015_add_product_taxonomy_category_binding.rs';
+const productCatalogSchemaPath =
+  'crates/rustok-product/src/migrations/m20260701_000001_create_product_catalog_attributes.rs';
+const taxonomyRouteRegistryPath =
+  'crates/rustok-taxonomy/src/migrations/m20260812_000008_add_route_key_registry.rs';
 
 const failures = [];
 const need = (source, marker, label = marker) => {
@@ -19,7 +23,15 @@ const forbid = (source, marker, label = marker) => {
 };
 const normalizeWhitespace = (source) => source.replace(/\s+/g, ' ').trim();
 
-for (const path of [migrationPath, registryPath, contractPath, localeContractPath, bindingPath]) {
+for (const path of [
+  migrationPath,
+  registryPath,
+  contractPath,
+  localeContractPath,
+  bindingPath,
+  productCatalogSchemaPath,
+  taxonomyRouteRegistryPath,
+]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 
@@ -29,6 +41,8 @@ if (failures.length === 0) {
   const contract = normalizeWhitespace(fs.readFileSync(contractPath, 'utf8'));
   const localeContract = normalizeWhitespace(fs.readFileSync(localeContractPath, 'utf8'));
   const binding = fs.readFileSync(bindingPath, 'utf8');
+  const productCatalogSchema = fs.readFileSync(productCatalogSchemaPath, 'utf8');
+  const taxonomyRouteRegistry = fs.readFileSync(taxonomyRouteRegistryPath, 'utf8');
 
   for (const [marker, label] of [
     ['manager.get_database_backend() != DatabaseBackend::Postgres', 'PostgreSQL-only backfill boundary'],
@@ -87,11 +101,24 @@ if (failures.length === 0) {
     'manager.get_database_backend() != DatabaseBackend::Postgres',
     'CAT-23 PostgreSQL binding boundary',
   );
+  need(
+    productCatalogSchema,
+    'uq_catalog_categories_parent_slug UNIQUE (tenant_id, parent_id, slug)',
+    'Product per-parent slug uniqueness contract',
+  );
+  need(taxonomyRouteRegistry, 'pk_taxonomy_term_route_keys', 'Taxonomy route ownership registry');
+  need(
+    taxonomyRouteRegistry,
+    'taxonomy route-key registry backfill blocked by ambiguous route',
+    'Taxonomy ambiguous route fail-closed invariant',
+  );
 
   for (const [marker, label] of [
     ['Status: **source-complete monotonic backfill; Product runtime cutover pending**', 'CAT-24 bounded status'],
     ['same canonical base slug is therefore projected into every imported locale', 'explicit Product base-slug projection rule'],
     ['no localized slug is invented', 'no fabricated localized route data'],
+    ['does not synthesize a `path`-derived slug', 'no fabricated path-derived route identity'],
+    ['migration blocks as an incompatible route collision', 'Product-to-Taxonomy route incompatibility fail-closed'],
     ['meta_title / meta_description', 'retained Product SEO ownership'],
     ['activation/soft-delete lifecycle', 'retained Product lifecycle ownership'],
     ['does **not** switch Product reads or writes', 'no runtime cutover boundary'],
@@ -106,6 +133,8 @@ if (failures.length === 0) {
     ['Product-owned **runtime** tree/closure aggregate until a verified Taxonomy read/write cutover', 'runtime-vs-target hierarchy boundary'],
     ['CAT-24 backfills Product `parent_id` and `position` into the Taxonomy hierarchy', 'Taxonomy hierarchy shadow copy'],
     ['projects the same one base Product category `slug` into every imported locale', 'locale contract base-slug projection'],
+    ['Taxonomy route ownership is module-scope-wide per locale', 'locale contract route uniqueness mismatch'],
+    ['does not flatten Product `path` into a replacement route key', 'locale contract no fabricated route rewrite'],
     ['`meta_title` / `meta_description` stay Product-owned SEO data', 'locale contract retained SEO ownership'],
     ['does not make Product runtime consume it yet', 'locale contract no runtime cutover'],
   ]) {
