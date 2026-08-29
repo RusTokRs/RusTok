@@ -57,7 +57,10 @@ jobs:
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Taxonomy and Product formatting
-        run: cargo fmt --check --manifest-path crates/rustok-taxonomy/Cargo.toml --manifest-path crates/rustok-product/Cargo.toml
+        shell: bash
+        run: |
+          cargo fmt --check --manifest-path crates/rustok-taxonomy/Cargo.toml
+          cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
       - name: Run Product Category Taxonomy hierarchy unit regressions
         run: cargo test -p rustok-product --lib category_taxonomy_hierarchy -- --nocapture
       - name: Run Taxonomy owner reader unit regressions
