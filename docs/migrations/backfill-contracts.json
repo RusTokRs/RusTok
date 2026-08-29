@@ -251,6 +251,13 @@
       "mode": "none",
       "owner": "rustok-product",
       "reason": "PostgreSQL CAT-33 performs no forward row backfill: it preflights the historical Product parent/closure parity, then changes the retained constraint function to cycle-only semantics while leaving existing Product Category, closure and Taxonomy rows untouched; exact closure reconstruction exists only in the reversible down path"
+    },
+    {
+      "id": "product-category-closure-storage-retirement",
+      "migration": "m20260829_000020_retire_product_category_closure_storage",
+      "mode": "none",
+      "owner": "rustok-product",
+      "reason": "PostgreSQL CAT-34 performs no forward row backfill: derived closure storage is already non-canonical, unread and unwritten on PostgreSQL after the verified hierarchy consumer, write and invariant cutovers; the migration physically removes only that retired storage without CASCADE, while its reversible down path reconstructs exact closure rows from retained Product parent_id before restoring the compatibility trigger"
     }
   ]
 }

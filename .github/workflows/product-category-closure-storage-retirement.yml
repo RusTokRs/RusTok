@@ -1,0 +1,227 @@
+name: Product Category Closure Storage Retirement
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-product/src/migrations/m20260829_000020_retire_product_category_closure_storage.rs"
+      - "crates/rustok-product/src/migrations/mod.rs"
+      - "crates/rustok-product/docs/category-taxonomy-binding.md"
+      - "docs/migrations/backfill-contracts.json"
+      - "scripts/verify/verify-product-category-closure-storage-retirement.mjs"
+      - ".github/workflows/product-category-closure-storage-retirement.yml"
+      - ".github/workflows/product-category-closure-invariant-retirement.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: product-category-closure-storage-retirement-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://rustok_migration:rustok_migration@localhost:5432/postgres
+  RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_cat34_${{ github.run_id }}
+
+jobs:
+  closure-storage-retirement-contract:
+    name: Product Category closure storage retirement
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: |
+          expected="${{ github.event.pull_request.head.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify Product Category closure storage retirement contract
+        run: node scripts/verify/verify-product-category-closure-storage-retirement.mjs
+      - name: Fetch exact PR base
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          git fetch --no-tags --depth=1 origin "$base"
+      - name: Assert bounded CAT-34 file set
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          changed="$(git diff --name-only "$base" "$head")"
+          printf '%s\n' "$changed"
+          allowed='^(crates/rustok-product/src/migrations/m20260829_000020_retire_product_category_closure_storage\.rs|crates/rustok-product/src/migrations/mod\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|docs/migrations/backfill-contracts\.json|scripts/verify/verify-product-category-closure-storage-retirement\.mjs|\.github/workflows/product-category-closure-storage-retirement\.yml|\.github/workflows/product-category-closure-invariant-retirement\.yml)$'
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
+          test -z "$unexpected"
+      - name: Check Product formatting
+        run: cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
+      - name: Create bounded migration test role
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql --host localhost --port 5432 --username postgres --dbname postgres \
+            --set ON_ERROR_STOP=1 \
+            --command "CREATE ROLE rustok_migration LOGIN PASSWORD 'rustok_migration' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8"
+      - name: Rehearse fresh PostgreSQL apply plus CAT-34 rollback and reapply
+        env:
+          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
+          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "1"
+          RUSTOK_MIGRATION_SMOKE_KEEP_DB: "1"
+          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
+        run: >-
+          cargo test
+          --locked
+          -p rustok-migrations
+          --test postgres_zero_migration_smoke
+          postgres_zero_migration_smoke_applies_from_empty_database
+          --
+          --ignored
+          --nocapture
+      - name: Verify closure-free PostgreSQL runtime and retained cycle rejection
+        shell: bash
+        env:
+          PGPASSWORD: rustok_migration
+        run: |
+          psql_args=(--host localhost --port 5432 --username rustok_migration --dbname "$RUSTOK_MIGRATION_SMOKE_DB_NAME" --set ON_ERROR_STOP=1)
+          psql "${psql_args[@]}" <<'SQL'
+          DO $$
+          BEGIN
+              IF to_regclass('public.catalog_category_closure') IS NOT NULL THEN
+                  RAISE EXCEPTION 'CAT-34 head must not expose catalog_category_closure on PostgreSQL';
+              END IF;
+              IF EXISTS (
+                  SELECT 1
+                  FROM pg_get_functiondef('rustok_product_assert_category_tree()'::regprocedure) definition
+                  WHERE definition LIKE '%catalog_category_closure%'
+              ) THEN
+                  RAISE EXCEPTION 'retained category-tree assertion must remain closure-independent';
+              END IF;
+              IF NOT EXISTS (
+                  SELECT 1
+                  FROM pg_trigger trigger
+                  JOIN pg_class relation ON relation.oid = trigger.tgrelid
+                  WHERE relation.relname = 'catalog_categories'
+                    AND trigger.tgname = 'trg_catalog_categories_validate_tree'
+                    AND NOT trigger.tgisinternal
+              ) THEN
+                  RAISE EXCEPTION 'retained catalog_categories cycle trigger is missing';
+              END IF;
+          END;
+          $$;
+
+          INSERT INTO tenants (id, name, slug)
+          VALUES ('41000000-0000-0000-0000-000000000001', 'CAT-34 runtime fixture', 'cat34-runtime-fixture');
+
+          INSERT INTO catalog_categories (
+              id, tenant_id, parent_id, code, slug, kind, path, level, position,
+              is_active, rule_config, metadata
+          ) VALUES (
+              '41000000-0000-0000-0000-000000000010',
+              '41000000-0000-0000-0000-000000000001',
+              NULL,
+              'cat34-root',
+              'cat34-root',
+              'structural',
+              'cat34-root',
+              0,
+              0,
+              TRUE,
+              '{}'::jsonb,
+              '{}'::jsonb
+          );
+
+          INSERT INTO catalog_categories (
+              id, tenant_id, parent_id, code, slug, kind, path, level, position,
+              is_active, rule_config, metadata
+          ) VALUES (
+              '41000000-0000-0000-0000-000000000011',
+              '41000000-0000-0000-0000-000000000001',
+              '41000000-0000-0000-0000-000000000010',
+              'cat34-child',
+              'cat34-child',
+              'structural',
+              'cat34-root/cat34-child',
+              1,
+              0,
+              TRUE,
+              '{}'::jsonb,
+              '{}'::jsonb
+          );
+
+          SELECT rustok_product_assert_category_tree();
+          SQL
+
+          set +e
+          psql "${psql_args[@]}" >cat34-cycle.log 2>&1 <<'SQL'
+          BEGIN;
+          UPDATE catalog_categories
+          SET parent_id = '41000000-0000-0000-0000-000000000011'
+          WHERE tenant_id = '41000000-0000-0000-0000-000000000001'
+            AND id = '41000000-0000-0000-0000-000000000010';
+          COMMIT;
+          SQL
+          cycle_status=$?
+          set -e
+          test "$cycle_status" -ne 0
+          grep -F "catalog category tree contains a cycle" cat34-cycle.log
+
+          psql "${psql_args[@]}" <<'SQL'
+          DO $$
+          BEGIN
+              IF EXISTS (
+                  SELECT 1
+                  FROM catalog_categories
+                  WHERE tenant_id = '41000000-0000-0000-0000-000000000001'::uuid
+                    AND id = '41000000-0000-0000-0000-000000000010'::uuid
+                    AND parent_id IS NOT NULL
+              ) THEN
+                  RAISE EXCEPTION 'failed deferred cycle transaction must roll back Product parent projection';
+              END IF;
+          END;
+          $$;
+          SQL
+      - name: Compile Product migrations and runtime
+        run: cargo check -p rustok-product --lib
+      - name: Check full PR whitespace
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git diff --check "$base" "$head"
+      - name: Drop focused migration database
+        if: always()
+        env:
+          PGPASSWORD: rustok_migration
+        shell: bash
+        run: >-
+          dropdb
+          --host localhost
+          --port 5432
+          --username rustok_migration
+          --if-exists
+          --force
+          "$RUSTOK_MIGRATION_SMOKE_DB_NAME"
