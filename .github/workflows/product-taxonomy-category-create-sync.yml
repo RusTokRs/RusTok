@@ -1,31 +1,30 @@
-name: Product Taxonomy Category Backfill
+name: Product Taxonomy Category Create Sync
 
 on:
   pull_request:
     paths:
-      - "crates/rustok-product/src/migrations/m20260829_000016_backfill_product_categories_to_taxonomy.rs"
-      - "crates/rustok-product/src/migrations/m20260828_000015_add_product_taxonomy_category_binding.rs"
-      - "crates/rustok-product/src/migrations/mod.rs"
+      - "crates/rustok-product/src/services/catalog_schema_service/categories.rs"
       - "crates/rustok-product/docs/category-taxonomy-binding.md"
       - "crates/rustok-product/docs/category-locale-contract.md"
-      - "scripts/verify/verify-product-taxonomy-category-backfill.mjs"
+      - "scripts/verify/verify-product-taxonomy-category-create-sync.mjs"
+      - ".github/workflows/product-taxonomy-category-create-sync.yml"
       - ".github/workflows/product-taxonomy-category-backfill.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: product-taxonomy-category-backfill-${{ github.event.pull_request.number || github.ref }}
+  group: product-taxonomy-category-create-sync-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  backfill-contract:
-    name: Product Taxonomy Category backfill
+  create-sync-contract:
+    name: Product Taxonomy Category create sync
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -40,31 +39,28 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
-      - name: Verify Product Category backfill contract
-        run: node scripts/verify/verify-product-taxonomy-category-backfill.mjs
+      - name: Verify Product Category create sync contract
+        run: node scripts/verify/verify-product-taxonomy-category-create-sync.mjs
       - name: Fetch exact PR base
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           git fetch --no-tags --depth=1 origin "$base"
-      - name: Assert bounded CAT-24 file set when CAT-24 changes
+      - name: Assert bounded CAT-25 file set
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          migration='crates/rustok-product/src/migrations/m20260829_000016_backfill_product_categories_to_taxonomy.rs'
+          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-create-sync\.mjs|\.github/workflows/product-taxonomy-category-create-sync\.yml|\.github/workflows/product-taxonomy-category-backfill\.yml)$'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
-          if ! printf '%s\n' "$changed" | grep -Fxq "$migration"; then
-            echo "CAT-24 migration unchanged; PR-wide CAT-24 slice restriction is not applicable."
-            exit 0
-          fi
-          allowed='^(crates/rustok-product/src/migrations/m20260829_000016_backfill_product_categories_to_taxonomy\.rs|crates/rustok-product/src/migrations/mod\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-backfill\.mjs|\.github/workflows/product-taxonomy-category-backfill\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Product formatting
         run: cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
-      - name: Compile Product backfill migration
+      - name: Run Product Category Taxonomy create unit regressions
+        run: cargo test -p rustok-product --lib category_taxonomy_create -- --nocapture
+      - name: Compile Product Category create sync
         run: cargo check -p rustok-product --lib
       - name: Check full PR whitespace
         shell: bash

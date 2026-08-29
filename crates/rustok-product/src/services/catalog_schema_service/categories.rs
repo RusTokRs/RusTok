@@ -9,7 +9,7 @@ use super::{
     load_category_parent, parse_virtual_category_rule_v1,
     validate_virtual_category_rule_references,
 };
-use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, FromQueryResult, Statement};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -20,6 +20,10 @@ use crate::services::write_transaction::{
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
+use rustok_taxonomy::{SyncModuleCategoryInput, TaxonomyError, sync_module_category_in_tx};
+
+const PRODUCT_TAXONOMY_SCOPE: &str = "product";
+const TAXONOMY_CATEGORY_ROUTE_KEY_MAX_BYTES: usize = 120;
 
 impl ProductCatalogSchemaService {
     pub async fn create_category(
@@ -29,6 +33,7 @@ impl ProductCatalogSchemaService {
         input: CreateCatalogCategoryInput,
     ) -> CommerceResult<CatalogCategoryRecord> {
         input.validate()?;
+        validate_taxonomy_category_route(&input.slug, input.position)?;
         let translations = normalize_category_translations(&input.translations)?;
         let category_id = current_product_operation_id().unwrap_or_else(generate_id);
         let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
@@ -119,6 +124,15 @@ impl ProductCatalogSchemaService {
             ))
             .await?;
         }
+
+        sync_created_category_to_taxonomy_in_tx(
+            &txn,
+            tenant_id,
+            category_id,
+            &input,
+            &translations,
+        )
+        .await?;
 
         txn.publish(
             tenant_id,
@@ -364,6 +378,85 @@ impl ProductCatalogSchemaService {
     }
 }
 
+async fn sync_created_category_to_taxonomy_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    input: &CreateCatalogCategoryInput,
+    translations: &[CategoryTranslationInput],
+) -> CommerceResult<()> {
+    for translation in translations {
+        sync_module_category_in_tx(
+            txn,
+            tenant_id,
+            SyncModuleCategoryInput {
+                category_id,
+                module_scope: PRODUCT_TAXONOMY_SCOPE.to_owned(),
+                canonical_key: canonical_key_for_product_category(category_id),
+                locale: translation.locale.clone(),
+                name: translation.name.clone(),
+                slug: input.slug.clone(),
+                aliases: Vec::new(),
+                description: translation.description.clone(),
+                parent_id: input.parent_id,
+                position: input.position,
+                icon_key: None,
+                color: None,
+            },
+        )
+        .await
+        .map_err(map_taxonomy_category_sync_error)?;
+    }
+
+    txn.execute(Statement::from_sql_and_values(
+        txn.get_database_backend(),
+        r#"
+        INSERT INTO product_catalog_category_taxonomy_bindings (
+            tenant_id, catalog_category_id, taxonomy_category_id, created_at
+        ) VALUES ($1, $2, $2, CURRENT_TIMESTAMP)
+        "#,
+        vec![tenant_id.into(), category_id.into()],
+    ))
+    .await?;
+
+    Ok(())
+}
+
+fn canonical_key_for_product_category(category_id: Uuid) -> String {
+    format!("product-category-{category_id}")
+}
+
+fn validate_taxonomy_category_route(slug: &str, position: i32) -> CommerceResult<()> {
+    if position < 0 {
+        return Err(CommerceError::Validation(
+            "category position must be zero or greater".into(),
+        ));
+    }
+    let normalized = rustok_taxonomy::normalize_term_route_key(slug).ok_or_else(|| {
+        CommerceError::Validation("category slug must have a Taxonomy route representation".into())
+    })?;
+    if normalized.as_str() != slug {
+        return Err(CommerceError::Validation(format!(
+            "category slug must already be canonical for Taxonomy routing: {normalized}"
+        )));
+    }
+    if normalized.len() > TAXONOMY_CATEGORY_ROUTE_KEY_MAX_BYTES {
+        return Err(CommerceError::Validation(format!(
+            "category slug must not exceed {TAXONOMY_CATEGORY_ROUTE_KEY_MAX_BYTES} bytes"
+        )));
+    }
+    Ok(())
+}
+
+fn map_taxonomy_category_sync_error(error: TaxonomyError) -> CommerceError {
+    match error {
+        TaxonomyError::Database(error) => CommerceError::Database(error),
+        other => CommerceError::Validation(format!(
+            "Product Category Taxonomy synchronization failed: {other}"
+        )),
+    }
+}
+
 fn normalize_category_translations(
     translations: &[CategoryTranslationInput],
 ) -> CommerceResult<Vec<CategoryTranslationInput>> {
@@ -381,9 +474,24 @@ fn normalize_category_translations(
             }
 
             let name = translation.name.trim();
-            if name.is_empty() || name.chars().count() > 255 {
+            if name.is_empty() || name.chars().count() > 120 {
                 return Err(CommerceError::Validation(
-                    "category translation name must be 1..255 characters".into(),
+                    "category translation name must be 1..120 characters for Taxonomy ownership"
+                        .into(),
+                ));
+            }
+            let description = translation
+                .description
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned);
+            if description
+                .as_deref()
+                .is_some_and(|value| value.chars().count() > 2_000)
+            {
+                return Err(CommerceError::Validation(
+                    "category translation description must not exceed 2000 characters".into(),
                 ));
             }
             if translation
@@ -408,7 +516,7 @@ fn normalize_category_translations(
             Ok(CategoryTranslationInput {
                 locale,
                 name: name.to_string(),
-                description: translation.description.clone(),
+                description,
                 meta_title: translation.meta_title.clone(),
                 meta_description: translation.meta_description.clone(),
             })
@@ -458,5 +566,39 @@ mod tests {
     fn category_translations_reject_invalid_locale_and_empty_name() {
         assert!(normalize_category_translations(&[translation(" ", "English")]).is_err());
         assert!(normalize_category_translations(&[translation("en", "   ")]).is_err());
+    }
+
+    #[test]
+    fn category_taxonomy_create_normalizes_canonical_copy() {
+        let mut input = translation("en_us", " Canonical name ");
+        input.description = Some("  Canonical description  ".to_string());
+
+        let normalized = normalize_category_translations(&[input]).expect("canonical copy");
+        assert_eq!(normalized[0].locale, "en-US");
+        assert_eq!(normalized[0].name, "Canonical name");
+        assert_eq!(
+            normalized[0].description.as_deref(),
+            Some("Canonical description")
+        );
+
+        let mut empty_description = translation("fr", "Nom");
+        empty_description.description = Some("   ".to_string());
+        let normalized =
+            normalize_category_translations(&[empty_description]).expect("empty description");
+        assert_eq!(normalized[0].description, None);
+    }
+
+    #[test]
+    fn category_taxonomy_create_rejects_incompatible_canonical_input() {
+        assert!(validate_taxonomy_category_route("Summer Sale", 0).is_err());
+        assert!(validate_taxonomy_category_route("summer-sale", -1).is_err());
+        assert!(validate_taxonomy_category_route(&"a".repeat(121), 0).is_err());
+
+        let oversized_name = "n".repeat(121);
+        assert!(normalize_category_translations(&[translation("en", &oversized_name)]).is_err());
+
+        let mut oversized_description = translation("en", "Name");
+        oversized_description.description = Some("d".repeat(2_001));
+        assert!(normalize_category_translations(&[oversized_description]).is_err());
     }
 }
