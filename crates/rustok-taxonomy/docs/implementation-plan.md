@@ -263,15 +263,36 @@ membership/settings/revision state. The former `blog/category` provider, Blog Ca
 journal and Blog-local donor translation storage are retired. The owner-scoped Blog documentation
 cursor is actualized through TAXONOMY-CAT-17.
 
-### TAXONOMY-CAT-6 — Product and later consumers — PLANNED
+### TAXONOMY-CAT-6 — Product and later consumers — IN PROGRESS
 
-Product remains the next Category consumer migration. Migrate Product and each later consumer
-separately from fresh `main`; do not combine unrelated category models into one large cutover.
-Preserve module-specific bindings and policy, reuse Taxonomy identity/hierarchy/copy, and validate
-tenant isolation and route semantics for every consumer.
+Product is now the active Category consumer migration and remains isolated from later consumers.
+Accepted Product slices already in `main`:
 
-Product navigation/merchandising/placement semantics remain its own bounded contract rather than
-being blindly moved into Taxonomy.
+- PR #3735 / TAXONOMY-CAT-23 added the PostgreSQL tenant-safe one-to-one
+  `product_catalog_category_taxonomy_bindings` seam without runtime cutover;
+- PR #3736 / TAXONOMY-CAT-24 added deterministic same-ID Product Category backfill into Taxonomy,
+  including localized canonical copy, route ownership, hierarchy and binding-last fail-closed checks;
+- PR #3737 / TAXONOMY-CAT-25 closed the post-backfill creation gap by synchronizing every new Product
+  Category locale/hierarchy into Taxonomy inside the existing Product transaction before binding,
+  event and commit;
+- PR #3738 / TAXONOMY-CAT-26 moved the PostgreSQL Product Category list canonical `name`, localized
+  `slug` and `parent_id` reads to `TaxonomyOwnerCategoryReader`, while Product retains `code`, `kind`,
+  `path` and path ordering. Missing/mismatched binding or owner state fails closed.
+
+The remaining Product donor boundary is intentionally split by ownership rather than retired in one
+step. `catalog_category_translations` still contains Taxonomy-superseded canonical localized copy
+alongside Product-only `meta_title` / `meta_description`. TAXONOMY-CAT-27 isolates those SEO fields in
+dedicated tenant-safe Product storage and dual-writes new creates before any canonical donor table is
+eligible for retirement.
+
+**Next:** complete TAXONOMY-CAT-27 Product Category SEO isolation with deterministic backfill and
+transactional create sync, then prove no PostgreSQL canonical runtime dependency remains before a
+separate fail-closed donor-retirement slice. Non-PostgreSQL donor compatibility remains explicit.
+
+Product navigation/merchandising/placement semantics, Product `path`/closure, lifecycle, virtual rule
+state, schema/attribute bindings and product/category assignment semantics remain Product-owned
+contracts rather than being blindly moved into Taxonomy. Later Product slices must preserve those
+boundaries while removing only storage whose canonical ownership is already demonstrated in Taxonomy.
 
 ## Lookup and Translation invariants
 
