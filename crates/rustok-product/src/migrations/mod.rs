@@ -29,7 +29,6 @@ mod m20260731_000004_add_product_index_tombstones;
 mod m20260806_000005_add_product_index_locale_refresh_ledger;
 mod m20260806_000006_add_product_variant_index_refresh_ledger;
 mod m20260806_000007_add_product_index_refresh_relay_cursors;
-mod m20260807_000008_add_product_sales_channel_index_relation_snapshots;
 // Immutable migration history is retained; the next migration removes the
 // versioned database objects so the live schema exposes only canonical names.
 mod m20260807_000009_add_product_index_graph_v3_projection_snapshots;
@@ -42,6 +41,7 @@ mod m20260828_000015_add_product_taxonomy_category_binding;
 mod m20260829_000016_backfill_product_categories_to_taxonomy;
 mod m20260829_000017_add_product_category_seo_translations;
 mod m20260829_000018_retire_product_category_legacy_translations;
+mod m20260829_000019_retire_product_category_closure_invariant;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -88,6 +88,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260829_000016_backfill_product_categories_to_taxonomy::Migration),
         Box::new(m20260829_000017_add_product_category_seo_translations::Migration),
         Box::new(m20260829_000018_retire_product_category_legacy_translations::Migration),
+        Box::new(m20260829_000019_retire_product_category_closure_invariant::Migration),
     ]
 }
 
