@@ -259,8 +259,9 @@ Product continues to own:
 - Product `parent_id`, `path` and `level` projections. PostgreSQL no longer treats those
   fields or Product closure rows as canonical Category ancestry; `path` remains the
   Product navigation projection;
-- historical PostgreSQL `catalog_category_closure` storage pending a separate physical
-  retirement proof, while non-PostgreSQL backends retain active closure writes/reads;
+- Product path and closure persistence remain compatibility state: historical PostgreSQL
+  closure rows are retained pending a separate physical retirement proof, while
+  non-PostgreSQL backends retain active closure writes/reads;
 - localized `meta_title` / `meta_description` in
   `catalog_category_seo_translations` on PostgreSQL;
 - category-bound attribute/schema definitions, assignments, inheritance semantics and
