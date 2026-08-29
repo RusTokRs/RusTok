@@ -32,6 +32,27 @@ impl MigrationTrait for Migration {
             return Ok(());
         }
 
+        let donor_exists = CountRow::find_by_statement(Statement::from_string(
+            DatabaseBackend::Postgres,
+            r#"
+                SELECT COUNT(*)::BIGINT AS count
+                FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_name = 'catalog_category_translations'
+            "#,
+        ))
+        .one(manager.get_connection())
+        .await?
+        .map(|row| row.count)
+        .unwrap_or_default()
+            != 0;
+        if !donor_exists {
+            // The PostgreSQL cutover is intentionally irreversible. A migration
+            // harness may mark this migration down and then reapply it, but the
+            // retired donor must not be recreated just to satisfy that cycle.
+            return Ok(());
+        }
+
         let txn = manager.get_connection().begin().await?;
         ensure_complete_taxonomy_ownership(&txn).await?;
         ensure_complete_taxonomy_locale_ownership(&txn).await?;
