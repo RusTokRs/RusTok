@@ -4,10 +4,12 @@ const migrationPath =
   "crates/rustok-product/src/migrations/m20260829_000019_retire_product_category_closure_invariant.rs";
 const migrationIndexPath = "crates/rustok-product/src/migrations/mod.rs";
 const contractPath = "crates/rustok-product/docs/category-taxonomy-binding.md";
+const backfillContractPath = "docs/migrations/backfill-contracts.json";
 
 const migration = fs.readFileSync(migrationPath, "utf8");
 const migrationIndex = fs.readFileSync(migrationIndexPath, "utf8");
 const contract = fs.readFileSync(contractPath, "utf8");
+const backfillRegister = JSON.parse(fs.readFileSync(backfillContractPath, "utf8"));
 
 const downMarker = "async fn down(&self, manager: &SchemaManager)";
 const downOffset = migration.indexOf(downMarker);
@@ -110,6 +112,30 @@ for (const marker of [
   "Non-PostgreSQL",
 ]) {
   requireIncludes(contract, marker, `CAT-33 contract is missing marker: ${marker}`);
+}
+
+const backfillContract = backfillRegister.contracts?.find(
+  (entry) =>
+    entry.migration === "m20260829_000019_retire_product_category_closure_invariant",
+);
+if (!backfillContract) {
+  throw new Error("CAT-33 migration must declare a migration backfill contract");
+}
+if (backfillContract.id !== "product-category-closure-invariant-retirement") {
+  throw new Error("CAT-33 backfill contract must use the stable Product Category retirement id");
+}
+if (backfillContract.mode !== "none" || backfillContract.owner !== "rustok-product") {
+  throw new Error("CAT-33 backfill contract must be rustok-product mode none");
+}
+if (backfillContract.setup_sql !== undefined || backfillContract.assertion_sql !== undefined) {
+  throw new Error("CAT-33 mode-none backfill contract must not fabricate fixture SQL");
+}
+for (const marker of ["no forward row backfill", "cycle-only", "down path"]) {
+  requireIncludes(
+    backfillContract.reason,
+    marker,
+    `CAT-33 backfill reason is missing marker: ${marker}`,
+  );
 }
 
 console.log("Product Category closure invariant retirement contract verified.");
