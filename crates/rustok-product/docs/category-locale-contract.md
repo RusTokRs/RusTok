@@ -113,10 +113,15 @@ preflight and drop the table without racing newly-created donor rows.
 
 CAT-29 removes `catalog_category_translations` only on PostgreSQL. Before the drop, one
 transaction proves that every Product Category still has the expected same-ID Taxonomy
-owner in tenant/module scope and that all Product-owned SEO from historical locale rows
-was copied exactly into `catalog_category_seo_translations`.
+owner in tenant/module scope, every historical donor locale has a Taxonomy localized row for the exact same tenant/category/locale identity, and all Product-owned SEO from historical locale rows was copied exactly into
+`catalog_category_seo_translations`.
 
-The SEO check resolves tenant identity through `catalog_categories` because the legacy
+The Taxonomy locale-coverage check resolves tenant identity through `catalog_categories`
+and joins `taxonomy_term_translations` by exact tenant, same-ID term and normalized donor
+locale. A missing same-locale Taxonomy row blocks retirement. The check is presence-only:
+it does not compare canonical `name`, `slug` or `description` bytes with the stale donor.
+
+The SEO check also resolves tenant identity through `catalog_categories` because the legacy
 translation row itself has no `tenant_id`. It joins SEO by the exact normalized
 `(tenant_id, category_id, locale)` identity and uses `IS DISTINCT FROM` for both SEO
 fields. A missing SEO row or different `meta_title` / `meta_description` blocks the
@@ -125,8 +130,8 @@ migration. Legacy rows with no SEO do not require an empty SEO-only row.
 The retirement intentionally does not compare historical legacy `name` or `description`
 bytes with current Taxonomy copy. Taxonomy is already canonical and may legitimately
 have been edited after CAT-24/CAT-25; requiring stale donor equality would turn a valid
-canonical edit into a migration blocker. Same-ID tenant/kind/scope/canonical-key
-ownership is the fail-closed proof for canonical copy retirement.
+canonical edit into a migration blocker. Same-ID tenant/kind/scope/canonical-key plus
+same-locale Taxonomy-row presence is the fail-closed proof for canonical copy retirement.
 
 On successful PostgreSQL preflight, `catalog_category_translations` is dropped in the
 same transaction. The migration is irreversible and `down` does not recreate an empty
