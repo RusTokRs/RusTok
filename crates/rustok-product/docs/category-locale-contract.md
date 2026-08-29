@@ -66,6 +66,10 @@ exist.
 
 ## CAT-24 Taxonomy projection history
 
+At CAT-24 completion, Product categories remain a Product-owned **runtime** tree/closure
+aggregate until a verified Taxonomy read/write cutover. That historical boundary is
+retained as CAT-24 evidence even though CAT-26 now advances the PostgreSQL list read.
+
 - Product stores one base category `slug`, not a localized slug. CAT-24 validates that
   route key canonically and projects the same one base Product category `slug` into
   every imported locale; it does not invent translated slugs.
