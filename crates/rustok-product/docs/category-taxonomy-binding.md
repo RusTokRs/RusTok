@@ -1,7 +1,7 @@
 # Product Category → Taxonomy migration contract
 
 Status: **source-complete PostgreSQL legacy Category translation storage retirement; non-PostgreSQL donor compatibility retained**
-Current migration cursor: **TAXONOMY-CAT-30 PostgreSQL Category hierarchy-consumer cutover; Product policy and non-PostgreSQL compatibility retained**.
+Current migration cursor: **TAXONOMY-CAT-31 PostgreSQL schema-directory ordering cutover; Product navigation/path and non-PostgreSQL compatibility retained**.
 
 TAXONOMY-CAT-23 introduced the tenant-safe Product-owned binding seam.
 TAXONOMY-CAT-24 added the PostgreSQL-only monotonic backfill of existing Product
@@ -13,10 +13,12 @@ TAXONOMY-CAT-27 split localized Product-only Category SEO into dedicated Product
 storage. TAXONOMY-CAT-28 stopped new PostgreSQL creates from materializing the
 legacy canonical Product translation mirror. TAXONOMY-CAT-29 retired that legacy
 table physically on PostgreSQL after fail-closed Taxonomy/SEO ownership preflight.
-TAXONOMY-CAT-30 now makes Product effective-form/schema inheritance and inherited
+TAXONOMY-CAT-30 makes Product effective-form/schema inheritance and inherited
 attribute-group label ancestry consume Taxonomy-owned hierarchy on PostgreSQL while
 leaving Product schema/attribute policy, path/navigation projection and non-PostgreSQL
-hierarchy compatibility in Product.
+hierarchy compatibility in Product. TAXONOMY-CAT-31 now makes the Product catalog
+schema-directory ordering consume Taxonomy parent/position hierarchy order on
+PostgreSQL without turning Product `path` into Taxonomy-owned navigation state.
 
 ## CAT-23 compatibility history
 
@@ -73,6 +75,10 @@ and retains Product `code`, `kind` and `path` while preserving Product path orde
 The PostgreSQL list path no longer reads `catalog_category_translations`; missing
 binding/owner/canonical localized state fails closed instead of reviving donor truth.
 Other backends continue using the retained Product donor list path.
+
+The path-order statement above is retained as the exact CAT-26 historical boundary.
+CAT-31 supersedes it only for the PostgreSQL catalog schema-directory result order; the
+returned Product `path` value remains unchanged and Product-owned.
 
 ## Binding and backend boundary
 
@@ -199,7 +205,29 @@ On non-PostgreSQL backends the existing Product `parent_id`/closure hierarchy co
 remain active because those backends do not yet have the tenant-safe Taxonomy binding
 prerequisite.
 
-## Product-owned state retained after CAT-30
+## CAT-31 PostgreSQL schema-directory ordering
+
+CAT-31 narrows one remaining read seam. `ProductCatalogSchemaReadPort::list_categories`
+is a Product catalog schema-directory operation rather than a storefront navigation
+projection. On PostgreSQL, its final result order now follows the same Taxonomy-owned
+Category hierarchy already used for canonical `parent_id`: parent before visible child,
+with siblings ordered by Taxonomy `position`, then canonical key and UUID for deterministic
+ties.
+
+The existing SQL may retain Product `path` ordering as a stable input order for historical
+CAT-26 compatibility, but CAT-31 explicitly reorders the composed PostgreSQL result from
+the Taxonomy owner projection before it crosses the schema-directory port. A negative
+Taxonomy position or cyclic projected hierarchy fails closed. When a Taxonomy parent is
+outside the live Product subset, the live child is treated as a visible-root boundary;
+Product lifecycle filtering is therefore preserved without rewriting canonical parent
+identity.
+
+Product `path` remains a Product-owned navigation projection and is still returned in
+`CatalogCategoryListRecord`; CAT-31 does not make Taxonomy own Product navigation URLs,
+merchandising placement or path lifecycle. Non-PostgreSQL donor reads retain Product
+`path` ordering unchanged.
+
+## Product-owned state retained after CAT-31
 
 Product continues to own:
 
@@ -207,7 +235,7 @@ Product continues to own:
   lifecycle and Product-specific metadata;
 - Product `path` and closure persistence used by retained Product path/navigation
   projections and by non-PostgreSQL hierarchy consumers. Neither is a replacement for
-  Taxonomy canonical parent ownership on PostgreSQL;
+  Taxonomy canonical parent/sibling ordering on PostgreSQL;
 - localized `meta_title` / `meta_description` in
   `catalog_category_seo_translations` on PostgreSQL;
 - category-bound attribute/schema definitions, assignments, inheritance semantics and
@@ -218,10 +246,11 @@ Product continues to own:
   an equivalent verified Taxonomy cutover.
 
 PostgreSQL no longer owns a Product-local canonical Category translation table after
-CAT-29, and CAT-30 also stops Product effective-form/group-label consumers from treating
-Product-local parent/closure state as canonical ancestry. Taxonomy remains the canonical
-Category identity/localized-copy/route/hierarchy owner; Product relation/policy/SEO state
-stays Product-owned.
+CAT-29. CAT-30 stops Product effective-form/group-label consumers from treating
+Product-local parent/closure state as canonical ancestry, and CAT-31 stops Product path
+from being the externally visible PostgreSQL schema-directory ordering authority.
+Taxonomy remains the canonical Category identity/localized-copy/route/hierarchy owner;
+Product relation/policy/SEO/navigation state stays Product-owned.
 
 ## Locale and route behavior
 
@@ -238,8 +267,9 @@ of rebuilding or flattening Product `path` into a route key.
 CAT-27 reuses the already-normalized Product Category locale for SEO identity. CAT-28
 reuses that same normalized input for Taxonomy and Product SEO without creating a second
 localized canonical copy on PostgreSQL. CAT-29 removes only the superseded PostgreSQL
-donor table; CAT-30 changes only hierarchy consumers and does not change Taxonomy locale
-resolution, Product route semantics or Product SEO locale identity.
+donor table; CAT-30 changes hierarchy consumers and CAT-31 changes only schema-directory
+ordering. Neither changes Taxonomy locale resolution, Product route semantics or Product
+SEO locale identity.
 
 ## Translation ownership boundary
 

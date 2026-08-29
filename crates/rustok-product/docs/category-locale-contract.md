@@ -62,6 +62,10 @@ ownership:
 - Product `path` continues to define list ordering in this bounded slice, so Product
   navigation/path projection is not silently reinterpreted as Taxonomy route identity.
 
+The final bullet records the exact historical CAT-26 state. TAXONOMY-CAT-31 supersedes
+that ordering rule only for the PostgreSQL catalog schema-directory projection; Product
+`path` itself remains present and Product-owned.
+
 On non-PostgreSQL backends the existing donor read remains active because the physical
 Product ↔ Taxonomy binding/backfill seam is PostgreSQL-only. CAT-26 does not fabricate a
 cross-backend ownership contract where the tenant-safe binding prerequisite does not
@@ -138,6 +142,38 @@ same transaction. The migration is irreversible and `down` does not recreate an 
 localized donor. On SQLite/MySQL and other non-PostgreSQL backends CAT-29 is a no-op;
 their legacy translation table and donor list/write behavior remain live.
 
+## CAT-30 PostgreSQL hierarchy-consumer cutover
+
+TAXONOMY-CAT-30 moves Product effective-form/schema inheritance and inherited
+attribute-group label ancestry to the Taxonomy-owned Category parent projection on
+PostgreSQL. Product keeps the schema definitions, category attribute bindings, group
+labels and inheritance policy; only the canonical ancestor source changes. Missing or
+mismatched same-ID Taxonomy ownership fails closed. Non-PostgreSQL backends retain the
+existing Product parent/closure hierarchy consumers.
+
+## CAT-31 PostgreSQL schema-directory ordering
+
+TAXONOMY-CAT-31 applies the same ownership boundary to the Product catalog schema
+directory. `ProductCatalogSchemaReadPort::list_categories` is a schema-directory read,
+not a storefront navigation projection, so PostgreSQL materialization now uses Taxonomy
+parent/position hierarchy order after canonical owner composition instead of returning
+the Product-path SQL order as the externally visible directory order.
+
+The ordering contract is deterministic and fail closed:
+
+- roots and siblings use Taxonomy `position`, then canonical key, then UUID as stable
+  tie-breakers;
+- a parent is emitted before its visible descendants;
+- a live Product Category whose Taxonomy parent is outside the live Product subset is
+  treated as a visible-root boundary, preserving Product lifecycle filtering without
+  rewriting canonical `parent_id`;
+- a negative Taxonomy position or cyclic projected hierarchy is rejected rather than
+  silently falling back to Product path ordering;
+- the returned `CatalogCategoryListRecord.path` remains the Product-owned path/navigation
+  projection; CAT-31 changes directory ordering, not Product navigation identity;
+- non-PostgreSQL backends retain Product `path` ordering and their donor-backed category
+  read because they do not yet have the PostgreSQL binding/owner prerequisite.
+
 ## CAT-24 Taxonomy projection history
 
 At CAT-24 completion, Product categories remain a Product-owned **runtime** tree/closure
@@ -163,10 +199,11 @@ retained as CAT-24 evidence even though CAT-26 advances the PostgreSQL list read
   true for the CAT-24 slice even though CAT-26 now consumes the Taxonomy owner projection
   on PostgreSQL.
 
-## Ownership boundary after CAT-29
+## Ownership boundary after CAT-31
 
-- Taxonomy is canonical for shared Category identity, hierarchy parent, localized
-  `name`/`slug`/`description` and route ownership on the PostgreSQL Product path.
+- Taxonomy is canonical for shared Category identity, hierarchy parent/sibling position,
+  localized `name`/`slug`/`description`, route ownership and PostgreSQL schema-directory
+  hierarchy ordering.
 - Product continues to own `code`, `kind`, virtual-category `rule_config`, metadata,
   activation/deletion behavior, Product `path`, closure rows, category-bound
   attribute/schema state and product/category assignment semantics.
@@ -176,8 +213,9 @@ retained as CAT-24 evidence even though CAT-26 advances the PostgreSQL list read
   completion; new canonical writes had already stopped in CAT-28.
 - Non-PostgreSQL Product translation rows remain live donor storage and their reads/writes
   are intentionally unchanged.
-- Product `path` remains a commerce/navigation projection rather than canonical route
-  authority. A future explicit path/navigation slice must decide how Taxonomy slug or
-  hierarchy edits propagate before donor closure/path storage can be retired.
+- Product `path` remains a commerce/navigation projection rather than canonical route or
+  schema-directory ordering authority. A future explicit path/navigation slice must
+  decide how Taxonomy slug or hierarchy edits propagate before donor closure/path
+  storage can be retired.
 - This slice does not change Product attribute/schema translation contracts; those
   remain a separate i18n audit surface.

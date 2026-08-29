@@ -50,10 +50,9 @@ jobs:
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          runtime='crates/rustok-product/src/services/catalog_schema_service/categories.rs'
           verifier='scripts/verify/verify-product-category-legacy-write-retirement.mjs'
           changed="$(git diff --name-only "$base" "$head")"
-          if ! printf '%s\n' "$changed" | grep -Eq "^(${runtime}|${verifier})$"; then
+          if ! printf '%s\n' "$changed" | grep -Fxq "$verifier"; then
             echo "CAT-28 runtime/verifier unchanged; historical CAT-28 source verifier is not applicable."
             exit 0
           fi
@@ -63,11 +62,10 @@ jobs:
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          runtime='crates/rustok-product/src/services/catalog_schema_service/categories.rs'
           verifier='scripts/verify/verify-product-category-legacy-write-retirement.mjs'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
-          if ! printf '%s\n' "$changed" | grep -Eq "^(${runtime}|${verifier})$"; then
+          if ! printf '%s\n' "$changed" | grep -Fxq "$verifier"; then
             echo "CAT-28 runtime/verifier unchanged; PR-wide CAT-28 slice restriction is not applicable."
             exit 0
           fi

@@ -421,13 +421,20 @@ async fn list_categories_from_taxonomy(
 }
 
 fn compose_taxonomy_category_list_records(
-    rows: Vec<ProductCategoryTaxonomyReadRow>,
+    mut rows: Vec<ProductCategoryTaxonomyReadRow>,
     owners: Vec<TaxonomyOwnerCategory>,
 ) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
     let mut owners = owners
         .into_iter()
         .map(|owner| (owner.id, owner))
         .collect::<HashMap<_, _>>();
+    let hierarchy_order = taxonomy_category_hierarchy_order(&owners)?;
+    let order_by_id = hierarchy_order
+        .into_iter()
+        .enumerate()
+        .map(|(index, category_id)| (category_id, index))
+        .collect::<HashMap<_, _>>();
+    rows.sort_by_key(|row| order_by_id.get(&row.id).copied().unwrap_or(usize::MAX));
 
     rows.into_iter()
         .map(|row| {
@@ -484,6 +491,74 @@ fn compose_taxonomy_category_list_records(
             .try_into()
         })
         .collect()
+}
+
+fn taxonomy_category_hierarchy_order(
+    owners: &HashMap<Uuid, TaxonomyOwnerCategory>,
+) -> CommerceResult<Vec<Uuid>> {
+    let mut roots = Vec::new();
+    let mut children_by_parent = HashMap::<Uuid, Vec<Uuid>>::new();
+
+    for owner in owners.values() {
+        if owner.position < 0 {
+            return Err(CommerceError::Validation(format!(
+                "Product category {} has a negative Taxonomy sibling position",
+                owner.id
+            )));
+        }
+        match owner.parent_id {
+            Some(parent_id) if owners.contains_key(&parent_id) => {
+                children_by_parent
+                    .entry(parent_id)
+                    .or_default()
+                    .push(owner.id);
+            }
+            _ => roots.push(owner.id),
+        }
+    }
+
+    let sort_siblings = |category_ids: &mut Vec<Uuid>| {
+        category_ids.sort_by(|left_id, right_id| {
+            let left = owners
+                .get(left_id)
+                .expect("Taxonomy ordering owner must exist");
+            let right = owners
+                .get(right_id)
+                .expect("Taxonomy ordering owner must exist");
+            left.position
+                .cmp(&right.position)
+                .then_with(|| left.canonical_key.cmp(&right.canonical_key))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+    };
+    sort_siblings(&mut roots);
+    for children in children_by_parent.values_mut() {
+        sort_siblings(children);
+    }
+
+    fn append_subtree(
+        category_id: Uuid,
+        children_by_parent: &HashMap<Uuid, Vec<Uuid>>,
+        ordered: &mut Vec<Uuid>,
+    ) {
+        ordered.push(category_id);
+        if let Some(children) = children_by_parent.get(&category_id) {
+            for child_id in children {
+                append_subtree(*child_id, children_by_parent, ordered);
+            }
+        }
+    }
+
+    let mut ordered = Vec::with_capacity(owners.len());
+    for root_id in roots {
+        append_subtree(root_id, &children_by_parent, &mut ordered);
+    }
+    if ordered.len() != owners.len() {
+        return Err(CommerceError::Validation(
+            "Product Category Taxonomy hierarchy projection contains a cycle".into(),
+        ));
+    }
+    Ok(ordered)
 }
 
 async fn list_categories_from_product_donor(
@@ -891,6 +966,89 @@ mod tests {
                 .to_string()
                 .contains("missing its Taxonomy Category binding")
         );
+    }
+
+    #[test]
+    fn category_taxonomy_directory_order_uses_owner_hierarchy_not_product_path() {
+        let first_root = Uuid::new_v4();
+        let second_root = Uuid::new_v4();
+        let first_child = Uuid::new_v4();
+        let second_child = Uuid::new_v4();
+
+        let mut first_root_owner = taxonomy_owner_category(first_root, "First", "first", None);
+        first_root_owner.position = 0;
+        let mut second_root_owner = taxonomy_owner_category(second_root, "Second", "second", None);
+        second_root_owner.position = 1;
+        let mut first_child_owner =
+            taxonomy_owner_category(first_child, "First child", "first-child", Some(first_root));
+        first_child_owner.position = 0;
+        let mut second_child_owner = taxonomy_owner_category(
+            second_child,
+            "Second child",
+            "second-child",
+            Some(first_root),
+        );
+        second_child_owner.position = 1;
+
+        let mut second_root_row = taxonomy_read_row(second_root);
+        second_root_row.path = "a-product-path".to_string();
+        let mut second_child_row = taxonomy_read_row(second_child);
+        second_child_row.path = "b-product-path".to_string();
+        let mut first_child_row = taxonomy_read_row(first_child);
+        first_child_row.path = "y-product-path".to_string();
+        let mut first_root_row = taxonomy_read_row(first_root);
+        first_root_row.path = "z-product-path".to_string();
+
+        let records = compose_taxonomy_category_list_records(
+            vec![
+                second_root_row,
+                second_child_row,
+                first_child_row,
+                first_root_row,
+            ],
+            vec![
+                second_child_owner,
+                second_root_owner,
+                first_child_owner,
+                first_root_owner,
+            ],
+        )
+        .expect("Taxonomy hierarchy ordered Product schema directory");
+
+        assert_eq!(
+            records.iter().map(|record| record.id).collect::<Vec<_>>(),
+            vec![first_root, first_child, second_child, second_root]
+        );
+        assert_eq!(records[0].path, "z-product-path");
+        assert_eq!(records[3].path, "a-product-path");
+    }
+
+    #[test]
+    fn category_taxonomy_directory_order_fails_closed_on_invalid_owner_ordering() {
+        let negative = Uuid::new_v4();
+        let mut negative_owner = taxonomy_owner_category(negative, "Negative", "negative", None);
+        negative_owner.position = -1;
+        let error = compose_taxonomy_category_list_records(
+            vec![taxonomy_read_row(negative)],
+            vec![negative_owner],
+        )
+        .expect_err("negative canonical sibling position must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("negative Taxonomy sibling position")
+        );
+
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let a_owner = taxonomy_owner_category(a, "A", "a", Some(b));
+        let b_owner = taxonomy_owner_category(b, "B", "b", Some(a));
+        let error = compose_taxonomy_category_list_records(
+            vec![taxonomy_read_row(a), taxonomy_read_row(b)],
+            vec![a_owner, b_owner],
+        )
+        .expect_err("cyclic canonical hierarchy must fail closed");
+        assert!(error.to_string().contains("contains a cycle"));
     }
 
     #[test]
