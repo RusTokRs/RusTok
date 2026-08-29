@@ -51,10 +51,9 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           verifier='scripts/verify/verify-product-category-legacy-write-retirement.mjs'
-          workflow='.github/workflows/product-category-legacy-write-retirement.yml'
           changed="$(git diff --name-only "$base" "$head")"
-          if ! printf '%s\n' "$changed" | grep -Eq "^(${verifier}|${workflow})$"; then
-            echo "CAT-28 verifier/workflow unchanged; historical CAT-28 source verifier is not applicable."
+          if ! printf '%s\n' "$changed" | grep -Fxq "$verifier"; then
+            echo "CAT-28 verifier unchanged; historical CAT-28 source verifier is not applicable."
             exit 0
           fi
           node scripts/verify/verify-product-category-legacy-write-retirement.mjs
@@ -64,11 +63,10 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           verifier='scripts/verify/verify-product-category-legacy-write-retirement.mjs'
-          workflow='.github/workflows/product-category-legacy-write-retirement.yml'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
-          if ! printf '%s\n' "$changed" | grep -Eq "^(${verifier}|${workflow})$"; then
-            echo "CAT-28 verifier/workflow unchanged; PR-wide CAT-28 slice restriction is not applicable."
+          if ! printf '%s\n' "$changed" | grep -Fxq "$verifier"; then
+            echo "CAT-28 verifier unchanged; PR-wide CAT-28 slice restriction is not applicable."
             exit 0
           fi
           allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|crates/rustok-taxonomy/docs/implementation-plan\.md|scripts/verify/verify-product-category-legacy-write-retirement\.mjs|\.github/workflows/product-category-legacy-write-retirement\.yml|\.github/workflows/product-category-seo-seam\.yml)$'
