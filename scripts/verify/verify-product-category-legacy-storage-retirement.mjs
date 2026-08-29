@@ -217,7 +217,7 @@ if (failures.length === 0) {
 
   for (const [marker, label] of [
     [
-      'should_write_legacy_category_translation(DatabaseBackend::Postgres)',
+      'should_write_legacy_category_translation(txn.get_database_backend())',
       'retained CAT-28 PostgreSQL legacy-write boundary',
     ],
     [
