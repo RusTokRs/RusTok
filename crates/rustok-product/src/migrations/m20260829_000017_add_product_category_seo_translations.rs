@@ -74,7 +74,8 @@ WHERE translation.meta_title IS NOT NULL
 ON CONFLICT (tenant_id, category_id, locale) DO NOTHING;
 "#,
             )
-            .await
+            .await?;
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
