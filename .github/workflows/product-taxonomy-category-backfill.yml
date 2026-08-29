@@ -7,6 +7,7 @@ on:
       - "crates/rustok-product/src/migrations/m20260828_000015_add_product_taxonomy_category_binding.rs"
       - "crates/rustok-product/src/migrations/mod.rs"
       - "crates/rustok-product/docs/category-taxonomy-binding.md"
+      - "crates/rustok-product/docs/category-locale-contract.md"
       - "scripts/verify/verify-product-taxonomy-category-backfill.mjs"
       - ".github/workflows/product-taxonomy-category-backfill.yml"
 
@@ -51,7 +52,7 @@ jobs:
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
-          allowed='^(crates/rustok-product/src/migrations/m20260829_000016_backfill_product_categories_to_taxonomy\.rs|crates/rustok-product/src/migrations/mod\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|scripts/verify/verify-product-taxonomy-category-backfill\.mjs|\.github/workflows/product-taxonomy-category-backfill\.yml)$'
+          allowed='^(crates/rustok-product/src/migrations/m20260829_000016_backfill_product_categories_to_taxonomy\.rs|crates/rustok-product/src/migrations/mod\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-backfill\.mjs|\.github/workflows/product-taxonomy-category-backfill\.yml)$'
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
