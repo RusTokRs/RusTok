@@ -27,7 +27,7 @@
       "migration": "m20260727_000004_create_index_dlq_receipts",
       "mode": "none",
       "owner": "rustok-social-graph",
-      "reason": "Creates empty durable poison-delivery receipt storage for future Social Graph Index failures; historical exact payloads, connector coordinates, publication outcomes, and source acknowledgements cannot be reconstructed safely and must not be fabricated"
+      "reason": "Creates empty durable poison-delivery receipt storage for future Social Graph Index failures; historical broker publication and source acknowledgements cannot be reconstructed safely and must not be fabricated"
     },
     {
       "id": "iggy-consumer-poison-receipts-bootstrap",
@@ -106,14 +106,14 @@
       "migration": "m20260721_000006_expand_taxonomy_locale_storage_columns",
       "mode": "none",
       "owner": "rustok-taxonomy",
-      "reason": "DDL-only widening of taxonomy translation and alias locales; existing locale values require no semantic backfill"
+      "reason": "DDL-only widening of taxonomy translation and alias locales; existing values require no semantic backfill"
     },
     {
       "id": "comments-locale-width-32",
-      "migration": "m20260721_000007_expand_comment_body_locale_storage",
+      "migration": "m20260721_000007_expand_comment_locale_storage_columns",
       "mode": "none",
       "owner": "rustok-comments",
-      "reason": "Widen comment body locale attribution to the platform locale width; existing locale values require no semantic backfill"
+      "reason": "DDL-only widening of comment body locales; existing values require no semantic backfill"
     },
     {
       "id": "profiles-locale-width-32",
