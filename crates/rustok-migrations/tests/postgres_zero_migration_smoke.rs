@@ -1357,9 +1357,7 @@ async fn migration_is_applied(
             [migration.to_owned().into()],
         ))
         .await
-        .map_err(|error| {
-            format!("migration presence query for {migration} must succeed: {error}")
-        })?
+        .map_err(|error| format!("migration presence query for {migration} must succeed: {error}"))?
         .ok_or_else(|| format!("migration presence query for {migration} returned no row"))?;
     let applied: bool = row.try_get("", "exists").map_err(|error| {
         format!("migration presence result for {migration} must decode: {error}")
