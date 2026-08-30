@@ -5,6 +5,7 @@
   "status": "source_ready_maintainer_execution_pending",
   "runner": "apps/next-admin/tests/forum-category-taxonomy/browser-evidence.spec.ts",
   "config": "apps/next-admin/playwright.forum-category-taxonomy.config.ts",
+  "workflow": ".github/workflows/forum-category-taxonomy-browser-evidence.yml",
   "surfaces": [
     "mounted Forum admin categories",
     "mounted Forum storefront category rail",
@@ -51,7 +52,11 @@
     "authenticated admin state is maintainer supplied through Playwright storage state",
     "fixture URLs are credential-free",
     "production Forum and Taxonomy ownership behavior is unchanged by this evidence slice",
-    "screenshots, video and tracing are disabled"
+    "screenshots, video and tracing are disabled",
+    "mounted browser execution is workflow_dispatch-only and requires a maintainer-selected GitHub environment",
+    "authenticated admin storage state enters the workflow only through the RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON environment secret and is materialized under RUNNER_TEMP",
+    "credential-free mounted URLs and expected fixture values enter the workflow through GitHub environment variables",
+    "pull-request runs verify source and compile-list the retained Playwright runner without mounted credentials or fixture execution"
   ],
   "not_claimed": [
     "browser execution",
