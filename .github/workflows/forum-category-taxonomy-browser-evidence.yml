@@ -1,0 +1,157 @@
+name: Forum Category Taxonomy Browser Evidence
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/forum-category-taxonomy-browser-evidence.yml"
+      - "apps/next-admin/playwright.forum-category-taxonomy.config.ts"
+      - "apps/next-admin/tests/forum-category-taxonomy/browser-evidence.spec.ts"
+      - "crates/rustok-forum/contracts/evidence/forum-category-taxonomy-browser-execution-contract.json"
+      - "crates/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md"
+      - "scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs"
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: GitHub environment containing the prepared mounted Forum Category browser fixture
+        required: true
+        type: environment
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forum-category-taxonomy-browser-evidence-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  source-contract:
+    name: Forum Category browser evidence source contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/next-admin/package-lock.json
+      - name: Verify CAT-5 browser evidence source contract
+        run: node scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs
+      - name: Install next-admin dependencies
+        working-directory: apps/next-admin
+        run: npm ci --no-audit --no-fund
+      - name: Compile-list retained CAT-5 Playwright runner
+        working-directory: apps/next-admin
+        run: npx --no-install playwright test --config=playwright.forum-category-taxonomy.config.ts --list
+
+  mounted-browser-evidence:
+    name: Forum Category mounted multilingual RTL browser evidence
+    if: github.event_name == 'workflow_dispatch'
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: ${{ inputs.target_environment }}
+    env:
+      ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}
+      RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL }}
+      RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL }}
+      RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL }}
+      RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL }}
+      RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL }}
+      RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL }}
+      RUSTOK_FORUM_CATEGORY_E2E_RTL_REQUESTED_LOCALE: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_RTL_REQUESTED_LOCALE }}
+      RUSTOK_FORUM_CATEGORY_E2E_RTL_EFFECTIVE_LOCALE: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_RTL_EFFECTIVE_LOCALE }}
+      RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_REQUESTED_LOCALE: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_REQUESTED_LOCALE }}
+      RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_EFFECTIVE_LOCALE: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_EFFECTIVE_LOCALE }}
+      RUSTOK_FORUM_CATEGORY_E2E_ROOT_NAME: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_ROOT_NAME }}
+      RUSTOK_FORUM_CATEGORY_E2E_ROOT_SLUG: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_ROOT_SLUG }}
+      RUSTOK_FORUM_CATEGORY_E2E_CHILD_NAME: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_CHILD_NAME }}
+      RUSTOK_FORUM_CATEGORY_E2E_CHILD_SLUG: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_CHILD_SLUG }}
+      RUSTOK_FORUM_CATEGORY_E2E_ROOT_ICON: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_ROOT_ICON }}
+      RUSTOK_FORUM_CATEGORY_E2E_ACCENT_CLASS: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_ACCENT_CLASS }}
+      RUSTOK_FORUM_CATEGORY_E2E_ROOT_CANONICAL_PATH: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_ROOT_CANONICAL_PATH }}
+      RUSTOK_FORUM_CATEGORY_E2E_CHILD_CANONICAL_PATH: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_CHILD_CANONICAL_PATH }}
+      RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_NAME: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_NAME }}
+      RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_SLUG: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_SLUG }}
+      RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_CANONICAL_PATH: ${{ vars.RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_CANONICAL_PATH }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/next-admin/package-lock.json
+      - name: Validate configured mounted fixture inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ADMIN_STORAGE_STATE_JSON"
+          for name in \
+            RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL \
+            RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL \
+            RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL \
+            RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL \
+            RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL \
+            RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL \
+            RUSTOK_FORUM_CATEGORY_E2E_RTL_REQUESTED_LOCALE \
+            RUSTOK_FORUM_CATEGORY_E2E_RTL_EFFECTIVE_LOCALE \
+            RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_REQUESTED_LOCALE \
+            RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_EFFECTIVE_LOCALE \
+            RUSTOK_FORUM_CATEGORY_E2E_ROOT_NAME \
+            RUSTOK_FORUM_CATEGORY_E2E_ROOT_SLUG \
+            RUSTOK_FORUM_CATEGORY_E2E_CHILD_NAME \
+            RUSTOK_FORUM_CATEGORY_E2E_CHILD_SLUG \
+            RUSTOK_FORUM_CATEGORY_E2E_ROOT_ICON \
+            RUSTOK_FORUM_CATEGORY_E2E_ACCENT_CLASS \
+            RUSTOK_FORUM_CATEGORY_E2E_ROOT_CANONICAL_PATH \
+            RUSTOK_FORUM_CATEGORY_E2E_CHILD_CANONICAL_PATH \
+            RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_NAME \
+            RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_SLUG \
+            RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_CANONICAL_PATH
+          do
+            test -n "${!name}"
+          done
+      - name: Materialize authenticated admin storage state
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          state="$RUNNER_TEMP/forum-category-admin-storage-state.json"
+          printf '%s' "$ADMIN_STORAGE_STATE_JSON" > "$state"
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$state"
+          echo "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE=$state" >> "$GITHUB_ENV"
+      - name: Verify CAT-5 browser evidence source contract
+        run: node scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs
+      - name: Install next-admin dependencies
+        working-directory: apps/next-admin
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium
+        working-directory: apps/next-admin
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Execute mounted multilingual RTL browser evidence
+        working-directory: apps/next-admin
+        run: npx --no-install playwright test --config=playwright.forum-category-taxonomy.config.ts
+      - name: Remove authenticated admin storage state
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/forum-category-admin-storage-state.json"
