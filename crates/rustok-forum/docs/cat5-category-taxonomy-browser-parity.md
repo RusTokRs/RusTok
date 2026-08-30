@@ -18,19 +18,30 @@ with config:
 apps/next-admin/playwright.forum-category-taxonomy.config.ts
 ```
 
-and machine contract:
+machine contract:
 
 ```text
 crates/rustok-forum/contracts/evidence/forum-category-taxonomy-browser-execution-contract.json
 ```
 
-The source guard is:
+manual execution workflow:
+
+```text
+.github/workflows/forum-category-taxonomy-browser-evidence.yml
+```
+
+and source guard:
 
 ```text
 scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs
 ```
 
 The runner reuses the repository's existing `@playwright/test` dependency. It performs browser navigation only; it does not seed fixtures, call GraphQL directly, read owner tables, or bypass Forum authorization.
+
+The manual workflow is deliberately split into two boundaries:
+
+- pull-request runs execute the source verifier and `playwright --list` only; they do not receive mounted credentials or run the mounted evidence;
+- `workflow_dispatch` selects a maintainer-configured GitHub environment and is the only path that executes the mounted browser cases.
 
 ## Maintainer fixture boundary
 
@@ -45,7 +56,15 @@ The fixture must include:
 - one requested locale that has no Category translation and therefore resolves to a different Taxonomy `effective_locale`;
 - one historical Category alias whose storefront route redirects to the current Taxonomy canonical route.
 
-The admin browser state must be a normal authenticated Playwright storage-state file for an operator allowed to read/manage Forum Categories. Do not put tokens, passwords or cookies in fixture URLs.
+The admin browser state must be a normal authenticated Playwright storage-state document for an operator allowed to read/manage Forum Categories. Do not put tokens, passwords or cookies in fixture URLs.
+
+For GitHub Actions execution, store that JSON document only in the selected GitHub environment secret:
+
+```text
+RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON
+```
+
+The workflow materializes it under `RUNNER_TEMP`, exports only the temporary file path to Playwright as `RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE`, validates that the file contains JSON, and removes it in an `always()` cleanup step.
 
 ## Required environment
 
@@ -81,7 +100,7 @@ RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_SLUG
 RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_CANONICAL_PATH
 ```
 
-The supplied mounted URLs must be credential-free HTTP(S) URLs without fragments.
+For the manual GitHub Actions workflow, configure every value above except `RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE` as a variable on the selected GitHub environment. The supplied mounted URLs must be credential-free HTTP(S) URLs without fragments.
 
 ## Browser cases
 
@@ -114,17 +133,27 @@ The prepared historical alias URL must navigate to the exact current canonical C
 
 ## Source verification
 
-The source guard also pins the ownership boundary beneath the browser surface:
+The source guard pins both the mounted source and the manual execution boundary:
 
 - Forum admin localized cards retain `effective_locale`, `lang`, `dir="auto"`, LTR route identifiers, hierarchy/order and presentation rendering;
 - Forum storefront Category cards retain effective-locale copy and canonical hrefs;
 - the Forum Category tree reader still consumes `TaxonomyOwnerCategoryReader` projections for copy/hierarchy/presentation;
 - the mounted storefront route retains canonical/redirect handling;
-- none of those retained owner/mount sources can regress to `forum_category_translations`, `forum_category_route_aliases` or `ForumCategoryTranslationTargetProvider`.
+- none of those retained owner/mount sources can regress to `forum_category_translations`, `forum_category_route_aliases` or `ForumCategoryTranslationTargetProvider`;
+- mounted execution remains `workflow_dispatch`-only and requires a maintainer-selected GitHub environment;
+- authenticated storage state comes from an environment secret and the credential-free fixture values come from environment variables;
+- ordinary pull requests can verify/compile-list the retained runner without receiving mounted credentials.
 
 ## Maintainer execution
 
-From the repository root, after the environment above is populated:
+Preferred repository execution after the workflow is present on `main`:
+
+1. configure a GitHub environment with the secret and variables documented above;
+2. open **Actions → Forum Category Taxonomy Browser Evidence → Run workflow**;
+3. select that environment and run against the intended `main` revision;
+4. retain the successful workflow run URL/ID and exact head SHA as CAT-5 mounted evidence before changing the CAT-5 status.
+
+The equivalent local execution remains available from the repository root after the environment above is populated:
 
 ```bash
 node scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs
@@ -132,6 +161,4 @@ cd apps/next-admin
 npx playwright test --config playwright.forum-category-taxonomy.config.ts
 ```
 
-A successful browser run is the missing mounted multilingual/RTL parity evidence required before TAXONOMY-CAT-5 can be marked complete. This source packet itself does **not** claim browser execution, deployment provenance, rollout completion or CAT-5 completion.
-
-No browser launch, source verifier, Playwright command, CI workflow, database command or other test was executed while preparing this slice.
+A successful mounted browser run is the missing multilingual/RTL parity evidence required before TAXONOMY-CAT-5 can be marked complete. Adding or merging the workflow itself still does **not** claim browser execution, deployment provenance, rollout completion or CAT-5 completion.
