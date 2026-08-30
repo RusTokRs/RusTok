@@ -24,6 +24,7 @@ for (const path of [platformPlanPath, databasePath, adrPath, blogCursorPath, tax
 
 if (failures.length === 0) {
   const platformPlan = read(platformPlanPath);
+  const normalizedPlatformPlan = normalizeWhitespace(platformPlan);
   const database = read(databasePath);
   const adr = read(adrPath);
   const blogCursor = read(blogCursorPath);
@@ -32,23 +33,48 @@ if (failures.length === 0) {
 
   requireMarker(
     platformPlan,
-    'The Blog migration is complete through TAXONOMY-CAT-12',
+    'Blog is complete through TAXONOMY-CAT-12',
     'completed Blog consumer migration status',
   );
   requireMarker(
-    normalizeWhitespace(platformPlan),
+    normalizedPlatformPlan,
     'The former Blog Category Translation provider, live donor mirror/journal, and their runtime source files are retired.',
     'retired Blog provider boundary',
   );
   requireMarker(
-    platformPlan,
-    'Blog has completed this consumer migration through\nTAXONOMY-CAT-12.',
+    normalizedPlatformPlan,
+    'Blog completed the consumer migration through TAXONOMY-CAT-12.',
     'Phase D Blog completion',
+  );
+  requireMarker(
+    normalizedPlatformPlan,
+    'Product PostgreSQL follows the same ownership model and is source-complete through TAXONOMY-CAT-34.',
+    'Product PostgreSQL CAT-34 architecture cursor',
+  );
+  requireMarker(
+    normalizedPlatformPlan,
+    'No TAXONOMY-CAT-35 Product slice or next Category consumer is currently accepted by this plan.',
+    'no invented Product CAT-35 or later-consumer cursor',
+  );
+  requireMarker(
+    normalizedPlatformPlan,
+    'Forum established the first consumer migration precedent and its backend ownership/storage cutover is complete.',
+    'Forum backend completion architecture status',
   );
   rejectMarker(
     platformPlan,
     'Product and Blog follow with their own domain-specific binding semantics',
     'stale Blog-pending migration wording',
+  );
+  rejectMarker(
+    normalizedPlatformPlan,
+    'Product remains a separate consumer migration with its own domain-specific binding semantics.',
+    'stale Product-pending architecture wording',
+  );
+  rejectMarker(
+    normalizedPlatformPlan,
+    'Product follows with its own domain-specific binding semantics rather than a blind table rename.',
+    'stale Product-future Phase D wording',
   );
 
   requireMarker(
@@ -138,5 +164,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '[blog-taxonomy-category-cross-owner-docs] platform, Taxonomy live plan and database summary match completed Blog Category ownership',
+  '[blog-taxonomy-category-cross-owner-docs] platform, Taxonomy live plan and database summary match completed Category ownership',
 );
