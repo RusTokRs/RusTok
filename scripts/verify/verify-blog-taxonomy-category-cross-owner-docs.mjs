@@ -33,7 +33,7 @@ if (failures.length === 0) {
 
   requireMarker(
     platformPlan,
-    'Blog is complete through TAXONOMY-CAT-12',
+    'The Blog migration is complete through TAXONOMY-CAT-12',
     'completed Blog consumer migration status',
   );
   requireMarker(
@@ -42,8 +42,8 @@ if (failures.length === 0) {
     'retired Blog provider boundary',
   );
   requireMarker(
-    normalizedPlatformPlan,
-    'Blog completed the consumer migration through TAXONOMY-CAT-12.',
+    platformPlan,
+    'Blog has completed this consumer migration through\nTAXONOMY-CAT-12.',
     'Phase D Blog completion',
   );
   requireMarker(
@@ -61,6 +61,11 @@ if (failures.length === 0) {
     'Forum established the first consumer migration precedent and its backend ownership/storage cutover is complete.',
     'Forum backend completion architecture status',
   );
+  requireMarker(
+    normalizedPlatformPlan,
+    '`taxonomy.category`: active explicit Flex donor after TAXONOMY-CAT-4.',
+    'Taxonomy Category active Flex donor architecture status',
+  );
   rejectMarker(
     platformPlan,
     'Product and Blog follow with their own domain-specific binding semantics',
@@ -75,6 +80,11 @@ if (failures.length === 0) {
     normalizedPlatformPlan,
     'Product follows with its own domain-specific binding semantics rather than a blind table rename.',
     'stale Product-future Phase D wording',
+  );
+  rejectMarker(
+    normalizedPlatformPlan,
+    '`taxonomy.category`: add after the Taxonomy Category owner exists.',
+    'stale future Taxonomy Category Flex donor wording',
   );
 
   requireMarker(
