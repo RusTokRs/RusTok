@@ -196,8 +196,7 @@ For each consumer:
 - run tenant-isolation, route, hierarchy and multilingual/RTL evidence.
 
 Forum established the first migration precedent. Its backend cutover is complete, with only the
-prepared mounted multilingual/RTL browser execution still pending. Blog has completed this consumer
-migration through
+prepared mounted multilingual/RTL browser execution still pending. Blog has completed this consumer migration through
 TAXONOMY-CAT-12. Product PostgreSQL completed its canonical localized-copy and hierarchy donor
 retirement through TAXONOMY-CAT-34 while deliberately retaining Product-owned navigation/policy state
 and non-PostgreSQL compatibility. No later consumer is selected by this plan; selecting one is a
