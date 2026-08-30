@@ -224,6 +224,10 @@ Accepted CAT-5 slices already in `main`:
   migration requires every current Forum Category to have a same-ID, same-tenant Taxonomy Category in
   `module/forum` scope, removes obsolete cross-table route guards, then drops
   `forum_category_route_aliases`, `forum_category_translations` and `forum_translation_changes`.
+- PR #3708 added the retained mounted multilingual/RTL Playwright evidence source, dedicated config,
+  machine-readable execution contract and source verifier. Its contract remains
+  `source_ready_maintainer_execution_pending`: it does not claim browser execution or CAT-5
+  completion.
 
 Retained focused evidence for the foundation:
 
@@ -241,18 +245,18 @@ Retained focused evidence for the foundation:
   `32683541614`, `Taxonomy Lookup Contract` run `32683541624` and `Taxonomy PostgreSQL Evidence` run
   `32683541607`, then squash-merged as `0b09edd2a07f19cd0e8cf4820681a3ed73d09c09`.
 
-Later CAT-5 runtime slices include focused source/integration contracts, but the implementation agent
-intentionally did not execute their tests under the current maintainer instruction. Their merge does
-not substitute for the still-required mounted browser parity proof.
+Later CAT-5 runtime slices include focused source/integration contracts. PR #3708 provides the final
+browser runner source, but its merge does not substitute for the still-required mounted browser
+parity execution against the prepared Taxonomy-backed fixture.
 
-**Next:** prove mounted multilingual and RTL Forum Category admin/storefront behavior against the
-Taxonomy-owned projection, including requested/effective locale fallback, canonical localized routes,
-hierarchy/order and presentation. No backend donor/storage cutover remains. Cleanup of unreachable
-private legacy code is non-blocking and must not be confused with ownership completeness.
+**Next:** execute the retained PR #3708 mounted multilingual and RTL Forum Category browser packet
+against a prepared authenticated admin/storefront fixture, including requested/effective locale
+fallback, canonical localized routes, hierarchy/order, presentation and alias redirect. No backend
+donor/storage cutover remains.
 
-**Done when:** the backend ownership/storage cutover above remains intact and mounted multilingual/RTL
-browser evidence confirms that Forum Category behavior uses the shared Taxonomy identity/copy/routes
-without losing Forum-specific policy.
+**Done when:** the backend ownership/storage cutover above remains intact and a successful mounted
+multilingual/RTL browser run confirms that Forum Category behavior uses the shared Taxonomy
+identity/copy/routes without losing Forum-specific policy.
 
 ### Blog consumer cutover — COMPLETE
 
@@ -265,7 +269,11 @@ cursor is actualized through TAXONOMY-CAT-17.
 
 ### TAXONOMY-CAT-6 — Product and later consumers — IN PROGRESS
 
-Product is now the active Category consumer migration and remains isolated from later consumers.
+The PostgreSQL Product Category canonical/hierarchy donor cutover is source-complete through
+TAXONOMY-CAT-34. CAT-6 remains open for explicitly accepted later-consumer work and for any future
+backend-bounded Product compatibility retirement; it does not imply that retained Product domain
+state should move into Taxonomy.
+
 Accepted Product slices already in `main`:
 
 - PR #3735 / TAXONOMY-CAT-23 added the PostgreSQL tenant-safe one-to-one
@@ -283,25 +291,47 @@ Accepted Product slices already in `main`:
   new SEO writes in the same Product transaction before Taxonomy owner-sync;
 - PR #3740 / TAXONOMY-CAT-28 stopped new PostgreSQL Product Category creates from writing
   `catalog_category_translations`, while retaining non-PostgreSQL donor reads/writes and keeping
-  Product SEO plus Taxonomy owner-sync atomic.
+  Product SEO plus Taxonomy owner-sync atomic;
+- TAXONOMY-CAT-29 physically retired PostgreSQL `catalog_category_translations` only after same-ID,
+  same-tenant Taxonomy identity/locale coverage and exact Product-owned SEO parity proved the donor
+  safe to drop. Non-PostgreSQL backends keep the legacy donor read/write compatibility path;
+- TAXONOMY-CAT-30 moved PostgreSQL effective-form/schema inheritance and inherited attribute-group
+  label ancestry to the Taxonomy Category hierarchy while retaining Product schema/attribute policy;
+- TAXONOMY-CAT-31 moved the PostgreSQL schema-directory result order to Taxonomy parent/position
+  ordering while retaining Product `path` as a navigation projection;
+- TAXONOMY-CAT-32 stopped new PostgreSQL Product Category creates from materializing closure rows;
+- TAXONOMY-CAT-33 retired the historical PostgreSQL closure-parity commit invariant while preserving
+  Product parent-cycle rejection and truthful one-step rollback reconstruction;
+- PR #3746 / TAXONOMY-CAT-34 physically retired PostgreSQL `catalog_category_closure` after the
+  hierarchy-consumer, write and invariant cutovers. The focused storage/write/invariant gates and
+  Migration Compatibility fresh/N-1 matrix passed on exact head before squash merge as
+  `698684e94fbbe273b6b29209aee221d77525bcbc`.
 
-TAXONOMY-CAT-29 is the bounded PostgreSQL physical donor-retirement slice. It requires every Product
-Category to retain its same-ID, same-tenant Taxonomy `Category` in `module/product` scope with the
-expected `product-category-{uuid}` canonical key. It independently proves exact Product-owned SEO
-parity for every historical donor locale that contains `meta_title` or `meta_description`, then drops
-`catalog_category_translations` in the same transaction. It deliberately does not require stale donor
-`name`/`description` equality with current Taxonomy copy because Taxonomy may legitimately evolve after
-the cutover. Non-PostgreSQL backends remain no-op and keep their donor storage/read/write path.
+**Current Product cursor: TAXONOMY-CAT-34.** On PostgreSQL, Taxonomy is the canonical Category
+identity/localized-copy/route/hierarchy/order owner. Product no longer retains a canonical Category
+translation donor or closure storage authority on that backend.
 
-**Next:** complete TAXONOMY-CAT-29 PostgreSQL donor retirement, then audit the remaining Product-owned
-Category projections and policy surfaces: `path`/closure/navigation ordering, lifecycle, virtual rule
-state, schema/attribute bindings, product/category membership and merchandising semantics. Do not move
-those fields into Taxonomy merely because canonical identity/localization/hierarchy storage is shared.
+Product continues to own `code`, `kind`, virtual rule state, activation/soft-delete lifecycle,
+Product-specific metadata, localized SEO, schema/attribute definitions and assignments,
+product/category membership, merchandising semantics and the `parent_id` / `path` / `level`
+projections retained for Product navigation/lifecycle contracts. CAT-30/31 changed the canonical
+PostgreSQL hierarchy/order source; they did not transfer those Product business contracts into
+Taxonomy.
 
-Product navigation/merchandising/placement semantics, Product `path`/closure, lifecycle, virtual rule
-state, schema/attribute bindings and product/category assignment semantics remain Product-owned
-contracts rather than being blindly moved into Taxonomy. Later Product slices must preserve those
-boundaries while removing only storage whose canonical ownership is already demonstrated in Taxonomy.
+Non-PostgreSQL backends intentionally retain `catalog_category_translations` donor reads/writes and
+`catalog_category_closure` hierarchy compatibility until an equivalent tenant-safe Taxonomy cutover
+is separately designed and verified.
+
+**Next:** no TAXONOMY-CAT-35 Product slice is currently defined or accepted. Do not infer a new donor
+retirement merely from the CAT-34 number. Any next Product slice must start from fresh `main`, name an
+explicit backend and ownership boundary, and preserve the Product-owned contracts above. Later
+Category consumers continue one at a time under the same typed-binding/backfill/read-write-cutover
+evidence rules.
+
+**Product PostgreSQL done when:** the CAT-34 state remains green under focused and migration
+compatibility evidence, with Taxonomy canonical ownership and Product policy/navigation ownership
+both preserved. CAT-6 as a whole remains open only for separately accepted later-consumer or
+backend-compatibility work.
 
 ## Lookup and Translation invariants
 
