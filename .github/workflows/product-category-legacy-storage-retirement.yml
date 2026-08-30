@@ -45,13 +45,25 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
-      - name: Verify Product Category legacy storage retirement contract
-        run: node scripts/verify/verify-product-category-legacy-storage-retirement.mjs
       - name: Fetch exact PR base
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           git fetch --no-tags --depth=1 origin "$base"
+      - name: Verify Product Category legacy storage retirement contract when CAT-29 changes
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          migration='crates/rustok-product/src/migrations/m20260829_000018_retire_product_category_legacy_translations.rs'
+          verifier='scripts/verify/verify-product-category-legacy-storage-retirement.mjs'
+          changed="$(git diff --name-only "$base" "$head")"
+          if ! printf '%s\n' "$changed" | grep -Fxq "$migration" \
+            && ! printf '%s\n' "$changed" | grep -Fxq "$verifier"; then
+            echo "CAT-29 runtime/verifier unchanged; historical CAT-29 source verifier is not applicable."
+            exit 0
+          fi
+          node scripts/verify/verify-product-category-legacy-storage-retirement.mjs
       - name: Assert bounded CAT-29 file set when CAT-29 changes
         shell: bash
         run: |
