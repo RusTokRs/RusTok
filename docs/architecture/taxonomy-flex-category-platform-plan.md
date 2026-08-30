@@ -20,12 +20,12 @@ extension; a JSON/metadata column alone does not imply support.
 
 ## Implementation status
 
-The architecture remains staged across consumers. Blog is complete through TAXONOMY-CAT-12:
-canonical localized copy, route history, hierarchy projection and Translation ownership are
-Taxonomy-owned; Blog retains its typed binding plus module-specific membership/settings/revision
-state. The former Blog Category Translation provider, live donor mirror/journal, and their runtime
-source files are retired. Historical Blog backfill/migration records remain only for upgrade
-provenance.
+The architecture remains staged across consumers, but Blog is no longer a pending Category owner
+migration. The Blog migration is complete through TAXONOMY-CAT-12: canonical localized copy, route
+history, hierarchy projection and Translation ownership are Taxonomy-owned; Blog retains its typed
+binding plus module-specific membership/settings/revision state. The former Blog Category Translation
+provider, live donor mirror/journal, and their runtime source files are retired. Historical Blog
+backfill/migration records remain only for upgrade provenance.
 
 Forum established the first consumer migration precedent and its backend ownership/storage cutover is
 complete. TAXONOMY-CAT-5 remains open only for the retained mounted multilingual/RTL browser packet to
@@ -139,8 +139,9 @@ The list is not automatic: every future donor still needs demonstrated product i
 - `forum.topic`: retained as an explicit extension surface. Administrators may add optional custom
   topic fields, while Forum-owned topic lifecycle, category, route identity, moderation, counters,
   authoring and other business invariants remain normalized Forum fields.
-- `taxonomy.category`: add after the Taxonomy Category owner exists. This is the extension point for
-  tenant-specific category fields beyond the canonical built-ins.
+- `taxonomy.category`: active explicit Flex donor after TAXONOMY-CAT-4. It is the extension point for
+  tenant-specific Category fields beyond the canonical built-ins and reuses the generic Flex
+  definition/value/localization/validation/transport boundary.
 - groups/profiles and future modules: opt in when their product surface explicitly supports custom
   fields.
 
@@ -195,11 +196,12 @@ For each consumer:
 - run tenant-isolation, route, hierarchy and multilingual/RTL evidence.
 
 Forum established the first migration precedent. Its backend cutover is complete, with only the
-prepared mounted multilingual/RTL browser execution still pending. Blog completed the consumer
-migration through TAXONOMY-CAT-12. Product PostgreSQL completed its canonical localized-copy and
-hierarchy donor retirement through TAXONOMY-CAT-34 while deliberately retaining Product-owned
-navigation/policy state and non-PostgreSQL compatibility. No later consumer is selected by this plan;
-selecting one is a separate accepted planning decision.
+prepared mounted multilingual/RTL browser execution still pending. Blog has completed this consumer
+migration through
+TAXONOMY-CAT-12. Product PostgreSQL completed its canonical localized-copy and hierarchy donor
+retirement through TAXONOMY-CAT-34 while deliberately retaining Product-owned navigation/policy state
+and non-PostgreSQL compatibility. No later consumer is selected by this plan; selecting one is a
+separate accepted planning decision.
 
 ## Forum-specific target
 
