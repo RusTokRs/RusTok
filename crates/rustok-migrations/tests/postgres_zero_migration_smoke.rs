@@ -1330,9 +1330,39 @@ async fn assert_schema_contract(db: &DatabaseConnection) -> Result<(), Box<dyn s
     }
     assert_trigger_exists(db, "trg_products_normalize_channel_visibility").await?;
     assert_trigger_exists(db, "trg_catalog_categories_validate_tree").await?;
-    assert_trigger_exists(db, "trg_catalog_category_closure_validate_tree").await?;
+
+    if migration_is_applied(
+        db,
+        "m20260829_000020_retire_product_category_closure_storage",
+    )
+    .await?
+    {
+        assert_table_does_not_exist(db, "catalog_category_closure").await?;
+    } else {
+        assert_table_exists(db, "catalog_category_closure").await?;
+        assert_trigger_exists(db, "trg_catalog_category_closure_validate_tree").await?;
+    }
 
     Ok(())
+}
+
+async fn migration_is_applied(
+    db: &DatabaseConnection,
+    migration: &str,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT EXISTS (SELECT 1 FROM seaql_migrations WHERE version = $1) AS exists",
+            [migration.to_owned().into()],
+        ))
+        .await
+        .map_err(|error| format!("migration presence query for {migration} must succeed: {error}"))?
+        .ok_or_else(|| format!("migration presence query for {migration} returned no row"))?;
+    let applied: bool = row.try_get("", "exists").map_err(|error| {
+        format!("migration presence result for {migration} must decode: {error}")
+    })?;
+    Ok(applied)
 }
 
 async fn apply_migrations_incrementally(
