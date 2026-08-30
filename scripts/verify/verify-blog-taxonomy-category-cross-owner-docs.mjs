@@ -68,13 +68,13 @@ if (failures.length === 0) {
   );
   requireMarker(
     normalizedTaxonomyPlan,
-    '### TAXONOMY-CAT-6 — Product and later consumers — PLANNED',
+    '### TAXONOMY-CAT-6 — Product and later consumers — IN PROGRESS',
     'Taxonomy live plan remaining consumer cursor',
   );
   requireMarker(
     normalizedTaxonomyPlan,
-    'Product remains the next Category consumer migration',
-    'Taxonomy live plan Product-next cursor',
+    '**Current Product cursor: TAXONOMY-CAT-34.**',
+    'Taxonomy live plan current Product cursor',
   );
   rejectMarker(
     normalizedTaxonomyPlan,
@@ -85,6 +85,11 @@ if (failures.length === 0) {
     normalizedTaxonomyPlan,
     'Product and Blog follow Forum',
     'stale Blog-pending Taxonomy consumer wording',
+  );
+  rejectMarker(
+    normalizedTaxonomyPlan,
+    'Product remains the next Category consumer migration',
+    'stale Product-next Taxonomy consumer wording',
   );
 
   requireMarker(
