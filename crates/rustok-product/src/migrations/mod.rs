@@ -43,6 +43,7 @@ mod m20260829_000016_backfill_product_categories_to_taxonomy;
 mod m20260829_000017_add_product_category_seo_translations;
 mod m20260829_000018_retire_product_category_legacy_translations;
 mod m20260829_000019_retire_product_category_closure_invariant;
+mod m20260829_000020_retire_product_category_closure_storage;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -90,6 +91,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260829_000017_add_product_category_seo_translations::Migration),
         Box::new(m20260829_000018_retire_product_category_legacy_translations::Migration),
         Box::new(m20260829_000019_retire_product_category_closure_invariant::Migration),
+        Box::new(m20260829_000020_retire_product_category_closure_storage::Migration),
     ]
 }
 

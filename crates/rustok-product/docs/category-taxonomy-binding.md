@@ -1,7 +1,7 @@
 # Product Category → Taxonomy migration contract
 
-Status: **source-complete PostgreSQL legacy Category translation storage retirement; non-PostgreSQL donor compatibility retained**
-Current migration cursor: **TAXONOMY-CAT-33 PostgreSQL closure invariant retirement; physical closure storage retirement and non-PostgreSQL compatibility retained**.
+Status: **source-complete PostgreSQL Product Category canonical/hierarchy donor retirement; non-PostgreSQL donor compatibility retained**
+Current migration cursor: **TAXONOMY-CAT-34 PostgreSQL closure storage retirement; Product navigation projections and non-PostgreSQL closure compatibility retained**.
 
 TAXONOMY-CAT-23 introduced the tenant-safe Product-owned binding seam.
 TAXONOMY-CAT-24 added the PostgreSQL-only monotonic backfill of existing Product
@@ -23,6 +23,8 @@ TAXONOMY-CAT-32 stops new PostgreSQL Product Category creates from materializing
 the Product closure mirror after all PostgreSQL hierarchy consumers moved to Taxonomy.
 TAXONOMY-CAT-33 retires the remaining PostgreSQL closure-parity commit invariant while
 retaining cycle rejection and leaving physical closure storage retirement for a later slice.
+TAXONOMY-CAT-34 physically retires the now-unread and unwritten PostgreSQL Product
+closure storage while retaining the Product parent-cycle guard and non-PostgreSQL compatibility.
 
 ## CAT-23 compatibility history
 
@@ -150,6 +152,9 @@ PostgreSQL-only fail-closed physical donor retirement implemented by CAT-29.
 
 ## CAT-29 PostgreSQL physical donor retirement
 
+Historical CAT-29 record:
+Status: **source-complete PostgreSQL legacy Category translation storage retirement; non-PostgreSQL donor compatibility retained**.
+
 Migration `m20260829_000018_retire_product_category_legacy_translations` is PostgreSQL-only.
 Other database backends return without changing schema because they still rely on the
 legacy donor read/write path.
@@ -183,6 +188,8 @@ non-PostgreSQL installs keep it because CAT-27 through CAT-29 storage migrations
 backend-bounded.
 
 ## CAT-30 PostgreSQL hierarchy-consumer cutover
+
+Historical CAT-30 boundary retained Product `path` and closure persistence as compatibility state outside canonical PostgreSQL hierarchy ownership.
 
 CAT-30 does not move Product attribute/schema business policy into Taxonomy. It changes
 only the canonical hierarchy source used by Product consumers that inherit along a
@@ -289,33 +296,67 @@ pretending that stale closure rows remained canonical during CAT-33.
 Non-PostgreSQL backends are unchanged by CAT-33. Their active Product closure
 write/read compatibility pair from CAT-32 remains intact.
 
-## Product-owned state retained after CAT-33
+## CAT-34 PostgreSQL closure storage retirement
+
+Migration `m20260829_000020_retire_product_category_closure_storage` removes the final
+physical PostgreSQL `catalog_category_closure` storage object after CAT-30 moved the last
+PostgreSQL hierarchy consumer to Taxonomy, CAT-32 stopped PostgreSQL closure writes, and
+CAT-33 removed closure parity from the deferred Product Category invariant.
+
+The PostgreSQL `up` path is deliberately fail-closed:
+
+- it runs the retained cycle-only `rustok_product_assert_category_tree()` before changing
+  schema and requires the CAT-33 closure compatibility trigger to exist;
+- it drops `trg_catalog_category_closure_validate_tree`, then executes
+  `DROP TABLE catalog_category_closure` **without `CASCADE`**, so an unexpected external
+  dependency aborts the migration instead of being silently destroyed;
+- the table-owned primary key, depth check, foreign keys and descendant index retire with
+  the table, while `trg_catalog_categories_validate_tree`,
+  `rustok_product_validate_category_tree_trigger()` and the cycle-only assertion function
+  remain live;
+- it invokes the cycle-only assertion again after the drop, proving that the retained
+  Product parent-tree guard has no hidden closure-table dependency.
+
+CAT-34 keeps one-step rollback truthful rather than recreating an empty compatibility
+shell. Its PostgreSQL `down` path recreates the historical closure table shape, including
+the tenant-safe composite ancestor/descendant foreign keys added by
+`m20260701_000002_add_product_catalog_tenant_consistency_constraints`, restores
+`idx_catalog_category_closure_descendant`, recursively reconstructs exact closure rows
+from the retained Product `parent_id` projection, proves row/depth parity directly, and
+recreates the deferred closure trigger. The CAT-33 cycle-only assertion remains unchanged;
+a subsequent rollback of CAT-33 is the step that restores closure parity as a commit
+authority. This preserves truthful CAT-34 → CAT-33 → CAT-32 rollback sequencing.
+
+Non-PostgreSQL backends keep their existing `catalog_category_closure` table, create
+writes and effective-form ancestry reads unchanged. CAT-34 is therefore physical
+PostgreSQL storage retirement only; it does not remove the compatibility seam from
+SQLite/MySQL or change Product navigation projections.
+
+## Product-owned state retained after CAT-34
 
 Product continues to own:
 
 - Category `code`, `kind`, virtual-category `rule_config`, activation/soft-delete
   lifecycle and Product-specific metadata;
 - Product `parent_id`, `path` and `level` projections. PostgreSQL no longer treats those
-  fields or Product closure rows as canonical Category ancestry; `path` remains the
-  Product navigation projection;
-- Product `path` and closure persistence remain compatibility state: historical PostgreSQL
-  closure rows and schema objects are retained pending a separate physical retirement
-  proof, while non-PostgreSQL backends retain active closure writes/reads;
+  fields as canonical Category ancestry; `path` remains the Product navigation projection;
 - localized `meta_title` / `meta_description` in
   `catalog_category_seo_translations` on PostgreSQL;
 - category-bound attribute/schema definitions, assignments, inheritance semantics and
   labels. CAT-30 changes their hierarchy source, not their Product ownership;
 - product/category membership, primary/navigation/collection/virtual assignment
   semantics and Product projections;
-- non-PostgreSQL `catalog_category_translations` donor storage until those backends gain
-  an equivalent verified Taxonomy cutover.
+- non-PostgreSQL `catalog_category_translations` donor storage and
+  `catalog_category_closure` hierarchy compatibility until those backends gain an
+  equivalent verified Taxonomy cutover.
 
 PostgreSQL no longer owns a Product-local canonical Category translation table after
 CAT-29. CAT-30 stops Product effective-form/group-label consumers from treating
 Product-local parent/closure state as canonical ancestry, CAT-31 stops Product path
 from being the externally visible PostgreSQL schema-directory ordering authority,
-CAT-32 stops creating new PostgreSQL closure mirror rows, and CAT-33 stops the historical
-closure-parity function from reviving that mirror as a deferred commit requirement.
+CAT-32 stops creating new PostgreSQL closure mirror rows, CAT-33 stops the historical
+closure-parity function from reviving that mirror as a deferred commit requirement, and
+CAT-34 removes the retired PostgreSQL closure table/trigger/index/foreign-key storage.
 Taxonomy remains the canonical Category identity/localized-copy/route/hierarchy owner;
 Product relation/policy/SEO/navigation state stays Product-owned.
 
@@ -335,9 +376,10 @@ CAT-27 reuses the already-normalized Product Category locale for SEO identity. C
 reuses that same normalized input for Taxonomy and Product SEO without creating a second
 localized canonical copy on PostgreSQL. CAT-29 removes only the superseded PostgreSQL
 donor table; CAT-30 changes hierarchy consumers, CAT-31 changes schema-directory
-ordering, CAT-32 retires PostgreSQL closure writes, and CAT-33 retires only the
-PostgreSQL closure-parity commit invariant. None changes Taxonomy locale resolution,
-Product route semantics or Product SEO locale identity.
+ordering, CAT-32 retires PostgreSQL closure writes, CAT-33 retires only the PostgreSQL
+closure-parity commit invariant, and CAT-34 retires only the physical PostgreSQL closure
+storage. None changes Taxonomy locale resolution, Product route semantics or Product SEO
+locale identity.
 
 ## Translation ownership boundary
 

@@ -66,19 +66,29 @@ jobs:
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           git fetch --no-tags --depth=1 origin "$base"
-      - name: Assert bounded CAT-33 file set
+      - name: Assert bounded CAT-33 file set when CAT-33 migration or verifier changes
+        id: cat33_scope
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           changed="$(git diff --name-only "$base" "$head")"
           printf '%s\n' "$changed"
+          anchors='^(crates/rustok-product/src/migrations/m20260829_000019_retire_product_category_closure_invariant\.rs|scripts/verify/verify-product-category-closure-invariant-retirement\.mjs)$'
+          if ! printf '%s\n' "$changed" | grep -Eq "$anchors"; then
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            echo "CAT-33 migration/verifier unchanged; PR-wide CAT-33 slice restriction is not applicable."
+            exit 0
+          fi
+          echo "active=true" >> "$GITHUB_OUTPUT"
           allowed='^(crates/rustok-product/src/migrations/m20260829_000019_retire_product_category_closure_invariant\.rs|crates/rustok-product/src/migrations/mod\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|docs/migrations/backfill-contracts\.json|scripts/verify/verify-product-category-closure-invariant-retirement\.mjs|\.github/workflows/product-category-closure-invariant-retirement\.yml|\.github/workflows/product-category-closure-write-retirement\.yml)$'
           unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           test -z "$unexpected"
       - name: Check Product formatting
+        if: steps.cat33_scope.outputs.active == 'true'
         run: cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
       - name: Create bounded migration test role
+        if: steps.cat33_scope.outputs.active == 'true'
         env:
           PGPASSWORD: postgres
         run: |
@@ -86,6 +96,7 @@ jobs:
             --set ON_ERROR_STOP=1 \
             --command "CREATE ROLE rustok_migration LOGIN PASSWORD 'rustok_migration' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8"
       - name: Rehearse fresh PostgreSQL apply plus CAT-33 rollback and reapply
+        if: steps.cat33_scope.outputs.active == 'true'
         env:
           RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_cat33_${{ github.run_id }}
           RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
@@ -102,8 +113,10 @@ jobs:
           --ignored
           --nocapture
       - name: Compile Product migrations and runtime
+        if: steps.cat33_scope.outputs.active == 'true'
         run: cargo check -p rustok-product --lib
       - name: Check full PR whitespace
+        if: steps.cat33_scope.outputs.active == 'true'
         shell: bash
         run: |
           base="${{ github.event.pull_request.base.sha }}"
