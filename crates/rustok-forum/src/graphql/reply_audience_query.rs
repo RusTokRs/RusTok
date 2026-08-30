@@ -66,7 +66,7 @@ impl ForumReplyAudienceQuery {
         let (replies, total) = service
             .list_response_authenticated_owner_visible_with_audience_context(
                 tenant_id,
-                forum_security(&auth),
+                forum_security(auth),
                 context,
                 topic_id,
                 crate::ListRepliesFilter {

@@ -2,7 +2,7 @@ use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     ForumCategoryTaxonomyBindingService, ForumModule, entities::forum_category_taxonomy_binding,
 };
-use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
+use rustok_outbox::OutboxModule;
 use rustok_taxonomy::{
     CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
 };

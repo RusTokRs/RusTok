@@ -45,6 +45,11 @@ const staticDistributionReleaseOwnerPath = path.join(
   root,
   'crates/rustok-modules/src/distribution_release.rs',
 );
+const staticDistributionRolloutOwnerPath = path.join(
+  root,
+  'crates/rustok-modules/src/distribution_rollout.rs',
+);
+const staticDistributionOwnerPath = path.join(root, 'crates/rustok-modules/src/distribution.rs');
 const runtimeManifestPath = path.join(root, 'crates/rustok-runtime/Cargo.toml');
 const registryValidationWorkerRoot = path.join(root, 'crates/rustok-registry-validation-worker');
 const registryValidationWorkerManifestPath = path.join(registryValidationWorkerRoot, 'Cargo.toml');
@@ -194,6 +199,11 @@ try {
     staticDistributionReleaseOwnerPath,
     'utf8',
   );
+  const staticDistributionRolloutOwner = fs.readFileSync(
+    staticDistributionRolloutOwnerPath,
+    'utf8',
+  );
+  const staticDistributionOwner = fs.readFileSync(staticDistributionOwnerPath, 'utf8');
   const runtimeManifest = fs.readFileSync(runtimeManifestPath, 'utf8');
   const forbiddenDependencyViolations = forbiddenOwnerDependencies.filter((dependency) =>
     new RegExp(`^${dependency.replaceAll('-', '\\-')}\\s*=`, 'm').test(ownerManifest),
@@ -270,6 +280,31 @@ try {
     );
   }
 
+  const distributionRolloutContextFields =
+    staticDistributionRolloutOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  if (
+    distributionRolloutContextFields.length !== 2 ||
+    !staticDistributionRolloutOwner.includes('command.context.tenant_id.is_some()') ||
+    !staticDistributionRolloutOwner.includes('trace_id, correlation_id, created_at') ||
+    !staticDistributionRolloutOwner.includes('event_envelope_for_command(') ||
+    !staticDistributionRolloutOwner.includes('record.trace_id.as_deref()')
+  ) {
+    fail(
+      'static distribution rollout and recovery commands must retain platform-scoped ModuleCommandContext evidence in durable receipts and owner-created outbox events',
+    );
+  }
+
+  if (
+    !staticDistributionOwner.includes('pub context: ModuleCommandContext,') ||
+    !staticDistributionOwner.includes('command.context.tenant_id.is_some()') ||
+    !staticDistributionOwner.includes('trace_id, correlation_id, created_at') ||
+    !staticDistributionOwner.includes('event_envelope_for_command(')
+  ) {
+    fail(
+      'static distribution build commands must retain platform-scoped ModuleCommandContext evidence in their durable receipt and owner-created outbox event',
+    );
+  }
+
   const distributionBootstrapContextFields =
     staticDistributionBootstrapOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
   if (
@@ -305,6 +340,21 @@ try {
   ) {
     fail(
       'artifact lifecycle commands must carry one scope-matched ModuleCommandContext through durable receipts and owner-created events',
+    );
+  }
+
+  const admissionCommand = lifecycleOwner.match(
+    /pub struct ArtifactAdmissionCommand\s*\{(?<fields>[\s\S]*?)\n\}/,
+  );
+  if (
+    !admissionCommand?.groups?.fields.includes('pub context: ModuleCommandContext,') ||
+    lifecycleOwner.includes('pub actor_id: Uuid,\n    pub idempotency_key: Uuid,') ||
+    !lifecycleOwner.includes('admission command context tenant does not match installation scope') ||
+    !lifecycleOwner.includes('trace_id, correlation_id, request_digest, committed_at') ||
+    !lifecycleOwner.includes('event_envelope_for_command(\n                    &command.context,')
+  ) {
+    fail(
+      'artifact admission must retain one scope-matched ModuleCommandContext in its durable idempotency receipt and owner-created outbox event',
     );
   }
 
@@ -633,8 +683,11 @@ try {
   if (
     !alloyReleaseStager.includes('smoke_script.parent_release = source.parent_release.clone()') ||
     !alloyReleaseStager.includes('parent_release: source.parent_release.clone()') ||
+    !alloyReleaseStager.includes('sandbox_scenario_digest: smoke_evidence.scenario_digest') ||
     !alloyOwnerSource.includes('pub parent_release: Option<crate::ArtifactReleaseRef>') ||
-    !alloyOwnerSource.includes('active_published_parent_exists') ||
+    !alloyOwnerSource.includes('pub fn alloy_publication_smoke_scenario_digest') ||
+    !alloyOwnerSource.includes('sandbox_scenario_digest') ||
+    !alloyOwnerSource.includes('active_published_rhai_parent_exists') ||
     !alloyOwnerSource.includes('parent_release.digest == command.source_digest') ||
     !alloyOwnerSource.includes('parent_release_from_stage_row') ||
     !alloyOwnerSource.includes('lineage: crate::ArtifactSourceLineage') ||
@@ -643,7 +696,7 @@ try {
     !alloyPublicationMigration.includes('lineage JSONB NOT NULL') ||
     !alloyPublicationMigration.includes('lineage JSON NOT NULL')
   ) {
-    fail('imported Alloy forks must retain parent lineage through owner staging and the published artifact contract');
+    fail('imported Alloy forks and fixed publication smoke evidence must remain immutable through owner staging and the published artifact contract');
   }
 
   for (const owner of ownerBoundaries) {

@@ -8,9 +8,16 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const workerRoot = path.join(root, 'crates/rustok-module-build-worker');
 const workerManifest = path.join(workerRoot, 'Cargo.toml');
 const jobLauncherPath = path.join(workerRoot, 'src/runner.rs');
+const readinessProbePath = path.join(workerRoot, 'src/bin/rustok-module-build-worker-probe.rs');
 const artifactPath = path.join(workerRoot, 'src/artifact.rs');
 const artifactContractPath = path.join(root, 'crates/rustok-modules/src/artifact.rs');
 const buildContractPath = path.join(root, 'crates/rustok-modules/src/build.rs');
+const authoringPath = path.join(root, 'crates/rustok-modules/src/authoring.rs');
+const authoringCliPath = path.join(root, 'crates/rustok-modules/cli/src/lib.rs');
+const moduleTemplateManifestPath = path.join(
+  root,
+  'crates/rustok-module-template/assets/Cargo.toml.template',
+);
 const serverRoot = path.join(root, 'apps/server');
 const dispatcherRoot = path.join(root, 'crates/rustok-module-build-dispatcher');
 const transportServerPath = path.join(root, 'crates/rustok-module-build-transport/src/server.rs');
@@ -49,6 +56,23 @@ const forbiddenSourcePatterns = [
 const runnerSecretPatterns = [
   /RUSTOK_MODULE_BUILD_(?:SERVER_KEY|CLIENT_CA|REGISTRY_CREDENTIAL|COSIGN_KEY)/,
   /(?:DATABASE_URL|RUSTOK_DATABASE_|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|GOOGLE_APPLICATION_CREDENTIALS|AZURE_CLIENT_SECRET)/,
+];
+const nativeDynamicLoaderPatterns = [
+  /\blibloading\b/i,
+  /\bLoadLibrary(?:A|W)?\b/,
+  /\bGetProcAddress\b/,
+  /\bdlopen\b/,
+  /\bdlsym\b/,
+  /\bLibrary::new\s*\(/,
+];
+const nativeDynamicBoundaryRoots = [
+  'crates/alloy/src',
+  'crates/rustok-modules/src',
+  'crates/rustok-modules/cli/src',
+  'crates/rustok-module-build-worker/src',
+  'crates/rustok-sandbox/src',
+  'crates/rustok-module-sdk/src',
+  'crates/rustok-module-template/src',
 ];
 
 function fail(message) {
@@ -156,9 +180,39 @@ try {
   }
 
   const jobLauncher = fs.readFileSync(jobLauncherPath, 'utf8');
+  const readinessProbe = fs.readFileSync(readinessProbePath, 'utf8');
   const artifact = fs.readFileSync(artifactPath, 'utf8');
   const artifactContract = fs.readFileSync(artifactContractPath, 'utf8');
   const buildContract = fs.readFileSync(buildContractPath, 'utf8');
+  const authoring = fs.readFileSync(authoringPath, 'utf8');
+  const authoringCli = fs.readFileSync(authoringCliPath, 'utf8');
+  const moduleTemplateManifest = fs.readFileSync(moduleTemplateManifestPath, 'utf8');
+  const nativeDynamicLoaderViolations = nativeDynamicBoundaryRoots
+    .flatMap((relativeRoot) => rustFiles(path.join(root, relativeRoot)))
+    .filter((filePath) => {
+      const source = fs.readFileSync(filePath, 'utf8');
+      return nativeDynamicLoaderPatterns.some((pattern) => pattern.test(source));
+    })
+    .map(relative);
+  if (nativeDynamicLoaderViolations.length > 0) {
+    fail(
+      `Rust Component paths must not load native dynamic libraries: ${nativeDynamicLoaderViolations.join(', ')}`,
+    );
+  }
+  if (
+    !moduleTemplateManifest.includes('crate-type = ["cdylib"]') ||
+    !moduleTemplateManifest.includes('component_target = "{{component_target}}"') ||
+    !authoring.includes('component_target: MODULE_BUILD_COMPONENT_TARGET.to_string()') ||
+    !authoringCli.includes('MODULE_BUILD_COMPONENT_TARGET') ||
+    !authoringCli.includes('"component_target", MODULE_BUILD_COMPONENT_TARGET') ||
+    !authoringCli.includes('"--target",\n                MODULE_BUILD_COMPONENT_TARGET') ||
+    !jobLauncher.includes('RUSTOK_MODULE_BUILD_COMPONENT_TARGET') ||
+    !jobLauncher.includes('self.component_target == request.toolchain.component_target')
+  ) {
+    fail(
+      'Rust Component authoring and build execution must remain fixed to the WASI P2 component target',
+    );
+  }
   if (
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_LAUNCHER') ||
     !jobLauncher.includes('RUSTOK_MODULE_BUILD_JOB_LAUNCHER_DIGEST') ||
@@ -180,12 +234,16 @@ try {
     !jobLauncher.includes('oci-job-receipt.json') ||
     !jobLauncher.includes('OCI_JOB_RECEIPT_PROTOCOL_VERSION') ||
     !jobLauncher.includes('struct OciJobReceipt') ||
-    !jobLauncher.includes('oci_job_receipt_rejects_unknown_fields') ||
+    !jobLauncher.includes('oci_job_receipt_requires_the_complete_current_schema') ||
+    !jobLauncher.includes('oci_job_receipt_rejects_a_different_component_target') ||
     !jobLauncher.includes('oci_job_request_digest') ||
     !jobLauncher.includes('"attempt"') ||
+    !jobLauncher.includes('"scenario_digest"') ||
     !jobLauncher.includes('"dependency_lock_digest"') ||
     !jobLauncher.includes('"toolchain_digest"') ||
     !jobLauncher.includes('"wit_digest"') ||
+    !jobLauncher.includes('"component_target"') ||
+    !jobLauncher.includes('RUSTOK_MODULE_BUILD_COMPONENT_TARGET') ||
     !jobLauncher.includes('"request_digest"')
   ) {
     fail('worker must require fixed hardened OCI job launcher, image, runtime, and immutable receipt evidence');
@@ -200,6 +258,14 @@ try {
   }
   if (!jobLauncher.includes('.env_clear()') || !jobLauncher.includes('.kill_on_drop(true)')) {
     fail('untrusted OCI job launcher must clear its environment and be killed on drop');
+  }
+  if (
+    !readinessProbe.includes('GrpcModuleBuildWorker::connect_with_tls') ||
+    !readinessProbe.includes('MutualTlsClientConfig::from_env_prefix("RUSTOK_MODULE_BUILD_PROBE")') ||
+    !readinessProbe.includes('.check_readiness()') ||
+    /(?:TcpStream|tokio::net|std::net)/.test(readinessProbe)
+  ) {
+    fail('module build worker deployment probe must use the authenticated readiness RPC, not a socket check');
   }
   if (
     !artifactContract.includes('MODULE_ARTIFACT_SOURCE_MANIFEST_FILE: &str = "module-artifact.json"') ||
@@ -232,12 +298,23 @@ try {
     fail('source manifest and worker-owned descriptor stages are ordered incorrectly');
   }
   if (
-    !buildContract.includes('pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 8;') ||
+    !buildContract.includes('pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 9;') ||
     !buildContract.includes('pub const MODULE_BUILD_COMPONENT_TARGET: &str = "wasm32-wasip2";') ||
     !buildContract.includes('pub const MODULE_BUILD_RUNTIME_ABI: &str = "rustok:module/runtime@1";') ||
     !buildContract.includes('Version::parse(&self.toolchain.rust_toolchain).is_err()')
   ) {
     fail('current build request must pin protocol, runtime ABI, Rust toolchain, and WASI P2 target');
+  }
+  if (
+    !buildContract.includes('pub struct ModuleBuildScenario') ||
+    !buildContract.includes('pub scenario: ModuleBuildScenario') ||
+    !buildContract.includes('scenario_comparison: Option<LocalSandboxScenarioComparison>') ||
+    !buildContract.includes('ScenarioContractInvalid,') ||
+    !jobLauncher.includes('validate_source_scenario(') ||
+    !jobLauncher.includes('artifact_descriptor.capabilities()') ||
+    !jobLauncher.includes('source_scenario_must_be_digest_bound_and_subset_of_manifest_capabilities')
+  ) {
+    fail('worker must bind the source-local scenario and its grants to the immutable request and manifest');
   }
   if (
     !jobLauncher.includes('publication_target\n            .validate()') ||

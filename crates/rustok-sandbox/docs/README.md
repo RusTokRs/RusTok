@@ -194,6 +194,14 @@ and limits outside the local authoring envelope. The optional
 Component executor in process only for local authoring; production placement is
 unchanged and never falls back to it.
 
+Each validated local scenario also has one domain-separated canonical digest.
+The digest identifies the serialized scenario contract without exposing its
+input, fixture responses, policy details, or output. Local CLI validation and
+test reports pair it with a redacted `success` or `expected_error` result, so
+independent Rhai and WASM candidates can compare the same deterministic
+scenario without returning fixture payloads. Local comparison feedback is
+never build, admission, or publication evidence.
+
 The Wasmtime executor keeps a bounded node-local LRU cache of serialized
 compiled Components. Its key includes the pinned Wasmtime engine version, host
 target, admitted runtime ABI, and artifact digest. A cache hit deserializes into

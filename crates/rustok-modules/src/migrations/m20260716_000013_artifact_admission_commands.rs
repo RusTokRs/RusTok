@@ -17,6 +17,8 @@ impl MigrationTrait for Migration {
                     scope_tenant_key TEXT NOT NULL,\
                     actor_id UUID NOT NULL,\
                     idempotency_key UUID NOT NULL,\
+                    trace_id TEXT NOT NULL,\
+                    correlation_id UUID NOT NULL,\
                     request_digest TEXT NOT NULL,\
                     installation_id UUID NULL REFERENCES module_artifact_installations(installation_id),\
                     committed_at TIMESTAMPTZ NOT NULL,\
@@ -38,6 +40,8 @@ impl MigrationTrait for Migration {
                     scope_tenant_key TEXT NOT NULL,\
                     actor_id TEXT NOT NULL,\
                     idempotency_key TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL,\
+                    correlation_id TEXT NOT NULL,\
                     request_digest TEXT NOT NULL,\
                     installation_id TEXT NULL REFERENCES module_artifact_installations(installation_id),\
                     committed_at TEXT NOT NULL,\

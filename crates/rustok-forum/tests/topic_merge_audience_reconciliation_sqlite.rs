@@ -52,9 +52,15 @@ async fn setup_before_forum_21g() -> TestResult<(
         migration.up(&schema).await?;
     }
     let mut forum_migrations = ForumModule.migrations();
-    let forum_21g_migration = forum_migrations
-        .pop()
+    let index_21g = forum_migrations
+        .iter()
+        .position(|m| {
+            m.name().contains("000015")
+                || m.name()
+                    .contains("add_forum_topic_merge_audience_reconciliations")
+        })
         .ok_or("FORUM-21G migration missing from Forum registry")?;
+    let forum_21g_migration = forum_migrations.remove(index_21g);
     for migration in forum_migrations {
         migration.up(&schema).await?;
     }
@@ -328,14 +334,18 @@ async fn historical_merge_audience_reconciliation_moves_source_only_layer_and_is
     ));
 
     assert!(db
-        .execute_unprepared(&format!(
-            "UPDATE forum_topic_merge_audience_reconciliations SET reason = 'tampered' WHERE tenant_id = '{tenant_id}' AND operation_id = '{operation_id}'"
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE forum_topic_merge_audience_reconciliations SET reason = 'tampered' WHERE tenant_id = ? AND operation_id = ?",
+            vec![tenant_id.into(), operation_id.into()],
         ))
         .await
         .is_err());
     assert!(db
-        .execute_unprepared(&format!(
-            "DELETE FROM forum_topic_merge_audience_reconciliations WHERE tenant_id = '{tenant_id}' AND operation_id = '{operation_id}'"
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "DELETE FROM forum_topic_merge_audience_reconciliations WHERE tenant_id = ? AND operation_id = ?",
+            vec![tenant_id.into(), operation_id.into()],
         ))
         .await
         .is_err());
@@ -702,7 +712,7 @@ async fn reconciliation_event_count(db: &DatabaseConnection, tenant_id: Uuid) ->
         db,
         Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT COUNT(*) AS value FROM forum_domain_events WHERE tenant_id = ? AND event_type = 'forum.topic.merge_audience_reconciled'",
+            "SELECT COUNT(*) AS value FROM forum_domain_events WHERE tenant_id = ? AND event_type = 'forum.topic.merge.audience_reconciled'",
             vec![tenant_id.into()],
         ),
     )
@@ -734,7 +744,7 @@ async fn assert_reconciliation_event(
     );
     assert_eq!(
         row.try_get::<String>("", "event_type")?,
-        "forum.topic.merge_audience_reconciled"
+        "forum.topic.merge.audience_reconciled"
     );
     assert_eq!(row.try_get::<i16>("", "schema_version")?, 1);
     assert_eq!(

@@ -291,6 +291,7 @@
       "review_policy_revision",
       "sandbox_execution_id",
       "sandbox_test_path",
+      "sandbox_scenario_digest",
       "sandbox_executor",
       "sandbox_runtime_abi",
       "sandbox_policy_digest",

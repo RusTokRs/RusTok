@@ -133,6 +133,7 @@ const ALLOY_AUTHORED_FOLLOW_UP_STAGES: &[PublicationFollowUpStage] = &[Publicati
     runner_kind: "owner_evidence",
 }];
 pub const ALLOY_PUBLICATION_SMOKE_TEST_PATH: &str = "tests/publication_smoke.rhai";
+const ALLOY_PUBLICATION_SMOKE_SCENARIO_DOMAIN: &[u8] = b"rustok.alloy.publication-smoke.scenario\0";
 const MAX_REMOTE_VALIDATION_CLAIM_CANDIDATES: u64 = 128;
 const MAX_PUBLICATION_REQUEST_ID_BYTES: usize = 128;
 const MAX_PUBLICATION_EVIDENCE_REFERENCE_BYTES: usize = 512;
@@ -818,11 +819,43 @@ pub struct ModuleAlloyAuthoredStageCommand {
     pub reviewed_by_principal: serde_json::Value,
     pub sandbox_execution_id: Uuid,
     pub sandbox_test_path: String,
+    /// Digest of the canonical capability-free smoke scenario. A future
+    /// Rust/WASM evolution candidate must compare against this exact immutable
+    /// scenario rather than an ad-hoc local test input.
+    pub sandbox_scenario_digest: String,
     pub sandbox_executor: String,
     pub sandbox_runtime_abi: String,
     pub sandbox_policy_digest: String,
     pub sandbox_capability_grants: u32,
     pub actor_principal: serde_json::Value,
+}
+
+/// Returns the domain-separated digest of the fixed Alloy publication smoke
+/// scenario. The scenario deliberately has one exact test path, a null input,
+/// a successful boolean result, and no capability grants, so it can become the
+/// first immutable parity case for a later Rust/WASM rewrite.
+pub fn alloy_publication_smoke_scenario_digest() -> String {
+    #[derive(Serialize)]
+    struct PublicationSmokeScenario<'a> {
+        scenario_id: &'a str,
+        test_path: &'a str,
+        input: (),
+        expected_return: bool,
+        capability_grants: u32,
+    }
+
+    let scenario = PublicationSmokeScenario {
+        scenario_id: "alloy.publication-smoke",
+        test_path: ALLOY_PUBLICATION_SMOKE_TEST_PATH,
+        input: (),
+        expected_return: true,
+        capability_grants: 0,
+    };
+    let bytes = serde_json::to_vec(&scenario).expect("publication smoke scenario must serialize");
+    let mut hasher = Sha256::new();
+    hasher.update(ALLOY_PUBLICATION_SMOKE_SCENARIO_DOMAIN);
+    hasher.update(bytes);
+    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1449,6 +1482,7 @@ impl ModuleAlloyAuthoredStageCommand {
             || self.artifact_digest != self.source_digest
             || receipt_digest_sha256(&self.review_digest).is_err()
             || receipt_digest_sha256(&self.sandbox_policy_digest).is_err()
+            || receipt_digest_sha256(&self.sandbox_scenario_digest).is_err()
             || self.source_revision == 0
             || self.sandbox_execution_id.is_nil()
             || !self.reviewed_by_principal.is_object()
@@ -1471,6 +1505,7 @@ impl ModuleAlloyAuthoredStageCommand {
             || self.review_policy_revision.len() > MAX_PUBLICATION_EVIDENCE_POLICY_REVISION_BYTES
             || self.review_policy_revision.contains(char::is_whitespace)
             || self.sandbox_test_path != ALLOY_PUBLICATION_SMOKE_TEST_PATH
+            || self.sandbox_scenario_digest != alloy_publication_smoke_scenario_digest()
             || self.sandbox_executor != "rhai"
             || self.sandbox_runtime_abi != rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI
             || self.sandbox_capability_grants != 0
@@ -2638,6 +2673,11 @@ impl SeaOrmModuleGovernanceService {
         {
             return Err(ModuleGovernanceError::InvalidPlatformBuildStageCommand);
         }
+        if let Some(parent_release) = &completed.request.parent_release
+            && !active_published_rhai_parent_exists(&tx, backend, parent_release).await?
+        {
+            return Err(ModuleGovernanceError::InvalidPlatformBuildStageCommand);
+        }
 
         let staging_id = self.infrastructure.prefixed_id("rpbs");
         let inserted = tx
@@ -2645,15 +2685,16 @@ impl SeaOrmModuleGovernanceService {
                 backend,
                 format!(
                     "INSERT INTO registry_publish_build_staging \
-                     (id, request_id, expected_revision, tenant_id, build_request_id, source_reference, source_digest, component_digest, \
+                     (id, request_id, expected_revision, tenant_id, build_request_id, source_reference, source_digest, \
+                      parent_release_slug, parent_release_version, parent_release_digest, component_digest, \
                       artifact_manifest_digest, sbom_manifest_digest, provenance_manifest_digest, \
                       signature_manifest_digest, staged_by_principal, actor_id, trace_id, correlation_id, \
                       actor_can_manage_modules, idempotency_key, staged_at) \
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
                      ON CONFLICT (request_id, idempotency_key) DO NOTHING",
                     mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8),
                     mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15),
-                    mark(16), mark(17), mark(18),
+                    mark(16), mark(17), mark(18), mark(19), mark(20), mark(21),
                 ),
                 vec![
                     staging_id.clone().into(),
@@ -2663,6 +2704,9 @@ impl SeaOrmModuleGovernanceService {
                     registry_uuid_value(command.build_request_id, backend),
                     completed.request.source.reference.clone().into(),
                     completed.request.source.digest.clone().into(),
+                    completed.request.parent_release.as_ref().map(|parent| parent.slug.clone()).into(),
+                    completed.request.parent_release.as_ref().map(|parent| parent.version.clone()).into(),
+                    completed.request.parent_release.as_ref().map(|parent| parent.digest.clone()).into(),
                     component_digest.to_string().into(),
                     receipt.artifact.digest.clone().into(),
                     receipt.sbom_referrer.digest.clone().into(),
@@ -2685,7 +2729,8 @@ impl SeaOrmModuleGovernanceService {
                     format!(
                         "SELECT id, expected_revision, CAST(tenant_id AS TEXT) AS tenant_id, \
                          CAST(build_request_id AS TEXT) AS build_request_id, \
-                         source_reference, source_digest, component_digest, \
+                         source_reference, source_digest, \
+                         parent_release_slug, parent_release_version, parent_release_digest, component_digest, \
                          CAST(staged_by_principal AS TEXT) AS staged_by_principal, \
                          CAST(actor_id AS TEXT) AS actor_id, trace_id, \
                          CAST(correlation_id AS TEXT) AS correlation_id, actor_can_manage_modules \
@@ -2718,6 +2763,7 @@ impl SeaOrmModuleGovernanceService {
                 .map_err(store_error)?;
             let existing_source_digest: String =
                 existing.try_get("", "source_digest").map_err(store_error)?;
+            let existing_parent_release = parent_release_from_stage_row(&existing)?;
             let existing_component_digest: String = existing
                 .try_get("", "component_digest")
                 .map_err(store_error)?;
@@ -2742,6 +2788,7 @@ impl SeaOrmModuleGovernanceService {
                 || existing_build_request_id != command.build_request_id.to_string()
                 || existing_source_reference != completed.request.source.reference
                 || existing_source_digest != completed.request.source.digest
+                || existing_parent_release != completed.request.parent_release
                 || existing_component_digest != component_digest
                 || existing_actor != command.actor_principal
                 || existing_actor_id != command.context.actor_id.to_string()
@@ -2845,6 +2892,7 @@ impl SeaOrmModuleGovernanceService {
                     "build_request_id": command.build_request_id,
                     "source_reference": completed.request.source.reference,
                     "source_digest": completed.request.source.digest,
+                    "parent_release": completed.request.parent_release,
                     "component_digest": component_digest,
                     "artifact_manifest_digest": receipt.artifact.digest,
                     "command_context": {
@@ -3353,7 +3401,7 @@ impl SeaOrmModuleGovernanceService {
         if let Some(parent_release) = &command.parent_release {
             if parent_release.slug != slug
                 || parent_release.digest == command.source_digest
-                || !active_published_parent_exists(&tx, backend, parent_release).await?
+                || !active_published_rhai_parent_exists(&tx, backend, parent_release).await?
             {
                 return Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand);
             }
@@ -3376,9 +3424,9 @@ impl SeaOrmModuleGovernanceService {
                       parent_release_slug, parent_release_version, parent_release_digest, \
                       review_reference, review_digest, review_policy_revision, \
                       reviewed_by_principal, sandbox_execution_id, sandbox_test_path, sandbox_executor, \
-                      sandbox_runtime_abi, sandbox_policy_digest, sandbox_capability_grants, \
+                      sandbox_scenario_digest, sandbox_runtime_abi, sandbox_policy_digest, sandbox_capability_grants, \
                       staged_by_principal, actor_id, trace_id, correlation_id, idempotency_key, staged_at) \
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now}) \
                      ON CONFLICT (request_id, idempotency_key) DO NOTHING",
                     mark(1),
                     mark(2),
@@ -3406,6 +3454,7 @@ impl SeaOrmModuleGovernanceService {
                     mark(24),
                     mark(25),
                     mark(26),
+                    mark(27),
                 ),
                 vec![
                     staging_id.clone().into(),
@@ -3438,6 +3487,7 @@ impl SeaOrmModuleGovernanceService {
                     registry_uuid_value(command.sandbox_execution_id, backend),
                     command.sandbox_test_path.clone().into(),
                     command.sandbox_executor.clone().into(),
+                    command.sandbox_scenario_digest.clone().into(),
                     command.sandbox_runtime_abi.clone().into(),
                     command.sandbox_policy_digest.clone().into(),
                     i64::from(command.sandbox_capability_grants).into(),
@@ -3462,7 +3512,7 @@ impl SeaOrmModuleGovernanceService {
                          review_reference, \
                          review_digest, review_policy_revision, \
                          CAST(sandbox_execution_id AS TEXT) AS sandbox_execution_id, \
-                         sandbox_test_path, sandbox_executor, sandbox_runtime_abi, sandbox_policy_digest, \
+                         sandbox_test_path, sandbox_executor, sandbox_scenario_digest, sandbox_runtime_abi, sandbox_policy_digest, \
                          sandbox_capability_grants, \
                          CAST(reviewed_by_principal AS TEXT) AS reviewed_by_principal, \
                          CAST(staged_by_principal AS TEXT) AS staged_by_principal, \
@@ -3519,6 +3569,9 @@ impl SeaOrmModuleGovernanceService {
             let existing_sandbox_executor: String = existing
                 .try_get("", "sandbox_executor")
                 .map_err(store_error)?;
+            let existing_sandbox_scenario_digest: String = existing
+                .try_get("", "sandbox_scenario_digest")
+                .map_err(store_error)?;
             let existing_sandbox_runtime_abi: String = existing
                 .try_get("", "sandbox_runtime_abi")
                 .map_err(store_error)?;
@@ -3560,6 +3613,7 @@ impl SeaOrmModuleGovernanceService {
                 || existing_sandbox_execution_id != command.sandbox_execution_id.to_string()
                 || existing_sandbox_test_path != command.sandbox_test_path
                 || existing_sandbox_executor != command.sandbox_executor
+                || existing_sandbox_scenario_digest != command.sandbox_scenario_digest
                 || existing_sandbox_runtime_abi != command.sandbox_runtime_abi
                 || existing_sandbox_policy_digest != command.sandbox_policy_digest
                 || existing_sandbox_capability_grants
@@ -3642,6 +3696,7 @@ impl SeaOrmModuleGovernanceService {
                     "sandbox_execution_id": command.sandbox_execution_id,
                     "sandbox_test_path": command.sandbox_test_path.clone(),
                     "sandbox_executor": command.sandbox_executor.clone(),
+                    "sandbox_scenario_digest": command.sandbox_scenario_digest.clone(),
                     "sandbox_runtime_abi": command.sandbox_runtime_abi.clone(),
                     "sandbox_policy_digest": command.sandbox_policy_digest.clone(),
                     "sandbox_capability_grants": command.sandbox_capability_grants,
@@ -8354,6 +8409,7 @@ async fn alloy_authored_supply_chain_evidence(
                       AND stage.sandbox_execution_id IS NOT NULL \
                       AND stage.sandbox_test_path = {} \
                       AND stage.sandbox_executor = 'rhai' \
+                      AND stage.sandbox_scenario_digest = {} \
                       AND stage.sandbox_runtime_abi = {} \
                       AND stage.sandbox_policy_digest LIKE 'sha256:%' \
                       AND stage.sandbox_capability_grants = 0 \
@@ -8374,9 +8430,11 @@ async fn alloy_authored_supply_chain_evidence(
                 mark(1),
                 mark(2),
                 mark(3),
+                mark(4),
             ),
             vec![
                 ALLOY_PUBLICATION_SMOKE_TEST_PATH.into(),
+                alloy_publication_smoke_scenario_digest().into(),
                 rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.into(),
                 request_id.to_string().into(),
             ],
@@ -8438,7 +8496,7 @@ fn parent_release_from_stage_row(
     }
 }
 
-async fn active_published_parent_exists(
+async fn active_published_rhai_parent_exists(
     tx: &DatabaseTransaction,
     backend: DbBackend,
     parent: &crate::ArtifactReleaseRef,
@@ -8452,11 +8510,14 @@ async fn active_published_parent_exists(
             "SELECT 1 FROM registry_module_releases AS release \
              INNER JOIN registry_module_release_artifacts AS artifact \
                ON artifact.release_id = release.id \
+             INNER JOIN registry_publish_platform_admissions AS admission \
+               ON admission.request_id = release.request_id \
              WHERE release.slug = {} AND release.version = {} \
                AND release.checksum_sha256 = {} \
                AND release.status = 'active' \
                AND release.artifact_origin = 'alloy_authored' \
-             LIMIT 1",
+               AND admission.runtime_kind = 'rhai' \
+               LIMIT 1",
             mark(1),
             mark(2),
             mark(3),
@@ -9939,7 +10000,8 @@ async fn canonical_marketplace_artifact_contract(
                 .query_one(Statement::from_sql_and_values(
                     backend,
                     format!(
-                        "SELECT source_reference, source_digest \
+                        "SELECT source_reference, source_digest, \
+                                parent_release_slug, parent_release_version, parent_release_digest \
                          FROM registry_publish_build_staging \
                          WHERE request_id = {} AND component_digest = {} \
                            AND artifact_manifest_digest = {} \
@@ -9970,7 +10032,7 @@ async fn canonical_marketplace_artifact_contract(
                 source
                     .try_get::<String>("", "source_digest")
                     .map_err(store_error)?,
-                None,
+                parent_release_from_stage_row(&source)?,
             )
         }
         ModulePublicationArtifactOrigin::ExternalPrebuilt => {
@@ -10050,7 +10112,7 @@ async fn canonical_marketplace_artifact_contract(
         if parent_release.slug != slug
             || parent_release.digest == source_digest
             || child_version <= parent_version
-            || !active_published_parent_exists(transaction, backend, parent_release).await?
+            || !active_published_rhai_parent_exists(transaction, backend, parent_release).await?
         {
             return Err(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract);
         }
@@ -10991,7 +11053,7 @@ mod tests {
         ModuleArtifactDescriptor, ModuleBuildAuthoring, ModuleBuildComponentInterface,
         ModuleBuildDependencyPolicy, ModuleBuildEvidence, ModuleBuildLimits, ModuleBuildMetrics,
         ModuleBuildNetworkPolicy, ModuleBuildNextAction, ModuleBuildRequest, ModuleBuildResult,
-        ModuleBuildSource, ModuleBuildToolchain, ModuleBuildValidationResult,
+        ModuleBuildScenario, ModuleBuildSource, ModuleBuildToolchain, ModuleBuildValidationResult,
         ModuleBuildWitContract, ModuleMarketplaceArtifactOrigin, ModuleMarketplaceArtifactRelease,
         ModuleMarketplaceEvidenceKind, ModuleMarketplaceEvidenceReference, TrustEvidenceKind,
         TrustEvidenceReference,
@@ -11128,8 +11190,13 @@ mod tests {
                 digest: stage_digest('a'),
                 reference: format!("cas://{}", stage_digest('a')),
             },
+            scenario: ModuleBuildScenario {
+                source_path: "tests/sandbox-scenario.json".to_string(),
+                digest: stage_digest('c'),
+            },
             expected_module_slug: "sample_module".to_string(),
             expected_version: "1.0.0".to_string(),
+            parent_release: None,
             runtime_abi: MODULE_BUILD_RUNTIME_ABI.to_string(),
             wit: ModuleBuildWitContract {
                 world: MODULE_BUILD_WIT_WORLD.to_string(),
@@ -11201,13 +11268,17 @@ mod tests {
                         outcome: ModuleBuildValidationOutcome::Passed,
                     })
                     .collect(),
+                scenario_comparison: Some(rustok_sandbox::LocalSandboxScenarioComparison {
+                    scenario_digest: request.scenario.digest.clone(),
+                    result: rustok_sandbox::LocalSandboxScenarioResult::Success,
+                }),
                 diagnostics: Vec::new(),
             },
             publication: Some(ModuleBuildPublicationReceipt {
                 artifact: reference('f'),
-                sbom_referrer: reference('g'),
-                provenance_referrer: reference('h'),
-                signature_manifest: reference('i'),
+                sbom_referrer: reference('d'),
+                provenance_referrer: reference('e'),
+                signature_manifest: reference('a'),
                 signature_authority: ModuleBuildSignatureAuthority::BuildService,
             }),
             metrics: ModuleBuildMetrics {
@@ -11240,7 +11311,8 @@ mod tests {
             "CREATE TABLE registry_publish_build_staging (\
                 id TEXT PRIMARY KEY, request_id TEXT NOT NULL, expected_revision INTEGER NOT NULL, \
                 tenant_id TEXT NOT NULL, build_request_id TEXT NOT NULL, source_reference TEXT NOT NULL, \
-                source_digest TEXT NOT NULL, component_digest TEXT NOT NULL, \
+                source_digest TEXT NOT NULL, parent_release_slug TEXT NULL, \
+                parent_release_version TEXT NULL, parent_release_digest TEXT NULL, component_digest TEXT NOT NULL, \
                 artifact_manifest_digest TEXT NOT NULL, sbom_manifest_digest TEXT NOT NULL, \
                 provenance_manifest_digest TEXT NOT NULL, signature_manifest_digest TEXT NOT NULL, \
                 staged_by_principal JSON NOT NULL, actor_id TEXT NOT NULL, trace_id TEXT NOT NULL, \
@@ -11249,6 +11321,14 @@ mod tests {
                 UNIQUE (request_id, idempotency_key)\
              )",
             "CREATE TABLE registry_module_owners (slug TEXT PRIMARY KEY, owner_principal JSON NOT NULL)",
+            "CREATE TABLE registry_module_releases (\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, slug TEXT NOT NULL, version TEXT NOT NULL, \
+                checksum_sha256 TEXT NOT NULL, status TEXT NOT NULL, artifact_origin TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_module_release_artifacts (release_id TEXT PRIMARY KEY)",
+            "CREATE TABLE registry_publish_platform_admissions (\
+                request_id TEXT PRIMARY KEY, runtime_kind TEXT NOT NULL\
+             )",
             "CREATE TABLE registry_validation_stages (\
                 id TEXT PRIMARY KEY, request_id TEXT NOT NULL, stage_key TEXT NOT NULL, \
                 status TEXT NOT NULL, attempt_number INTEGER NOT NULL, queue_reason TEXT NOT NULL, \
@@ -11272,7 +11352,20 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let build_request_id = Uuid::new_v4();
-        let (build_request, build_result) = completed_platform_build(tenant_id, build_request_id);
+        let (mut build_request, build_result) =
+            completed_platform_build(tenant_id, build_request_id);
+        build_request.expected_version = "1.1.0".to_string();
+        build_request.parent_release = Some(ArtifactReleaseRef {
+            slug: "sample_module".to_string(),
+            version: "1.0.0".to_string(),
+            digest: stage_digest('b'),
+        });
+        build_request
+            .validate()
+            .expect("valid evolved build request");
+        build_result
+            .validate_against(&build_request)
+            .expect("valid evolved build result");
         database
             .execute(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
@@ -11298,7 +11391,7 @@ mod tests {
                 "INSERT INTO registry_publish_requests (\
                     id, slug, version, revision, status, artifact_origin, artifact_checksum_sha256, \
                     requested_by_principal, publisher_principal, updated_at\
-                 ) VALUES (?1, 'sample_module', '1.0.0', 1, 'submitted', 'platform_built', ?2, ?3, NULL, datetime('now'))"
+                 ) VALUES (?1, 'sample_module', '1.1.0', 1, 'submitted', 'platform_built', ?2, ?3, NULL, datetime('now'))"
                     .to_string(),
                 vec![
                     "request-1".into(),
@@ -11308,6 +11401,23 @@ mod tests {
             ))
             .await
             .expect("publish request fixture");
+        for statement in [
+            "INSERT INTO registry_module_releases \
+             (id, request_id, slug, version, checksum_sha256, status, artifact_origin) VALUES \
+             ('parent-release', 'parent-request', 'sample_module', '1.0.0', \
+              'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'active', 'alloy_authored')",
+            "INSERT INTO registry_module_release_artifacts (release_id) VALUES ('parent-release')",
+            "INSERT INTO registry_publish_platform_admissions (request_id, runtime_kind) \
+             VALUES ('parent-request', 'rhai')",
+        ] {
+            database
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
+                .await
+                .expect("Rhai parent fixture");
+        }
 
         let command = ModulePublishPlatformBuildStageCommand {
             request_id: "request-1".to_string(),
@@ -11333,6 +11443,7 @@ mod tests {
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,
                 "SELECT expected_revision, tenant_id, actor_id, trace_id, correlation_id, \
+                 parent_release_slug, parent_release_version, parent_release_digest, \
                  actor_can_manage_modules, idempotency_key FROM registry_publish_build_staging"
                     .to_string(),
             ))
@@ -11373,6 +11484,25 @@ mod tests {
                 .try_get::<String>("", "idempotency_key")
                 .expect("idempotency"),
             command.context.idempotency_key.to_string()
+        );
+        let parent = build_request.parent_release.expect("Rhai parent");
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "parent_release_slug")
+                .expect("parent slug"),
+            parent.slug
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "parent_release_version")
+                .expect("parent version"),
+            parent.version
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "parent_release_digest")
+                .expect("parent digest"),
+            parent.digest
         );
 
         let replay = service
@@ -11572,6 +11702,7 @@ mod tests {
                 parent_release_version TEXT NULL, parent_release_digest TEXT NULL, review_reference TEXT NOT NULL, \
                 review_digest TEXT NOT NULL, review_policy_revision TEXT NOT NULL, reviewed_by_principal JSON NOT NULL, \
                 sandbox_execution_id TEXT NOT NULL, sandbox_test_path TEXT NOT NULL, sandbox_executor TEXT NOT NULL, \
+                sandbox_scenario_digest TEXT NOT NULL, \
                 sandbox_runtime_abi TEXT NOT NULL, sandbox_policy_digest TEXT NOT NULL, \
                 sandbox_capability_grants INTEGER NOT NULL, staged_by_principal JSON NOT NULL, actor_id TEXT NOT NULL, \
                 trace_id TEXT NOT NULL, correlation_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, \
@@ -11633,6 +11764,7 @@ mod tests {
             reviewed_by_principal: serde_json::json!({ "kind": "user", "id": Uuid::new_v4() }),
             sandbox_execution_id: Uuid::new_v4(),
             sandbox_test_path: ALLOY_PUBLICATION_SMOKE_TEST_PATH.to_string(),
+            sandbox_scenario_digest: alloy_publication_smoke_scenario_digest(),
             sandbox_executor: "rhai".to_string(),
             sandbox_runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
             sandbox_policy_digest: format!("sha256:{}", "c".repeat(64)),
@@ -11648,7 +11780,7 @@ mod tests {
         let receipt = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,
-                "SELECT expected_revision, actor_id, trace_id, correlation_id, idempotency_key \
+                "SELECT expected_revision, actor_id, trace_id, correlation_id, idempotency_key, sandbox_scenario_digest \
                  FROM registry_publish_alloy_staging"
                     .to_string(),
             ))
@@ -11680,6 +11812,12 @@ mod tests {
                 .try_get::<String>("", "idempotency_key")
                 .expect("idempotency"),
             command.context.idempotency_key.to_string()
+        );
+        assert_eq!(
+            receipt
+                .try_get::<String>("", "sandbox_scenario_digest")
+                .expect("scenario digest"),
+            command.sandbox_scenario_digest
         );
 
         let replay = service
@@ -12367,6 +12505,11 @@ mod tests {
 
     #[test]
     fn alloy_stage_requires_fixed_zero_grant_sandbox_evidence() {
+        assert_eq!(
+            alloy_publication_smoke_scenario_digest(),
+            "sha256:dcbfb4014f6a0078405a5caf748d39f4df74a96f1f7b7dc9c3f901ec37d6f1bb"
+        );
+
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let mut command = ModuleAlloyAuthoredStageCommand {
@@ -12391,6 +12534,7 @@ mod tests {
             reviewed_by_principal: serde_json::json!({ "kind": "user", "id": "reviewer" }),
             sandbox_execution_id: Uuid::new_v4(),
             sandbox_test_path: ALLOY_PUBLICATION_SMOKE_TEST_PATH.into(),
+            sandbox_scenario_digest: alloy_publication_smoke_scenario_digest(),
             sandbox_executor: "rhai".into(),
             sandbox_runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.into(),
             sandbox_policy_digest: format!("sha256:{}", "c".repeat(64)),
@@ -12411,6 +12555,12 @@ mod tests {
             Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)
         );
         command.sandbox_test_path = ALLOY_PUBLICATION_SMOKE_TEST_PATH.into();
+        command.sandbox_scenario_digest = format!("sha256:{}", "d".repeat(64));
+        assert_eq!(
+            command.validate(),
+            Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)
+        );
+        command.sandbox_scenario_digest = alloy_publication_smoke_scenario_digest();
         command.parent_release = Some(ArtifactReleaseRef {
             slug: "alloy_module".into(),
             version: "1.0.0".into(),
@@ -12441,14 +12591,15 @@ mod tests {
                 review_reference TEXT NOT NULL, review_digest TEXT NOT NULL,\
                 review_policy_revision TEXT NOT NULL, reviewed_by_principal JSON NOT NULL,\
                 sandbox_execution_id TEXT NOT NULL, sandbox_test_path TEXT NOT NULL,\
-                sandbox_executor TEXT NOT NULL, sandbox_runtime_abi TEXT NOT NULL,\
+                sandbox_executor TEXT NOT NULL, sandbox_scenario_digest TEXT NOT NULL,\
+                sandbox_runtime_abi TEXT NOT NULL,\
                 sandbox_policy_digest TEXT NOT NULL, sandbox_capability_grants INTEGER NOT NULL,\
                 staged_by_principal JSON NOT NULL, actor_id TEXT NOT NULL, trace_id TEXT NOT NULL,\
                 correlation_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, staged_at TEXT NOT NULL,\
                 UNIQUE (request_id, idempotency_key)\
              )",
             "CREATE TABLE registry_module_releases (\
-                id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, checksum_sha256 TEXT NOT NULL,\
+                id TEXT PRIMARY KEY, request_id TEXT NOT NULL, slug TEXT NOT NULL, version TEXT NOT NULL, checksum_sha256 TEXT NOT NULL,\
                 status TEXT NOT NULL, artifact_origin TEXT NOT NULL\
              )",
             "CREATE TABLE registry_module_release_artifacts (\
@@ -12477,10 +12628,22 @@ mod tests {
              ('request-fork', 'tax_rule', '1.1.0', 'submitted', 'alloy_authored', \
               'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', datetime('now'))",
             "INSERT INTO registry_module_releases \
-             (id, slug, version, checksum_sha256, status, artifact_origin) VALUES \
-             ('parent-release', 'tax_rule', '1.0.0', \
+             (id, request_id, slug, version, checksum_sha256, status, artifact_origin) VALUES \
+             ('parent-release', 'parent-request', 'tax_rule', '1.0.0', \
               'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'active', 'alloy_authored')",
             "INSERT INTO registry_module_release_artifacts (release_id) VALUES ('parent-release')",
+            "INSERT INTO registry_publish_platform_admissions \
+             (request_id, registry_id, repository, manifest_digest, payload_digest, descriptor_digest, \
+              descriptor, runtime_kind, signature_reference, signature_digest, provenance_reference, \
+              provenance_digest, sbom_reference, sbom_digest, admission_reference, admission_digest) VALUES \
+             ('parent-request', 'local', 'modules/tax_rule', \
+              'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
+              'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
+              'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '{}', 'rhai', \
+              'evidence://signature', 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
+              'evidence://provenance', 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
+              'evidence://sbom', 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', \
+              'evidence://admission', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')",
         ] {
             database
                 .execute(Statement::from_string(
@@ -12522,6 +12685,7 @@ mod tests {
                 reviewed_by_principal: serde_json::json!({ "kind": "user", "id": "reviewer" }),
                 sandbox_execution_id: Uuid::new_v4(),
                 sandbox_test_path: ALLOY_PUBLICATION_SMOKE_TEST_PATH.to_string(),
+                sandbox_scenario_digest: alloy_publication_smoke_scenario_digest(),
                 sandbox_executor: "rhai".to_string(),
                 sandbox_runtime_abi: rustok_sandbox::RHAI_SANDBOX_RUNTIME_ABI.to_string(),
                 sandbox_policy_digest: format!("sha256:{}", "d".repeat(64)),
@@ -12812,7 +12976,8 @@ mod tests {
             "CREATE TABLE registry_publish_alloy_staging (\
                 request_id TEXT NOT NULL, artifact_digest TEXT NOT NULL, source_digest TEXT NOT NULL,\
                 sandbox_execution_id TEXT NOT NULL, sandbox_test_path TEXT NOT NULL,\
-                sandbox_executor TEXT NOT NULL, sandbox_runtime_abi TEXT NOT NULL,\
+                sandbox_executor TEXT NOT NULL, sandbox_scenario_digest TEXT NOT NULL,\
+                sandbox_runtime_abi TEXT NOT NULL,\
                 sandbox_policy_digest TEXT NOT NULL, sandbox_capability_grants INTEGER NOT NULL,\
                 staged_at TEXT NOT NULL\
              )",
@@ -12840,13 +13005,15 @@ mod tests {
                      '2026-07-20 10:00:00')",
             "INSERT INTO registry_publish_alloy_staging \
                 (request_id, artifact_digest, source_digest, sandbox_execution_id, sandbox_test_path, \
-                 sandbox_executor, sandbox_runtime_abi, sandbox_policy_digest, \
+                 sandbox_executor, sandbox_scenario_digest, sandbox_runtime_abi, sandbox_policy_digest, \
                  sandbox_capability_grants, staged_at) \
              VALUES ('request-alloy', \
                      'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', \
                      'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', \
                      '11111111-1111-1111-1111-111111111111', \
-                     'tests/publication_smoke.rhai', 'rhai', 'rustok:module/runtime@1', \
+                     'tests/publication_smoke.rhai', 'rhai', \
+                     'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', \
+                     'rustok:module/runtime@1', \
                      'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', \
                      0, '2026-07-20 10:01:00')",
             "INSERT INTO registry_publication_evidence \
@@ -12873,6 +13040,16 @@ mod tests {
                 .await
                 .expect("schema or fixture");
         }
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE registry_publish_alloy_staging \
+                 SET sandbox_scenario_digest = ?1 WHERE request_id = 'request-alloy'"
+                    .to_string(),
+                vec![alloy_publication_smoke_scenario_digest().into()],
+            ))
+            .await
+            .expect("canonical scenario evidence fixture");
 
         let transaction = database.begin().await.expect("transaction");
         let actor = serde_json::json!({ "kind": "service", "id": "alloy-release" });
@@ -14176,7 +14353,8 @@ mod tests {
              )",
             "CREATE TABLE registry_publish_build_staging (\
                 id TEXT PRIMARY KEY, request_id TEXT NOT NULL, source_reference TEXT NULL,\
-                source_digest TEXT NOT NULL, component_digest TEXT NOT NULL,\
+                source_digest TEXT NOT NULL, parent_release_slug TEXT NULL,\
+                parent_release_version TEXT NULL, parent_release_digest TEXT NULL, component_digest TEXT NOT NULL,\
                 artifact_manifest_digest TEXT NOT NULL,\
                 staged_at TEXT NOT NULL\
              )",

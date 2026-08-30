@@ -1,7 +1,7 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumModule,
-    entities::{forum_category, forum_category_translation},
+    entities::forum_category,
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
@@ -43,24 +43,11 @@ async fn forum_category_get_and_list_read_canonical_taxonomy_copy_and_presentati
         )
         .await?;
 
-    let legacy_translation = forum_category_translation::Entity::find()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(support.id))
-        .filter(forum_category_translation::Column::Locale.eq("en"))
-        .one(&db)
-        .await?
-        .expect("legacy Forum translation must exist during CAT-5 compatibility");
-    let mut legacy_translation: forum_category_translation::ActiveModel = legacy_translation.into();
-    legacy_translation.name = Set("STALE LEGACY SUPPORT".to_string());
-    legacy_translation.slug = Set("stale-legacy-support".to_string());
-    legacy_translation.description = Set(Some("stale legacy description".to_string()));
-    legacy_translation.update(&db).await?;
-
     let legacy_category = forum_category::Entity::find_by_id(support.id)
         .filter(forum_category::Column::TenantId.eq(tenant_id))
         .one(&db)
         .await?
-        .expect("legacy Forum policy row must remain during CAT-5 compatibility");
+        .expect("legacy Forum policy row must remain");
     let mut legacy_category: forum_category::ActiveModel = legacy_category.into();
     legacy_category.parent_id = Set(None);
     legacy_category.position = Set(41);

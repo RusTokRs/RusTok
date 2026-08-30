@@ -24,9 +24,14 @@ rustok-api = { workspace = true, features = ["server"] }
 rustok-core.workspace = true
 rustok-telemetry.workspace = true
 rustok-sandbox = { workspace = true, features = ["rhai"] }
+rustok-build-source.workspace = true
 rustok-modules.workspace = true
+semver = "1.0"
 sha2.workspace = true
 hex.workspace = true
 parking_lot = "0.12"
 cron = "0.17"
 rhai = { workspace = true, features = ["sync", "metadata"] }
+
+[dev-dependencies]
+rustok-module-template.workspace = true

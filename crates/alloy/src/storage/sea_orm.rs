@@ -11,11 +11,15 @@ use std::str::FromStr;
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
     AlloyImportedDraftCommand, AlloyImportedDraftResult, EventType, HttpMethod, ReviewCommand,
-    ReviewDecision, ReviewStatus, RhaiWorkspace, Script, ScriptDeletionCommand,
-    ScriptDeletionError, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError,
-    ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger,
-    TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus,
-    deleted_evidence_retention, validate_transition,
+    ReviewDecision, ReviewStatus, RhaiWorkspace, RustComponentCandidate,
+    RustComponentCandidateBuild,
+    RustComponentCandidateBuildError, RustComponentCandidateCommand, RustComponentCandidateError,
+    RustComponentCandidateReview, RustComponentCandidateReviewCommand, RustComponentWorkspace,
+    Script, ScriptDeletionCommand, ScriptDeletionError, ScriptEvidenceRetentionCommand,
+    ScriptEvidenceRetentionError, ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision,
+    ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
+    TestRunLease, TestRunStatus, deleted_evidence_retention, validate_candidate_parent_release,
+    validate_transition,
 };
 use crate::storage::{ScriptPage, ScriptQuery, ScriptRegistry};
 use rustok_core::RetentionPolicy;
@@ -262,6 +266,93 @@ mod release_import {
         pub parent_release_slug: String,
         pub parent_release_version: String,
         pub parent_release_digest: String,
+        pub created_at: DateTime<Utc>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod component_candidate {
+    use chrono::{DateTime, Utc};
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "alloy_component_candidates")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub idempotency_key: Uuid,
+        pub request_digest: String,
+        pub script_id: Uuid,
+        pub parent_revision: i32,
+        pub parent_source_digest: String,
+        pub parent_release_slug: String,
+        pub parent_release_version: String,
+        pub parent_release_digest: String,
+        pub workspace: Json,
+        pub source_digest: String,
+        pub scenario_digest: String,
+        pub actor_id: String,
+        pub created_at: DateTime<Utc>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod component_candidate_review {
+    use chrono::{DateTime, Utc};
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "alloy_component_candidate_reviews")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub candidate_id: Uuid,
+        pub tenant_id: Uuid,
+        pub source_digest: String,
+        pub scenario_digest: String,
+        pub status: String,
+        pub policy_revision: String,
+        pub actor_id: String,
+        pub reason: Option<String>,
+        pub idempotency_key: Uuid,
+        pub request_digest: String,
+        pub created_at: DateTime<Utc>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod component_candidate_build {
+    use chrono::{DateTime, Utc};
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "alloy_component_candidate_builds")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub candidate_id: Uuid,
+        pub tenant_id: Uuid,
+        pub candidate_source_digest: String,
+        pub scenario_digest: String,
+        pub archive_source_digest: String,
+        pub build_request_id: Uuid,
+        pub source_reference: String,
+        pub actor_id: Uuid,
+        pub idempotency_key: Uuid,
+        pub request_digest: String,
         pub created_at: DateTime<Utc>,
     }
 
@@ -701,6 +792,137 @@ impl SeaOrmStorage {
         })
     }
 
+    fn model_to_component_candidate(
+        model: component_candidate::Model,
+    ) -> ScriptResult<RustComponentCandidate> {
+        let parent_revision = u32::try_from(model.parent_revision).map_err(|_| {
+            ScriptError::Storage(
+                "durable component candidate revision is outside the supported range".into(),
+            )
+        })?;
+        if parent_revision == 0 {
+            return Err(ScriptError::Storage(
+                "durable component candidate revision must be positive".into(),
+            ));
+        }
+        let workspace: RustComponentWorkspace =
+            serde_json::from_value(model.workspace).map_err(|error| {
+                ScriptError::Storage(format!(
+                    "stored component candidate workspace is invalid: {error}"
+                ))
+            })?;
+        workspace.validate().map_err(|error| {
+            ScriptError::Storage(format!(
+                "stored component candidate workspace is invalid: {error}"
+            ))
+        })?;
+        let source_digest = workspace.source_digest().map_err(|error| {
+            ScriptError::Storage(format!(
+                "stored component candidate source digest is invalid: {error}"
+            ))
+        })?;
+        let scenario_digest = workspace
+            .scenario()
+            .and_then(|scenario| {
+                scenario.canonical_digest().map_err(|error| {
+                    crate::model::RustComponentWorkspaceError::Serialization(error.to_string())
+                })
+            })
+            .map_err(|error| {
+                ScriptError::Storage(format!(
+                    "stored component candidate scenario is invalid: {error}"
+                ))
+            })?;
+        if source_digest != model.source_digest || scenario_digest != model.scenario_digest {
+            return Err(ScriptError::Storage(
+                "stored component candidate digest does not match its immutable workspace".into(),
+            ));
+        }
+        let parent_release = release_ref_from_parts(
+            Some(model.parent_release_slug),
+            Some(model.parent_release_version),
+            Some(model.parent_release_digest),
+        )?
+        .ok_or_else(|| {
+            ScriptError::Storage("stored component candidate parent release is missing".into())
+        })?;
+        Ok(RustComponentCandidate {
+            id: model.id,
+            tenant_id: model.tenant_id,
+            script_id: model.script_id,
+            parent_revision,
+            parent_source_digest: model.parent_source_digest,
+            parent_release,
+            workspace,
+            source_digest: model.source_digest,
+            scenario_digest: model.scenario_digest,
+            actor_id: model.actor_id,
+            idempotency_key: model.idempotency_key,
+            request_digest: model.request_digest,
+            created_at: model.created_at,
+        })
+    }
+
+    fn model_to_component_candidate_review(
+        model: component_candidate_review::Model,
+    ) -> ScriptResult<RustComponentCandidateReview> {
+        let status = ReviewStatus::parse(&model.status).ok_or_else(|| {
+            ScriptError::Storage(format!(
+                "stored component candidate review status is invalid: {}",
+                model.status
+            ))
+        })?;
+        Ok(RustComponentCandidateReview {
+            id: model.id,
+            candidate_id: model.candidate_id,
+            tenant_id: model.tenant_id,
+            source_digest: model.source_digest,
+            scenario_digest: model.scenario_digest,
+            status,
+            policy_revision: model.policy_revision,
+            actor_id: model.actor_id,
+            reason: model.reason,
+            idempotency_key: model.idempotency_key,
+            request_digest: model.request_digest,
+            created_at: model.created_at,
+        })
+    }
+
+    fn model_to_component_candidate_build(
+        model: component_candidate_build::Model,
+    ) -> ScriptResult<RustComponentCandidateBuild> {
+        if model.id.is_nil()
+            || model.candidate_id.is_nil()
+            || model.tenant_id.is_nil()
+            || model.build_request_id.is_nil()
+            || model.actor_id.is_nil()
+            || model.idempotency_key.is_nil()
+            || !valid_digest(&model.candidate_source_digest)
+            || !valid_digest(&model.scenario_digest)
+            || !valid_digest(&model.archive_source_digest)
+            || !valid_digest(&model.request_digest)
+            || model.source_reference != format!("cas://{}", model.archive_source_digest)
+        {
+            return Err(ScriptError::Storage(
+                "stored component candidate build contains an invalid identity".into(),
+            ));
+        }
+        Ok(RustComponentCandidateBuild {
+            id: model.id,
+            candidate_id: model.candidate_id,
+            tenant_id: model.tenant_id,
+            candidate_source_digest: model.candidate_source_digest,
+            scenario_digest: model.scenario_digest,
+            archive_source_digest: model.archive_source_digest,
+            build_request_id: model.build_request_id,
+            source_reference: model.source_reference,
+            actor_id: model.actor_id,
+            idempotency_key: model.idempotency_key,
+            request_digest: model.request_digest,
+            created_at: model.created_at,
+        })
+    }
+
     fn model_to_test_run(model: draft_test_run::Model) -> ScriptResult<TestRun> {
         let revision = u32::try_from(model.revision).map_err(|_| {
             ScriptError::Storage("durable test revision is outside the supported range".into())
@@ -921,6 +1143,14 @@ fn release_ref_from_parts(
             "durable parent release identity is incomplete".to_string(),
         )),
     }
+}
+
+fn valid_digest(value: &str) -> bool {
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value.as_bytes()[7..]
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
 }
 
 fn validate_parent_release(release: &Option<ArtifactReleaseRef>) -> ScriptResult<()> {
@@ -1651,6 +1881,432 @@ impl ScriptRegistry for SeaOrmStorage {
         })
     }
 
+    async fn create_component_candidate(
+        &self,
+        command: RustComponentCandidateCommand,
+    ) -> ScriptResult<RustComponentCandidate> {
+        command.validate()?;
+        let request_digest = command.request_digest()?;
+        let source_digest = command
+            .workspace
+            .source_digest()
+            .map_err(RustComponentCandidateError::Workspace)?;
+        let scenario = command
+            .workspace
+            .scenario()
+            .map_err(RustComponentCandidateError::Workspace)?;
+        let scenario_digest = scenario.canonical_digest().map_err(|error| {
+            ScriptError::Storage(format!("candidate scenario digest is unavailable: {error}"))
+        })?;
+        let revision = i32::try_from(command.expected_revision).map_err(|_| {
+            ScriptError::RevisionConflict {
+                expected: command.expected_revision,
+            }
+        })?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let mut script_query = Entity::find_by_id(command.script_id);
+        if let Some(tenant_id) = self.tenant_id {
+            script_query = script_query.filter(Column::TenantId.eq(tenant_id));
+        }
+        let script = script_query
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_script)
+            .transpose()?
+            .ok_or_else(|| ScriptError::NotFound {
+                name: command.script_id.to_string(),
+            })?;
+        if script.version != command.expected_revision {
+            return Err(ScriptError::RevisionConflict {
+                expected: command.expected_revision,
+            });
+        }
+        let parent_release = script
+            .parent_release
+            .clone()
+            .ok_or(RustComponentCandidateError::ParentReleaseMissing)?;
+        validate_candidate_parent_release(&command.workspace, &parent_release)?;
+        let parent_source = draft_revision::Entity::find()
+            .filter(draft_revision::Column::ScriptId.eq(script.id))
+            .filter(draft_revision::Column::TenantId.eq(script.tenant_id))
+            .filter(draft_revision::Column::Revision.eq(revision))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_source_revision)
+            .transpose()?
+            .ok_or_else(|| ScriptError::NotFound {
+                name: format!("{}@{}", script.id, command.expected_revision),
+            })?;
+        if parent_source.parent_release.as_ref() != Some(&parent_release) {
+            return Err(ScriptError::Storage(
+                "component candidate parent source release does not match the draft release".into(),
+            ));
+        }
+        let latest_review = draft_review::Entity::find()
+            .filter(draft_review::Column::ScriptId.eq(script.id))
+            .filter(draft_review::Column::TenantId.eq(script.tenant_id))
+            .filter(draft_review::Column::Revision.eq(revision))
+            .order_by_desc(draft_review::Column::CreatedAt)
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_review_decision)
+            .transpose()?;
+        if !latest_review.is_some_and(|review| {
+            review.status == ReviewStatus::Approved
+                && review.source_digest == parent_source.source_digest
+        }) {
+            return Err(RustComponentCandidateError::ParentReviewNotApproved.into());
+        }
+
+        let candidate_id = Uuid::new_v4();
+        let now = Utc::now();
+        component_candidate::Entity::insert(component_candidate::ActiveModel {
+            id: ActiveValue::Set(candidate_id),
+            tenant_id: ActiveValue::Set(script.tenant_id),
+            idempotency_key: ActiveValue::Set(command.idempotency_key),
+            request_digest: ActiveValue::Set(request_digest.clone()),
+            script_id: ActiveValue::Set(script.id),
+            parent_revision: ActiveValue::Set(revision),
+            parent_source_digest: ActiveValue::Set(parent_source.source_digest.clone()),
+            parent_release_slug: ActiveValue::Set(parent_release.slug.clone()),
+            parent_release_version: ActiveValue::Set(parent_release.version.clone()),
+            parent_release_digest: ActiveValue::Set(parent_release.digest.clone()),
+            workspace: ActiveValue::Set(serde_json::to_value(&command.workspace).map_err(
+                |error| {
+                    ScriptError::Storage(format!(
+                        "component candidate workspace serialization failed: {error}"
+                    ))
+                },
+            )?),
+            source_digest: ActiveValue::Set(source_digest.clone()),
+            scenario_digest: ActiveValue::Set(scenario_digest.clone()),
+            actor_id: ActiveValue::Set(command.actor_id.clone()),
+            created_at: ActiveValue::Set(now),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                component_candidate::Column::TenantId,
+                component_candidate::Column::IdempotencyKey,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec_without_returning(&transaction)
+        .await
+        .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let stored = component_candidate::Entity::find()
+            .filter(component_candidate::Column::TenantId.eq(script.tenant_id))
+            .filter(component_candidate::Column::IdempotencyKey.eq(command.idempotency_key))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .ok_or_else(|| {
+                ScriptError::Storage(
+                    "component candidate admission completed without a durable candidate"
+                        .to_string(),
+                )
+            })?;
+        if stored.id != candidate_id && stored.request_digest != request_digest {
+            transaction
+                .rollback()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            return Err(RustComponentCandidateError::IdempotencyConflict.into());
+        }
+        let candidate = Self::model_to_component_candidate(stored)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        Ok(candidate)
+    }
+
+    async fn get_component_candidate(&self, id: Uuid) -> ScriptResult<RustComponentCandidate> {
+        let mut query = component_candidate::Entity::find_by_id(id);
+        if let Some(tenant_id) = self.tenant_id {
+            query = query.filter(component_candidate::Column::TenantId.eq(tenant_id));
+        }
+        let candidate = query
+            .one(&self.db)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_component_candidate)
+            .transpose()?
+            .ok_or_else(|| ScriptError::NotFound {
+                name: id.to_string(),
+            })?;
+        let owner = self.get(candidate.script_id).await?;
+        (owner.tenant_id == candidate.tenant_id)
+            .then_some(candidate)
+            .ok_or_else(|| {
+                ScriptError::Storage("component candidate tenant lineage is invalid".to_string())
+            })
+    }
+
+    async fn review_component_candidate(
+        &self,
+        command: RustComponentCandidateReviewCommand,
+    ) -> ScriptResult<RustComponentCandidateReview> {
+        command.validate()?;
+        let request_digest = command.request_digest()?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let mut candidate_query = component_candidate::Entity::find_by_id(command.candidate_id);
+        if let Some(tenant_id) = self.tenant_id {
+            candidate_query =
+                candidate_query.filter(component_candidate::Column::TenantId.eq(tenant_id));
+        }
+        let candidate = candidate_query
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_component_candidate)
+            .transpose()?
+            .ok_or_else(|| ScriptError::NotFound {
+                name: command.candidate_id.to_string(),
+            })?;
+        Entity::find_by_id(candidate.script_id)
+            .filter(Column::TenantId.eq(candidate.tenant_id))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .ok_or_else(|| ScriptError::NotFound {
+                name: command.candidate_id.to_string(),
+            })?;
+        let existing = component_candidate_review::Entity::find()
+            .filter(component_candidate_review::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_review::Column::IdempotencyKey.eq(command.idempotency_key))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        if let Some(existing) = existing {
+            let review = Self::model_to_component_candidate_review(existing)?;
+            if review.request_digest == request_digest
+                && review.tenant_id == candidate.tenant_id
+                && review.source_digest == candidate.source_digest
+                && review.scenario_digest == candidate.scenario_digest
+            {
+                transaction
+                    .commit()
+                    .await
+                    .map_err(|error| ScriptError::Storage(error.to_string()))?;
+                return Ok(review);
+            }
+            return Err(crate::model::ReviewError::IdempotencyConflict.into());
+        }
+        let current = component_candidate_review::Entity::find()
+            .filter(component_candidate_review::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_review::Column::TenantId.eq(candidate.tenant_id))
+            .order_by_desc(component_candidate_review::Column::CreatedAt)
+            .order_by_desc(component_candidate_review::Column::Id)
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_component_candidate_review)
+            .transpose()?;
+        validate_transition(current.map(|review| review.status), command.status)?;
+        let review_id = Uuid::new_v4();
+        let now = Utc::now();
+        component_candidate_review::Entity::insert(component_candidate_review::ActiveModel {
+            id: ActiveValue::Set(review_id),
+            candidate_id: ActiveValue::Set(candidate.id),
+            tenant_id: ActiveValue::Set(candidate.tenant_id),
+            source_digest: ActiveValue::Set(candidate.source_digest.clone()),
+            scenario_digest: ActiveValue::Set(candidate.scenario_digest.clone()),
+            status: ActiveValue::Set(command.status.as_str().to_string()),
+            policy_revision: ActiveValue::Set(command.policy_revision.clone()),
+            actor_id: ActiveValue::Set(command.actor_id.clone()),
+            reason: ActiveValue::Set(command.reason.clone()),
+            idempotency_key: ActiveValue::Set(command.idempotency_key),
+            request_digest: ActiveValue::Set(request_digest.clone()),
+            created_at: ActiveValue::Set(now),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                component_candidate_review::Column::CandidateId,
+                component_candidate_review::Column::IdempotencyKey,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec_without_returning(&transaction)
+        .await
+        .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let stored = component_candidate_review::Entity::find()
+            .filter(component_candidate_review::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_review::Column::IdempotencyKey.eq(command.idempotency_key))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .ok_or_else(|| {
+                ScriptError::Storage(
+                    "component candidate review admission completed without a durable decision"
+                        .to_string(),
+                )
+            })?;
+        let review = Self::model_to_component_candidate_review(stored)?;
+        if review.request_digest != request_digest
+            || review.tenant_id != candidate.tenant_id
+            || review.source_digest != candidate.source_digest
+            || review.scenario_digest != candidate.scenario_digest
+        {
+            transaction
+                .rollback()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            return Err(crate::model::ReviewError::IdempotencyConflict.into());
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        Ok(review)
+    }
+
+    async fn list_component_candidate_reviews(
+        &self,
+        candidate_id: Uuid,
+    ) -> ScriptResult<Vec<RustComponentCandidateReview>> {
+        let candidate = self.get_component_candidate(candidate_id).await?;
+        component_candidate_review::Entity::find()
+            .filter(component_candidate_review::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_review::Column::TenantId.eq(candidate.tenant_id))
+            .order_by_asc(component_candidate_review::Column::CreatedAt)
+            .order_by_asc(component_candidate_review::Column::Id)
+            .all(&self.db)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .into_iter()
+            .map(Self::model_to_component_candidate_review)
+            .collect()
+    }
+
+    async fn record_component_candidate_build(
+        &self,
+        build: RustComponentCandidateBuild,
+    ) -> ScriptResult<RustComponentCandidateBuild> {
+        let candidate = self.get_component_candidate(build.candidate_id).await?;
+        build.validate_against(&candidate)?;
+        let transaction = self
+            .db
+            .begin()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let script_exists = Entity::find_by_id(candidate.script_id)
+            .filter(Column::TenantId.eq(candidate.tenant_id))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .is_some();
+        if !script_exists {
+            return Err(ScriptError::NotFound {
+                name: candidate.script_id.to_string(),
+            });
+        }
+        let latest_review = component_candidate_review::Entity::find()
+            .filter(component_candidate_review::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_review::Column::TenantId.eq(candidate.tenant_id))
+            .order_by_desc(component_candidate_review::Column::CreatedAt)
+            .order_by_desc(component_candidate_review::Column::Id)
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_component_candidate_review)
+            .transpose()?;
+        if !latest_review.is_some_and(|review| {
+            review.status == ReviewStatus::Approved
+                && review.source_digest == candidate.source_digest
+                && review.scenario_digest == candidate.scenario_digest
+        }) {
+            return Err(RustComponentCandidateBuildError::CandidateNotApproved.into());
+        }
+        component_candidate_build::Entity::insert(component_candidate_build::ActiveModel {
+            id: ActiveValue::Set(build.id),
+            candidate_id: ActiveValue::Set(candidate.id),
+            tenant_id: ActiveValue::Set(candidate.tenant_id),
+            candidate_source_digest: ActiveValue::Set(build.candidate_source_digest.clone()),
+            scenario_digest: ActiveValue::Set(build.scenario_digest.clone()),
+            archive_source_digest: ActiveValue::Set(build.archive_source_digest.clone()),
+            build_request_id: ActiveValue::Set(build.build_request_id),
+            source_reference: ActiveValue::Set(build.source_reference.clone()),
+            actor_id: ActiveValue::Set(build.actor_id),
+            idempotency_key: ActiveValue::Set(build.idempotency_key),
+            request_digest: ActiveValue::Set(build.request_digest.clone()),
+            created_at: ActiveValue::Set(build.created_at),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                component_candidate_build::Column::CandidateId,
+                component_candidate_build::Column::IdempotencyKey,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec_without_returning(&transaction)
+        .await
+        .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        let stored = component_candidate_build::Entity::find()
+            .filter(component_candidate_build::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_build::Column::IdempotencyKey.eq(build.idempotency_key))
+            .one(&transaction)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_component_candidate_build)
+            .transpose()?
+            .ok_or_else(|| {
+                ScriptError::Storage(
+                    "component candidate build admission completed without a durable receipt"
+                        .to_string(),
+                )
+            })?;
+        if stored.request_digest != build.request_digest
+            || stored.tenant_id != candidate.tenant_id
+            || stored.candidate_source_digest != candidate.source_digest
+            || stored.scenario_digest != candidate.scenario_digest
+            || stored.archive_source_digest != build.archive_source_digest
+            || stored.build_request_id != build.build_request_id
+            || stored.source_reference != build.source_reference
+        {
+            transaction
+                .rollback()
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            return Err(RustComponentCandidateBuildError::IdempotencyConflict.into());
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?;
+        Ok(stored)
+    }
+
+    async fn get_component_candidate_build(
+        &self,
+        candidate_id: Uuid,
+        idempotency_key: Uuid,
+    ) -> ScriptResult<Option<RustComponentCandidateBuild>> {
+        let candidate = self.get_component_candidate(candidate_id).await?;
+        component_candidate_build::Entity::find()
+            .filter(component_candidate_build::Column::CandidateId.eq(candidate.id))
+            .filter(component_candidate_build::Column::TenantId.eq(candidate.tenant_id))
+            .filter(component_candidate_build::Column::IdempotencyKey.eq(idempotency_key))
+            .one(&self.db)
+            .await
+            .map_err(|error| ScriptError::Storage(error.to_string()))?
+            .map(Self::model_to_component_candidate_build)
+            .transpose()
+    }
+
     async fn save(&self, mut script: Script) -> ScriptResult<Script> {
         self.ensure_script_scope(&script)?;
         script.workspace.validate().map_err(ScriptError::from)?;
@@ -2080,6 +2736,38 @@ impl ScriptRegistry for SeaOrmStorage {
                     .rows_affected,
             )
             .map_err(|_| ScriptError::Storage("test run count exceeds i32".into()))?;
+            let candidate_ids = component_candidate::Entity::find()
+                .filter(component_candidate::Column::ScriptId.eq(tombstone.id))
+                .filter(component_candidate::Column::TenantId.eq(tombstone.tenant_id))
+                .all(&transaction)
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?
+                .into_iter()
+                .map(|candidate| candidate.id)
+                .collect::<Vec<_>>();
+            if !candidate_ids.is_empty() {
+                component_candidate_review::Entity::delete_many()
+                    .filter(component_candidate_review::Column::TenantId.eq(tombstone.tenant_id))
+                    .filter(
+                        component_candidate_review::Column::CandidateId
+                            .is_in(candidate_ids.clone()),
+                    )
+                    .exec(&transaction)
+                    .await
+                    .map_err(|error| ScriptError::Storage(error.to_string()))?;
+                component_candidate_build::Entity::delete_many()
+                    .filter(component_candidate_build::Column::TenantId.eq(tombstone.tenant_id))
+                    .filter(component_candidate_build::Column::CandidateId.is_in(candidate_ids))
+                    .exec(&transaction)
+                    .await
+                    .map_err(|error| ScriptError::Storage(error.to_string()))?;
+            }
+            component_candidate::Entity::delete_many()
+                .filter(component_candidate::Column::ScriptId.eq(tombstone.id))
+                .filter(component_candidate::Column::TenantId.eq(tombstone.tenant_id))
+                .exec(&transaction)
+                .await
+                .map_err(|error| ScriptError::Storage(error.to_string()))?;
 
             draft_purge_receipt::Entity::insert(draft_purge_receipt::ActiveModel {
                 id: ActiveValue::Set(Uuid::new_v4()),
@@ -2138,10 +2826,18 @@ impl ScriptRegistry for SeaOrmStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::RustComponentCandidateBuildCommand;
+    use rustok_modules::{ModuleAuthoringBuildSubmission, ModuleCommandContext};
     use sea_orm::Database;
     use sea_orm_migration::prelude::SchemaManager;
 
     async fn storage_with_script() -> (SeaOrmStorage, Uuid, Uuid, Script) {
+        storage_with_script_parent(None).await
+    }
+
+    async fn storage_with_script_parent(
+        parent_release: Option<ArtifactReleaseRef>,
+    ) -> (SeaOrmStorage, Uuid, Uuid, Script) {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("sqlite memory database should connect");
@@ -2161,8 +2857,32 @@ mod tests {
             ScriptTrigger::Manual,
         );
         script.tenant_id = owner_tenant;
+        script.parent_release = parent_release;
         let script = storage.save(script).await.expect("script should save");
         (storage, owner_tenant, other_tenant, script)
+    }
+
+    fn component_workspace() -> RustComponentWorkspace {
+        let rendered =
+            rustok_module_template::render(&rustok_module_template::ModuleTemplateInput {
+                slug: "sample_module".to_string(),
+                version: "1.1.0".to_string(),
+                display_name: "Sample Module".to_string(),
+            })
+            .expect("rendered Component template");
+        let mut files = rendered
+            .files()
+            .iter()
+            .map(|file| crate::RustComponentSourceFile {
+                path: file.path.to_string(),
+                contents: String::from_utf8(file.contents.clone()).expect("UTF-8 template file"),
+            })
+            .collect::<Vec<_>>();
+        files.push(crate::RustComponentSourceFile {
+            path: "Cargo.lock".to_string(),
+            contents: "# This file is automatically generated by Cargo.\nversion = 4\n".to_string(),
+        });
+        RustComponentWorkspace { files }
     }
 
     #[tokio::test]
@@ -2211,6 +2931,184 @@ mod tests {
         assert_eq!(owner_script.tenant_id, owner_tenant);
         assert_eq!(owner_script.status, ScriptStatus::Draft);
         assert_eq!(owner_script.error_count, 0);
+    }
+
+    #[tokio::test]
+    async fn component_candidate_persists_exact_parent_lineage_and_hides_cross_tenant_reads() {
+        let parent_release = ArtifactReleaseRef {
+            slug: "sample_module".to_string(),
+            version: "1.0.0".to_string(),
+            digest: format!("sha256:{}", "b".repeat(64)),
+        };
+        let (storage, owner_tenant, other_tenant, script) =
+            storage_with_script_parent(Some(parent_release.clone())).await;
+        let owner = storage.for_tenant(owner_tenant);
+        owner
+            .review(ReviewCommand {
+                script_id: script.id,
+                expected_revision: script.version,
+                status: ReviewStatus::Approved,
+                policy_revision: "policy:evolution".to_string(),
+                actor_id: "operator:reviewer".to_string(),
+                reason: None,
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("approved parent source");
+        let command = RustComponentCandidateCommand {
+            script_id: script.id,
+            expected_revision: script.version,
+            workspace: component_workspace(),
+            actor_id: "operator:evolution".to_string(),
+            idempotency_key: Uuid::new_v4(),
+        };
+        let candidate = owner
+            .create_component_candidate(command.clone())
+            .await
+            .expect("durable Component candidate");
+        assert_eq!(candidate.parent_release, parent_release);
+        assert_eq!(candidate.parent_revision, script.version);
+        assert_eq!(
+            owner
+                .create_component_candidate(command)
+                .await
+                .expect("exact candidate replay"),
+            candidate
+        );
+        let review_command = RustComponentCandidateReviewCommand {
+            candidate_id: candidate.id,
+            status: ReviewStatus::Approved,
+            policy_revision: "policy:component-review".to_string(),
+            actor_id: "operator:component-reviewer".to_string(),
+            reason: None,
+            idempotency_key: Uuid::new_v4(),
+        };
+        let candidate_review = owner
+            .review_component_candidate(review_command.clone())
+            .await
+            .expect("durable candidate approval");
+        assert_eq!(candidate_review.source_digest, candidate.source_digest);
+        assert_eq!(candidate_review.scenario_digest, candidate.scenario_digest);
+        assert_eq!(
+            owner
+                .review_component_candidate(review_command)
+                .await
+                .expect("candidate review replay"),
+            candidate_review
+        );
+        assert_eq!(
+            owner
+                .list_component_candidate_reviews(candidate.id)
+                .await
+                .expect("candidate review history"),
+            vec![candidate_review]
+        );
+        let build_command = RustComponentCandidateBuildCommand {
+            candidate_id: candidate.id,
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(owner_tenant),
+                trace_id: "trace:component-build".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            project_id: "alloy-component-candidate".to_string(),
+            rust_toolchain: "1.90.0".to_string(),
+            sdk_version: "0.1.0".to_string(),
+            template_version: "0.1.0".to_string(),
+            dependency_lock_digest: format!("sha256:{}", "d".repeat(64)),
+        };
+        let submission = ModuleAuthoringBuildSubmission {
+            request_id: Uuid::new_v4(),
+            build_created: true,
+            source_created: true,
+            source_reference: format!("cas://sha256:{}", "e".repeat(64)),
+            source_digest: format!("sha256:{}", "e".repeat(64)),
+            archive_bytes: 1024,
+            source_bytes: 512,
+            entries: 8,
+        };
+        let build =
+            RustComponentCandidateBuild::from_submission(&candidate, &build_command, &submission)
+                .expect("candidate build receipt");
+        assert_eq!(
+            owner
+                .record_component_candidate_build(build.clone())
+                .await
+                .expect("durable build receipt"),
+            build
+        );
+        assert_eq!(
+            owner
+                .record_component_candidate_build(build.clone())
+                .await
+                .expect("build receipt replay"),
+            build
+        );
+        assert_eq!(
+            owner
+                .get_component_candidate_build(candidate.id, build.idempotency_key)
+                .await
+                .expect("candidate build read"),
+            Some(build.clone())
+        );
+        assert!(matches!(
+            storage
+                .for_tenant(other_tenant)
+                .get_component_candidate(candidate.id)
+                .await,
+            Err(ScriptError::NotFound { .. })
+        ));
+        owner
+            .delete(ScriptDeletionCommand {
+                script_id: script.id,
+                expected_revision: script.version,
+                actor_id: "operator:delete".to_string(),
+                reason: "The evolution draft was removed.".to_string(),
+                idempotency_key: Uuid::new_v4(),
+            })
+            .await
+            .expect("candidate owner deletion");
+        draft_tombstone::Entity::update_many()
+            .col_expr(
+                draft_tombstone::Column::RetainUntil,
+                Expr::value(Utc::now() - chrono::Duration::seconds(1)),
+            )
+            .filter(draft_tombstone::Column::Id.eq(script.id))
+            .filter(draft_tombstone::Column::TenantId.eq(owner_tenant))
+            .exec(&storage.db)
+            .await
+            .expect("candidate retention deadline");
+        assert_eq!(
+            storage
+                .purge_expired_evidence(Utc::now(), 1)
+                .await
+                .expect("candidate evidence collection"),
+            1
+        );
+        assert!(
+            component_candidate::Entity::find_by_id(candidate.id)
+                .one(&storage.db)
+                .await
+                .expect("candidate lookup after collection")
+                .is_none()
+        );
+        assert!(
+            component_candidate_review::Entity::find()
+                .filter(component_candidate_review::Column::CandidateId.eq(candidate.id))
+                .one(&storage.db)
+                .await
+                .expect("candidate review lookup after collection")
+                .is_none()
+        );
+        assert!(
+            component_candidate_build::Entity::find()
+                .filter(component_candidate_build::Column::CandidateId.eq(candidate.id))
+                .one(&storage.db)
+                .await
+                .expect("candidate build lookup after collection")
+                .is_none()
+        );
     }
 
     #[tokio::test]

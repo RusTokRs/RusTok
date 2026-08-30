@@ -14,10 +14,12 @@ use uuid::Uuid;
 use crate::utils::{json_to_dynamic, validate_cron_expression};
 use crate::{
     AlloyDraftRuntime, EntityProxy, ExecutionOutcome, ReviewCommand, ReviewDecision, ReviewStatus,
-    RevisionedTestRunner, RhaiWorkspace, ScopedAlloyRuntime, Script, ScriptDeletionCommand,
-    ScriptEngine, ScriptError, ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand,
-    ScriptEvidenceRetentionState, ScriptOrchestrator, ScriptQuery, ScriptRegistry, ScriptStatus,
-    ScriptTrigger, SourceProvenance, TestCommand, TestRun, TestRunStatus,
+    RevisionedTestRunner, RhaiWorkspace, RustComponentCandidate, RustComponentCandidateCommand,
+    RustComponentCandidateReview, RustComponentCandidateReviewCommand, RustComponentWorkspace,
+    ScopedAlloyRuntime, Script, ScriptDeletionCommand, ScriptEngine, ScriptError,
+    ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionState,
+    ScriptOrchestrator, ScriptQuery, ScriptRegistry, ScriptStatus, ScriptTrigger, SourceProvenance,
+    TestCommand, TestRun, TestRunStatus,
 };
 
 /// Authoring operations are always bound to one tenant before a command is
@@ -378,6 +380,78 @@ impl<R: ScriptRegistry> AlloyAuthoringService<R> {
             .collect()
     }
 
+    pub async fn submit_component_candidate(
+        &self,
+        actor_id: &str,
+        request: SubmitRustComponentCandidateCommand,
+    ) -> Result<RedactedRustComponentCandidate, AlloyAuthoringError> {
+        self.validate_actor(actor_id)?;
+        self.script_for_tenant(request.script_id).await?;
+        let candidate = self
+            .registry
+            .create_component_candidate(RustComponentCandidateCommand {
+                script_id: request.script_id,
+                expected_revision: request.expected_version,
+                workspace: request.workspace,
+                actor_id: actor_id.to_owned(),
+                idempotency_key: request.idempotency_key,
+            })
+            .await
+            .map_err(AlloyAuthoringError::from_script_error)?;
+        self.require_component_candidate_owned(&candidate)?;
+        Ok(candidate.into())
+    }
+
+    pub async fn review_component_candidate(
+        &self,
+        actor_id: &str,
+        request: ReviewRustComponentCandidateCommand,
+    ) -> Result<RedactedRustComponentCandidateReview, AlloyAuthoringError> {
+        self.validate_actor(actor_id)?;
+        let candidate = self
+            .registry
+            .get_component_candidate(request.candidate_id)
+            .await
+            .map_err(AlloyAuthoringError::from_script_error)?;
+        self.require_component_candidate_owned(&candidate)?;
+        let review = self
+            .registry
+            .review_component_candidate(RustComponentCandidateReviewCommand {
+                candidate_id: request.candidate_id,
+                status: request.status,
+                policy_revision: request.policy_revision,
+                actor_id: actor_id.to_owned(),
+                reason: request.reason,
+                idempotency_key: request.idempotency_key,
+            })
+            .await
+            .map_err(AlloyAuthoringError::from_script_error)?;
+        self.require_component_candidate_review_owned(&review)?;
+        Ok(review.into())
+    }
+
+    pub async fn list_component_candidate_reviews(
+        &self,
+        candidate_id: Uuid,
+    ) -> Result<Vec<RedactedRustComponentCandidateReview>, AlloyAuthoringError> {
+        let candidate = self
+            .registry
+            .get_component_candidate(candidate_id)
+            .await
+            .map_err(AlloyAuthoringError::from_script_error)?;
+        self.require_component_candidate_owned(&candidate)?;
+        self.registry
+            .list_component_candidate_reviews(candidate_id)
+            .await
+            .map_err(AlloyAuthoringError::from_script_error)?
+            .into_iter()
+            .map(|review| {
+                self.require_component_candidate_review_owned(&review)?;
+                Ok(review.into())
+            })
+            .collect()
+    }
+
     pub async fn run_workspace_test(
         &self,
         actor_id: &str,
@@ -487,6 +561,24 @@ impl<R: ScriptRegistry> AlloyAuthoringService<R> {
             .ok_or(AlloyAuthoringError::NotFound)
     }
 
+    fn require_component_candidate_owned(
+        &self,
+        candidate: &RustComponentCandidate,
+    ) -> Result<(), AlloyAuthoringError> {
+        (candidate.tenant_id == self.tenant_id)
+            .then_some(())
+            .ok_or(AlloyAuthoringError::NotFound)
+    }
+
+    fn require_component_candidate_review_owned(
+        &self,
+        review: &RustComponentCandidateReview,
+    ) -> Result<(), AlloyAuthoringError> {
+        (review.tenant_id == self.tenant_id)
+            .then_some(())
+            .ok_or(AlloyAuthoringError::NotFound)
+    }
+
     fn require_retention_owned(
         &self,
         state: &ScriptEvidenceRetentionState,
@@ -547,7 +639,9 @@ impl AlloyAuthoringError {
             | ScriptError::Deletion(_)
             | ScriptError::EvidenceRetention(_)
             | ScriptError::Review(_)
-            | ScriptError::TestRun(_) => Self::Invalid,
+            | ScriptError::TestRun(_)
+            | ScriptError::ComponentCandidate(_)
+            | ScriptError::ComponentCandidateBuild(_) => Self::Invalid,
             ScriptError::Runtime(_)
             | ScriptError::Aborted(_)
             | ScriptError::Timeout { .. }
@@ -708,6 +802,25 @@ pub struct RunAlloyWorkspaceTestCommand {
     pub script_id: Uuid,
     pub expected_version: u32,
     pub test_path: String,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubmitRustComponentCandidateCommand {
+    pub script_id: Uuid,
+    pub expected_version: u32,
+    pub workspace: RustComponentWorkspace,
+    pub idempotency_key: Uuid,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewRustComponentCandidateCommand {
+    pub candidate_id: Uuid,
+    pub status: ReviewStatus,
+    pub policy_revision: String,
+    pub reason: Option<String>,
     pub idempotency_key: Uuid,
 }
 
@@ -878,6 +991,65 @@ impl From<ReviewDecision> for RedactedAlloyReview {
             policy_revision: decision.policy_revision,
             idempotency_key: decision.idempotency_key,
             created_at: decision.created_at.to_rfc3339(),
+        }
+    }
+}
+
+/// Candidate metadata is safe to return to an operator. The Rust workspace and
+/// scenario fixture remain write-only authoring input until a separately
+/// authorized review surface needs a redacted comparison projection.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RedactedRustComponentCandidate {
+    pub id: Uuid,
+    pub script_id: Uuid,
+    pub parent_revision: u32,
+    pub parent_source_digest: String,
+    pub parent_release: rustok_modules::ArtifactReleaseRef,
+    pub source_digest: String,
+    pub scenario_digest: String,
+    pub idempotency_key: Uuid,
+    pub created_at: String,
+}
+
+impl From<RustComponentCandidate> for RedactedRustComponentCandidate {
+    fn from(candidate: RustComponentCandidate) -> Self {
+        Self {
+            id: candidate.id,
+            script_id: candidate.script_id,
+            parent_revision: candidate.parent_revision,
+            parent_source_digest: candidate.parent_source_digest,
+            parent_release: candidate.parent_release,
+            source_digest: candidate.source_digest,
+            scenario_digest: candidate.scenario_digest,
+            idempotency_key: candidate.idempotency_key,
+            created_at: candidate.created_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RedactedRustComponentCandidateReview {
+    pub id: Uuid,
+    pub candidate_id: Uuid,
+    pub source_digest: String,
+    pub scenario_digest: String,
+    pub status: ReviewStatus,
+    pub policy_revision: String,
+    pub idempotency_key: Uuid,
+    pub created_at: String,
+}
+
+impl From<RustComponentCandidateReview> for RedactedRustComponentCandidateReview {
+    fn from(review: RustComponentCandidateReview) -> Self {
+        Self {
+            id: review.id,
+            candidate_id: review.candidate_id,
+            source_digest: review.source_digest,
+            scenario_digest: review.scenario_digest,
+            status: review.status,
+            policy_revision: review.policy_revision,
+            idempotency_key: review.idempotency_key,
+            created_at: review.created_at.to_rfc3339(),
         }
     }
 }

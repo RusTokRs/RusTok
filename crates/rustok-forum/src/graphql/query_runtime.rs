@@ -309,7 +309,7 @@ impl ForumContentQuery {
             ForumReplyReadTransport::Graphql,
             ForumReplyReadOperation::ReplyList,
             tenant_id,
-            &auth,
+            auth,
             ctx.data_opt::<RequestContext>(),
             locale.as_str(),
         )?;

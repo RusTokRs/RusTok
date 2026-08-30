@@ -9,6 +9,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const cliRoot = path.join(root, 'crates/rustok-modules/cli');
 const manifest = fs.readFileSync(path.join(cliRoot, 'Cargo.toml'), 'utf8');
 const source = fs.readFileSync(path.join(cliRoot, 'src/lib.rs'), 'utf8');
+const sandboxHarness = fs.readFileSync(
+  path.join(root, 'crates/rustok-sandbox/src/harness.rs'),
+  'utf8',
+);
 const authoringOwner = fs.readFileSync(
   path.join(root, 'crates/rustok-modules/src/authoring.rs'),
   'utf8',
@@ -67,10 +71,15 @@ for (const marker of [
   'LocalSandboxHarness::wasm_component()',
   'LocalSandboxScenario::parse(&scenario_bytes)',
   'validate_scenario_capabilities(',
+  'scenario.canonical_digest().map_err(invalid_input)',
+  '"scenario_digest": self.scenario_digest',
+  'scenario.comparison(&evaluated).map_err(command_failed)',
+  '"comparison": comparison',
   'CARGO_NET_OFFLINE',
   '.env_clear()',
   'MAX_LOCAL_CARGO_OUTPUT_BYTES',
-  '.create_new(true)',
+  'ModuleAuthoringSourceArchiveBuilder::new()',
+  '.materialize(&files, root)',
   'Command::new("cargo")',
   '"generate-lockfile".to_string()',
   'Duration::from_secs(5 * 60)',
@@ -81,7 +90,9 @@ for (const marker of [
   'MODULE_BUILD_WIT_WORLD',
   'SharedModuleAuthoringBuildControl',
   'SeaOrmModuleAuthoringBuildService::new(',
-  '.submit_build(command, archive_path)',
+  'ModuleAuthoringSourceArchiveBuilder::new()',
+  '.prepare(&validation.path, &archive_path)',
+  '.submit_build(command, archive)',
   '"transactional_outbox_to_remote_isolated_worker"',
   'SharedModuleAuthoringPublishControl',
   'SeaOrmModuleAuthoringPublishService::from_storage_settings(',
@@ -98,6 +109,21 @@ for (const marker of [
 }
 
 for (const marker of [
+  'LOCAL_SCENARIO_DIGEST_DOMAIN',
+  'pub fn canonical_digest(&self) -> SandboxResult<String>',
+  'pub fn comparison(',
+  'LocalSandboxScenarioComparison',
+  'LocalSandboxScenarioResult',
+  'hasher.update(LOCAL_SCENARIO_DIGEST_DOMAIN)',
+  '"sha256:b1d8a43f89551031131c687630f6191019c47a459ba6265d240e3d4cbfd00245"',
+]) {
+  assert.ok(
+    sandboxHarness.includes(marker),
+    `neutral sandbox scenario digest contract is missing ${marker}`,
+  );
+}
+
+for (const marker of [
   'load_completed(tenant_id, command.build_request_id)',
   'ModulePublicationArtifactOrigin::PlatformBuilt',
   '.attach_publish_artifact(',
@@ -109,6 +135,19 @@ for (const marker of [
 assert.ok(
   governanceOwner.includes('DigestObjectKey::sha256('),
   'module governance owner must derive immutable digest-addressed artifact keys',
+);
+assert.ok(
+  !authoringOwner.includes('rustok.module.authoring-build.request.v1'),
+  'authoring build request identity must use one current unversioned domain',
+);
+assert.ok(
+    authoringOwner.includes('pub struct PreparedModuleSourceArchive') &&
+    authoringOwner.includes('pub struct ModuleAuthoringSourceArchiveBuilder') &&
+    authoringOwner.includes('SourceArchiveBuilder::new(self.limits).write') &&
+    authoringOwner.includes('SourceTreeMaterializer::new(self.limits).write') &&
+    authoringOwner.includes('archive: PreparedModuleSourceArchive') &&
+    !authoringOwner.includes('archive_path: PathBuf,\n    ) -> Result<ModuleAuthoringBuildSubmission'),
+  'owner build control must accept a prepared archive rather than a raw path',
 );
 
 assert.ok(

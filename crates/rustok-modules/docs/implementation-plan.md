@@ -229,9 +229,12 @@ Still outside the owner boundary:
   capability-free `tests/publication_smoke.rhai` entrypoint to return `true`
   through the production neutral sandbox without entity mutations after the
   same request compiles the production entrypoint and reachable imports. Its
-  immutable staging evidence binds the logical execution ID, executor, shared
+  immutable staging evidence binds the logical execution ID, canonical
+  domain-separated zero-input/zero-grant scenario digest, executor, shared
   runtime ABI, and effective sandbox-policy digest to the reviewed source. The
-  Alloy security gate reconciles that evidence with the current author
+  scenario digest is the first durable Rhai/WASM parity case, while candidate
+  execution and full parity remain pending. The Alloy security gate reconciles
+  that evidence with the current author
   signature and exact platform admission regardless of arrival order. Platform
   admission independently requires and fingerprints signature, provenance,
   SBOM, license-policy, and vulnerability-policy outcomes. Fixture coverage now
@@ -353,7 +356,8 @@ expected revision, actor, trace, correlation, privilege, or evidence on replay.
 Alloy-authored staging is tenant-scoped: its HTTP and GraphQL adapters derive
 the context from authenticated tenant/user identity, request idempotency, and
 telemetry trace. Its immutable receipt binds the expected request revision,
-Alloy tenant/script, reviewed source and sandbox evidence, and full context;
+Alloy tenant/script, reviewed source and sandbox evidence (including the fixed
+publication-smoke scenario digest), and full context;
 the staged user principal must equal the context actor UUID, and any changed
 context evidence on replay fails closed.
 Global artifact security transitions also use the context with no tenant scope.
@@ -423,6 +427,18 @@ post-convergence drift into a recoverable `degraded` state. Request/report
 idempotency and all state transitions are transactional with outbox events;
 authenticated outside-candidate deployment transport, process supervision, and
 traffic wiring remain the uncomposed boundary.
+
+Platform rollout and recovery commands carry one platform-scoped
+`ModuleCommandContext`. Their idempotency receipt persists actor, trace,
+correlation, and idempotency evidence, rejects a changed replay, and creates
+the requested/recovery outbox envelope from that exact context. Node-agent
+reports remain separately authenticated deployment observations rather than
+operator commands.
+
+The preceding static-distribution build-intent command uses the same
+platform-scoped context. Its durable receipt persists actor, trace,
+correlation, and idempotency evidence before the immutable build snapshot and
+its transactional outbox event are committed.
 
 `ModuleDesiredObservedState`, `ModuleReconciliationPhase`,
 `ModuleReconciliationEvidence`, and `ModuleReconciliationFailure` now form the
@@ -981,9 +997,22 @@ parser without materialization. Test uses sanitized, bounded, offline Cargo to
 produce the native WASI P2 Component, rehashes the regular output, then executes
 it through the real neutral Wasmtime executor with a bounded scenario that binds
 typed grants/limits, fixtures, input, and the expected output/error code. It is
-local author feedback, not trusted build evidence. Build requires explicit
+local author feedback, not trusted build evidence. Validation and test
+projections expose the scenario's domain-separated canonical digest; a completed
+test additionally emits only a redacted `success` or `expected_error`
+comparison result, without returning fixture payload. Build requires explicit
 tenant, actor, project, trace, correlation, and idempotency identity and calls
-only the shared owner control. `SeaOrmModuleAuthoringBuildService` constructs
+only the shared owner control with a non-serializable
+`PreparedModuleSourceArchive`, not a transport-supplied filesystem path.
+The shared `ModuleAuthoringSourceArchiveBuilder` is the only host-materializer
+path for a queued build: it writes the private deterministic archive with the
+same fixed profile the owner uses for its later CAS scan, so the CLI and any
+future Alloy materializer cannot diverge on archive limits.
+Template initialization also delegates its data-only rendered files to the
+shared `SourceTreeMaterializer`, eliminating CLI-local recursive filesystem
+writes and giving reviewed host materializers the same path and resource policy
+before source archive creation.
+`SeaOrmModuleAuthoringBuildService` constructs
 the immutable request with owner-selected build policy, while
 `CasArchivePublisher` rehashes and strictly scans the private archive before an
 atomic no-replace source-CAS commit. Queue persistence and its outbox fact remain
@@ -1069,6 +1098,15 @@ contract, in addition to checking its source, dependency lock, attempt, tenant,
 resource bounds, and terminal outcome. `retryable` is true exactly when the
 terminal result permits `retry_build`; no worker may label a retry as either
 forbidden or required while reporting the opposite next action.
+
+An optional reviewed Rhai predecessor is an immutable field of the canonical
+platform build request. The owner copies that exact release reference into the
+durable platform-build staging receipt, compares it on idempotent replay, and
+projects it into final artifact lineage. Before staging and final publication,
+the owner requires the predecessor to be the same module slug, semantically
+older, active, published through the Alloy Rhai path, and admitted as a Rhai
+runtime. The worker receives the immutable provenance fact but does not decide
+marketplace ancestry.
 
 OCI artifact media types are frozen in the owner crate for immutable descriptor
 config, Rhai, WASM Component, sidecar, static-promotion payloads, and
@@ -1246,14 +1284,15 @@ platform-scoped admission emits without a synthetic tenant. No module-specific
 second event journal is allowed.
 
 Artifact admission accepts only an explicit `ArtifactAdmissionCommand`, never
-an ambient timestamp or caller-owned installation identity. Its actor and
-idempotency key are scoped by platform or tenant, while its canonical request
-digest covers the immutable OCI reference, scope, and dependency lock. The
-store reserves that identity before inserting installation state and binds it
-before committing the outbox fact. Successful retries return the same
-installation identity; a permission-registration retry refetches and verifies
-the immutable descriptor so it can replay the owner request. A reused key with
-a different digest fails closed.
+an ambient timestamp or caller-owned installation identity. Its complete
+scope-matched `ModuleCommandContext` is persisted with the actor, trace,
+correlation, and idempotency evidence, while its canonical request digest covers
+that context plus the immutable OCI reference, scope, dependency lock, and
+sandbox policy. The store reserves that identity before inserting installation
+state and binds it before committing the outbox fact. Successful retries return
+the same installation identity; a permission-registration retry refetches and
+verifies the immutable descriptor so it can replay the owner request. A reused
+key with changed context or request evidence fails closed.
 
 Admitted artifact permissions are represented by immutable localized
 label/description entries. The current installation path sends them through the
@@ -1398,7 +1437,7 @@ were intentionally not run.
   staging are owner-owned, durable, and exposed through authenticated server
   adapters. Alloy-authored staging is also owner-owned and binds the exact
   uploaded workspace checksum to the reviewed Alloy source digest, fixed
-  production-sandbox smoke execution, shared runtime ABI, and effective
+  production-sandbox smoke execution and canonical scenario digest, shared runtime ABI, and effective
   capability-free policy digest. Its owner-evidence security stage also
   requires the current author signature and exact platform admission. The
   independent registry validation worker treats artifact contents as untrusted:

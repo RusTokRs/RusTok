@@ -119,7 +119,8 @@ pub use authoring::{
     MODULE_AUTHORING_BUILD_MAX_SOURCE_ENTRIES, ModuleAuthoringBuildCommand,
     ModuleAuthoringBuildControl, ModuleAuthoringBuildError, ModuleAuthoringBuildSubmission,
     ModuleAuthoringPublishCommand, ModuleAuthoringPublishControl, ModuleAuthoringPublishError,
-    ModuleAuthoringPublishSubmission, SeaOrmModuleAuthoringBuildService,
+    ModuleAuthoringPublishSubmission, ModuleAuthoringSourceArchiveBuilder,
+    PreparedModuleSourceArchive, SeaOrmModuleAuthoringBuildService,
     SeaOrmModuleAuthoringPublishService, SharedModuleAuthoringBuildControl,
     SharedModuleAuthoringPublishControl,
 };
@@ -136,7 +137,7 @@ pub use build::{
     ModuleBuildEvidence, ModuleBuildExecutionClaim, ModuleBuildFailureCode, ModuleBuildLimits,
     ModuleBuildMetrics, ModuleBuildNetworkPolicy, ModuleBuildNextAction, ModuleBuildOutcome,
     ModuleBuildProtocolError, ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult,
-    ModuleBuildResultRecord, ModuleBuildSignatureAuthority, ModuleBuildSource,
+    ModuleBuildResultRecord, ModuleBuildScenario, ModuleBuildSignatureAuthority, ModuleBuildSource,
     ModuleBuildSubmission, ModuleBuildToolchain, ModuleBuildValidationOutcome,
     ModuleBuildValidationProfile, ModuleBuildValidationResult, ModuleBuildWitContract,
     ModuleBuildWorker, ModuleBuildWorkerReadiness, SeaOrmModuleBuildService,
@@ -309,7 +310,7 @@ pub use governance::{
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
     REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES,
-    SeaOrmModuleGovernanceService,
+    SeaOrmModuleGovernanceService, alloy_publication_smoke_scenario_digest,
 };
 pub use infrastructure::{ControlPlaneClock, ControlPlaneIdGenerator, ControlPlaneInfrastructure};
 pub use installation::{
@@ -424,6 +425,7 @@ pub use runtime::{
 pub use runtime_handles::{
     ArtifactDeliveryTenantSource, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
 };
+pub use rustok_build_source::SourceTreeFile;
 pub use schedule_delivery::{
     ARTIFACT_SCHEDULE_DELIVERY_WORKER, ArtifactScheduleDeliveryConfig,
     ArtifactScheduleDeliveryError, ArtifactScheduleDeliveryOutcome,

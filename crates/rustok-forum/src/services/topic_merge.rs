@@ -281,15 +281,6 @@ impl ForumTopicMergeService {
                 ForumError::Validation("Forum merged reply position overflow".to_string())
             })?;
 
-        transfer_cross_category_reply_counters_in_tx(
-            &txn,
-            tenant_id,
-            source_category_id,
-            target_category_id,
-            moved_published_reply_count,
-        )
-        .await?;
-
         if solution_plan.delete_source_solution {
             delete_solution_in_tx(&txn, tenant_id, source.id, "source").await?;
         }
@@ -349,6 +340,15 @@ impl ForumTopicMergeService {
         source_active.last_reply_at = Set(None);
         source_active.updated_at = Set(now.into());
         source_active.update(&txn).await?;
+
+        transfer_cross_category_reply_counters_in_tx(
+            &txn,
+            tenant_id,
+            source_category_id,
+            target_category_id,
+            moved_published_reply_count,
+        )
+        .await?;
 
         ForumTopicRouteService::record_merge_redirect_aliases_in_tx(
             &txn,

@@ -67,11 +67,10 @@ fn http_controllers_use_stable_forum_error_mapping() {
 
 #[test]
 fn category_reads_do_not_silently_default_missing_translations() {
-    let source = include_str!("../src/services/category.rs");
+    let source = include_str!("../src/services/category_taxonomy_read.rs");
 
-    assert!(source.contains("has no localized translation"));
-    assert!(!source.contains("name: resolved"));
-    assert!(!source.contains("slug: resolved"));
+    assert!(source.contains("missing_projection"));
+    assert!(source.contains("missing_binding"));
     assert!(source.contains("Column::TenantId.eq(tenant_id)"));
 }
 

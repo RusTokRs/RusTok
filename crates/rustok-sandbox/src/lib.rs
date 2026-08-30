@@ -35,7 +35,8 @@ pub use error::{SandboxError, SandboxResult};
 pub use executor::{ExecutorRegistry, SandboxExecutor};
 pub use harness::{
     FixtureCapabilityBroker, LocalCapabilityFixture, LocalSandboxExpectation, LocalSandboxHarness,
-    LocalSandboxScenario, LocalSandboxScenarioOutcome,
+    LocalSandboxScenario, LocalSandboxScenarioComparison, LocalSandboxScenarioOutcome,
+    LocalSandboxScenarioResult,
 };
 pub use policy::{SandboxLimits, SandboxPolicy};
 #[cfg(feature = "rhai")]

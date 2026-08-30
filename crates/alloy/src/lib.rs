@@ -38,8 +38,10 @@ pub use authoring::{
     ListAlloyScriptReviewsCommand, ListAlloyScriptRevisionsCommand, ListAlloyScriptsCommand,
     RedactedAlloyEvidenceRetention, RedactedAlloyExecution, RedactedAlloyReview,
     RedactedAlloyScript, RedactedAlloyScriptPage, RedactedAlloySourceRevision,
-    RedactedAlloyTestRun, ReviewAlloyScriptCommand, RunAlloyScriptCommand,
-    RunAlloyWorkspaceTestCommand, UpdateAlloyScriptCommand, ValidateAlloyScriptCommand,
+    RedactedAlloyTestRun, RedactedRustComponentCandidate, RedactedRustComponentCandidateReview,
+    ReviewAlloyScriptCommand, ReviewRustComponentCandidateCommand, RunAlloyScriptCommand,
+    RunAlloyWorkspaceTestCommand, SubmitRustComponentCandidateCommand, UpdateAlloyScriptCommand,
+    ValidateAlloyScriptCommand,
 };
 pub use bridge::{Bridge, PhaseCapabilities};
 pub use context::{ExecutionContext, ExecutionPhase};
@@ -58,18 +60,22 @@ pub use model::{
     AlloyReleaseError, AlloyReleaseStageCommand, AuthoringOrigin, DELETED_EVIDENCE_RETENTION_DAYS,
     EntityProxy, EventType, HttpMethod, ProvenanceError, ReviewCommand, ReviewDecision,
     ReviewError, ReviewStatus, RhaiWorkspace, RhaiWorkspaceError, RhaiWorkspaceFile,
-    RhaiWorkspaceFileKind, Script, ScriptDeletionCommand, ScriptDeletionError,
+    RhaiWorkspaceFileKind, RustComponentCandidate, RustComponentCandidateBuild,
+    RustComponentCandidateBuildCommand, RustComponentCandidateBuildError,
+    RustComponentCandidateCommand, RustComponentCandidateError, RustComponentCandidateReview,
+    RustComponentCandidateReviewCommand, RustComponentSourceFile, RustComponentWorkspace,
+    RustComponentWorkspaceError, Script, ScriptDeletionCommand, ScriptDeletionError,
     ScriptEvidenceRetentionAction, ScriptEvidenceRetentionCommand, ScriptEvidenceRetentionError,
     ScriptEvidenceRetentionState, ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger,
     SourceProvenance, TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunError,
     TestRunLease, TestRunStatus, alloy_release_command_context, deleted_evidence_retention,
-    register_entity_proxy,
+    register_entity_proxy, validate_candidate_parent_release,
 };
 pub use runner::{
-    AlloyPublishedRhaiSourceProvider, AlloyPublishedRhaiSourceProviderHandle,
-    AlloyReleaseGovernance, AlloyReleaseGovernanceHandle, AlloyReleaseImporter, ExecutionOutcome,
-    ExecutionResult, HookOutcome, RevisionedReleaseStager, RevisionedTestRunner, ScriptExecutor,
-    ScriptOrchestrator,
+    AlloyEvolutionBuildError, AlloyEvolutionBuildService, AlloyPublishedRhaiSourceProvider,
+    AlloyPublishedRhaiSourceProviderHandle, AlloyReleaseGovernance, AlloyReleaseGovernanceHandle,
+    AlloyReleaseImporter, ExecutionOutcome, ExecutionResult, HookOutcome, RevisionedReleaseStager,
+    RevisionedTestRunner, ScriptExecutor, ScriptOrchestrator,
 };
 pub use runtime::{AlloyRuntime, ScopedAlloyRuntime, SharedAlloyRuntime, build_alloy_runtime};
 pub use sandbox_request::{

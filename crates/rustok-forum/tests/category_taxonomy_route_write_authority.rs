@@ -1,14 +1,13 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumModule, UpdateCategoryInput,
-    entities::forum_category_translation,
     services::{ForumCategoryRouteDisposition, ForumCategoryRouteService},
 };
 use rustok_outbox::OutboxModule;
-use rustok_taxonomy::TaxonomyModule;
+use rustok_taxonomy::{TaxonomyModule, entities::taxonomy_term_translation};
 use sea_orm::{
-    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
-    EntityTrait, PaginatorTrait, QueryFilter, Statement,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    EntityTrait, QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -42,8 +41,6 @@ async fn taxonomy_route_registry_rejects_writes_when_legacy_route_state_is_stale
 
     let challenger = create_category(&service, tenant_id, None, "General", "general").await?;
 
-    delete_legacy_route_state(&db, tenant_id, owner).await?;
-
     let canonical_collision = service
         .update(
             tenant_id,
@@ -63,9 +60,9 @@ async fn taxonomy_route_registry_rejects_writes_when_legacy_route_state_is_stale
         .await;
     assert!(
         canonical_collision.is_err(),
-        "Taxonomy canonical route ownership must reject a stale-legacy collision"
+        "Taxonomy canonical route ownership must reject a collision"
     );
-    assert_eq!(legacy_slug(&db, tenant_id, challenger).await?, "general");
+    assert_eq!(persisted_slug(&db, tenant_id, challenger).await?, "general");
 
     let alias_collision = service
         .create(
@@ -86,17 +83,7 @@ async fn taxonomy_route_registry_rejects_writes_when_legacy_route_state_is_stale
         .await;
     assert!(
         alias_collision.is_err(),
-        "Taxonomy alias ownership must reject a stale-legacy collision"
-    );
-
-    let leaked_support_rows = forum_category_translation::Entity::find()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::Slug.eq("support"))
-        .count(&db)
-        .await?;
-    assert_eq!(
-        leaked_support_rows, 0,
-        "failed Taxonomy route ownership must roll back compatibility Forum rows"
+        "Taxonomy alias ownership must reject a collision"
     );
 
     let routes = ForumCategoryRouteService::new(db);
@@ -139,37 +126,18 @@ async fn create_category(
         .id)
 }
 
-async fn delete_legacy_route_state(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> TestResult<()> {
-    forum_category_translation::Entity::delete_many()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(category_id))
-        .exec(db)
-        .await?;
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Sqlite,
-        "DELETE FROM forum_category_route_aliases WHERE tenant_id = ? AND category_id = ?",
-        vec![tenant_id.into(), category_id.into()],
-    ))
-    .await?;
-    Ok(())
-}
-
-async fn legacy_slug(
+async fn persisted_slug(
     db: &DatabaseConnection,
     tenant_id: Uuid,
     category_id: Uuid,
 ) -> TestResult<String> {
-    Ok(forum_category_translation::Entity::find()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(category_id))
-        .filter(forum_category_translation::Column::Locale.eq("en"))
+    Ok(taxonomy_term_translation::Entity::find()
+        .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+        .filter(taxonomy_term_translation::Column::TermId.eq(category_id))
+        .filter(taxonomy_term_translation::Column::Locale.eq("en"))
         .one(db)
         .await?
-        .expect("compatibility translation must remain after rollback")
+        .expect("translation must remain after rollback")
         .slug)
 }
 

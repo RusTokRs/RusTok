@@ -14,6 +14,8 @@ use object_store::{ObjectStoreExt, PutMode, path::Path};
 use rustok_api::is_valid_module_slug;
 use rustok_build_source::{
     ArchiveLimits, CasArchiveError, CasArchivePublishReceipt, CasArchivePublisher,
+    SourceArchiveBuilder, SourceArchiveError, SourceTreeError, SourceTreeFile,
+    SourceTreeMaterializer,
 };
 use rustok_storage::{StorageConfig, StorageRuntime};
 use sea_orm::DatabaseConnection;
@@ -24,15 +26,15 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION, MODULE_BUILD_RUNTIME_ABI,
-    MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD, MODULE_PUBLISH_BUNDLE_CONTENT_TYPE,
-    ModuleBuildAuthoring, ModuleBuildDependencyPolicy, ModuleBuildLimits, ModuleBuildNetworkPolicy,
-    ModuleBuildRequest, ModuleBuildSource, ModuleBuildToolchain, ModuleBuildValidationProfile,
-    ModuleBuildWitContract, ModuleCommandContext, ModulePublicationArtifactOrigin,
-    ModulePublishArtifactAttachCommand, ModulePublishBundleValidation,
-    ModulePublishPlatformBuildStageCommand, ModulePublishValidationContract,
-    ModuleValidationJobEnqueueCommand, SeaOrmModuleBuildService, SeaOrmModuleGovernanceService,
-    validate_module_publish_artifact,
+    ArtifactReleaseRef, MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_PROTOCOL_VERSION,
+    MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION, MODULE_BUILD_WIT_WORLD,
+    MODULE_PUBLISH_BUNDLE_CONTENT_TYPE, ModuleBuildAuthoring, ModuleBuildDependencyPolicy,
+    ModuleBuildLimits, ModuleBuildNetworkPolicy, ModuleBuildRequest, ModuleBuildScenario,
+    ModuleBuildSource, ModuleBuildToolchain, ModuleBuildValidationProfile, ModuleBuildWitContract,
+    ModuleCommandContext, ModulePublicationArtifactOrigin, ModulePublishArtifactAttachCommand,
+    ModulePublishBundleValidation, ModulePublishPlatformBuildStageCommand,
+    ModulePublishValidationContract, ModuleValidationJobEnqueueCommand, SeaOrmModuleBuildService,
+    SeaOrmModuleGovernanceService, validate_module_publish_artifact,
 };
 
 pub const MODULE_AUTHORING_BUILD_MAX_ARCHIVE_BYTES: u64 = 512 * 1024 * 1024;
@@ -57,12 +59,103 @@ pub struct ModuleAuthoringBuildCommand {
     pub context: ModuleCommandContext,
     pub project_id: String,
     pub source_digest: String,
+    pub scenario: ModuleBuildScenario,
     pub expected_module_slug: String,
     pub expected_version: String,
+    /// Optional immutable Rhai predecessor for a reviewed Rust/WASM rewrite.
+    pub parent_release: Option<ArtifactReleaseRef>,
     pub rust_toolchain: String,
     pub sdk_version: String,
     pub template_version: String,
     pub dependency_lock_digest: String,
+}
+
+/// A host-prepared deterministic source archive accepted by the owner build
+/// boundary. This type is intentionally not serializable: transports and
+/// Alloy may provide reviewed source only through a host materializer, never
+/// by supplying an arbitrary filesystem path in a build command.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreparedModuleSourceArchive {
+    archive_path: PathBuf,
+    source_digest: String,
+}
+
+impl PreparedModuleSourceArchive {
+    pub fn new(
+        archive_path: PathBuf,
+        source_digest: impl Into<String>,
+    ) -> Result<Self, ModuleAuthoringBuildError> {
+        let source_digest = source_digest.into();
+        if archive_path.as_os_str().is_empty()
+            || !archive_path.is_absolute()
+            || !valid_digest(&source_digest)
+        {
+            return Err(ModuleAuthoringBuildError::InvalidCommand);
+        }
+        Ok(Self {
+            archive_path,
+            source_digest,
+        })
+    }
+
+    pub fn source_digest(&self) -> &str {
+        &self.source_digest
+    }
+
+    fn from_verified_archive(archive_path: PathBuf, source_digest: String) -> Self {
+        Self {
+            archive_path,
+            source_digest,
+        }
+    }
+
+    fn archive_path(&self) -> &std::path::Path {
+        &self.archive_path
+    }
+}
+
+/// The owner-selected deterministic source archive profile for remote module
+/// builds. Host materializers use this boundary before submitting a build, so
+/// every source archive is created under the same limits that the owner later
+/// scans and publishes into source CAS.
+#[derive(Clone, Copy, Debug)]
+pub struct ModuleAuthoringSourceArchiveBuilder {
+    limits: ArchiveLimits,
+}
+
+impl ModuleAuthoringSourceArchiveBuilder {
+    pub fn new() -> Result<Self, ModuleAuthoringBuildError> {
+        Ok(Self {
+            limits: ArchiveLimits::new(
+                MODULE_AUTHORING_BUILD_MAX_ARCHIVE_BYTES,
+                MODULE_AUTHORING_BUILD_MAX_SOURCE_BYTES,
+                MODULE_AUTHORING_BUILD_MAX_SOURCE_ENTRIES,
+            )?,
+        })
+    }
+
+    pub fn prepare(
+        &self,
+        source_root: &std::path::Path,
+        archive_path: &std::path::Path,
+    ) -> Result<PreparedModuleSourceArchive, ModuleAuthoringBuildError> {
+        let receipt = SourceArchiveBuilder::new(self.limits).write(source_root, archive_path)?;
+        Ok(PreparedModuleSourceArchive::from_verified_archive(
+            archive_path.to_path_buf(),
+            receipt.source_digest,
+        ))
+    }
+
+    /// Materializes reviewed data-only files under the same fixed profile used
+    /// by owner archive preparation and source-CAS publication.
+    pub fn materialize(
+        &self,
+        files: &[SourceTreeFile],
+        destination: &std::path::Path,
+    ) -> Result<(), ModuleAuthoringBuildError> {
+        SourceTreeMaterializer::new(self.limits).write(files, destination)?;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,7 +175,7 @@ pub trait ModuleAuthoringBuildControl: Send + Sync {
     async fn submit_build(
         &self,
         command: ModuleAuthoringBuildCommand,
-        archive_path: PathBuf,
+        archive: PreparedModuleSourceArchive,
     ) -> Result<ModuleAuthoringBuildSubmission, ModuleAuthoringBuildError>;
 }
 
@@ -250,11 +343,7 @@ impl SeaOrmModuleAuthoringBuildService {
         source_cas_root: PathBuf,
     ) -> Result<Self, ModuleAuthoringBuildError> {
         let publisher = CasArchivePublisher::new(source_cas_root)?;
-        let archive_limits = ArchiveLimits::new(
-            MODULE_AUTHORING_BUILD_MAX_ARCHIVE_BYTES,
-            MODULE_AUTHORING_BUILD_MAX_SOURCE_BYTES,
-            MODULE_AUTHORING_BUILD_MAX_SOURCE_ENTRIES,
-        )?;
+        let archive_limits = ModuleAuthoringSourceArchiveBuilder::new()?.limits;
         Ok(Self {
             builds: SeaOrmModuleBuildService::new(db),
             publisher,
@@ -275,8 +364,10 @@ impl SeaOrmModuleAuthoringBuildService {
                 reference: format!("cas://{}", command.source_digest),
                 digest: command.source_digest.clone(),
             },
+            scenario: command.scenario.clone(),
             expected_module_slug: command.expected_module_slug.clone(),
             expected_version: command.expected_version.clone(),
+            parent_release: command.parent_release.clone(),
             runtime_abi: MODULE_BUILD_RUNTIME_ABI.to_string(),
             wit: ModuleBuildWitContract {
                 world: MODULE_BUILD_WIT_WORLD.to_string(),
@@ -324,6 +415,17 @@ impl SeaOrmModuleAuthoringBuildService {
         request.validate()?;
         Ok(request)
     }
+
+    fn validate_submission(
+        command: &ModuleAuthoringBuildCommand,
+        archive: &PreparedModuleSourceArchive,
+    ) -> Result<(), ModuleAuthoringBuildError> {
+        command.validate()?;
+        if command.source_digest != archive.source_digest {
+            return Err(ModuleAuthoringBuildError::InvalidCommand);
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -331,14 +433,15 @@ impl ModuleAuthoringBuildControl for SeaOrmModuleAuthoringBuildService {
     async fn submit_build(
         &self,
         command: ModuleAuthoringBuildCommand,
-        archive_path: PathBuf,
+        archive: PreparedModuleSourceArchive,
     ) -> Result<ModuleAuthoringBuildSubmission, ModuleAuthoringBuildError> {
+        Self::validate_submission(&command, &archive)?;
         let request = Self::immutable_request(&command)?;
         let publisher = self.publisher.clone();
         let archive_limits = self.archive_limits;
         let expected_digest = command.source_digest.clone();
         let published = tokio::task::spawn_blocking(move || {
-            publisher.publish(&archive_path, &expected_digest, archive_limits)
+            publisher.publish(archive.archive_path(), &expected_digest, archive_limits)
         })
         .await
         .map_err(|error| ModuleAuthoringBuildError::SourceTask(error.to_string()))??;
@@ -471,6 +574,13 @@ impl ModuleAuthoringBuildCommand {
             || Version::parse(&self.template_version).is_err()
             || !valid_digest(&self.source_digest)
             || !valid_digest(&self.dependency_lock_digest)
+            || crate::build::validate_build_scenario(&self.scenario).is_err()
+            || !crate::build::valid_parent_release_lineage(
+                &self.parent_release,
+                &self.expected_module_slug,
+                &self.expected_version,
+                &self.source_digest,
+            )
         {
             return Err(ModuleAuthoringBuildError::InvalidCommand);
         }
@@ -536,7 +646,7 @@ fn deterministic_request_id(
         .map_err(|error| ModuleAuthoringBuildError::Encoding(error.to_string()))?;
     let digest = Sha256::digest(
         [
-            b"rustok.module.authoring-build.request.v1\0".as_slice(),
+            b"rustok.module.authoring-build.request\0".as_slice(),
             encoded.as_slice(),
         ]
         .concat(),
@@ -581,6 +691,10 @@ pub enum ModuleAuthoringBuildError {
     Encoding(String),
     #[error("module source CAS operation failed: {0}")]
     Source(#[from] CasArchiveError),
+    #[error("module source archive preparation failed: {0}")]
+    SourceArchive(#[from] SourceArchiveError),
+    #[error("module source tree materialization failed: {0}")]
+    SourceTree(#[from] SourceTreeError),
     #[error("module source CAS task failed: {0}")]
     SourceTask(String),
     #[error("module build submission failed: {0}")]
@@ -626,8 +740,13 @@ mod tests {
             },
             project_id: "project:sample".to_string(),
             source_digest: digest('a'),
+            scenario: ModuleBuildScenario {
+                source_path: "tests/sandbox-scenario.json".to_string(),
+                digest: digest('b'),
+            },
             expected_module_slug: "sample_module".to_string(),
             expected_version: "1.0.0".to_string(),
+            parent_release: None,
             rust_toolchain: "1.85.0".to_string(),
             sdk_version: "1.0.0".to_string(),
             template_version: "1.0.0".to_string(),
@@ -676,6 +795,7 @@ mod tests {
             ModuleBuildNetworkPolicy::ScopedDependencyMaterialization { .. }
         ));
         assert_eq!(first.validation_profiles.len(), 6);
+        assert_eq!(first.parent_release, command.parent_release);
         assert!(!first.dependency_policy.allow_git_dependencies);
         assert!(!first.dependency_policy.allow_build_scripts);
         assert!(!first.dependency_policy.allow_native_links);
@@ -692,6 +812,74 @@ mod tests {
         let mut uppercase_digest = command();
         uppercase_digest.source_digest = format!("sha256:{}", "A".repeat(64));
         assert!(uppercase_digest.validate().is_err());
+    }
+
+    #[test]
+    fn prepared_source_archive_is_host_local_and_matches_the_build_command() {
+        let archive = PreparedModuleSourceArchive::new(
+            std::env::temp_dir().join("rustok-authoring-source.tar"),
+            digest('a'),
+        )
+        .expect("prepared archive");
+        assert_eq!(archive.source_digest(), digest('a'));
+        assert!(
+            PreparedModuleSourceArchive::new(PathBuf::from("source.tar"), digest('a')).is_err()
+        );
+
+        assert!(
+            SeaOrmModuleAuthoringBuildService::validate_submission(&command(), &archive).is_ok()
+        );
+        let mut mismatched = command();
+        mismatched.source_digest = digest('c');
+        assert!(
+            SeaOrmModuleAuthoringBuildService::validate_submission(&mismatched, &archive).is_err()
+        );
+    }
+
+    #[test]
+    fn owner_source_archive_builder_uses_the_fixed_build_profile() {
+        let root = std::env::temp_dir().join(format!("rustok-authoring-source-{}", Uuid::new_v4()));
+        let source = root.join("source");
+        let archive_path = root.join("source.tar");
+        std::fs::create_dir_all(&source).expect("source directory");
+        std::fs::write(source.join("module-artifact.json"), b"{}\n").expect("source file");
+
+        let builder = ModuleAuthoringSourceArchiveBuilder::new().expect("archive builder");
+        assert_eq!(
+            builder.limits.max_entries,
+            MODULE_AUTHORING_BUILD_MAX_SOURCE_ENTRIES
+        );
+        let archive = builder
+            .prepare(&source, &archive_path)
+            .expect("prepared archive");
+        assert_eq!(archive.archive_path(), archive_path);
+        assert!(archive.source_digest().starts_with("sha256:"));
+
+        std::fs::remove_dir_all(root).expect("temporary source cleanup");
+    }
+
+    #[test]
+    fn owner_source_tree_materializer_uses_the_fixed_build_profile() {
+        let root = std::env::temp_dir().join(format!("rustok-authoring-tree-{}", Uuid::new_v4()));
+        let source = root.join("source");
+        std::fs::create_dir_all(&root).expect("temporary root");
+
+        ModuleAuthoringSourceArchiveBuilder::new()
+            .expect("archive builder")
+            .materialize(
+                &[SourceTreeFile {
+                    path: "src/lib.rs".to_string(),
+                    contents: b"pub fn run() {}\n".to_vec(),
+                }],
+                &source,
+            )
+            .expect("materialized source tree");
+        assert_eq!(
+            std::fs::read(source.join("src/lib.rs")).expect("materialized file"),
+            b"pub fn run() {}\n"
+        );
+
+        std::fs::remove_dir_all(root).expect("temporary source cleanup");
     }
 
     #[test]

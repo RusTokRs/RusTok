@@ -161,6 +161,7 @@ where
                 }),
                 sandbox_execution_id: smoke_evidence.execution_id,
                 sandbox_test_path: smoke_evidence.test_path,
+                sandbox_scenario_digest: smoke_evidence.scenario_digest,
                 sandbox_executor: smoke_evidence.executor,
                 sandbox_runtime_abi: smoke_evidence.runtime_abi,
                 sandbox_policy_digest: smoke_evidence.policy_digest,

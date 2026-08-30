@@ -309,6 +309,21 @@ impl ForumTopicSplitService {
             move_selected_replies_in_tx(&txn, tenant_id, prepared.target_topic_id, selected, now)
                 .await?;
         if let Some(solution) = moved_solution.as_ref() {
+            forum_solution::Entity::delete_many()
+                .filter(forum_solution::Column::TenantId.eq(tenant_id))
+                .filter(forum_solution::Column::TopicId.eq(source_topic_id))
+                .exec(&txn)
+                .await?;
+            forum_solution::ActiveModel {
+                topic_id: Set(prepared.target_topic_id),
+                tenant_id: Set(tenant_id),
+                reply_id: Set(solution.reply_id),
+                marked_by_user_id: Set(solution.marked_by_user_id),
+                marked_at: Set(solution.marked_at),
+            }
+            .insert(&txn)
+            .await?;
+
             validate_cascaded_solution_transfer_in_tx(
                 &txn,
                 tenant_id,

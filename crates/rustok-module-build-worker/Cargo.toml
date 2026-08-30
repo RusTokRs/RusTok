@@ -14,6 +14,7 @@ rustok-build-publication.workspace = true
 rustok-build-source.workspace = true
 rustok-module-build-transport.workspace = true
 rustok-modules.workspace = true
+rustok-sandbox.workspace = true
 rustok-worker-transport.workspace = true
 serde.workspace = true
 serde_json.workspace = true

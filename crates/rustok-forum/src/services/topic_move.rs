@@ -132,22 +132,22 @@ impl ForumTopicMoveService {
         load_category_audience_policy(&txn, tenant_id, input.target_category_id).await?;
 
         let now = Utc::now();
-        transfer_category_counters_in_tx(
-            &txn,
-            tenant_id,
-            topic.category_id,
-            input.target_category_id,
-            topic.reply_count,
-            now,
-        )
-        .await?;
-
         let source_category_id = topic.category_id;
         let mut active: forum_topic::ActiveModel = topic.into();
         active.category_id = Set(input.target_category_id);
         active.updated_at = Set(now.into());
         let moved_topic = active.update(&txn).await?;
         load_policy_for_topic(&txn, tenant_id, &moved_topic).await?;
+
+        transfer_category_counters_in_tx(
+            &txn,
+            tenant_id,
+            source_category_id,
+            input.target_category_id,
+            moved_topic.reply_count,
+            now,
+        )
+        .await?;
 
         let event_payload = topic_moved_payload(
             input.operation_id,

@@ -751,9 +751,9 @@ pub struct ArtifactMigrationCheckpointRequest {
     pub reason: String,
 }
 
-/// Immutable owner command for one artifact admission. The actor and
-/// idempotency key are control-plane facts; they are never supplied by the
-/// untrusted OCI descriptor.
+/// Immutable owner command for one artifact admission. The complete command
+/// context is control-plane evidence; it is never supplied by the untrusted
+/// OCI descriptor.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ArtifactAdmissionCommand {
     pub reference: OciArtifactReference,
@@ -762,22 +762,24 @@ pub struct ArtifactAdmissionCommand {
     /// Host-selected sandbox grants and limits. Descriptor declarations are
     /// validated against this policy but cannot create grants themselves.
     pub sandbox_policy: SandboxPolicy,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 impl ArtifactAdmissionCommand {
     fn validate(&self) -> Result<(), ModuleInstallationError> {
         self.reference.validate()?;
-        if self.actor_id.is_nil() || self.idempotency_key.is_nil() {
+        self.context.validate().map_err(|error| {
+            ModuleInstallationError::AdmissionRevisionConflict(format!(
+                "admission requires a valid command context: {error}"
+            ))
+        })?;
+        let scope_tenant_id = match &self.scope {
+            ModuleInstallationScope::Platform => None,
+            ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
+        };
+        if self.context.tenant_id != scope_tenant_id {
             return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "admission requires non-nil actor and idempotency identities".into(),
-            ));
-        }
-        if matches!(&self.scope, ModuleInstallationScope::Tenant { tenant_id } if tenant_id.is_nil())
-        {
-            return Err(ModuleInstallationError::AdmissionRevisionConflict(
-                "tenant-scoped admission requires a non-nil tenant identity".into(),
+                "admission command context tenant does not match installation scope".into(),
             ));
         }
         self.dependency_lock
@@ -793,6 +795,7 @@ impl ArtifactAdmissionCommand {
             scope: &'a ModuleInstallationScope,
             dependency_lock: &'a ModuleDependencyLockGraph,
             sandbox_policy: &'a SandboxPolicy,
+            context: &'a ModuleCommandContext,
         }
 
         let bytes = serde_json::to_vec(&Fingerprint {
@@ -800,6 +803,7 @@ impl ArtifactAdmissionCommand {
             scope: &self.scope,
             dependency_lock: &self.dependency_lock,
             sandbox_policy: &self.sandbox_policy,
+            context: &self.context,
         })
         .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         Ok(sha256_digest(&bytes))
@@ -3518,8 +3522,8 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                 vec![
                     scope_kind.into(),
                     scope_tenant_key.into(),
-                    uuid_value(command.actor_id, backend),
-                    uuid_value(command.idempotency_key, backend),
+                    uuid_value(command.context.actor_id, backend),
+                    uuid_value(command.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -3578,8 +3582,10 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                 vec![
                     scope_kind.into(),
                     scope_tenant_key.clone().into(),
-                    uuid_value(command.actor_id, backend),
-                    uuid_value(command.idempotency_key, backend),
+                    uuid_value(command.context.actor_id, backend),
+                    uuid_value(command.context.idempotency_key, backend),
+                    command.context.trace_id.clone().into(),
+                    uuid_value(command.context.correlation_id, backend),
                     request_digest.into(),
                     datetime_value(backend, &committed_at),
                 ],
@@ -3592,8 +3598,8 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                 backend,
                 scope_kind,
                 &scope_tenant_key,
-                command.actor_id,
-                command.idempotency_key,
+                command.context.actor_id,
+                command.context.idempotency_key,
             )
             .await?
             .ok_or_else(|| {
@@ -3644,8 +3650,8 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
                     uuid_value(artifact.installation_id, backend),
                     scope_kind.into(),
                     scope_tenant_key.into(),
-                    uuid_value(command.actor_id, backend),
-                    uuid_value(command.idempotency_key, backend),
+                    uuid_value(command.context.actor_id, backend),
+                    uuid_value(command.context.idempotency_key, backend),
                     request_digest.into(),
                 ],
             ))
@@ -3665,16 +3671,11 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        let tenant_id = match &artifact.scope {
-            ModuleInstallationScope::Platform => None,
-            ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
-        };
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    tenant_id,
-                    Some(command.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &command.context,
                     DomainEvent::ModuleArtifactAdmitted {
                         installation_id: artifact.installation_id,
                         artifact_digest: artifact.descriptor.artifact_digest.clone(),
@@ -3739,12 +3740,12 @@ fn datetime_value(backend: DbBackend, value: &DateTime<Utc>) -> SqlValue {
 
 fn admission_command_insert_sql(backend: DbBackend) -> String {
     let placeholders = match backend {
-        DbBackend::Postgres => (1..=6).map(|index| format!("${index}")).collect::<Vec<_>>(),
-        _ => (1..=6).map(|index| format!("?{index}")).collect::<Vec<_>>(),
+        DbBackend::Postgres => (1..=8).map(|index| format!("${index}")).collect::<Vec<_>>(),
+        _ => (1..=8).map(|index| format!("?{index}")).collect::<Vec<_>>(),
     };
     format!(
         "INSERT INTO module_artifact_admission_commands (\
-            scope_kind, scope_tenant_key, actor_id, idempotency_key, request_digest, committed_at\
+            scope_kind, scope_tenant_key, actor_id, idempotency_key, trace_id, correlation_id, request_digest, committed_at\
          ) VALUES ({}) ON CONFLICT DO NOTHING",
         placeholders.join(", "),
     )
@@ -5050,6 +5051,38 @@ mod tests {
         );
     }
 
+    #[test]
+    fn admission_command_requires_a_scope_matched_command_context() {
+        let reference = OciArtifactReference {
+            registry: "registry.example".to_string(),
+            repository: "modules/sample_module".to_string(),
+            digest: format!("sha256:{}", "a".repeat(64)),
+        };
+        let tenant_id = Uuid::new_v4();
+        let tenant_command = ArtifactAdmissionCommand {
+            reference: reference.clone(),
+            scope: ModuleInstallationScope::Tenant { tenant_id },
+            dependency_lock: empty_dependency_lock(),
+            sandbox_policy: SandboxPolicy::default(),
+            context: lifecycle_context(None),
+        };
+        assert!(matches!(
+            tenant_command.validate(),
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+        let platform_command = ArtifactAdmissionCommand {
+            reference,
+            scope: ModuleInstallationScope::Platform,
+            dependency_lock: empty_dependency_lock(),
+            sandbox_policy: SandboxPolicy::default(),
+            context: lifecycle_context(Some(tenant_id)),
+        };
+        assert!(matches!(
+            platform_command.validate(),
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+    }
+
     #[tokio::test]
     async fn rollback_predecessor_selection_uses_one_active_non_uninstalled_serving_release() {
         let database = Database::connect("sqlite::memory:")
@@ -5519,13 +5552,16 @@ mod tests {
         reference: OciArtifactReference,
         scope: ModuleInstallationScope,
     ) -> ArtifactAdmissionCommand {
+        let tenant_id = match &scope {
+            ModuleInstallationScope::Platform => None,
+            ModuleInstallationScope::Tenant { tenant_id } => Some(*tenant_id),
+        };
         ArtifactAdmissionCommand {
             reference,
             scope,
             dependency_lock: empty_dependency_lock(),
             sandbox_policy: SandboxPolicy::default(),
-            actor_id: Uuid::new_v4(),
-            idempotency_key: Uuid::new_v4(),
+            context: lifecycle_context(tenant_id),
         }
     }
 
@@ -5852,8 +5888,7 @@ mod tests {
             scope: ModuleInstallationScope::Tenant { tenant_id },
             dependency_lock: expected_lock.clone(),
             sandbox_policy: SandboxPolicy::default(),
-            actor_id: Uuid::new_v4(),
-            idempotency_key: Uuid::new_v4(),
+            context: lifecycle_context(Some(tenant_id)),
         };
         let conflicting_command = ArtifactAdmissionCommand {
             reference: OciArtifactReference {
@@ -5864,19 +5899,29 @@ mod tests {
             scope: command.scope.clone(),
             dependency_lock: command.dependency_lock.clone(),
             sandbox_policy: command.sandbox_policy.clone(),
-            actor_id: command.actor_id,
-            idempotency_key: command.idempotency_key,
+            context: command.context.clone(),
         };
         let admission = installer.admit(command.clone()).await.expect("admission");
         assert!(admission.created);
         let duplicate = installer
-            .admit(command)
+            .admit(command.clone())
             .await
             .expect("idempotent admission");
         assert!(!duplicate.created);
         assert_eq!(duplicate.installation_id, admission.installation_id);
         assert!(matches!(
             installer.admit(conflicting_command).await,
+            Err(ModuleInstallationError::AdmissionRevisionConflict(_))
+        ));
+        let conflicting_context_command = ArtifactAdmissionCommand {
+            context: ModuleCommandContext {
+                trace_id: "test:conflicting-admission-context".to_string(),
+                ..command.context.clone()
+            },
+            ..command.clone()
+        };
+        assert!(matches!(
+            installer.admit(conflicting_context_command).await,
             Err(ModuleInstallationError::AdmissionRevisionConflict(_))
         ));
         let installed = InstalledModuleArtifact {
@@ -5961,6 +6006,34 @@ mod tests {
             i64::try_get(&admission_command_count, "", "count").expect("admission command count"),
             1
         );
+        let admission_command_receipt = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT actor_id, trace_id, correlation_id, idempotency_key \
+                 FROM module_artifact_admission_commands"
+                    .to_string(),
+            ))
+            .await
+            .expect("admission command receipt query")
+            .expect("admission command receipt");
+        assert_eq!(
+            String::try_get(&admission_command_receipt, "", "actor_id").expect("receipt actor"),
+            command.context.actor_id.to_string()
+        );
+        assert_eq!(
+            String::try_get(&admission_command_receipt, "", "trace_id").expect("receipt trace"),
+            command.context.trace_id
+        );
+        assert_eq!(
+            String::try_get(&admission_command_receipt, "", "correlation_id")
+                .expect("receipt correlation"),
+            command.context.correlation_id.to_string()
+        );
+        assert_eq!(
+            String::try_get(&admission_command_receipt, "", "idempotency_key")
+                .expect("receipt idempotency"),
+            command.context.idempotency_key.to_string()
+        );
         let outbox_count = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,
@@ -5973,6 +6046,29 @@ mod tests {
         assert_eq!(
             i64::try_get(&outbox_count, "", "count").expect("outbox count"),
             1
+        );
+        let admitted_event = database
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT payload FROM sys_events WHERE event_type = 'module.artifact.admitted'"
+                    .to_string(),
+            ))
+            .await
+            .expect("admitted event query")
+            .expect("admitted event");
+        let admitted_payload: Value = admitted_event
+            .try_get("", "payload")
+            .expect("admitted event payload");
+        let admitted_envelope: rustok_events::EventEnvelope =
+            serde_json::from_value(admitted_payload).expect("admitted event envelope");
+        assert_eq!(admitted_envelope.actor_id, Some(command.context.actor_id));
+        assert_eq!(
+            admitted_envelope.correlation_id,
+            command.context.correlation_id
+        );
+        assert_eq!(
+            admitted_envelope.trace_id.as_deref(),
+            Some(command.context.trace_id.as_str())
         );
 
         let evidence = ArtifactVerificationEvidence {

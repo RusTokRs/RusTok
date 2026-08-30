@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, TenantLocale};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
+use rustok_taxonomy::{TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect,

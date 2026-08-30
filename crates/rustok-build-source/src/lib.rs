@@ -14,7 +14,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-pub use writer::{SourceArchiveBuilder, SourceArchiveError, SourceArchiveReceipt};
+pub use writer::{
+    SourceArchiveBuilder, SourceArchiveError, SourceArchiveReceipt, SourceTreeError,
+    SourceTreeFile, SourceTreeMaterialization, SourceTreeMaterializer,
+};
 
 const USTAR_BLOCK_BYTES: usize = 512;
 const COPY_BUFFER_BYTES: usize = 64 * 1024;

@@ -14,6 +14,7 @@ pub const MAX_RELEASE_REQUEST_ID_LENGTH: usize = 128;
 pub struct AlloyPublicationSmokeEvidence {
     pub execution_id: Uuid,
     pub test_path: String,
+    pub scenario_digest: String,
     pub executor: String,
     pub runtime_abi: String,
     pub policy_digest: String,

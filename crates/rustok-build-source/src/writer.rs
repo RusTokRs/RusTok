@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Component, Path, PathBuf},
@@ -16,6 +17,29 @@ const IGNORED_ROOT_PATHS: &[&str] = &[".git", "target"];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SourceArchiveBuilder {
     limits: ArchiveLimits,
+}
+
+/// A data-only regular file accepted for a host-owned source tree.
+///
+/// The materializer rejects unsafe paths and never accepts filesystem handles,
+/// links, permissions, or timestamps from the caller.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceTreeFile {
+    pub path: String,
+    pub contents: Vec<u8>,
+}
+
+/// Shared safe materializer for reviewed source files. It creates one new
+/// directory that can then be handed to [`SourceArchiveBuilder`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SourceTreeMaterializer {
+    limits: ArchiveLimits,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceTreeMaterialization {
+    pub source_bytes: u64,
+    pub entries: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +63,20 @@ pub enum SourceArchiveError {
     #[error("source archive destination must be an absolute path outside the source root")]
     InvalidDestination,
     #[error("source archive write failed: {0}")]
+    Io(String),
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum SourceTreeError {
+    #[error("source tree destination must be a new absolute directory under a regular parent")]
+    InvalidDestination,
+    #[error("source tree destination already exists")]
+    DestinationExists,
+    #[error("source tree contains an unsafe, duplicate, or forbidden path")]
+    UnsafeSource,
+    #[error("source tree exceeds a configured resource limit")]
+    ResourceLimit,
+    #[error("source tree materialization failed: {0}")]
     Io(String),
 }
 
@@ -106,6 +144,189 @@ impl SourceArchiveBuilder {
             entries,
         })
     }
+}
+
+impl SourceTreeMaterializer {
+    pub fn new(limits: ArchiveLimits) -> Self {
+        Self { limits }
+    }
+
+    /// Validates data-only reviewed source without touching the filesystem.
+    /// Hosts use this before persisting or reviewing a source snapshot.
+    pub fn validate(
+        &self,
+        files: &[SourceTreeFile],
+    ) -> Result<SourceTreeMaterialization, SourceTreeError> {
+        let (_, source_bytes, entries) = collect_tree_files(files, self.limits)?;
+        Ok(SourceTreeMaterialization {
+            source_bytes,
+            entries,
+        })
+    }
+
+    /// Creates `destination` and writes the reviewed source exactly once. The
+    /// destination must not exist; on failure this method removes only that
+    /// directory, never a caller-owned pre-existing path.
+    pub fn write(
+        &self,
+        files: &[SourceTreeFile],
+        destination: &Path,
+    ) -> Result<SourceTreeMaterialization, SourceTreeError> {
+        let (files, source_bytes, entries) = collect_tree_files(files, self.limits)?;
+        validate_tree_destination(destination)?;
+        fs::create_dir(destination).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                SourceTreeError::DestinationExists
+            } else {
+                tree_io_error(error)
+            }
+        })?;
+
+        let result = files
+            .into_iter()
+            .try_for_each(|file| write_tree_file(destination, &file.path, &file.contents));
+        match result {
+            Ok(()) => Ok(SourceTreeMaterialization {
+                source_bytes,
+                entries,
+            }),
+            Err(error) => {
+                remove_created_tree(destination);
+                Err(error)
+            }
+        }
+    }
+}
+
+fn collect_tree_files(
+    files: &[SourceTreeFile],
+    limits: ArchiveLimits,
+) -> Result<(Vec<SourceTreeFile>, u64, u32), SourceTreeError> {
+    if files.is_empty() {
+        return Err(SourceTreeError::UnsafeSource);
+    }
+    let mut paths = BTreeSet::new();
+    let mut directories = BTreeSet::new();
+    let mut source_bytes = 0_u64;
+    let mut normalized_files = Vec::with_capacity(files.len());
+    for file in files {
+        let normalized_path = normalized_tree_path(&file.path)?;
+        if !paths.insert(normalized_path.clone()) {
+            return Err(SourceTreeError::UnsafeSource);
+        }
+        source_bytes = source_bytes
+            .checked_add(
+                u64::try_from(file.contents.len()).map_err(|_| SourceTreeError::ResourceLimit)?,
+            )
+            .ok_or(SourceTreeError::ResourceLimit)?;
+        if source_bytes > limits.max_extracted_bytes {
+            return Err(SourceTreeError::ResourceLimit);
+        }
+        let mut parent = Path::new(&normalized_path).parent();
+        while let Some(directory) = parent {
+            if directory.as_os_str().is_empty() {
+                break;
+            }
+            directories.insert(directory.to_string_lossy().replace('\\', "/"));
+            parent = directory.parent();
+        }
+        normalized_files.push(SourceTreeFile {
+            path: normalized_path,
+            contents: file.contents.clone(),
+        });
+    }
+    let entry_count = normalized_files
+        .len()
+        .checked_add(directories.len())
+        .ok_or(SourceTreeError::ResourceLimit)?;
+    let entries = u32::try_from(entry_count).map_err(|_| SourceTreeError::ResourceLimit)?;
+    if entries > limits.max_entries {
+        return Err(SourceTreeError::ResourceLimit);
+    }
+    normalized_files.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok((normalized_files, source_bytes, entries))
+}
+
+fn normalized_tree_path(path: &str) -> Result<String, SourceTreeError> {
+    if path.is_empty() || path.contains('\\') {
+        return Err(SourceTreeError::UnsafeSource);
+    }
+    let path = Path::new(path);
+    let root = path.components().next();
+    if !safe_relative_path(path)
+        || matches!(root, Some(Component::Normal(name)) if name.to_str().is_some_and(|name| name == ".git" || name == "target"))
+        || forbidden_source_path(path)
+    {
+        return Err(SourceTreeError::UnsafeSource);
+    }
+    normalized_archive_path(path).map_err(|_| SourceTreeError::UnsafeSource)
+}
+
+fn validate_tree_destination(destination: &Path) -> Result<(), SourceTreeError> {
+    if !destination.is_absolute() {
+        return Err(SourceTreeError::InvalidDestination);
+    }
+    match fs::symlink_metadata(destination) {
+        Ok(_) => return Err(SourceTreeError::DestinationExists),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(tree_io_error(error)),
+    }
+    let parent = destination
+        .parent()
+        .ok_or(SourceTreeError::InvalidDestination)?;
+    let metadata = fs::symlink_metadata(parent).map_err(tree_io_error)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(SourceTreeError::InvalidDestination);
+    }
+    Ok(())
+}
+
+fn write_tree_file(
+    destination: &Path,
+    relative_path: &str,
+    contents: &[u8],
+) -> Result<(), SourceTreeError> {
+    let relative = Path::new(relative_path);
+    let parent = relative.parent().ok_or(SourceTreeError::UnsafeSource)?;
+    let mut directory = destination.to_path_buf();
+    for component in parent.components() {
+        let Component::Normal(component) = component else {
+            return Err(SourceTreeError::UnsafeSource);
+        };
+        directory.push(component);
+        match fs::create_dir(&directory) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(tree_io_error(error)),
+        }
+        let metadata = fs::symlink_metadata(&directory).map_err(tree_io_error)?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(SourceTreeError::UnsafeSource);
+        }
+    }
+    let path = destination.join(relative);
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(tree_io_error)?;
+    output.write_all(contents).map_err(tree_io_error)?;
+    output.sync_all().map_err(tree_io_error)
+}
+
+fn remove_created_tree(path: &Path) {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return;
+    };
+    if metadata.file_type().is_symlink() || metadata.is_file() {
+        let _ = fs::remove_file(path);
+    } else if metadata.is_dir() {
+        let _ = fs::remove_dir_all(path);
+    }
+}
+
+fn tree_io_error(error: impl std::fmt::Display) -> SourceTreeError {
+    SourceTreeError::Io(error.to_string())
 }
 
 fn canonical_source_root(source_root: &Path) -> Result<PathBuf, SourceArchiveError> {
@@ -421,6 +642,77 @@ mod tests {
 
     fn limits() -> ArchiveLimits {
         ArchiveLimits::new(1024 * 1024, 1024 * 1024, 128).expect("limits")
+    }
+
+    #[test]
+    fn reviewed_tree_materialization_round_trips_through_the_shared_archive_writer() {
+        let root = TestDirectory::create();
+        let source = root.0.join("source");
+        let archive = root.0.join("source.tar");
+        let materialized = SourceTreeMaterializer::new(limits())
+            .write(
+                &[
+                    SourceTreeFile {
+                        path: "src/lib.rs".to_string(),
+                        contents: b"pub fn run() {}\n".to_vec(),
+                    },
+                    SourceTreeFile {
+                        path: "Cargo.toml".to_string(),
+                        contents: b"[package]\nname = \"sample\"\n".to_vec(),
+                    },
+                ],
+                &source,
+            )
+            .expect("materialized source tree");
+        assert_eq!(materialized.entries, 3);
+        assert_eq!(materialized.source_bytes, 42);
+
+        let packaged = SourceArchiveBuilder::new(limits())
+            .write(&source, &archive)
+            .expect("source archive");
+        assert_eq!(
+            SourceArchiveInspector::new(limits())
+                .inspect(&archive)
+                .expect("strict archive inspection")
+                .source_digest,
+            packaged.source_digest
+        );
+    }
+
+    #[test]
+    fn reviewed_tree_rejects_unsafe_and_duplicate_paths_without_creating_a_destination() {
+        let root = TestDirectory::create();
+        let unsafe_source = root.0.join("unsafe-source");
+        assert_eq!(
+            SourceTreeMaterializer::new(limits()).write(
+                &[SourceTreeFile {
+                    path: ".cargo/config.toml".to_string(),
+                    contents: b"[net]\noffline = false\n".to_vec(),
+                },],
+                &unsafe_source,
+            ),
+            Err(SourceTreeError::UnsafeSource)
+        );
+        assert!(!unsafe_source.exists());
+
+        let duplicate_source = root.0.join("duplicate-source");
+        assert_eq!(
+            SourceTreeMaterializer::new(limits()).write(
+                &[
+                    SourceTreeFile {
+                        path: "src/lib.rs".to_string(),
+                        contents: b"pub fn first() {}\n".to_vec(),
+                    },
+                    SourceTreeFile {
+                        path: "src/lib.rs".to_string(),
+                        contents: b"pub fn second() {}\n".to_vec(),
+                    },
+                ],
+                &duplicate_source,
+            ),
+            Err(SourceTreeError::UnsafeSource)
+        );
+        assert!(!duplicate_source.exists());
     }
 
     #[test]

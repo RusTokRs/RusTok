@@ -12,6 +12,14 @@ owner/group, timestamp, checksum, padding, and terminator bytes. The output must
 be a new absolute path outside the source root. The receipt contains the SHA-256
 digest, archive bytes, source bytes, and file count.
 
+`SourceTreeMaterializer` is the matching host-side ingress boundary for
+reviewed data-only source files. It accepts no filesystem handles or metadata,
+rejects duplicate, link-like, forbidden, root `.git`, root `target`, and
+source-local Cargo configuration paths, creates exactly one new absolute tree,
+and removes only that tree if a write fails. The CLI template writer uses it;
+future host materializers, including Alloy Rust/WASM evolution, must use the
+same boundary before creating an archive.
+
 `SourceArchiveInspector` hashes and validates a standalone archive without
 extracting it. `CasArchiveStore` additionally binds that same parser to an
 exact deployment-owned `cas://sha256:<hex>` identity before materialization.

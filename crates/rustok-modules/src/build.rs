@@ -6,6 +6,7 @@
 
 use async_trait::async_trait;
 use rustok_api::is_valid_module_slug;
+use rustok_sandbox::LocalSandboxScenarioComparison;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, TransactionTrait};
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -15,7 +16,7 @@ use uuid::Uuid;
 
 use rustok_events::DomainEvent;
 
-use crate::OciArtifactReference;
+use crate::{ArtifactReleaseRef, OciArtifactReference};
 
 use crate::{
     ControlPlaneInfrastructure, ModuleCommandContext,
@@ -41,7 +42,7 @@ const MAX_WALL_CLOCK_MS: u64 = 2 * 60 * 60 * 1_000;
 const BUILD_CLAIM_LEASE_SECONDS: u64 = MAX_WALL_CLOCK_MS / 1_000 + 5 * 60;
 
 /// Current transport contract version for isolated module build workers.
-pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 8;
+pub const MODULE_BUILD_PROTOCOL_VERSION: u32 = 9;
 /// Exact independently deployed WIT world admitted by the current build path.
 pub const MODULE_BUILD_WIT_WORLD: &str = "rustok:module/module-runtime";
 pub const MODULE_BUILD_WIT_VERSION: &str = "1.0.0";
@@ -58,8 +59,15 @@ pub struct ModuleBuildRequest {
     pub context: ModuleCommandContext,
     pub project_id: String,
     pub source: ModuleBuildSource,
+    /// One immutable source-tree-local sandbox scenario that every successful
+    /// build must execute through the isolated job.
+    pub scenario: ModuleBuildScenario,
     pub expected_module_slug: String,
     pub expected_version: String,
+    /// Optional immutable Rhai release rewritten by this Rust/WASM source.
+    /// The governance owner revalidates the active published predecessor when
+    /// it stages and publishes the completed build.
+    pub parent_release: Option<ArtifactReleaseRef>,
     pub runtime_abi: String,
     pub wit: ModuleBuildWitContract,
     pub toolchain: ModuleBuildToolchain,
@@ -74,6 +82,15 @@ pub struct ModuleBuildRequest {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleBuildSource {
     pub reference: String,
+    pub digest: String,
+}
+
+/// Immutable local scenario identity. The scenario bytes remain in the source
+/// archive; only its safe relative path and canonical digest cross the worker
+/// boundary.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleBuildScenario {
+    pub source_path: String,
     pub digest: String,
 }
 
@@ -221,6 +238,7 @@ pub enum ModuleBuildFailureCode {
     SourceDigestMismatch,
     UnsafeArchive,
     SourceManifestInvalid,
+    ScenarioContractInvalid,
     DependencyPolicyDenied,
     BuildScriptDenied,
     NativeLinkDenied,
@@ -241,9 +259,10 @@ impl ModuleBuildFailureCode {
     /// Canonical lifecycle stage for a terminal worker failure.
     pub const fn diagnostic_stage(self) -> ModuleBuildDiagnosticStage {
         match self {
-            Self::SourceDigestMismatch | Self::UnsafeArchive | Self::SourceManifestInvalid => {
-                ModuleBuildDiagnosticStage::Source
-            }
+            Self::SourceDigestMismatch
+            | Self::UnsafeArchive
+            | Self::SourceManifestInvalid
+            | Self::ScenarioContractInvalid => ModuleBuildDiagnosticStage::Source,
             Self::DependencyPolicyDenied
             | Self::BuildScriptDenied
             | Self::NativeLinkDenied
@@ -276,6 +295,9 @@ pub struct ModuleBuildEvidence {
     /// Ordered outcomes for requested validation profiles. Successful builds
     /// report every requested profile as passed.
     pub validation_results: Vec<ModuleBuildValidationResult>,
+    /// Redacted comparison evidence for the exact request-bound scenario.
+    /// Inputs, fixtures, expected output, and execution metrics are absent.
+    pub scenario_comparison: Option<LocalSandboxScenarioComparison>,
     /// Bounded stable diagnostics for CLI, Alloy, CI, and admin consumers.
     /// They intentionally do not contain a compiler line, file path, or runner
     /// output; consumers can retrieve the separately authorized log reference.
@@ -859,6 +881,14 @@ impl ModuleBuildRequest {
         {
             return Err(ModuleBuildProtocolError::InvalidRequest);
         }
+        if !valid_parent_release_lineage(
+            &self.parent_release,
+            &self.expected_module_slug,
+            &self.expected_version,
+            &self.source.digest,
+        ) {
+            return Err(ModuleBuildProtocolError::InvalidRequest);
+        }
         self.context
             .validate()
             .map_err(|_| ModuleBuildProtocolError::InvalidRequest)?;
@@ -891,6 +921,7 @@ impl ModuleBuildRequest {
             return Err(ModuleBuildProtocolError::InvalidDigest);
         }
         validate_build_source(&self.source)?;
+        validate_build_scenario(&self.scenario)?;
         validate_dependency_policy(&self.dependency_policy)?;
         self.limits.validate()?;
         validate_network_policy(&self.network_policy)?;
@@ -904,7 +935,36 @@ impl ModuleBuildRequest {
         {
             return Err(ModuleBuildProtocolError::InvalidValidationProfiles);
         }
+        if !self
+            .validation_profiles
+            .contains(&ModuleBuildValidationProfile::Test)
+        {
+            return Err(ModuleBuildProtocolError::InvalidValidationProfiles);
+        }
         Ok(())
+    }
+}
+
+/// Checks immutable release-lineage shape shared by authoring and build
+/// requests. Publication additionally proves that a supplied predecessor is
+/// an active Rhai release under the governance transaction.
+pub(crate) fn valid_parent_release_lineage(
+    parent_release: &Option<ArtifactReleaseRef>,
+    slug: &str,
+    version: &str,
+    source_digest: &str,
+) -> bool {
+    match parent_release {
+        None => true,
+        Some(parent) => {
+            parent.validate().is_ok()
+                && parent.slug == slug
+                && parent.digest != source_digest
+                && Version::parse(version)
+                    .ok()
+                    .zip(Version::parse(&parent.version).ok())
+                    .is_some_and(|(child, predecessor)| child > predecessor)
+        }
     }
 }
 
@@ -997,12 +1057,18 @@ impl ModuleBuildResult {
         ) {
             return Err(ModuleBuildProtocolError::InvalidResult);
         }
+        let has_matching_scenario = self
+            .evidence
+            .scenario_comparison
+            .as_ref()
+            .is_some_and(|comparison| comparison.scenario_digest == request.scenario.digest);
         match &self.outcome {
             ModuleBuildOutcome::Succeeded => {
                 if self.component_digest.is_none()
                     || self.sbom_digest.is_none()
                     || self.provenance_digest.is_none()
                     || self.component_interface.is_none()
+                    || !has_matching_scenario
                     || self.retryable
                     || self.next_action != ModuleBuildNextAction::AdmitArtifact
                 {
@@ -1016,6 +1082,7 @@ impl ModuleBuildResult {
                     || self.sbom_digest.is_some()
                     || self.provenance_digest.is_some()
                     || self.component_interface.is_some()
+                    || self.evidence.scenario_comparison.is_some()
                 {
                     return Err(ModuleBuildProtocolError::InvalidResult);
                 }
@@ -1024,6 +1091,7 @@ impl ModuleBuildResult {
                 if self.retryable
                     || self.next_action != ModuleBuildNextAction::EscalatePolicy
                     || self.publication.is_some()
+                    || self.evidence.scenario_comparison.is_some()
                 {
                     return Err(ModuleBuildProtocolError::InvalidResult);
                 }
@@ -1123,6 +1191,25 @@ fn validate_reference(value: &str) -> Result<(), ModuleBuildProtocolError> {
 fn validate_build_source(source: &ModuleBuildSource) -> Result<(), ModuleBuildProtocolError> {
     if !valid_digest(&source.digest) || source.reference != format!("cas://{}", source.digest) {
         return Err(ModuleBuildProtocolError::InvalidReference);
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_build_scenario(
+    scenario: &ModuleBuildScenario,
+) -> Result<(), ModuleBuildProtocolError> {
+    if scenario.source_path.is_empty()
+        || scenario.source_path.len() > MAX_BUILD_REFERENCE_BYTES
+        || scenario.source_path.starts_with('/')
+        || scenario.source_path.starts_with('\\')
+        || scenario.source_path.contains('\\')
+        || scenario
+            .source_path
+            .split('/')
+            .any(|segment| segment.is_empty() || matches!(segment, "." | ".."))
+        || !valid_digest(&scenario.digest)
+    {
+        return Err(ModuleBuildProtocolError::InvalidRequest);
     }
     Ok(())
 }
@@ -1381,6 +1468,7 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
+    use rustok_sandbox::{LocalSandboxScenarioComparison, LocalSandboxScenarioResult};
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
 
@@ -1438,8 +1526,13 @@ mod tests {
                 digest: digest('a'),
                 reference: format!("cas://{}", digest('a')),
             },
+            scenario: ModuleBuildScenario {
+                source_path: "tests/sandbox-scenario.json".to_string(),
+                digest: digest('c'),
+            },
             expected_module_slug: "sample_module".to_string(),
             expected_version: "1.0.0".to_string(),
+            parent_release: None,
             runtime_abi: MODULE_BUILD_RUNTIME_ABI.to_string(),
             wit: ModuleBuildWitContract {
                 world: MODULE_BUILD_WIT_WORLD.to_string(),
@@ -1496,6 +1589,7 @@ mod tests {
                 log_reference: request.source.reference.clone(),
                 policy_report_reference: request.source.reference.clone(),
                 validation_results: Vec::new(),
+                scenario_comparison: None,
                 diagnostics: Vec::new(),
             },
             publication: None,
@@ -1617,8 +1711,46 @@ mod tests {
             Err(ModuleBuildProtocolError::InvalidValidationProfiles)
         ));
 
-        request.validation_profiles = vec![ModuleBuildValidationProfile::Check];
+        request.validation_profiles = vec![
+            ModuleBuildValidationProfile::Check,
+            ModuleBuildValidationProfile::Test,
+        ];
         request.authoring.sdk_version = "unversioned".to_string();
+        assert!(matches!(
+            request.validate(),
+            Err(ModuleBuildProtocolError::InvalidRequest)
+        ));
+    }
+
+    #[test]
+    fn request_rejects_unsafe_scenario_paths_and_missing_scenario_test_profile() {
+        let mut request = request();
+        request.scenario.source_path = "../tests/sandbox-scenario.json".to_string();
+        assert!(matches!(
+            request.validate(),
+            Err(ModuleBuildProtocolError::InvalidRequest)
+        ));
+
+        request.scenario.source_path = "tests/sandbox-scenario.json".to_string();
+        request.validation_profiles = vec![ModuleBuildValidationProfile::Check];
+        assert!(matches!(
+            request.validate(),
+            Err(ModuleBuildProtocolError::InvalidValidationProfiles)
+        ));
+    }
+
+    #[test]
+    fn request_preserves_only_monotonic_same_module_parent_lineage() {
+        let mut request = request();
+        request.expected_version = "1.1.0".to_string();
+        request.parent_release = Some(ArtifactReleaseRef {
+            slug: request.expected_module_slug.clone(),
+            version: "1.0.0".to_string(),
+            digest: digest('c'),
+        });
+        assert!(request.validate().is_ok());
+
+        request.parent_release.as_mut().expect("parent").slug = "other_module".to_string();
         assert!(matches!(
             request.validate(),
             Err(ModuleBuildProtocolError::InvalidRequest)
@@ -1700,6 +1832,7 @@ mod tests {
                 log_reference: "cas://logs/1".to_string(),
                 policy_report_reference: "cas://reports/1".to_string(),
                 validation_results: Vec::new(),
+                scenario_comparison: None,
                 diagnostics: Vec::new(),
             },
             publication: None,
@@ -1765,6 +1898,7 @@ mod tests {
                 log_reference: "cas://logs/1".to_string(),
                 policy_report_reference: "cas://reports/1".to_string(),
                 validation_results: Vec::new(),
+                scenario_comparison: None,
                 diagnostics: Vec::new(),
             },
             publication: None,
@@ -1832,6 +1966,10 @@ mod tests {
                         outcome: ModuleBuildValidationOutcome::Passed,
                     },
                 ],
+                scenario_comparison: Some(LocalSandboxScenarioComparison {
+                    scenario_digest: request.scenario.digest.clone(),
+                    result: LocalSandboxScenarioResult::Success,
+                }),
                 diagnostics: Vec::new(),
             },
             publication: None,
@@ -1846,6 +1984,23 @@ mod tests {
         let validation = result.validate_against(&request);
         assert!(validation.is_ok(), "{validation:?}");
 
+        result
+            .evidence
+            .scenario_comparison
+            .as_mut()
+            .expect("scenario comparison")
+            .scenario_digest = digest('f');
+        assert!(matches!(
+            result.validate_against(&request),
+            Err(ModuleBuildProtocolError::InvalidResult)
+        ));
+        result
+            .evidence
+            .scenario_comparison
+            .as_mut()
+            .expect("scenario comparison")
+            .scenario_digest = request.scenario.digest.clone();
+
         result.wit_digest = digest('f');
         assert!(matches!(
             result.validate_against(&request),
@@ -1855,6 +2010,7 @@ mod tests {
         result.wit_digest = request.wit.protocol_digest();
         result.outcome = ModuleBuildOutcome::Failed(ModuleBuildFailureCode::WorkerUnavailable);
         result.evidence.validation_results.clear();
+        result.evidence.scenario_comparison = None;
         result.evidence.diagnostics = vec![ModuleBuildDiagnostic {
             stage: ModuleBuildDiagnosticStage::Worker,
             code: ModuleBuildFailureCode::WorkerUnavailable,

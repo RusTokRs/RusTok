@@ -33,13 +33,14 @@ export function parseArguments(argv) {
     if (!value) fail(`${name} is required`);
     return value;
   };
-  const known = new Set(['--namespace', '--name', '--image', '--digest', '--runtime', '--tls-secret', '--attestation-config-map', '--config-map', '--source-pvc', '--server-label-value', '--replicas', '--port']);
+  const known = new Set(['--namespace', '--name', '--image', '--digest', '--job-image-digest', '--runtime', '--tls-secret', '--attestation-config-map', '--config-map', '--source-pvc', '--server-label-value', '--replicas', '--port']);
   for (const key of values.keys()) if (!known.has(key)) fail(`unknown argument ${key}`);
   const result = {
     namespace: required('--namespace'),
     name: values.get('--name') ?? 'rustok-module-build-worker',
     image: required('--image'),
     digest: required('--digest'),
+    jobImageDigest: required('--job-image-digest'),
     runtime: required('--runtime'),
     tlsSecret: required('--tls-secret'),
     attestationConfigMap: required('--attestation-config-map'),
@@ -55,6 +56,7 @@ export function parseArguments(argv) {
     '--source-pvc': result.sourcePvc, '--server-label-value': result.serverLabelValue,
   })) label(value, name);
   if (!DIGEST.test(result.digest)) fail('--digest must be a lowercase SHA-256 digest');
+  if (!DIGEST.test(result.jobImageDigest)) fail('--job-image-digest must be a lowercase SHA-256 digest');
   if (!['gvisor', 'kata'].includes(result.runtime)) fail('--runtime must be exactly gvisor or kata');
   if (!result.image || /\s|@/.test(result.image)) fail('--image must be a repository without a digest');
   if (result.port > 65535) fail('--port must not exceed 65535');
@@ -126,6 +128,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 10001
         runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -150,7 +154,7 @@ spec:
             - name: RUSTOK_MODULE_BUILD_JOB_RUNTIME
               value: ${options.runtime}
             - name: RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST
-              value: ${options.digest}
+              value: ${options.jobImageDigest}
             - name: RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION
               value: /var/run/rustok/isolation/attestation.json
             - name: RUSTOK_MODULE_BUILD_SOURCE_ROOT

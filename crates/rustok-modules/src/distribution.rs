@@ -20,7 +20,8 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::{
-    ControlPlaneInfrastructure, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
+    ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticPromotionError,
+    ModuleStaticPromotionStatus,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
     promotion::{
         digest_json, load_platform_build_evidence, load_promotion, normalize_native_entry_type,
@@ -123,8 +124,7 @@ pub struct ModuleStaticDistributionBuildCommand {
     pub toolchain_digest: String,
     pub build_target: String,
     pub selections: Vec<ModuleStaticDistributionSelection>,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -517,9 +517,9 @@ where
         let transaction = self.db.begin().await.map_err(store_error)?;
         if let Some(receipt) = reserve_operation(
             &transaction,
-            command.idempotency_key,
+            command.context.idempotency_key,
             &request_digest,
-            command.actor_id,
+            &command.context,
         )
         .await?
         {
@@ -620,7 +620,7 @@ where
                 platform_source_digest: &command.platform_source_digest,
                 toolchain_digest: &command.toolchain_digest,
                 build_target: &command.build_target,
-                actor_id: command.actor_id,
+                actor_id: command.context.actor_id,
                 items: &items,
             },
         )
@@ -634,7 +634,7 @@ where
         .await?;
         complete_operation(
             &transaction,
-            command.idempotency_key,
+            command.context.idempotency_key,
             distribution_build_id,
             composition_revision,
             &composition_digest,
@@ -643,9 +643,8 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &command.context,
                     DomainEvent::ModuleStaticDistributionBuildQueued {
                         distribution_build_id,
                         predecessor_build_id,
@@ -1726,7 +1725,7 @@ async fn reserve_operation(
     transaction: &DatabaseTransaction,
     idempotency_key: Uuid,
     request_digest: &str,
-    actor_id: Uuid,
+    context: &ModuleCommandContext,
 ) -> Result<Option<ModuleStaticDistributionBuildReceipt>, ModuleStaticDistributionError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
@@ -1734,17 +1733,21 @@ async fn reserve_operation(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_operations
-                 (idempotency_key, request_digest, actor_id, created_at)
-                 VALUES ({}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
+                 (idempotency_key, request_digest, actor_id, trace_id, correlation_id, created_at)
+                 VALUES ({}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
+                placeholder(backend, 4),
+                placeholder(backend, 5),
                 now_expression(backend),
             ),
             vec![
                 uuid_value(idempotency_key, backend),
                 request_digest.to_owned().into(),
-                uuid_value(actor_id, backend),
+                uuid_value(context.actor_id, backend),
+                context.trace_id.clone().into(),
+                uuid_value(context.correlation_id, backend),
             ],
         ))
         .await
@@ -1756,7 +1759,7 @@ async fn reserve_operation(
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT request_digest, actor_id, distribution_build_id,
+                "SELECT request_digest, actor_id, trace_id, correlation_id, distribution_build_id,
                         composition_revision, composition_digest,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
                  FROM module_static_distribution_operations WHERE idempotency_key = {}",
@@ -1769,7 +1772,13 @@ async fn reserve_operation(
         .ok_or(ModuleStaticDistributionError::IdempotencyConflict)?;
     let stored_digest: String = row.try_get("", "request_digest").map_err(store_error)?;
     let stored_actor = uuid_from_row(&row, "actor_id", backend).map_err(store_error)?;
-    if stored_digest != request_digest || stored_actor != actor_id {
+    let stored_trace: String = row.try_get("", "trace_id").map_err(store_error)?;
+    let stored_correlation = uuid_from_row(&row, "correlation_id", backend).map_err(store_error)?;
+    if stored_digest != request_digest
+        || stored_actor != context.actor_id
+        || stored_trace != context.trace_id
+        || stored_correlation != context.correlation_id
+    {
         return Err(ModuleStaticDistributionError::IdempotencyConflict);
     }
     replay_receipt(&row, backend).map(Some)
@@ -2022,8 +2031,8 @@ fn item_from_row(
 fn validate_command(
     command: &ModuleStaticDistributionBuildCommand,
 ) -> Result<(), ModuleStaticDistributionError> {
-    if command.actor_id.is_nil()
-        || command.idempotency_key.is_nil()
+    if command.context.validate().is_err()
+        || command.context.tenant_id.is_some()
         || !valid_reference(&command.platform_source_reference)
         || !valid_cas_source_reference(
             &command.platform_source_reference,
@@ -2236,8 +2245,13 @@ mod tests {
                     expected_promotion_revision: 2,
                 },
             ],
-            actor_id: Uuid::new_v4(),
-            idempotency_key: Uuid::new_v4(),
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: None,
+                trace_id: "test:static-distribution-build".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
         };
         assert!(matches!(
             validate_command(&command),

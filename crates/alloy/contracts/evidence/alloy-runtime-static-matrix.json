@@ -137,6 +137,7 @@
         "release_stage_requires_the_current_source_revision",
         "release_stage_requires_the_latest_approved_review",
         "release_stage_requires_successful_fixed_publication_smoke",
+        "release_stage_persists_canonical_publication_smoke_scenario_digest",
         "release_stage_binds_source_revision_and_review_evidence",
         "release_stage_binds_redacted_publication_smoke_evidence",
         "release_stage_requires_artifact_digest_to_equal_reviewed_source_digest",

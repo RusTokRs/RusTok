@@ -172,6 +172,8 @@ impl MigrationTrait for Migration {
                     idempotency_key UUID PRIMARY KEY,\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     actor_id UUID NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
+                    correlation_id UUID NOT NULL,\
                     distribution_build_id UUID NULL REFERENCES module_static_distribution_builds(distribution_build_id) ON DELETE RESTRICT,\
                     composition_revision BIGINT NULL CHECK (composition_revision IS NULL OR composition_revision > 0),\
                     composition_digest TEXT NULL CHECK (composition_digest IS NULL OR composition_digest ~ '^sha256:[0-9a-f]{64}$'),\
@@ -429,6 +431,8 @@ impl MigrationTrait for Migration {
                     idempotency_key TEXT PRIMARY KEY,\
                     request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     actor_id TEXT NOT NULL,\
+                    trace_id TEXT NOT NULL CHECK (length(trim(trace_id)) BETWEEN 1 AND 512),\
+                    correlation_id TEXT NOT NULL,\
                     distribution_build_id TEXT NULL REFERENCES module_static_distribution_builds(distribution_build_id) ON DELETE RESTRICT,\
                     composition_revision INTEGER NULL CHECK (composition_revision IS NULL OR composition_revision > 0),\
                     composition_digest TEXT NULL CHECK (composition_digest IS NULL OR (length(composition_digest) = 71 AND substr(composition_digest, 1, 7) = 'sha256:' AND substr(composition_digest, 8) NOT GLOB '*[^0-9a-f]*')),\

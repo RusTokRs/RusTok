@@ -1,7 +1,7 @@
-const SOURCE: &str = include_str!("../src/services/category.rs");
+const SOURCE: &str = include_str!("../src/services/category_taxonomy_read.rs");
 
 fn function_source(name: &str) -> &str {
-    let marker = format!("pub async fn {name}(");
+    let marker = format!("fn {name}(");
     let start = SOURCE
         .find(marker.as_str())
         .unwrap_or_else(|| panic!("missing category service function {name}"));
@@ -9,13 +9,15 @@ fn function_source(name: &str) -> &str {
     let end = after_start
         .find("\n    pub ")
         .or_else(|| after_start.find("\n    pub("))
+        .or_else(|| after_start.find("\nfn "))
         .unwrap_or(after_start.len());
     &SOURCE[start..start + marker.len() + end]
 }
 
 #[test]
 fn category_pagination_filters_archived_rows_in_sql_without_preloading_ids() {
-    let list_source = function_source("list_paginated_with_locale_fallback");
+    let list_source =
+        function_source("list_paginated_with_locale_fallback_and_hidden_categories");
 
     assert!(
         list_source.contains("not_in_subquery(archived_category_ids_subquery(tenant_id))"),
@@ -26,7 +28,7 @@ fn category_pagination_filters_archived_rows_in_sql_without_preloading_ids() {
         "category pagination must not load all lifecycle rows into memory"
     );
     assert!(
-        !list_source.contains(".all(&self.db)"),
+        list_source.contains("paginate(&self.db"),
         "category pagination must remain bounded before hydration"
     );
 
@@ -35,7 +37,7 @@ fn category_pagination_filters_archived_rows_in_sql_without_preloading_ids() {
         .expect("missing lifecycle subquery helper");
     let helper = &SOURCE[helper_start
         ..SOURCE[helper_start..]
-            .find("\nasync fn lock_category_tree_in_tx")
+            .find("\nfn missing_binding")
             .map(|offset| helper_start + offset)
             .expect("missing helper boundary")];
     assert!(helper.contains("forum_category_lifecycle::Column::CategoryId"));

@@ -1,10 +1,10 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumModule, UpdateCategoryInput,
-    entities::{forum_category, forum_category_lifecycle, forum_category_translation},
+    entities::{forum_category, forum_category_lifecycle},
 };
 use rustok_outbox::OutboxModule;
-use rustok_taxonomy::TaxonomyModule;
+use rustok_taxonomy::{TaxonomyModule, entities::taxonomy_term_translation};
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
     QueryFilter,
@@ -24,7 +24,7 @@ async fn sqlite_category_writes_are_atomic_with_translations() -> TestResult<()>
         &db,
         r#"
 CREATE TRIGGER forum_test_reject_category_translation_insert
-BEFORE INSERT ON forum_category_translations
+BEFORE INSERT ON taxonomy_term_translations
 FOR EACH ROW
 BEGIN
     SELECT RAISE(ABORT, 'forced category translation insert failure');
@@ -71,7 +71,7 @@ END
         &db,
         r#"
 CREATE TRIGGER forum_test_reject_category_translation_update
-BEFORE UPDATE ON forum_category_translations
+BEFORE UPDATE ON taxonomy_term_translations
 FOR EACH ROW
 BEGIN
     SELECT RAISE(ABORT, 'forced category translation update failure');
@@ -105,10 +105,10 @@ END
     assert_eq!(persisted.position, 3);
     assert!(!persisted.moderated);
     assert!(
-        forum_category_translation::Entity::find()
-            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-            .filter(forum_category_translation::Column::CategoryId.eq(category.id))
-            .filter(forum_category_translation::Column::Name.eq("Changed category"))
+        taxonomy_term_translation::Entity::find()
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_translation::Column::TermId.eq(category.id))
+            .filter(taxonomy_term_translation::Column::Name.eq("Changed category"))
             .one(&db)
             .await?
             .is_none(),
@@ -125,7 +125,7 @@ END
         &db,
         r#"
 CREATE TRIGGER forum_test_reject_new_category_locale
-BEFORE INSERT ON forum_category_translations
+BEFORE INSERT ON taxonomy_term_translations
 FOR EACH ROW
 WHEN NEW.locale = 'fr'
 BEGIN
@@ -160,10 +160,10 @@ END
     assert_eq!(persisted.position, 3);
     assert!(!persisted.moderated);
     assert!(
-        forum_category_translation::Entity::find()
-            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-            .filter(forum_category_translation::Column::CategoryId.eq(category.id))
-            .filter(forum_category_translation::Column::Locale.eq("fr"))
+        taxonomy_term_translation::Entity::find()
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_translation::Column::TermId.eq(category.id))
+            .filter(taxonomy_term_translation::Column::Locale.eq("fr"))
             .one(&db)
             .await?
             .is_none(),
@@ -194,9 +194,9 @@ END
     );
     load_category(&db, tenant_id, category.id).await?;
     assert!(
-        forum_category_translation::Entity::find()
-            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-            .filter(forum_category_translation::Column::CategoryId.eq(category.id))
+        taxonomy_term_translation::Entity::find()
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_translation::Column::TermId.eq(category.id))
             .one(&db)
             .await?
             .is_some(),

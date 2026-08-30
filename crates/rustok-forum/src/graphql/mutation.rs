@@ -50,7 +50,7 @@ impl ForumContentMutation {
         let audience_context = topic_create_audience_port_context(
             ForumTopicCreateTransport::Graphql,
             tenant_id,
-            &auth,
+            auth,
             ctx.data_opt::<rustok_api::RequestContext>(),
             tenant.default_locale.as_str(),
         )?;
@@ -383,7 +383,7 @@ impl ForumContentMutation {
         let audience_context = reply_create_audience_port_context(
             ForumReplyCreateTransport::Graphql,
             tenant_id,
-            &auth,
+            auth,
             ctx.data_opt::<rustok_api::RequestContext>(),
             tenant.default_locale.as_str(),
         )?;

@@ -59,8 +59,8 @@ VALUES
         db,
         format!(
             r#"
-INSERT INTO forum_category_translations
-    (id, category_id, tenant_id, locale, name, slug)
+INSERT INTO taxonomy_term_translations
+    (id, term_id, tenant_id, locale, name, slug)
 VALUES
     ('{}', '{category_a}', '{tenant_b}', 'en-US', 'Wrong tenant', 'wrong-tenant')
 "#,
@@ -138,21 +138,6 @@ VALUES
             Uuid::new_v4()
         ),
         "cross-tenant parent reply",
-    )
-    .await?;
-
-    execute(
-        db,
-        format!(
-            r#"
-INSERT INTO forum_category_translations
-    (id, category_id, tenant_id, locale, name, slug)
-VALUES
-    ('{}', '{category_a}', '{tenant_a}',
-     'zh-Hant-HK', 'Long locale', 'long-locale')
-"#,
-            Uuid::new_v4()
-        ),
     )
     .await?;
 

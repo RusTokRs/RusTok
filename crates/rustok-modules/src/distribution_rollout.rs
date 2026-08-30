@@ -16,7 +16,7 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::{
-    ControlPlaneInfrastructure, ModuleStaticDistributionExecutorMode,
+    ControlPlaneInfrastructure, ModuleCommandContext, ModuleStaticDistributionExecutorMode,
     ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseStatus,
     ModuleStaticDistributionRole,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
@@ -136,8 +136,7 @@ pub struct ModuleStaticDistributionRolloutRequest {
     pub expected_distribution_release_revision: u64,
     pub expected_rollout_state_revision: u64,
     pub policy_revision: String,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -148,8 +147,7 @@ pub struct ModuleStaticDistributionRecoveryRequest {
     pub expected_rollout_state_revision: u64,
     pub policy_revision: String,
     pub reason: String,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -361,13 +359,14 @@ where
         validate_request(&command)?;
         self.authorizer.authorize_request(&command).await?;
         let request_digest = digest_json(&command).map_err(promotion_error)?;
-        let principal_id = command.actor_id.to_string();
+        let principal_id = command.context.actor_id.to_string();
         if let Some(operation) = load_operation(
             &self.db,
-            command.idempotency_key,
+            command.context.idempotency_key,
             "request",
             &request_digest,
             &principal_id,
+            Some(&command.context),
         )
         .await?
         {
@@ -394,10 +393,11 @@ where
         let transaction = self.db.begin().await.map_err(store_error)?;
         if let Some(operation) = reserve_operation(
             &transaction,
-            command.idempotency_key,
+            command.context.idempotency_key,
             "request",
             &request_digest,
             &principal_id,
+            Some(&command.context),
         )
         .await?
         {
@@ -495,13 +495,12 @@ where
             status: ModuleStaticDistributionRolloutStatus::Preparing,
             created: true,
         };
-        complete_request_operation(&transaction, command.idempotency_key, &receipt).await?;
+        complete_request_operation(&transaction, command.context.idempotency_key, &receipt).await?;
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &command.context,
                     DomainEvent::ModuleStaticDistributionRolloutRequested {
                         rollout_id,
                         predecessor_rollout_id: predecessor.map(|rollout| rollout.rollout_id),
@@ -533,13 +532,14 @@ where
         validate_recovery_request(&command)?;
         self.authorizer.authorize_recovery(&command).await?;
         let request_digest = digest_json(&command).map_err(promotion_error)?;
-        let principal_id = command.actor_id.to_string();
+        let principal_id = command.context.actor_id.to_string();
         if let Some(operation) = load_operation(
             &self.db,
-            command.idempotency_key,
+            command.context.idempotency_key,
             "recovery",
             &request_digest,
             &principal_id,
+            Some(&command.context),
         )
         .await?
         {
@@ -549,10 +549,11 @@ where
         let transaction = self.db.begin().await.map_err(store_error)?;
         if let Some(operation) = reserve_operation(
             &transaction,
-            command.idempotency_key,
+            command.context.idempotency_key,
             "recovery",
             &request_digest,
             &principal_id,
+            Some(&command.context),
         )
         .await?
         {
@@ -650,8 +651,7 @@ where
             expected_distribution_release_revision: target_release.release_revision,
             expected_rollout_state_revision: command.expected_rollout_state_revision,
             policy_revision: command.policy_revision,
-            actor_id: command.actor_id,
-            idempotency_key: command.idempotency_key,
+            context: command.context.clone(),
         };
         insert_rollout(
             &transaction,
@@ -682,13 +682,12 @@ where
             status: ModuleStaticDistributionRolloutStatus::Preparing,
             created: true,
         };
-        complete_request_operation(&transaction, command.idempotency_key, &receipt).await?;
+        complete_request_operation(&transaction, command.context.idempotency_key, &receipt).await?;
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &command.context,
                     DomainEvent::ModuleStaticDistributionRecoveryRequested {
                         rollout_id,
                         predecessor_rollout_id: current.rollout_id,
@@ -831,6 +830,7 @@ where
             "report",
             &request_digest,
             &command.agent_id,
+            None,
         )
         .await?
         {
@@ -844,6 +844,7 @@ where
             "report",
             &request_digest,
             &command.agent_id,
+            None,
         )
         .await?
         {
@@ -1251,6 +1252,8 @@ struct OperationRecord {
     operation_kind: String,
     request_digest: String,
     principal_id: String,
+    trace_id: Option<String>,
+    correlation_id: Option<Uuid>,
     rollout_id: Option<Uuid>,
     rollout_revision: Option<u64>,
     rollout_state_revision: Option<u64>,
@@ -1336,8 +1339,8 @@ fn validate_request(
         || command.expected_release_state_revision == 0
         || command.expected_distribution_release_revision == 0
         || !valid_text(&command.policy_revision, MAX_POLICY_REVISION_BYTES)
-        || command.actor_id.is_nil()
-        || command.idempotency_key.is_nil()
+        || command.context.validate().is_err()
+        || command.context.tenant_id.is_some()
     {
         return Err(ModuleStaticDistributionRolloutError::InvalidCommand);
     }
@@ -1351,8 +1354,8 @@ fn validate_recovery_request(
         || command.expected_release_state_revision == 0
         || !valid_text(&command.policy_revision, MAX_POLICY_REVISION_BYTES)
         || !valid_text(&command.reason, MAX_FAILURE_DETAIL_BYTES)
-        || command.actor_id.is_nil()
-        || command.idempotency_key.is_nil()
+        || command.context.validate().is_err()
+        || command.context.tenant_id.is_some()
     {
         return Err(ModuleStaticDistributionRolloutError::InvalidCommand);
     }
@@ -1645,7 +1648,7 @@ async fn insert_rollout(
                 i64::try_from(insert.topology.assignments.len())
                     .map_err(|_| ModuleStaticDistributionRolloutError::InvalidTopology)?
                     .into(),
-                uuid_value(insert.command.actor_id, backend),
+                uuid_value(insert.command.context.actor_id, backend),
             ],
         ))
         .await
@@ -2431,6 +2434,7 @@ async fn reserve_operation(
     operation_kind: &str,
     request_digest: &str,
     principal_id: &str,
+    context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleStaticDistributionRolloutError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
@@ -2438,12 +2442,14 @@ async fn reserve_operation(
             backend,
             format!(
                 "INSERT INTO module_static_distribution_rollout_operations
-                 (idempotency_key, operation_kind, request_digest, principal_id, created_at)
-                 VALUES ({}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
+                 (idempotency_key, operation_kind, request_digest, principal_id, trace_id, correlation_id, created_at)
+                 VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
                 placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
                 now_expression(backend),
             ),
             vec![
@@ -2451,6 +2457,8 @@ async fn reserve_operation(
                 operation_kind.to_owned().into(),
                 request_digest.to_owned().into(),
                 principal_id.to_owned().into(),
+                context.map(|value| value.trace_id.clone()).into(),
+                optional_uuid_value(context.map(|value| value.correlation_id), backend),
             ],
         ))
         .await
@@ -2464,6 +2472,7 @@ async fn reserve_operation(
         operation_kind,
         request_digest,
         principal_id,
+        context,
     )
     .await
 }
@@ -2474,13 +2483,14 @@ async fn load_operation<C: ConnectionTrait>(
     operation_kind: &str,
     request_digest: &str,
     principal_id: &str,
+    context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleStaticDistributionRolloutError> {
     let backend = connection.get_database_backend();
     let Some(row) = connection
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_kind, request_digest, principal_id, rollout_id,
+                "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id, rollout_id,
                         rollout_revision, rollout_state_revision, rollout_status,
                         node_id, role, observation_revision, assignment_phase,
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed
@@ -2499,6 +2509,8 @@ async fn load_operation<C: ConnectionTrait>(
         operation_kind: row.try_get("", "operation_kind").map_err(store_error)?,
         request_digest: row.try_get("", "request_digest").map_err(store_error)?,
         principal_id: row.try_get("", "principal_id").map_err(store_error)?,
+        trace_id: row.try_get("", "trace_id").map_err(store_error)?,
+        correlation_id: optional_uuid_from_row(&row, "correlation_id", backend)?,
         rollout_id: optional_uuid_from_row(&row, "rollout_id", backend)?,
         rollout_revision: optional_revision_from_row(&row, "rollout_revision")?,
         rollout_state_revision: optional_revision_from_row(&row, "rollout_state_revision")?,
@@ -2527,6 +2539,8 @@ async fn load_operation<C: ConnectionTrait>(
     if record.operation_kind != operation_kind
         || record.request_digest != request_digest
         || record.principal_id != principal_id
+        || record.trace_id.as_deref() != context.map(|value| value.trace_id.as_str())
+        || record.correlation_id != context.map(|value| value.correlation_id)
     {
         return Err(ModuleStaticDistributionRolloutError::IdempotencyConflict);
     }
@@ -2798,10 +2812,11 @@ mod tests {
         ModuleStaticDistributionAssignmentClaimCommand,
         ModuleStaticDistributionAssignmentHeartbeatCommand,
         ModuleStaticDistributionAssignmentReport, ModuleStaticDistributionRolloutError,
-        module_static_distribution_topology_digest, validate_assignment_claim,
-        validate_assignment_heartbeat, validate_report,
+        ModuleStaticDistributionRolloutRequest, module_static_distribution_topology_digest,
+        validate_assignment_claim, validate_assignment_heartbeat, validate_report,
+        validate_request,
     };
-    use crate::ModuleStaticDistributionRole;
+    use crate::{ModuleCommandContext, ModuleStaticDistributionRole};
     use uuid::Uuid;
 
     #[test]
@@ -2870,6 +2885,28 @@ mod tests {
         };
         assert!(matches!(
             validate_report(&report),
+            Err(ModuleStaticDistributionRolloutError::InvalidCommand)
+        ));
+    }
+
+    #[test]
+    fn rollout_command_requires_a_platform_scoped_context() {
+        let command = ModuleStaticDistributionRolloutRequest {
+            distribution_release_id: Uuid::new_v4(),
+            expected_release_state_revision: 1,
+            expected_distribution_release_revision: 1,
+            expected_rollout_state_revision: 0,
+            policy_revision: "policy-static-1".to_string(),
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: Some(Uuid::new_v4()),
+                trace_id: "test:static-distribution-rollout".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+        };
+        assert!(matches!(
+            validate_request(&command),
             Err(ModuleStaticDistributionRolloutError::InvalidCommand)
         ));
     }

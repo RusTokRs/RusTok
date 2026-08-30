@@ -92,6 +92,8 @@ impl MigrationTrait for Migration {
                     operation_kind TEXT NOT NULL CHECK (operation_kind IN ('request', 'recovery', 'report')),\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     principal_id TEXT NOT NULL CHECK (length(trim(principal_id)) BETWEEN 1 AND 128),\
+                    trace_id TEXT NULL CHECK (trace_id IS NULL OR length(trim(trace_id)) BETWEEN 1 AND 512),\
+                    correlation_id UUID NULL,\
                     rollout_id UUID NULL REFERENCES module_static_distribution_rollouts(rollout_id) ON DELETE RESTRICT,\
                     rollout_revision BIGINT NULL CHECK (rollout_revision IS NULL OR rollout_revision > 0),\
                     rollout_state_revision BIGINT NULL CHECK (rollout_state_revision IS NULL OR rollout_state_revision > 0),\
@@ -127,7 +129,7 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_static_distribution_rollout_state (state_id TEXT PRIMARY KEY CHECK (state_id = 'current'), revision INTEGER NOT NULL CHECK (revision >= 0), desired_rollout_id TEXT NULL REFERENCES module_static_distribution_rollouts(rollout_id) ON DELETE RESTRICT, observed_rollout_id TEXT NULL REFERENCES module_static_distribution_rollouts(rollout_id) ON DELETE RESTRICT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)",
                 "INSERT INTO module_static_distribution_rollout_state (state_id,revision,desired_rollout_id,observed_rollout_id) VALUES ('current',0,NULL,NULL)",
                 "CREATE TABLE module_static_distribution_rollout_operations (\
-                    idempotency_key TEXT PRIMARY KEY, operation_kind TEXT NOT NULL CHECK (operation_kind IN ('request','recovery','report')), request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest,1,7) = 'sha256:' AND substr(request_digest,8) NOT GLOB '*[^0-9a-f]*'), principal_id TEXT NOT NULL CHECK (length(trim(principal_id)) BETWEEN 1 AND 128), rollout_id TEXT NULL REFERENCES module_static_distribution_rollouts(rollout_id) ON DELETE RESTRICT, rollout_revision INTEGER NULL, rollout_state_revision INTEGER NULL, rollout_status TEXT NULL, node_id TEXT NULL, role TEXT NULL CHECK (role IS NULL OR role IN ('monolith','api','admin_ssr','storefront_ssr','worker','registry')), observation_revision INTEGER NULL, assignment_phase TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT NULL,\
+                    idempotency_key TEXT PRIMARY KEY, operation_kind TEXT NOT NULL CHECK (operation_kind IN ('request','recovery','report')), request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest,1,7) = 'sha256:' AND substr(request_digest,8) NOT GLOB '*[^0-9a-f]*'), principal_id TEXT NOT NULL CHECK (length(trim(principal_id)) BETWEEN 1 AND 128), trace_id TEXT NULL CHECK (trace_id IS NULL OR length(trim(trace_id)) BETWEEN 1 AND 512), correlation_id TEXT NULL, rollout_id TEXT NULL REFERENCES module_static_distribution_rollouts(rollout_id) ON DELETE RESTRICT, rollout_revision INTEGER NULL, rollout_state_revision INTEGER NULL, rollout_status TEXT NULL, node_id TEXT NULL, role TEXT NULL CHECK (role IS NULL OR role IN ('monolith','api','admin_ssr','storefront_ssr','worker','registry')), observation_revision INTEGER NULL, assignment_phase TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT NULL,\
                     CHECK ((completed_at IS NULL AND rollout_id IS NULL AND rollout_revision IS NULL AND rollout_state_revision IS NULL AND rollout_status IS NULL AND node_id IS NULL AND role IS NULL AND observation_revision IS NULL AND assignment_phase IS NULL) OR (completed_at IS NOT NULL AND operation_kind IN ('request','recovery') AND rollout_id IS NOT NULL AND rollout_revision IS NOT NULL AND rollout_state_revision IS NOT NULL AND rollout_status = 'preparing' AND node_id IS NULL AND role IS NULL AND observation_revision IS NULL AND assignment_phase IS NULL) OR (completed_at IS NOT NULL AND operation_kind = 'report' AND rollout_id IS NOT NULL AND rollout_revision IS NOT NULL AND rollout_state_revision IS NOT NULL AND rollout_status IS NOT NULL AND node_id IS NOT NULL AND role IS NOT NULL AND observation_revision IS NOT NULL AND assignment_phase IS NOT NULL))\
                 )",
             ],
@@ -216,6 +218,8 @@ mod tests {
 
         let operation_columns =
             column_names(&db, "module_static_distribution_rollout_operations").await;
+        assert!(operation_columns.contains("trace_id"));
+        assert!(operation_columns.contains("correlation_id"));
         assert!(operation_columns.contains("role"));
         assert!(operation_columns.contains("assignment_phase"));
         assert!(!operation_columns.contains("node_phase"));

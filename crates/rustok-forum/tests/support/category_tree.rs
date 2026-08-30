@@ -354,29 +354,7 @@ async fn seed_category(
     Ok(category.id)
 }
 
-async fn seed_translation(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    category_id: Uuid,
-    locale: &str,
-    name: &str,
-    slug: &str,
-) -> TestResult<()> {
-    use rustok_forum::entities::forum_category_translation;
-    use sea_orm::{ActiveModelTrait, Set};
 
-    let model = forum_category_translation::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        category_id: Set(category_id),
-        tenant_id: Set(tenant_id),
-        locale: Set(locale.to_string()),
-        name: Set(name.to_string()),
-        slug: Set(slug.to_string()),
-        description: Set(None),
-    };
-    model.insert(db).await?;
-    Ok(())
-}
 
 fn assert_validation_contains<T>(result: Result<T, ForumError>, expected: &str) -> TestResult<()> {
     match result {

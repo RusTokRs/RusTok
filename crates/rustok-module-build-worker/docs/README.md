@@ -7,12 +7,14 @@ The worker requires a mutually authenticated listener configured with the
 
 `scripts/generate/render-module-build-worker-deployment.mjs` renders the
 canonical hardened Kubernetes boundary. It requires an explicit namespace,
-repository, digest-pinned worker image, `gvisor` or `kata` runtime, mTLS secret,
+repository, independently digest-pinned worker and OCI-job images, `gvisor` or `kata` runtime, mTLS secret,
 isolation-attestation ConfigMap, non-secret worker configuration ConfigMap, and
 read-only source-archive PVC. The renderer selects `runsc` or `kata`, creates a
 two-replica rolling deployment, disables service-account tokens and all host
 namespaces, applies a non-root read-only security context and bounded
-ephemeral volumes, limits ingress to the build dispatcher, and denies egress.
+ephemeral volumes, gives only the non-root worker group write access to its
+ephemeral work volumes, limits ingress to the build dispatcher, and denies
+egress.
 
 The configuration ConfigMap must provide the remaining non-secret fixed paths
 and publication settings, including the absolute job launcher, Cargo,
@@ -158,7 +160,10 @@ The fixed OCI job launcher receives canonical request JSON on standard input
 and must launch one job with the supplied `RUSTOK_MODULE_BUILD_OCI_RUNTIME` and
 digest-pinned `RUSTOK_MODULE_BUILD_JOB_IMAGE_DIGEST`. It also receives
 `RUSTOK_MODULE_BUILD_REQUEST_DIGEST`: a domain-separated SHA-256 digest of the
-exact request JSON bytes on standard input.
+exact request JSON bytes on standard input, and the exact
+`RUSTOK_MODULE_BUILD_COMPONENT_TARGET`. The launcher must invoke its fixed
+Cargo executable with that target and must not select a host, native, or
+caller-provided alternative.
 The job returns exactly one canonical `ModuleBuildResult` JSON value on the
 launcher standard output. The launcher is an image-owned entrypoint, not
 request-selected input. The worker rehashes the launcher immediately before
@@ -175,11 +180,12 @@ request before it crosses gRPC. The launcher path cannot be a symlink.
 
 Before the worker accepts any terminal result, the launched job must write the
 regular non-symlink `oci-job-receipt.json` file in its output directory. Its
-bounded JSON object contains `protocol_version: 2`, `request_id`,
-`source_digest`, `attempt`, `dependency_lock_digest`, `toolchain_digest`,
-`wit_digest`, `request_digest`, `runtime`, `image_digest`, and a bounded opaque
-`job_id`. The worker requires those values to equal the immutable request, its
-exact canonical request JSON, and its fixed
+bounded JSON object contains `protocol_version: 4`, `request_id`,
+`source_digest`, `scenario_digest`, `attempt`, `dependency_lock_digest`,
+`toolchain_digest`, `wit_digest`, `component_target`, `request_digest`,
+`runtime`, `image_digest`, and a bounded opaque `job_id`. The worker requires
+those values to equal the immutable request, its exact canonical request JSON,
+and its fixed
 gVisor/Kata and image-digest configuration; a missing, oversized, symlinked,
 malformed, unknown-field-bearing, or mismatched receipt is a transport failure
 and is never accepted as build evidence.
@@ -191,6 +197,17 @@ other author-owned descriptor fields, but it must not contain
 `artifact_digest`. The worker parses and validates this manifest before the
 runner starts and binds its slug, version, runtime ABI, payload kind, module
 kind, and `run` entrypoint to the immutable build request.
+
+The current build protocol also binds one source-tree-local
+`LocalSandboxScenario` through its safe relative JSON path and canonical
+digest. Before starting the OCI job, the worker reopens that bounded regular
+non-symlink file, parses the neutral scenario contract, requires its canonical
+digest to equal the request, and rejects every scenario grant absent from the
+validated source manifest. A runner must execute that exact scenario inside
+the hardened job and report only its redacted comparison (`success` or
+`expected_error`) in a successful result. The worker accepts success only when
+that comparison repeats the request-bound digest; inputs, fixtures, expected
+output, and execution metrics never cross the build-result boundary.
 
 For a successful result, the runner must write its only executable payload to
 `RUSTOK_MODULE_BUILD_OUTPUT_DIR/component.wasm`. The worker rejects a
@@ -226,8 +243,9 @@ files against the result digests and parses them before accepting success. The
 SBOM must be bounded CycloneDX JSON with a metadata component. Provenance must
 be a bounded SLSA in-toto Statement whose subject carries the component SHA-256
 and whose `predicate.buildDefinition.externalParameters.rustok` object binds
-the immutable source, dependency-lock, toolchain, and WIT digests plus exact
-independently versioned author SDK and template inputs, expected module
+the immutable source, scenario, dependency-lock, toolchain, and WIT digests
+plus the redacted scenario result, exact independently versioned author SDK
+and template inputs, expected module
 slug/version, runtime ABI, build attempt, and exact ordered validation-profile
 identities and outcomes. A successful JSON result must report every requested
 profile as `passed`; `validation_failed` must identify an ordered requested

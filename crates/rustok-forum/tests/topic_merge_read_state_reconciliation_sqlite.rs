@@ -451,14 +451,18 @@ async fn merge_read_state_reconciliation_is_conservative_atomic_and_idempotent()
     ));
 
     assert!(db
-        .execute_unprepared(&format!(
-            "UPDATE forum_topic_merge_read_state_reconciliations SET reason = 'tampered' WHERE tenant_id = '{tenant_id}' AND operation_id = '{operation_id}'"
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE forum_topic_merge_read_state_reconciliations SET reason = 'tampered' WHERE tenant_id = ? AND operation_id = ?",
+            vec![tenant_id.into(), operation_id.into()],
         ))
         .await
         .is_err());
     assert!(db
-        .execute_unprepared(&format!(
-            "DELETE FROM forum_topic_merge_read_state_reconciliations WHERE tenant_id = '{tenant_id}' AND operation_id = '{operation_id}'"
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "DELETE FROM forum_topic_merge_read_state_reconciliations WHERE tenant_id = ? AND operation_id = ?",
+            vec![tenant_id.into(), operation_id.into()],
         ))
         .await
         .is_err());
@@ -570,7 +574,7 @@ async fn assert_reconciliation_event(
     );
     assert_eq!(
         row.try_get::<String>("", "event_type")?,
-        "forum.topic.merge_read_states_reconciled"
+        "forum.topic.merge.read_state_reconciled"
     );
     assert_eq!(row.try_get::<i16>("", "schema_version")?, 1);
     assert_eq!(

@@ -40,7 +40,7 @@ use super::topic_audience_lock::{
 
 pub const MAX_FORUM_TOPIC_MERGE_AUDIENCE_REASON_LEN: usize = 500;
 const FORUM_TOPIC_MERGE_AUDIENCE_RECONCILED_EVENT_TYPE: &str =
-    "forum.topic.merge_audience_reconciled";
+    "forum.topic.merge.audience_reconciled";
 const FORUM_TOPIC_MERGE_AUDIENCE_AGGREGATE_TYPE: &str = "forum_topic";
 const FORUM_TOPIC_MERGED_EVENT_TYPE: &str = "forum.topic.merged";
 

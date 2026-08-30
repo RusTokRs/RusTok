@@ -1,13 +1,12 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumModule, MoveCategoryInput,
-    ReorderCategorySiblingsInput, UpdateCategoryInput, entities::forum_category_translation,
+    ReorderCategorySiblingsInput, UpdateCategoryInput,
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::{TaxonomyModule, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
-    DatabaseConnection, EntityTrait, QueryFilter,
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -43,15 +42,6 @@ async fn canonical_category_commands_do_not_write_legacy_translation_mirror() ->
         )
         .await?;
 
-    assert!(
-        forum_category_translation::Entity::find()
-            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-            .all(&db)
-            .await?
-            .is_empty(),
-        "canonical Category create must not populate the retired Forum translation mirror"
-    );
-
     service
         .update(
             tenant_id,
@@ -77,71 +67,6 @@ async fn canonical_category_commands_do_not_write_legacy_translation_mirror() ->
         projected.description.as_deref(),
         Some("Canonical Taxonomy copy")
     );
-    assert!(
-        forum_category_translation::Entity::find()
-            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-            .all(&db)
-            .await?
-            .is_empty(),
-        "canonical Category update must not recreate the retired Forum translation mirror"
-    );
-
-    forum_category_translation::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        category_id: Set(support.id),
-        tenant_id: Set(tenant_id),
-        locale: Set("en".to_string()),
-        name: Set("LEGACY POISON".to_string()),
-        slug: Set("legacy-poison".to_string()),
-        description: Set(Some("must never become canonical".to_string())),
-    }
-    .insert(&db)
-    .await?;
-
-    service
-        .update(
-            tenant_id,
-            support.id,
-            admin(),
-            UpdateCategoryInput {
-                locale: "en".to_string(),
-                name: None,
-                slug: None,
-                description: None,
-                icon: None,
-                color: None,
-                position: None,
-                moderated: Some(true),
-            },
-        )
-        .await?;
-
-    let projected = load_category(&reader, tenant_id, support.id).await?;
-    assert_eq!(projected.name, "Help & Support");
-    assert_eq!(projected.slug, "help-support");
-    assert_eq!(
-        projected.description.as_deref(),
-        Some("Canonical Taxonomy copy")
-    );
-
-    let poison = forum_category_translation::Entity::find()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(support.id))
-        .filter(forum_category_translation::Column::Locale.eq("en"))
-        .one(&db)
-        .await?
-        .expect("legacy poison fixture should remain present until schema cleanup");
-    assert_eq!(poison.name, "LEGACY POISON");
-    assert_eq!(poison.slug, "legacy-poison");
-    assert_eq!(
-        poison.description.as_deref(),
-        Some("must never become canonical")
-    );
-
-    forum_category_translation::Entity::delete_many()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .exec(&db)
-        .await?;
 
     service
         .move_category(

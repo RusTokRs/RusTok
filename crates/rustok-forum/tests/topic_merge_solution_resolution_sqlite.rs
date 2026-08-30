@@ -368,17 +368,23 @@ async fn manager_can_select_source_solution_and_replay_exact_audit() -> TestResu
 
     let update_result = fixture
         .db
-        .execute_unprepared(&format!(
-            "UPDATE forum_topic_merge_solution_resolutions SET selected_solution_reply_id = '{}' WHERE tenant_id = '{}' AND operation_id = '{}'",
-            fixture.target_reply_id, fixture.tenant_id, operation_id
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE forum_topic_merge_solution_resolutions SET selected_solution_reply_id = ? WHERE tenant_id = ? AND operation_id = ?",
+            vec![
+                fixture.target_reply_id.into(),
+                fixture.tenant_id.into(),
+                operation_id.into(),
+            ],
         ))
         .await;
     assert!(update_result.is_err());
     let delete_result = fixture
         .db
-        .execute_unprepared(&format!(
-            "DELETE FROM forum_topic_merge_solution_resolutions WHERE tenant_id = '{}' AND operation_id = '{}'",
-            fixture.tenant_id, operation_id
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "DELETE FROM forum_topic_merge_solution_resolutions WHERE tenant_id = ? AND operation_id = ?",
+            vec![fixture.tenant_id.into(), operation_id.into()],
         ))
         .await;
     assert!(delete_result.is_err());

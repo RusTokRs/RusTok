@@ -490,13 +490,20 @@ Freeze the vocabulary and public seams before moving the remaining write paths.
   trace; a
   tenant context is either absent for platform scope or a non-nil UUID. The
   artifact lifecycle family (activation, deactivation, tenant intent,
-  uninstall, rollback, migration checkpoints, and tenant data purge),
+  uninstall, rollback, migration checkpoints, tenant data purge, and artifact
+  admission),
   settings recovery, data snapshots, artifact secret binding, global
   artifact-security transitions, static promotion, and static-distribution
   bootstrap/admission/revocation, and tenant-scoped registry platform-build
   staging now carry this one context through their owner validation, durable
   receipts, and owner-created outbox envelopes where the operation emits an
-  event. Each receipt rejects an idempotency reuse with different context
+  event. Artifact admission persists the complete context in its scoped
+  durable idempotency receipt and derives its outbox envelope from that exact
+  evidence. Platform static-distribution rollout and recovery do the same;
+  static-distribution build intent does so before an immutable snapshot is
+  queued;
+  node-agent reports remain separately authenticated deployment observations.
+  Each receipt rejects an idempotency reuse with different context
   evidence. GraphQL and REST adapters carry the context where those surfaces
   are exposed.
   The remaining mutable owner families still require atomic caller cutover to
@@ -1438,8 +1445,9 @@ of an admitted blob.
   before the transaction begins. An irreversible-migration fact is monotonic
   and cannot be cleared by a later command.
 - [x] Add optimistic revision and idempotency key. Lifecycle and selection
-  transitions use expected-revision CAS. Immutable admission accepts an
-  actor-scoped `ArtifactAdmissionCommand`; its canonical reference/scope/lock
+  transitions use expected-revision CAS. Immutable admission accepts a
+  scope-matched `ArtifactAdmissionCommand` with a complete
+  `ModuleCommandContext`; its canonical context/reference/scope/lock/policy
   digest is durably reserved in the same transaction as installation,
   admission, and outbox state. A matching retry returns the original
   installation ID, while key reuse for a different command fails closed.
@@ -2078,11 +2086,13 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   and readiness probes the worker-owned launcher/runtime configuration rather
   than returning an unconditional success. Every launched job must also emit a
   bounded immutable-request-matching OCI receipt, including its opaque job ID,
-  fixed image digest, build attempt, dependency-lock digest, toolchain digest,
-  WIT digest, and a domain-separated digest of the exact request JSON delivered
-  to the launcher, before the worker accepts its terminal result. The receipt
-  schema rejects unknown fields, so a launcher cannot smuggle unreviewed
-  controls into evidence consumed by later code. Startup and
+  fixed image digest, build attempt, source scenario digest, dependency-lock
+  digest, toolchain digest, WIT digest, exact component target, and a
+  domain-separated digest of the exact request JSON delivered to the launcher,
+  before the worker accepts its terminal result. The receipt schema rejects
+  unknown fields, so a launcher cannot smuggle unreviewed controls into
+  evidence consumed by later code.
+  Startup and
   readiness also require the deployment-owned
   `RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION` file: a bounded, regular JSON
   attestation must match the fixed runtime/image and prove unprivileged,
@@ -2095,7 +2105,7 @@ untrusted source inside `apps/server` or the runtime sandbox process.
   configuration-review evidence and does not
   replace deployment evidence that the launcher enforces the corresponding
   controls. The canonical module-build-worker Kubernetes renderer now pins the
-  selected RuntimeClass and image digest, deploys two hardened replicas with
+  selected RuntimeClass plus independently pinned worker and OCI-job image digests, deploys two hardened replicas with
   mTLS readiness probes, mounts only a read-only source PVC plus attestation
   and mTLS material, and permits ingress only from the dispatcher while
   default-denying egress. Its probe executes the generated authenticated
@@ -2166,7 +2176,9 @@ credentials.
    `cargo build --locked --target wasm32-wasip2`. The former
    `cargo-component` path is not retained: current Rust emits WASI P2
    components natively, while `rustok-module-sdk` owns generated guest
-   bindings from the single canonical WIT source.
+   bindings from the single canonical WIT source. The fixed OCI launcher is
+   given that exact component target, and its independently deployed receipt
+   must claim the same target before the worker accepts any result.
 9. Validate and inspect exports/imports using `wasm-tools`. The worker now
    additionally binds a successful result to a fixed `output/component.wasm`,
    rehashes it, validates Component Model bytes, and compares the root
@@ -2243,10 +2255,21 @@ The terminal result contains:
   native WASI P2 Component, and executes it through the real neutral Wasmtime
   executor with a bounded `LocalSandboxScenario`: exact typed grants/limits,
   capability/operation fixture responses, input, and success/error expectation.
-  Local results are never trusted build/admission evidence. `module build`
+  A completed local run emits the scenario's domain-separated digest with only
+  a redacted `success` or `expected_error` comparison result; it never exposes
+  fixture payload through that comparison projection. Local results are never
+  trusted build/admission evidence. `module build`
   requires explicit tenant, actor, project, trace, correlation, and idempotency
   identity, creates a private deterministic archive, and submits it only through
-  `ModuleAuthoringBuildControl`. The owner strictly scans and rehashes the
+  `ModuleAuthoringBuildControl` as a non-serializable
+  `PreparedModuleSourceArchive`, never a transport-supplied filesystem path.
+  `ModuleAuthoringSourceArchiveBuilder` is the single host-materializer path:
+  it writes the private archive using the same fixed profile the owner later
+  applies during source-CAS scanning, preventing CLI or Alloy limit drift. The
+  shared `SourceTreeMaterializer` first creates template and future reviewed
+  host source trees from data-only files under the same strict path/resource
+  boundary; callers never recursively write untrusted file paths themselves.
+  owner strictly scans and rehashes the
   archive, atomically publishes `<sha256-hex>.tar` into the deployment source
   CAS, selects the fixed limits, dependency egress, validation profiles, WIT,
   ABI, and target, then commits the immutable request and outbox fact. The CLI
@@ -2285,7 +2308,7 @@ The terminal result contains:
   expected error codes through the real Component executor for local tests.
 - [x] Emit machine-readable diagnostics and build evidence usable by Alloy,
   CLI, CI, and admin without parsing human logs. `ModuleBuildResult` protocol
-  v8 carries bounded typed diagnostic `(stage, code)` facts and ordered
+  v9 carries bounded typed diagnostic `(stage, code)` facts and ordered
   validation-profile outcomes in its evidence;
   every failed result must include its canonical code at its owner-canonical
   stage, while success
@@ -2294,12 +2317,16 @@ The terminal result contains:
   separately authorized log reference. A successful result must report every
   requested profile as `passed`; `validation_failed` must identify an ordered
   requested profile with a `failed` outcome. The verified SLSA provenance
-  envelope carries the same requested-profile and outcome lists.
+  envelope carries the same requested-profile and outcome lists plus the
+  request-bound scenario digest and redacted scenario result.
 - [x] Version SDK/templates independently and record their versions in build
-  provenance. `ModuleBuildRequest` v8 requires SemVer `sdk_version` and
+  provenance. `ModuleBuildRequest` v9 requires SemVer `sdk_version` and
   `template_version`; publication-side SLSA verification requires exact
   `sdkVersion` and `templateVersion` values in the request-bound RusToK
-  external-parameters envelope.
+  external-parameters envelope. Its canonical request also carries any exact
+  Rhai predecessor reference for a reviewed Rust/WASM rewrite; the worker
+  receives provenance only, while the governance owner verifies predecessor
+  activity and runtime kind during staging and finalization.
 
 ### Verification Gate
 
@@ -2907,11 +2934,69 @@ This is an AI-assisted rewrite and validation workflow, not a transparent AST
 transpiler.
 
 - [ ] Generate typed Rust against the versioned WIT guest contract.
-- [ ] Preserve the Rhai parent release and source lineage.
-- [ ] Run generated Rust only through the isolated build worker.
-- [ ] Compare scenario/contract evidence between Rhai and WASM versions.
+- [x] Preserve the Rhai parent release and source lineage. The immutable
+  platform build request carries the optional exact predecessor, and the owner
+  stores it in the platform-build staging receipt before it derives the final
+  marketplace artifact contract. Staging and finalization revalidate a
+  same-slug, strictly older, active published Rhai predecessor; idempotent
+  replay compares the complete reference and cannot replace it.
+- [x] Dispatch an approved Rust Component candidate through the owner build
+  control without accepting a caller filesystem path. The host-composed Alloy
+  evolution service rechecks candidate tenant, approved source/scenario review,
+  parent-release identity, and manifest version before it materializes source
+  only in a correlation-bound private work directory. The shared authoring
+  archive builder derives the source-CAS digest; the durable Alloy receipt
+  binds that archive digest and its exact `cas://` reference to the candidate,
+  authenticated command context, and returned build-request ID. Exact replay
+  returns the receipt before materialization, while changed idempotency
+  evidence, non-approved candidates, invalid source references, and deleted
+  parents fail closed. Receipt evidence is deleted with candidate retention.
+- [ ] Verify generated Rust build execution only through the isolated build
+  worker, including deployment evidence for the hardened OCI job. The completed
+  owner handoff above is deliberately not execution evidence.
+- [ ] Compare scenario/contract evidence between Rhai and WASM versions. The
+  owner now defines, validates, persists, and security-reconciles a
+  domain-separated digest for the canonical zero-input, zero-grant Rhai
+  publication-smoke scenario. The neutral sandbox also derives a separate
+  domain-separated canonical digest for every validated bounded
+  `LocalSandboxScenario` and emits only that digest plus a redacted
+  `success`/`expected_error` result for a completed local run. Candidate
+  adapters must use that comparison tuple without exposing fixture payload.
+  Build protocol v9 additionally pins the candidate source-local scenario path
+  and canonical digest, and the isolated worker reopens, parses, digest-checks,
+  and capability-subsets it against the source manifest before job launch.
+  A successful runner result is accepted only with the matching redacted
+  comparison tuple. This binds the execution contract but is not itself proof
+  of the hardened OCI job deployment or Rhai/WASM semantic parity.
+  The current Alloy publication smoke is still its fixed Rhai-only evidence;
+  generated candidate execution and complete Rhai/WASM parity remain open.
+- [x] Persist immutable Rust Component candidate input before source
+  preparation. Alloy accepts data-only UTF-8 source files only after the
+  shared source-tree validation; its durable candidate record pins tenant,
+  approved current Rhai revision/source digest, exact published Rhai parent,
+  canonical candidate source digest, scenario digest, actor, and idempotency
+  receipt. SeaORM and in-memory owners both fail closed on stale, unapproved,
+  release-unpinned, conflicting, or cross-tenant requests; source is not
+  returned by the operator response. Candidate source and receipt are retained
+  and GC-collected with the owning deleted draft's evidence lifecycle. The
+  candidate manifest must retain the parent slug and declare a strictly newer
+  semantic version before it is admitted.
+- [x] Record immutable Rust Component candidate review decisions. The candidate
+  owner uses the canonical review transition state machine with decision rows
+  bound to exact candidate source/scenario digests, policy revision, actor,
+  reason, and idempotency receipt. Tenant-scoped reads and deletion retention
+  hide then collect both candidates and their reviews. A candidate approval is
+  deliberately not an implicit build enqueue; the next owner build operation
+  must revalidate it.
 - [ ] Publish the WASM implementation as a new release after review.
-- [ ] Never emit or runtime-load a native dynamic library.
+- [x] Never emit or runtime-load a native dynamic library. Rust Component
+  authoring fixes the only build target to `wasm32-wasip2`; source metadata,
+  CLI commands, immutable build requests, OCI-job environment, and the
+  independently emitted job receipt must all repeat that exact target. The
+  component worker accepts only the inspected Component output and its runtime
+  executes it through the Wasm Component sandbox. The isolation verifier scans
+  Alloy, authoring, worker, sandbox, SDK, and template production sources for
+  dynamic loader APIs/dependencies and fails on any native loader path.
 
 ### 6.5 Agent Tools
 
@@ -3547,7 +3632,9 @@ workers, transports, and UI.
   operation-bound predecessor role digest when one exists; first install keeps
   that predecessor explicitly absent. The predecessor is the then-observed
   serving rollout, never a merely desired or failed candidate; rollout
-  revisions still advance from the latest desired operation. This does not claim the generic
+  revisions still advance from the latest desired operation. Operator rollout
+  and recovery receipts retain one platform-scoped `ModuleCommandContext` and
+  derive their outbox envelopes from it. This does not claim the generic
   artifact/sandbox reconciler or the retained-predecessor recovery command is
   complete.
 - [ ] Publish composition, installation, activation, grant, quarantine,

@@ -1,14 +1,13 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, ForumModule, UpdateCategoryInput,
-    entities::{forum_category_taxonomy_binding, forum_category_translation},
+    entities::forum_category_taxonomy_binding,
     services::{ForumCategoryRouteDisposition, ForumCategoryRouteService},
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
-    QueryFilter,
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -74,8 +73,6 @@ async fn category_routes_read_taxonomy_after_legacy_route_copy_is_removed() -> T
         )
         .await?;
 
-    delete_legacy_route_copy(&db, tenant_id, category.id).await?;
-
     let routes = ForumCategoryRouteService::new(db.clone());
     let canonical_en = routes
         .canonical_descriptor(tenant_id, category.id, "en", None)
@@ -128,18 +125,7 @@ async fn category_routes_read_taxonomy_after_legacy_route_copy_is_removed() -> T
     Ok(())
 }
 
-async fn delete_legacy_route_copy(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    category_id: Uuid,
-) -> TestResult<()> {
-    forum_category_translation::Entity::delete_many()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(category_id))
-        .exec(db)
-        .await?;
-    Ok(())
-}
+
 
 fn admin() -> SecurityContext {
     SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()))

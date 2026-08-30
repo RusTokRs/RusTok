@@ -245,6 +245,7 @@ impl AlloyDraftRuntime {
         let evidence = crate::AlloyPublicationSmokeEvidence {
             execution_id: request.context.execution_id,
             test_path: request.payload.entrypoint.clone(),
+            scenario_digest: rustok_modules::alloy_publication_smoke_scenario_digest(),
             executor: request.payload.executor.to_string(),
             runtime_abi: request.payload.runtime_abi.clone(),
             policy_digest: format!("sha256:{}", hex::encode(Sha256::digest(policy_bytes))),

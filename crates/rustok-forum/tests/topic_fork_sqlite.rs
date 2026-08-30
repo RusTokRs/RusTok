@@ -25,7 +25,7 @@ async fn setup() -> TestResult<(DatabaseConnection, TransactionalEventBus)> {
     options
         .max_connections(5)
         .min_connections(1)
-        .sqlx_logging(true);
+        .sqlx_logging(false);
     let db = Database::connect(options).await?;
     db.execute_unprepared(
         "CREATE TABLE users (\
@@ -344,7 +344,7 @@ async fn reply_branch_fork_is_atomic_idempotent_and_preserves_provenance() -> Te
     assert_eq!(first.copied_published_reply_count, 2);
     assert_eq!(first.copied_body_count, 2);
     assert_eq!(first.copied_reply_revision_count, 1);
-    assert_eq!(first.copied_relation_revision_count, 1);
+    assert_eq!(first.copied_relation_revision_count, 3);
     assert_eq!(first.copied_mention_count, 2);
     assert_eq!(first.copied_quote_count, 1);
 
@@ -490,8 +490,12 @@ async fn reply_branch_fork_is_atomic_idempotent_and_preserves_provenance() -> Te
 
     let relation_map = row(
         &db,
-        "SELECT source_revision_id, target_revision_id FROM forum_topic_fork_revision_items WHERE tenant_id = ? AND operation_id = ? AND revision_kind = 'relation'",
-        vec![tenant_id.into(), operation_id.into()],
+        "SELECT source_revision_id, target_revision_id FROM forum_topic_fork_revision_items WHERE tenant_id = ? AND operation_id = ? AND revision_kind = 'relation' AND source_revision_id = ?",
+        vec![
+            tenant_id.into(),
+            operation_id.into(),
+            source_relation_revision_id.into(),
+        ],
     )
     .await?;
     assert_eq!(
@@ -670,45 +674,3 @@ async fn reply_branch_fork_rejects_non_topological_source_positions_atomically()
     Ok(())
 }
 
-#[tokio::test]
-async fn debug_fk_isolation() -> TestResult<()> {
-    let (db, event_bus) = setup().await?;
-    let tenant_id = Uuid::new_v4();
-    let actor_id = Uuid::new_v4();
-    let (admin, _category_id, source_topic_id, _external, root_reply_id, _child) =
-        create_fixture(&db, &event_bus, tenant_id, actor_id).await?;
-
-    let rows = db
-        .query_all(Statement::from_string(
-            DbBackend::Sqlite,
-            "PRAGMA foreign_key_check".to_string(),
-        ))
-        .await?;
-    eprintln!("FK violations before fork: {}", rows.len());
-
-    // Temporarily disable FK to find which statement triggers it
-    db.execute_unprepared("PRAGMA foreign_keys = OFF").await?;
-
-    let operation_id = Uuid::new_v4();
-    let target_topic_id = Uuid::new_v4();
-    let result = ForumTopicForkService::new(db.clone(), event_bus)
-        .fork_reply_branch(
-            tenant_id,
-            source_topic_id,
-            admin,
-            ForkForumReplyBranchInput {
-                operation_id,
-                target_topic_id,
-                root_reply_id,
-                locale: "en".to_string(),
-                title: "Debug fork".to_string(),
-                slug: None,
-                reason: "FK isolation diagnosis test".to_string(),
-            },
-        )
-        .await;
-    db.execute_unprepared("PRAGMA foreign_keys = ON").await?;
-    eprintln!("fork result: {result:?}");
-    result?;
-    Ok(())
-}

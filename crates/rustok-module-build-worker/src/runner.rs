@@ -16,11 +16,12 @@ use rustok_build_publication::{
 use rustok_modules::{
     ArtifactAdmissionLimits, ModuleBuildDiagnostic, ModuleBuildEvidence, ModuleBuildFailureCode,
     ModuleBuildMetrics, ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildProtocolError,
-    ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult,
+    ModuleBuildPublicationReceipt, ModuleBuildRequest, ModuleBuildResult, ModuleBuildScenario,
     ModuleBuildSignatureAuthority, ModuleBuildWorker, ModuleBuildWorkerReadiness,
     OciArtifactPublicationError, OciArtifactPublicationTarget, OciArtifactPublisher,
     OciDistributionArtifactPublisher,
 };
+use rustok_sandbox::LocalSandboxScenario;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tokio::{
@@ -42,7 +43,11 @@ const MAX_PUBLICATION_WINDOW: Duration = Duration::from_secs(14 * 60);
 const CREDENTIAL_LEASE_SAFETY_MARGIN: Duration = Duration::from_secs(30);
 const MAX_ISOLATION_ATTESTATION_BYTES: u64 = 16 * 1024;
 const MAX_OCI_JOB_RECEIPT_BYTES: u64 = 8 * 1024;
-const OCI_JOB_RECEIPT_PROTOCOL_VERSION: u32 = 2;
+const MAX_SCENARIO_BYTES: u64 = 512 * 1024;
+/// External receipt contract emitted by the independently deployed OCI-job
+/// launcher. A new version is required whenever a launcher claim becomes part
+/// of the worker's acceptance decision.
+const OCI_JOB_RECEIPT_PROTOCOL_VERSION: u32 = 4;
 
 /// Deployment-owned OCI job runtime required for untrusted build execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,16 +121,18 @@ struct OciJobIsolationAttestation {
 /// request-scoped output directory. This is intentionally a closed schema:
 /// the worker must not accept launcher-controlled extensions that could be
 /// mistaken for an attested isolation fact by a future caller.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct OciJobReceipt {
     protocol_version: u32,
     request_id: String,
     source_digest: String,
+    scenario_digest: String,
     attempt: u32,
     dependency_lock_digest: String,
     toolchain_digest: String,
     wit_digest: String,
+    component_target: String,
     request_digest: String,
     runtime: String,
     image_digest: String,
@@ -143,10 +150,12 @@ impl OciJobReceipt {
         self.protocol_version == OCI_JOB_RECEIPT_PROTOCOL_VERSION
             && self.request_id == request.request_id.to_string()
             && self.source_digest == request.source.digest.as_str()
+            && self.scenario_digest == request.scenario.digest
             && self.attempt == request.attempt
             && self.dependency_lock_digest == request.dependency_policy.lock_digest.as_str()
             && self.toolchain_digest == request.toolchain.protocol_digest()
             && self.wit_digest == request.wit.protocol_digest()
+            && self.component_target == request.toolchain.component_target
             && self.request_digest == request_digest
             && self.runtime == runtime.as_str()
             && self.image_digest == image_digest
@@ -390,6 +399,30 @@ impl ModuleBuildWorker for OciJobBuildWorker {
                     return Err(ModuleBuildProtocolError::Transport(error));
                 }
             };
+        match validate_source_scenario(
+            source.source_dir(),
+            &request.scenario,
+            artifact_descriptor.capabilities(),
+        )
+        .await
+        {
+            Ok(()) => {}
+            Err(ScenarioContractError::Invalid) => {
+                return Ok(failed_result(
+                    &request,
+                    ModuleBuildFailureCode::ScenarioContractInvalid,
+                ));
+            }
+            Err(ScenarioContractError::ResourceLimit) => {
+                return Ok(failed_result(
+                    &request,
+                    ModuleBuildFailureCode::ResourceLimitExceeded,
+                ));
+            }
+            Err(ScenarioContractError::Internal(error)) => {
+                return Err(ModuleBuildProtocolError::Transport(error));
+            }
+        }
         match SourcePolicyPreflight::inspect(source.source_dir(), &request).await {
             Ok(()) => {}
             Err(SourcePolicyError::DependencyPolicyDenied) => {
@@ -537,6 +570,10 @@ impl ModuleBuildWorker for OciJobBuildWorker {
             .env(
                 "RUSTOK_MODULE_BUILD_PROTOCOL_VERSION",
                 request.protocol_version.to_string(),
+            )
+            .env(
+                "RUSTOK_MODULE_BUILD_COMPONENT_TARGET",
+                &request.toolchain.component_target,
             )
             .env("RUSTOK_MODULE_BUILD_SOURCE_DIR", source.source_dir())
             .env("RUSTOK_MODULE_BUILD_OUTPUT_DIR", &output_dir)
@@ -1041,6 +1078,51 @@ fn is_sha256_digest(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
+enum ScenarioContractError {
+    Invalid,
+    ResourceLimit,
+    Internal(String),
+}
+
+async fn validate_source_scenario(
+    source_dir: &Path,
+    scenario: &ModuleBuildScenario,
+    declared_capabilities: &[rustok_sandbox::CapabilityName],
+) -> Result<(), ScenarioContractError> {
+    let path = source_dir.join(&scenario.source_path);
+    let metadata =
+        tokio::fs::symlink_metadata(&path)
+            .await
+            .map_err(|error| match error.kind() {
+                std::io::ErrorKind::NotFound => ScenarioContractError::Invalid,
+                _ => ScenarioContractError::Internal(error.to_string()),
+            })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() == 0 {
+        return Err(ScenarioContractError::Invalid);
+    }
+    if metadata.len() > MAX_SCENARIO_BYTES {
+        return Err(ScenarioContractError::ResourceLimit);
+    }
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|error| ScenarioContractError::Internal(error.to_string()))?;
+    let parsed_scenario =
+        LocalSandboxScenario::parse(&bytes).map_err(|_| ScenarioContractError::Invalid)?;
+    let digest = parsed_scenario
+        .canonical_digest()
+        .map_err(|_| ScenarioContractError::Invalid)?;
+    if digest != scenario.digest
+        || parsed_scenario.policy.grants.iter().any(|grant| {
+            !declared_capabilities
+                .iter()
+                .any(|declared| declared == &grant.name)
+        })
+    {
+        return Err(ScenarioContractError::Invalid);
+    }
+    Ok(())
+}
+
 fn is_valid_oci_job_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 256
@@ -1078,6 +1160,7 @@ fn failed_result(
             log_reference: format!("worker://module-build/{}/log", request.request_id),
             policy_report_reference: format!("worker://module-build/{}/policy", request.request_id),
             validation_results: Vec::new(),
+            scenario_comparison: None,
             diagnostics: vec![ModuleBuildDiagnostic {
                 stage: failure.diagnostic_stage(),
                 code: failure,
@@ -1152,13 +1235,75 @@ async fn collect_job_output(
 mod tests {
     use super::{
         OCI_JOB_RECEIPT_PROTOCOL_VERSION, OciJobIsolationAttestation, OciJobReceipt, OciJobRuntime,
-        is_sha256_digest,
+        ScenarioContractError, is_sha256_digest, validate_source_scenario,
     };
+    use rustok_modules::{
+        MODULE_BUILD_PROTOCOL_VERSION, ModuleBuildAuthoring, ModuleBuildDependencyPolicy,
+        ModuleBuildLimits, ModuleBuildNetworkPolicy, ModuleBuildRequest, ModuleBuildScenario,
+        ModuleBuildSource, ModuleBuildToolchain, ModuleBuildValidationProfile,
+        ModuleBuildWitContract, ModuleCommandContext,
+    };
+    use rustok_sandbox::{CapabilityName, LocalSandboxScenario};
+    use std::{env, fs};
+    use uuid::Uuid;
 
     #[test]
     fn sha256_digest_requires_canonical_lowercase_hex() {
         assert!(is_sha256_digest(&format!("sha256:{}", "a".repeat(64))));
         assert!(!is_sha256_digest(&format!("sha256:{}", "A".repeat(64))));
+    }
+
+    #[tokio::test]
+    async fn source_scenario_must_be_digest_bound_and_subset_of_manifest_capabilities() {
+        let root = env::temp_dir().join(format!("rustok-module-build-scenario-{}", Uuid::new_v4()));
+        let scenario_path = root.join("tests/sandbox-scenario.json");
+        fs::create_dir_all(scenario_path.parent().expect("scenario parent"))
+            .expect("create scenario directory");
+        let scenario_bytes = String::from_utf8(
+            include_bytes!(
+                "../../rustok-module-template/assets/tests/sandbox-scenario.json.template"
+            )
+            .to_vec(),
+        )
+        .expect("template is UTF-8")
+        .replace("{{slug}}", "scenario_test");
+        fs::write(&scenario_path, scenario_bytes).expect("write scenario");
+
+        let scenario =
+            LocalSandboxScenario::parse(&fs::read(&scenario_path).expect("read scenario"))
+                .expect("parse scenario");
+        let mut binding = ModuleBuildScenario {
+            source_path: "tests/sandbox-scenario.json".to_string(),
+            digest: scenario.canonical_digest().expect("scenario digest"),
+        };
+        let event_capability = CapabilityName::new("platform.events").expect("event capability");
+        assert!(
+            validate_source_scenario(
+                &root,
+                &binding,
+                std::slice::from_ref(&event_capability)
+            )
+            .await
+            .is_ok()
+        );
+
+        binding.digest = format!("sha256:{}", "a".repeat(64));
+        assert!(matches!(
+            validate_source_scenario(
+                &root,
+                &binding,
+                std::slice::from_ref(&event_capability)
+            )
+            .await,
+            Err(ScenarioContractError::Invalid)
+        ));
+
+        binding.digest = scenario.canonical_digest().expect("scenario digest");
+        assert!(matches!(
+            validate_source_scenario(&root, &binding, &[]).await,
+            Err(ScenarioContractError::Invalid)
+        ));
+        fs::remove_dir_all(root).expect("remove scenario directory");
     }
 
     #[test]
@@ -1220,15 +1365,17 @@ mod tests {
     }
 
     #[test]
-    fn oci_job_receipt_rejects_unknown_fields() {
+    fn oci_job_receipt_requires_the_complete_current_schema() {
         let receipt = serde_json::json!({
             "protocol_version": OCI_JOB_RECEIPT_PROTOCOL_VERSION,
             "request_id": "8ba1a4e8-229e-4a94-93d7-2a16c4b69f26",
             "source_digest": format!("sha256:{}", "a".repeat(64)),
+            "scenario_digest": format!("sha256:{}", "b".repeat(64)),
             "attempt": 1,
             "dependency_lock_digest": format!("sha256:{}", "b".repeat(64)),
             "toolchain_digest": format!("sha256:{}", "c".repeat(64)),
             "wit_digest": format!("sha256:{}", "d".repeat(64)),
+            "component_target": "wasm32-wasip2",
             "request_digest": format!("sha256:{}", "e".repeat(64)),
             "runtime": "gvisor",
             "image_digest": format!("sha256:{}", "f".repeat(64)),
@@ -1236,8 +1383,131 @@ mod tests {
         });
         assert!(serde_json::from_value::<OciJobReceipt>(receipt.clone()).is_ok());
 
+        let mut without_component_target = receipt.clone();
+        without_component_target
+            .as_object_mut()
+            .expect("receipt object")
+            .remove("component_target");
+        assert!(serde_json::from_value::<OciJobReceipt>(without_component_target).is_err());
+
+        let mut without_scenario_digest = receipt.clone();
+        without_scenario_digest
+            .as_object_mut()
+            .expect("receipt object")
+            .remove("scenario_digest");
+        assert!(serde_json::from_value::<OciJobReceipt>(without_scenario_digest).is_err());
+
         let mut with_unknown_field = receipt;
         with_unknown_field["unreviewed_launcher_control"] = serde_json::Value::Bool(true);
         assert!(serde_json::from_value::<OciJobReceipt>(with_unknown_field).is_err());
+    }
+
+    #[test]
+    fn oci_job_receipt_rejects_a_different_component_target() {
+        let request = ModuleBuildRequest {
+            protocol_version: MODULE_BUILD_PROTOCOL_VERSION,
+            request_id: Uuid::parse_str("8ba1a4e8-229e-4a94-93d7-2a16c4b69f26")
+                .expect("request id"),
+            context: ModuleCommandContext {
+                actor_id: Uuid::parse_str("509c6552-2bc5-4de8-9348-efa13a06d2cf")
+                    .expect("actor id"),
+                tenant_id: Some(
+                    Uuid::parse_str("409c6552-2bc5-4de8-9348-efa13a06d2cf").expect("tenant id"),
+                ),
+                trace_id: "trace-oci-receipt".to_string(),
+                correlation_id: Uuid::parse_str("309c6552-2bc5-4de8-9348-efa13a06d2cf")
+                    .expect("correlation id"),
+                idempotency_key: Uuid::parse_str("209c6552-2bc5-4de8-9348-efa13a06d2cf")
+                    .expect("idempotency key"),
+            },
+            project_id: "target-binding".to_string(),
+            source: ModuleBuildSource {
+                reference: format!("cas://sha256:{}", "a".repeat(64)),
+                digest: format!("sha256:{}", "a".repeat(64)),
+            },
+            scenario: ModuleBuildScenario {
+                source_path: "tests/sandbox-scenario.json".to_string(),
+                digest: format!("sha256:{}", "b".repeat(64)),
+            },
+            expected_module_slug: "target_binding".to_string(),
+            expected_version: "1.0.0".to_string(),
+            parent_release: None,
+            runtime_abi: "rustok:module/runtime@1".to_string(),
+            wit: ModuleBuildWitContract {
+                world: "rustok:module/module-runtime".to_string(),
+                version: "1.0.0".to_string(),
+            },
+            toolchain: ModuleBuildToolchain {
+                rust_toolchain: "1.93.0".to_string(),
+                component_target: "wasm32-wasip2".to_string(),
+            },
+            authoring: ModuleBuildAuthoring {
+                sdk_version: "0.1.0".to_string(),
+                template_version: "0.1.0".to_string(),
+            },
+            dependency_policy: ModuleBuildDependencyPolicy {
+                lock_digest: format!("sha256:{}", "b".repeat(64)),
+                allowed_registries: vec!["https://crates.io".to_string()],
+                allow_git_dependencies: false,
+                allow_build_scripts: false,
+                allow_native_links: false,
+            },
+            limits: ModuleBuildLimits {
+                cpu_cores: 1,
+                memory_bytes: 1,
+                disk_bytes: 1,
+                process_limit: 1,
+                output_bytes: 1,
+                wall_clock_ms: 1,
+            },
+            network_policy: ModuleBuildNetworkPolicy::Denied,
+            validation_profiles: vec![ModuleBuildValidationProfile::Test],
+            attempt: 1,
+        };
+        let image_digest = format!("sha256:{}", "c".repeat(64));
+        let request_digest = format!("sha256:{}", "d".repeat(64));
+        let receipt = OciJobReceipt {
+            protocol_version: OCI_JOB_RECEIPT_PROTOCOL_VERSION,
+            request_id: request.request_id.to_string(),
+            source_digest: request.source.digest.clone(),
+            scenario_digest: request.scenario.digest.clone(),
+            attempt: request.attempt,
+            dependency_lock_digest: request.dependency_policy.lock_digest.clone(),
+            toolchain_digest: request.toolchain.protocol_digest(),
+            wit_digest: request.wit.protocol_digest(),
+            component_target: request.toolchain.component_target.clone(),
+            request_digest: request_digest.clone(),
+            runtime: "gvisor".to_string(),
+            image_digest: image_digest.clone(),
+            job_id: "module-build/8ba1a4e8-229e-4a94-93d7-2a16c4b69f26".to_string(),
+        };
+        assert!(receipt.matches_request(
+            &request,
+            OciJobRuntime::Gvisor,
+            &image_digest,
+            &request_digest,
+        ));
+
+        let receipt_with_substituted_scenario = OciJobReceipt {
+            scenario_digest: format!("sha256:{}", "e".repeat(64)),
+            ..receipt.clone()
+        };
+        assert!(!receipt_with_substituted_scenario.matches_request(
+            &request,
+            OciJobRuntime::Gvisor,
+            &image_digest,
+            &request_digest,
+        ));
+
+        let receipt_with_native_target = OciJobReceipt {
+            component_target: "x86_64-pc-windows-msvc".to_string(),
+            ..receipt
+        };
+        assert!(!receipt_with_native_target.matches_request(
+            &request,
+            OciJobRuntime::Gvisor,
+            &image_digest,
+            &request_digest,
+        ));
     }
 }

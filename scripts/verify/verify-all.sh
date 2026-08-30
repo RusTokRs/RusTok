@@ -137,6 +137,7 @@ SCRIPTS=(
     "verify-marketplace-registry-freshness.mjs:Marketplace Registry Freshness"
     "verify-oci-registry-transport-policy.mjs:OCI Registry Transport Policy"
     "verify-module-build-worker-isolation.mjs:Module Build Worker Isolation"
+    "verify-module-build-worker-deployment.mjs:Module Build Worker Deployment"
     "verify-worker-runtime-policy.mjs:Worker Runtime Backpressure Policy"
     "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-parity.mjs:Page Builder Contract Parity"
     "../../crates/rustok-page-builder/scripts/verify/verify-page-builder-contract-registry.mjs:Page Builder Contract Registry"

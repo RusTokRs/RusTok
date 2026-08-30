@@ -303,14 +303,18 @@ async fn topic_merge_is_atomic_idempotent_and_append_only() -> TestResult<()> {
         Err(ForumError::TopicMergeOperationConflict(id)) if id == operation_id
     ));
     assert!(db
-        .execute_unprepared(&format!(
-            "UPDATE forum_topic_merge_operations SET reason = 'tampered' WHERE tenant_id = '{tenant_id}' AND operation_id = '{operation_id}'"
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE forum_topic_merge_operations SET reason = 'tampered' WHERE tenant_id = ? AND operation_id = ?",
+            vec![tenant_id.into(), operation_id.into()],
         ))
         .await
         .is_err());
     assert!(db
-        .execute_unprepared(&format!(
-            "DELETE FROM forum_topic_merge_operations WHERE tenant_id = '{tenant_id}' AND operation_id = '{operation_id}'"
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "DELETE FROM forum_topic_merge_operations WHERE tenant_id = ? AND operation_id = ?",
+            vec![tenant_id.into(), operation_id.into()],
         ))
         .await
         .is_err());

@@ -1,4 +1,5 @@
 mod deletion;
+mod evolution;
 mod import;
 mod provenance;
 mod proxy;
@@ -12,6 +13,15 @@ mod trigger;
 pub use deletion::{
     DELETED_EVIDENCE_RETENTION_DAYS, MAX_DELETION_ACTOR_ID_LENGTH, MAX_DELETION_REASON_LENGTH,
     ScriptDeletionCommand, ScriptDeletionError, deleted_evidence_retention,
+};
+pub use evolution::{
+    MAX_RUST_COMPONENT_CANDIDATE_ACTOR_ID_LENGTH, MAX_RUST_COMPONENT_SOURCE_BYTES,
+    MAX_RUST_COMPONENT_SOURCE_FILE_BYTES, MAX_RUST_COMPONENT_SOURCE_FILES,
+    MAX_RUST_COMPONENT_SOURCE_PATH_BYTES, RustComponentCandidate, RustComponentCandidateBuild,
+    RustComponentCandidateBuildCommand, RustComponentCandidateBuildError,
+    RustComponentCandidateCommand, RustComponentCandidateError, RustComponentCandidateReview,
+    RustComponentCandidateReviewCommand, RustComponentSourceFile, RustComponentWorkspace,
+    RustComponentWorkspaceError, validate_candidate_parent_release,
 };
 pub use import::{
     AlloyImportError, AlloyImportedDraftCommand, AlloyImportedDraftResult,

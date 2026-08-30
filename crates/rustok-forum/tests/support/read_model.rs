@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use rustok_core::{SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryCursorQuery, ForumError, ForumReadModelService, MAX_FORUM_READ_LIMIT, ReplyCursorQuery,
-    TopicCursorQuery,
+    CategoryCursorQuery, CategoryService, CreateCategoryInput, ForumError, ForumReadModelService,
+    MAX_FORUM_READ_LIMIT, ReplyCursorQuery, TopicCursorQuery,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use uuid::Uuid;
@@ -185,26 +185,25 @@ async fn seed_category(
     tenant_id: Uuid,
     position: i32,
 ) -> TestResult<Uuid> {
-    let category_id = Uuid::new_v4();
-    let translation_id = Uuid::new_v4();
-    db.execute_unprepared(&format!(
-        "INSERT INTO forum_categories
-            (id, tenant_id, position, moderated, topic_count, reply_count)
-         VALUES
-            ({}, {}, {position}, FALSE, 0, 0);
-         INSERT INTO forum_category_translations
-            (id, category_id, tenant_id, locale, name, slug)
-         VALUES
-            ({}, {}, {}, 'en',
-             'Category {position}', 'category-{category_id}');",
-        sql_uuid(db, category_id),
-        sql_uuid(db, tenant_id),
-        sql_uuid(db, translation_id),
-        sql_uuid(db, category_id),
-        sql_uuid(db, tenant_id),
-    ))
-    .await?;
-    Ok(category_id)
+    let service = CategoryService::new(db.clone());
+    let category = service
+        .create(
+            tenant_id,
+            SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4())),
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: format!("Category {position}"),
+                slug: format!("category-{position}"),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(position),
+                moderated: false,
+            },
+        )
+        .await?;
+    Ok(category.id)
 }
 
 async fn seed_topics(

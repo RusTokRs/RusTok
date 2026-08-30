@@ -104,7 +104,7 @@ if (contract.release_stage_contract?.artifact_payload_media_type !== 'applicatio
 if (contract.release_stage_contract?.artifact_digest_relation !== 'equals_reviewed_source_digest') fail('release stage artifact/source digest relation drift');
 if (contract.release_stage_contract?.transports !== 'graphql_and_host_http_require_scripts_and_modules_manage_and_verified_actor') fail('release stage transport authorization drift');
 if (contract.release_stage_contract?.transport_route !== '/api/alloy/scripts/{id}/releases/stage') fail('release stage host route drift');
-sameArray(contract.release_stage_contract?.evidence_fields, ['artifact_digest', 'source_digest', 'source_revision', 'alloy_tenant_id', 'alloy_script_id', 'review_reference', 'review_digest', 'review_policy_revision', 'sandbox_execution_id', 'sandbox_test_path', 'sandbox_executor', 'sandbox_runtime_abi', 'sandbox_policy_digest', 'sandbox_capability_grants', 'platform_admission'], 'release stage evidence fields');
+sameArray(contract.release_stage_contract?.evidence_fields, ['artifact_digest', 'source_digest', 'source_revision', 'alloy_tenant_id', 'alloy_script_id', 'review_reference', 'review_digest', 'review_policy_revision', 'sandbox_execution_id', 'sandbox_test_path', 'sandbox_scenario_digest', 'sandbox_executor', 'sandbox_runtime_abi', 'sandbox_policy_digest', 'sandbox_capability_grants', 'platform_admission'], 'release stage evidence fields');
 if (contract.release_capability_contract?.source_scope !== 'every_executable_src_rhai_file') fail('release capability source scope drift');
 if (contract.release_capability_contract?.generic_helper !== 'capability_call_requires_literal_valid_capability_name') fail('release generic capability helper drift');
 if (contract.release_capability_contract?.http_helpers !== 'http_get_http_post_http_request_require_platform_http') fail('release HTTP capability helper drift');
@@ -336,6 +336,7 @@ hasAll(releaseRunner, [
   'alloy_tenant_id: source.tenant_id',
   'alloy_script_id: source.script_id',
   'sandbox_execution_id: smoke_evidence.execution_id',
+  'sandbox_scenario_digest: smoke_evidence.scenario_digest',
   'sandbox_capability_grants: smoke_evidence.capability_grants',
   'ModuleAlloyAuthoredStageCommand',
   '.stage_alloy_authored('
@@ -352,6 +353,8 @@ const governance = read('crates/rustok-modules/src/governance.rs');
 hasAll(governance, [
   'AlloyAuthored',
   'pub struct ModuleAlloyAuthoredStageCommand',
+  'pub fn alloy_publication_smoke_scenario_digest',
+  'sandbox_scenario_digest',
   'pub async fn stage_alloy_authored',
   'registry_publish_alloy_staging',
   'PublishRequestMissingAlloyAuthoredStage',

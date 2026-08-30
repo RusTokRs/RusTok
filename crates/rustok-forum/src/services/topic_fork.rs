@@ -46,7 +46,26 @@ mod topic_solution_lock {
     }
 }
 mod topic_tag_lock {
-    pub(super) use super::super::topic_tag_lock::lock_topic_tag_scopes_in_tx;
+    use sea_orm::DatabaseTransaction;
+    use uuid::Uuid;
+
+    use crate::error::{ForumError, ForumResult};
+
+    pub(super) async fn lock_topic_tag_scopes_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_ids: &[Uuid],
+    ) -> ForumResult<()> {
+        let source_topic_id = topic_ids.first().copied().ok_or_else(|| {
+            ForumError::Validation("Forum topic fork tag lock requires a source topic".to_string())
+        })?;
+        super::super::topic_tag_lock::lock_topic_tag_scopes_in_tx(
+            txn,
+            tenant_id,
+            &[source_topic_id],
+        )
+        .await
+    }
 }
 mod user_stats {
     pub(super) use super::super::user_stats::UserStatsService;

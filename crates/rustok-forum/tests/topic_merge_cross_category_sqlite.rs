@@ -339,6 +339,8 @@ async fn cross_category_topic_merge_rolls_back_on_source_counter_drift() -> Test
         None,
     )
     .await?;
+    db.execute_unprepared("DROP TRIGGER IF EXISTS forum_categories_public_reply_count_update")
+        .await?;
     db.execute(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "UPDATE forum_categories SET reply_count = 0 WHERE tenant_id = ? AND id = ?",

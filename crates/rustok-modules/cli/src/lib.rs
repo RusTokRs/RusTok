@@ -2,8 +2,7 @@
 
 use std::{
     collections::BTreeSet,
-    fs::{self, OpenOptions},
-    io::Write,
+    fs,
     path::{Component, Path, PathBuf},
     process::Stdio,
     sync::{
@@ -27,9 +26,10 @@ use rustok_modules::{
     MODULE_ARTIFACT_SOURCE_MANIFEST_FILE, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
     MODULE_BUILD_COMPONENT_TARGET, MODULE_BUILD_RUNTIME_ABI, MODULE_BUILD_WIT_VERSION,
     MODULE_BUILD_WIT_WORLD, ModuleArtifactSourceManifest, ModuleAuthoringBuildCommand,
-    ModuleAuthoringPublishCommand, ModuleCommandContext, ModulePublishBundleFiles,
+    ModuleAuthoringBuildError, ModuleAuthoringPublishCommand, ModuleAuthoringSourceArchiveBuilder,
+    ModuleBuildScenario, ModuleCommandContext, ModulePublishBundleFiles,
     SeaOrmModuleAuthoringBuildService, SeaOrmModuleAuthoringPublishService,
-    SharedModuleAuthoringBuildControl, SharedModuleAuthoringPublishControl,
+    SharedModuleAuthoringBuildControl, SharedModuleAuthoringPublishControl, SourceTreeFile,
     build_module_publish_bundle,
 };
 use rustok_runtime::{RuntimeComposition, db_clone};
@@ -220,25 +220,30 @@ impl ModuleCommandProvider {
         let control = self.build_control()?;
         let temporary_root = reserve_build_archive_root()?;
         let archive_path = temporary_root.join("source.tar");
-        let packaged = SourceArchiveBuilder::new(source_archive_limits()?)
-            .write(&validation.path, &archive_path)
-            .map_err(map_source_archive_error);
-        let packaged = match packaged {
-            Ok(receipt) => receipt,
+        let archive = ModuleAuthoringSourceArchiveBuilder::new()
+            .and_then(|builder| builder.prepare(&validation.path, &archive_path))
+            .map_err(map_authoring_build_error);
+        let archive = match archive {
+            Ok(archive) => archive,
             Err(error) => return cleanup_build_archive_error(&temporary_root, error),
         };
         let command = ModuleAuthoringBuildCommand {
             context,
             project_id,
-            source_digest: packaged.source_digest.clone(),
+            source_digest: archive.source_digest().to_string(),
+            scenario: ModuleBuildScenario {
+                source_path: DEFAULT_LOCAL_SCENARIO.to_string(),
+                digest: validation.scenario_digest.clone(),
+            },
             expected_module_slug: validation.slug.clone(),
             expected_version: validation.version.clone(),
+            parent_release: None,
             rust_toolchain: validation.rust_toolchain.clone(),
             sdk_version: validation.sdk_version.clone(),
             template_version: validation.template_version.clone(),
             dependency_lock_digest: validation.lock_digest.clone(),
         };
-        let submitted = control.0.submit_build(command, archive_path).await;
+        let submitted = control.0.submit_build(command, archive).await;
         let cleanup = fs::remove_dir_all(&temporary_root);
         let submitted = match (submitted, cleanup) {
             (Ok(submitted), Ok(())) => submitted,
@@ -425,12 +430,17 @@ async fn init_project(request: CommandRequest) -> CliCoreResult<CommandOutcome> 
         );
     }
 
-    fs::create_dir(&target).map_err(command_failed)?;
     let initialized = initialize_created_target(&target, &rendered).await;
     let report = match initialized {
         Ok(report) => report,
         Err(error) => {
-            let cleanup = fs::remove_dir_all(&target);
+            let cleanup = match fs::symlink_metadata(&target) {
+                Ok(_) => fs::remove_dir_all(&target),
+                Err(cleanup_error) if cleanup_error.kind() == std::io::ErrorKind::NotFound => {
+                    Ok(())
+                }
+                Err(cleanup_error) => Err(cleanup_error),
+            };
             return match cleanup {
                 Ok(()) => Err(error),
                 Err(cleanup_error) => Err(CliCoreError::CommandFailed {
@@ -545,6 +555,7 @@ async fn test_project(request: CommandRequest) -> CliCoreResult<CommandOutcome> 
         })
         .await;
     let evaluated = scenario.evaluate(sandbox_result).map_err(command_failed)?;
+    let comparison = scenario.comparison(&evaluated).map_err(command_failed)?;
     let execution = match evaluated {
         LocalSandboxScenarioOutcome::Success(outcome) => serde_json::json!({
             "outcome": "success",
@@ -564,6 +575,7 @@ async fn test_project(request: CommandRequest) -> CliCoreResult<CommandOutcome> 
             "component_path": component_path,
             "component_digest": component_digest,
             "cargo_stages": cargo_stages.iter().map(|stage| stage.name).collect::<Vec<_>>(),
+            "comparison": comparison,
             "execution": execution
         })),
     )
@@ -767,6 +779,7 @@ fn validate_project(path: &Path) -> CliCoreResult<ProjectValidation> {
         read_regular_file(&root, DEFAULT_LOCAL_SCENARIO, MAX_LOCAL_SCENARIO_BYTES)?;
     let scenario = LocalSandboxScenario::parse(&scenario_bytes).map_err(invalid_input)?;
     validate_scenario_capabilities(source.capabilities(), &scenario)?;
+    let scenario_digest = scenario.canonical_digest().map_err(invalid_input)?;
 
     let lock_bytes = read_regular_file(&root, "Cargo.lock", MAX_LOCKFILE_BYTES)?;
     validate_lockfile(&lock_bytes, &source, &authoring.sdk_version)?;
@@ -782,6 +795,7 @@ fn validate_project(path: &Path) -> CliCoreResult<ProjectValidation> {
         lock_digest,
         entrypoint: source.entrypoint().to_string(),
         capabilities: source.capabilities().to_vec(),
+        scenario_digest,
     })
 }
 
@@ -1172,21 +1186,17 @@ async fn collect_cargo_output(
 }
 
 fn write_rendered_project(root: &Path, rendered: &RenderedModule) -> CliCoreResult<()> {
-    for file in rendered.files() {
-        let path = root.join(file.path);
-        let parent = path
-            .parent()
-            .ok_or_else(|| invalid_input("rendered file has no parent"))?;
-        fs::create_dir_all(parent).map_err(command_failed)?;
-        let mut output = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(command_failed)?;
-        output.write_all(&file.contents).map_err(command_failed)?;
-        output.sync_all().map_err(command_failed)?;
-    }
-    Ok(())
+    let files = rendered
+        .files()
+        .iter()
+        .map(|file| SourceTreeFile {
+            path: file.path.to_string(),
+            contents: file.contents.clone(),
+        })
+        .collect::<Vec<_>>();
+    ModuleAuthoringSourceArchiveBuilder::new()
+        .and_then(|builder| builder.materialize(&files, root))
+        .map_err(map_authoring_build_error)
 }
 
 fn resolve_new_target(raw: &str) -> CliCoreResult<PathBuf> {
@@ -1383,6 +1393,20 @@ fn map_source_archive_error(error: SourceArchiveError) -> CliCoreError {
     }
 }
 
+fn map_authoring_build_error(error: ModuleAuthoringBuildError) -> CliCoreError {
+    match error {
+        ModuleAuthoringBuildError::SourceArchive(SourceArchiveError::Io(message)) => {
+            command_failed(message)
+        }
+        ModuleAuthoringBuildError::SourceArchive(error) => invalid_input(error),
+        ModuleAuthoringBuildError::SourceTree(rustok_build_source::SourceTreeError::Io(
+            message,
+        )) => command_failed(message),
+        ModuleAuthoringBuildError::SourceTree(error) => invalid_input(error),
+        other => command_failed(other),
+    }
+}
+
 fn map_archive_error(error: CasArchiveError) -> CliCoreError {
     match error {
         CasArchiveError::Io(message) | CasArchiveError::Unavailable(message) => {
@@ -1498,6 +1522,7 @@ struct ProjectValidation {
     lock_digest: String,
     entrypoint: String,
     capabilities: Vec<rustok_sandbox::CapabilityName>,
+    scenario_digest: String,
 }
 
 struct AuthoringMetadata {
@@ -1522,7 +1547,8 @@ impl ProjectValidation {
             "rust_toolchain": self.rust_toolchain,
             "dependency_lock_digest": self.lock_digest,
             "entrypoint": self.entrypoint,
-            "capabilities": self.capabilities
+            "capabilities": self.capabilities,
+            "scenario_digest": self.scenario_digest
         })
     }
 
@@ -1719,6 +1745,28 @@ mod tests {
             .expect("dry-run init");
         assert_eq!(outcome.exit_code, 0);
         assert!(!target.exists());
+    }
+
+    #[test]
+    fn rendered_template_uses_the_shared_owner_source_tree_materializer() {
+        let root = std::env::temp_dir().join(format!("rustok-module-template-{}", Uuid::new_v4()));
+        let target = root.join("project");
+        fs::create_dir(&root).expect("temporary root");
+        let rendered = render(&ModuleTemplateInput {
+            slug: "sample_module".to_string(),
+            version: "0.1.0".to_string(),
+            display_name: "Sample Module".to_string(),
+        })
+        .expect("rendered template");
+
+        write_rendered_project(&target, &rendered).expect("materialized template");
+        assert_eq!(
+            fs::read(target.join("src/lib.rs")).expect("template source"),
+            rendered.file("src/lib.rs").expect("rendered source")
+        );
+        assert!(target.join(MODULE_ARTIFACT_SOURCE_MANIFEST_FILE).is_file());
+
+        fs::remove_dir_all(root).expect("temporary root cleanup");
     }
 
     #[test]

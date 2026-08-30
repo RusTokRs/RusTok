@@ -302,6 +302,11 @@ review decision references immutable evidence.
   lifecycle, descriptor runtime ABI, and policy revision through
   `rustok-modules`. No eligible parent policy means no execution. Publication
   smoke remains zero-grant and inherits only the resolved policy limits.
+- [x] Persist the domain-separated digest of the fixed zero-input, zero-grant
+  Rhai publication-smoke scenario in the immutable owner staging receipt and
+  require it during security reconciliation. This is the first durable parity
+  case for a future Rust/WASM rewrite, not evidence that a candidate
+  implementation is equivalent.
 - [x] Publish a fork as a new immutable release without changing installed
   parents. The exact imported `ArtifactReleaseRef` reaches owner staging and
   the final artifact contract; the owner validates its active predecessor and
@@ -314,10 +319,66 @@ preserve reproducible lineage.
 
 - Generate typed Rust against the approved WIT guest contract.
 - Treat conversion as a reviewed rewrite, not an automatic Rhai AST compiler.
-- Submit source only to the isolated build worker.
-- Compare deterministic scenario/contract evidence between Rhai and WASM.
+- Submit source only through the owner build control as a host-prepared,
+  non-serializable `PreparedModuleSourceArchive`, created exclusively by the
+  shared `ModuleAuthoringSourceArchiveBuilder`; Alloy and its transports must
+  never carry a filesystem path in an evolution command or duplicate archive
+  writing and limit selection. Reviewed candidate files must first pass through
+  the shared `SourceTreeMaterializer`; Alloy cannot recursively write caller
+  paths or retain filesystem metadata. The owner rehashes and strictly scans that
+  archive before its source-CAS publish and remote-worker enqueue.
+- Persist every submitted Rust Component candidate as an immutable Alloy
+  record before it can reach source preparation. The candidate is bound to its
+  tenant, current approved Rhai draft revision and source digest, exact
+  published Rhai parent release, canonical Rust source digest, canonical
+  scenario digest, authenticated actor, and idempotency receipt. Candidate
+  workspace content is data-only and remains source-redacted from operator
+  responses; a candidate cannot be created from a filesystem path or from an
+  unreviewed, stale, or release-unpinned Rhai revision. Candidate source and
+  its receipt share the owning draft's retention lifecycle and are physically
+  erased by the same expiry collector, never left as hidden orphaned source.
+  Admission also derives the candidate manifest identity and rejects a slug
+  mismatch or a version that is not strictly newer than its Rhai parent before
+  either candidate or review state is written.
+- Record candidate review decisions in a separate immutable state machine.
+  Each decision binds the candidate ID plus its source and scenario digests,
+  policy revision, authenticated reviewer, idempotency receipt, and transition
+  history. Candidate approval is necessary, but not yet sufficient, to enqueue
+  a source-preparation or isolated-worker build: that next owner operation must
+  re-read the exact approved candidate and current parent-release eligibility.
+- [x] Dispatch an approved candidate only through `AlloyEvolutionBuildService`.
+  The host injects an existing non-symlink work root; the service creates a
+  correlation-bound private operation directory, materializes the reviewed
+  data-only source with `ModuleAuthoringSourceArchiveBuilder`, and submits its
+  non-serializable archive to `ModuleAuthoringBuildControl`. It records a
+  durable receipt binding candidate/source/scenario digests to the exact
+  source-CAS digest, `cas://` reference, build request, authenticated command
+  context, and idempotency digest. Exact replay returns that receipt before
+  source preparation; a mismatched replay, unapproved candidate, deleted
+  parent, or invalid owner submission fails closed. The ephemeral operation
+  directory is removed after submission. This is an enqueue boundary only; it
+  is not evidence that an isolated worker executed the candidate or that Rhai
+  and WASM behavior is equivalent. The immutable build request carries the
+  same source-local scenario path and reviewed canonical digest, so an isolated
+  worker can reject a substituted scenario before it runs the candidate.
+- Compare deterministic scenario/contract evidence between Rhai and WASM. The
+  fixed publication smoke has a canonical persisted scenario digest. The
+  neutral sandbox now defines the candidate comparison projection as a
+  domain-separated scenario digest plus a redacted `success` or
+  `expected_error` result; Alloy's current smoke remains Rhai-only until its
+  candidate adapter executes that shared contract. Candidate generation and
+  executable Rhai/WASM comparison remain required.
 - Publish the WASM implementation as a new release with Rhai parent lineage.
-- Never generate or load native dynamic libraries.
+  The owner-owned platform-build request, durable staging receipt, and final
+  marketplace artifact contract now preserve one exact active Rhai predecessor;
+  a replay cannot substitute it. The Alloy evolution workflow and scenario
+  review remain required before a generated WASM release can be staged.
+- [x] Never generate or load native dynamic libraries. The worker accepts only a
+  validated WASM Component payload, launches the fixed OCI job with the
+  immutable `wasm32-wasip2` target, and rejects a receipt that does not bind
+  that exact target; no Alloy path receives a native loader handle. The shared
+  isolation verifier scans every Rust Component production boundary for native
+  dynamic-loader APIs or dependencies.
 
 **Done when:** the WASM release passes build/trust/admission and scenario parity
 while the Rhai parent remains installable and reproducible.

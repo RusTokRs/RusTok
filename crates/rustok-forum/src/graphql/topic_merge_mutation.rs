@@ -282,7 +282,7 @@ mod tests {
 
     async fn create_topics(
         db: &DatabaseConnection,
-        event_bus: &TransactionalEventBus,
+        _event_bus: &TransactionalEventBus,
         tenant_id: Uuid,
         actor_id: Uuid,
     ) -> TestResult<(Uuid, Uuid)> {

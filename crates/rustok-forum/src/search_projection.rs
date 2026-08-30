@@ -236,12 +236,10 @@ impl ForumSearchProjectionSource {
                     entity_id,
                     locale: after_locale,
                 }) = cursor
+                    && (category.id < *entity_id
+                        || (category.id == *entity_id && locale <= after_locale))
                 {
-                    if category.id < *entity_id
-                        || (category.id == *entity_id && locale <= after_locale)
-                    {
-                        continue;
-                    }
+                    continue;
                 }
                 candidates.push(ProjectionCandidate::Category {
                     entity_id: category.id,

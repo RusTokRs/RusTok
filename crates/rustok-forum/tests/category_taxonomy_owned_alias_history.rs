@@ -35,7 +35,7 @@ async fn category_slug_history_survives_without_forum_alias_storage() -> TestRes
         )
         .await?;
 
-    db.execute_unprepared("DROP TABLE forum_category_route_aliases")
+    db.execute_unprepared("DROP TABLE IF EXISTS forum_category_route_aliases")
         .await?;
 
     service

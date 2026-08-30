@@ -1,6 +1,6 @@
 use rustok_core::MigrationSource;
 use rustok_forum::ForumModule;
-use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
+use rustok_outbox::OutboxModule;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;

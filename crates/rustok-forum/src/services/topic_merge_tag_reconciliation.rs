@@ -29,7 +29,8 @@ use super::topic_tag_lock::{lock_topic_rows_for_tags_in_tx, lock_topic_tag_scope
 
 pub const MAX_FORUM_TOPIC_MERGE_TAGS: u64 = 500;
 pub const MAX_FORUM_TOPIC_MERGE_TAG_REASON_LEN: usize = 500;
-const FORUM_TOPIC_MERGE_TAGS_RECONCILED_EVENT_TYPE: &str = "forum.topic.merge_tags_reconciled";
+const FORUM_TOPIC_MERGE_TAGS_RECONCILED_EVENT_TYPE: &str =
+    "forum.topic.merge.tags_reconciled";
 const FORUM_TOPIC_MERGE_TAGS_AGGREGATE_TYPE: &str = "forum_topic";
 const FORUM_TOPIC_MERGED_EVENT_TYPE: &str = "forum.topic.merged";
 

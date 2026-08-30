@@ -41,6 +41,8 @@ struct BuildEvidenceExpectation {
     sbom_digest: String,
     provenance_digest: String,
     source_digest: String,
+    scenario_digest: String,
+    scenario_result: serde_json::Value,
     dependency_lock_digest: String,
     toolchain_digest: String,
     wit_digest: String,
@@ -160,6 +162,12 @@ impl ArtifactDescriptorFinalizer {
             ))
         })?
     }
+
+    /// Capabilities declared by the validated source manifest. Scenario grants
+    /// must remain a subset of this declaration before untrusted execution.
+    pub fn capabilities(&self) -> &[rustok_sandbox::CapabilityName] {
+        self.source.capabilities()
+    }
 }
 
 impl ComponentArtifactInspector {
@@ -218,6 +226,16 @@ impl BuildEvidenceInspector {
                 .clone()
                 .ok_or(BuildEvidenceError::ProvenanceInvalid)?,
             source_digest: request.source.digest.clone(),
+            scenario_digest: request.scenario.digest.clone(),
+            scenario_result: serde_json::to_value(
+                &result
+                    .evidence
+                    .scenario_comparison
+                    .as_ref()
+                    .ok_or(BuildEvidenceError::ProvenanceInvalid)?
+                    .result,
+            )
+            .map_err(|error| BuildEvidenceError::Internal(error.to_string()))?,
             dependency_lock_digest: request.dependency_policy.lock_digest.clone(),
             toolchain_digest: request.toolchain.protocol_digest(),
             wit_digest: request.wit.protocol_digest(),
@@ -877,6 +895,7 @@ fn inspect_slsa_provenance(
         ),
         ("toolchainDigest", expectation.toolchain_digest.as_str()),
         ("witDigest", expectation.wit_digest.as_str()),
+        ("scenarioDigest", expectation.scenario_digest.as_str()),
         ("sdkVersion", expectation.sdk_version.as_str()),
         ("templateVersion", expectation.template_version.as_str()),
         (
@@ -894,6 +913,7 @@ fn inspect_slsa_provenance(
         != Some(u64::from(expectation.attempt))
         || rustok.get("validationProfiles") != Some(&expectation.validation_profiles)
         || rustok.get("validationResults") != Some(&expectation.validation_results)
+        || rustok.get("scenarioResult") != Some(&expectation.scenario_result)
     {
         return Err(BuildEvidenceError::ProvenanceInvalid);
     }
@@ -1031,6 +1051,8 @@ mod tests {
                     "externalParameters": {
                         "rustok": {
                             "sourceDigest": digest('a'),
+                            "scenarioDigest": digest('g'),
+                            "scenarioResult": "success",
                             "dependencyLockDigest": digest('b'),
                             "toolchainDigest": digest('d'),
                             "witDigest": digest('e'),
@@ -1066,6 +1088,8 @@ mod tests {
             sbom_digest: digest('f'),
             provenance_digest: digest('9'),
             source_digest: digest('a'),
+            scenario_digest: digest('g'),
+            scenario_result: json!("success"),
             dependency_lock_digest: digest('b'),
             toolchain_digest: digest('d'),
             wit_digest: digest('e'),
@@ -1117,6 +1141,20 @@ mod tests {
 
         let mut substituted = evidence_expectation();
         substituted.sdk_version = "1.2.4".to_string();
+        assert!(matches!(
+            inspect_slsa_provenance(&document, &substituted),
+            Err(BuildEvidenceError::ProvenanceInvalid)
+        ));
+
+        let mut substituted = evidence_expectation();
+        substituted.scenario_digest = digest('h');
+        assert!(matches!(
+            inspect_slsa_provenance(&document, &substituted),
+            Err(BuildEvidenceError::ProvenanceInvalid)
+        ));
+
+        let mut substituted = evidence_expectation();
+        substituted.scenario_result = json!("expected_error");
         assert!(matches!(
             inspect_slsa_provenance(&document, &substituted),
             Err(BuildEvidenceError::ProvenanceInvalid)

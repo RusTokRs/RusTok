@@ -30,7 +30,7 @@ use super::topic_read_state_lock::{
 pub const MAX_FORUM_TOPIC_MERGE_READ_STATES: u64 = 500;
 pub const MAX_FORUM_TOPIC_MERGE_READ_STATE_REASON_LEN: usize = 500;
 const FORUM_TOPIC_MERGE_READ_STATES_RECONCILED_EVENT_TYPE: &str =
-    "forum.topic.merge_read_states_reconciled";
+    "forum.topic.merge.read_state_reconciled";
 const FORUM_TOPIC_AGGREGATE_TYPE: &str = "forum_topic";
 const FORUM_TOPIC_MERGED_EVENT_TYPE: &str = "forum.topic.merged";
 

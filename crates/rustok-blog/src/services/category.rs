@@ -14,8 +14,7 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
-    CategoryListItem, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
-    MAX_BLOG_CATEGORY_TREE_NODES, UpdateCategoryInput,
+    CategoryResponse, CreateCategoryInput, MAX_BLOG_CATEGORY_TREE_NODES, UpdateCategoryInput,
 };
 use crate::entities::{blog_category, blog_category_translation};
 use crate::error::{BlogError, BlogResult};
@@ -51,10 +50,6 @@ pub(crate) struct CategoryTranslationApplyResult {
 impl CategoryService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self { db, event_bus }
-    }
-
-    pub(crate) fn database(&self) -> &DatabaseConnection {
-        &self.db
     }
 
     #[instrument(skip(self, security, input))]
@@ -140,31 +135,6 @@ impl CategoryService {
 
         txn.commit().await.map_err(BlogError::from)?;
         Ok(id)
-    }
-
-    #[instrument(skip(self, security))]
-    pub async fn get(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        category_id: Uuid,
-        locale: &str,
-    ) -> BlogResult<CategoryResponse> {
-        enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
-        let locale = normalize_locale(locale)?;
-        let category = blog_category::Entity::find_by_id(category_id)
-            .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| BlogError::category_not_found(category_id))?;
-
-        let translations = blog_category_translation::Entity::find()
-            .filter(blog_category_translation::Column::CategoryId.eq(category_id))
-            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
-            .all(&self.db)
-            .await?;
-
-        Ok(to_category_response(category, translations, &locale))
     }
 
     #[instrument(skip(self, security, input))]
@@ -415,72 +385,6 @@ impl CategoryService {
 
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
-    }
-
-    #[instrument(skip(self, security))]
-    pub async fn list(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        filter: ListCategoriesFilter,
-    ) -> BlogResult<(Vec<CategoryListItem>, u64)> {
-        enforce_scope(&security, Resource::BlogCategories, Action::List)?;
-        let locale = filter
-            .locale
-            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
-        let locale = normalize_locale(&locale)?;
-        let page = filter.page.max(1);
-        let per_page = filter.per_page.clamp(1, 100);
-
-        let paginator = blog_category::Entity::find()
-            .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .order_by_asc(blog_category::Column::Position)
-            .paginate(&self.db, per_page);
-
-        let total = paginator.num_items().await?;
-        let categories = paginator.fetch_page(page - 1).await?;
-        let category_ids: Vec<Uuid> = categories.iter().map(|category| category.id).collect();
-        let all_translations = if category_ids.is_empty() {
-            Vec::new()
-        } else {
-            blog_category_translation::Entity::find()
-                .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
-                .filter(blog_category_translation::Column::CategoryId.is_in(category_ids))
-                .all(&self.db)
-                .await?
-        };
-
-        let items = categories
-            .into_iter()
-            .map(|category| {
-                let translations: Vec<&blog_category_translation::Model> = all_translations
-                    .iter()
-                    .filter(|translation| translation.category_id == category.id)
-                    .collect();
-                let resolved = resolve_by_locale(&translations, &locale, |translation| {
-                    translation.locale.as_str()
-                });
-                let translation = resolved.item.copied();
-
-                CategoryListItem {
-                    id: category.id,
-                    locale: locale.clone(),
-                    effective_locale: resolved.effective_locale,
-                    name: translation
-                        .map(|translation| translation.name.clone())
-                        .unwrap_or_default(),
-                    slug: translation
-                        .map(|translation| translation.slug.clone())
-                        .unwrap_or_default(),
-                    parent_id: category.parent_id,
-                    position: category.position,
-                    settings: category.settings,
-                    created_at: category.created_at.into(),
-                }
-            })
-            .collect();
-
-        Ok((items, total))
     }
 
     pub(crate) async fn apply_exact_translation_in_tx(

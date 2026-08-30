@@ -19,6 +19,9 @@ impl MigrationTrait for Migration {
                     tenant_id UUID NOT NULL,\
                     build_request_id UUID NOT NULL,\
                     source_digest TEXT NOT NULL CHECK (length(source_digest) = 71),\
+                    parent_release_slug TEXT NULL CHECK (parent_release_slug IS NULL OR length(trim(parent_release_slug)) BETWEEN 1 AND 128),\
+                    parent_release_version TEXT NULL CHECK (parent_release_version IS NULL OR length(trim(parent_release_version)) BETWEEN 1 AND 128),\
+                    parent_release_digest TEXT NULL CHECK (parent_release_digest IS NULL OR length(parent_release_digest) = 71),\
                     component_digest TEXT NOT NULL CHECK (length(component_digest) = 71),\
                     artifact_manifest_digest TEXT NOT NULL CHECK (length(artifact_manifest_digest) = 71),\
                     sbom_manifest_digest TEXT NOT NULL CHECK (length(sbom_manifest_digest) = 71),\
@@ -31,6 +34,8 @@ impl MigrationTrait for Migration {
                     actor_can_manage_modules BOOLEAN NOT NULL,\
                     idempotency_key UUID NOT NULL,\
                     staged_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                    CHECK ((parent_release_slug IS NULL AND parent_release_version IS NULL AND parent_release_digest IS NULL) \
+                           OR (parent_release_slug IS NOT NULL AND parent_release_version IS NOT NULL AND parent_release_digest IS NOT NULL)),\
                     UNIQUE (request_id, idempotency_key)\
                 )",
                 "CREATE INDEX registry_publish_build_staging_request_current_idx \
@@ -44,6 +49,9 @@ impl MigrationTrait for Migration {
                     tenant_id TEXT NOT NULL,\
                     build_request_id TEXT NOT NULL,\
                     source_digest TEXT NOT NULL CHECK (length(source_digest) = 71),\
+                    parent_release_slug TEXT NULL CHECK (parent_release_slug IS NULL OR length(trim(parent_release_slug)) BETWEEN 1 AND 128),\
+                    parent_release_version TEXT NULL CHECK (parent_release_version IS NULL OR length(trim(parent_release_version)) BETWEEN 1 AND 128),\
+                    parent_release_digest TEXT NULL CHECK (parent_release_digest IS NULL OR length(parent_release_digest) = 71),\
                     component_digest TEXT NOT NULL CHECK (length(component_digest) = 71),\
                     artifact_manifest_digest TEXT NOT NULL CHECK (length(artifact_manifest_digest) = 71),\
                     sbom_manifest_digest TEXT NOT NULL CHECK (length(sbom_manifest_digest) = 71),\
@@ -56,6 +64,8 @@ impl MigrationTrait for Migration {
                     actor_can_manage_modules BOOLEAN NOT NULL,\
                     idempotency_key TEXT NOT NULL,\
                     staged_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
+                    CHECK ((parent_release_slug IS NULL AND parent_release_version IS NULL AND parent_release_digest IS NULL) \
+                           OR (parent_release_slug IS NOT NULL AND parent_release_version IS NOT NULL AND parent_release_digest IS NOT NULL)),\
                     UNIQUE (request_id, idempotency_key)\
                 )",
                 "CREATE INDEX registry_publish_build_staging_request_current_idx \
@@ -130,6 +140,9 @@ mod tests {
             "correlation_id",
             "actor_can_manage_modules",
             "idempotency_key",
+            "parent_release_slug",
+            "parent_release_version",
+            "parent_release_digest",
         ] {
             assert!(columns.iter().any(|name| name == column), "{column}");
         }

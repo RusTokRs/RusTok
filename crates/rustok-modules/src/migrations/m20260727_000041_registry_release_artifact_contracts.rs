@@ -34,6 +34,7 @@ impl MigrationTrait for Migration {
                     sandbox_execution_id UUID NOT NULL,\
                     sandbox_test_path TEXT NOT NULL CHECK (length(trim(sandbox_test_path)) BETWEEN 1 AND 512),\
                     sandbox_executor TEXT NOT NULL CHECK (length(trim(sandbox_executor)) BETWEEN 1 AND 64),\
+                    sandbox_scenario_digest TEXT NOT NULL CHECK (length(sandbox_scenario_digest) = 71),\
                     sandbox_runtime_abi TEXT NOT NULL CHECK (length(trim(sandbox_runtime_abi)) BETWEEN 1 AND 128),\
                     sandbox_policy_digest TEXT NOT NULL CHECK (length(sandbox_policy_digest) = 71),\
                     sandbox_capability_grants INTEGER NOT NULL CHECK (sandbox_capability_grants >= 0),\
@@ -81,6 +82,7 @@ impl MigrationTrait for Migration {
                     sandbox_execution_id TEXT NOT NULL,\
                     sandbox_test_path TEXT NOT NULL CHECK (length(trim(sandbox_test_path)) BETWEEN 1 AND 512),\
                     sandbox_executor TEXT NOT NULL CHECK (length(trim(sandbox_executor)) BETWEEN 1 AND 64),\
+                    sandbox_scenario_digest TEXT NOT NULL CHECK (length(sandbox_scenario_digest) = 71),\
                     sandbox_runtime_abi TEXT NOT NULL CHECK (length(trim(sandbox_runtime_abi)) BETWEEN 1 AND 128),\
                     sandbox_policy_digest TEXT NOT NULL CHECK (length(sandbox_policy_digest) = 71),\
                     sandbox_capability_grants INTEGER NOT NULL CHECK (sandbox_capability_grants >= 0),\
@@ -188,6 +190,7 @@ mod tests {
             "trace_id",
             "correlation_id",
             "idempotency_key",
+            "sandbox_scenario_digest",
         ] {
             assert!(columns.iter().any(|name| name == column), "{column}");
         }

@@ -27,7 +27,8 @@ use super::topic_vote_lock::{lock_topic_rows_for_votes_in_tx, lock_topic_vote_sc
 
 pub const MAX_FORUM_TOPIC_MERGE_VOTES: u64 = 10_000;
 pub const MAX_FORUM_TOPIC_MERGE_VOTE_REASON_LEN: usize = 500;
-const FORUM_TOPIC_MERGE_VOTES_RECONCILED_EVENT_TYPE: &str = "forum.topic.merge_votes_reconciled";
+const FORUM_TOPIC_MERGE_VOTES_RECONCILED_EVENT_TYPE: &str =
+    "forum.topic.merge.votes_reconciled";
 const FORUM_TOPIC_MERGE_VOTES_AGGREGATE_TYPE: &str = "forum_topic";
 const FORUM_TOPIC_MERGED_EVENT_TYPE: &str = "forum.topic.merged";
 

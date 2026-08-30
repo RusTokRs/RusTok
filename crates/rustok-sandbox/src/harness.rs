@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::{
     CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityName, CapabilityResponse,
@@ -23,6 +24,7 @@ const LOCAL_SCENARIO_SCHEMA_VERSION: u32 = 1;
 const MAX_LOCAL_SCENARIO_BYTES: usize = 512 * 1024;
 const MAX_LOCAL_SCENARIO_GRANTS: usize = 64;
 const MAX_LOCAL_SCENARIO_FIXTURES: usize = 128;
+const LOCAL_SCENARIO_DIGEST_DOMAIN: &[u8] = b"rustok.sandbox.local-scenario\0";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -53,6 +55,24 @@ pub enum LocalSandboxExpectation {
 pub enum LocalSandboxScenarioOutcome {
     Success(SandboxOutcome),
     ExpectedError { code: String },
+}
+
+/// Redacted, deterministic local execution result for comparing independent
+/// candidate implementations of one validated scenario. It deliberately omits
+/// input, fixture responses, expected output, and executor metrics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalSandboxScenarioResult {
+    Success,
+    ExpectedError,
+}
+
+/// Comparison-safe local execution evidence. This is authoring feedback only;
+/// it is not build, admission, or publication evidence.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalSandboxScenarioComparison {
+    pub scenario_digest: String,
+    pub result: LocalSandboxScenarioResult,
 }
 
 impl LocalSandboxScenario {
@@ -126,6 +146,19 @@ impl LocalSandboxScenario {
         Ok(())
     }
 
+    /// Returns the domain-separated digest of the validated semantic scenario
+    /// contract. Local runners can report this identifier without exposing
+    /// input, fixtures, policy details, or execution output as durable evidence.
+    pub fn canonical_digest(&self) -> SandboxResult<String> {
+        self.validate()?;
+        let bytes =
+            serde_json::to_vec(self).map_err(|error| SandboxError::Internal(error.to_string()))?;
+        let mut hasher = Sha256::new();
+        hasher.update(LOCAL_SCENARIO_DIGEST_DOMAIN);
+        hasher.update(bytes);
+        Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
+    }
+
     pub fn configure(&self, fixtures: &FixtureCapabilityBroker) -> SandboxResult<()> {
         self.validate()?;
         fixtures.clear()?;
@@ -163,6 +196,35 @@ impl LocalSandboxScenario {
                 "local sandbox scenario expected an error but execution succeeded".to_string(),
             )),
         }
+    }
+
+    /// Produces the redacted comparison tuple only for an outcome that still
+    /// satisfies this scenario's exact expectation. The scenario digest binds
+    /// the omitted input, fixtures, policy, and expected result.
+    pub fn comparison(
+        &self,
+        outcome: &LocalSandboxScenarioOutcome,
+    ) -> SandboxResult<LocalSandboxScenarioComparison> {
+        self.validate()?;
+        let result = match (&self.expectation, outcome) {
+            (
+                LocalSandboxExpectation::Success { output },
+                LocalSandboxScenarioOutcome::Success(actual),
+            ) if &actual.output == output => LocalSandboxScenarioResult::Success,
+            (
+                LocalSandboxExpectation::Error { code: expected },
+                LocalSandboxScenarioOutcome::ExpectedError { code: actual },
+            ) if actual == expected => LocalSandboxScenarioResult::ExpectedError,
+            _ => {
+                return Err(SandboxError::InvalidRequest(
+                    "local sandbox comparison outcome does not match its scenario".to_string(),
+                ));
+            }
+        };
+        Ok(LocalSandboxScenarioComparison {
+            scenario_digest: self.canonical_digest()?,
+            result,
+        })
     }
 }
 
@@ -447,6 +509,13 @@ mod tests {
             .evaluate(harness.execute(request).await)
             .expect("expected scenario outcome");
         assert!(matches!(result, LocalSandboxScenarioOutcome::Success(_)));
+        assert_eq!(
+            scenario.comparison(&result).expect("comparison"),
+            LocalSandboxScenarioComparison {
+                scenario_digest: scenario.canonical_digest().expect("scenario digest"),
+                result: LocalSandboxScenarioResult::Success,
+            }
+        );
     }
 
     #[test]
@@ -465,6 +534,46 @@ mod tests {
         .expect("scenario JSON");
         assert!(matches!(
             LocalSandboxScenario::parse(&bytes),
+            Err(SandboxError::InvalidRequest(_))
+        ));
+    }
+
+    #[test]
+    fn scenario_digest_is_stable_and_changes_with_the_contract() {
+        let scenario = LocalSandboxScenario::parse(
+            serde_json::to_vec(&json!({
+                "schema_version": 1,
+                "input": {"value": "input"},
+                "policy": {
+                    "grants": [],
+                    "limits": SandboxPolicy::default().limits
+                },
+                "fixtures": [],
+                "expectation": {
+                    "outcome": "success",
+                    "output": {"value": "output"}
+                }
+            }))
+            .expect("scenario JSON")
+            .as_slice(),
+        )
+        .expect("scenario");
+        let digest = scenario.canonical_digest().expect("scenario digest");
+        assert_eq!(
+            digest,
+            "sha256:b1d8a43f89551031131c687630f6191019c47a459ba6265d240e3d4cbfd00245"
+        );
+        assert_eq!(digest, scenario.canonical_digest().expect("stable digest"));
+
+        let mut changed = scenario.clone();
+        changed.input = json!({"value": "different"});
+        assert_ne!(digest, changed.canonical_digest().expect("changed digest"));
+
+        let mismatched = LocalSandboxScenarioOutcome::ExpectedError {
+            code: "UNEXPECTED".to_string(),
+        };
+        assert!(matches!(
+            scenario.comparison(&mismatched),
             Err(SandboxError::InvalidRequest(_))
         ));
     }

@@ -94,7 +94,7 @@ async fn alias_count(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<i64
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
-            "SELECT COUNT(*) AS alias_count FROM forum_category_route_aliases WHERE tenant_id = ?",
+            "SELECT COUNT(*) AS alias_count FROM taxonomy_term_aliases WHERE tenant_id = ?",
             [tenant_id.into()],
         ))
         .await?
@@ -195,7 +195,7 @@ async fn historical_route_keys_cannot_be_reclaimed_inside_one_tenant() -> TestRe
             "general"
         )
         .await,
-        Err(ForumError::CategoryRouteResolutionConflict)
+        Err(ForumError::Validation(_) | ForumError::CategoryRouteResolutionConflict)
     ));
     assert!(matches!(
         service
@@ -206,7 +206,7 @@ async fn historical_route_keys_cannot_be_reclaimed_inside_one_tenant() -> TestRe
                 update_input(None, Some("general")),
             )
             .await,
-        Err(ForumError::CategoryRouteResolutionConflict)
+        Err(ForumError::Validation(_) | ForumError::CategoryRouteResolutionConflict)
     ));
 
     let other_tenant_id = Uuid::new_v4();

@@ -70,20 +70,9 @@ INSERT INTO forum_categories
 VALUES
     ({cat_id}, {t_id}, 0, FALSE, 0, 0);
 
-INSERT INTO forum_category_translations
-    (id, category_id, tenant_id, locale, name, slug)
-VALUES
-    ({}, {cat_id}, {t_id}, 'en', 'General', 'general');
-
 UPDATE forum_categories
 SET color = 'blue'
 WHERE tenant_id = {t_id} AND id = {cat_id};
-
-UPDATE forum_category_translations
-SET name = 'General discussion'
-WHERE tenant_id = {t_id}
-  AND category_id = {cat_id}
-  AND locale = 'en';
 
 INSERT INTO forum_topics
     (id, tenant_id, category_id, author_id, status, metadata,
@@ -222,7 +211,6 @@ INSERT INTO forum_categories
 VALUES
     ({foreign_cat_id}, {foreign_t_id}, 0, FALSE, 0, 0);
 "#,
-            sql_uuid(Uuid::new_v4()),
             sql_uuid(Uuid::new_v4()),
             sql_uuid(Uuid::new_v4()),
             sql_uuid(Uuid::new_v4()),

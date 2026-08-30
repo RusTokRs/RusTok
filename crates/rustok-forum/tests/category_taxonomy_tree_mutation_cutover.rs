@@ -1,7 +1,7 @@
 use rustok_core::{MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CategoryTreeQuery, CreateCategoryInput, ForumModule, UpdateCategoryInput,
-    entities::{forum_category, forum_category_taxonomy_binding, forum_category_translation},
+    entities::{forum_category, forum_category_taxonomy_binding},
 };
 use rustok_outbox::OutboxModule;
 use rustok_taxonomy::TaxonomyModule;
@@ -29,21 +29,6 @@ async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data(
         )
         .await?;
 
-    db.execute_unprepared(
-        r#"
-        CREATE TRIGGER stale_forum_category_create_response
-        AFTER INSERT ON forum_translation_changes
-        BEGIN
-            UPDATE forum_category_translations
-            SET name = 'STALE LEGACY CREATE',
-                slug = 'stale-legacy-create',
-                description = 'stale legacy create'
-            WHERE slug = 'support';
-        END
-        "#,
-    )
-    .await?;
-
     let support = service
         .create(
             tenant_id,
@@ -64,19 +49,6 @@ async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data(
     assert_eq!(support.icon.as_deref(), Some("life-buoy"));
     assert_eq!(support.color.as_deref(), Some("#112233"));
 
-    let stale_after_create = forum_category_translation::Entity::find()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(support.id))
-        .filter(forum_category_translation::Column::Locale.eq("en"))
-        .one(&db)
-        .await?
-        .expect("legacy Forum translation remains during CAT-5 compatibility");
-    assert_eq!(stale_after_create.name, "STALE LEGACY CREATE");
-    assert_eq!(stale_after_create.slug, "stale-legacy-create");
-
-    db.execute_unprepared("DROP TRIGGER stale_forum_category_create_response")
-        .await?;
-
     let lounge = service
         .create(
             tenant_id,
@@ -84,22 +56,6 @@ async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data(
             create_input("Lounge", "lounge", Some(root.id), 1, None, None),
         )
         .await?;
-
-    db.execute_unprepared(&format!(
-        r#"
-        CREATE TRIGGER stale_forum_category_update_response
-        AFTER INSERT ON forum_translation_changes
-        BEGIN
-            UPDATE forum_category_translations
-            SET name = 'STALE LEGACY UPDATE',
-                slug = 'stale-legacy-update',
-                description = 'stale legacy update'
-            WHERE hex(category_id) = upper(replace('{}', '-', '')) AND locale = 'en';
-        END
-        "#,
-        support.id
-    ))
-    .await?;
 
     let updated = service
         .update(
@@ -124,24 +80,11 @@ async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data(
     assert_eq!(updated.icon.as_deref(), Some("headphones"));
     assert_eq!(updated.color.as_deref(), Some("#445566"));
 
-    let stale_after_update = forum_category_translation::Entity::find()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_translation::Column::CategoryId.eq(support.id))
-        .filter(forum_category_translation::Column::Locale.eq("en"))
-        .one(&db)
-        .await?
-        .expect("legacy Forum translation remains during CAT-5 compatibility");
-    assert_eq!(stale_after_update.name, "STALE LEGACY UPDATE");
-    assert_eq!(stale_after_update.slug, "stale-legacy-update");
-
-    db.execute_unprepared("DROP TRIGGER stale_forum_category_update_response")
-        .await?;
-
     let legacy_category = forum_category::Entity::find_by_id(support.id)
         .filter(forum_category::Column::TenantId.eq(tenant_id))
         .one(&db)
         .await?
-        .expect("Forum policy row remains during CAT-5 cutover");
+        .expect("Forum policy row remains");
     let mut stale_category: forum_category::ActiveModel = legacy_category.into();
     stale_category.parent_id = Set(None);
     stale_category.position = Set(99);
@@ -149,11 +92,6 @@ async fn forum_category_tree_and_mutation_responses_use_taxonomy_canonical_data(
     stale_category.color = Set(Some("#ffffff".to_string()));
     stale_category.moderated = Set(true);
     stale_category.update(&db).await?;
-
-    forum_category_translation::Entity::delete_many()
-        .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
-        .exec(&db)
-        .await?;
 
     let tree = service
         .tree(

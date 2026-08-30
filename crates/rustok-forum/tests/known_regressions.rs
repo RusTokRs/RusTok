@@ -85,7 +85,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER forum_test_reject_category_translation
-BEFORE INSERT ON forum_category_translations
+BEFORE INSERT ON taxonomy_term_translations
 FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_translation();
 "#,
         )
@@ -172,7 +172,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER forum_test_reject_category_translation_update
-BEFORE UPDATE ON forum_category_translations
+BEFORE UPDATE ON taxonomy_term_translations
 FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_translation_update();
 "#,
         )
@@ -222,8 +222,8 @@ FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_translation_update();
             &context.db,
             format!(
                 "SELECT COUNT(*) AS value
-                 FROM forum_category_translations
-                 WHERE category_id = '{}' AND name = 'Changed category'",
+                 FROM taxonomy_term_translations
+                 WHERE term_id = '{}' AND name = 'Changed category'",
                 category.id
             ),
         )
@@ -282,7 +282,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER forum_test_reject_new_category_locale
-BEFORE INSERT ON forum_category_translations
+BEFORE INSERT ON taxonomy_term_translations
 FOR EACH ROW EXECUTE FUNCTION forum_test_reject_new_category_locale();
 "#,
         )
@@ -323,8 +323,8 @@ FOR EACH ROW EXECUTE FUNCTION forum_test_reject_new_category_locale();
             &context.db,
             format!(
                 "SELECT COUNT(*) AS value
-                 FROM forum_category_translations
-                 WHERE category_id = '{}' AND locale = 'fr'",
+                 FROM taxonomy_term_translations
+                 WHERE term_id = '{}' AND locale = 'fr'",
                 category.id
             ),
         )
@@ -406,8 +406,8 @@ FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_archive();
             &context.db,
             format!(
                 "SELECT COUNT(*) AS value
-                 FROM forum_category_translations
-                 WHERE category_id = '{}'",
+                 FROM taxonomy_term_translations
+                 WHERE term_id = '{}'",
                 category.id
             ),
         )
