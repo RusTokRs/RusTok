@@ -1,7 +1,7 @@
 # Taxonomy category ownership and Flex extension plan
 
 **Status:** accepted architecture, staged implementation
-**Reviewed:** 2026-08-28
+**Reviewed:** 2026-08-30
 
 ## Decision
 
@@ -20,15 +20,30 @@ extension; a JSON/metadata column alone does not imply support.
 
 ## Implementation status
 
-The architecture remains staged across consumers, but Blog is no longer a pending Category owner
-migration. The Blog migration is complete through TAXONOMY-CAT-12: canonical localized copy, route
-history, hierarchy projection and Translation ownership are Taxonomy-owned; Blog retains its typed
-binding plus module-specific membership/settings/revision state. The former Blog Category Translation
-provider, live donor mirror/journal, and their runtime source files are retired. Historical Blog
-backfill/migration records remain only for upgrade provenance.
+The architecture remains staged across consumers. Blog is complete through TAXONOMY-CAT-12:
+canonical localized copy, route history, hierarchy projection and Translation ownership are
+Taxonomy-owned; Blog retains its typed binding plus module-specific membership/settings/revision
+state. The former Blog Category Translation provider, live donor mirror/journal, and their runtime
+source files are retired. Historical Blog backfill/migration records remain only for upgrade
+provenance.
 
-Forum established the first consumer migration precedent. Blog now follows that precedent in `main`;
-Product remains a separate consumer migration with its own domain-specific binding semantics.
+Forum established the first consumer migration precedent and its backend ownership/storage cutover is
+complete. TAXONOMY-CAT-5 remains open only for the retained mounted multilingual/RTL browser packet to
+be executed against prepared authenticated admin/storefront fixtures; the browser source already
+exists and no backend donor/storage cutover remains.
+
+Product PostgreSQL follows the same ownership model and is source-complete through
+TAXONOMY-CAT-34. Taxonomy owns canonical Product Category identity, localized copy, routes,
+hierarchy and ordering on PostgreSQL. Product retains Product-specific policy/state including
+navigation projections, SEO, lifecycle, schema/attribute semantics, product/category membership and
+merchandising. PostgreSQL `catalog_category_translations` and `catalog_category_closure` no longer act
+as canonical donor/hierarchy storage; non-PostgreSQL backends intentionally retain their donor and
+closure compatibility paths until an equivalent tenant-safe cutover is separately designed and
+verified.
+
+No TAXONOMY-CAT-35 Product slice or next Category consumer is currently accepted by this plan. A
+future consumer migration must be named explicitly and start from fresh `main` with its own typed
+binding/backfill/read-write-cutover evidence rather than being inferred from the previous CAT number.
 
 ## Why this replaces the current category boundary
 
@@ -179,9 +194,12 @@ For each consumer:
 - update admin/storefront projections to use Taxonomy `requested_locale` / `effective_locale`;
 - run tenant-isolation, route, hierarchy and multilingual/RTL evidence.
 
-Forum established the first migration precedent. Blog has completed this consumer migration through
-TAXONOMY-CAT-12. Product follows with its own domain-specific binding semantics rather than a blind
-table rename.
+Forum established the first migration precedent. Its backend cutover is complete, with only the
+prepared mounted multilingual/RTL browser execution still pending. Blog completed the consumer
+migration through TAXONOMY-CAT-12. Product PostgreSQL completed its canonical localized-copy and
+hierarchy donor retirement through TAXONOMY-CAT-34 while deliberately retaining Product-owned
+navigation/policy state and non-PostgreSQL compatibility. No later consumer is selected by this plan;
+selecting one is a separate accepted planning decision.
 
 ## Forum-specific target
 
@@ -224,6 +242,8 @@ its boundary. At minimum the completed program must prove:
 - consumer bindings reject cross-tenant Taxonomy category references;
 - legacy category UUID/data backfill is deterministic and rollback/recovery is documented;
 - Forum mounted multilingual/RTL admin/storefront evidence uses Taxonomy-owned category data;
+- Product PostgreSQL remains at the CAT-34 ownership boundary without reviving retired translation or
+  closure authority, while non-PostgreSQL compatibility remains explicit;
 - no consumer reintroduces a local generic custom-fields engine.
 
 ## Change rules
