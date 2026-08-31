@@ -68,6 +68,11 @@ const scopedAdminStateSecretBoundary =
 if (!contract.boundaries?.includes(scopedAdminStateSecretBoundary)) {
   throw new Error("CAT-5 browser contract must retain the bounded admin storage-state lifetime boundary");
 }
+const mountedUrlPreflightBoundary =
+  "mounted fixture URLs are preflighted before authenticated storage-state materialization and must be credential-free HTTP(S) URLs without fragments";
+if (!contract.boundaries?.includes(mountedUrlPreflightBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the pre-auth mounted URL validation boundary");
+}
 
 for (const marker of contract.required_environment ?? []) {
   need(testSource, marker, "CAT-5 browser runner");
@@ -87,6 +92,16 @@ for (const marker of [
   "browser.newContext({ storageState })",
 ]) {
   need(testSource, marker, "CAT-5 browser runner");
+}
+for (const marker of [
+  "function requiredUrl(name: string): string",
+  "!['http:', 'https:'].includes(parsed.protocol)",
+  "parsed.username",
+  "parsed.password",
+  "parsed.hash",
+  "must be a credential-free HTTP(S) URL without a fragment",
+]) {
+  need(testSource, marker, "CAT-5 browser runner URL validation");
 }
 for (const forbidden of [
   "GraphqlRequest",
@@ -175,6 +190,9 @@ forbid(
 );
 const mountedJobStart = workflow.indexOf("  mounted-browser-evidence:");
 const mountedStepIndex = (marker) => workflow.indexOf(marker, mountedJobStart);
+const mountedFixtureValidationIndex = mountedStepIndex(
+  "      - name: Validate configured mounted fixture inputs",
+);
 const mountedVerifierIndex = mountedStepIndex("      - name: Verify CAT-5 browser evidence source contract");
 const mountedInstallIndex = mountedStepIndex("      - name: Install next-admin dependencies");
 const mountedChromiumIndex = mountedStepIndex("      - name: Install Chromium");
@@ -183,6 +201,7 @@ const mountedExecuteIndex = mountedStepIndex("      - name: Execute mounted mult
 const mountedCleanupIndex = mountedStepIndex("      - name: Remove authenticated admin storage state");
 if (
   mountedJobStart < 0 ||
+  mountedFixtureValidationIndex < 0 ||
   mountedVerifierIndex < 0 ||
   mountedInstallIndex < 0 ||
   mountedChromiumIndex < 0 ||
@@ -190,6 +209,7 @@ if (
   mountedExecuteIndex < 0 ||
   mountedCleanupIndex < 0 ||
   !(
+    mountedFixtureValidationIndex < mountedVerifierIndex &&
     mountedVerifierIndex < mountedInstallIndex &&
     mountedInstallIndex < mountedChromiumIndex &&
     mountedChromiumIndex < mountedMaterializeIndex &&
@@ -198,9 +218,47 @@ if (
   )
 ) {
   throw new Error(
-    "CAT-5 authenticated admin storage state must be materialized only after source/dependency/browser setup and immediately before browser execution",
+    "CAT-5 mounted fixture validation and source/dependency/browser setup must complete before authenticated admin storage-state materialization and browser execution",
   );
 }
+const mountedFixtureValidationBlock = workflow.slice(
+  mountedFixtureValidationIndex,
+  mountedVerifierIndex,
+);
+for (const marker of [
+  "node <<'NODE'",
+  "const urlNames = [",
+  "new URL(raw)",
+  '!["http:", "https:"].includes(parsed.protocol)',
+  "parsed.username",
+  "parsed.password",
+  "parsed.hash",
+  "must be a credential-free HTTP(S) URL without a fragment",
+]) {
+  need(
+    mountedFixtureValidationBlock,
+    marker,
+    "CAT-5 mounted fixture URL preflight before authenticated state materialization",
+  );
+}
+const mountedUrlEnvironmentNames = (contract.required_environment ?? []).filter((name) =>
+  name.endsWith("_E2E_URL"),
+);
+if (mountedUrlEnvironmentNames.length !== 6) {
+  throw new Error("CAT-5 browser contract must retain the six mounted browser URL inputs");
+}
+for (const name of mountedUrlEnvironmentNames) {
+  need(
+    mountedFixtureValidationBlock,
+    `"${name}"`,
+    "CAT-5 mounted fixture URL preflight coverage",
+  );
+}
+forbid(
+  mountedFixtureValidationBlock,
+  "ADMIN_STORAGE_STATE_JSON",
+  "CAT-5 mounted URL validation must complete before the authenticated state secret is accessed",
+);
 for (const marker of (contract.required_environment ?? []).filter(
   (name) => name !== "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE",
 )) {
