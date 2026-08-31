@@ -31,28 +31,16 @@ const runtimeInputPaths = [
   '.github/workflows/taxonomy-postgres-evidence.yml',
 ];
 const exactHead = {
-  runId: 32708155467,
-  headSha: 'a102c224888459ddab8ab4875083b656e97a56f3',
-  sourceJobId: 97373619017,
-  runtimeJobId: 97374012385,
-  gateJobId: 97375839207,
-  artifactId: 9513303945,
+  runId: 33407161450,
+  headSha: '3c42235867036511eabeb87ed421d9d74b7ff997',
+  sourceJobId: 99537462097,
+  runtimeJobId: 99537547759,
+  gateJobId: 99539081717,
+  artifactId: 9763777630,
   artifactName:
-    'taxonomy-postgres-evidence-32708155467-a102c224888459ddab8ab4875083b656e97a56f3',
-  artifactDigest: 'sha256:194a5d135f02f8a1b184e4d7ca08d5b38296eebfe07c25f1724395520eb5cd35',
-  artifactExpiresAt: '2026-08-31T08:48:16Z',
-};
-const postMergeMain = {
-  runId: 32712523041,
-  headSha: 'e8d228cd1bd74a3ad42d6a9947114024896daeee',
-  sourceJobId: 97386800738,
-  runtimeJobId: 97386903412,
-  gateJobId: 97388162736,
-  artifactId: 9514787477,
-  artifactName:
-    'taxonomy-postgres-evidence-32712523041-e8d228cd1bd74a3ad42d6a9947114024896daeee',
-  artifactDigest: 'sha256:133d557207b72c7df9edaef4e9bbbfb8619a66ea976f58ce0348e3fb1c849a05',
-  artifactExpiresAt: '2026-08-31T09:37:11Z',
+    'taxonomy-postgres-evidence-33407161450-3c42235867036511eabeb87ed421d9d74b7ff997',
+  artifactDigest: 'sha256:70d124fba72cf14c00f88330639ff8e70200a6f3919963ae0af5cf9760874854',
+  artifactExpiresAt: '2026-09-07T15:13:04Z',
 };
 
 function read(relativePath) {
@@ -107,8 +95,8 @@ function verifyRuntimeInputSnapshot(evidence, label) {
   const fingerprints = snapshot.git_objects ?? {};
 
   if (
-    snapshot.runtime_commit !== postMergeMain.headSha ||
-    snapshot.validated_through_commit !== postMergeMain.headSha
+    snapshot.runtime_commit !== exactHead.headSha ||
+    snapshot.validated_through_commit !== exactHead.headSha
   ) {
     failures.push(`${label}: runtime input snapshot provenance drift`);
   }
@@ -151,8 +139,10 @@ function verifyRun(recorded, expected, label) {
   }
 }
 
-function verifyRecordedRuntimeEvidence(evidence, label) {
+function verifyRefreshRuntimeEvidence(evidence, label) {
   const runtime = evidence.runtime_evidence ?? {};
+  const postMerge = runtime.post_merge_main ?? {};
+
   if (
     runtime.workflow !== 'Taxonomy PostgreSQL Evidence' ||
     runtime.required_backend !== 'PostgreSQL 16'
@@ -161,7 +151,11 @@ function verifyRecordedRuntimeEvidence(evidence, label) {
   }
 
   verifyRun(runtime.exact_head_pull_request ?? {}, exactHead, `${label}: exact-head pull request`);
-  verifyRun(runtime.post_merge_main ?? {}, postMergeMain, `${label}: post-merge main`);
+
+  if (postMerge.status !== 'pending' || Object.keys(postMerge).length !== 1) {
+    failures.push(`${label}: post-merge evidence must remain explicitly pending`);
+  }
+
   verifyRuntimeInputSnapshot(evidence, label);
 }
 
@@ -212,9 +206,9 @@ if (evidence) {
     evidence.schema_version !== 1 ||
     evidence.module !== 'taxonomy' ||
     evidence.surface !== 'route_registry_postgres_contention' ||
-    evidence.status !== 'runtime_recorded' ||
+    evidence.status !== 'runtime_refresh_pending_post_merge' ||
     evidence.compile_policy !== 'ci_runtime_workflow' ||
-    evidence.runtime_status !== 'passed'
+    evidence.runtime_status !== 'exact_head_passed_post_merge_pending'
   ) {
     failures.push(`${files.evidence}: identity/status drift`);
   }
@@ -248,11 +242,12 @@ if (evidence) {
   }
   if (
     !Array.isArray(evidence.remaining_open_result_4_evidence) ||
-    evidence.remaining_open_result_4_evidence.length !== 0
+    JSON.stringify(evidence.remaining_open_result_4_evidence) !==
+      JSON.stringify(['post_merge_main_postgresql_evidence'])
   ) {
-    failures.push(`${files.evidence}: Result 4 must not retain open evidence items`);
+    failures.push(`${files.evidence}: pending Result 4 evidence drift`);
   }
-  verifyRecordedRuntimeEvidence(evidence, files.evidence);
+  verifyRefreshRuntimeEvidence(evidence, files.evidence);
 }
 
 requireMarkers(
@@ -285,9 +280,8 @@ requireMarkers(
     'two-writer route-key contention',
     'translation apply CAS',
     'change-cursor',
-    'Final exact-head pull-request run `32708155467`',
-    'Post-merge main run `32712523041`',
-    'Result 4 is complete for the current runtime input fingerprints.',
+    'Fresh exact-head refresh run `33407161450`',
+    'Result 4 refresh is pending post-merge main evidence.',
     'runtime input fingerprints',
   ],
   files.plan,
@@ -305,5 +299,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '[verify-taxonomy-route-registry-postgres-contention] PASS source=canonical-migrator+harness+evidence+workflow runtime=exact-head+post-merge-recorded+fingerprinted result4=complete',
+  '[verify-taxonomy-route-registry-postgres-contention] PASS source=canonical-migrator+harness+evidence+workflow runtime=exact-head-recorded+post-merge-pending+fingerprinted',
 );
