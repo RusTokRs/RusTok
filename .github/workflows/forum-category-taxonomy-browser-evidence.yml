@@ -133,7 +133,16 @@ jobs:
           do
             test -n "${!name}"
           done
+      - name: Verify CAT-5 browser evidence source contract
+        run: node scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs
+      - name: Install next-admin dependencies
+        working-directory: apps/next-admin
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium
+        working-directory: apps/next-admin
+        run: npx --no-install playwright install --with-deps chromium
       - name: Materialize authenticated admin storage state
+        id: admin-storage-state
         shell: bash
         env:
           ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}
@@ -144,17 +153,11 @@ jobs:
           state="$RUNNER_TEMP/forum-category-admin-storage-state.json"
           printf '%s' "$ADMIN_STORAGE_STATE_JSON" > "$state"
           node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$state"
-          echo "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE=$state" >> "$GITHUB_ENV"
-      - name: Verify CAT-5 browser evidence source contract
-        run: node scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs
-      - name: Install next-admin dependencies
-        working-directory: apps/next-admin
-        run: npm ci --no-audit --no-fund
-      - name: Install Chromium
-        working-directory: apps/next-admin
-        run: npx --no-install playwright install --with-deps chromium
+          echo "path=$state" >> "$GITHUB_OUTPUT"
       - name: Execute mounted multilingual RTL browser evidence
         working-directory: apps/next-admin
+        env:
+          RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE: ${{ steps.admin-storage-state.outputs.path }}
         run: npx --no-install playwright test --config=playwright.forum-category-taxonomy.config.ts
       - name: Remove authenticated admin storage state
         if: always()
