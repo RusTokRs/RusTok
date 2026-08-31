@@ -77,7 +77,7 @@ function requireCount(relativePath, marker, expected) {
 }
 
 function actionReferences(relativePath) {
-  return [...read(relativePath).matchAll(/^\s*uses:\s*([^\s#]+)(?:\s+#.*)?\s*$/gm)].map(
+  return [...read(relativePath).matchAll(/^\s*(?:-\s+)?uses:\s*([^\s#]+)(?:\s+#.*)?\s*$/gm)].map(
     (match) => match[1],
   );
 }
