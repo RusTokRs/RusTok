@@ -373,11 +373,14 @@ The existing route and Translation machinery remains authoritative for both demo
 - requested locale -> explicit fallback -> platform fallback remains the presentation order;
 - `requested_locale` and `effective_locale` must both survive owner projections;
 - localized authoring never copies fallback content into the target locale;
-- hard delete releases canonical/route identities through owner-controlled persistence semantics;
+- hard deletion releases canonical/route identities through owner-controlled persistence semantics;
 - Translation applies use resource/source/target revision CAS and durable owner change cursors.
 
 A richer bounded resolver must preserve each resolved term's `effective_locale`; consumers must not
 label fallback text with the requested/content locale when Taxonomy resolved another locale.
+
+Exactly one stale-revision candidate may commit for a same-snapshot Translation apply; competing
+stale candidates close as conflicts without advancing durable revision/change evidence twice.
 
 ## PostgreSQL evidence policy
 
@@ -415,17 +418,18 @@ translation update rolls back. The winner's translation and route reservation co
 exactly one durable route owner remains. This is the translation apply CAS boundary for route key
 ownership.
 
-Recorded runtime evidence runs:
+Recorded runtime evidence refresh:
 
-- Final exact-head pull-request run `32708155467` (HEAD `a102c224888459ddab8ab4875083b656e97a56f3`):
-  source boundary, route contention harness, translation apply CAS, and the gate all succeeded.
-- Post-merge main run `32712523041` (HEAD `e8d228cd1bd74a3ad42d6a9947114024896daeee`):
-  canonical PostgreSQL 16 migrations, route-registry contention, translation apply CAS and gate
-  all succeeded. Result 4 is complete for the current runtime input fingerprints.
+- Fresh exact-head refresh run `33407161450` (HEAD `3c42235867036511eabeb87ed421d9d74b7ff997`):
+  source contract, canonical PostgreSQL 16 migrations, Category presentation CAS, Category hierarchy
+  contention, route-registry contention, Translation-target CAS/change-cursor evidence, artifact
+  upload and the final gate all succeeded.
+- Result 4 refresh is pending post-merge main evidence.
 
-The `evidence.json` runtime input fingerprints record the exact git object SHAs for all runtime
-inputs at the time of the post-merge main run. When any of these inputs changes, the verifier
-requires fresh PostgreSQL evidence to be collected and the fingerprints updated.
+The evidence runtime input fingerprints record the exact git object SHAs for all runtime inputs at
+the successful exact-head run. After merge, a fresh main run must succeed and replace the pending
+post-merge provenance before Result 4 can be marked complete for the current runtime input
+fingerprints.
 
 ## Verification
 
