@@ -68,6 +68,11 @@ const scopedAdminStateSecretBoundary =
 if (!contract.boundaries?.includes(scopedAdminStateSecretBoundary)) {
   throw new Error("CAT-5 browser contract must retain the bounded admin storage-state lifetime boundary");
 }
+const mountedFixtureValuePreflightBoundary =
+  "all non-secret mounted fixture values are preflighted with the runner's bounded non-empty environment contract before authenticated storage-state materialization";
+if (!contract.boundaries?.includes(mountedFixtureValuePreflightBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the pre-auth bounded fixture-value validation boundary");
+}
 const mountedUrlPreflightBoundary =
   "mounted fixture URLs are preflighted before authenticated storage-state materialization and must be credential-free HTTP(S) URLs without fragments";
 if (!contract.boundaries?.includes(mountedUrlPreflightBoundary)) {
@@ -97,6 +102,15 @@ for (const marker of [
   "browser.newContext({ storageState })",
 ]) {
   need(testSource, marker, "CAT-5 browser runner");
+}
+for (const marker of [
+  "function requiredEnvironment(name: string, maximumLength = 4096): string",
+  "value.trim().length === 0",
+  "value.length > maximumLength",
+  "/[\\u0000\\r\\n]/u.test(value)",
+  "must be a bounded non-empty environment value",
+]) {
+  need(testSource, marker, "CAT-5 browser runner bounded environment validation");
 }
 for (const marker of [
   "function requiredUrl(name: string): string",
@@ -259,7 +273,16 @@ const mountedFixtureValidationBlock = workflow.slice(
 );
 for (const marker of [
   "node <<'NODE'",
+  "const fixtureNames = [",
+  "const requiredEnvironment = (name, maximumLength = 4096) => {",
+  "raw.trim().length === 0",
+  "raw.length > maximumLength",
+  "/[\\u0000\\r\\n]/u.test(raw)",
+  "must be a bounded non-empty environment value",
+  "return raw.trim();",
+  "requiredEnvironment(name);",
   "const urlNames = [",
+  "const raw = requiredEnvironment(name);",
   "new URL(raw)",
   '!["http:", "https:"].includes(parsed.protocol)',
   "parsed.username",
@@ -270,10 +293,20 @@ for (const marker of [
   need(
     mountedFixtureValidationBlock,
     marker,
-    "CAT-5 mounted fixture URL preflight before authenticated state materialization",
+    "CAT-5 mounted fixture preflight before authenticated state materialization",
   );
 }
-const mountedUrlEnvironmentNames = (contract.required_environment ?? []).filter((name) =>
+const mountedFixtureEnvironmentNames = (contract.required_environment ?? []).filter(
+  (name) => name !== "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE",
+);
+for (const name of mountedFixtureEnvironmentNames) {
+  need(
+    mountedFixtureValidationBlock,
+    `"${name}"`,
+    "CAT-5 mounted fixture bounded-value preflight coverage",
+  );
+}
+const mountedUrlEnvironmentNames = mountedFixtureEnvironmentNames.filter((name) =>
   name.endsWith("_E2E_URL"),
 );
 if (mountedUrlEnvironmentNames.length !== 6) {
@@ -289,11 +322,9 @@ for (const name of mountedUrlEnvironmentNames) {
 forbid(
   mountedFixtureValidationBlock,
   "ADMIN_STORAGE_STATE_JSON",
-  "CAT-5 mounted URL validation must complete before the authenticated state secret is accessed",
+  "CAT-5 mounted fixture validation must complete before the authenticated state secret is accessed",
 );
-for (const marker of (contract.required_environment ?? []).filter(
-  (name) => name !== "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE",
-)) {
+for (const marker of mountedFixtureEnvironmentNames) {
   need(
     workflow,
     marker + ": ${{ vars." + marker + " }}",
