@@ -75,10 +75,11 @@ jobs:
           toolchain: 1.96.0
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Check CAT-5 backfill Rust formatting only
+      - name: Check CAT-5 boundary Rust formatting only
         shell: bash
         run: |
           rustfmt +1.96.0 --edition 2024 --check \
-            crates/rustok-forum/src/migrations/m20260823_000030_backfill_forum_categories_to_taxonomy.rs
+            crates/rustok-forum/src/entities/mod.rs \
+            crates/rustok-forum/src/entities/forum_category.rs
       - name: Compile Forum backfill and migration registry
         run: cargo check --locked -p rustok-forum --lib
