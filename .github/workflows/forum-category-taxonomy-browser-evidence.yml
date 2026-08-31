@@ -162,6 +162,7 @@ jobs:
             "RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL",
             "RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL",
           ];
+          const validatedUrls = new Map();
           for (const name of urlNames) {
             const raw = requiredEnvironment(name);
             let parsed;
@@ -178,6 +179,42 @@ jobs:
             ) {
               throw new Error(`${name} must be a credential-free HTTP(S) URL without a fragment`);
             }
+            validatedUrls.set(name, parsed.toString());
+          }
+          const requestedLocaleAppearsInPath = (url, locale) =>
+            new URL(url).pathname
+              .split("/")
+              .filter(Boolean)
+              .some((segment) => segment === locale);
+          const rtlRequestedLocale = requiredEnvironment(
+            "RUSTOK_FORUM_CATEGORY_E2E_RTL_REQUESTED_LOCALE",
+          );
+          const fallbackRequestedLocale = requiredEnvironment(
+            "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_REQUESTED_LOCALE",
+          );
+          const fallbackEffectiveLocale = requiredEnvironment(
+            "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_EFFECTIVE_LOCALE",
+          );
+          const localeUrlPairs = [
+            ["RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL", rtlRequestedLocale],
+            ["RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL", rtlRequestedLocale],
+            ["RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL", fallbackRequestedLocale],
+            ["RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL", fallbackRequestedLocale],
+          ];
+          for (const [name, locale] of localeUrlPairs) {
+            if (!requestedLocaleAppearsInPath(validatedUrls.get(name), locale)) {
+              throw new Error(`${name} must contain requested locale ${locale} as an exact path segment`);
+            }
+          }
+          if (fallbackRequestedLocale === fallbackEffectiveLocale) {
+            throw new Error("CAT-5 fallback requested and effective locales must differ");
+          }
+          const aliasUrl = validatedUrls.get("RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL");
+          const canonicalUrl = validatedUrls.get(
+            "RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL",
+          );
+          if (aliasUrl === canonicalUrl) {
+            throw new Error("CAT-5 alias and canonical storefront URLs must differ");
           }
           NODE
       - name: Verify CAT-5 browser evidence source contract
