@@ -404,7 +404,7 @@ fn tenant_artifact_scope(tenant_id: Uuid) -> ModuleInstallationScope {
 /// A deterministic local root is retained for deployments that have not yet
 /// installed a tracing subscriber, so every durable owner command remains
 /// traceable and idempotent without a transport-specific fallback DTO.
-fn module_command_context(
+pub(crate) fn module_command_context(
     actor_id: Uuid,
     tenant_id: Option<Uuid>,
     idempotency_key: Uuid,
@@ -923,8 +923,7 @@ impl RootMutation {
             tenant.id,
             &module_slug,
             enabled,
-            auth.user_id,
-            idempotency_key,
+            module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
             expected_revision,
         )
         .await
@@ -1242,8 +1241,7 @@ impl RootMutation {
             registry,
             tenant.id,
             operation_id,
-            auth.user_id,
-            idempotency_key,
+            module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
             expected_revision,
         )
         .await
@@ -1278,8 +1276,7 @@ impl RootMutation {
             registry,
             tenant.id,
             operation_id,
-            auth.user_id,
-            idempotency_key,
+            module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
             expected_revision,
         )
         .await
@@ -1333,8 +1330,7 @@ impl RootMutation {
             tenant.id,
             &module_slug,
             settings_json,
-            auth.user_id,
-            idempotency_key,
+            module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
             expected_revision,
         )
         .await

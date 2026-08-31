@@ -36,6 +36,12 @@ facts, and their idempotency replay rejects a different command context.
 Owner-created lifecycle outbox envelopes preserve the same tenant, actor,
 trace, and correlation identity.
 
+Static tenant lifecycle toggle, normalized-settings, post-hook retry, and
+compensation commands use the same tenant-matched context. Their lifecycle
+journal and settings receipt retain actor, trace, correlation, and idempotency
+evidence, so a replay whose context changes fails closed rather than deriving a
+new correlation from the idempotency key.
+
 Tenant-scoped `dynamic_artifact_data_purge` uses the same context. Its
 destructive namespace receipt persists the full command evidence, requires its
 tenant to match the data namespace, rejects conflicting idempotency reuse, and

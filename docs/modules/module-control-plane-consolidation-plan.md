@@ -1084,10 +1084,17 @@ adapter and must not be used as artifact identity or durable policy state.
   source/target revisions in the owner operation record; matching retries replay
   after the admission state changes, while legacy incomplete records fail
   closed. Final registry publication requires a non-nil `Idempotency-Key` UUID
-  at the live approval endpoint and stores its complete owner command
-  fingerprint with the resulting release; only an exact retry replays a
-  published request, while a missing legacy record or conflicting key reuse
-  fails closed. Static-promotion request and approval reserve a global
+  at the live approval endpoint; the session-backed transport derives a
+  platform-scoped `ModuleCommandContext`, and the owner binds its actor UUID to
+  the structured principal before it stores actor, trace, correlation,
+  idempotency, and approval facts with the resulting release. Only an exact
+  retry replays a published request, while a changed context, a missing receipt,
+  or conflicting key reuse fails closed. Live review transitions (reject,
+  request-changes, hold, and resume) require the same non-nil header and
+  platform-scoped context. One immutable owner receipt ledger binds their
+  operation kind, revision, actor, trace, correlation, reason, and reason code;
+  exact retry succeeds after the request state has changed, while every changed
+  fact fails closed. Static-promotion request and approval reserve a global
   operation key with the complete command digest and actor, persist the original
   status/revision receipt, replay only an exact retry, and reject any conflicting
   reuse. Future distribution-selection commands must use the same operation
@@ -1125,7 +1132,9 @@ adapter and must not be used as artifact identity or durable policy state.
   yanking, and governance rules from `RegistryGovernanceService`. Release
   yanking, ownership binding, owner transfer, publish-request rejection,
   request-changes, hold, resume, and final publication have moved: the host
-  supplies authenticated actor and privilege facts, while
+  supplies authenticated actor and privilege facts, and live yanking/review/
+  publication/owner-transfer/publish-request-create commands supply one platform-scoped context with a required
+  idempotency key, while
   `SeaOrmModuleGovernanceService` locks durable rows, derives the applicable
   authorization, updates the relevant state, and writes its governance audit
   facts in one transaction. Publication atomically writes
@@ -3131,9 +3140,12 @@ multi-node reconciliation path consumed by those transports.
   replay. Upload derives its destination through an owner-authorized,
   SHA-256 content-addressed slot; the host conditionally creates the object,
   rehashes an existing collision, and may never select a storage key or delete
-  a prior artifact inline. Exact retry metadata reuses the attached slot, while
-  a mismatch fails before storage attachment. The platform-authoring producer
-  uses the same slot contract, leaving retention-aware owner policy as the only
+  a prior artifact inline. A live attach receives the same authenticated command
+  context and records its revision, metadata, storage result, actor, trace,
+  correlation, principal, and privilege facts in the transition transaction.
+  Exact replay returns that committed result; changed input or an attachment
+  without a receipt fails closed. The platform-authoring producer uses the same
+  slot contract, leaving retention-aware owner policy as the only
   historical-object cleanup authority.
   Release yanking also dispatches directly to the owner. The command carries
   only authenticated principal/privilege facts; the owner locks the exact
@@ -3236,12 +3248,13 @@ multi-node reconciliation path consumed by those transports.
 - [x] Static module-lifecycle GraphQL toggle derives tenant, actor, and
   `modules:manage` permission from authenticated context and requires a
   non-nil idempotency UUID plus a non-negative aggregate revision. Its
-  owner-only `ModuleLifecycleToggleCommand`
-  rejects nil command identity, binds correlation to the idempotency key, and
-  admits the durable receipt before evaluating a no-op transition. A no-op
-  therefore persists explicit intent and returns the committed original
-  operation on an exact retry; a divergent reuse maps to non-retryable
-  `IDEMPOTENCY_CONFLICT`. It uses the same aggregate as settings and recovery.
+  owner-only `ModuleLifecycleToggleCommand` carries one tenant-matched
+  `ModuleCommandContext`, rejects invalid context evidence, and persists actor,
+  trace, correlation, and idempotency in its operation journal before evaluating
+  a no-op transition. A no-op therefore persists explicit intent and returns
+  the committed original operation on an exact retry; a changed context maps to
+  non-retryable `IDEMPOTENCY_CONFLICT`. It uses the same aggregate as settings
+  and recovery.
 - [x] Static lifecycle recovery GraphQL mutations derive tenant, actor, and
   `modules:manage` permission from authenticated context and require non-nil
   idempotency UUIDs plus a non-negative aggregate revision. Retry and
@@ -3578,15 +3591,19 @@ workers, transports, and UI.
   immutable deployment certificate map and the narrow
   `ModuleControlPlane::artifact_node_agent()` owner port; it cannot author a
   reconciliation or resolve topology. The separate
-  `rustok-artifact-node-reconciler` composes the other authenticated service:
-  a verified deployment-operator certificate maps to one audited actor and
-  explicit allowed-node set, while its bounded request contains only topology,
-  expected durable-state revision, canonical policy revision, and idempotency
-  key. It never accepts a caller-selected actor or artifact identity; the owner
+`rustok-artifact-node-reconciler` composes the other authenticated service:
+a verified deployment-operator certificate maps to one audited actor and
+explicit allowed-node set, while its bounded request contains a platform-scoped
+`ModuleCommandContext` (trace, correlation, and idempotency evidence), topology,
+expected durable-state revision, and canonical policy revision. It never
+accepts a caller-selected actor or artifact identity; the owner
   validates the topology and reloads each selected admitted installation under
   transaction before it persists a desired set. Its canonical topology digest
   is bound to the owner idempotency identity and must match the resolver output,
-  so a replay cannot substitute a target set. Server composition now uses the bounded
+  so a replay cannot substitute a target set. The durable reconciliation
+  operation ledger records trace and correlation for operator requests only;
+  agent reports retain null values because the verified mTLS identity remains
+  their sole command evidence. Server composition now uses the bounded
   `VerifiedArtifactNodeCache` read-through CAS adapter and rehashes every cache
   hit before sandbox execution. The independently deployed
   `rustok-artifact-node-agent` now claims only those mTLS-authenticated

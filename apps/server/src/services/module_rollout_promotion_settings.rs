@@ -2,8 +2,8 @@ use sea_orm::DatabaseConnection;
 
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ModuleControlPlane, ModuleLifecycleDbWriterError, ModuleLifecycleSettingsCommand,
-    normalize_module_settings,
+    ModuleCommandContext, ModuleControlPlane, ModuleLifecycleDbWriterError,
+    ModuleLifecycleSettingsCommand, normalize_module_settings,
 };
 
 use crate::modules::{ManifestManager, map_module_settings_validation_error};
@@ -30,8 +30,7 @@ impl ModuleRolloutPromotionSettingsService {
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
-        actor_id: uuid::Uuid,
-        idempotency_key: uuid::Uuid,
+        context: ModuleCommandContext,
         expected_revision: u64,
         module_slug: &str,
         expected_enabled: bool,
@@ -75,8 +74,7 @@ impl ModuleRolloutPromotionSettingsService {
                 tenant_id,
                 module_slug: module_slug.to_string(),
                 settings,
-                actor_id,
-                idempotency_key,
+                context,
                 expected_revision,
                 expected_enabled: Some(expected_enabled),
                 expected_settings: Some(expected_settings),

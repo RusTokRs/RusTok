@@ -2,7 +2,8 @@ use async_trait::async_trait;
 use rustok_core::{ModuleContext, ModuleKind, ModuleRegistry, RusToKModule};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_modules::{
-    ModuleControlPlane, ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus,
+    ModuleCommandContext, ModuleControlPlane, ModuleOperationIssue, ModuleOperationRecoveryAction,
+    ModuleOperationStatus,
 };
 use rustok_outbox::SysEventsMigration;
 use rustok_server::models::_entities::{module_operations, tenant_modules};
@@ -21,6 +22,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 
+fn command_context(tenant_id: Uuid, actor_id: Uuid, idempotency_key: Uuid) -> ModuleCommandContext {
+    ModuleCommandContext {
+        actor_id,
+        tenant_id: Some(tenant_id),
+        trace_id: format!("test:static-lifecycle:{idempotency_key}"),
+        correlation_id: idempotency_key,
+        idempotency_key,
+    }
+}
+
 async fn toggle_with_actor(
     db: &DatabaseConnection,
     registry: &ModuleRegistry,
@@ -36,8 +47,7 @@ async fn toggle_with_actor(
         tenant_id,
         module_slug,
         enabled,
-        actor_id,
-        Uuid::new_v4(),
+        command_context(tenant_id, actor_id, Uuid::new_v4()),
         expected_revision,
     )
     .await
@@ -408,6 +418,7 @@ async fn setup_db() -> DatabaseConnection {
             previous_effective_enabled BOOLEAN NOT NULL,
             status TEXT NOT NULL,
             requested_by TEXT NULL,
+            trace_id TEXT NULL,
             correlation_id TEXT NULL,
             idempotency_key TEXT NULL,
             expected_revision INTEGER NULL,
@@ -486,8 +497,7 @@ async fn successful_enable_and_idempotent_retry() {
         tenant_id,
         "commerce",
         true,
-        actor_id,
-        idempotency_key,
+        command_context(tenant_id, actor_id, idempotency_key),
         0,
     )
     .await
@@ -500,8 +510,7 @@ async fn successful_enable_and_idempotent_retry() {
         tenant_id,
         "commerce",
         true,
-        actor_id,
-        idempotency_key,
+        command_context(tenant_id, actor_id, idempotency_key),
         0,
     )
     .await
@@ -520,6 +529,11 @@ async fn successful_enable_and_idempotent_retry() {
         operations.len(),
         1,
         "idempotent retry must not create duplicate module_operations journal rows",
+    );
+    assert_eq!(
+        operations[0].trace_id.as_deref(),
+        Some(format!("test:static-lifecycle:{idempotency_key}").as_str()),
+        "the journal must retain the command trace identity",
     );
 }
 
@@ -1324,8 +1338,7 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
         &registry,
         foreign_tenant_id,
         failed_operation.id,
-        Uuid::new_v4(),
-        uuid::Uuid::new_v4(),
+        command_context(foreign_tenant_id, Uuid::new_v4(), uuid::Uuid::new_v4()),
         0,
     )
     .await
@@ -1342,8 +1355,7 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
         &registry,
         tenant_id,
         failed_operation.id,
-        retry_actor_id,
-        retry_idempotency_key,
+        command_context(tenant_id, retry_actor_id, retry_idempotency_key),
         1,
     )
     .await
@@ -1363,7 +1375,11 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
     assert_ne!(retry_operation.operation_id, failed_operation.id);
     assert_eq!(
         retry_operation.correlation_id,
-        Some(failed_operation.id.to_string())
+        Some(retry_idempotency_key.to_string())
+    );
+    assert_eq!(
+        retry_operation.trace_id.as_deref(),
+        Some(format!("test:static-lifecycle:{retry_idempotency_key}").as_str())
     );
     assert_eq!(
         post_enable_calls.load(Ordering::SeqCst),
@@ -1384,8 +1400,7 @@ async fn retry_failed_post_hook_operation_records_committed_recovery_attempt() {
         &registry,
         tenant_id,
         failed_operation.id,
-        retry_actor_id,
-        retry_idempotency_key,
+        command_context(tenant_id, retry_actor_id, retry_idempotency_key),
         1,
     )
     .await
@@ -1437,8 +1452,7 @@ async fn retry_failed_post_hook_operation_rejects_pre_hook_failures() {
         &registry,
         tenant_id,
         failed_operation.id,
-        Uuid::new_v4(),
-        uuid::Uuid::new_v4(),
+        command_context(tenant_id, Uuid::new_v4(), uuid::Uuid::new_v4()),
         0,
     )
     .await
@@ -1476,8 +1490,7 @@ async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key()
         &registry,
         foreign_tenant_id,
         failed_operation.id,
-        Uuid::new_v4(),
-        uuid::Uuid::new_v4(),
+        command_context(foreign_tenant_id, Uuid::new_v4(), uuid::Uuid::new_v4()),
         0,
     )
     .await
@@ -1495,8 +1508,7 @@ async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key()
         &registry,
         tenant_id,
         failed_operation.id,
-        actor_id,
-        idempotency_key,
+        command_context(tenant_id, actor_id, idempotency_key),
         1,
     )
     .await
@@ -1509,8 +1521,7 @@ async fn compensation_replays_its_reverse_lifecycle_operation_for_the_same_key()
         &registry,
         tenant_id,
         failed_operation.id,
-        actor_id,
-        idempotency_key,
+        command_context(tenant_id, actor_id, idempotency_key),
         1,
     )
     .await

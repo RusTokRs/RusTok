@@ -275,6 +275,7 @@ impl SeaOrmModuleAuthoringPublishService {
             ui_packages: serde_json::json!({"admin": null, "storefront": null}),
             name: command.name.clone(),
             description: command.description.clone(),
+            context: command.context.clone(),
             actor_principal: author_principal(command.context.actor_id),
             actor_can_manage_modules: false,
         };
@@ -498,6 +499,7 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
         let artifact_command = ModulePublishArtifactAttachCommand {
             request_id: request_id.clone(),
             expected_revision: 1,
+            context: command.context.clone(),
             actor_principal: actor_principal.clone(),
             actor_can_manage_modules: false,
             checksum_sha256: bundle_checksum_sha256.clone(),
@@ -540,6 +542,7 @@ impl ModuleAuthoringPublishControl for SeaOrmModuleAuthoringPublishService {
             .enqueue_validation_job(ModuleValidationJobEnqueueCommand {
                 request_id: request_id.clone(),
                 expected_revision: stage.request_revision,
+                context: command.context.clone(),
                 actor_principal,
                 allow_rejected_retry: false,
             })

@@ -5,7 +5,8 @@ use rustok_modules::{
     ModuleArtifactNodeAssignmentClaimCommand, ModuleArtifactNodeAssignmentHeartbeatCommand,
     ModuleArtifactNodeAssignmentReport, ModuleArtifactNodeReconciliationAuthorizer,
     ModuleArtifactNodeReconciliationError, ModuleArtifactNodeReconciliationRequest,
-    ModuleArtifactNodeTopologyResolver, ModuleArtifactNodeTopologySnapshot, ModuleControlPlane,
+    ModuleArtifactNodeTopologyResolver, ModuleArtifactNodeTopologySnapshot, ModuleCommandContext,
+    ModuleControlPlane,
 };
 use rustok_worker_transport::{
     PeerCertificateFingerprint, WorkerAdmission, peer_certificate_fingerprint,
@@ -233,6 +234,9 @@ fn parse_request(
     let idempotency_key = Uuid::parse_str(&request.idempotency_key).map_err(|_| {
         Status::invalid_argument("artifact node reconciliation idempotency key must be a UUID")
     })?;
+    let correlation_id = Uuid::parse_str(&request.correlation_id).map_err(|_| {
+        Status::invalid_argument("artifact node reconciliation correlation ID must be a UUID")
+    })?;
     let topology: ModuleArtifactNodeTopologySnapshot =
         serde_json::from_slice(&request.topology_json).map_err(|_| {
             Status::invalid_argument("artifact node reconciliation topology is invalid")
@@ -242,8 +246,13 @@ fn parse_request(
             expected_reconciliation_state_revision: request.expected_reconciliation_state_revision,
             policy_revision: request.policy_revision,
             topology_digest: topology.topology_digest.clone(),
-            actor_id,
-            idempotency_key,
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: request.trace_id,
+                correlation_id,
+                idempotency_key,
+            },
         },
         topology,
     ))
@@ -259,7 +268,7 @@ impl ModuleArtifactNodeReconciliationAuthorizer for CertificateBoundReconciliati
         &self,
         command: &ModuleArtifactNodeReconciliationRequest,
     ) -> Result<(), ModuleArtifactNodeReconciliationError> {
-        if command.actor_id == self.actor_id {
+        if command.context.actor_id == self.actor_id {
             Ok(())
         } else {
             Err(ModuleArtifactNodeReconciliationError::AuthorizationDenied(
@@ -398,11 +407,14 @@ mod tests {
                 policy_revision: format!("sha256:{}", "b".repeat(64)),
                 idempotency_key: Uuid::new_v4().to_string(),
                 topology_json: serde_json::to_vec(&submitted).expect("topology JSON"),
+                trace_id: "test:artifact-node-reconciliation".to_string(),
+                correlation_id: Uuid::new_v4().to_string(),
             },
             actor_id,
         )
         .expect("request");
-        assert_eq!(command.actor_id, actor_id);
+        assert_eq!(command.context.actor_id, actor_id);
+        assert_eq!(command.context.tenant_id, None);
         assert_eq!(command.expected_reconciliation_state_revision, 4);
         assert_eq!(command.topology_digest, submitted.topology_digest);
         assert_eq!(parsed_topology, submitted);
@@ -431,8 +443,13 @@ mod tests {
             expected_reconciliation_state_revision: 0,
             policy_revision: format!("sha256:{}", "c".repeat(64)),
             topology_digest: format!("sha256:{}", "d".repeat(64)),
-            actor_id: Uuid::new_v4(),
-            idempotency_key: Uuid::new_v4(),
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: None,
+                trace_id: "test:certificate-authorizer".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
         };
         assert!(authorizer.authorize_request(&request).await.is_err());
         assert!(

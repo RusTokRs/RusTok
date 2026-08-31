@@ -89,6 +89,7 @@ impl ModuleOperationRecoveryPlan {
 pub struct ModulePostHookRetryRequest {
     pub operation_id: uuid::Uuid,
     pub requested_by: Option<String>,
+    pub trace_id: Option<String>,
     pub idempotency_key: uuid::Uuid,
     /// Revision reviewed by the actor before retrying a static lifecycle
     /// operation. Dynamic artifact recovery deliberately leaves this absent.
@@ -169,6 +170,7 @@ pub(crate) async fn failed_module_operation_recovery_plans(
 fn retry_operation_request(
     plan: &ModuleOperationRecoveryPlan,
     requested_by: Option<String>,
+    trace_id: Option<String>,
     idempotency_key: uuid::Uuid,
     expected_revision: Option<u64>,
 ) -> ModuleOperationRequest {
@@ -178,6 +180,7 @@ fn retry_operation_request(
         requested_enabled: plan.requested_enabled,
         previous_effective_enabled: plan.previous_effective_enabled,
         requested_by,
+        trace_id,
         correlation_id: plan.operation_id.to_string(),
         idempotency_key: Some(idempotency_key),
         expected_revision,
@@ -196,6 +199,7 @@ pub(crate) async fn retry_failed_post_hook_operation(
     let journal_request = retry_operation_request(
         &plan,
         request.requested_by.clone(),
+        request.trace_id.clone(),
         request.idempotency_key,
         request.expected_revision,
     );
@@ -435,6 +439,7 @@ mod tests {
             previous_effective_enabled: false,
             status: ModuleOperationStatus::Failed,
             requested_by: Some("operator".to_string()),
+            trace_id: Some("test:recovery".to_string()),
             correlation_id: Some(Uuid::new_v4().to_string()),
             idempotency_key: None,
             expected_revision: None,
@@ -517,6 +522,7 @@ mod tests {
         let request = retry_operation_request(
             &plan,
             Some("retry-operator".to_string()),
+            Some("test:retry".to_string()),
             Uuid::new_v4(),
             Some(4),
         );

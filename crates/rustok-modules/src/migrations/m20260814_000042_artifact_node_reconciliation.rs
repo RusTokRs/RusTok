@@ -98,6 +98,8 @@ impl MigrationTrait for Migration {
                     operation_kind TEXT NOT NULL CHECK (operation_kind IN ('request', 'report')),\
                     request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     principal_id TEXT NOT NULL CHECK (length(trim(principal_id)) BETWEEN 1 AND 128),\
+                    trace_id TEXT NULL CHECK (trace_id IS NULL OR length(trim(trace_id)) BETWEEN 1 AND 512),\
+                    correlation_id UUID NULL,\
                     reconciliation_id UUID NULL REFERENCES module_artifact_node_reconciliations(reconciliation_id) ON DELETE RESTRICT,\
                     reconciliation_revision BIGINT NULL CHECK (reconciliation_revision IS NULL OR reconciliation_revision > 0),\
                     reconciliation_state_revision BIGINT NULL CHECK (reconciliation_state_revision IS NULL OR reconciliation_state_revision > 0),\
@@ -161,7 +163,7 @@ impl MigrationTrait for Migration {
                 )",
                 "CREATE INDEX module_artifact_node_reconciliation_assignments_claim_idx ON module_artifact_node_reconciliation_assignments (reconciliation_id, node_id, phase, ordinal)",
                 "CREATE TABLE module_artifact_node_reconciliation_operations (\
-                    idempotency_key TEXT PRIMARY KEY, operation_kind TEXT NOT NULL CHECK (operation_kind IN ('request', 'report')), request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'), principal_id TEXT NOT NULL CHECK (length(trim(principal_id)) BETWEEN 1 AND 128), reconciliation_id TEXT NULL REFERENCES module_artifact_node_reconciliations(reconciliation_id) ON DELETE RESTRICT, reconciliation_revision INTEGER NULL CHECK (reconciliation_revision IS NULL OR reconciliation_revision > 0), reconciliation_state_revision INTEGER NULL CHECK (reconciliation_state_revision IS NULL OR reconciliation_state_revision > 0), reconciliation_status TEXT NULL CHECK (reconciliation_status IS NULL OR reconciliation_status IN ('preparing', 'activating', 'converged', 'failed', 'degraded', 'superseded')), node_id TEXT NULL, installation_id TEXT NULL, observation_revision INTEGER NULL CHECK (observation_revision IS NULL OR observation_revision > 0), assignment_phase TEXT NULL CHECK (assignment_phase IS NULL OR assignment_phase IN ('prepared', 'healthy', 'failed')), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT NULL,\
+                    idempotency_key TEXT PRIMARY KEY, operation_kind TEXT NOT NULL CHECK (operation_kind IN ('request', 'report')), request_digest TEXT NOT NULL CHECK (length(request_digest) = 71 AND substr(request_digest, 1, 7) = 'sha256:' AND substr(request_digest, 8) NOT GLOB '*[^0-9a-f]*'), principal_id TEXT NOT NULL CHECK (length(trim(principal_id)) BETWEEN 1 AND 128), trace_id TEXT NULL CHECK (trace_id IS NULL OR length(trim(trace_id)) BETWEEN 1 AND 512), correlation_id TEXT NULL, reconciliation_id TEXT NULL REFERENCES module_artifact_node_reconciliations(reconciliation_id) ON DELETE RESTRICT, reconciliation_revision INTEGER NULL CHECK (reconciliation_revision IS NULL OR reconciliation_revision > 0), reconciliation_state_revision INTEGER NULL CHECK (reconciliation_state_revision IS NULL OR reconciliation_state_revision > 0), reconciliation_status TEXT NULL CHECK (reconciliation_status IS NULL OR reconciliation_status IN ('preparing', 'activating', 'converged', 'failed', 'degraded', 'superseded')), node_id TEXT NULL, installation_id TEXT NULL, observation_revision INTEGER NULL CHECK (observation_revision IS NULL OR observation_revision > 0), assignment_phase TEXT NULL CHECK (assignment_phase IS NULL OR assignment_phase IN ('prepared', 'healthy', 'failed')), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT NULL,\
                     CHECK ((completed_at IS NULL AND reconciliation_id IS NULL AND reconciliation_revision IS NULL AND reconciliation_state_revision IS NULL AND reconciliation_status IS NULL AND node_id IS NULL AND installation_id IS NULL AND observation_revision IS NULL AND assignment_phase IS NULL) OR (completed_at IS NOT NULL AND operation_kind = 'request' AND reconciliation_id IS NOT NULL AND reconciliation_revision IS NOT NULL AND reconciliation_state_revision IS NOT NULL AND reconciliation_status = 'preparing' AND node_id IS NULL AND installation_id IS NULL AND observation_revision IS NULL AND assignment_phase IS NULL) OR (completed_at IS NOT NULL AND operation_kind = 'report' AND reconciliation_id IS NOT NULL AND reconciliation_revision IS NOT NULL AND reconciliation_state_revision IS NOT NULL AND reconciliation_status IS NOT NULL AND node_id IS NOT NULL AND installation_id IS NOT NULL AND observation_revision IS NOT NULL AND assignment_phase IS NOT NULL))\
                 )",
             ],
@@ -260,6 +262,8 @@ mod tests {
         let operation_columns =
             column_names(&db, "module_artifact_node_reconciliation_operations").await;
         assert!(operation_columns.contains("principal_id"));
+        assert!(operation_columns.contains("trace_id"));
+        assert!(operation_columns.contains("correlation_id"));
         assert!(operation_columns.contains("assignment_phase"));
         assert!(!operation_columns.contains("agent_selected_installation_id"));
     }

@@ -23,6 +23,7 @@ pub struct ModuleLifecycleToggleRequest {
     /// inherited override while still running the inverse hook phase.
     pub enabled: bool,
     pub requested_by: Option<String>,
+    pub trace_id: Option<String>,
     pub correlation_id: Option<String>,
     pub idempotency_key: Option<uuid::Uuid>,
     /// Static native lifecycle commands must echo the owner-issued aggregate
@@ -116,6 +117,7 @@ pub async fn execute_module_toggle(
         requested_enabled: request.enabled,
         previous_effective_enabled,
         requested_by: request.requested_by.clone(),
+        trace_id: request.trace_id.clone(),
         correlation_id: request
             .correlation_id
             .clone()
@@ -666,6 +668,7 @@ mod tests {
                     previous_effective_enabled BOOLEAN NOT NULL, \
                     status TEXT NOT NULL, \
                     requested_by TEXT, \
+                    trace_id TEXT, \
                     correlation_id TEXT, \
                     idempotency_key TEXT, \
                     expected_revision INTEGER, \
@@ -743,6 +746,7 @@ mod tests {
             module_slug: "optional-test".to_string(),
             enabled: true,
             requested_by: Some("operator".to_string()),
+            trace_id: Some("test:module-lifecycle".to_string()),
             correlation_id: None,
             idempotency_key: Some(idempotency_key),
             expected_revision: Some(0),
@@ -806,6 +810,7 @@ mod tests {
                 module_slug: "optional-test".to_string(),
                 enabled: true,
                 requested_by: Some("test".to_string()),
+                trace_id: None,
                 correlation_id: None,
                 idempotency_key: None,
                 expected_revision: None,

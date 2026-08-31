@@ -50,6 +50,10 @@ const staticDistributionRolloutOwnerPath = path.join(
   'crates/rustok-modules/src/distribution_rollout.rs',
 );
 const staticDistributionOwnerPath = path.join(root, 'crates/rustok-modules/src/distribution.rs');
+const artifactNodeReconciliationOwnerPath = path.join(
+  root,
+  'crates/rustok-modules/src/artifact_node_reconciliation.rs',
+);
 const runtimeManifestPath = path.join(root, 'crates/rustok-runtime/Cargo.toml');
 const registryValidationWorkerRoot = path.join(root, 'crates/rustok-registry-validation-worker');
 const registryValidationWorkerManifestPath = path.join(registryValidationWorkerRoot, 'Cargo.toml');
@@ -60,7 +64,17 @@ const staticDistributionWorkerManifestPath = path.join(staticDistributionWorkerR
 const publicationEvidencePath = path.join(ownerRoot, 'publication_evidence.rs');
 const recoveryPath = path.join(ownerRoot, 'recovery.rs');
 const serverLifecyclePath = path.join(root, 'apps/server/src/services/module_lifecycle.rs');
+const staticLifecycleWriterPath = path.join(ownerRoot, 'lifecycle_writer.rs');
+const staticLifecycleJournalPath = path.join(ownerRoot, 'operation_store.rs');
 const alloyOwnerSourcePath = path.join(ownerRoot, 'governance.rs');
+const registryPublicationMigrationPath = path.join(
+  root,
+  'crates/rustok-migrations/src/m20260718_000002_add_registry_publication_idempotency.rs',
+);
+const registryHttpControllerPath = path.join(
+  root,
+  'apps/server/src/controllers/marketplace_registry.rs',
+);
 const alloyServerImportPath = path.join(
   root,
   'apps/server/src/services/registry_governance/alloy_import.rs',
@@ -204,6 +218,10 @@ try {
     'utf8',
   );
   const staticDistributionOwner = fs.readFileSync(staticDistributionOwnerPath, 'utf8');
+  const artifactNodeReconciliationOwner = fs.readFileSync(
+    artifactNodeReconciliationOwnerPath,
+    'utf8',
+  );
   const runtimeManifest = fs.readFileSync(runtimeManifestPath, 'utf8');
   const forbiddenDependencyViolations = forbiddenOwnerDependencies.filter((dependency) =>
     new RegExp(`^${dependency.replaceAll('-', '\\-')}\\s*=`, 'm').test(ownerManifest),
@@ -302,6 +320,20 @@ try {
   ) {
     fail(
       'static distribution build commands must retain platform-scoped ModuleCommandContext evidence in their durable receipt and owner-created outbox event',
+    );
+  }
+
+  const artifactNodeReconciliationContextFields =
+    artifactNodeReconciliationOwner.match(/pub context: ModuleCommandContext,/g) ?? [];
+  if (
+    artifactNodeReconciliationContextFields.length !== 1 ||
+    !artifactNodeReconciliationOwner.includes('valid_platform_command_context') ||
+    !artifactNodeReconciliationOwner.includes('trace_id, correlation_id, created_at') ||
+    !artifactNodeReconciliationOwner.includes('event_envelope_for_command(') ||
+    !artifactNodeReconciliationOwner.includes('context: Option<&ModuleCommandContext>')
+  ) {
+    fail(
+      'artifact-node reconciliation requests must retain a platform-scoped ModuleCommandContext in durable receipts and owner-created outbox events while agent reports keep their bounded mTLS evidence path',
     );
   }
 
@@ -480,7 +512,11 @@ try {
   const publicationEvidence = fs.readFileSync(publicationEvidencePath, 'utf8');
   const recoverySource = fs.readFileSync(recoveryPath, 'utf8');
   const serverLifecycleSource = fs.readFileSync(serverLifecyclePath, 'utf8');
+  const staticLifecycleWriter = fs.readFileSync(staticLifecycleWriterPath, 'utf8');
+  const staticLifecycleJournal = fs.readFileSync(staticLifecycleJournalPath, 'utf8');
   const alloyOwnerSource = fs.readFileSync(alloyOwnerSourcePath, 'utf8');
+  const registryPublicationMigration = fs.readFileSync(registryPublicationMigrationPath, 'utf8');
+  const registryHttpController = fs.readFileSync(registryHttpControllerPath, 'utf8');
   const alloyServerImport = fs.readFileSync(alloyServerImportPath, 'utf8');
   const alloyHttpController = fs.readFileSync(alloyHttpControllerPath, 'utf8');
   const alloyGraphqlMutation = fs.readFileSync(alloyGraphqlMutationPath, 'utf8');
@@ -516,6 +552,94 @@ try {
     !registryValidationWorkerMain.includes('ModulePlatformPublicationEvidenceProducer::new')
   ) {
     fail('registry validation worker must compose the credential-scoped OCI reader and readiness-checked mTLS verifier');
+  }
+
+  if (
+    !alloyOwnerSource.includes('pub context: ModuleCommandContext,') ||
+    !alloyOwnerSource.includes('self.context.tenant_id.is_some()') ||
+    !alloyOwnerSource.includes('stored_trace_id != command.context.trace_id') ||
+    !alloyOwnerSource.includes('stored_correlation_id != command.context.correlation_id.to_string()') ||
+    !registryPublicationMigration.includes('actor_id UUID NOT NULL') ||
+    !registryPublicationMigration.includes('trace_id TEXT NOT NULL') ||
+    !registryPublicationMigration.includes('correlation_id UUID NOT NULL') ||
+    !registryHttpController.includes('registry_platform_command_context(auth, idempotency_key)')
+  ) {
+    fail(
+      'registry publication approval must use a platform-scoped ModuleCommandContext and bind its actor, trace, and correlation identity in the immutable replay receipt',
+    );
+  }
+
+  for (const operationKind of ['reject', 'request_changes', 'hold', 'resume']) {
+    if (!alloyOwnerSource.includes(`operation_kind: "${operationKind}"`)) {
+      fail(`registry publish-request review operation is missing durable context receipt coverage: ${operationKind}`);
+    }
+  }
+  if (
+    !alloyOwnerSource.includes('registry_publish_request_review_operations') ||
+    !alloyOwnerSource.includes('valid_platform_registry_command_context') ||
+    !alloyOwnerSource.includes('lock_publish_request_review') ||
+    !alloyOwnerSource.includes('PublishRequestReviewIdempotencyConflict') ||
+    !registryPublicationMigration.includes('CREATE TABLE registry_publish_request_review_operations') ||
+    !registryPublicationMigration.includes("operation_kind IN ('reject', 'request_changes', 'hold', 'resume')") ||
+    !/\.reject_publish_request\(\s*&request_id,\s*&authority,\s*command_context,/s.test(
+      registryHttpController,
+    ) ||
+    !/\.request_changes_publish_request\(\s*&request_id,\s*&authority,\s*command_context,/s.test(
+      registryHttpController,
+    ) ||
+    !/\.hold_publish_request\(\s*&request_id,\s*&authority,\s*command_context,/s.test(
+      registryHttpController,
+    ) ||
+    !/\.resume_publish_request\(\s*&request_id,\s*&authority,\s*command_context,/s.test(
+      registryHttpController,
+    )
+  ) {
+    fail(
+      'registry publish-request reject, request-changes, hold, and resume commands must use a platform-scoped ModuleCommandContext and one immutable exact-replay receipt ledger',
+    );
+  }
+  if (
+    !alloyOwnerSource.includes('registry_release_yank_operations') ||
+    !alloyOwnerSource.includes('ReleaseYankIdempotencyConflict') ||
+    !alloyOwnerSource.includes('release_yank_replay') ||
+    !registryPublicationMigration.includes('CREATE TABLE registry_release_yank_operations') ||
+    !registryPublicationMigration.includes("resulting_status = 'yanked'") ||
+    !/\.yank_release\(\s*&request\.slug,\s*&request\.version,\s*reason,\s*reason_code,\s*&authority,\s*command_context,/s.test(
+      registryHttpController,
+    )
+  ) {
+    fail(
+      'registry release yanking must use a platform-scoped ModuleCommandContext and immutable exact-replay receipt ledger',
+    );
+  }
+  if (
+    !alloyOwnerSource.includes('registry_owner_transfer_operations') ||
+    !alloyOwnerSource.includes('OwnerTransferIdempotencyConflict') ||
+    !alloyOwnerSource.includes('owner_transfer_replay') ||
+    !registryPublicationMigration.includes('CREATE TABLE registry_owner_transfer_operations') ||
+    !/\.transfer_registry_slug_owner\(\s*&request\.slug,[\s\S]*?&authority,\s*command_context,/s.test(registryHttpController)
+  ) {
+    fail('registry owner transfer must use a platform-scoped ModuleCommandContext and immutable exact-replay receipt ledger');
+  }
+  if (
+    !alloyOwnerSource.includes('registry_publish_request_create_operations') ||
+    !alloyOwnerSource.includes('valid_command_context_actor') ||
+    !registryPublicationMigration.includes('CREATE TABLE registry_publish_request_create_operations') ||
+    !/\.create_publish_request\(&request,\s*&authority,\s*command_context\)/s.test(registryHttpController)
+  ) {
+    fail('registry publish-request creation must use a typed command context and durable immutable create receipt');
+  }
+  if (
+    !alloyOwnerSource.includes('registry_publish_artifact_operations') ||
+    !alloyOwnerSource.includes('PublishArtifactReceipt') ||
+    !alloyOwnerSource.includes('publish_artifact_replay') ||
+    !alloyOwnerSource.includes('PublishRequestArtifactIdempotencyConflict') ||
+    !registryPublicationMigration.includes('CREATE TABLE registry_publish_artifact_operations') ||
+    !/\.upload_publish_artifact\(\s*&request_id,\s*&authority,\s*command_context,/s.test(
+      registryHttpController,
+    )
+  ) {
+    fail('registry publish-artifact attachment must use a typed command context and durable immutable exact-replay receipt');
   }
   if (
     !registryValidationWorkerLibrary.includes('CredentialedOciRegistryProvider') ||
@@ -557,6 +681,22 @@ try {
     !serverLifecycleSource.includes('.failed_recovery_plans(tenant_id, module_slug)')
   ) {
     fail('server lifecycle recovery reads must use tenant-bound ModuleLifecycleDbWriter methods');
+  }
+
+  const staticLifecycleContextFields =
+    staticLifecycleWriter.match(/pub context: ModuleCommandContext,/g) ?? [];
+  if (
+    staticLifecycleContextFields.length !== 3 ||
+    !staticLifecycleWriter.includes('command.context.tenant_id != Some(command.tenant_id)') ||
+    !staticLifecycleWriter.includes('trace_id: Some(command.context.trace_id.clone())') ||
+    !staticLifecycleWriter.includes('context: &command.context') ||
+    !staticLifecycleJournal.includes('pub trace_id: Option<String>,') ||
+    !staticLifecycleJournal.includes('existing.trace_id != request.trace_id') ||
+    !serverLifecycleSource.includes('context: ModuleCommandContext')
+  ) {
+    fail(
+      'static lifecycle toggle, recovery, and settings commands must use a tenant-matched ModuleCommandContext and retain its trace/correlation evidence in durable replay identity',
+    );
   }
 
   if (

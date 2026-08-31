@@ -85,6 +85,7 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(ModuleOperations::RequestedBy).string_len(255))
+                    .col(ColumnDef::new(ModuleOperations::TraceId).string_len(255))
                     .col(ColumnDef::new(ModuleOperations::CorrelationId).string_len(255))
                     .col(ColumnDef::new(ModuleOperations::IdempotencyKey).uuid())
                     .col(ColumnDef::new(ModuleOperations::ExpectedRevision).big_integer())
@@ -236,6 +237,7 @@ enum ModuleOperations {
     PreviousEffectiveEnabled,
     Status,
     RequestedBy,
+    TraceId,
     CorrelationId,
     IdempotencyKey,
     ExpectedRevision,

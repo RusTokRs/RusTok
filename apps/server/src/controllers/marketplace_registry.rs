@@ -216,6 +216,12 @@ async fn publish(
 
     if !request.dry_run {
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
+        let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+        let command_context = auth
+            .map(|auth| registry_platform_command_context(auth, idempotency_key))
+            .ok_or_else(|| {
+                Error::Unauthorized("Registry publish operations require authentication".into())
+            })?;
         let authority = authority_from_auth(&headers, auth, "Registry publish operations")?;
         if !request.module.ownership.eq_ignore_ascii_case("first_party")
             && !authority.can_manage_modules
@@ -236,7 +242,7 @@ async fn publish(
             )));
         }
         let created = RegistryGovernanceService::new(ctx.db_clone())
-            .create_publish_request(&request, &authority)
+            .create_publish_request(&request, &authority, command_context)
             .await
             .map_err(map_registry_governance_error)?;
 
@@ -405,6 +411,12 @@ async fn upload_publish_artifact(
         .unwrap_or("application/octet-stream")
         .to_string();
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
+    let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+    let command_context = auth
+        .map(|auth| registry_platform_command_context(auth, idempotency_key))
+        .ok_or_else(|| {
+            Error::Unauthorized("Registry artifact upload requires authentication".into())
+        })?;
     let authority = authority_from_auth(&headers, auth, "Registry artifact upload")?;
     let storage = ctx
         .shared_get::<rustok_storage::StorageRuntime>()
@@ -415,6 +427,7 @@ async fn upload_publish_artifact(
         .upload_publish_artifact(
             &request_id,
             &authority,
+            command_context,
             RegistryArtifactUpload {
                 content_type,
                 bytes: body,
@@ -804,9 +817,15 @@ async fn validate_publish_request_step(
         ));
     }
 
+    let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+    let command_context = auth
+        .map(|auth| registry_platform_command_context(auth, idempotency_key))
+        .ok_or_else(|| {
+            Error::Unauthorized("Registry validation operations require authentication".into())
+        })?;
     let governance = RegistryGovernanceService::new(ctx.db_clone());
     let validation = governance
-        .validate_publish_request(&request_id, &authority)
+        .validate_publish_request(&request_id, &authority, command_context)
         .await
         .map_err(map_registry_governance_error)?;
     let validated = validation.status;
@@ -1031,11 +1050,16 @@ async fn approve_publish_request(
     }
 
     let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+    let command_context = auth
+        .map(|auth| registry_platform_command_context(auth, idempotency_key))
+        .ok_or_else(|| {
+            Error::Unauthorized("Registry publish approval requires authentication".into())
+        })?;
     let approved = RegistryGovernanceService::new(ctx.db_clone())
         .approve_publish_request(
             &request_id,
             &authority,
-            idempotency_key,
+            command_context,
             request.reason.as_deref(),
             request.reason_code.as_deref(),
         )
@@ -1154,8 +1178,20 @@ async fn reject_publish_request(
             )
         })?;
 
+    let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+    let command_context = auth
+        .map(|auth| registry_platform_command_context(auth, idempotency_key))
+        .ok_or_else(|| {
+            Error::Unauthorized("Registry publish rejection requires authentication".into())
+        })?;
     let rejected = RegistryGovernanceService::new(ctx.db_clone())
-        .reject_publish_request(&request_id, &authority, reason, reason_code)
+        .reject_publish_request(
+            &request_id,
+            &authority,
+            command_context,
+            reason,
+            reason_code,
+        )
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -1272,8 +1308,20 @@ async fn request_changes_publish_request(
             )
         })?;
 
+    let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+    let command_context = auth
+        .map(|auth| registry_platform_command_context(auth, idempotency_key))
+        .ok_or_else(|| {
+            Error::Unauthorized("Registry request-changes operations require authentication".into())
+        })?;
     let updated = RegistryGovernanceService::new(ctx.db_clone())
-        .request_changes_publish_request(&request_id, &authority, reason, reason_code)
+        .request_changes_publish_request(
+            &request_id,
+            &authority,
+            command_context,
+            reason,
+            reason_code,
+        )
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -1388,8 +1436,20 @@ async fn hold_publish_request(
             )
         })?;
 
+    let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+    let command_context = auth
+        .map(|auth| registry_platform_command_context(auth, idempotency_key))
+        .ok_or_else(|| {
+            Error::Unauthorized("Registry hold operations require authentication".into())
+        })?;
     let updated = RegistryGovernanceService::new(ctx.db_clone())
-        .hold_publish_request(&request_id, &authority, reason, reason_code)
+        .hold_publish_request(
+            &request_id,
+            &authority,
+            command_context,
+            reason,
+            reason_code,
+        )
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -1506,8 +1566,20 @@ async fn resume_publish_request(
             )
         })?;
 
+    let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+    let command_context = auth
+        .map(|auth| registry_platform_command_context(auth, idempotency_key))
+        .ok_or_else(|| {
+            Error::Unauthorized("Registry resume operations require authentication".into())
+        })?;
     let updated = RegistryGovernanceService::new(ctx.db_clone())
-        .resume_publish_request(&request_id, &authority, reason, reason_code)
+        .resume_publish_request(
+            &request_id,
+            &authority,
+            command_context,
+            reason,
+            reason_code,
+        )
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -1806,6 +1878,12 @@ async fn yank(
                 )
             })?;
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
+        let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+        let command_context = auth
+            .map(|auth| registry_platform_command_context(auth, idempotency_key))
+            .ok_or_else(|| {
+                Error::Unauthorized("Registry yank operations require authentication".into())
+            })?;
         let authority = authority_from_auth(&headers, auth, "Registry yank operations")?;
         let release = RegistryGovernanceService::new(ctx.db_clone())
             .yank_release(
@@ -1814,6 +1892,7 @@ async fn yank(
                 reason,
                 reason_code,
                 &authority,
+                command_context,
             )
             .await
             .map_err(map_registry_governance_error)?;
@@ -1912,8 +1991,14 @@ async fn transfer_owner(
                     "Live registry owner transfer requires a non-empty reason_code for the policy audit trail"
                         .to_string(),
                 )
-            })?;
+        })?;
         let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
+        let idempotency_key = required_non_nil_idempotency_key(&headers)?;
+        let command_context = auth
+            .map(|auth| registry_platform_command_context(auth, idempotency_key))
+            .ok_or_else(|| {
+                Error::Unauthorized("Registry owner transfer requires authentication".into())
+            })?;
         let authority = authority_from_auth(&headers, auth, "Registry owner transfer operations")?;
         RegistryGovernanceService::new(ctx.db_clone())
             .transfer_registry_slug_owner(
@@ -1924,6 +2009,7 @@ async fn transfer_owner(
                 reason,
                 reason_code,
                 &authority,
+                command_context,
             )
             .await
             .map_err(map_registry_governance_error)?;

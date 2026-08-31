@@ -1,11 +1,14 @@
 use super::*;
-use rustok_modules::{ModuleValidationJobEnqueueCommand, ModuleValidationStageReportCommand};
+use rustok_modules::{
+    ModuleCommandContext, ModuleValidationJobEnqueueCommand, ModuleValidationStageReportCommand,
+};
 
 impl RegistryGovernanceService {
     pub async fn validate_publish_request(
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
+        context: ModuleCommandContext,
     ) -> anyhow::Result<RegistryValidationQueueResult> {
         let request = self
             .authorized_publish_request_status_snapshot(
@@ -35,6 +38,7 @@ impl RegistryGovernanceService {
             .enqueue_validation_job(ModuleValidationJobEnqueueCommand {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
+                context,
                 actor_principal: authority.principal.to_json_value(),
                 allow_rejected_retry: was_requeued,
             })

@@ -9,7 +9,7 @@ use rustok_installer::{
     SeedIdentityPort, SeedModulePort, SeedPrincipalPort, SeedProfile, SeedRolePort, SeedTenant,
     SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest,
 };
-use rustok_modules::{ModuleControlPlane, ModuleLifecycleToggleCommand};
+use rustok_modules::{ModuleCommandContext, ModuleControlPlane, ModuleLifecycleToggleCommand};
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_tenant::{
     CreateTenantInput, PortActor, PortContext, TenantReadPort, TenantReadRequest,
@@ -526,8 +526,13 @@ impl SeedModulePort for SeaOrmInstallerBootstrapPorts<'_> {
                 tenant_id,
                 module_slug: module_slug.to_string(),
                 enabled,
-                actor_id,
-                idempotency_key,
+                context: ModuleCommandContext {
+                    actor_id,
+                    tenant_id: Some(tenant_id),
+                    trace_id: format!("installer:seed:{idempotency_key}"),
+                    correlation_id: idempotency_key,
+                    idempotency_key,
+                },
                 expected_revision,
             })
             .await

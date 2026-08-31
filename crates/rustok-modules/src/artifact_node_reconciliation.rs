@@ -18,7 +18,7 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::{
-    ArtifactPayloadKind, ControlPlaneInfrastructure,
+    ArtifactPayloadKind, ControlPlaneInfrastructure, ModuleCommandContext,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
     installation::{InstalledModuleArtifact, ModuleInstallationScope},
     promotion::{digest_json, valid_digest, valid_reference},
@@ -161,8 +161,7 @@ pub struct ModuleArtifactNodeReconciliationRequest {
     pub expected_reconciliation_state_revision: u64,
     pub policy_revision: String,
     pub topology_digest: String,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
 }
 
 /// Authenticated pull request from one node agent. The authorizer binds the
@@ -644,13 +643,14 @@ where
         validate_request(&command)?;
         self.authorizer.authorize_request(&command).await?;
         let request_digest = digest_json(&command).map_err(digest_error)?;
-        let principal_id = command.actor_id.to_string();
+        let principal_id = command.context.actor_id.to_string();
         if let Some(operation) = load_operation(
             &self.db,
-            command.idempotency_key,
+            command.context.idempotency_key,
             "request",
             &request_digest,
             &principal_id,
+            Some(&command.context),
         )
         .await?
         {
@@ -669,10 +669,11 @@ where
         let transaction = self.db.begin().await.map_err(store_error)?;
         if let Some(operation) = reserve_operation(
             &transaction,
-            command.idempotency_key,
+            command.context.idempotency_key,
             "request",
             &request_digest,
             &principal_id,
+            Some(&command.context),
         )
         .await?
         {
@@ -762,13 +763,12 @@ where
             status: ModuleArtifactNodeReconciliationStatus::Preparing,
             created: true,
         };
-        complete_request_operation(&transaction, command.idempotency_key, &receipt).await?;
+        complete_request_operation(&transaction, command.context.idempotency_key, &receipt).await?;
         self.infrastructure
             .write_event(
                 &transaction,
-                self.infrastructure.event_envelope(
-                    None,
-                    Some(command.actor_id),
+                self.infrastructure.event_envelope_for_command(
+                    &command.context,
                     DomainEvent::ModuleArtifactNodeReconciliationRequested {
                         reconciliation_id,
                         predecessor_reconciliation_id: predecessor
@@ -906,6 +906,7 @@ where
             "report",
             &request_digest,
             &command.agent_id,
+            None,
         )
         .await?
         {
@@ -918,6 +919,7 @@ where
             "report",
             &request_digest,
             &command.agent_id,
+            None,
         )
         .await?
         {
@@ -1236,6 +1238,8 @@ struct OperationRecord {
     operation_kind: String,
     request_digest: String,
     principal_id: String,
+    trace_id: Option<String>,
+    correlation_id: Option<Uuid>,
     reconciliation_id: Option<Uuid>,
     reconciliation_revision: Option<u64>,
     reconciliation_state_revision: Option<u64>,
@@ -1323,12 +1327,15 @@ fn validate_request(
 ) -> Result<(), ModuleArtifactNodeReconciliationError> {
     if !valid_digest(&command.policy_revision)
         || !valid_digest(&command.topology_digest)
-        || command.actor_id.is_nil()
-        || command.idempotency_key.is_nil()
+        || !valid_platform_command_context(&command.context)
     {
         return Err(ModuleArtifactNodeReconciliationError::InvalidCommand);
     }
     Ok(())
+}
+
+fn valid_platform_command_context(context: &ModuleCommandContext) -> bool {
+    context.tenant_id.is_none() && context.validate().is_ok()
 }
 
 fn validate_topology(
@@ -1563,7 +1570,7 @@ async fn insert_reconciliation(
                 i64::try_from(topology.assignments.len())
                     .map_err(|_| ModuleArtifactNodeReconciliationError::InvalidTopology)?
                     .into(),
-                uuid_value(command.actor_id, backend),
+                uuid_value(command.context.actor_id, backend),
             ],
         ))
         .await
@@ -2490,6 +2497,7 @@ async fn reserve_operation(
     operation_kind: &str,
     request_digest: &str,
     principal_id: &str,
+    context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleArtifactNodeReconciliationError> {
     let backend = transaction.get_database_backend();
     let inserted = transaction
@@ -2497,12 +2505,14 @@ async fn reserve_operation(
             backend,
             format!(
                 "INSERT INTO module_artifact_node_reconciliation_operations \
-                 (idempotency_key, operation_kind, request_digest, principal_id, created_at) \
-                 VALUES ({}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
+                 (idempotency_key, operation_kind, request_digest, principal_id, trace_id, correlation_id, created_at) \
+                 VALUES ({}, {}, {}, {}, {}, {}, {}) ON CONFLICT (idempotency_key) DO NOTHING",
                 placeholder(backend, 1),
                 placeholder(backend, 2),
                 placeholder(backend, 3),
                 placeholder(backend, 4),
+                placeholder(backend, 5),
+                placeholder(backend, 6),
                 now_expression(backend),
             ),
             vec![
@@ -2510,6 +2520,8 @@ async fn reserve_operation(
                 operation_kind.to_owned().into(),
                 request_digest.to_owned().into(),
                 principal_id.to_owned().into(),
+                context.map(|value| value.trace_id.clone()).into(),
+                optional_uuid_value(context.map(|value| value.correlation_id), backend),
             ],
         ))
         .await
@@ -2523,6 +2535,7 @@ async fn reserve_operation(
         operation_kind,
         request_digest,
         principal_id,
+        context,
     )
     .await
 }
@@ -2533,13 +2546,14 @@ async fn load_operation<C: ConnectionTrait>(
     operation_kind: &str,
     request_digest: &str,
     principal_id: &str,
+    context: Option<&ModuleCommandContext>,
 ) -> Result<Option<OperationRecord>, ModuleArtifactNodeReconciliationError> {
     let backend = connection.get_database_backend();
     let Some(row) = connection
         .query_one(Statement::from_sql_and_values(
             backend,
             format!(
-                "SELECT operation_kind, request_digest, principal_id, reconciliation_id, \
+                "SELECT operation_kind, request_digest, principal_id, trace_id, correlation_id, reconciliation_id, \
                         reconciliation_revision, reconciliation_state_revision, reconciliation_status, \
                         node_id, installation_id, observation_revision, assignment_phase, \
                         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed \
@@ -2558,6 +2572,8 @@ async fn load_operation<C: ConnectionTrait>(
         operation_kind: row.try_get("", "operation_kind").map_err(store_error)?,
         request_digest: row.try_get("", "request_digest").map_err(store_error)?,
         principal_id: row.try_get("", "principal_id").map_err(store_error)?,
+        trace_id: row.try_get("", "trace_id").map_err(store_error)?,
+        correlation_id: optional_uuid_from_row(&row, "correlation_id", backend)?,
         reconciliation_id: optional_uuid_from_row(&row, "reconciliation_id", backend)?,
         reconciliation_revision: optional_revision_from_row(&row, "reconciliation_revision")?,
         reconciliation_state_revision: optional_revision_from_row(
@@ -2584,6 +2600,8 @@ async fn load_operation<C: ConnectionTrait>(
     if record.operation_kind != operation_kind
         || record.request_digest != request_digest
         || record.principal_id != principal_id
+        || record.trace_id.as_deref() != context.map(|value| value.trace_id.as_str())
+        || record.correlation_id != context.map(|value| value.correlation_id)
     {
         return Err(ModuleArtifactNodeReconciliationError::IdempotencyConflict);
     }
@@ -2847,7 +2865,7 @@ mod tests {
     use async_trait::async_trait;
     use rustok_events::{DomainEvent, EventEnvelope};
     use rustok_outbox::TransactionalEventWriter;
-    use sea_orm::{ConnectionTrait, Database};
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use sea_orm_migration::prelude::{MigrationTrait, SchemaManager};
 
     use super::*;
@@ -2900,7 +2918,7 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
-    struct CapturingEventWriter(Arc<Mutex<Vec<DomainEvent>>>);
+    struct CapturingEventWriter(Arc<Mutex<Vec<EventEnvelope>>>);
 
     #[async_trait]
     impl TransactionalEventWriter for CapturingEventWriter {
@@ -2909,10 +2927,7 @@ mod tests {
             _transaction: &DatabaseTransaction,
             envelope: EventEnvelope,
         ) -> rustok_core::Result<()> {
-            self.0
-                .lock()
-                .expect("event writer lock")
-                .push(envelope.event);
+            self.0.lock().expect("event writer lock").push(envelope);
             Ok(())
         }
     }
@@ -2947,29 +2962,74 @@ mod tests {
             expected_reconciliation_state_revision: 0,
             policy_revision: policy_revision.clone(),
             topology_digest,
-            actor_id: Uuid::new_v4(),
-            idempotency_key: Uuid::new_v4(),
+            context: ModuleCommandContext {
+                actor_id: Uuid::new_v4(),
+                tenant_id: None,
+                trace_id: "test:artifact-node-reconciliation".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
         };
         let mut mismatched_topology = request.clone();
         mismatched_topology.topology_digest = digest('f');
-        mismatched_topology.idempotency_key = Uuid::new_v4();
+        mismatched_topology.context.idempotency_key = Uuid::new_v4();
         assert!(matches!(
             service.request(mismatched_topology).await,
             Err(ModuleArtifactNodeReconciliationError::TopologyDigestMismatch)
         ));
+        let mut tenant_scoped = request.clone();
+        tenant_scoped.context.tenant_id = Some(Uuid::new_v4());
+        tenant_scoped.context.idempotency_key = Uuid::new_v4();
+        assert!(matches!(
+            service.request(tenant_scoped).await,
+            Err(ModuleArtifactNodeReconciliationError::InvalidCommand)
+        ));
         let created = service.request(request.clone()).await.expect("request");
         assert!(created.created);
+        let operation = service
+            .db
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT principal_id, trace_id, correlation_id
+                 FROM module_artifact_node_reconciliation_operations
+                 WHERE idempotency_key = ?1",
+                vec![request.context.idempotency_key.to_string().into()],
+            ))
+            .await
+            .expect("request operation query")
+            .expect("request operation");
+        let stored_actor: String = operation.try_get("", "principal_id").expect("stored actor");
+        let stored_trace: Option<String> = operation.try_get("", "trace_id").expect("stored trace");
+        let stored_correlation: Option<String> = operation
+            .try_get("", "correlation_id")
+            .expect("stored correlation");
+        assert_eq!(stored_actor, request.context.actor_id.to_string());
+        assert_eq!(
+            stored_trace.as_deref(),
+            Some(request.context.trace_id.as_str())
+        );
+        let expected_correlation = request.context.correlation_id.to_string();
+        assert_eq!(
+            stored_correlation.as_deref(),
+            Some(expected_correlation.as_str())
+        );
         let mut substituted_replay = request.clone();
         substituted_replay.topology_digest = digest('f');
+        let mut tracing_replay = request.clone();
+        tracing_replay.context.trace_id = "test:changed-trace".to_string();
         assert!(
             !service
-                .request(request)
+                .request(request.clone())
                 .await
                 .expect("request replay")
                 .created
         );
         assert!(matches!(
             service.request(substituted_replay).await,
+            Err(ModuleArtifactNodeReconciliationError::IdempotencyConflict)
+        ));
+        assert!(matches!(
+            service.request(tracing_replay).await,
             Err(ModuleArtifactNodeReconciliationError::IdempotencyConflict)
         ));
 
@@ -3173,17 +3233,33 @@ mod tests {
             Err(ModuleArtifactNodeReconciliationError::StaleReconciliation)
         ));
         let events = events.0.lock().expect("events lock");
-        assert!(events.iter().any(|event| matches!(
-            event,
+        let request_event = events
+            .iter()
+            .find(|envelope| {
+                matches!(
+                    &envelope.event,
+                    DomainEvent::ModuleArtifactNodeReconciliationRequested { .. }
+                )
+            })
+            .expect("request event");
+        assert_eq!(request_event.actor_id, Some(request.context.actor_id));
+        assert_eq!(request_event.tenant_id, Uuid::nil());
+        assert_eq!(
+            request_event.trace_id.as_deref(),
+            Some(request.context.trace_id.as_str())
+        );
+        assert_eq!(request_event.correlation_id, request.context.correlation_id);
+        assert!(events.iter().any(|envelope| matches!(
+            &envelope.event,
             DomainEvent::ModuleArtifactNodeReconciliationRequested { .. }
         )));
-        assert!(events.iter().any(|event| matches!(
-            event,
+        assert!(events.iter().any(|envelope| matches!(
+            &envelope.event,
             DomainEvent::ModuleArtifactNodeReconciliationStatusChanged { status, .. }
             if status == "converged"
         )));
-        assert!(events.iter().any(|event| matches!(
-            event,
+        assert!(events.iter().any(|envelope| matches!(
+            &envelope.event,
             DomainEvent::ModuleArtifactNodeReconciliationStatusChanged { status, .. }
             if status == "degraded"
         )));

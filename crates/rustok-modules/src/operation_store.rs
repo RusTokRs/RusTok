@@ -13,6 +13,7 @@ pub struct ModuleOperationRequest {
     pub requested_enabled: bool,
     pub previous_effective_enabled: bool,
     pub requested_by: Option<String>,
+    pub trace_id: Option<String>,
     pub correlation_id: String,
     pub idempotency_key: Option<Uuid>,
     /// Static lifecycle commands bind this precondition into the durable
@@ -45,6 +46,7 @@ pub struct ModuleOperationSnapshot {
     pub previous_effective_enabled: bool,
     pub status: ModuleOperationStatus,
     pub requested_by: Option<String>,
+    pub trace_id: Option<String>,
     pub correlation_id: Option<String>,
     pub idempotency_key: Option<Uuid>,
     pub expected_revision: Option<u64>,
@@ -307,7 +309,7 @@ impl ModuleOperationJournal {
         let id = rustok_core::generate_id();
         execute(
             db,
-            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, correlation_id, idempotency_key, expected_revision, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, NULL)",
+            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, trace_id, correlation_id, idempotency_key, expected_revision, error_message) VALUES ({1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, NULL)",
             vec![
                 id.into(),
                 request.tenant_id.into(),
@@ -316,6 +318,7 @@ impl ModuleOperationJournal {
                 request.previous_effective_enabled.into(),
                 ModuleOperationStatus::Validated.as_str().into(),
                 request.requested_by.into(),
+                request.trace_id.into(),
                 request.correlation_id.into(),
                 request.idempotency_key.into(),
                 request
@@ -798,7 +801,7 @@ fn static_lifecycle_database_error(
 
 fn operation_select_sql() -> &'static str {
     "SELECT id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, \
-     requested_by, correlation_id, idempotency_key, expected_revision, error_message, created_at FROM module_operations"
+     requested_by, trace_id, correlation_id, idempotency_key, expected_revision, error_message, created_at FROM module_operations"
 }
 
 fn replay_or_conflict(
@@ -809,6 +812,7 @@ fn replay_or_conflict(
         || existing.requested_enabled != request.requested_enabled
         || existing.previous_effective_enabled != request.previous_effective_enabled
         || existing.requested_by != request.requested_by
+        || existing.trace_id != request.trace_id
         || existing.correlation_id.as_deref() != Some(request.correlation_id.as_str())
         || existing.expected_revision != request.expected_revision
     {
@@ -839,6 +843,7 @@ fn operation_snapshot(
             ))
         })?,
         requested_by: row.try_get("", "requested_by").map_err(database_error)?,
+        trace_id: row.try_get("", "trace_id").map_err(database_error)?,
         correlation_id: row.try_get("", "correlation_id").map_err(database_error)?,
         idempotency_key: row.try_get("", "idempotency_key").map_err(database_error)?,
         expected_revision: row
@@ -1054,7 +1059,7 @@ async fn execute<C: ConnectionTrait>(
 }
 
 fn render_parameters(sql_template: &str, backend: DbBackend) -> String {
-    (1..=10).fold(sql_template.to_string(), |sql, index| {
+    (1..=11).fold(sql_template.to_string(), |sql, index| {
         let parameter = match backend {
             DbBackend::Postgres => format!("${index}"),
             _ => format!("?{index}"),

@@ -33,14 +33,18 @@ message ClaimAssignmentResponse {
 message NoAssignment {}
 
 // `actor_id` is intentionally absent: the server derives it from the verified
-// mTLS leaf certificate. `topology_json` is a strict JSON encoding of the
-// Rust-owned topology snapshot; it contains only node and installation IDs,
-// never artifact, release, capability, or secret identity.
+// mTLS leaf certificate. `trace_id` and `correlation_id` preserve the
+// operator command evidence but do not identify or authorize the caller.
+// `topology_json` is a strict JSON encoding of the Rust-owned topology
+// snapshot; it contains only node and installation IDs, never artifact,
+// release, capability, or secret identity.
 message ReconcileTopologyRequest {
   uint64 expected_reconciliation_state_revision = 1;
   string policy_revision = 2;
   string idempotency_key = 3;
   bytes topology_json = 4;
+  string trace_id = 5;
+  string correlation_id = 6;
 }
 
 message ReconcileTopologyResponse {

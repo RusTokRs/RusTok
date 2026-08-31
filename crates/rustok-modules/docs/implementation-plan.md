@@ -264,14 +264,17 @@ Important intermediate limitations that must not be mistaken for the target:
   catalog from the compile-time `rustok_core::ModuleRegistry`; host composition
   must supply durable catalog loading before artifact-only modules reach that
   adapter. A static toggle enters this writer only as a
-  `ModuleLifecycleToggleCommand` carrying authenticated tenant and actor UUIDs
-  plus a non-nil idempotency UUID; it accepts neither caller-controlled display
-  identity nor correlation. The canonical correlation derives from the
-  idempotency key, and the journal admits an exact replay before evaluating a
-  no-op so explicit intent and its committed receipt remain durable.
+  `ModuleLifecycleToggleCommand` carrying a tenant-matched
+  `ModuleCommandContext`; it accepts neither caller-controlled display identity
+  nor separate actor, trace, correlation, or idempotency fields. The journal
+  persists the context actor, trace, correlation, and idempotency evidence and
+  admits an exact replay before evaluating a no-op so explicit intent and its
+  committed receipt remain durable.
   Post-hook retry and compensation enter only as a
-  `ModuleLifecycleRecoveryCommand` carrying tenant, operation, actor, and
-  idempotency UUIDs; the owner derives persisted actor text from that UUID.
+  `ModuleLifecycleRecoveryCommand` carrying tenant, operation, and the same
+  tenant-matched context. Normalized settings use that context in the shared
+  owner-operation receipt, so a changed trace or correlation fails closed on
+  replay.
   Server lifecycle transports otherwise supply only the active distribution
   defaults. Compensation returns the exact owner-issued module identity, so the
   server cannot preflight a recovery plan to reconstruct its response.
@@ -282,7 +285,7 @@ Important intermediate limitations that must not be mistaken for the target:
   `tenant_modules` or `module_operations` server models after the command.
   The owner now applies one `module_static_tenant_lifecycle` aggregate to
   static toggles, normalized settings, post-hook retry, and compensation:
-  every command is tenant/actor/idempotency/revision bound, claims the
+  every command is tenant-matched-context/revision bound, claims the
   aggregate before work, advances its revision only in the durable state
   transaction, and releases the claim on all terminal paths. Settings complete
   an exact owner-operation receipt in that same transaction. A replay of a
@@ -467,14 +470,18 @@ accepts a principal from an RPC body. The independent
 `ModuleControlPlane::artifact_node_agent()` port rather than reconciliation
 authoring or topology access. The separate
 `rustok-artifact-node-reconciler` now composes the authenticated topology
-service: a verified operator certificate supplies the sole audit actor and
-limits every target node, while the request carries only a bounded topology,
-expected durable-state revision, canonical policy revision, and idempotency
-key. The owner validates the topology and reloads all admitted installation
+service: a verified operator certificate supplies the canonical actor and
+limits every target node, while the request carries a platform-scoped
+`ModuleCommandContext` (trace, correlation, and idempotency evidence), bounded
+topology, expected durable-state revision, and canonical policy revision. The
+owner validates the topology and reloads all admitted installation
 identity in its transaction, so operator input cannot inject release, payload,
 capability, readiness, or policy facts. Its canonical topology digest is also
 part of the owner command's idempotency identity, preventing an otherwise
-matching replay from substituting a target set. The serving runtime now places a bounded
+matching replay from substituting a target set. The durable reconciliation
+operation ledger retains trace and correlation only for operator requests;
+agent reports retain null values because their mTLS principal is their sole
+command evidence. The serving runtime now places a bounded
 digest-keyed `VerifiedArtifactNodeCache` in front of durable CAS and rehashes
 every cache hit. The separately deployed `rustok-artifact-node-agent` now
 claims only those mTLS-authenticated assignments, retrieves the exact admitted
@@ -568,10 +575,13 @@ retention-aware owner policy is the only cleanup authority. The platform
 authoring producer uses the same slot, preventing a second artifact-storage
 write path.
 Release yanking now likewise dispatches directly to the owner. The command
-carries only the authenticated principal/privilege fact; the owner locks the
-exact release, derives permission from `modules.manage`, the durable owner
-binding, or the release publisher, and returns a minimal owner-issued result
-instead of a server SeaORM release model or post-mutation reread.
+carries platform-scoped context plus authenticated principal/privilege facts;
+the owner locks the exact release, derives permission from `modules.manage`,
+the durable owner binding, or the release publisher, and returns a minimal
+owner-issued result instead of a server SeaORM release model or post-mutation
+reread. Its immutable receipt binds actor, trace, correlation, principal,
+privilege, reason, and reason code, so only the exact retry succeeds after the
+release has been yanked.
 Owner transfer follows the same rule: its command carries the authenticated
 principal/privilege fact, and the owner locks the current binding, authorizes
 `modules.manage` or the bound owner, and records the transition atomically.
@@ -2142,6 +2152,65 @@ projection cannot report the release-safety target as available before the
 corresponding runtime verification gates pass.
 
 ## Verification
+
+### 2026-08-30 registry publication command-context slice
+
+- Final registry publication now enters the owner only through
+  `ModulePublishRequestPublicationCommand` with a validated platform-scoped
+  `ModuleCommandContext`. The owner binds the structured user principal to the
+  context actor UUID and stores actor, trace, correlation, idempotency, and
+  approval facts in the immutable publication receipt. Exact replay succeeds;
+  a changed trace, correlation, actor, or approval fact fails closed.
+- The session-backed REST approval transport derives the context from verified
+  authentication, the required idempotency header, and server telemetry; it
+  does not accept actor or correlation evidence from the request payload.
+
+### 2026-08-30 registry review command-context slice
+
+- Reject, request-changes, hold, and resume now enter the owner with the same
+  validated platform-scoped `ModuleCommandContext`. Each command binds the
+  structured user principal to its context actor UUID.
+- A single immutable review-receipt ledger records the operation kind, expected
+  revision, actor, trace, correlation, idempotency, reason, reason code, and
+  committed result. Exact replay returns successfully after the request has
+  transitioned; reusing the key with a changed context or review fact fails
+  closed.
+
+### 2026-08-30 registry release-yank command-context slice
+
+- A live release yank enters the owner with a validated platform-scoped
+  `ModuleCommandContext`; its structured user principal must bind to the
+  context actor UUID.
+- The owner locks the release before checking the immutable receipt ledger and
+  records the lifecycle transition, audit event, and receipt together. The
+  receipt binds actor, trace, correlation, principal, privilege, reason, and
+  reason code; exact replay returns the committed result, while changed input
+  or a reused key fails closed.
+
+### 2026-08-30 registry owner-transfer command-context slice
+
+- Owner transfer uses the same validated platform-scoped context and immutable
+  exact-replay contract. The owner locks the slug binding and records previous
+  and new owners, actor, trace, correlation, privilege, reason, and reason
+  code in the transition transaction.
+
+### 2026-08-30 registry publish-request-create command-context slice
+
+- Publish-request creation preserves its deterministic business-command request
+  ID while storing command context separately in an immutable receipt. The
+  receipt binds idempotency, actor, trace, correlation, principal, and
+  privilege facts, preventing context-free success on a later retry.
+
+### 2026-08-30 registry publish-artifact-attach command-context slice
+
+- Artifact attach requires a validated context whose actor UUID matches the
+  structured uploader principal. The owner locks the request before checking
+  its immutable receipt ledger, then commits the status transition, audit
+  event, and receipt atomically.
+- The receipt records request revision, artifact metadata and storage result,
+  prior storage key, reupload state, actor, trace, correlation, principal, and
+  privilege facts. An exact retry returns that stored result; every changed
+  immutable fact and any pre-receipt historical attachment fail closed.
 
 ### 2026-08-20 typed static lifecycle command slice
 

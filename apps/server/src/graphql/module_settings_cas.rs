@@ -5,6 +5,7 @@ use rustok_api::{Permission, graphql::GraphQLError};
 use rustok_core::ModuleRegistry;
 
 use crate::context::{AuthContext, TenantContext};
+use crate::graphql::mutations::module_command_context;
 use crate::graphql::types::TenantModule;
 use crate::services::module_lifecycle::UpdateModuleSettingsError;
 use crate::services::module_rollout_promotion_settings::{
@@ -78,8 +79,7 @@ impl ModuleSettingsCasMutation {
             db,
             registry,
             tenant.id,
-            auth.user_id,
-            idempotency_key,
+            module_command_context(auth.user_id, Some(tenant.id), idempotency_key),
             expected_revision,
             &module_slug,
             expected_enabled,

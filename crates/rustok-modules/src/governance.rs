@@ -160,6 +160,9 @@ pub struct ModuleReleaseYankCommand {
     pub version: String,
     pub reason: String,
     pub reason_code: String,
+    /// Platform-scoped evidence for one immutable release-yank operation.
+    /// Registry releases are global aggregates, so tenant scope is absent.
+    pub context: ModuleCommandContext,
     pub actor_principal: serde_json::Value,
     /// An authenticated host fact which the owner combines with durable
     /// publisher and owner identities.
@@ -179,6 +182,7 @@ pub struct ModuleReleaseYankResult {
 pub struct ModuleOwnerTransferCommand {
     pub slug: String,
     pub new_owner_principal: serde_json::Value,
+    pub context: ModuleCommandContext,
     pub actor_principal: serde_json::Value,
     /// An authenticated host fact. The owner still reloads and locks the
     /// durable binding before it authorizes the transfer.
@@ -203,6 +207,7 @@ pub struct ModuleOwnerBindCommand {
 pub struct ModulePublishRequestRejectCommand {
     pub request_id: String,
     pub expected_revision: i64,
+    pub context: ModuleCommandContext,
     pub actor_principal: serde_json::Value,
     pub reason: String,
     pub reason_code: String,
@@ -214,6 +219,7 @@ pub struct ModulePublishRequestRejectCommand {
 pub struct ModulePublishRequestChangesCommand {
     pub request_id: String,
     pub expected_revision: i64,
+    pub context: ModuleCommandContext,
     pub actor_principal: serde_json::Value,
     pub reason: String,
     pub reason_code: String,
@@ -224,6 +230,7 @@ pub struct ModulePublishRequestChangesCommand {
 pub struct ModulePublishRequestHoldCommand {
     pub request_id: String,
     pub expected_revision: i64,
+    pub context: ModuleCommandContext,
     pub actor_principal: serde_json::Value,
     pub reason: String,
     pub reason_code: String,
@@ -233,6 +240,7 @@ pub struct ModulePublishRequestHoldCommand {
 pub struct ModulePublishRequestResumeCommand {
     pub request_id: String,
     pub expected_revision: i64,
+    pub context: ModuleCommandContext,
     pub actor_principal: serde_json::Value,
     pub reason: String,
     pub reason_code: String,
@@ -253,8 +261,9 @@ pub struct ModulePublishApprovalOverride {
 pub struct ModulePublishRequestPublicationCommand {
     pub request_id: String,
     pub expected_revision: i64,
-    /// Stable external command identity for exactly-once final publication.
-    pub idempotency_key: Uuid,
+    /// Authenticated platform-scoped command identity for exactly-once final
+    /// publication and durable audit correlation.
+    pub context: ModuleCommandContext,
     pub actor_principal: serde_json::Value,
     pub publisher_principal: serde_json::Value,
     pub allow_owner_rebind: bool,
@@ -364,6 +373,7 @@ pub struct ModuleRemoteValidationRunnerSnapshot {
 pub struct ModuleValidationJobEnqueueCommand {
     pub request_id: String,
     pub expected_revision: i64,
+    pub context: ModuleCommandContext,
     pub actor_principal: serde_json::Value,
     pub allow_rejected_retry: bool,
 }
@@ -702,6 +712,7 @@ pub struct ModulePublishRequestCreateCommand {
     pub ui_packages: serde_json::Value,
     pub name: String,
     pub description: String,
+    pub context: ModuleCommandContext,
     pub actor_principal: serde_json::Value,
     /// An authenticated host fact. The owner combines it with the durable
     /// owner binding before accepting a new request.
@@ -873,6 +884,7 @@ pub struct ModuleAlloyAuthoredStageResult {
 pub struct ModulePublishArtifactAttachCommand {
     pub request_id: String,
     pub expected_revision: i64,
+    pub context: ModuleCommandContext,
     pub actor_principal: serde_json::Value,
     /// An authenticated host fact. It narrows the owner authorization decision
     /// but never replaces owner binding or requester identity checks.
@@ -1052,7 +1064,7 @@ impl ModuleOwnerTransferCommand {
         if self.slug.trim().is_empty()
             || self.reason.trim().is_empty()
             || self.new_owner_principal.is_null()
-            || self.actor_principal.is_null()
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
             || governance_principal_user_id(&self.new_owner_principal).is_none()
         {
             return Err(ModuleGovernanceError::InvalidOwnerTransferCommand);
@@ -1085,7 +1097,7 @@ impl ModulePublishRequestRejectCommand {
             || self.request_id.len() > MAX_PUBLICATION_REQUEST_ID_BYTES
             || self.request_id.chars().any(char::is_control)
             || self.reason.trim().is_empty()
-            || self.actor_principal.is_null()
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
         {
             return Err(ModuleGovernanceError::InvalidPublishRequestRejectCommand);
         }
@@ -1105,7 +1117,7 @@ impl ModulePublishRequestChangesCommand {
         if self.request_id.trim().is_empty()
             || self.expected_revision < 1
             || self.reason.trim().is_empty()
-            || self.actor_principal.is_null()
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
         {
             return Err(ModuleGovernanceError::InvalidPublishRequestChangesCommand);
         }
@@ -1125,7 +1137,7 @@ impl ModulePublishRequestHoldCommand {
         if self.request_id.trim().is_empty()
             || self.expected_revision < 1
             || self.reason.trim().is_empty()
-            || self.actor_principal.is_null()
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
         {
             return Err(ModuleGovernanceError::InvalidPublishRequestHoldCommand);
         }
@@ -1143,7 +1155,7 @@ impl ModulePublishRequestResumeCommand {
         if self.request_id.trim().is_empty()
             || self.expected_revision < 1
             || self.reason.trim().is_empty()
-            || self.actor_principal.is_null()
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
         {
             return Err(ModuleGovernanceError::InvalidPublishRequestResumeCommand);
         }
@@ -1158,13 +1170,550 @@ impl ModulePublishRequestResumeCommand {
     }
 }
 
+fn valid_command_context_actor(
+    context: &ModuleCommandContext,
+    actor_principal: &serde_json::Value,
+) -> bool {
+    context.validate().is_ok()
+        && matches!(governance_principal_user_id(actor_principal), Some(id) if id == context.actor_id.to_string())
+}
+
+fn valid_platform_registry_command_context(
+    context: &ModuleCommandContext,
+    actor_principal: &serde_json::Value,
+) -> bool {
+    context.validate().is_ok()
+        && context.tenant_id.is_none()
+        && matches!(
+            governance_principal_user_id(actor_principal),
+            Some(principal_actor_id) if principal_actor_id == context.actor_id.to_string()
+        )
+}
+
+struct ReleaseYankReceipt<'a> {
+    release_id: &'a str,
+    context: &'a ModuleCommandContext,
+    actor_principal: &'a serde_json::Value,
+    actor_can_manage_modules: bool,
+    reason: &'a str,
+    reason_code: &'a str,
+}
+
+async fn release_yank_replay(
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    receipt: &ReleaseYankReceipt<'_>,
+) -> Result<bool, ModuleGovernanceError> {
+    let mark = |n| placeholder(backend, n);
+    let existing = tx
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT CAST(actor_id AS TEXT) AS actor_id, trace_id, \
+                 CAST(correlation_id AS TEXT) AS correlation_id, \
+                 CAST(actor_principal AS TEXT) AS actor_principal, actor_can_manage_modules, \
+                 reason, reason_code FROM registry_release_yank_operations \
+                 WHERE release_id = {} AND idempotency_key = {}",
+                mark(1),
+                mark(2),
+            ),
+            vec![
+                receipt.release_id.to_string().into(),
+                registry_uuid_value(receipt.context.idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+    let Some(existing) = existing else {
+        return Ok(false);
+    };
+    let stored_actor: serde_json::Value = serde_json::from_str(
+        &existing
+            .try_get::<String>("", "actor_principal")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
+    if existing
+        .try_get::<String>("", "actor_id")
+        .map_err(store_error)?
+        != receipt.context.actor_id.to_string()
+        || existing
+            .try_get::<String>("", "trace_id")
+            .map_err(store_error)?
+            != receipt.context.trace_id
+        || existing
+            .try_get::<String>("", "correlation_id")
+            .map_err(store_error)?
+            != receipt.context.correlation_id.to_string()
+        || stored_actor != *receipt.actor_principal
+        || existing
+            .try_get::<bool>("", "actor_can_manage_modules")
+            .map_err(store_error)?
+            != receipt.actor_can_manage_modules
+        || existing
+            .try_get::<String>("", "reason")
+            .map_err(store_error)?
+            != receipt.reason
+        || existing
+            .try_get::<String>("", "reason_code")
+            .map_err(store_error)?
+            != receipt.reason_code
+    {
+        return Err(ModuleGovernanceError::ReleaseYankIdempotencyConflict);
+    }
+    Ok(true)
+}
+
+async fn record_release_yank_receipt(
+    infrastructure: &ControlPlaneInfrastructure,
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    now: &str,
+    receipt: &ReleaseYankReceipt<'_>,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = |n| placeholder(backend, n);
+    tx.execute(Statement::from_sql_and_values(
+        backend,
+        format!(
+            "INSERT INTO registry_release_yank_operations \
+             (operation_id, release_id, idempotency_key, actor_id, trace_id, correlation_id, \
+              actor_principal, actor_can_manage_modules, reason, reason_code, resulting_status, \
+              committed_at) \
+             VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'yanked', {now})",
+            mark(1),
+            mark(2),
+            mark(3),
+            mark(4),
+            mark(5),
+            mark(6),
+            mark(7),
+            mark(8),
+            mark(9),
+            mark(10),
+        ),
+        vec![
+            registry_uuid_value(infrastructure.new_id(), backend),
+            receipt.release_id.to_string().into(),
+            registry_uuid_value(receipt.context.idempotency_key, backend),
+            registry_uuid_value(receipt.context.actor_id, backend),
+            receipt.context.trace_id.clone().into(),
+            registry_uuid_value(receipt.context.correlation_id, backend),
+            Value::Json(Some(Box::new(receipt.actor_principal.clone()))),
+            receipt.actor_can_manage_modules.into(),
+            receipt.reason.to_string().into(),
+            receipt.reason_code.to_string().into(),
+        ],
+    ))
+    .await
+    .map_err(store_error)?;
+    Ok(())
+}
+
+struct OwnerTransferReceipt<'a> {
+    slug: &'a str,
+    context: &'a ModuleCommandContext,
+    previous_owner_principal: &'a serde_json::Value,
+    new_owner_principal: &'a serde_json::Value,
+    actor_principal: &'a serde_json::Value,
+    actor_can_manage_modules: bool,
+    reason: &'a str,
+    reason_code: &'a str,
+}
+
+async fn owner_transfer_replay(
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    receipt: &OwnerTransferReceipt<'_>,
+) -> Result<bool, ModuleGovernanceError> {
+    let mark = |n| placeholder(backend, n);
+    let existing = tx.query_one(Statement::from_sql_and_values(
+        backend,
+        format!("SELECT CAST(actor_id AS TEXT) AS actor_id, trace_id, CAST(correlation_id AS TEXT) AS correlation_id, CAST(previous_owner_principal AS TEXT) AS previous_owner_principal, CAST(new_owner_principal AS TEXT) AS new_owner_principal, CAST(actor_principal AS TEXT) AS actor_principal, actor_can_manage_modules, reason, reason_code FROM registry_owner_transfer_operations WHERE slug = {} AND idempotency_key = {}", mark(1), mark(2)),
+        vec![receipt.slug.to_string().into(), registry_uuid_value(receipt.context.idempotency_key, backend)],
+    )).await.map_err(store_error)?;
+    let Some(existing) = existing else {
+        return Ok(false);
+    };
+    let json = |name| -> Result<serde_json::Value, ModuleGovernanceError> {
+        serde_json::from_str(&existing.try_get::<String>("", name).map_err(store_error)?)
+            .map_err(store_error)
+    };
+    if existing
+        .try_get::<String>("", "actor_id")
+        .map_err(store_error)?
+        != receipt.context.actor_id.to_string()
+        || existing
+            .try_get::<String>("", "trace_id")
+            .map_err(store_error)?
+            != receipt.context.trace_id
+        || existing
+            .try_get::<String>("", "correlation_id")
+            .map_err(store_error)?
+            != receipt.context.correlation_id.to_string()
+        || json("new_owner_principal")? != *receipt.new_owner_principal
+        || json("actor_principal")? != *receipt.actor_principal
+        || existing
+            .try_get::<bool>("", "actor_can_manage_modules")
+            .map_err(store_error)?
+            != receipt.actor_can_manage_modules
+        || existing
+            .try_get::<String>("", "reason")
+            .map_err(store_error)?
+            != receipt.reason
+        || existing
+            .try_get::<String>("", "reason_code")
+            .map_err(store_error)?
+            != receipt.reason_code
+    {
+        return Err(ModuleGovernanceError::OwnerTransferIdempotencyConflict);
+    }
+    Ok(true)
+}
+
+async fn record_owner_transfer_receipt(
+    infrastructure: &ControlPlaneInfrastructure,
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    now: &str,
+    receipt: &OwnerTransferReceipt<'_>,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = |n| placeholder(backend, n);
+    tx.execute(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_owner_transfer_operations (operation_id, slug, idempotency_key, actor_id, trace_id, correlation_id, previous_owner_principal, new_owner_principal, actor_principal, actor_can_manage_modules, reason, reason_code, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12)), vec![registry_uuid_value(infrastructure.new_id(), backend), receipt.slug.to_string().into(), registry_uuid_value(receipt.context.idempotency_key, backend), registry_uuid_value(receipt.context.actor_id, backend), receipt.context.trace_id.clone().into(), registry_uuid_value(receipt.context.correlation_id, backend), Value::Json(Some(Box::new(receipt.previous_owner_principal.clone()))), Value::Json(Some(Box::new(receipt.new_owner_principal.clone()))), Value::Json(Some(Box::new(receipt.actor_principal.clone()))), receipt.actor_can_manage_modules.into(), receipt.reason.to_string().into(), receipt.reason_code.to_string().into()])).await.map_err(store_error)?;
+    Ok(())
+}
+
+struct PublishArtifactReceipt<'a> {
+    command: &'a ModulePublishArtifactAttachCommand,
+}
+
+async fn publish_artifact_replay(
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    receipt: &PublishArtifactReceipt<'_>,
+) -> Result<Option<ModulePublishArtifactAttachResult>, ModuleGovernanceError> {
+    let mark = |n| placeholder(backend, n);
+    let existing = tx
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT expected_revision, CAST(actor_id AS TEXT) AS actor_id, trace_id, \
+                 CAST(correlation_id AS TEXT) AS correlation_id, \
+                 CAST(actor_principal AS TEXT) AS actor_principal, actor_can_manage_modules, \
+                 checksum_sha256, artifact_size, content_type, artifact_storage_key, \
+                 previous_storage_key, reuploaded_after_changes_requested \
+                 FROM registry_publish_artifact_operations \
+                 WHERE request_id = {} AND idempotency_key = {}",
+                mark(1),
+                mark(2),
+            ),
+            vec![
+                receipt.command.request_id.clone().into(),
+                registry_uuid_value(receipt.command.context.idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+    let Some(existing) = existing else {
+        return Ok(None);
+    };
+    let stored_actor: serde_json::Value = serde_json::from_str(
+        &existing
+            .try_get::<String>("", "actor_principal")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
+    if existing
+        .try_get::<i64>("", "expected_revision")
+        .map_err(store_error)?
+        != receipt.command.expected_revision
+        || existing
+            .try_get::<String>("", "actor_id")
+            .map_err(store_error)?
+            != receipt.command.context.actor_id.to_string()
+        || existing
+            .try_get::<String>("", "trace_id")
+            .map_err(store_error)?
+            != receipt.command.context.trace_id
+        || existing
+            .try_get::<String>("", "correlation_id")
+            .map_err(store_error)?
+            != receipt.command.context.correlation_id.to_string()
+        || stored_actor != receipt.command.actor_principal
+        || existing
+            .try_get::<bool>("", "actor_can_manage_modules")
+            .map_err(store_error)?
+            != receipt.command.actor_can_manage_modules
+        || existing
+            .try_get::<String>("", "checksum_sha256")
+            .map_err(store_error)?
+            != receipt.command.checksum_sha256
+        || existing
+            .try_get::<i64>("", "artifact_size")
+            .map_err(store_error)?
+            != receipt.command.artifact_size
+        || existing
+            .try_get::<String>("", "content_type")
+            .map_err(store_error)?
+            != receipt.command.content_type
+    {
+        return Err(ModuleGovernanceError::PublishRequestArtifactIdempotencyConflict);
+    }
+    Ok(Some(ModulePublishArtifactAttachResult {
+        request_id: receipt.command.request_id.clone(),
+        artifact_storage_key: existing
+            .try_get("", "artifact_storage_key")
+            .map_err(store_error)?,
+        previous_storage_key: existing
+            .try_get("", "previous_storage_key")
+            .map_err(store_error)?,
+        reuploaded_after_changes_requested: existing
+            .try_get("", "reuploaded_after_changes_requested")
+            .map_err(store_error)?,
+    }))
+}
+
+async fn record_publish_artifact_receipt(
+    infrastructure: &ControlPlaneInfrastructure,
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    now: &str,
+    receipt: &PublishArtifactReceipt<'_>,
+    result: &ModulePublishArtifactAttachResult,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = |n| placeholder(backend, n);
+    let command = receipt.command;
+    tx.execute(Statement::from_sql_and_values(
+        backend,
+        format!(
+            "INSERT INTO registry_publish_artifact_operations \
+             (operation_id, request_id, idempotency_key, expected_revision, actor_id, trace_id, \
+              correlation_id, actor_principal, actor_can_manage_modules, checksum_sha256, \
+              artifact_size, content_type, artifact_storage_key, previous_storage_key, \
+              reuploaded_after_changes_requested, committed_at) \
+             VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now})",
+            mark(1),
+            mark(2),
+            mark(3),
+            mark(4),
+            mark(5),
+            mark(6),
+            mark(7),
+            mark(8),
+            mark(9),
+            mark(10),
+            mark(11),
+            mark(12),
+            mark(13),
+            mark(14),
+            mark(15),
+        ),
+        vec![
+            registry_uuid_value(infrastructure.new_id(), backend),
+            command.request_id.clone().into(),
+            registry_uuid_value(command.context.idempotency_key, backend),
+            command.expected_revision.into(),
+            registry_uuid_value(command.context.actor_id, backend),
+            command.context.trace_id.clone().into(),
+            registry_uuid_value(command.context.correlation_id, backend),
+            Value::Json(Some(Box::new(command.actor_principal.clone()))),
+            command.actor_can_manage_modules.into(),
+            command.checksum_sha256.clone().into(),
+            command.artifact_size.into(),
+            command.content_type.clone().into(),
+            result.artifact_storage_key.clone().into(),
+            result.previous_storage_key.clone().into(),
+            result.reuploaded_after_changes_requested.into(),
+        ],
+    ))
+    .await
+    .map_err(store_error)?;
+    Ok(())
+}
+
+struct PublishRequestReviewReceipt<'a> {
+    operation_kind: &'static str,
+    request_id: &'a str,
+    expected_revision: i64,
+    context: &'a ModuleCommandContext,
+    actor_principal: &'a serde_json::Value,
+    reason: &'a str,
+    reason_code: &'a str,
+}
+
+async fn lock_publish_request_review(
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    request_id: &str,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = if backend == DbBackend::Postgres {
+        "$1"
+    } else {
+        "?1"
+    };
+    let request_lock = if backend == DbBackend::Postgres {
+        " FOR UPDATE"
+    } else {
+        ""
+    };
+    tx.query_one(Statement::from_sql_and_values(
+        backend,
+        format!("SELECT id FROM registry_publish_requests WHERE id = {mark}{request_lock}"),
+        vec![request_id.to_string().into()],
+    ))
+    .await
+    .map_err(store_error)?
+    .ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+    Ok(())
+}
+
+async fn publish_request_review_replay(
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    receipt: &PublishRequestReviewReceipt<'_>,
+) -> Result<bool, ModuleGovernanceError> {
+    let mark = |n| {
+        if backend == DbBackend::Postgres {
+            format!("${n}")
+        } else {
+            format!("?{n}")
+        }
+    };
+    let existing = tx
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            format!(
+                "SELECT operation_kind, expected_revision, CAST(actor_id AS TEXT) AS actor_id, \
+                 trace_id, CAST(correlation_id AS TEXT) AS correlation_id, \
+                 CAST(actor_principal AS TEXT) AS actor_principal, reason, reason_code \
+                 FROM registry_publish_request_review_operations \
+                 WHERE request_id = {} AND idempotency_key = {}",
+                mark(1),
+                mark(2),
+            ),
+            vec![
+                receipt.request_id.to_string().into(),
+                registry_uuid_value(receipt.context.idempotency_key, backend),
+            ],
+        ))
+        .await
+        .map_err(store_error)?;
+    let Some(existing) = existing else {
+        return Ok(false);
+    };
+    let stored_actor: serde_json::Value = serde_json::from_str(
+        &existing
+            .try_get::<String>("", "actor_principal")
+            .map_err(store_error)?,
+    )
+    .map_err(store_error)?;
+    if existing
+        .try_get::<String>("", "operation_kind")
+        .map_err(store_error)?
+        != receipt.operation_kind
+        || existing
+            .try_get::<i64>("", "expected_revision")
+            .map_err(store_error)?
+            != receipt.expected_revision
+        || existing
+            .try_get::<String>("", "actor_id")
+            .map_err(store_error)?
+            != receipt.context.actor_id.to_string()
+        || existing
+            .try_get::<String>("", "trace_id")
+            .map_err(store_error)?
+            != receipt.context.trace_id
+        || existing
+            .try_get::<String>("", "correlation_id")
+            .map_err(store_error)?
+            != receipt.context.correlation_id.to_string()
+        || stored_actor != *receipt.actor_principal
+        || existing
+            .try_get::<String>("", "reason")
+            .map_err(store_error)?
+            != receipt.reason
+        || existing
+            .try_get::<String>("", "reason_code")
+            .map_err(store_error)?
+            != receipt.reason_code
+    {
+        return Err(ModuleGovernanceError::PublishRequestReviewIdempotencyConflict);
+    }
+    Ok(true)
+}
+
+async fn record_publish_request_review_receipt(
+    infrastructure: &ControlPlaneInfrastructure,
+    tx: &DatabaseTransaction,
+    backend: DbBackend,
+    now: &str,
+    receipt: &PublishRequestReviewReceipt<'_>,
+    resulting_status: &str,
+    resulting_revision: i64,
+) -> Result<(), ModuleGovernanceError> {
+    let mark = |n| {
+        if backend == DbBackend::Postgres {
+            format!("${n}")
+        } else {
+            format!("?{n}")
+        }
+    };
+    tx.execute(Statement::from_sql_and_values(
+        backend,
+        format!(
+            "INSERT INTO registry_publish_request_review_operations \
+             (operation_id, request_id, operation_kind, idempotency_key, expected_revision, actor_id, \
+              trace_id, correlation_id, actor_principal, reason, reason_code, resulting_status, \
+              resulting_revision, committed_at) \
+             VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now})",
+            mark(1),
+            mark(2),
+            mark(3),
+            mark(4),
+            mark(5),
+            mark(6),
+            mark(7),
+            mark(8),
+            mark(9),
+            mark(10),
+            mark(11),
+            mark(12),
+            mark(13),
+        ),
+        vec![
+            registry_uuid_value(infrastructure.new_id(), backend),
+            receipt.request_id.to_string().into(),
+            receipt.operation_kind.into(),
+            registry_uuid_value(receipt.context.idempotency_key, backend),
+            receipt.expected_revision.into(),
+            registry_uuid_value(receipt.context.actor_id, backend),
+            receipt.context.trace_id.clone().into(),
+            registry_uuid_value(receipt.context.correlation_id, backend),
+            Value::Json(Some(Box::new(receipt.actor_principal.clone()))),
+            receipt.reason.to_string().into(),
+            receipt.reason_code.to_string().into(),
+            resulting_status.to_string().into(),
+            resulting_revision.into(),
+        ],
+    ))
+    .await
+    .map_err(store_error)?;
+    Ok(())
+}
+
 impl ModulePublishRequestPublicationCommand {
     pub fn validate(&self) -> Result<(), ModuleGovernanceError> {
+        let actor_id = self.context.actor_id.to_string();
         if self.request_id.trim().is_empty()
             || self.expected_revision < 1
-            || self.idempotency_key.is_nil()
             || !self.actor_principal.is_object()
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
             || !self.publisher_principal.is_object()
+            || self.context.validate().is_err()
+            || self.context.tenant_id.is_some()
+            || !matches!(
+                governance_principal_user_id(&self.actor_principal),
+                Some(principal_actor_id) if principal_actor_id == actor_id.as_str()
+            )
         {
             return Err(ModuleGovernanceError::InvalidPublishRequestPublicationCommand);
         }
@@ -1523,7 +2072,7 @@ impl ModulePublishArtifactAttachCommand {
             || !is_sha256_hex(&self.checksum_sha256)
             || self.artifact_size < 0
             || self.content_type.trim().is_empty()
-            || !self.actor_principal.is_object()
+            || !valid_command_context_actor(&self.context, &self.actor_principal)
         {
             return Err(ModuleGovernanceError::InvalidPublishArtifactAttachCommand);
         }
@@ -2322,6 +2871,9 @@ impl SeaOrmModuleGovernanceService {
         command: ModulePublishRequestCreateCommand,
     ) -> Result<String, ModuleGovernanceError> {
         let warnings = command.validation_warnings()?;
+        if !valid_command_context_actor(&command.context, &command.actor_principal) {
+            return Err(ModuleGovernanceError::InvalidPublishRequestCreateCommand);
+        }
         let (request_id, command_digest) = publish_request_create_identity(&command)?;
         let marketplace_content =
             ModuleMarketplaceContentProjection::try_new(&command.name, &command.description)
@@ -2348,30 +2900,63 @@ impl SeaOrmModuleGovernanceService {
             .query_one(Statement::from_sql_and_values(
                 backend,
                 format!(
-                    "SELECT CAST(details AS TEXT) AS details FROM registry_governance_events \
-                     WHERE request_id = {} AND event_type = 'request_created' LIMIT 1",
-                    mark(1),
+                    "SELECT command_digest, CAST(actor_id AS TEXT) AS actor_id, trace_id, \
+                     CAST(correlation_id AS TEXT) AS correlation_id, CAST(actor_principal AS TEXT) AS actor_principal, \
+                     actor_can_manage_modules FROM registry_publish_request_create_operations \
+                     WHERE request_id = {} AND idempotency_key = {}",
+                    mark(1), mark(2),
                 ),
-                vec![request_id.clone().into()],
+                vec![request_id.clone().into(), registry_uuid_value(command.context.idempotency_key, backend)],
             ))
             .await
             .map_err(store_error)?;
         if let Some(existing) = existing {
-            let details: serde_json::Value = serde_json::from_str(
+            let actor: serde_json::Value = serde_json::from_str(
                 &existing
-                    .try_get::<String>("", "details")
+                    .try_get::<String>("", "actor_principal")
                     .map_err(store_error)?,
             )
             .map_err(store_error)?;
-            if details
-                .get("command_digest")
-                .and_then(serde_json::Value::as_str)
-                != Some(command_digest.as_str())
+            if existing
+                .try_get::<String>("", "command_digest")
+                .map_err(store_error)?
+                != command_digest
+                || existing
+                    .try_get::<String>("", "actor_id")
+                    .map_err(store_error)?
+                    != command.context.actor_id.to_string()
+                || existing
+                    .try_get::<String>("", "trace_id")
+                    .map_err(store_error)?
+                    != command.context.trace_id
+                || existing
+                    .try_get::<String>("", "correlation_id")
+                    .map_err(store_error)?
+                    != command.context.correlation_id.to_string()
+                || actor != command.actor_principal
+                || existing
+                    .try_get::<bool>("", "actor_can_manage_modules")
+                    .map_err(store_error)?
+                    != command.actor_can_manage_modules
             {
                 return Err(ModuleGovernanceError::PublishRequestCreationConflict);
             }
             tx.commit().await.map_err(store_error)?;
             return Ok(request_id);
+        }
+        let already_created = tx
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT id FROM registry_publish_requests WHERE id = {}",
+                    mark(1)
+                ),
+                vec![request_id.clone().into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        if already_created.is_some() {
+            return Err(ModuleGovernanceError::PublishRequestCreationConflict);
         }
         let active_release = tx
             .query_one(Statement::from_sql_and_values(
@@ -2395,6 +2980,11 @@ impl SeaOrmModuleGovernanceService {
             backend,
             format!("INSERT INTO registry_publish_requests (id, slug, version, crate_name, default_locale, ownership, trust_level, license, entry_type, artifact_origin, marketplace, ui_packages, status, requested_by_principal, publisher_principal, approved_by_principal, rejected_by_principal, rejection_reason, changes_requested_by_principal, changes_requested_reason, changes_requested_reason_code, changes_requested_at, held_by_principal, held_reason, held_reason_code, held_at, held_from_status, validation_warnings, validation_errors, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, submitted_at, validated_at, approved_at, published_at, created_at, updated_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 'draft', {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {}, {}, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, {now}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9), mark(10), mark(11), mark(12), mark(13), mark(14), mark(15), mark(16)),
             vec![request_id.clone().into(), command.slug.clone().into(), command.version.clone().into(), command.crate_name.into(), default_locale.clone().into(), command.ownership.into(), command.trust_level.into(), command.license.into(), command.entry_type.into(), command.artifact_origin.as_str().into(), Value::Json(Some(Box::new(command.marketplace))), Value::Json(Some(Box::new(command.ui_packages))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(serde_json::json!(warnings.clone())))), Value::Json(Some(Box::new(serde_json::json!([]))))],
+        )).await.map_err(store_error)?;
+        tx.execute(Statement::from_sql_and_values(
+            backend,
+            format!("INSERT INTO registry_publish_request_create_operations (operation_id, request_id, idempotency_key, command_digest, actor_id, trace_id, correlation_id, actor_principal, actor_can_manage_modules, committed_at) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6), mark(7), mark(8), mark(9)),
+            vec![registry_uuid_value(self.infrastructure.new_id(), backend), request_id.clone().into(), registry_uuid_value(command.context.idempotency_key, backend), command_digest.clone().into(), registry_uuid_value(command.context.actor_id, backend), command.context.trace_id.clone().into(), registry_uuid_value(command.context.correlation_id, backend), Value::Json(Some(Box::new(command.actor_principal.clone()))), command.actor_can_manage_modules.into()],
         )).await.map_err(store_error)?;
         tx.execute(Statement::from_sql_and_values(
             backend,
@@ -2430,11 +3020,21 @@ impl SeaOrmModuleGovernanceService {
         let backend = tx.get_database_backend();
         let mark = |n| placeholder(backend, n);
         let now = database_now(backend);
+        let request_lock = if backend == DbBackend::Postgres {
+            " FOR UPDATE"
+        } else {
+            ""
+        };
+        let receipt = PublishArtifactReceipt { command: &command };
         let request = tx.query_one(Statement::from_sql_and_values(
             backend,
-            format!("SELECT slug, version, revision, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, CAST(validation_warnings AS TEXT) AS validation_warnings, CAST(requested_by_principal AS TEXT) AS requested_by_principal FROM registry_publish_requests WHERE id = {}", mark(1)),
+            format!("SELECT slug, version, revision, status, artifact_storage_key, artifact_checksum_sha256, artifact_size, artifact_content_type, CAST(validation_warnings AS TEXT) AS validation_warnings, CAST(requested_by_principal AS TEXT) AS requested_by_principal FROM registry_publish_requests WHERE id = {}{request_lock}", mark(1)),
             vec![command.request_id.clone().into()],
         )).await.map_err(store_error)?.ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
+        if let Some(result) = publish_artifact_replay(&tx, backend, &receipt).await? {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(result);
+        }
         let status: String = request.try_get("", "status").map_err(store_error)?;
         let reuploaded = status == "changes_requested";
         let existing_storage_key: Option<String> = request
@@ -2459,13 +3059,7 @@ impl SeaOrmModuleGovernanceService {
                 .as_deref()
                 == Some(command.content_type.as_str())
         {
-            tx.commit().await.map_err(store_error)?;
-            return Ok(ModulePublishArtifactAttachResult {
-                request_id: command.request_id,
-                artifact_storage_key,
-                previous_storage_key: existing_storage_key,
-                reuploaded_after_changes_requested: false,
-            });
+            return Err(ModuleGovernanceError::PublishRequestArtifactReplayConflict);
         }
         if status != "draft" && !reuploaded {
             return Err(ModuleGovernanceError::PublishRequestCannotAttachArtifact(
@@ -2552,13 +3146,23 @@ impl SeaOrmModuleGovernanceService {
             }
             tx.execute(Statement::from_sql_and_values(backend, format!("INSERT INTO registry_governance_events (id, slug, request_id, release_id, event_type, actor_principal, publisher_principal, details, created_at) VALUES ({}, {}, {}, NULL, {}, {}, NULL, {}, {now})", mark(1), mark(2), mark(3), mark(4), mark(5), mark(6)), vec![self.infrastructure.prefixed_id("rge").into(), slug.clone().into(), command.request_id.clone().into(), event_type.into(), Value::Json(Some(Box::new(command.actor_principal.clone()))), Value::Json(Some(Box::new(details)))] )).await.map_err(store_error)?;
         }
-        tx.commit().await.map_err(store_error)?;
-        Ok(ModulePublishArtifactAttachResult {
-            request_id: command.request_id,
+        let result = ModulePublishArtifactAttachResult {
+            request_id: command.request_id.clone(),
             artifact_storage_key,
             previous_storage_key,
             reuploaded_after_changes_requested: reuploaded,
-        })
+        };
+        record_publish_artifact_receipt(
+            &self.infrastructure,
+            &tx,
+            backend,
+            &now,
+            &receipt,
+            &result,
+        )
+        .await?;
+        tx.commit().await.map_err(store_error)?;
+        Ok(result)
     }
 
     /// Stages one immutable completed platform build for a submitted registry
@@ -4036,6 +4640,21 @@ impl SeaOrmModuleGovernanceService {
         let request_id: Option<String> = optional_column(&release, "request_id")?;
         let status: String = required_column(&release, "status")?;
         let publisher = required_json_text(&release, "publisher_principal")?;
+        let receipt = ReleaseYankReceipt {
+            release_id: &release_id,
+            context: &command.context,
+            actor_principal: &command.actor_principal,
+            actor_can_manage_modules: command.actor_can_manage_modules,
+            reason: &command.reason,
+            reason_code: &command.reason_code,
+        };
+        if release_yank_replay(&tx, backend, &receipt).await? {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(ModuleReleaseYankResult {
+                request_id,
+                status: "yanked".to_string(),
+            });
+        }
         let owner_principal = if command.actor_can_manage_modules {
             None
         } else {
@@ -4050,8 +4669,7 @@ impl SeaOrmModuleGovernanceService {
             return Err(ModuleGovernanceError::ReleaseYankUnauthorized);
         }
         if status == "yanked" {
-            tx.commit().await.map_err(store_error)?;
-            return Ok(ModuleReleaseYankResult { request_id, status });
+            return Err(ModuleGovernanceError::ReleaseCannotBeYanked(status));
         }
         if status != "active" {
             return Err(ModuleGovernanceError::ReleaseCannotBeYanked(status));
@@ -4094,21 +4712,22 @@ impl SeaOrmModuleGovernanceService {
             ),
             vec![
                 self.infrastructure.prefixed_id("rge").into(),
-                command.slug.into(),
+                command.slug.clone().into(),
                 request_id.clone().into(),
-                release_id.into(),
-                Value::Json(Some(Box::new(command.actor_principal))),
+                release_id.clone().into(),
+                Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 Value::Json(Some(Box::new(publisher))),
                 Value::Json(Some(Box::new(serde_json::json!({
-                    "version": command.version,
+                    "version": command.version.clone(),
                     "status": "yanked",
-                    "reason_code": command.reason_code,
-                    "reason": command.reason,
+                    "reason_code": command.reason_code.clone(),
+                    "reason": command.reason.clone(),
                 })))),
             ],
         ))
         .await
         .map_err(store_error)?;
+        record_release_yank_receipt(&self.infrastructure, &tx, backend, now, &receipt).await?;
         tx.commit().await.map_err(store_error)?;
         Ok(ModuleReleaseYankResult {
             request_id,
@@ -4144,6 +4763,20 @@ impl SeaOrmModuleGovernanceService {
         let previous_owner = governance_owner_principal_for_slug(&tx, backend, &command.slug, true)
             .await?
             .ok_or(ModuleGovernanceError::OwnerBindingNotFound)?;
+        let receipt = OwnerTransferReceipt {
+            slug: &command.slug,
+            context: &command.context,
+            previous_owner_principal: &previous_owner,
+            new_owner_principal: &command.new_owner_principal,
+            actor_principal: &command.actor_principal,
+            actor_can_manage_modules: command.actor_can_manage_modules,
+            reason: &command.reason,
+            reason_code: &command.reason_code,
+        };
+        if owner_transfer_replay(&tx, backend, &receipt).await? {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(());
+        }
         if !governance_actor_can_transfer_owner(
             &previous_owner,
             &command.actor_principal,
@@ -4193,22 +4826,23 @@ impl SeaOrmModuleGovernanceService {
             ),
             vec![
                 self.infrastructure.prefixed_id("rge").into(),
-                command.slug.into(),
+                command.slug.clone().into(),
                 Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 Value::Json(Some(Box::new(command.new_owner_principal.clone()))),
                 Value::Json(Some(Box::new(serde_json::json!({
                     "owner_transition": {
-                        "previous_owner": previous_owner,
-                        "new_owner": command.new_owner_principal,
-                        "bound_by": command.actor_principal,
+                        "previous_owner": previous_owner.clone(),
+                        "new_owner": command.new_owner_principal.clone(),
+                        "bound_by": command.actor_principal.clone(),
                     },
-                    "reason": command.reason,
-                    "reason_code": command.reason_code,
+                    "reason": command.reason.clone(),
+                    "reason_code": command.reason_code.clone(),
                 })))),
             ],
         ))
         .await
         .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        record_owner_transfer_receipt(&self.infrastructure, &tx, backend, now, &receipt).await?;
         tx.commit()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -4387,6 +5021,20 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
+        let receipt = PublishRequestReviewReceipt {
+            operation_kind: "reject",
+            request_id: &command.request_id,
+            expected_revision: command.expected_revision,
+            context: &command.context,
+            actor_principal: &command.actor_principal,
+            reason: &command.reason,
+            reason_code: &command.reason_code,
+        };
+        lock_publish_request_review(&tx, backend, &command.request_id).await?;
+        if publish_request_review_replay(&tx, backend, &receipt).await? {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(());
+        }
         let request = tx
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -4498,8 +5146,8 @@ impl SeaOrmModuleGovernanceService {
             vec![
                 self.infrastructure.prefixed_id("rge").into(),
                 slug.into(),
-                command.request_id.into(),
-                Value::Json(Some(Box::new(command.actor_principal))),
+                command.request_id.clone().into(),
+                Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 Value::Json(Some(Box::new(serde_json::json!({
                     "version": version,
                     "status": "rejected",
@@ -4511,6 +5159,16 @@ impl SeaOrmModuleGovernanceService {
         ))
         .await
         .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        record_publish_request_review_receipt(
+            &self.infrastructure,
+            &tx,
+            backend,
+            now,
+            &receipt,
+            "rejected",
+            command.expected_revision + 1,
+        )
+        .await?;
         tx.commit()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -4542,6 +5200,20 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
+        let receipt = PublishRequestReviewReceipt {
+            operation_kind: "request_changes",
+            request_id: &command.request_id,
+            expected_revision: command.expected_revision,
+            context: &command.context,
+            actor_principal: &command.actor_principal,
+            reason: &command.reason,
+            reason_code: &command.reason_code,
+        };
+        lock_publish_request_review(&tx, backend, &command.request_id).await?;
+        if publish_request_review_replay(&tx, backend, &receipt).await? {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(());
+        }
         let request = tx
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -4635,8 +5307,8 @@ impl SeaOrmModuleGovernanceService {
             vec![
                 self.infrastructure.prefixed_id("rge").into(),
                 slug.into(),
-                command.request_id.into(),
-                Value::Json(Some(Box::new(command.actor_principal))),
+                command.request_id.clone().into(),
+                Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 Value::Json(publisher.map(Box::new)),
                 Value::Json(Some(Box::new(serde_json::json!({
                     "version": version,
@@ -4648,6 +5320,16 @@ impl SeaOrmModuleGovernanceService {
         ))
         .await
         .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        record_publish_request_review_receipt(
+            &self.infrastructure,
+            &tx,
+            backend,
+            now,
+            &receipt,
+            "changes_requested",
+            command.expected_revision + 1,
+        )
+        .await?;
         tx.commit()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -4679,6 +5361,20 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
+        let receipt = PublishRequestReviewReceipt {
+            operation_kind: "hold",
+            request_id: &command.request_id,
+            expected_revision: command.expected_revision,
+            context: &command.context,
+            actor_principal: &command.actor_principal,
+            reason: &command.reason,
+            reason_code: &command.reason_code,
+        };
+        lock_publish_request_review(&tx, backend, &command.request_id).await?;
+        if publish_request_review_replay(&tx, backend, &receipt).await? {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(());
+        }
         let request = tx
             .query_one(Statement::from_sql_and_values(
                 backend,
@@ -4777,8 +5473,8 @@ impl SeaOrmModuleGovernanceService {
             vec![
                 self.infrastructure.prefixed_id("rge").into(),
                 slug.into(),
-                command.request_id.into(),
-                Value::Json(Some(Box::new(command.actor_principal))),
+                command.request_id.clone().into(),
+                Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 Value::Json(publisher.map(Box::new)),
                 Value::Json(Some(Box::new(serde_json::json!({
                     "version": version,
@@ -4791,6 +5487,16 @@ impl SeaOrmModuleGovernanceService {
         ))
         .await
         .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
+        record_publish_request_review_receipt(
+            &self.infrastructure,
+            &tx,
+            backend,
+            now,
+            &receipt,
+            "on_hold",
+            command.expected_revision + 1,
+        )
+        .await?;
         tx.commit()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -4820,6 +5526,20 @@ impl SeaOrmModuleGovernanceService {
         } else {
             "datetime('now')"
         };
+        let receipt = PublishRequestReviewReceipt {
+            operation_kind: "resume",
+            request_id: &command.request_id,
+            expected_revision: command.expected_revision,
+            context: &command.context,
+            actor_principal: &command.actor_principal,
+            reason: &command.reason,
+            reason_code: &command.reason_code,
+        };
+        lock_publish_request_review(&tx, backend, &command.request_id).await?;
+        if publish_request_review_replay(&tx, backend, &receipt).await? {
+            tx.commit().await.map_err(store_error)?;
+            return Ok(());
+        }
         let request = tx.query_one(Statement::from_sql_and_values(backend, format!("SELECT slug, version, revision, status, artifact_origin, held_from_status, CAST(publisher_principal AS TEXT) AS publisher_principal FROM registry_publish_requests WHERE id = {}", mark(1)), vec![command.request_id.clone().into()])).await.map_err(|e| ModuleGovernanceError::Store(e.to_string()))?.ok_or(ModuleGovernanceError::PublishRequestNotFound)?;
         let slug: String = request
             .try_get("", "slug")
@@ -4893,6 +5613,16 @@ impl SeaOrmModuleGovernanceService {
                 .await?;
             }
         }
+        record_publish_request_review_receipt(
+            &self.infrastructure,
+            &tx,
+            backend,
+            now,
+            &receipt,
+            &resumed_status,
+            command.expected_revision + 1,
+        )
+        .await?;
         tx.commit()
             .await
             .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
@@ -6919,7 +7649,9 @@ impl SeaOrmModuleGovernanceService {
                     "SELECT CAST(actor_principal AS TEXT) AS actor_principal, \
                      CAST(publisher_principal AS TEXT) AS publisher_principal, \
                      CAST(allow_owner_rebind AS TEXT) AS allow_owner_rebind, \
-                     CAST(approval_override AS TEXT) AS approval_override, release_id \
+                     CAST(approval_override AS TEXT) AS approval_override, \
+                     CAST(actor_id AS TEXT) AS actor_id, trace_id, \
+                     CAST(correlation_id AS TEXT) AS correlation_id, release_id \
                      FROM registry_publication_operations \
                      WHERE request_id = {} AND idempotency_key = {}{request_lock}",
                     mark(1),
@@ -6927,7 +7659,7 @@ impl SeaOrmModuleGovernanceService {
                 ),
                 vec![
                     command.request_id.clone().into(),
-                    registry_uuid_value(command.idempotency_key, backend),
+                    registry_uuid_value(command.context.idempotency_key, backend),
                 ],
             ))
             .await
@@ -6954,6 +7686,15 @@ impl SeaOrmModuleGovernanceService {
             let stored_allow_owner_rebind = operation
                 .try_get::<String>("", "allow_owner_rebind")
                 .map_err(store_error)?;
+            let stored_actor_id = operation
+                .try_get::<String>("", "actor_id")
+                .map_err(store_error)?;
+            let stored_trace_id = operation
+                .try_get::<String>("", "trace_id")
+                .map_err(store_error)?;
+            let stored_correlation_id = operation
+                .try_get::<String>("", "correlation_id")
+                .map_err(store_error)?;
             let expected_allow_owner_rebind = if backend == sea_orm::DbBackend::Postgres {
                 if command.allow_owner_rebind {
                     "true"
@@ -6969,6 +7710,9 @@ impl SeaOrmModuleGovernanceService {
                 || stored_publisher != command.publisher_principal
                 || stored_allow_owner_rebind != expected_allow_owner_rebind
                 || stored_override != command_approval_override
+                || stored_actor_id != command.context.actor_id.to_string()
+                || stored_trace_id != command.context.trace_id
+                || stored_correlation_id != command.context.correlation_id.to_string()
             {
                 return Err(ModuleGovernanceError::PublicationIdempotencyConflict);
             }
@@ -7731,9 +8475,10 @@ impl SeaOrmModuleGovernanceService {
             backend,
             format!(
                 "INSERT INTO registry_publication_operations \
-                 (operation_id, request_id, idempotency_key, actor_principal, publisher_principal, \
-                  allow_owner_rebind, approval_override, release_id, committed_at) \
-                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {now})",
+                 (operation_id, request_id, idempotency_key, actor_id, trace_id, correlation_id, \
+                  actor_principal, publisher_principal, allow_owner_rebind, approval_override, \
+                  release_id, committed_at) \
+                 VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {now})",
                 mark(1),
                 mark(2),
                 mark(3),
@@ -7742,11 +8487,17 @@ impl SeaOrmModuleGovernanceService {
                 mark(6),
                 mark(7),
                 mark(8),
+                mark(9),
+                mark(10),
+                mark(11),
             ),
             vec![
                 registry_uuid_value(self.infrastructure.new_id(), backend),
                 command.request_id.clone().into(),
-                registry_uuid_value(command.idempotency_key, backend),
+                registry_uuid_value(command.context.idempotency_key, backend),
+                registry_uuid_value(command.context.actor_id, backend),
+                command.context.trace_id.clone().into(),
+                registry_uuid_value(command.context.correlation_id, backend),
                 Value::Json(Some(Box::new(command.actor_principal.clone()))),
                 Value::Json(Some(Box::new(command.publisher_principal.clone()))),
                 command.allow_owner_rebind.into(),
@@ -8103,7 +8854,7 @@ impl ModuleReleaseYankCommand {
         if self.slug.trim().is_empty()
             || self.version.trim().is_empty()
             || self.reason.trim().is_empty()
-            || self.actor_principal.is_null()
+            || !valid_platform_registry_command_context(&self.context, &self.actor_principal)
         {
             return Err(ModuleGovernanceError::InvalidYankCommand);
         }
@@ -9820,7 +10571,17 @@ fn valid_marketplace_taxonomy(value: &serde_json::Value) -> bool {
 fn publish_request_create_identity(
     command: &ModulePublishRequestCreateCommand,
 ) -> Result<(String, String), ModuleGovernanceError> {
-    let command_digest = rustok_api::manifest_hash::hash_manifest(command)
+    let mut identity = serde_json::to_value(command)
+        .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
+    identity
+        .as_object_mut()
+        .ok_or_else(|| {
+            ModuleGovernanceError::Store(
+                "publish request command must serialize as an object".to_string(),
+            )
+        })?
+        .remove("context");
+    let command_digest = rustok_api::manifest_hash::hash_manifest(&identity)
         .map_err(|error| ModuleGovernanceError::Store(error.to_string()))?;
     Ok((format!("rpr_{command_digest}"), command_digest))
 }
@@ -10786,12 +11547,16 @@ pub enum ModuleGovernanceError {
     ReleaseNotFound,
     #[error("actor is not authorized to yank this published release")]
     ReleaseYankUnauthorized,
+    #[error("registry release-yank idempotency key was reused for a different immutable command")]
+    ReleaseYankIdempotencyConflict,
     #[error("published release in status `{0}` cannot be yanked")]
     ReleaseCannotBeYanked(String),
     #[error("registry owner binding was not found")]
     OwnerBindingNotFound,
     #[error("actor is not authorized to transfer this registry owner binding")]
     OwnerTransferUnauthorized,
+    #[error("registry owner-transfer idempotency key was reused for a different immutable command")]
+    OwnerTransferIdempotencyConflict,
     #[error("registry owner is already bound to the requested principal")]
     OwnerUnchanged,
     #[error("registry owner is already bound to a different principal")]
@@ -10824,6 +11589,10 @@ pub enum ModuleGovernanceError {
     PublishedRequestMissingRelease,
     #[error("registry publication idempotency key was reused for a different immutable command")]
     PublicationIdempotencyConflict,
+    #[error(
+        "registry publish-request review idempotency key was reused for a different immutable command"
+    )]
+    PublishRequestReviewIdempotencyConflict,
     #[error("published registry request has no matching publication idempotency record")]
     PublishedRequestMissingIdempotencyRecord,
     #[error("registry publish request in status `{0}` cannot accept an artifact")]
@@ -10834,6 +11603,10 @@ pub enum ModuleGovernanceError {
         "registry publish artifact replay does not match the already attached immutable artifact"
     )]
     PublishRequestArtifactReplayConflict,
+    #[error(
+        "registry publish-artifact idempotency key was reused for a different immutable command"
+    )]
+    PublishRequestArtifactIdempotencyConflict,
     #[error("registry publish request in status `{0}` cannot accept publication evidence")]
     PublishRequestCannotRecordPublicationEvidence(String),
     #[error("registry publish request in status `{0}` cannot accept validation-stage updates")]
@@ -10976,6 +11749,8 @@ impl ModuleGovernanceError {
             | Self::RemoteValidationLeaseNotFound => ModuleGovernanceErrorCategory::NotFound,
             Self::OwnerUnchanged
             | Self::OwnerAlreadyBound
+            | Self::OwnerTransferIdempotencyConflict
+            | Self::ReleaseYankIdempotencyConflict
             | Self::ReleaseCannotBeYanked(_)
             | Self::PublishRequestCreationConflict
             | Self::PlatformPublicationEvidenceSourceUnavailable
@@ -10989,6 +11764,7 @@ impl ModuleGovernanceError {
             | Self::PublishedRequestMissingRelease
             | Self::PublishRequestCannotAttachArtifact(_)
             | Self::PublishRequestArtifactReplayConflict
+            | Self::PublishRequestArtifactIdempotencyConflict
             | Self::PublishRequestCannotRecordPublicationEvidence(_)
             | Self::PublishRequestCannotReportValidationStage(_)
             | Self::PublishRequestCannotQueueValidation(_)
@@ -11017,6 +11793,7 @@ impl ModuleGovernanceError {
             | Self::ExternalPrebuiltStageIdempotencyConflict
             | Self::AlloyAuthoredStageIdempotencyConflict
             | Self::PublicationIdempotencyConflict
+            | Self::PublishRequestReviewIdempotencyConflict
             | Self::PublishedRequestMissingIdempotencyRecord => {
                 ModuleGovernanceErrorCategory::Conflict
             }
@@ -11083,6 +11860,21 @@ mod tests {
                 "module_governance_conflict",
             ),
             (
+                ModuleGovernanceError::ReleaseYankIdempotencyConflict,
+                ModuleGovernanceErrorCategory::Conflict,
+                "module_governance_conflict",
+            ),
+            (
+                ModuleGovernanceError::PublishRequestReviewIdempotencyConflict,
+                ModuleGovernanceErrorCategory::Conflict,
+                "module_governance_conflict",
+            ),
+            (
+                ModuleGovernanceError::PublishRequestArtifactIdempotencyConflict,
+                ModuleGovernanceErrorCategory::Conflict,
+                "module_governance_conflict",
+            ),
+            (
                 ModuleGovernanceError::Store("persistence failure".to_string()),
                 ModuleGovernanceErrorCategory::Internal,
                 "module_governance_internal",
@@ -11115,6 +11907,8 @@ mod tests {
     }
 
     fn publish_request_create_command() -> ModulePublishRequestCreateCommand {
+        let actor_id = Uuid::new_v4();
+        let idempotency_key = Uuid::new_v4();
         ModulePublishRequestCreateCommand {
             slug: "sample_module".to_string(),
             version: "1.0.0".to_string(),
@@ -11129,7 +11923,14 @@ mod tests {
             ui_packages: serde_json::json!({ "admin": null, "storefront": null }),
             name: "Sample module".to_string(),
             description: "A publish request description long enough for policy.".to_string(),
-            actor_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: format!("test:request-create:{idempotency_key}"),
+                correlation_id: idempotency_key,
+                idempotency_key,
+            },
+            actor_principal: serde_json::json!({ "kind": "user", "user_id": actor_id, "subject": format!("user:{actor_id}") }),
             actor_can_manage_modules: false,
         }
     }
@@ -11901,6 +12702,11 @@ mod tests {
         let command = publish_request_create_command();
         let first = publish_request_create_identity(&command).expect("request identity");
         let repeated = publish_request_create_identity(&command).expect("repeated identity");
+        let mut context_changed = command.clone();
+        context_changed.context.trace_id = "test:request-create:other-trace".to_string();
+        context_changed.context.correlation_id = Uuid::new_v4();
+        let context_changed =
+            publish_request_create_identity(&context_changed).expect("context-free identity");
         let mut changed = command.clone();
         changed.description =
             "A different publish request description long enough for policy.".to_string();
@@ -11911,6 +12717,7 @@ mod tests {
             publish_request_create_identity(&privilege_changed).expect("privilege-bound identity");
 
         assert_eq!(first, repeated);
+        assert_eq!(first, context_changed);
         assert_eq!(first.0, format!("rpr_{}", first.1));
         assert_ne!(first, changed);
         assert_ne!(first, privilege_changed);
@@ -12180,11 +12987,12 @@ mod tests {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("database");
+        let owner_id = Uuid::new_v4();
         let owner = serde_json::json!({
             "kind": "user",
-            "user_id": "owner-1",
-            "subject": "user:owner-1",
-            "display_label": "user:owner-1"
+            "user_id": owner_id,
+            "subject": format!("user:{owner_id}"),
+            "display_label": format!("user:{owner_id}")
         })
         .to_string();
         for statement in [
@@ -12199,7 +13007,7 @@ mod tests {
                 validation_errors TEXT NOT NULL, validated_at TEXT NULL, approved_at TEXT NULL,\
                 artifact_storage_key TEXT NULL, artifact_checksum_sha256 TEXT NULL,\
                 artifact_size INTEGER NULL, artifact_content_type TEXT NULL,\
-                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, published_at TEXT NULL\
+                submitted_at TEXT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, published_at TEXT NULL\
              )",
             "CREATE TABLE registry_module_owners (\
                 slug TEXT PRIMARY KEY, owner_principal TEXT NOT NULL, bound_by_principal TEXT NOT NULL,\
@@ -12209,6 +13017,20 @@ mod tests {
                 id TEXT PRIMARY KEY, request_id TEXT NOT NULL, stage_key TEXT NOT NULL, status TEXT NOT NULL,\
                 detail TEXT NOT NULL, attempt_number INTEGER NOT NULL, updated_at TEXT NOT NULL,\
                 started_at TEXT NULL, finished_at TEXT NULL, created_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_governance_events (\
+                id TEXT PRIMARY KEY, slug TEXT NOT NULL, request_id TEXT NULL, release_id TEXT NULL,\
+                event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
+                details TEXT NOT NULL, created_at TEXT NOT NULL\
+             )",
+            "CREATE TABLE registry_publish_artifact_operations (\
+                operation_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, idempotency_key TEXT NOT NULL,\
+                expected_revision INTEGER NOT NULL, actor_id TEXT NOT NULL, trace_id TEXT NOT NULL,\
+                correlation_id TEXT NOT NULL, actor_principal TEXT NOT NULL, actor_can_manage_modules INTEGER NOT NULL,\
+                checksum_sha256 TEXT NOT NULL, artifact_size INTEGER NOT NULL, content_type TEXT NOT NULL,\
+                artifact_storage_key TEXT NOT NULL, previous_storage_key TEXT NULL,\
+                reuploaded_after_changes_requested INTEGER NOT NULL, committed_at TEXT NOT NULL,\
+                UNIQUE (request_id, idempotency_key)\
              )",
         ] {
             database
@@ -12331,7 +13153,7 @@ mod tests {
         let unrelated_actor = ModuleGovernanceActorContext {
             principal: serde_json::json!({
                 "kind": "user",
-                "user_id": "other",
+                "user_id": Uuid::new_v4(),
                 "subject": "user:other",
                 "display_label": "user:other"
             }),
@@ -12360,6 +13182,13 @@ mod tests {
         let upload = ModulePublishArtifactAttachCommand {
             request_id: "request-1".to_string(),
             expected_revision: 1,
+            context: ModuleCommandContext {
+                actor_id: owner_id,
+                tenant_id: None,
+                trace_id: "test:publish-artifact-upload".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
             actor_principal: owner_actor.principal.clone(),
             actor_can_manage_modules: false,
             checksum_sha256: checksum.clone(),
@@ -12383,6 +13212,26 @@ mod tests {
         assert_eq!(
             slot.artifact_storage_key,
             format!("registry-publish-artifact/objects/platform/sha256/aa/aa/{checksum}")
+        );
+        let attached = service
+            .attach_publish_artifact(upload.clone())
+            .await
+            .expect("attach publish artifact");
+        assert_eq!(attached.artifact_storage_key, slot.artifact_storage_key);
+        assert_eq!(attached.previous_storage_key, None);
+        assert!(!attached.reuploaded_after_changes_requested);
+        assert_eq!(
+            service
+                .attach_publish_artifact(upload.clone())
+                .await
+                .expect("exact attach replay"),
+            attached
+        );
+        let mut changed_attach_replay = upload.clone();
+        changed_attach_replay.context.trace_id = "test:changed-artifact-trace".to_string();
+        assert_eq!(
+            service.attach_publish_artifact(changed_attach_replay).await,
+            Err(ModuleGovernanceError::PublishRequestArtifactIdempotencyConflict)
         );
 
         database
@@ -12416,6 +13265,10 @@ mod tests {
         );
         let mut unauthorized = upload;
         unauthorized.actor_principal = unrelated_actor.principal;
+        unauthorized.context.actor_id = governance_principal_user_id(&unauthorized.actor_principal)
+            .expect("unrelated actor id")
+            .parse()
+            .expect("unrelated actor UUID");
         assert_eq!(
             service.prepare_publish_artifact_upload(&unauthorized).await,
             Err(ModuleGovernanceError::PublishRequestArtifactUploadUnauthorized)
@@ -13156,12 +14009,25 @@ mod tests {
 
     #[test]
     fn release_yank_contract_rejects_unrecognized_reason_codes() {
+        let actor_id = Uuid::new_v4();
+        let idempotency_key = Uuid::new_v4();
         let command = ModuleReleaseYankCommand {
             slug: "sample_module".to_string(),
             version: "1.0.0".to_string(),
             reason: "security remediation".to_string(),
             reason_code: "unrecognized".to_string(),
-            actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: format!("test:yank:{idempotency_key}"),
+                correlation_id: idempotency_key,
+                idempotency_key,
+            },
+            actor_principal: serde_json::json!({
+                "kind": "user",
+                "user_id": actor_id,
+                "subject": format!("user:{actor_id}"),
+            }),
             actor_can_manage_modules: false,
         };
         assert!(matches!(
@@ -13172,11 +14038,23 @@ mod tests {
 
     #[test]
     fn publication_contract_requires_structured_principals_and_reviewed_override() {
+        let actor_id = Uuid::new_v4();
+        let idempotency_key = Uuid::new_v4();
         let command = ModulePublishRequestPublicationCommand {
             request_id: "request-1".to_string(),
             expected_revision: 1,
-            idempotency_key: Uuid::new_v4(),
-            actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: format!("test:publication:{idempotency_key}"),
+                correlation_id: idempotency_key,
+                idempotency_key,
+            },
+            actor_principal: serde_json::json!({
+                "kind": "user",
+                "user_id": actor_id,
+                "subject": format!("user:{actor_id}"),
+            }),
             publisher_principal: serde_json::json!("publisher"),
             allow_owner_rebind: false,
             approval_override: Some(ModulePublishApprovalOverride {
@@ -13193,6 +14071,7 @@ mod tests {
 
     #[test]
     fn external_evidence_cannot_claim_marketplace_approval_or_noncanonical_subjects() {
+        let actor_id = Uuid::new_v4();
         let marketplace = ModulePublicationEvidenceCommand {
             request_id: "request-1".to_string(),
             expected_revision: 1,
@@ -13223,7 +14102,14 @@ mod tests {
             ModulePublishArtifactAttachCommand {
                 request_id: "request-1".to_string(),
                 expected_revision: 1,
-                actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+                context: ModuleCommandContext {
+                    actor_id,
+                    tenant_id: None,
+                    trace_id: "test:invalid-publish-artifact".to_string(),
+                    correlation_id: Uuid::new_v4(),
+                    idempotency_key: Uuid::new_v4(),
+                },
+                actor_principal: serde_json::json!({ "kind": "user", "id": actor_id }),
                 actor_can_manage_modules: false,
                 checksum_sha256: "SHA256:ABC".to_string(),
                 artifact_size: 1,
@@ -13977,6 +14863,14 @@ mod tests {
                 event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
                 details TEXT NOT NULL, created_at TEXT NOT NULL\
              )",
+            "CREATE TABLE registry_release_yank_operations (\
+                operation_id TEXT PRIMARY KEY NOT NULL, release_id TEXT NOT NULL,\
+                idempotency_key TEXT NOT NULL, actor_id TEXT NOT NULL, trace_id TEXT NOT NULL,\
+                correlation_id TEXT NOT NULL, actor_principal TEXT NOT NULL,\
+                actor_can_manage_modules INTEGER NOT NULL, reason TEXT NOT NULL,\
+                reason_code TEXT NOT NULL, resulting_status TEXT NOT NULL,\
+                committed_at TEXT NOT NULL, UNIQUE (release_id, idempotency_key)\
+             )",
             "INSERT INTO registry_module_releases (\
                 id, request_id, slug, version, publisher_principal, status, artifact_storage_key,\
                 checksum_sha256, artifact_size, updated_at\
@@ -13993,17 +14887,42 @@ mod tests {
                 .await
                 .expect("schema or fixture");
         }
-        SeaOrmModuleGovernanceService::new(database.clone())
-            .yank_release(ModuleReleaseYankCommand {
-                slug: "sample_module".to_string(),
-                version: "1.0.0".to_string(),
-                reason: "critical regression".to_string(),
-                reason_code: "critical_regression".to_string(),
-                actor_principal: serde_json::json!({ "subject": "operator" }),
-                actor_can_manage_modules: true,
-            })
+        let actor_id = Uuid::new_v4();
+        let idempotency_key = Uuid::new_v4();
+        let command = ModuleReleaseYankCommand {
+            slug: "sample_module".to_string(),
+            version: "1.0.0".to_string(),
+            reason: "critical regression".to_string(),
+            reason_code: "critical_regression".to_string(),
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: format!("test:yank:{idempotency_key}"),
+                correlation_id: idempotency_key,
+                idempotency_key,
+            },
+            actor_principal: serde_json::json!({
+                "kind": "user",
+                "user_id": actor_id,
+                "subject": format!("user:{actor_id}"),
+            }),
+            actor_can_manage_modules: true,
+        };
+        let service = SeaOrmModuleGovernanceService::new(database.clone());
+        service
+            .yank_release(command.clone())
             .await
             .expect("yank release");
+        service
+            .yank_release(command.clone())
+            .await
+            .expect("exact yank replay");
+        let mut changed_replay = command;
+        changed_replay.context.trace_id = "test:yank:changed-trace".to_string();
+        assert!(matches!(
+            service.yank_release(changed_replay).await,
+            Err(ModuleGovernanceError::ReleaseYankIdempotencyConflict)
+        ));
         let release = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,
@@ -14082,6 +15001,14 @@ mod tests {
                 event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
                 details TEXT NOT NULL, created_at TEXT NOT NULL\
              )",
+            "CREATE TABLE registry_owner_transfer_operations (\
+                operation_id TEXT PRIMARY KEY, slug TEXT NOT NULL, idempotency_key TEXT NOT NULL,\
+                actor_id TEXT NOT NULL, trace_id TEXT NOT NULL, correlation_id TEXT NOT NULL,\
+                previous_owner_principal TEXT NOT NULL, new_owner_principal TEXT NOT NULL,\
+                actor_principal TEXT NOT NULL, actor_can_manage_modules INTEGER NOT NULL,\
+                reason TEXT NOT NULL, reason_code TEXT NOT NULL, committed_at TEXT NOT NULL,\
+                UNIQUE (slug, idempotency_key)\
+             )",
             "INSERT INTO registry_module_owners (\
                 slug, owner_principal, bound_by_principal, bound_at, updated_at\
              ) VALUES (\
@@ -14097,13 +15024,22 @@ mod tests {
                 .await
                 .expect("schema or fixture");
         }
+        let unrelated_actor_id = Uuid::new_v4();
+        let operator_actor_id = Uuid::new_v4();
         let service = SeaOrmModuleGovernanceService::new(database.clone());
         assert_eq!(
             service
                 .transfer_owner(ModuleOwnerTransferCommand {
                     slug: "sample_module".to_string(),
                     new_owner_principal: serde_json::json!({ "kind": "user", "id": "next" }),
-                    actor_principal: serde_json::json!({ "kind": "user", "id": "unrelated" }),
+                    context: ModuleCommandContext {
+                        actor_id: unrelated_actor_id,
+                        tenant_id: None,
+                        trace_id: "test:owner-transfer:unauthorized".to_string(),
+                        correlation_id: Uuid::new_v4(),
+                        idempotency_key: Uuid::new_v4(),
+                    },
+                    actor_principal: serde_json::json!({ "kind": "user", "user_id": unrelated_actor_id, "subject": format!("user:{unrelated_actor_id}") }),
                     actor_can_manage_modules: false,
                     reason: "maintenance handoff".to_string(),
                     reason_code: "maintenance_handoff".to_string(),
@@ -14111,17 +15047,35 @@ mod tests {
                 .await,
             Err(ModuleGovernanceError::OwnerTransferUnauthorized)
         );
+        let command = ModuleOwnerTransferCommand {
+            slug: "sample_module".to_string(),
+            new_owner_principal: serde_json::json!({ "kind": "user", "id": "next" }),
+            context: ModuleCommandContext {
+                actor_id: operator_actor_id,
+                tenant_id: None,
+                trace_id: "test:owner-transfer:success".to_string(),
+                correlation_id: Uuid::new_v4(),
+                idempotency_key: Uuid::new_v4(),
+            },
+            actor_principal: serde_json::json!({ "kind": "user", "user_id": operator_actor_id, "subject": format!("user:{operator_actor_id}") }),
+            actor_can_manage_modules: true,
+            reason: "maintenance handoff".to_string(),
+            reason_code: "maintenance_handoff".to_string(),
+        };
         service
-            .transfer_owner(ModuleOwnerTransferCommand {
-                slug: "sample_module".to_string(),
-                new_owner_principal: serde_json::json!({ "kind": "user", "id": "next" }),
-                actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
-                actor_can_manage_modules: true,
-                reason: "maintenance handoff".to_string(),
-                reason_code: "maintenance_handoff".to_string(),
-            })
+            .transfer_owner(command.clone())
             .await
             .expect("transfer owner");
+        service
+            .transfer_owner(command.clone())
+            .await
+            .expect("exact owner-transfer replay");
+        let mut changed_replay = command;
+        changed_replay.context.trace_id = "test:owner-transfer:changed-trace".to_string();
+        assert!(matches!(
+            service.transfer_owner(changed_replay).await,
+            Err(ModuleGovernanceError::OwnerTransferIdempotencyConflict)
+        ));
         let binding = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,
@@ -14144,7 +15098,10 @@ mod tests {
             .expect("owner binding projection")
             .expect("owner binding");
         assert_eq!(owner_snapshot.owner_principal["id"], "next");
-        assert_eq!(owner_snapshot.bound_by_principal["id"], "operator");
+        assert_eq!(
+            owner_snapshot.bound_by_principal["user_id"],
+            operator_actor_id.to_string()
+        );
         let event = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,
@@ -14203,6 +15160,14 @@ mod tests {
                 event_type TEXT NOT NULL, actor_principal TEXT NOT NULL, publisher_principal TEXT NULL,\
                 details TEXT NOT NULL, created_at TEXT NOT NULL\
              )",
+            "CREATE TABLE registry_publish_request_review_operations (\
+                operation_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, operation_kind TEXT NOT NULL,\
+                idempotency_key TEXT NOT NULL, expected_revision INTEGER NOT NULL, actor_id TEXT NOT NULL,\
+                trace_id TEXT NOT NULL, correlation_id TEXT NOT NULL, actor_principal TEXT NOT NULL,\
+                reason TEXT NOT NULL, reason_code TEXT NOT NULL, resulting_status TEXT NOT NULL,\
+                resulting_revision INTEGER NOT NULL, committed_at TEXT NOT NULL,\
+                UNIQUE (request_id, idempotency_key)\
+             )",
             "INSERT INTO registry_publish_requests (\
                 id, slug, version, status, artifact_origin, publisher_principal, updated_at\
              ) VALUES (\
@@ -14219,12 +15184,25 @@ mod tests {
                 .expect("schema or fixture");
         }
         let service = SeaOrmModuleGovernanceService::new(database.clone());
+        let actor_id = Uuid::new_v4();
+        let actor_principal = serde_json::json!({
+            "kind": "user",
+            "user_id": actor_id,
+            "subject": format!("user:{actor_id}"),
+        });
         assert_eq!(
             service
                 .hold_publish_request(ModulePublishRequestHoldCommand {
                     request_id: "request-1".to_string(),
                     expected_revision: 2,
-                    actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+                    context: ModuleCommandContext {
+                        actor_id,
+                        tenant_id: None,
+                        trace_id: "test:review:stale".to_string(),
+                        correlation_id: Uuid::new_v4(),
+                        idempotency_key: Uuid::new_v4(),
+                    },
+                    actor_principal: actor_principal.clone(),
                     reason: "release window".to_string(),
                     reason_code: "release_window".to_string(),
                 })
@@ -14234,21 +15212,48 @@ mod tests {
                 current: 1,
             })
         );
+        let idempotency_key = Uuid::new_v4();
+        let hold = ModulePublishRequestHoldCommand {
+            request_id: "request-1".to_string(),
+            expected_revision: 1,
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: format!("test:review:{idempotency_key}"),
+                correlation_id: idempotency_key,
+                idempotency_key,
+            },
+            actor_principal: actor_principal.clone(),
+            reason: "release window".to_string(),
+            reason_code: "release_window".to_string(),
+        };
         service
-            .hold_publish_request(ModulePublishRequestHoldCommand {
-                request_id: "request-1".to_string(),
-                expected_revision: 1,
-                actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
-                reason: "release window".to_string(),
-                reason_code: "release_window".to_string(),
-            })
+            .hold_publish_request(hold.clone())
             .await
             .expect("hold request");
+        service
+            .hold_publish_request(hold.clone())
+            .await
+            .expect("hold request replay");
+        let mut changed_replay = hold;
+        changed_replay.context.trace_id = "test:review:changed-trace".to_string();
+        assert!(matches!(
+            service.hold_publish_request(changed_replay).await,
+            Err(ModuleGovernanceError::PublishRequestReviewIdempotencyConflict)
+        ));
+        let resume_idempotency_key = Uuid::new_v4();
         service
             .resume_publish_request(ModulePublishRequestResumeCommand {
                 request_id: "request-1".to_string(),
                 expected_revision: 2,
-                actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+                context: ModuleCommandContext {
+                    actor_id,
+                    tenant_id: None,
+                    trace_id: format!("test:review:{resume_idempotency_key}"),
+                    correlation_id: resume_idempotency_key,
+                    idempotency_key: resume_idempotency_key,
+                },
+                actor_principal,
                 reason: "window closed".to_string(),
                 reason_code: "review_complete".to_string(),
             })
@@ -14331,6 +15336,7 @@ mod tests {
              )",
             "CREATE TABLE registry_publication_operations (\
                 operation_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, idempotency_key TEXT NOT NULL,\
+                actor_id TEXT NOT NULL, trace_id TEXT NOT NULL, correlation_id TEXT NOT NULL,\
                 actor_principal TEXT NOT NULL, publisher_principal TEXT NOT NULL, allow_owner_rebind INTEGER NOT NULL,\
                 approval_override TEXT NULL, release_id TEXT NOT NULL, committed_at TEXT NOT NULL,\
                 UNIQUE (request_id, idempotency_key)\
@@ -14388,11 +15394,23 @@ mod tests {
                 .expect("schema or fixture");
         }
 
+        let actor_id = Uuid::new_v4();
+        let idempotency_key = Uuid::new_v4();
         let command = ModulePublishRequestPublicationCommand {
             request_id: "request-1".to_string(),
             expected_revision: 1,
-            idempotency_key: Uuid::new_v4(),
-            actor_principal: serde_json::json!({ "kind": "user", "id": "operator" }),
+            context: ModuleCommandContext {
+                actor_id,
+                tenant_id: None,
+                trace_id: format!("test:publication:{idempotency_key}"),
+                correlation_id: idempotency_key,
+                idempotency_key,
+            },
+            actor_principal: serde_json::json!({
+                "kind": "user",
+                "user_id": actor_id,
+                "subject": format!("user:{actor_id}"),
+            }),
             publisher_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
             allow_owner_rebind: false,
             approval_override: None,
@@ -14634,14 +15652,11 @@ mod tests {
             .await
             .expect("published request replay");
         let mut conflicting_replay = command;
-        conflicting_replay.publisher_principal = serde_json::json!({
-            "kind": "user",
-            "id": "different-publisher",
-        });
+        conflicting_replay.context.trace_id = "test:publication:changed-trace".to_string();
         let conflict = service
             .publish_request(conflicting_replay)
             .await
-            .expect_err("idempotency key must bind the immutable publication command");
+            .expect_err("idempotency key must bind immutable publication context");
         assert!(matches!(
             conflict,
             ModuleGovernanceError::PublicationIdempotencyConflict

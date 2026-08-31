@@ -15,8 +15,8 @@ use crate::recovery::{
 };
 use crate::{
     ArtifactInstallationResolver, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolver,
-    ControlPlaneInfrastructure, ModuleDefinitionCatalog, ModuleDefinitionError,
-    ModuleDefinitionKind, ModuleDefinitionSource, ModuleEffectivePolicy,
+    ControlPlaneInfrastructure, ModuleCommandContext, ModuleDefinitionCatalog,
+    ModuleDefinitionError, ModuleDefinitionKind, ModuleDefinitionSource, ModuleEffectivePolicy,
     ModuleEffectivePolicyError, ModuleEffectivePolicyTransitionCoordinator,
     ModuleExecutionDispatcher, ModuleLifecycleExecutionError, ModuleLifecycleToggleRequest,
     ModuleOperationIssue, ModuleOperationJournal, ModuleOperationRecoveryError,
@@ -59,27 +59,27 @@ pub struct TenantModuleOverrideSnapshot {
 }
 
 /// Authenticated, replayable command for one platform-native tenant lifecycle
-/// transition. Hosts derive both identities from their authenticated context;
-/// callers never supply a display label or correlation value.
+/// transition. Hosts derive the complete tenant-matched context from the
+/// authenticated request; callers never supply separate actor, trace,
+/// correlation, or idempotency values.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModuleLifecycleToggleCommand {
     pub tenant_id: Uuid,
     pub module_slug: String,
     pub enabled: bool,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
     pub expected_revision: u64,
 }
 
 /// Authenticated, replayable command for a post-hook retry or compensation.
-/// Hosts derive the tenant and actor identities; the owner binds the persisted
-/// audit identity to `actor_id` and never accepts caller-provided display text.
+/// Hosts derive the tenant-matched command context; the owner binds its
+/// persisted audit evidence to that context and never accepts caller-provided
+/// display text.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModuleLifecycleRecoveryCommand {
     pub tenant_id: Uuid,
     pub operation_id: Uuid,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
     pub expected_revision: u64,
 }
 
@@ -90,8 +90,7 @@ pub struct ModuleLifecycleSettingsCommand {
     pub tenant_id: Uuid,
     pub module_slug: String,
     pub settings: serde_json::Value,
-    pub actor_id: Uuid,
-    pub idempotency_key: Uuid,
+    pub context: ModuleCommandContext,
     pub expected_revision: u64,
     /// Reviewed automation supplies the exact prior snapshot. The ordinary
     /// editor leaves both values absent and relies on the aggregate revision.
@@ -110,7 +109,7 @@ pub struct ModuleLifecycleSettingsResult {
 
 #[derive(Serialize)]
 struct ModuleLifecycleSettingsReceiptRequest<'a> {
-    actor_id: Uuid,
+    context: &'a ModuleCommandContext,
     expected_revision: u64,
     module_slug: &'a str,
     settings: &'a serde_json::Value,
@@ -127,6 +126,7 @@ struct OverrideOperationRequest<'a> {
     enabled: bool,
     requested_override_enabled: Option<bool>,
     requested_by: Option<String>,
+    trace_id: Option<String>,
     correlation_id: Option<String>,
     idempotency_key: Option<Uuid>,
     expected_revision: Option<u64>,
@@ -252,12 +252,12 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         &self,
         command: ModuleLifecycleToggleCommand,
     ) -> Result<crate::ModuleLifecycleToggleResult, ModuleLifecycleDbWriterError> {
-        if command.tenant_id.is_nil() || command.actor_id.is_nil() {
+        if command.tenant_id.is_nil() || command.context.tenant_id != Some(command.tenant_id) {
             return Err(ModuleLifecycleDbWriterError::Lifecycle(
                 ModuleLifecycleExecutionError::InvalidCommandIdentity,
             ));
         }
-        if command.idempotency_key.is_nil() {
+        if command.context.validate().is_err() {
             return Err(ModuleLifecycleDbWriterError::Lifecycle(
                 ModuleLifecycleExecutionError::InvalidIdempotencyKey,
             ));
@@ -267,9 +267,10 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             module_slug: &command.module_slug,
             enabled: command.enabled,
             requested_override_enabled: Some(command.enabled),
-            requested_by: Some(command.actor_id.to_string()),
-            correlation_id: Some(command.idempotency_key.to_string()),
-            idempotency_key: Some(command.idempotency_key),
+            requested_by: Some(command.context.actor_id.to_string()),
+            trace_id: Some(command.context.trace_id.clone()),
+            correlation_id: Some(command.context.correlation_id.to_string()),
+            idempotency_key: Some(command.context.idempotency_key),
             expected_revision: Some(command.expected_revision),
         })
         .await
@@ -325,6 +326,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 module_slug: request.module_slug.to_string(),
                 enabled: request.enabled,
                 requested_by: request.requested_by,
+                trace_id: request.trace_id,
                 correlation_id: request.correlation_id,
                 idempotency_key: request.idempotency_key,
                 expected_revision: request.expected_revision,
@@ -398,9 +400,10 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             module_slug: plan.module_slug.clone(),
             requested_enabled: plan.requested_enabled,
             previous_effective_enabled: plan.previous_effective_enabled,
-            requested_by: Some(command.actor_id.to_string()),
-            correlation_id: plan.operation_id.to_string(),
-            idempotency_key: Some(command.idempotency_key),
+            requested_by: Some(command.context.actor_id.to_string()),
+            trace_id: Some(command.context.trace_id.clone()),
+            correlation_id: command.context.correlation_id.to_string(),
+            idempotency_key: Some(command.context.idempotency_key),
             expected_revision: static_lifecycle.then_some(command.expected_revision),
         };
         if let Some(operation) =
@@ -430,7 +433,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 command.tenant_id,
                 &plan.module_slug,
                 command.expected_revision,
-                command.idempotency_key,
+                command.context.idempotency_key,
             )
             .await
             .map_err(map_static_lifecycle_recovery_error)?;
@@ -440,8 +443,9 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             &dispatcher,
             ModulePostHookRetryRequest {
                 operation_id: command.operation_id,
-                requested_by: Some(command.actor_id.to_string()),
-                idempotency_key: command.idempotency_key,
+                requested_by: Some(command.context.actor_id.to_string()),
+                trace_id: Some(command.context.trace_id.clone()),
+                idempotency_key: command.context.idempotency_key,
                 expected_revision: static_lifecycle.then_some(command.expected_revision),
                 current_override_enabled,
                 current_settings,
@@ -453,7 +457,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 &self.db,
                 command.tenant_id,
                 &plan.module_slug,
-                command.idempotency_key,
+                command.context.idempotency_key,
             )
             .await
             .map_err(map_static_lifecycle_recovery_error)
@@ -496,15 +500,16 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             .await?;
         let current_effective_enabled = effective_enabled_modules.contains(&plan.module_slug);
         let reverse_enabled = !plan.requested_enabled;
-        let requested_by = Some(command.actor_id.to_string());
+        let requested_by = Some(command.context.actor_id.to_string());
         let replay_request = ModuleOperationRequest {
             tenant_id: plan.tenant_id,
             module_slug: plan.module_slug.clone(),
             requested_enabled: reverse_enabled,
             previous_effective_enabled: current_effective_enabled,
             requested_by: requested_by.clone(),
-            correlation_id: plan.operation_id.to_string(),
-            idempotency_key: Some(command.idempotency_key),
+            trace_id: Some(command.context.trace_id.clone()),
+            correlation_id: command.context.correlation_id.to_string(),
+            idempotency_key: Some(command.context.idempotency_key),
             expected_revision: Some(command.expected_revision),
         };
         if ModuleOperationJournal::replay_idempotent_command(&self.db, &replay_request)
@@ -519,8 +524,9 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     enabled: reverse_enabled,
                     requested_override_enabled: plan.previous_override_enabled,
                     requested_by,
-                    correlation_id: Some(plan.operation_id.to_string()),
-                    idempotency_key: Some(command.idempotency_key),
+                    trace_id: Some(command.context.trace_id.clone()),
+                    correlation_id: Some(command.context.correlation_id.to_string()),
+                    idempotency_key: Some(command.context.idempotency_key),
                     expected_revision: Some(command.expected_revision),
                 })
                 .await;
@@ -539,8 +545,9 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             enabled: reverse_enabled,
             requested_override_enabled: plan.previous_override_enabled,
             requested_by,
-            correlation_id: Some(plan.operation_id.to_string()),
-            idempotency_key: Some(command.idempotency_key),
+            trace_id: Some(command.context.trace_id.clone()),
+            correlation_id: Some(command.context.correlation_id.to_string()),
+            idempotency_key: Some(command.context.idempotency_key),
             expected_revision: Some(command.expected_revision),
         })
         .await
@@ -570,7 +577,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             });
         }
         let receipt_request = ModuleLifecycleSettingsReceiptRequest {
-            actor_id: command.actor_id,
+            context: &command.context,
             expected_revision: command.expected_revision,
             module_slug: &command.module_slug,
             settings: &command.settings,
@@ -581,7 +588,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
             &self.db,
             idempotency::OwnerOperationScope::Tenant(command.tenant_id),
             STATIC_LIFECYCLE_OWNER_SLUG,
-            &command.idempotency_key.to_string(),
+            &command.context.idempotency_key.to_string(),
             STATIC_LIFECYCLE_SETTINGS_OPERATION,
             &receipt_request,
         )
@@ -605,7 +612,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     command.tenant_id,
                     &command.module_slug,
                     command.expected_revision,
-                    command.idempotency_key,
+                    command.context.idempotency_key,
                 )
                 .await
                 .map_err(map_static_lifecycle_settings_error);
@@ -626,7 +633,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     lease,
                     command.tenant_id,
                     &command.module_slug,
-                    command.idempotency_key,
+                    command.context.idempotency_key,
                     &error,
                 )
                 .await?;
@@ -641,7 +648,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     lease,
                     command.tenant_id,
                     &command.module_slug,
-                    command.idempotency_key,
+                    command.context.idempotency_key,
                     &error,
                 )
                 .await?;
@@ -657,7 +664,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 lease,
                 command.tenant_id,
                 &command.module_slug,
-                command.idempotency_key,
+                command.context.idempotency_key,
                 &error,
             )
             .await?;
@@ -672,7 +679,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                         lease,
                         command.tenant_id,
                         &command.module_slug,
-                        command.idempotency_key,
+                        command.context.idempotency_key,
                         &error,
                     )
                     .await?;
@@ -689,7 +696,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 lease,
                 command.tenant_id,
                 &command.module_slug,
-                command.idempotency_key,
+                command.context.idempotency_key,
                 &error,
             )
             .await?;
@@ -704,7 +711,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     lease,
                     command.tenant_id,
                     &command.module_slug,
-                    command.idempotency_key,
+                    command.context.idempotency_key,
                     &error,
                 )
                 .await?;
@@ -729,7 +736,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 command.tenant_id,
                 &command.module_slug,
                 command.expected_revision,
-                command.idempotency_key,
+                command.context.idempotency_key,
             )
             .await
             .map_err(map_static_lifecycle_settings_error)?;
@@ -737,7 +744,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 &transaction,
                 command.tenant_id,
                 &command.module_slug,
-                command.idempotency_key,
+                command.context.idempotency_key,
             )
             .await
             .map_err(map_static_lifecycle_settings_error)?;
@@ -764,7 +771,7 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                     &self.db,
                     command.tenant_id,
                     &command.module_slug,
-                    command.idempotency_key,
+                    command.context.idempotency_key,
                 )
                 .await
                 .map_err(map_static_lifecycle_settings_error);
@@ -1346,12 +1353,15 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
 fn validate_recovery_command(
     command: &ModuleLifecycleRecoveryCommand,
 ) -> Result<(), ModuleLifecycleDbWriterError> {
-    if command.tenant_id.is_nil() || command.operation_id.is_nil() || command.actor_id.is_nil() {
+    if command.tenant_id.is_nil()
+        || command.operation_id.is_nil()
+        || command.context.tenant_id != Some(command.tenant_id)
+    {
         return Err(ModuleLifecycleDbWriterError::Recovery(
             ModuleOperationRecoveryError::InvalidCommandIdentity,
         ));
     }
-    if command.idempotency_key.is_nil() {
+    if command.context.validate().is_err() {
         return Err(ModuleLifecycleDbWriterError::Recovery(
             ModuleOperationRecoveryError::InvalidIdempotencyKey,
         ));
@@ -1452,12 +1462,15 @@ fn map_static_lifecycle_settings_error(
 fn validate_settings_command(
     command: &ModuleLifecycleSettingsCommand,
 ) -> Result<(), ModuleLifecycleDbWriterError> {
-    if command.tenant_id.is_nil() || command.actor_id.is_nil() || command.module_slug.is_empty() {
+    if command.tenant_id.is_nil()
+        || command.context.tenant_id != Some(command.tenant_id)
+        || command.module_slug.is_empty()
+    {
         return Err(ModuleLifecycleDbWriterError::Lifecycle(
             ModuleLifecycleExecutionError::InvalidCommandIdentity,
         ));
     }
-    if command.idempotency_key.is_nil() {
+    if command.context.validate().is_err() {
         return Err(ModuleLifecycleDbWriterError::Lifecycle(
             ModuleLifecycleExecutionError::InvalidIdempotencyKey,
         ));

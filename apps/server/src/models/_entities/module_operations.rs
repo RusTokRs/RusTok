@@ -12,6 +12,7 @@ pub struct Model {
     pub previous_effective_enabled: bool,
     pub status: String,
     pub requested_by: Option<String>,
+    pub trace_id: Option<String>,
     pub correlation_id: Option<String>,
     pub idempotency_key: Option<Uuid>,
     pub expected_revision: Option<i64>,

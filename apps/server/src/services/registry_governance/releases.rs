@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::{CatalogManifestModule, CatalogModuleVersion};
 use rustok_modules::{
-    ModuleGovernanceActorContext, ModuleGovernanceOwnerSnapshot,
+    ModuleCommandContext, ModuleGovernanceActorContext, ModuleGovernanceOwnerSnapshot,
     ModuleGovernancePublishArtifactDownloadSnapshot, ModuleGovernancePublishRequestStatusSnapshot,
     ModuleGovernanceRequestSnapshot, ModuleOwnerTransferCommand, ModuleReleaseYankCommand,
     ModuleReleaseYankResult,
@@ -276,6 +276,7 @@ impl RegistryGovernanceService {
         reason: &str,
         reason_code: &str,
         authority: &RegistryAuthority,
+        context: ModuleCommandContext,
     ) -> anyhow::Result<ModuleReleaseYankResult> {
         let normalized_reason = normalize_required_reason(reason, "Registry yank")?;
         let normalized_reason_code =
@@ -287,6 +288,7 @@ impl RegistryGovernanceService {
                 version: version.to_string(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
+                context,
                 actor_principal: authority.principal.to_json_value(),
                 actor_can_manage_modules: authority.can_manage_modules,
             })
@@ -301,6 +303,7 @@ impl RegistryGovernanceService {
         reason: &str,
         reason_code: &str,
         authority: &RegistryAuthority,
+        context: ModuleCommandContext,
     ) -> anyhow::Result<()> {
         if !new_owner.is_user() {
             return Err(malformed_error(format!(
@@ -319,6 +322,7 @@ impl RegistryGovernanceService {
             .transfer_owner(ModuleOwnerTransferCommand {
                 slug: slug.to_string(),
                 new_owner_principal: new_owner.to_json_value(),
+                context,
                 actor_principal: authority.principal.to_json_value(),
                 actor_can_manage_modules: authority.can_manage_modules,
                 reason: normalized_reason,

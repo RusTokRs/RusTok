@@ -1,6 +1,6 @@
 use super::*;
 use rustok_modules::{
-    ModuleExternalPrebuiltStageCommand, ModuleExternalPrebuiltStageResult,
+    ModuleCommandContext, ModuleExternalPrebuiltStageCommand, ModuleExternalPrebuiltStageResult,
     ModulePublicationArtifactOrigin, ModulePublishApprovalOverride,
     ModulePublishArtifactAttachCommand, ModulePublishPlatformBuildStageCommand,
     ModulePublishPlatformBuildStageResult, ModulePublishRequestChangesCommand,
@@ -14,9 +14,11 @@ impl RegistryGovernanceService {
         &self,
         request: &RegistryPublishRequest,
         authority: &RegistryAuthority,
+        context: ModuleCommandContext,
     ) -> anyhow::Result<RegistryPublishRequestSnapshot> {
         let command = module_publish_request_create_command(
             request,
+            context,
             authority.principal.to_json_value(),
             authority.can_manage_modules,
         )?;
@@ -35,15 +37,27 @@ impl RegistryGovernanceService {
     pub fn publish_request_warnings(
         request: &RegistryPublishRequest,
     ) -> anyhow::Result<Vec<String>> {
-        module_publish_request_create_command(request, serde_json::json!({}), false)?
-            .validation_warnings()
-            .map_err(anyhow::Error::new)
+        module_publish_request_create_command(
+            request,
+            ModuleCommandContext {
+                actor_id: uuid::Uuid::nil(),
+                tenant_id: None,
+                trace_id: "dry-run".to_string(),
+                correlation_id: uuid::Uuid::nil(),
+                idempotency_key: uuid::Uuid::nil(),
+            },
+            serde_json::json!({}),
+            false,
+        )?
+        .validation_warnings()
+        .map_err(anyhow::Error::new)
     }
 
     pub async fn upload_publish_artifact(
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
+        context: ModuleCommandContext,
         artifact: RegistryArtifactUpload,
     ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
         if artifact.bytes.len() > MODULE_PUBLISH_ARTIFACT_MAX_BYTES {
@@ -66,6 +80,7 @@ impl RegistryGovernanceService {
         let command = ModulePublishArtifactAttachCommand {
             request_id: request.request.id.clone(),
             expected_revision: request.request.revision,
+            context,
             actor_principal: authority.principal.to_json_value(),
             actor_can_manage_modules: authority.can_manage_modules,
             checksum_sha256: checksum,
@@ -171,7 +186,7 @@ impl RegistryGovernanceService {
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
-        idempotency_key: Uuid,
+        context: ModuleCommandContext,
         reason: Option<&str>,
         reason_code: Option<&str>,
     ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
@@ -246,7 +261,7 @@ impl RegistryGovernanceService {
             .publish_request(ModulePublishRequestPublicationCommand {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
-                idempotency_key,
+                context,
                 actor_principal: authority.principal.to_json_value(),
                 publisher_principal: effective_publisher,
                 allow_owner_rebind: authority.can_manage_modules,
@@ -263,6 +278,7 @@ impl RegistryGovernanceService {
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
+        context: ModuleCommandContext,
         reason: &str,
         reason_code: &str,
     ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
@@ -285,6 +301,7 @@ impl RegistryGovernanceService {
             .reject_publish_request(ModulePublishRequestRejectCommand {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
+                context,
                 actor_principal: authority.principal.to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
@@ -300,6 +317,7 @@ impl RegistryGovernanceService {
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
+        context: ModuleCommandContext,
         reason: &str,
         reason_code: &str,
     ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
@@ -322,6 +340,7 @@ impl RegistryGovernanceService {
             .request_publish_request_changes(ModulePublishRequestChangesCommand {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
+                context,
                 actor_principal: authority.principal.to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
@@ -337,6 +356,7 @@ impl RegistryGovernanceService {
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
+        context: ModuleCommandContext,
         reason: &str,
         reason_code: &str,
     ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
@@ -358,6 +378,7 @@ impl RegistryGovernanceService {
             .hold_publish_request(ModulePublishRequestHoldCommand {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
+                context,
                 actor_principal: authority.principal.to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
@@ -373,6 +394,7 @@ impl RegistryGovernanceService {
         &self,
         request_id: &str,
         authority: &RegistryAuthority,
+        context: ModuleCommandContext,
         reason: &str,
         reason_code: &str,
     ) -> anyhow::Result<RegistryPublishRequestStatusSnapshot> {
@@ -394,6 +416,7 @@ impl RegistryGovernanceService {
             .resume_publish_request(ModulePublishRequestResumeCommand {
                 request_id: request.request.id.clone(),
                 expected_revision: request.request.revision,
+                context,
                 actor_principal: authority.principal.to_json_value(),
                 reason: normalized_reason,
                 reason_code: normalized_reason_code,
@@ -422,6 +445,7 @@ fn validation_stage_snapshot_details_value(
 
 fn module_publish_request_create_command(
     request: &RegistryPublishRequest,
+    context: ModuleCommandContext,
     actor_principal: serde_json::Value,
     actor_can_manage_modules: bool,
 ) -> anyhow::Result<ModulePublishRequestCreateCommand> {
@@ -451,6 +475,7 @@ fn module_publish_request_create_command(
             .context("failed to serialize registry publish ui_packages metadata")?,
         name: request.module.name.clone(),
         description: request.module.description.clone(),
+        context,
         actor_principal,
         actor_can_manage_modules,
     })

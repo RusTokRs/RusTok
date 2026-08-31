@@ -4,10 +4,11 @@ use thiserror::Error;
 use rustok_api::PortError;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ModuleControlPlane, ModuleLifecycleDbWriterError, ModuleLifecycleExecutionError,
-    ModuleLifecycleRecoveryCommand, ModuleLifecycleSettingsCommand, ModuleLifecycleToggleCommand,
-    ModuleOperationRecoveryError as ModulesRecoveryError, ModuleOperationRecoveryPlan,
-    ModuleOperationStoreError, ModuleToggleValidationError, normalize_module_settings,
+    ModuleCommandContext, ModuleControlPlane, ModuleLifecycleDbWriterError,
+    ModuleLifecycleExecutionError, ModuleLifecycleRecoveryCommand, ModuleLifecycleSettingsCommand,
+    ModuleLifecycleToggleCommand, ModuleOperationRecoveryError as ModulesRecoveryError,
+    ModuleOperationRecoveryPlan, ModuleOperationStoreError, ModuleToggleValidationError,
+    normalize_module_settings,
 };
 
 use crate::modules::{ManifestError, ManifestManager, map_module_settings_validation_error};
@@ -126,8 +127,7 @@ impl ModuleLifecycleService {
         tenant_id: uuid::Uuid,
         module_slug: &str,
         enabled: bool,
-        actor_id: uuid::Uuid,
-        idempotency_key: uuid::Uuid,
+        context: ModuleCommandContext,
         expected_revision: u64,
     ) -> Result<ModuleLifecycleStateSnapshot, ToggleModuleError> {
         let manifest = PlatformCompositionService::active_manifest(db)
@@ -142,8 +142,7 @@ impl ModuleLifecycleService {
                 tenant_id,
                 module_slug: module_slug.to_string(),
                 enabled,
-                actor_id,
-                idempotency_key,
+                context,
                 expected_revision,
             })
             .await
@@ -209,8 +208,7 @@ impl ModuleLifecycleService {
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
         operation_id: uuid::Uuid,
-        actor_id: uuid::Uuid,
-        idempotency_key: uuid::Uuid,
+        context: ModuleCommandContext,
         expected_revision: u64,
     ) -> Result<ModuleOperationRecoveryPlan, ModuleOperationRecoveryError> {
         let manifest = PlatformCompositionService::active_manifest(db)
@@ -224,8 +222,7 @@ impl ModuleLifecycleService {
             .retry_post_hook(ModuleLifecycleRecoveryCommand {
                 tenant_id,
                 operation_id,
-                actor_id,
-                idempotency_key,
+                context,
                 expected_revision,
             })
             .await
@@ -238,8 +235,7 @@ impl ModuleLifecycleService {
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
         operation_id: uuid::Uuid,
-        actor_id: uuid::Uuid,
-        idempotency_key: uuid::Uuid,
+        context: ModuleCommandContext,
         expected_revision: u64,
     ) -> Result<ModuleLifecycleStateSnapshot, ModuleOperationRecoveryError> {
         let manifest = PlatformCompositionService::active_manifest(db)
@@ -254,8 +250,7 @@ impl ModuleLifecycleService {
             .compensate_failed_operation(ModuleLifecycleRecoveryCommand {
                 tenant_id,
                 operation_id,
-                actor_id,
-                idempotency_key,
+                context,
                 expected_revision,
             })
             .await
@@ -288,8 +283,7 @@ impl ModuleLifecycleService {
         tenant_id: uuid::Uuid,
         module_slug: &str,
         settings: serde_json::Value,
-        actor_id: uuid::Uuid,
-        idempotency_key: uuid::Uuid,
+        context: ModuleCommandContext,
         expected_revision: u64,
     ) -> Result<ModuleLifecycleStateSnapshot, UpdateModuleSettingsError> {
         if !settings.is_object() {
@@ -326,8 +320,7 @@ impl ModuleLifecycleService {
                 tenant_id,
                 module_slug: module_slug.to_string(),
                 settings,
-                actor_id,
-                idempotency_key,
+                context,
                 expected_revision,
                 expected_enabled: None,
                 expected_settings: None,
@@ -634,7 +627,7 @@ mod tests {
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;
     use rustok_migrations::SqliteTestMigrator as Migrator;
-    use rustok_modules::ModuleOperationStatus;
+    use rustok_modules::{ModuleCommandContext, ModuleOperationStatus};
     use rustok_rbac::RbacModule;
     use rustok_tenant::TenantModule;
     use rustok_test_utils::db::setup_test_db_with_migrations;
@@ -642,6 +635,21 @@ mod tests {
     use serial_test::serial;
     use std::collections::HashMap;
     use tempfile::tempdir;
+    use uuid::Uuid;
+
+    fn test_context(
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        idempotency_key: Uuid,
+    ) -> ModuleCommandContext {
+        ModuleCommandContext {
+            actor_id,
+            tenant_id: Some(tenant_id),
+            trace_id: format!("test:static-lifecycle:{idempotency_key}"),
+            correlation_id: idempotency_key,
+            idempotency_key,
+        }
+    }
 
     #[test]
     fn module_operation_status_roundtrip() {
@@ -840,8 +848,7 @@ mod tests {
             tenant.id,
             "content",
             serde_json::json!({ "postsPerPage": 20 }),
-            uuid::Uuid::new_v4(),
-            uuid::Uuid::new_v4(),
+            test_context(tenant.id, Uuid::new_v4(), Uuid::new_v4()),
             0,
         )
         .await;
@@ -884,8 +891,7 @@ mod tests {
             tenant.id,
             "content",
             true,
-            uuid::Uuid::new_v4(),
-            uuid::Uuid::new_v4(),
+            test_context(tenant.id, Uuid::new_v4(), Uuid::new_v4()),
             0,
         )
         .await
@@ -899,8 +905,7 @@ mod tests {
             tenant.id,
             "content",
             serde_json::json!({ "postsPerPage": 20 }),
-            settings_actor,
-            settings_idempotency_key,
+            test_context(tenant.id, settings_actor, settings_idempotency_key),
             1,
         )
         .await
@@ -911,8 +916,7 @@ mod tests {
             tenant.id,
             "content",
             serde_json::json!({ "postsPerPage": 20 }),
-            settings_actor,
-            settings_idempotency_key,
+            test_context(tenant.id, settings_actor, settings_idempotency_key),
             1,
         )
         .await
@@ -923,8 +927,7 @@ mod tests {
             tenant.id,
             "content",
             serde_json::json!({ "postsPerPage": 30 }),
-            settings_actor,
-            settings_idempotency_key,
+            test_context(tenant.id, settings_actor, settings_idempotency_key),
             1,
         )
         .await
@@ -935,8 +938,7 @@ mod tests {
             tenant.id,
             "content",
             serde_json::json!({ "postsPerPage": 30 }),
-            uuid::Uuid::new_v4(),
-            uuid::Uuid::new_v4(),
+            test_context(tenant.id, Uuid::new_v4(), Uuid::new_v4()),
             1,
         )
         .await
@@ -991,8 +993,7 @@ mod tests {
             tenant.id,
             "tenant",
             serde_json::json!({ "workspaceName": "Acme" }),
-            uuid::Uuid::new_v4(),
-            uuid::Uuid::new_v4(),
+            test_context(tenant.id, Uuid::new_v4(), Uuid::new_v4()),
             0,
         )
         .await
@@ -1061,8 +1062,7 @@ showSummaries = { type = "boolean", default = true }
             tenant.id,
             "content",
             true,
-            uuid::Uuid::new_v4(),
-            uuid::Uuid::new_v4(),
+            test_context(tenant.id, Uuid::new_v4(), Uuid::new_v4()),
             0,
         )
         .await
@@ -1074,8 +1074,7 @@ showSummaries = { type = "boolean", default = true }
             tenant.id,
             "content",
             serde_json::json!({}),
-            uuid::Uuid::new_v4(),
-            uuid::Uuid::new_v4(),
+            test_context(tenant.id, Uuid::new_v4(), Uuid::new_v4()),
             1,
         )
         .await
