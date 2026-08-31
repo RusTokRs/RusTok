@@ -44,7 +44,6 @@ if (failures.length === 0) {
     "self.legacy.list_topics",
     "self.legacy.list_topics_with_unread",
     "self.legacy.summarize_topic_ids",
-    "self.legacy",
     ".list_replies(tenant_id, security, topic_id, query)",
   ]) {
     requireMarker(owner, marker, ownerPath);
@@ -59,11 +58,33 @@ if (failures.length === 0) {
     rejectMarker(owner, forbidden, ownerPath);
   }
 
-  requireMarker(
-    legacy,
+  for (const marker of [
+    "pub async fn list_topics(",
+    "pub async fn list_topics_with_unread(",
+    "pub async fn summarize_topic_ids(",
+    "pub async fn list_replies(",
+    "topic_translations_by_id",
+    "reply_bodies_by_id",
+  ]) {
+    requireMarker(legacy, marker, legacyPath);
+  }
+
+  for (const forbidden of [
+    "pub async fn list_categories(",
+    "CategoryCursorPage",
+    "CategoryCursorQuery",
+    "CategoryReadModel",
+    "CATEGORY_CURSOR_VERSION",
+    "struct CategoryCursor",
+    "encode_category_cursor",
+    "decode_category_cursor",
+    "forum_category::",
+    "forum_category_translation",
     "category_translations_by_id",
-    "private legacy delegate remains available for non-Category methods during bounded cutover",
-  );
+    "Resource::ForumCategories",
+  ]) {
+    rejectMarker(legacy, forbidden, legacyPath);
+  }
 }
 
 if (failures.length > 0) {
@@ -72,4 +93,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("[forum-read-model-category-taxonomy-copy] Taxonomy Category ownership verified");
+console.log(
+  "[forum-read-model-category-taxonomy-copy] Taxonomy Category ownership and Topic/Reply-only legacy delegate verified",
+);
