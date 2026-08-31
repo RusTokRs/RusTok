@@ -233,6 +233,15 @@ Accepted CAT-5 slices already in `main`:
   mounted browser job is `workflow_dispatch`-only and reads authenticated storage state plus fixture
   inputs from a maintainer-selected GitHub environment. Its merge deliberately did not claim browser
   execution or CAT-5 completion.
+- PR #3752 made the mounted Forum Category admin evidence locale-addressable through the exact
+  normalized `categories/<locale>` module subpath while preserving legacy `/categories` behavior,
+  so fresh authenticated browser navigation can deterministically select RTL and fallback locales.
+- PR #3753 strengthened the retained browser packet so authenticated admin and storefront root/child
+  localized headings must resolve to browser-computed `direction: rtl`, not merely retain source
+  `dir="auto"`.
+- PR #3755 aligned the machine-readable CAT-5 execution claims with the computed RTL runner contract
+  and made the focused verifier reject regressions to weaker admin/storefront RTL claims. The
+  execution contract still remains `source_ready_maintainer_execution_pending`.
 
 Retained focused evidence for the foundation:
 
@@ -252,12 +261,24 @@ Retained focused evidence for the foundation:
 - PR #3750 exact head `6cf7325a4f32a1cff6859792978523e21913e873` passed `Forum Category Taxonomy Browser Evidence`
   run `33306801105`: exact checkout, source contract and retained Playwright compile-list succeeded,
   while the mounted multilingual/RTL job was correctly skipped on the pull-request event. PR #3750
-  was squash-merged as `287db4a8857663e0355712d9cb5893f118f65608`.
+  was squash-merged as `287db4a8857663e0355712d9cb5893f118f65608`;
+- PR #3752 exact head `448e50a2b499aedeea45c5d448b0f832a51f9da0` passed focused
+  `Forum Category Taxonomy Browser Evidence` run `33365642047` and was squash-merged as
+  `2f5e03e8cb5c0577686e0cf527f93d8897b46fbe`;
+- PR #3753 exact head `cfe009e9cfa10d0c78c7768489467669577003e0` passed focused
+  `Forum Category Taxonomy Browser Evidence` run `33387441260` and was squash-merged as
+  `4471ef63d0f49f683b819b527baaf13d45ec8297`;
+- PR #3755 exact head `c33b632710401a34caedab96fb384aff88d99c78` passed focused
+  `Forum Category Taxonomy Browser Evidence` run `33389998207`: exact checkout, source contract,
+  dependency install and retained Playwright compile-list succeeded while the mounted job was
+  correctly skipped on the pull-request event. PR #3755 was squash-merged as
+  `f4de7c3ccbc1c0b32c9c6bcd6f0394e07981a063`.
 
-Later CAT-5 runtime slices include focused source/integration contracts. PR #3708 provides the retained
-browser runner and PR #3750 provides its credential-safe manual execution path, but neither merge
-substitutes for the still-required successful mounted browser execution against a prepared
-Taxonomy-backed fixture.
+The retained CAT-5 source packet is now hardened through PR #3755: PR #3708 provides the mounted
+browser runner, PR #3750 provides its credential-safe manual execution path, PR #3752 provides the
+locale-addressable admin seam, PR #3753 requires browser-computed RTL direction, and PR #3755 pins
+those claims in the machine contract. None of these merges substitutes for the still-required
+successful mounted browser execution against a prepared Taxonomy-backed fixture.
 
 **Next:** configure the GitHub environment required by `Forum Category Taxonomy Browser Evidence` and
 run its `workflow_dispatch` mounted job against the prepared authenticated admin/storefront fixture,
