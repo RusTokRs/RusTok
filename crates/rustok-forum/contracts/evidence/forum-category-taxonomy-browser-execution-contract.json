@@ -55,7 +55,7 @@
     "screenshots, video and tracing are disabled",
     "mounted browser execution is workflow_dispatch-only and requires a maintainer-selected GitHub environment",
     "mounted workflow_dispatch evidence fails closed unless the selected GitHub ref is refs/heads/main",
-    "authenticated admin storage state enters the workflow only through the RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON environment secret and is materialized under RUNNER_TEMP",
+    "raw authenticated admin storage state is scoped only to the materialization step through the RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON environment secret; downstream steps receive only the RUNNER_TEMP file path",
     "credential-free mounted URLs and expected fixture values enter the workflow through GitHub environment variables",
     "pull-request runs verify source and compile-list the retained Playwright runner without mounted credentials or fixture execution"
   ],
