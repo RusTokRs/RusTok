@@ -74,16 +74,22 @@ requireMarkers("apps/server/Dockerfile", [
   "FROM node:22-bookworm-slim AS node-runtime",
   "FROM rust:${RUST_VERSION}-slim-${DEBIAN_VERSION} AS base",
   "curl",
-  "cargo install trunk --version 0.21.14 --locked --root /opt/trunk",
+  'cargo install trunk --version "=0.21.14" --locked --root /opt/trunk',
   "FROM base AS migration",
   'CMD ["cargo", "run", "--locked", "-p", "rustok-migrations", "--bin", "rustok-migrate", "--", "up"]',
   "bash scripts/build/build-embedded-admin.sh",
   "--skip-tool-install",
   'CMD ["cargo", "run", "--locked", "-p", "rustok-server", "--bin", "rustok-server"]',
+  "bash scripts/build/build-pages-inline-edit-deployment.sh",
+  "--skip-trunk-tool-install",
   "test -s /workspace/apps/admin/dist/index.html",
-  "cargo build --locked --release -p rustok-server --bin rustok-server",
+  "test -s /workspace/target/site/assets/pages-inline-edit-bootstrap.js",
+  "test -s /workspace/target/site/assets/pages-inline-edit/rustok_storefront.js",
+  "test -s /workspace/target/site/assets/pages-inline-edit/rustok_storefront_bg.wasm",
+  "test -x /workspace/target/release/rustok-server",
 ]);
-requireCount("apps/server/Dockerfile", "bash scripts/build/build-embedded-admin.sh", 2);
+requireCount("apps/server/Dockerfile", "bash scripts/build/build-embedded-admin.sh", 1);
+requireCount("apps/server/Dockerfile", "bash scripts/build/build-pages-inline-edit-deployment.sh", 1);
 forbidMarkers("apps/server/Dockerfile", [
   "cargo-watch",
   "cargo install trunk --locked\n",
@@ -105,8 +111,11 @@ requireMarkers("crates/rustok-migrations/src/bin/rustok_migrate.rs", [
   'command == "status"',
   "only up and status are allowed",
   'env::var("DATABASE_URL")',
-  "Migrator::up(&database, None).await?",
+  "loop {",
   "Migrator::get_pending_migrations(&database).await?",
+  "let migration_name = next.name().to_string();",
+  "Migrator::up(&database, Some(1)).await",
+  "migration {migration_name} failed",
   'for forbidden in ["down", "fresh", "reset", "refresh"]',
 ]);
 forbidMarkers("crates/rustok-migrations/src/bin/rustok_migrate.rs", [
@@ -174,7 +183,7 @@ forbidMarkers("docker-compose.full-dev.yml", [
   "/app/crates",
   "http://localhost:5150/api/health",
   "storefront-leptos:",
-  "apps/storefront/Dockerfile",
+  "dockerfile: apps/storefront/Dockerfile",
   "rustok_storefront_leptos",
   '"3101:3101"',
   "nginx:alpine",
