@@ -80,6 +80,8 @@ RUSTOK_FORUM_CATEGORY_STOREFRONT_ALIAS_E2E_URL
 RUSTOK_FORUM_CATEGORY_STOREFRONT_CANONICAL_E2E_URL
 ```
 
+The two admin targets are locale-addressable Forum Category routes. After the deployment's admin mount prefix, use the exact module subpath `modules/forum/categories/<requested_locale>`; for the embedded `/admin/` mount this is `/admin/modules/forum/categories/<requested_locale>`. The locale segment is normalized by the Forum admin route before Category reads, so an RTL request such as `ar` and a fallback requested locale survive a fresh browser navigation instead of depending on transient in-memory locale-switch state. Legacy `/modules/forum/categories` remains supported and continues to inherit the existing admin locale.
+
 Expected Taxonomy-owned fixture values:
 
 ```text
@@ -106,9 +108,9 @@ For the manual GitHub Actions workflow, configure every value above except `RUST
 
 ### Admin RTL hierarchy/order/presentation
 
-The mounted `/modules/forum/categories` surface is opened with the normal authenticated browser state. The runner proves:
+The mounted `/modules/forum/categories/<requested_locale>` surface is opened with the normal authenticated browser state. The runner proves:
 
-- the requested RTL locale is present in the mounted route;
+- the requested RTL locale is present in the mounted route and initializes the Forum Category content locale;
 - localized Category headings render with `lang=<Taxonomy effective_locale>` and `dir="auto"`;
 - slug badges remain `dir="ltr"`;
 - the prepared root/child hierarchy renders as depth/position `0/0` and `1/0`;
@@ -135,6 +137,7 @@ The prepared historical alias URL must navigate to the exact current canonical C
 
 The source guard pins both the mounted source and the manual execution boundary:
 
+- Forum Category admin accepts only the exact `categories/<locale>` mounted subpath as a locale override, normalizes that locale through the shared locale contract, and keeps legacy `/categories` behavior unchanged;
 - Forum admin localized cards retain `effective_locale`, `lang`, `dir="auto"`, LTR route identifiers, hierarchy/order and presentation rendering;
 - Forum storefront Category cards retain effective-locale copy and canonical hrefs;
 - the Forum Category tree reader still consumes `TaxonomyOwnerCategoryReader` projections for copy/hierarchy/presentation;
