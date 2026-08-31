@@ -92,8 +92,14 @@ mod tests {
     #[test]
     fn category_route_locale_ignores_legacy_or_unrelated_subpaths() {
         assert_eq!(forum_category_route_locale(Some("categories")), None);
-        assert_eq!(forum_category_route_locale(Some("categories/not a locale")), None);
-        assert_eq!(forum_category_route_locale(Some("categories/ar/edit")), None);
+        assert_eq!(
+            forum_category_route_locale(Some("categories/not a locale")),
+            None
+        );
+        assert_eq!(
+            forum_category_route_locale(Some("categories/ar/edit")),
+            None
+        );
         assert_eq!(forum_category_route_locale(Some("reply-range/ar")), None);
         assert_eq!(forum_category_route_locale(None), None);
     }
