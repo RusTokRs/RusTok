@@ -36,12 +36,12 @@
     "RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_CANONICAL_PATH"
   ],
   "claims_after_successful_execution": [
-    "admin Category tree renders RTL Taxonomy-owned copy with effective locale and dir=auto",
+    "admin Category tree renders RTL Taxonomy-owned copy with effective locale, dir=auto and browser-computed direction=rtl",
     "admin route identifiers remain LTR while localized copy is RTL-capable",
     "admin Category hierarchy and sibling order match the prepared Taxonomy-owned fixture",
     "admin Category icon/accent presentation matches the prepared Taxonomy-owned fixture",
     "admin requested locale can fall back to a different Taxonomy effective locale",
-    "storefront Category rail renders the same RTL Taxonomy-owned copy and canonical localized hrefs",
+    "storefront Category rail renders the same RTL Taxonomy-owned copy with browser-computed direction=rtl and canonical localized hrefs",
     "storefront Category rail preserves Taxonomy owner ordering",
     "storefront requested locale fallback renders effective-locale copy and canonical effective-locale href",
     "legacy Category alias navigation redirects to the Taxonomy canonical route"
