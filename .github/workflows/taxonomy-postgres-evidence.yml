@@ -14,6 +14,7 @@ on:
       - "scripts/verify/run-taxonomy-postgres-evidence-source-contract.mjs"
       - "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs"
       - "scripts/verify/verify-taxonomy-translation-target-postgres.mjs"
+      - ".github/workflows/hardening-gates.yml"
       - ".github/workflows/taxonomy-postgres-evidence.yml"
   push:
     branches:
@@ -29,6 +30,7 @@ on:
       - "scripts/verify/run-taxonomy-postgres-evidence-source-contract.mjs"
       - "scripts/verify/verify-taxonomy-route-registry-postgres-contention.mjs"
       - "scripts/verify/verify-taxonomy-translation-target-postgres.mjs"
+      - ".github/workflows/hardening-gates.yml"
       - ".github/workflows/taxonomy-postgres-evidence.yml"
 
 permissions:
