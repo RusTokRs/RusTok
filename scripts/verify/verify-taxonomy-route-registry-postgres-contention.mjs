@@ -42,6 +42,18 @@ const exactHead = {
   artifactDigest: 'sha256:70d124fba72cf14c00f88330639ff8e70200a6f3919963ae0af5cf9760874854',
   artifactExpiresAt: '2026-09-07T15:13:04Z',
 };
+const postMergeMain = {
+  runId: 33420044854,
+  headSha: '0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6',
+  sourceJobId: 99579915117,
+  runtimeJobId: 99580063917,
+  gateJobId: 99581484039,
+  artifactId: 9768688596,
+  artifactName:
+    'taxonomy-postgres-evidence-33420044854-0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6',
+  artifactDigest: 'sha256:bed3651b428a2e779cec8faca0bef804b079655608982ddb3de922549f195303',
+  artifactExpiresAt: '2026-09-07T17:31:39Z',
+};
 
 function read(relativePath) {
   const target = path.join(repoRoot, relativePath);
@@ -95,8 +107,8 @@ function verifyRuntimeInputSnapshot(evidence, label) {
   const fingerprints = snapshot.git_objects ?? {};
 
   if (
-    snapshot.runtime_commit !== exactHead.headSha ||
-    snapshot.validated_through_commit !== exactHead.headSha
+    snapshot.runtime_commit !== postMergeMain.headSha ||
+    snapshot.validated_through_commit !== postMergeMain.headSha
   ) {
     failures.push(`${label}: runtime input snapshot provenance drift`);
   }
@@ -139,9 +151,8 @@ function verifyRun(recorded, expected, label) {
   }
 }
 
-function verifyRefreshRuntimeEvidence(evidence, label) {
+function verifyRecordedRuntimeEvidence(evidence, label) {
   const runtime = evidence.runtime_evidence ?? {};
-  const postMerge = runtime.post_merge_main ?? {};
 
   if (
     runtime.workflow !== 'Taxonomy PostgreSQL Evidence' ||
@@ -151,11 +162,7 @@ function verifyRefreshRuntimeEvidence(evidence, label) {
   }
 
   verifyRun(runtime.exact_head_pull_request ?? {}, exactHead, `${label}: exact-head pull request`);
-
-  if (postMerge.status !== 'pending' || Object.keys(postMerge).length !== 1) {
-    failures.push(`${label}: post-merge evidence must remain explicitly pending`);
-  }
-
+  verifyRun(runtime.post_merge_main ?? {}, postMergeMain, `${label}: post-merge main`);
   verifyRuntimeInputSnapshot(evidence, label);
 }
 
@@ -206,9 +213,9 @@ if (evidence) {
     evidence.schema_version !== 1 ||
     evidence.module !== 'taxonomy' ||
     evidence.surface !== 'route_registry_postgres_contention' ||
-    evidence.status !== 'runtime_refresh_pending_post_merge' ||
+    evidence.status !== 'runtime_recorded' ||
     evidence.compile_policy !== 'ci_runtime_workflow' ||
-    evidence.runtime_status !== 'exact_head_passed_post_merge_pending'
+    evidence.runtime_status !== 'passed'
   ) {
     failures.push(`${files.evidence}: identity/status drift`);
   }
@@ -242,12 +249,11 @@ if (evidence) {
   }
   if (
     !Array.isArray(evidence.remaining_open_result_4_evidence) ||
-    JSON.stringify(evidence.remaining_open_result_4_evidence) !==
-      JSON.stringify(['post_merge_main_postgresql_evidence'])
+    evidence.remaining_open_result_4_evidence.length !== 0
   ) {
-    failures.push(`${files.evidence}: pending Result 4 evidence drift`);
+    failures.push(`${files.evidence}: Result 4 must not retain open evidence items`);
   }
-  verifyRefreshRuntimeEvidence(evidence, files.evidence);
+  verifyRecordedRuntimeEvidence(evidence, files.evidence);
 }
 
 requireMarkers(
@@ -280,8 +286,9 @@ requireMarkers(
     'two-writer route-key contention',
     'translation apply CAS',
     'change-cursor',
-    'Fresh exact-head refresh run `33407161450`',
-    'Result 4 refresh is pending post-merge main evidence.',
+    'Final exact-head pull-request run `33407161450`',
+    'Post-merge main run `33420044854`',
+    'Result 4 is complete for the current runtime input fingerprints.',
     'runtime input fingerprints',
   ],
   files.plan,
@@ -299,5 +306,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '[verify-taxonomy-route-registry-postgres-contention] PASS source=canonical-migrator+harness+evidence+workflow runtime=exact-head-recorded+post-merge-pending+fingerprinted',
+  '[verify-taxonomy-route-registry-postgres-contention] PASS source=canonical-migrator+harness+evidence+workflow runtime=exact-head+post-merge-recorded+fingerprinted result4=complete',
 );
