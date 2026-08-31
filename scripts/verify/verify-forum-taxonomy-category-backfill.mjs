@@ -16,11 +16,20 @@ const rejectMarker = (path, marker, label = marker) => {
 const migration = 'crates/rustok-forum/src/migrations/m20260823_000030_backfill_forum_categories_to_taxonomy.rs';
 const registry = 'crates/rustok-forum/src/migrations/mod.rs';
 const contracts = 'docs/migrations/backfill-contracts.json';
+const entitiesRegistry = 'crates/rustok-forum/src/entities/mod.rs';
 const legacyCategory = 'crates/rustok-forum/src/entities/forum_category.rs';
 const legacyTranslation = 'crates/rustok-forum/src/entities/forum_category_translation.rs';
 const forumServices = 'crates/rustok-forum/src/services/mod.rs';
 
-for (const path of [migration, registry, contracts, legacyCategory, legacyTranslation, forumServices]) {
+for (const path of [
+  migration,
+  registry,
+  contracts,
+  entitiesRegistry,
+  legacyCategory,
+  legacyTranslation,
+  forumServices,
+]) {
   if (!fs.existsSync(path)) failures.push(`${path}: file is required`);
 }
 
@@ -34,7 +43,7 @@ if (failures.length === 0) {
   requireMarker(migration, 'TaxonomyScopeType::Module', 'module-scoped legacy migration');
   requireMarker(migration, 'id: Set(category.id)', 'Forum UUID preservation');
   requireMarker(migration, 'format!("forum-category-{category_id}")', 'locale-independent canonical key');
-  requireMarker(migration, 'forum_category_translation::Entity::find()', 'legacy localized copy input');
+  requireMarker(migration, 'forum_category_translation::Entity::find()', 'historical localized copy backfill input');
   requireMarker(migration, 'legacy_category_route_alias::Entity::find()', 'legacy alias input');
   requireMarker(migration, 'taxonomy_term_route_key::ActiveModel', 'Taxonomy route ownership backfill');
   requireMarker(migration, 'translation_change::ActiveModel', 'Taxonomy Translation change evidence');
@@ -49,8 +58,27 @@ if (failures.length === 0) {
   requireMarker(contracts, '"migration": "m20260823_000030_backfill_forum_categories_to_taxonomy"', 'fixture migration registration');
   requireMarker(contracts, '"mode": "fixture"', 'runtime backfill fixture mode');
 
-  requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'legacy hierarchy retained');
-  requireMarker(legacyTranslation, 'forum_category_translations', 'compatibility localized copy retained until search/read-model cutover');
+  requireMarker(
+    entitiesRegistry,
+    'pub(crate) mod forum_category_translation;',
+    'migration-only legacy Category Translation entity visibility',
+  );
+  rejectMarker(
+    entitiesRegistry,
+    'pub mod forum_category_translation;',
+    'public legacy Category Translation entity export',
+  );
+  requireMarker(legacyCategory, 'pub parent_id: Option<Uuid>', 'Forum-owned compatibility hierarchy projection retained');
+  rejectMarker(
+    legacyCategory,
+    'forum_category_translation',
+    'retired Forum Category Translation runtime relation',
+  );
+  requireMarker(
+    legacyTranslation,
+    'forum_category_translations',
+    'historical backfill compatibility entity retained for the published migration',
+  );
   rejectMarker(forumServices, 'ForumCategoryTranslationTargetProvider', 'retired duplicate Forum Translation provider');
 }
 
