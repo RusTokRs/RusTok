@@ -41,9 +41,9 @@ if (failures.length === 0) {
     "row.canonical.available_locales",
     "row.canonical.icon_key",
     "row.canonical.color",
-    "self.legacy.list_topics",
-    "self.legacy.list_topics_with_unread",
-    "self.legacy.summarize_topic_ids",
+    ".list_topics(tenant_id, security, query)",
+    ".list_topics_with_unread(tenant_id, security, query)",
+    ".summarize_topic_ids(tenant_id, security, topic_ids)",
     ".list_replies(tenant_id, security, topic_id, query)",
   ]) {
     requireMarker(owner, marker, ownerPath);
