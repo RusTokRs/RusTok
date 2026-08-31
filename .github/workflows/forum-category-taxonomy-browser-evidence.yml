@@ -68,7 +68,6 @@ jobs:
     timeout-minutes: 20
     environment: ${{ inputs.target_environment }}
     env:
-      ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}
       RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL }}
       RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL }}
       RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL: ${{ vars.RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL }}
@@ -109,7 +108,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$ADMIN_STORAGE_STATE_JSON"
           for name in \
             RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL \
             RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL \
@@ -137,8 +135,11 @@ jobs:
           done
       - name: Materialize authenticated admin storage state
         shell: bash
+        env:
+          ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}
         run: |
           set -euo pipefail
+          test -n "$ADMIN_STORAGE_STATE_JSON"
           umask 077
           state="$RUNNER_TEMP/forum-category-admin-storage-state.json"
           printf '%s' "$ADMIN_STORAGE_STATE_JSON" > "$state"
