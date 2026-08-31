@@ -228,6 +228,11 @@ Accepted CAT-5 slices already in `main`:
   machine-readable execution contract and source verifier. Its contract remains
   `source_ready_maintainer_execution_pending`: it does not claim browser execution or CAT-5
   completion.
+- PR #3750 added the credential-safe `Forum Category Taxonomy Browser Evidence` execution handoff.
+  Pull requests run the source verifier and Playwright compile-list without mounted credentials; the
+  mounted browser job is `workflow_dispatch`-only and reads authenticated storage state plus fixture
+  inputs from a maintainer-selected GitHub environment. Its merge deliberately did not claim browser
+  execution or CAT-5 completion.
 
 Retained focused evidence for the foundation:
 
@@ -243,16 +248,21 @@ Retained focused evidence for the foundation:
 - PR #3690 exact head `3c33324b2d6389295eb4fe6f0d0a035ad1905f67` passed
   `Taxonomy Category Owner Sync Contract` run `32683541704`, `Taxonomy Ownership Boundary` run
   `32683541614`, `Taxonomy Lookup Contract` run `32683541624` and `Taxonomy PostgreSQL Evidence` run
-  `32683541607`, then squash-merged as `0b09edd2a07f19cd0e8cf4820681a3ed73d09c09`.
+  `32683541607`, then squash-merged as `0b09edd2a07f19cd0e8cf4820681a3ed73d09c09`;
+- PR #3750 exact head `6cf7325a4f32a1cff6859792978523e21913e873` passed `Forum Category Taxonomy Browser Evidence`
+  run `33306801105`: exact checkout, source contract and retained Playwright compile-list succeeded,
+  while the mounted multilingual/RTL job was correctly skipped on the pull-request event. PR #3750
+  was squash-merged as `287db4a8857663e0355712d9cb5893f118f65608`.
 
-Later CAT-5 runtime slices include focused source/integration contracts. PR #3708 provides the final
-browser runner source, but its merge does not substitute for the still-required mounted browser
-parity execution against the prepared Taxonomy-backed fixture.
+Later CAT-5 runtime slices include focused source/integration contracts. PR #3708 provides the retained
+browser runner and PR #3750 provides its credential-safe manual execution path, but neither merge
+substitutes for the still-required successful mounted browser execution against a prepared
+Taxonomy-backed fixture.
 
-**Next:** execute the retained PR #3708 mounted multilingual and RTL Forum Category browser packet
-against a prepared authenticated admin/storefront fixture, including requested/effective locale
-fallback, canonical localized routes, hierarchy/order, presentation and alias redirect. No backend
-donor/storage cutover remains.
+**Next:** configure the GitHub environment required by `Forum Category Taxonomy Browser Evidence` and
+run its `workflow_dispatch` mounted job against the prepared authenticated admin/storefront fixture,
+including requested/effective locale fallback, canonical localized routes, hierarchy/order,
+presentation and alias redirect. No backend donor/storage cutover remains.
 
 **Done when:** the backend ownership/storage cutover above remains intact and a successful mounted
 multilingual/RTL browser run confirms that Forum Category behavior uses the shared Taxonomy
