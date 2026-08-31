@@ -2,8 +2,8 @@
   "schema_version": 1,
   "module": "taxonomy",
   "surface": "translation_target_postgres",
-  "status": "runtime_recorded",
-  "runtime_status": "passed",
+  "status": "runtime_refresh_pending_post_merge",
+  "runtime_status": "exact_head_passed_post_merge_pending",
   "environment": {
     "primary": "RUSTOK_TAXONOMY_TEST_DATABASE_URL",
     "fallback": "DATABASE_URL",
@@ -18,49 +18,40 @@
     "workflow": "Taxonomy PostgreSQL Evidence",
     "required_backend": "PostgreSQL 16",
     "exact_head_pull_request": {
-      "run_id": 31847950553,
-      "head_sha": "881390e04b0913fc5146c47028c57a1ebed5005e",
-      "source_job_id": 94919665168,
-      "runtime_job_id": 94919713676,
-      "gate_job_id": 94921419733,
+      "run_id": 33407161450,
+      "head_sha": "3c42235867036511eabeb87ed421d9d74b7ff997",
+      "source_job_id": 99537462097,
+      "runtime_job_id": 99537547759,
+      "gate_job_id": 99539081717,
       "conclusion": "success",
-      "artifact_id": 9236910817,
-      "artifact_name": "taxonomy-postgres-evidence-31847950553-881390e04b0913fc5146c47028c57a1ebed5005e",
-      "artifact_digest": "sha256:ea62a105395c7ca1cc49085acd759dbd265d4e3e3d85270c2962f20c35a3e55c",
-      "artifact_expires_at": "2026-11-12T22:47:03Z"
+      "artifact_id": 9763777630,
+      "artifact_name": "taxonomy-postgres-evidence-33407161450-3c42235867036511eabeb87ed421d9d74b7ff997",
+      "artifact_digest": "sha256:70d124fba72cf14c00f88330639ff8e70200a6f3919963ae0af5cf9760874854",
+      "artifact_expires_at": "2026-09-07T15:13:04Z"
     },
     "post_merge_main": {
-      "run_id": 31857567129,
-      "head_sha": "a4cd8b03239c2070f695d11557573cc865799200",
-      "source_job_id": 94945097376,
-      "runtime_job_id": 94945619395,
-      "gate_job_id": 94947092429,
-      "conclusion": "success",
-      "artifact_id": 9239718183,
-      "artifact_name": "taxonomy-postgres-evidence-31857567129-a4cd8b03239c2070f695d11557573cc865799200",
-      "artifact_digest": "sha256:ac6dc10fd6ee17665fba036ff36343d51e0bacada7a59e1c1b4bf71ca7135637",
-      "artifact_expires_at": "2026-11-13T01:49:57Z"
+      "status": "pending"
     }
   },
   "runtime_input_snapshot": {
-    "runtime_commit": "a4cd8b03239c2070f695d11557573cc865799200",
-    "validated_through_commit": "a4cd8b03239c2070f695d11557573cc865799200",
+    "runtime_commit": "3c42235867036511eabeb87ed421d9d74b7ff997",
+    "validated_through_commit": "3c42235867036511eabeb87ed421d9d74b7ff997",
     "git_objects": {
       "Cargo.toml": "69ce6062ba6e8ca403c1ac7381a1b6cdf39a4a68",
-      "Cargo.lock": "793fbdde9a0eb1585b6859ff978168ba6950673a",
+      "Cargo.lock": "48fbe029c648c948fdae655e41d52654408b1b93",
       "crates/rustok-core/Cargo.toml": "69acba7cf0a6f8b118e23bad3f3c822cc0a13231",
       "crates/rustok-core/src": "5646d4bfd1809e68f512c43e3210cfdaaecd26e9",
       "crates/rustok-migrations/Cargo.toml": "038cacf3c2d3b24d75cd0bc524ba1bbade8514fe",
-      "crates/rustok-migrations/src": "020849b6baa0e3a7f6dddee28a1d8662adac97e4",
+      "crates/rustok-migrations/src": "2ea3687866eaf852c1c6e7baa0d91693ce476ca2",
       "crates/rustok-outbox/Cargo.toml": "adcdca31ec764c3955212943163ba586855dd917",
-      "crates/rustok-outbox/src": "525ecf9cb0d77e3fcce2f7e6e40390f6622608ff",
+      "crates/rustok-outbox/src": "e78910b707a9baa3f48b939c82a7758d85496a2e",
       "crates/rustok-taxonomy/Cargo.toml": "0441c8785f1f6c62596441f9a98c1aed57fa0775",
-      "crates/rustok-taxonomy/src": "e513bfc13e1e76c289f216bd26b7c3c6976921a7",
+      "crates/rustok-taxonomy/src": "6562820d3d790aa699ca89747c9c674862a09cfa",
       "crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs": "5fc31718590e9b9c18c7b1601fbad63d62a1939b",
       "crates/rustok-taxonomy/tests/translation_target_postgres.rs": "6f62da2b1b400723fbcbc8135210771606e37bac",
       "crates/rustok-translation-targets/Cargo.toml": "7cdc77394d05244ca3f4fa41971c58bf0f39e3d3",
       "crates/rustok-translation-targets/src": "a52cc4fb614cc6cc9ab5ee18fdcfab0746a968e8",
-      ".github/workflows/taxonomy-postgres-evidence.yml": "3591c9b9c43aef8305baed357ffa6ec857bc3a89"
+      ".github/workflows/taxonomy-postgres-evidence.yml": "4e2b934f44e86a196708ef55ad63976d76f054ad"
     }
   },
   "production_contract": {
@@ -85,5 +76,7 @@
     "progress_cursor_matches_latest_durable_change": true,
     "concurrent_commit_order_is_not_claimed": true
   },
-  "remaining_open_result_4_evidence": []
+  "remaining_open_result_4_evidence": [
+    "post_merge_main_postgresql_evidence"
+  ]
 }
