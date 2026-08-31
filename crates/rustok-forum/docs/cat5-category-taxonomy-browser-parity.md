@@ -147,6 +147,17 @@ The source guard pins both the mounted source and the manual execution boundary:
 - authenticated storage state comes from an environment secret and the credential-free fixture values come from environment variables;
 - ordinary pull requests can verify/compile-list the retained runner without receiving mounted credentials.
 
+## Retained source-ready provenance
+
+The execution packet has been hardened incrementally without changing its `maintainer execution pending` status:
+
+- PR #3708 (`560ac9108fde99349e4f7ed8028600eddb761cf4`, merged as `0df613755400682054535d2dc80c131d10fee456`) introduced the retained mounted multilingual/RTL browser runner, dedicated Playwright config, machine contract and source verifier. It deliberately made no browser-execution claim.
+- PR #3750 (`6cf7325a4f32a1cff6859792978523e21913e873`, merged as `287db4a8857663e0355712d9cb5893f118f65608`) added the credential-safe manual execution workflow. Focused run `33306801105` passed the exact-head source contract and Playwright compile-list while the mounted job was correctly skipped on the pull-request event.
+- PR #3752 (`448e50a2b499aedeea45c5d448b0f832a51f9da0`, merged as `2f5e03e8cb5c0577686e0cf527f93d8897b46fbe`) made the mounted Forum Category admin route locale-addressable through the exact normalized `categories/<locale>` subpath. Focused `Forum Category Taxonomy Browser Evidence` run `33365642047` passed on that exact head.
+- PR #3753 (`cfe009e9cfa10d0c78c7768489467669577003e0`, merged as `4471ef63d0f49f683b819b527baaf13d45ec8297`) strengthened RTL evidence so authenticated admin and storefront root/child localized headings must resolve to browser-computed `direction: rtl`, not merely retain `dir="auto"`. Focused run `33387441260` passed exact checkout, the source verifier and Playwright compile-list; the mounted job remained correctly skipped on the pull-request event.
+
+No successful `Forum Category Taxonomy Browser Evidence` `workflow_dispatch` run is retained yet. The source-ready runs above prove the executable packet and its security/route/RTL contracts only; they do not prove deployment provenance, mounted browser execution, production rollout completion or TAXONOMY-CAT-5 completion.
+
 ## Maintainer execution
 
 Preferred repository execution after the workflow is present on `main`:
