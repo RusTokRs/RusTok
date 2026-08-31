@@ -2,8 +2,8 @@
   "schema_version": 1,
   "module": "taxonomy",
   "surface": "translation_target_postgres",
-  "status": "runtime_refresh_pending_post_merge",
-  "runtime_status": "exact_head_passed_post_merge_pending",
+  "status": "runtime_recorded",
+  "runtime_status": "passed",
   "environment": {
     "primary": "RUSTOK_TAXONOMY_TEST_DATABASE_URL",
     "fallback": "DATABASE_URL",
@@ -30,12 +30,21 @@
       "artifact_expires_at": "2026-09-07T15:13:04Z"
     },
     "post_merge_main": {
-      "status": "pending"
+      "run_id": 33420044854,
+      "head_sha": "0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6",
+      "source_job_id": 99579915117,
+      "runtime_job_id": 99580063917,
+      "gate_job_id": 99581484039,
+      "conclusion": "success",
+      "artifact_id": 9768688596,
+      "artifact_name": "taxonomy-postgres-evidence-33420044854-0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6",
+      "artifact_digest": "sha256:bed3651b428a2e779cec8faca0bef804b079655608982ddb3de922549f195303",
+      "artifact_expires_at": "2026-09-07T17:31:39Z"
     }
   },
   "runtime_input_snapshot": {
-    "runtime_commit": "3c42235867036511eabeb87ed421d9d74b7ff997",
-    "validated_through_commit": "3c42235867036511eabeb87ed421d9d74b7ff997",
+    "runtime_commit": "0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6",
+    "validated_through_commit": "0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6",
     "git_objects": {
       "Cargo.toml": "69ce6062ba6e8ca403c1ac7381a1b6cdf39a4a68",
       "Cargo.lock": "48fbe029c648c948fdae655e41d52654408b1b93",
@@ -76,7 +85,5 @@
     "progress_cursor_matches_latest_durable_change": true,
     "concurrent_commit_order_is_not_claimed": true
   },
-  "remaining_open_result_4_evidence": [
-    "post_merge_main_postgresql_evidence"
-  ]
+  "remaining_open_result_4_evidence": []
 }
