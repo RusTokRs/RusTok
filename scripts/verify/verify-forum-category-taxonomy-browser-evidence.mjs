@@ -58,6 +58,11 @@ for (const claim of [
     throw new Error(`CAT-5 browser contract must retain computed RTL claim: ${claim}`);
   }
 }
+const mainOnlyDispatchBoundary =
+  "mounted workflow_dispatch evidence fails closed unless the selected GitHub ref is refs/heads/main";
+if (!contract.boundaries?.includes(mainOnlyDispatchBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the main-only mounted execution boundary");
+}
 
 for (const marker of contract.required_environment ?? []) {
   need(testSource, marker, "CAT-5 browser runner");
@@ -115,6 +120,7 @@ for (const marker of [
   "type: environment",
   "if: github.event_name == 'workflow_dispatch'",
   "environment: ${{ inputs.target_environment }}",
+  "run: test \"$GITHUB_REF\" = \"refs/heads/main\"",
   "ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}",
   "state=\"$RUNNER_TEMP/forum-category-admin-storage-state.json\"",
   "echo \"RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE=$state\" >> \"$GITHUB_ENV\"",
