@@ -58,6 +58,11 @@ for (const claim of [
     throw new Error(`CAT-5 browser contract must retain computed RTL claim: ${claim}`);
   }
 }
+const mainOnlyDispatchBoundary =
+  "mounted workflow_dispatch evidence fails closed unless the selected GitHub ref is refs/heads/main";
+if (!contract.boundaries?.includes(mainOnlyDispatchBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the main-only mounted execution boundary");
+}
 
 for (const marker of contract.required_environment ?? []) {
   need(testSource, marker, "CAT-5 browser runner");
