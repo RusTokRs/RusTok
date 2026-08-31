@@ -1,0 +1,75 @@
+name: Forum Read Model Category Taxonomy Copy
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/forum-read-model-category-taxonomy-copy.yml"
+      - "crates/rustok-forum/src/services/mod.rs"
+      - "crates/rustok-forum/src/services/read_model.rs"
+      - "crates/rustok-forum/src/services/read_model_owner.rs"
+      - "scripts/verify/verify-forum-read-model-category-taxonomy-copy.mjs"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/forum-read-model-category-taxonomy-copy.yml"
+      - "crates/rustok-forum/src/services/mod.rs"
+      - "crates/rustok-forum/src/services/read_model.rs"
+      - "crates/rustok-forum/src/services/read_model_owner.rs"
+      - "scripts/verify/verify-forum-read-model-category-taxonomy-copy.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forum-read-model-category-taxonomy-copy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  source-contract:
+    name: Forum read-model Category Taxonomy source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Verify Category read-model ownership boundary
+        run: node scripts/verify/verify-forum-read-model-category-taxonomy-copy.mjs
+
+  rust-contract:
+    name: Forum read-model Topic and Reply legacy delegate contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check changed legacy delegate formatting
+        run: rustfmt +1.96.0 --edition 2024 --check crates/rustok-forum/src/services/read_model.rs
+      - name: Compile Forum read-model owner and delegate
+        run: cargo check --locked -p rustok-forum --lib
+      - name: Exercise retained Topic unread delegate
+        run: cargo test --locked -p rustok-forum --test topic_unread_projection_sqlite -- --nocapture
