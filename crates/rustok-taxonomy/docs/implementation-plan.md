@@ -254,6 +254,12 @@ Accepted CAT-5 slices already in `main`:
   value before authenticated-state materialization; PR #3763 moved the static locale→URL, fallback
   requested/effective and storefront alias/canonical relationship checks to that same pre-auth
   boundary. The execution contract remains `source_ready_maintainer_execution_pending`.
+- PR #3771 confined the historical `forum_category_translation` entity to crate-private migration
+  compatibility and removed the retired runtime Category→translation SeaORM relation without
+  rewriting the published deterministic backfill migration.
+- PR #3772 removed the unreachable private pre-cutover Category read-model donor path, including its
+  legacy translation query and Category cursors, while preserving the Topic/Reply delegate and adding
+  an executable exact-SHA ownership/compile/regression gate.
 
 Retained focused evidence for the foundation:
 
@@ -298,14 +304,25 @@ Retained focused evidence for the foundation:
 - PR #3762 exact head `067f6ec3c2c138a29265a172ae17632c9269827b` passed focused run
   `33404692954` and was squash-merged as `a64f2b1c36112f6e8e4cd9166040bfcfaf11e877`;
 - PR #3763 exact head `5bd030a05e5ca59dcd6b6c317cf22400fc20b1f9` passed focused run
-  `33405293672` and was squash-merged as `261ce7e00629b0759042d3ebca62e6c9e2f39216`.
+  `33405293672` and was squash-merged as `261ce7e00629b0759042d3ebca62e6c9e2f39216`;
+- PR #3771 exact head `13919479c99ec755d1f7cc3f758c14680d821659` passed focused
+  `Forum Taxonomy Category Backfill Contract` run `33436045515`, including the updated source boundary
+  and full `cargo check --locked -p rustok-forum --lib`, then squash-merged as
+  `2f1f97a65c4719ae4f793ff81b925fe0e6121936`;
+- PR #3772 exact head `4cf6e711d6b56dbd9cf9222bbfd4c3f04d1a0391` passed focused
+  `Forum Read Model Category Taxonomy Copy` run `33437621508`: exact-SHA ownership verification,
+  Rust formatting, full Forum library compile and retained Topic unread SQLite regression all
+  succeeded; Browser E2E, Hardening Gates and Ecommerce Hardening also passed on that head. PR #3772
+  was squash-merged as `3b15ab139636d31dca027045d3a53a5769a62b1a`.
 
-The retained CAT-5 source packet is now hardened through PR #3763. The mounted execution path is
-main-only; the raw authenticated state is step-scoped and materialized late into a restricted
+The retained browser execution packet itself remains hardened through PR #3763. The CAT-5 backend
+handoff is actualized through PR #3772, including removal of the remaining public/runtime legacy
+Category translation relation and unreachable private Category donor read path. The mounted execution
+path is main-only; the raw authenticated state is step-scoped and materialized late into a restricted
 `RUNNER_TEMP` file whose path is exposed only to Playwright; all non-secret fixture values, URL safety
 and static locale/fallback/alias relationships are checked before that credential exists; and focused
-pull-request triggers cover every verifier-owned source seam. None of those source-ready merges
-substitutes for the still-required successful mounted browser execution against a prepared
+pull-request triggers cover every verifier-owned source seam. None of those source-ready or cleanup
+merges substitutes for the still-required successful mounted browser execution against a prepared
 Taxonomy-backed fixture.
 
 **Next:** configure the GitHub environment required by `Forum Category Taxonomy Browser Evidence` and
