@@ -60,6 +60,7 @@ for (const marker of [
   "data-forum-route-identifier",
   "toHaveAttribute('dir', 'auto')",
   "toHaveAttribute('dir', 'ltr')",
+  "toHaveCSS('direction', 'rtl')",
   "depth 0 · position 0",
   "depth 1 · position 0",
   "allTextContents()",

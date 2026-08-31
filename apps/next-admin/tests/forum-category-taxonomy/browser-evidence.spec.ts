@@ -100,6 +100,10 @@ test('Forum Category admin renders Taxonomy-owned RTL hierarchy, order and prese
       'dir',
       'auto'
     );
+    await expect(rootCard.locator('h3[data-forum-target-localized]')).toHaveCSS(
+      'direction',
+      'rtl'
+    );
     await expect(rootCard.locator('[data-forum-route-identifier]')).toHaveAttribute(
       'dir',
       'ltr'
@@ -118,6 +122,10 @@ test('Forum Category admin renders Taxonomy-owned RTL hierarchy, order and prese
     await expect(childCard.locator('h3[data-forum-target-localized]')).toHaveAttribute(
       'dir',
       'auto'
+    );
+    await expect(childCard.locator('h3[data-forum-target-localized]')).toHaveCSS(
+      'direction',
+      'rtl'
     );
     await expect(childCard.locator('[data-forum-route-identifier]')).toHaveAttribute(
       'dir',
@@ -198,11 +206,19 @@ test('Forum Category storefront renders Taxonomy-owned RTL copy and canonical ro
     effectiveLocale
   );
   await expect(rootCard.locator('h4[data-forum-target-localized]')).toHaveAttribute('dir', 'auto');
+  await expect(rootCard.locator('h4[data-forum-target-localized]')).toHaveCSS('direction', 'rtl');
   await expect(rootCard.locator('[data-forum-route-identifier]')).toHaveText(`#${rootSlug}`);
   await expect(rootCard.locator('[data-forum-route-identifier]')).toHaveAttribute('dir', 'ltr');
   await expect(rootCard.locator('span[class*="inset-y-0"][class*="left-0"]')).toHaveClass(
     new RegExp(regexEscape(accentClass))
   );
+
+  await expect(childCard.locator('h4[data-forum-target-localized]')).toHaveAttribute(
+    'lang',
+    effectiveLocale
+  );
+  await expect(childCard.locator('h4[data-forum-target-localized]')).toHaveAttribute('dir', 'auto');
+  await expect(childCard.locator('h4[data-forum-target-localized]')).toHaveCSS('direction', 'rtl');
 
   const categoryNames = await page
     .locator('aside h4[data-forum-target-localized]')
