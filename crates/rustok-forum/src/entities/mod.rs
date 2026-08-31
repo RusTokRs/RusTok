@@ -26,7 +26,7 @@ pub mod forum_category_topic_create_audience_group;
 pub mod forum_category_topic_create_audience_policy;
 pub mod forum_category_topic_create_audience_role;
 pub mod forum_category_topic_create_audience_user;
-pub mod forum_category_translation;
+pub(crate) mod forum_category_translation;
 pub mod forum_domain_event;
 pub mod forum_quote;
 pub mod forum_relation_revision;
