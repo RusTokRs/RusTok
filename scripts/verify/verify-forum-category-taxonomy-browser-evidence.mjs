@@ -63,6 +63,11 @@ const mainOnlyDispatchBoundary =
 if (!contract.boundaries?.includes(mainOnlyDispatchBoundary)) {
   throw new Error("CAT-5 browser contract must retain the main-only mounted execution boundary");
 }
+const scopedAdminStateSecretBoundary =
+  "raw authenticated admin storage state is scoped only to the materialization step through the RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON environment secret; downstream steps receive only the RUNNER_TEMP file path";
+if (!contract.boundaries?.includes(scopedAdminStateSecretBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the step-scoped admin storage-state secret boundary");
+}
 
 for (const marker of contract.required_environment ?? []) {
   need(testSource, marker, "CAT-5 browser runner");
@@ -121,7 +126,6 @@ for (const marker of [
   "if: github.event_name == 'workflow_dispatch'",
   "environment: ${{ inputs.target_environment }}",
   "run: test \"$GITHUB_REF\" = \"refs/heads/main\"",
-  "ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}",
   "state=\"$RUNNER_TEMP/forum-category-admin-storage-state.json\"",
   "echo \"RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE=$state\" >> \"$GITHUB_ENV\"",
   "npm ci --no-audit --no-fund",
@@ -132,6 +136,30 @@ for (const marker of [
 ]) {
   need(workflow, marker, "CAT-5 manual browser execution workflow");
 }
+const adminStateSecretBinding =
+  "ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}";
+const materializationSecretBlock = [
+  "      - name: Materialize authenticated admin storage state",
+  "        shell: bash",
+  "        env:",
+  `          ${adminStateSecretBinding}`,
+  "        run: |",
+  "          set -euo pipefail",
+  '          test -n "$ADMIN_STORAGE_STATE_JSON"',
+].join("\n");
+need(
+  workflow,
+  materializationSecretBlock,
+  "CAT-5 manual browser execution workflow step-scoped admin storage-state secret",
+);
+if (workflow.split(adminStateSecretBinding).length - 1 !== 1) {
+  throw new Error("CAT-5 admin storage-state secret must be bound exactly once");
+}
+forbid(
+  workflow,
+  "environment: ${{ inputs.target_environment }}\n    env:\n      ADMIN_STORAGE_STATE_JSON:",
+  "CAT-5 admin storage-state secret must not be exposed at mounted job scope",
+);
 for (const marker of (contract.required_environment ?? []).filter(
   (name) => name !== "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE",
 )) {
