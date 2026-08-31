@@ -418,18 +418,25 @@ translation update rolls back. The winner's translation and route reservation co
 exactly one durable route owner remains. This is the translation apply CAS boundary for route key
 ownership.
 
-Recorded runtime evidence refresh:
+Recorded runtime evidence:
 
-- Fresh exact-head refresh run `33407161450` (HEAD `3c42235867036511eabeb87ed421d9d74b7ff997`):
+- Final exact-head pull-request run `33407161450` (HEAD `3c42235867036511eabeb87ed421d9d74b7ff997`):
   source contract, canonical PostgreSQL 16 migrations, Category presentation CAS, Category hierarchy
   contention, route-registry contention, Translation-target CAS/change-cursor evidence, artifact
-  upload and the final gate all succeeded.
-- Result 4 refresh is pending post-merge main evidence.
+  upload and the final gate all succeeded. Artifact `9763777630`, named
+  `taxonomy-postgres-evidence-33407161450-3c42235867036511eabeb87ed421d9d74b7ff997`, has digest
+  `sha256:70d124fba72cf14c00f88330639ff8e70200a6f3919963ae0af5cf9760874854`.
+- Post-merge main run `33420044854` (HEAD `0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6`):
+  source contract, canonical PostgreSQL 16 migrations, Category presentation CAS, Category hierarchy
+  contention, route-registry contention, Translation-target CAS/change-cursor evidence, artifact
+  upload and the final gate all succeeded. Artifact `9768688596`, named
+  `taxonomy-postgres-evidence-33420044854-0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6`, has digest
+  `sha256:bed3651b428a2e779cec8faca0bef804b079655608982ddb3de922549f195303`.
+- Result 4 is complete for the current runtime input fingerprints.
 
-The evidence runtime input fingerprints record the exact git object SHAs for all runtime inputs at
-the successful exact-head run. After merge, a fresh main run must succeed and replace the pending
-post-merge provenance before Result 4 can be marked complete for the current runtime input
-fingerprints.
+The evidence runtime input fingerprints record the exact git object SHAs validated by the successful
+post-merge main run. Later changes to any fingerprinted runtime input require fresh PostgreSQL
+evidence; changes outside that runtime-input set do not silently invalidate the retained proof.
 
 ## Verification
 
