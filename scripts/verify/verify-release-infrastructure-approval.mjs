@@ -19,6 +19,7 @@ const PROTECTED_PATHS = [
   "apps/server/Dockerfile",
   "apps/server/Dockerfile.release",
   "apps/storefront/scripts/build-pages-inline-edit-client.mjs",
+  "apps/storefront/scripts/build-wasm-client.mjs",
   "docs/release/RELEASE_READINESS_CHECKLIST.md",
   "docs/verification/PLATFORM_HARDENING_STATUS_2026-07-18.md",
   "scripts/build/build-embedded-admin.sh",
@@ -140,6 +141,7 @@ function runSelfTest() {
   assert(PROTECTED_PATHS.includes("scripts/build/build-pages-inline-edit-deployment.sh"));
   assert(PROTECTED_PATHS.includes("scripts/build/build-pages-inline-edit-server.sh"));
   assert(PROTECTED_PATHS.includes("apps/storefront/scripts/build-pages-inline-edit-client.mjs"));
+  assert(PROTECTED_PATHS.includes("apps/storefront/scripts/build-wasm-client.mjs"));
   assert(PROTECTED_PATHS.includes("apps/server/Dockerfile.release"));
   assert(PROTECTED_PATHS.includes("docs/release/RELEASE_READINESS_CHECKLIST.md"));
   assert(PROTECTED_PATHS.includes("docs/verification/PLATFORM_HARDENING_STATUS_2026-07-18.md"));
