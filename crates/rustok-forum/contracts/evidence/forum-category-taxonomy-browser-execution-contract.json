@@ -50,7 +50,7 @@
     "browser source does not seed Forum or Taxonomy state",
     "browser source does not call GraphQL or owner APIs directly",
     "authenticated admin state is maintainer supplied through Playwright storage state",
-    "fixture URLs are credential-free",
+    "mounted fixture URLs are preflighted before authenticated storage-state materialization and must be credential-free HTTP(S) URLs without fragments",
     "production Forum and Taxonomy ownership behavior is unchanged by this evidence slice",
     "screenshots, video and tracing are disabled",
     "mounted browser execution is workflow_dispatch-only and requires a maintainer-selected GitHub environment",
