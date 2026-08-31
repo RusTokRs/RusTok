@@ -168,6 +168,13 @@ The execution packet has been hardened incrementally without changing its `maint
 - PR #3762 (`067f6ec3c2c138a29265a172ae17632c9269827b`, merged as `a64f2b1c36112f6e8e4cd9166040bfcfaf11e877`) moved bounded non-empty/control-character validation for every non-secret fixture value before authenticated-state materialization. Focused run `33404692954` passed.
 - PR #3763 (`5bd030a05e5ca59dcd6b6c317cf22400fc20b1f9`, merged as `261ce7e00629b0759042d3ebca62e6c9e2f39216`) preflighted the four locale→URL relationships, fallback requested/effective inequality and storefront alias/canonical inequality before authenticated-state materialization. Focused run `33405293672` passed.
 
+Post-cutover backend cleanup accepted after the browser packet was already source-ready:
+
+- PR #3771 (`13919479c99ec755d1f7cc3f758c14680d821659`, merged as `2f1f97a65c4719ae4f793ff81b925fe0e6121936`) confined the historical `forum_category_translation` SeaORM entity to crate-private migration compatibility and removed the retired runtime Category→translation relation. Focused `Forum Taxonomy Category Backfill Contract` run `33436045515` passed the updated source boundary and full Forum library compile.
+- PR #3772 (`4cf6e711d6b56dbd9cf9222bbfd4c3f04d1a0391`, merged as `3b15ab139636d31dca027045d3a53a5769a62b1a`) removed the unreachable private pre-cutover Category read-model donor path while retaining Topic/Reply behavior. Focused `Forum Read Model Category Taxonomy Copy` run `33437621508` passed exact-SHA source verification, Rust formatting, full Forum library compilation and the retained Topic unread SQLite regression.
+
+These cleanup merges do not alter the browser packet's execution contract or substitute for mounted evidence. They narrow the remaining historical compatibility surface while preserving the published backfill migration and the still-required maintainer execution boundary.
+
 No successful `Forum Category Taxonomy Browser Evidence` `workflow_dispatch` run is retained yet. The source-ready runs above prove the executable packet and its security/route/RTL contracts only; they do not prove deployment provenance, mounted browser execution, production rollout completion or TAXONOMY-CAT-5 completion.
 
 ## Maintainer execution
