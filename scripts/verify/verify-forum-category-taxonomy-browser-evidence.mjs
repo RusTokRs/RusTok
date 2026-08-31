@@ -73,6 +73,11 @@ const mountedUrlPreflightBoundary =
 if (!contract.boundaries?.includes(mountedUrlPreflightBoundary)) {
   throw new Error("CAT-5 browser contract must retain the pre-auth mounted URL validation boundary");
 }
+const focusedPathClosureBoundary =
+  "pull-request path filters cover every retained CAT-5 verifier input plus the next-admin package manifests so guarded source drift always runs the focused source contract";
+if (!contract.boundaries?.includes(focusedPathClosureBoundary)) {
+  throw new Error("CAT-5 browser contract must retain focused pull-request path closure");
+}
 
 for (const marker of contract.required_environment ?? []) {
   need(testSource, marker, "CAT-5 browser runner");
@@ -152,6 +157,33 @@ for (const marker of [
   "rm -f \"$RUNNER_TEMP/forum-category-admin-storage-state.json\"",
 ]) {
   need(workflow, marker, "CAT-5 manual browser execution workflow");
+}
+const pullRequestPathsStart = workflow.indexOf("  pull_request:\n    paths:\n");
+const workflowDispatchStart = workflow.indexOf("  workflow_dispatch:", pullRequestPathsStart);
+if (pullRequestPathsStart < 0 || workflowDispatchStart <= pullRequestPathsStart) {
+  throw new Error("CAT-5 workflow must retain an explicit pull_request path filter before workflow_dispatch");
+}
+const pullRequestPathsBlock = workflow.slice(pullRequestPathsStart, workflowDispatchStart);
+for (const path of [
+  workflowPath,
+  "apps/next-admin/package.json",
+  "apps/next-admin/package-lock.json",
+  configPath,
+  testPath,
+  "apps/storefront/src/forum_category_route.rs",
+  "crates/rustok-forum/admin/src/ui/root.rs",
+  "crates/rustok-forum/admin/src/ui/category_dnd.rs",
+  "crates/rustok-forum/storefront/src/ui/leptos.rs",
+  "crates/rustok-forum/src/services/category_taxonomy_tree_read.rs",
+  contractPath,
+  "crates/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md",
+  "scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs",
+]) {
+  need(
+    pullRequestPathsBlock,
+    `      - "${path}"`,
+    "CAT-5 focused workflow pull-request path closure",
+  );
 }
 const adminStateSecretBinding =
   "ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}";
