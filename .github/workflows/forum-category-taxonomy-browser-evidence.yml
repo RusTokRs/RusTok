@@ -4,8 +4,15 @@ on:
   pull_request:
     paths:
       - ".github/workflows/forum-category-taxonomy-browser-evidence.yml"
+      - "apps/next-admin/package.json"
+      - "apps/next-admin/package-lock.json"
       - "apps/next-admin/playwright.forum-category-taxonomy.config.ts"
       - "apps/next-admin/tests/forum-category-taxonomy/browser-evidence.spec.ts"
+      - "apps/storefront/src/forum_category_route.rs"
+      - "crates/rustok-forum/admin/src/ui/root.rs"
+      - "crates/rustok-forum/admin/src/ui/category_dnd.rs"
+      - "crates/rustok-forum/storefront/src/ui/leptos.rs"
+      - "crates/rustok-forum/src/services/category_taxonomy_tree_read.rs"
       - "crates/rustok-forum/contracts/evidence/forum-category-taxonomy-browser-execution-contract.json"
       - "crates/rustok-forum/docs/cat5-category-taxonomy-browser-parity.md"
       - "scripts/verify/verify-forum-category-taxonomy-browser-evidence.mjs"
