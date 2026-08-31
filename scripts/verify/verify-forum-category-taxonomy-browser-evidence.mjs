@@ -50,6 +50,14 @@ for (const pending of [
     throw new Error(`CAT-5 browser contract must keep ${pending} pending`);
   }
 }
+for (const claim of [
+  "admin Category tree renders RTL Taxonomy-owned copy with effective locale, dir=auto and browser-computed direction=rtl",
+  "storefront Category rail renders the same RTL Taxonomy-owned copy with browser-computed direction=rtl and canonical localized hrefs",
+]) {
+  if (!contract.claims_after_successful_execution?.includes(claim)) {
+    throw new Error(`CAT-5 browser contract must retain computed RTL claim: ${claim}`);
+  }
+}
 
 for (const marker of contract.required_environment ?? []) {
   need(testSource, marker, "CAT-5 browser runner");
