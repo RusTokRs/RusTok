@@ -1,4 +1,17 @@
 use super::*;
+use rustok_api::PLATFORM_FALLBACK_LOCALE;
+use rustok_taxonomy::{
+    TaxonomyError, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
+};
+use sea_orm::DatabaseBackend;
+
+const PRODUCT_TAXONOMY_SCOPE: &str = "product";
+
+#[derive(FromQueryResult)]
+struct ProductCategoryTaxonomyHierarchyBindingRow {
+    category_id: Uuid,
+    taxonomy_category_id: Option<Uuid>,
+}
 
 impl ProductCatalogSchemaService {
     pub async fn load_effective_form_for_product(
@@ -93,21 +106,26 @@ impl ProductCatalogSchemaService {
     ) -> CommerceResult<HashMap<String, String>> {
         validate_locale(locale)?;
         let mut labels = HashMap::new();
-        let category_ids = CategoryAncestorRow::find_by_statement(Statement::from_sql_and_values(
-            self.db.get_database_backend(),
-            r#"
-            SELECT ancestor_id AS category_id
-            FROM catalog_category_closure
-            WHERE tenant_id = $1 AND descendant_id = $2
-            ORDER BY depth DESC
-            "#,
-            vec![tenant_id.into(), category_id.into()],
-        ))
-        .all(&self.db)
-        .await?
-        .into_iter()
-        .map(|row| row.category_id)
-        .collect::<Vec<_>>();
+        let category_ids = if self.db.get_database_backend() == DatabaseBackend::Postgres {
+            let parent_map = load_product_taxonomy_category_parent_map(&self.db, tenant_id).await?;
+            taxonomy_ancestor_chain(category_id, &parent_map)?
+        } else {
+            CategoryAncestorRow::find_by_statement(Statement::from_sql_and_values(
+                self.db.get_database_backend(),
+                r#"
+                SELECT ancestor_id AS category_id
+                FROM catalog_category_closure
+                WHERE tenant_id = $1 AND descendant_id = $2
+                ORDER BY depth DESC
+                "#,
+                vec![tenant_id.into(), category_id.into()],
+            ))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|row| row.category_id)
+            .collect::<Vec<_>>()
+        };
 
         if category_ids.is_empty() {
             return Ok(labels);
@@ -181,6 +199,11 @@ impl ProductCatalogSchemaService {
     where
         C: ConnectionTrait,
     {
+        let taxonomy_parent_map = if db.get_database_backend() == DatabaseBackend::Postgres {
+            Some(load_product_taxonomy_category_parent_map(db, tenant_id).await?)
+        } else {
+            None
+        };
         let category_rows = CategorySchemaRow::find_by_statement(Statement::from_sql_and_values(
             db.get_database_backend(),
             r#"
@@ -243,12 +266,21 @@ impl ProductCatalogSchemaService {
 
         let mut categories = HashMap::new();
         for row in category_rows {
+            let parent_category_id = match &taxonomy_parent_map {
+                Some(parent_map) => *parent_map.get(&row.category_id).ok_or_else(|| {
+                    CommerceError::Validation(format!(
+                        "Product category {} is missing its Taxonomy hierarchy projection",
+                        row.category_id
+                    ))
+                })?,
+                None => row.parent_category_id,
+            };
             let clone_snapshot = serde_json::from_value(row.snapshot.clone()).unwrap_or_default();
             categories.insert(
                 row.category_id,
                 CatalogCategorySchema {
                     category_id: row.category_id,
-                    parent_category_id: row.parent_category_id,
+                    parent_category_id,
                     kind: CatalogCategoryKind::from_storage(&row.kind)
                         .map_err(map_schema_resolution_error)?,
                     mode: CategorySchemaMode::from_storage(&row.mode)
@@ -331,5 +363,182 @@ impl ProductCatalogSchemaService {
                 )
             })
             .collect())
+    }
+}
+
+async fn load_product_taxonomy_category_parent_map<C>(
+    connection: &C,
+    tenant_id: Uuid,
+) -> CommerceResult<HashMap<Uuid, Option<Uuid>>>
+where
+    C: ConnectionTrait,
+{
+    let bindings = ProductCategoryTaxonomyHierarchyBindingRow::find_by_statement(
+        Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT
+                c.id AS category_id,
+                binding.taxonomy_category_id
+            FROM catalog_categories c
+            LEFT JOIN product_catalog_category_taxonomy_bindings binding
+              ON binding.tenant_id = c.tenant_id
+             AND binding.catalog_category_id = c.id
+            WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
+            ORDER BY c.id ASC
+            "#,
+            vec![tenant_id.into()],
+        ),
+    )
+    .all(connection)
+    .await?;
+
+    if bindings.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut category_ids = Vec::with_capacity(bindings.len());
+    for binding in &bindings {
+        let taxonomy_category_id = binding.taxonomy_category_id.ok_or_else(|| {
+            CommerceError::Validation(format!(
+                "Product category {} is missing its Taxonomy Category binding",
+                binding.category_id
+            ))
+        })?;
+        if taxonomy_category_id != binding.category_id {
+            return Err(CommerceError::Validation(format!(
+                "Product category {} is bound to incompatible Taxonomy Category {taxonomy_category_id}",
+                binding.category_id
+            )));
+        }
+        category_ids.push(binding.category_id);
+    }
+
+    let owners = TaxonomyOwnerCategoryReader::load_scoped_categories_in(
+        connection,
+        tenant_id,
+        TaxonomyScopeType::Module,
+        Some(PRODUCT_TAXONOMY_SCOPE),
+        Some(&category_ids),
+        PLATFORM_FALLBACK_LOCALE,
+        Some(PLATFORM_FALLBACK_LOCALE),
+    )
+    .await
+    .map_err(map_taxonomy_hierarchy_read_error)?;
+
+    compose_product_taxonomy_parent_map(bindings, owners)
+}
+
+fn compose_product_taxonomy_parent_map(
+    bindings: Vec<ProductCategoryTaxonomyHierarchyBindingRow>,
+    owners: Vec<TaxonomyOwnerCategory>,
+) -> CommerceResult<HashMap<Uuid, Option<Uuid>>> {
+    let mut owners = owners
+        .into_iter()
+        .map(|owner| (owner.id, owner))
+        .collect::<HashMap<_, _>>();
+    let mut parent_map = HashMap::with_capacity(bindings.len());
+
+    for binding in bindings {
+        let taxonomy_category_id = binding.taxonomy_category_id.ok_or_else(|| {
+            CommerceError::Validation(format!(
+                "Product category {} is missing its Taxonomy Category binding",
+                binding.category_id
+            ))
+        })?;
+        if taxonomy_category_id != binding.category_id {
+            return Err(CommerceError::Validation(format!(
+                "Product category {} is bound to incompatible Taxonomy Category {taxonomy_category_id}",
+                binding.category_id
+            )));
+        }
+        let owner = owners.remove(&taxonomy_category_id).ok_or_else(|| {
+            CommerceError::Validation(format!(
+                "Product category {} is missing its Taxonomy hierarchy projection",
+                binding.category_id
+            ))
+        })?;
+        let expected_key = format!("product-category-{}", binding.category_id);
+        if owner.canonical_key != expected_key {
+            return Err(CommerceError::Validation(format!(
+                "Product category {} has incompatible Taxonomy canonical key {}",
+                binding.category_id, owner.canonical_key
+            )));
+        }
+        if owner.scope_type != TaxonomyScopeType::Module
+            || owner.scope_value.as_deref() != Some(PRODUCT_TAXONOMY_SCOPE)
+        {
+            return Err(CommerceError::Validation(format!(
+                "Product category {} has incompatible Taxonomy scope",
+                binding.category_id
+            )));
+        }
+        parent_map.insert(binding.category_id, owner.parent_id);
+    }
+
+    Ok(parent_map)
+}
+
+fn taxonomy_ancestor_chain(
+    category_id: Uuid,
+    parent_map: &HashMap<Uuid, Option<Uuid>>,
+) -> CommerceResult<Vec<Uuid>> {
+    let mut current = Some(category_id);
+    let mut seen = HashSet::new();
+    let mut chain = Vec::new();
+
+    while let Some(current_id) = current {
+        if !seen.insert(current_id) {
+            return Err(CommerceError::Validation(format!(
+                "Product category {category_id} has a cyclic Taxonomy hierarchy projection"
+            )));
+        }
+        chain.push(current_id);
+        current = *parent_map.get(&current_id).ok_or_else(|| {
+            CommerceError::Validation(format!(
+                "Product category {current_id} is missing its Taxonomy hierarchy projection"
+            ))
+        })?;
+    }
+
+    chain.reverse();
+    Ok(chain)
+}
+
+fn map_taxonomy_hierarchy_read_error(error: TaxonomyError) -> CommerceError {
+    match error {
+        TaxonomyError::Database(error) => CommerceError::Database(error),
+        other => CommerceError::Validation(format!(
+            "Product Category Taxonomy hierarchy projection failed: {other}"
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn category_taxonomy_hierarchy_builds_root_to_leaf_ancestor_chain() {
+        let root = Uuid::new_v4();
+        let child = Uuid::new_v4();
+        let leaf = Uuid::new_v4();
+        let parents = HashMap::from([(root, None), (child, Some(root)), (leaf, Some(child))]);
+
+        assert_eq!(
+            taxonomy_ancestor_chain(leaf, &parents).expect("Taxonomy ancestry"),
+            vec![root, child, leaf]
+        );
+    }
+
+    #[test]
+    fn category_taxonomy_hierarchy_fails_closed_on_missing_or_cyclic_owner_state() {
+        let root = Uuid::new_v4();
+        let leaf = Uuid::new_v4();
+        let missing_parent = HashMap::from([(leaf, Some(root))]);
+        assert!(taxonomy_ancestor_chain(leaf, &missing_parent).is_err());
+
+        let cycle = HashMap::from([(root, Some(leaf)), (leaf, Some(root))]);
+        assert!(taxonomy_ancestor_chain(leaf, &cycle).is_err());
     }
 }

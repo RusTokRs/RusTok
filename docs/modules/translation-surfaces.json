@@ -104,18 +104,17 @@
       "id": "blog_categories",
       "owner_slug": "blog",
       "resource_kind": "category",
-      "readiness": "pilot_candidate",
-      "provider_status": "registered",
+      "readiness": "excluded",
+      "provider_status": "not_registered",
       "field_profiles": ["plain_text", "slug"],
       "data_classification": ["public"],
-      "ai_export": "restricted",
+      "ai_export": "forbidden",
       "evidence_paths": [
-        "crates/rustok-blog/docs/README.md",
-        "crates/rustok-blog/src/translation_target.rs",
-        "crates/rustok-blog/src/translation_target_tests.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "crates/rustok-blog/docs/implementation-plan-current.md",
+        "docs/architecture/taxonomy-flex-category-platform-plan.md",
+        "crates/rustok-taxonomy/src/translation_target.rs"
       ],
-      "blockers": ["Collect retained production PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence before enabling this pilot in production."]
+      "exclusion_reason": "Blog Category canonical localized copy is Taxonomy-owned after TAXONOMY-CAT-1..12. Blog keeps a typed same-ID Category binding and must not register a duplicate blog/category Translation target."
     },
     {
       "id": "content_nodes",
@@ -191,19 +190,18 @@
       "id": "forum_categories",
       "owner_slug": "forum",
       "resource_kind": "category",
-      "readiness": "pilot_candidate",
-      "provider_status": "registered",
-      "field_profiles": ["plain_text"],
+      "readiness": "excluded",
+      "provider_status": "not_registered",
+      "field_profiles": ["plain_text", "slug"],
       "data_classification": ["public"],
-      "ai_export": "restricted",
+      "ai_export": "forbidden",
       "evidence_paths": [
         "crates/rustok-forum/docs/implementation-plan.md",
-        "crates/rustok-forum/src/services/category_translation_target.rs",
-        "crates/rustok-forum/src/services/category_translation_progress.rs",
-        "crates/rustok-forum/tests/category_translation_target_postgres.rs",
-        "apps/server/src/services/module_event_dispatcher.rs"
+        "crates/rustok-forum/tests/category_taxonomy_translation_provider_retirement.rs",
+        "docs/architecture/taxonomy-flex-category-platform-plan.md",
+        "crates/rustok-taxonomy/src/translation_target.rs"
       ],
-      "blockers": ["Retain registered-host/runtime evidence before enabling this pilot in production."]
+      "exclusion_reason": "Forum Category canonical localized copy, routes, hierarchy and presentation are Taxonomy-owned after the verified CAT-5 cutover. Forum keeps a typed same-ID Category binding plus Forum policy, counters and lifecycle state and must not register a duplicate forum/category Translation target."
     },
     {
       "id": "forum_ugc",

@@ -134,6 +134,12 @@ pub mod module_event_dispatcher {
             )
         })?;
 
+        #[cfg(feature = "mod-taxonomy")]
+        extensions.insert(
+            Arc::new(super::flex_attached_values::FlexTaxonomyCategoryDeleteCleanup)
+                as Arc<dyn rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort>,
+        );
+
         #[cfg(feature = "mod-comments")]
         super::comments_provider_runtime::register_comments_provider_runtime(&mut extensions)
             .map_err(Error::BadRequest)?;

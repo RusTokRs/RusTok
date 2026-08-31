@@ -8,10 +8,13 @@
 
 ## Current state
 
-`rustok-blog` owns localized posts, Blog categories and tags, channel-aware
-publication visibility, GraphQL/HTTP/native adapters, and admin/storefront
-packages. It consumes `rustok-comments` through `CommentsThreadPort`; native
-`#[server]` and GraphQL remain parallel transports over the same owner services.
+`rustok-blog` owns localized posts, Blog Category membership/settings,
+Blog-owned post-term relations, channel-aware publication visibility,
+GraphQL/HTTP/native adapters, and admin/storefront packages. Canonical Blog
+Category localized identity, route history, and hierarchy are Taxonomy-owned
+through the same-ID binding. Blog consumes `rustok-comments` through
+`CommentsThreadPort`; native `#[server]` and GraphQL remain parallel transports
+over the same owner services.
 
 The Blog article boundary is target-only richtext. Owner and GraphQL writes
 accept `rustok_api::RichTextDocument`; reads expose `rustok_api::RichTextView`
@@ -411,32 +414,25 @@ same bound. The retained source contract is
 `verify-blog-category-search-reindex.test.mjs`. Both are registered as the
 `category_search_reindex` leaf gate in the Blog FBA verify/test chain.
 
-### Blog category Translation target pilot
+### Blog Category Taxonomy ownership
 
-`m20260803_000016_add_blog_category_translation_target_support` adds positive
-resource and exact-locale revisions to Blog categories plus the append-only,
-content-free `blog_translation_changes` owner journal. `CategoryService` writes
-one journal entry for create, update, delete, and exact-locale Translation
-apply. Its target-only apply operation performs resource/source/target CAS,
-localized slug validation, and Blog Search reindex publication. The Translation
-provider completes or replays the shared durable owner-operation receipt in the
-same transaction.
+The former Blog-owned Category Translation pilot is retired. Historical migration
+`m20260803_000016_add_blog_category_translation_target_support` remains upgrade
+provenance only; later TAXONOMY-CAT slices moved canonical Category localized
+copy, route history, hierarchy, Translation apply/progress, and change-cursor
+ownership to Taxonomy. `BlogCategoryTranslationTargetProvider`, the Blog Category
+Translation change journal, the live translation mirror, provider-era tests, and
+provider PostgreSQL evidence are no longer runtime or readiness surfaces.
 
-`BlogCategoryTranslationTargetProvider` is registered by the server as
-`blog/category`. It exposes exact `name`, review-only `slug`, and optional
-`description`; it does not use locale fallback for target coverage. The shared
-`rustok-translation-targets::provider_support` helpers centralize target-level
-field hashing, patch CAS validation, revision encoding, and receipt decoding,
-while Blog retains authorization, persistence, validation, and error mapping.
-The focused SQLite suite in `src/translation_target_tests.rs` proves migration
-`up/down/up`, exact apply, idempotent replay, same-key conflict rejection,
-stale validation, cursor/progress facts, denied access, and one transactional
-Search reindex outbox row.
-
-This is a registered pilot, not a production-enablement claim. Retained
-PostgreSQL migration, concurrent CAS, and change-cursor recovery evidence are
-still required before production inventory enablement. Blog posts and
-Taxonomy-owned tags remain out of scope for this pilot.
+Blog keeps the same-ID Taxonomy Category binding plus Blog-owned membership,
+settings, owner revision, and local command invariants. Category reads and
+mutation responses project canonical Taxonomy state; create/update/hierarchy
+commands synchronize Taxonomy in the owner transaction; delete delegates
+canonical lifecycle cleanup to Taxonomy. Translation-control-plane work for
+Category copy uses the registered `taxonomy/term` provider and its Taxonomy-owned
+CAS/receipt/cursor evidence. Blog post translation remains a separate future
+Blog-owned editorial surface. Do not reintroduce a second `blog/category`
+provider or direct Blog Category localized storage.
 
 GraphQL load protection is field-aware over the host `SharedApiRateLimiter`.
 Exceeded responses expose matching GraphQL `retryAfter` and HTTP `Retry-After`;

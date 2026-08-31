@@ -5,7 +5,7 @@ language: en
 status: active
 owners:
   - rustok-forum
-last_reviewed: 2026-08-22
+last_reviewed: 2026-08-28
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -37,7 +37,10 @@ required runtime evidence are complete. Source-ready slices remain
 ## Current state
 
 Forum owns canonical topic/reply storage, transports, revisions, projections,
-and module UI packages. Shared richtext storage and server projection are live;
+and module UI packages. Canonical Forum Category identity, localized copy, route
+history, hierarchy/order and presentation are Taxonomy-owned after the verified
+CAT-5 cutover; Forum retains the typed same-ID binding plus Forum policy, counters
+and lifecycle state. Shared richtext storage and server projection are live;
 Leptos and Next topic create/edit plus reply composition use the shared frame,
 while storefront topic/reply reads use the editor-free shared `RichTextHtml`
 boundary. Leptos reply writes select a native server function for SSR/hydrate
@@ -85,7 +88,7 @@ contracts.
 
 `rustok-forum` owns only:
 
-- category hierarchy and policy;
+- category membership/binding plus Forum policy, counters and lifecycle state;
 - localized topic/reply content, lifecycle, revisions and route identity;
 - topic kinds, accepted-solution semantics, subscriptions and Forum read state;
 - Forum drafts and bookmarks unless a proven neutral owner replaces them;
@@ -110,7 +113,8 @@ must not copy that owner's source-of-truth data or read its private tables.
 | Cross-domain reputation ledger and achievements/badges | planned `rustok-reputation` / achievement capability | Publish semantic facts and display permitted projections. |
 | Reports, cases, queues, decisions, appeals and cross-domain audit | `rustok-moderation` through `rustok-moderation-api` | Report subjects and apply validated effects to Forum state. |
 | Notification inbox, fan-out, grouping, preferences, digests and deliveries | `rustok-notifications` | Publish source events/providers and authorize current targets. |
-| Translation workflow | `rustok-translation` | Publish exact Forum translation targets and apply owner writes. |
+| Translation workflow | `rustok-translation` | Publish exact Forum-owned topic/reply targets only when explicitly onboarded; Category copy uses Taxonomy's registered `taxonomy/term` provider. |
+| Canonical Category identity, hierarchy, localized copy, routes/aliases and presentation | `rustok-taxonomy` | Keep the typed same-ID binding plus Forum policy/counters/lifecycle; consume canonical Taxonomy Category state and never register a duplicate `forum/category` Translation target. |
 | Search storage and retrieval | `rustok-search`; generic indexing in `rustok-index` | Publish visibility-safe projections and repair sources. |
 | SEO aggregation and host head composition | `rustok-seo` | Publish canonical Forum targets and structured semantics. |
 | Durable event delivery | `rustok-outbox` / `rustok-events` | Commit Forum state and semantic events atomically. |
@@ -126,6 +130,7 @@ Without a platform ADR and ownership migration, the following are forbidden:
 - Forum-owned report/case/appeal queues or a second cross-domain moderation log;
 - Forum-owned notification inbox, preferences, grouping, digests or delivery;
 - a Forum-specific reaction catalog after `rustok-reactions` composition;
+- a duplicate Forum Category Translation provider, change cursor or localized donor mirror after the accepted Taxonomy cutover;
 - a reusable Forum-only reputation ledger or universal badge catalog;
 - transport-local visibility/reaction/moderation policy;
 - direct reads of another module's persistence tables.
@@ -280,7 +285,7 @@ remain pending.
 | `FORUM-22` | `planned` | Forum-owned Q&A/wiki/announcement kinds and scheduled lifecycle. |
 | `FORUM-23` | `in_progress` | Search projection/filtering, ordering, owner revisions and repair exist. PostgreSQL/Iggy and cross-module evidence remain. |
 | `FORUM-24` | `in_progress` | A-S plus descriptor correction provide category/topic routes, transports, mounts, SEO/hreflang and Search URLs. Execute registered-host, HTTP, browser and reindex evidence. |
-| `FORUM-25` | `in_progress` | Forum category Translation provider, cursor/progress/PostgreSQL evidence, Arabic admin/storefront catalogs, content-locale SEO/editor boundaries and multilingual/RTL admin read/write surfaces are source-ready. Retain registered-host/runtime provider evidence plus mounted multilingual/RTL browser parity; topic/reply UGC translation remains opt-in rather than an automatic provider. |
+| `FORUM-25` | `in_progress` | The Category backend/Translation ownership cutover is complete: canonical Category copy/routes/hierarchy are Taxonomy-owned, while the duplicate Forum provider, cursor/progress runtime and legacy donor storage are retired and provider-era PostgreSQL evidence is superseded. Arabic admin/storefront catalogs, content-locale SEO/editor boundaries and multilingual/RTL admin read/write surfaces remain source-ready. Retain mounted multilingual/RTL browser parity against Taxonomy-owned Category data; topic/reply UGC translation remains opt-in rather than an automatic provider. |
 | `FORUM-26` | `in_progress` | Forum trust/posting facts exist. Add Moderation/Reputation facts, persistence/enforcement, shared rate limits, transports/UI and evidence. |
 | `FORUM-27` | `planned` | Compose Profiles directory/profile with Forum stats/activity and permitted reputation/achievements. |
 | `FORUM-28` | `in_progress` | Canonical storage, renderer, projections, shared editor runtime, Leptos and Next topic create/edit and reply composition, native SSR/hydrate plus GraphQL CSR reply writes, owner content-locale/direction/spellcheck propagation and dynamic read-only state are implemented. Dirty locale switching is now fail-closed for category/topic editors, fallback-only localized form state is scrubbed before writes, unsaved reply drafts block locale changes, and unchanged Taxonomy tag attachments are preserved. Complete owner-copy i18n and mounted save/reload/browser parity evidence. |

@@ -1,0 +1,96 @@
+name: Blog Taxonomy Category Legacy Storage Retirement
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-blog/src/entities/blog_category.rs"
+      - "crates/rustok-blog/src/entities/mod.rs"
+      - "crates/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs"
+      - "crates/rustok-blog/src/migrations/mod.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_dual_write.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_read_cutover.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
+      - "crates/rustok-blog/tests/post_category_name_projection.rs"
+      - "scripts/verify/verify-blog-taxonomy-category-dual-write.mjs"
+      - ".github/workflows/blog-taxonomy-category-legacy-storage-retirement.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-blog/src/entities/blog_category.rs"
+      - "crates/rustok-blog/src/entities/mod.rs"
+      - "crates/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs"
+      - "crates/rustok-blog/src/migrations/mod.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_dual_write.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_read_cutover.rs"
+      - "crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs"
+      - "crates/rustok-blog/tests/post_category_name_projection.rs"
+      - "scripts/verify/verify-blog-taxonomy-category-dual-write.mjs"
+      - ".github/workflows/blog-taxonomy-category-legacy-storage-retirement.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-taxonomy-category-legacy-storage-retirement-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  legacy-storage-retirement-contract:
+    name: Blog Taxonomy Category legacy storage retirement
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check touched Rust formatting
+        run: |
+          rustfmt +1.96.0 --edition 2024 --check --config skip_children=true \
+            crates/rustok-blog/src/entities/mod.rs \
+            crates/rustok-blog/src/migrations/mod.rs
+          rustfmt +1.96.0 --edition 2024 --check \
+            crates/rustok-blog/src/entities/blog_category.rs \
+            crates/rustok-blog/src/migrations/m20260828_000021_retire_blog_category_legacy_storage.rs \
+            crates/rustok-blog/tests/category_taxonomy_legacy_storage_retirement.rs \
+            crates/rustok-blog/tests/category_taxonomy_dual_write.rs \
+            crates/rustok-blog/tests/category_taxonomy_read_cutover.rs \
+            crates/rustok-blog/tests/category_taxonomy_mutation_response_cutover.rs \
+            crates/rustok-blog/tests/post_category_name_projection.rs
+      - name: Verify canonical Category command boundary
+        run: node scripts/verify/verify-blog-taxonomy-category-dual-write.mjs
+      - name: Verify Category legacy storage retirement source contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_legacy_storage_retirement -- --nocapture
+      - name: Run Category commands after donor storage retirement
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_dual_write -- --nocapture
+      - name: Re-run canonical Category mutation response contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_mutation_response_cutover -- --nocapture
+      - name: Re-run Blog Taxonomy Category read cutover contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_read_cutover -- --nocapture
+      - name: Re-run post Category-name projection contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test post_category_name_projection -- --nocapture
+      - name: Re-run Blog Taxonomy Category delete lifecycle contract
+        run: cargo +1.96.0 test --locked -p rustok-blog --test category_taxonomy_delete_lifecycle -- --nocapture
+      - name: Compile Blog owner surface with warnings denied
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: cargo +1.96.0 check --locked -p rustok-blog --lib

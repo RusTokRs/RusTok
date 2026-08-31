@@ -1,19 +1,17 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, TenantLocale};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{TaxonomyOwnerCategoryReader, TaxonomyScopeType};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+use rustok_taxonomy::{
+    TaxonomyCategoryDeleteCleanupPort, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
+    TaxonomyService,
 };
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use super::category::{
-    ApplyExactCategoryTranslationInput, CategoryService as LegacyCategoryService,
-    CategoryTranslationApplyResult,
-};
+use super::category::CategoryService as CategoryCommandCore;
+use super::category_delete::BlogCategoryDeleteCleanup;
 use super::rbac::enforce_scope;
 use crate::dto::{
     CategoryListItem, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
@@ -26,25 +24,35 @@ const BLOG_TAXONOMY_SCOPE: &str = "blog";
 
 /// Public Blog Category owner facade.
 ///
-/// Blog keeps membership, settings, timestamps and domain mutations. Canonical
-/// Category identity/copy/hierarchy is materialized through the typed Taxonomy
-/// binding so public reads no longer depend on `blog_category_translations` or
-/// Blog-owned placement columns.
+/// Blog keeps membership, settings, timestamps and command authorization. Canonical
+/// Category identity/copy/hierarchy is owned by Taxonomy through the typed binding;
+/// neither public reads nor command writes depend on the retired Blog translation mirror.
 pub struct CategoryService {
-    legacy: LegacyCategoryService,
+    commands: CategoryCommandCore,
     db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+    category_delete_cleanup: Option<Arc<dyn TaxonomyCategoryDeleteCleanupPort>>,
 }
 
 impl CategoryService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            legacy: LegacyCategoryService::new(db.clone(), event_bus),
+            commands: CategoryCommandCore::new(db.clone(), event_bus.clone()),
             db,
+            event_bus,
+            category_delete_cleanup: None,
         }
     }
 
-    pub(crate) fn database(&self) -> &DatabaseConnection {
-        &self.db
+    /// Attach the host-owned cleanup required before a canonical Taxonomy Category is deleted.
+    ///
+    /// Delete fails closed when this port is absent; reads and other writes do not require it.
+    pub fn with_category_delete_cleanup(
+        mut self,
+        cleanup: Arc<dyn TaxonomyCategoryDeleteCleanupPort>,
+    ) -> Self {
+        self.category_delete_cleanup = Some(cleanup);
+        self
     }
 
     pub async fn create(
@@ -53,7 +61,7 @@ impl CategoryService {
         security: SecurityContext,
         input: CreateCategoryInput,
     ) -> BlogResult<Uuid> {
-        self.legacy.create(tenant_id, security, input).await
+        self.commands.create(tenant_id, security, input).await
     }
 
     pub async fn get(
@@ -64,48 +72,8 @@ impl CategoryService {
         locale: &str,
     ) -> BlogResult<CategoryResponse> {
         enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
-        let locale = normalize_locale(locale)?;
-        let category = blog_category::Entity::find_by_id(category_id)
-            .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        let binding = load_binding(&self.db, tenant_id, category_id).await?;
-        let taxonomy_ids = [binding.taxonomy_category_id];
-        let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
-            .load_scoped_categories(
-                tenant_id,
-                TaxonomyScopeType::Module,
-                Some(BLOG_TAXONOMY_SCOPE),
-                Some(&taxonomy_ids),
-                &locale,
-                Some(PLATFORM_FALLBACK_LOCALE),
-            )
-            .await?
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                BlogError::validation(format!(
-                    "Blog category {category_id} binding points to a missing Taxonomy Category"
-                ))
-            })?;
-        let parent_id = resolve_parent_binding(&self.db, tenant_id, canonical.parent_id).await?;
-
-        Ok(CategoryResponse {
-            id: category.id,
-            tenant_id,
-            locale: canonical.requested_locale,
-            effective_locale: canonical.effective_locale,
-            available_locales: canonical.available_locales,
-            name: canonical.name,
-            slug: canonical.slug,
-            description: canonical.description,
-            parent_id,
-            position: canonical.position,
-            settings: category.settings,
-            created_at: category.created_at.into(),
-            updated_at: category.updated_at.into(),
-        })
+        self.load_category_response(tenant_id, category_id, locale)
+            .await
     }
 
     pub async fn update(
@@ -115,8 +83,11 @@ impl CategoryService {
         security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> BlogResult<CategoryResponse> {
-        self.legacy
+        let response_locale = input.locale.clone();
+        self.commands
             .update(tenant_id, category_id, security, input)
+            .await?;
+        self.load_category_response(tenant_id, category_id, &response_locale)
             .await
     }
 
@@ -126,7 +97,28 @@ impl CategoryService {
         category_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
-        self.legacy.delete(tenant_id, category_id, security).await
+        enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;
+        let binding = load_binding(&self.db, tenant_id, category_id).await?;
+        let capability_cleanup = self.category_delete_cleanup.clone().ok_or_else(|| {
+            BlogError::validation(
+                "Blog Category delete requires host-composed Taxonomy capability cleanup",
+            )
+        })?;
+        let cleanup = BlogCategoryDeleteCleanup::new(
+            category_id,
+            security.user_id,
+            self.event_bus.clone(),
+            capability_cleanup,
+        );
+        TaxonomyService::new(self.db.clone())
+            .delete_module_category_with_cleanup(
+                tenant_id,
+                binding.taxonomy_category_id,
+                BLOG_TAXONOMY_SCOPE,
+                &cleanup,
+            )
+            .await
+            .map_err(BlogError::from)
     }
 
     pub async fn list(
@@ -136,12 +128,8 @@ impl CategoryService {
         filter: ListCategoriesFilter,
     ) -> BlogResult<(Vec<CategoryListItem>, u64)> {
         enforce_scope(&security, Resource::BlogCategories, Action::List)?;
-        let locale = normalize_locale(
-            filter
-                .locale
-                .as_deref()
-                .unwrap_or(PLATFORM_FALLBACK_LOCALE),
-        )?;
+        let locale =
+            normalize_locale(filter.locale.as_deref().unwrap_or(PLATFORM_FALLBACK_LOCALE))?;
         let page = filter.page.max(1);
         let per_page = filter.per_page.clamp(1, 100);
 
@@ -160,7 +148,10 @@ impl CategoryService {
             return Ok((Vec::new(), 0));
         }
 
-        let category_ids = categories.iter().map(|category| category.id).collect::<Vec<_>>();
+        let category_ids = categories
+            .iter()
+            .map(|category| category.id)
+            .collect::<Vec<_>>();
         let bindings = blog_category_taxonomy_binding::Entity::find()
             .filter(blog_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
             .filter(blog_category_taxonomy_binding::Column::BlogCategoryId.is_in(category_ids))
@@ -278,16 +269,54 @@ impl CategoryService {
         Ok((items, total))
     }
 
-    pub(crate) async fn apply_exact_translation_in_tx(
+    async fn load_category_response(
         &self,
-        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         category_id: Uuid,
-        input: ApplyExactCategoryTranslationInput,
-    ) -> BlogResult<CategoryTranslationApplyResult> {
-        self.legacy
-            .apply_exact_translation_in_tx(txn, tenant_id, category_id, input)
-            .await
+        locale: &str,
+    ) -> BlogResult<CategoryResponse> {
+        let locale = normalize_locale(locale)?;
+        let category = blog_category::Entity::find_by_id(category_id)
+            .filter(blog_category::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| BlogError::category_not_found(category_id))?;
+        let binding = load_binding(&self.db, tenant_id, category_id).await?;
+        let taxonomy_ids = [binding.taxonomy_category_id];
+        let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
+            .load_scoped_categories(
+                tenant_id,
+                TaxonomyScopeType::Module,
+                Some(BLOG_TAXONOMY_SCOPE),
+                Some(&taxonomy_ids),
+                &locale,
+                Some(PLATFORM_FALLBACK_LOCALE),
+            )
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                BlogError::validation(format!(
+                    "Blog category {category_id} binding points to a missing Taxonomy Category"
+                ))
+            })?;
+        let parent_id = resolve_parent_binding(&self.db, tenant_id, canonical.parent_id).await?;
+
+        Ok(CategoryResponse {
+            id: category.id,
+            tenant_id,
+            locale: canonical.requested_locale,
+            effective_locale: canonical.effective_locale,
+            available_locales: canonical.available_locales,
+            name: canonical.name,
+            slug: canonical.slug,
+            description: canonical.description,
+            parent_id,
+            position: canonical.position,
+            settings: category.settings,
+            created_at: category.created_at.into(),
+            updated_at: category.updated_at.into(),
+        })
     }
 }
 
@@ -316,9 +345,7 @@ async fn resolve_parent_binding(
     };
     blog_category_taxonomy_binding::Entity::find()
         .filter(blog_category_taxonomy_binding::Column::TenantId.eq(tenant_id))
-        .filter(
-            blog_category_taxonomy_binding::Column::TaxonomyCategoryId.eq(parent_taxonomy_id),
-        )
+        .filter(blog_category_taxonomy_binding::Column::TaxonomyCategoryId.eq(parent_taxonomy_id))
         .one(db)
         .await?
         .map(|binding| binding.blog_category_id)

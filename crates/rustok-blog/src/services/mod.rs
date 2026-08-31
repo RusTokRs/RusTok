@@ -2,6 +2,7 @@
 
 mod category;
 mod category_command;
+mod category_delete;
 mod category_name_projection;
 mod category_owner;
 pub(crate) mod category_taxonomy_sync;
@@ -11,7 +12,6 @@ mod post;
 mod rbac;
 mod tag;
 
-pub(crate) use category::ApplyExactCategoryTranslationInput;
 pub use category_command::CategoryCommandService;
 pub use category_owner::CategoryService;
 pub use comment::CommentService;

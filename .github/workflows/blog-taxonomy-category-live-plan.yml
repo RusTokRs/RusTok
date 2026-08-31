@@ -1,0 +1,47 @@
+name: Blog Taxonomy Category Live Plan
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-blog/docs/implementation-plan.md"
+      - "scripts/verify/verify-blog-taxonomy-category-live-plan.mjs"
+      - ".github/workflows/blog-taxonomy-category-live-plan.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-blog/docs/implementation-plan.md"
+      - "scripts/verify/verify-blog-taxonomy-category-live-plan.mjs"
+      - ".github/workflows/blog-taxonomy-category-live-plan.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-taxonomy-category-live-plan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  live-plan-contract:
+    name: Blog Category live plan owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - name: Verify Blog Category live plan ownership
+        run: node scripts/verify/verify-blog-taxonomy-category-live-plan.mjs

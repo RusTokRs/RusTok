@@ -1,0 +1,76 @@
+name: Product Taxonomy Category Read Cutover
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-product/src/services/catalog_schema_service/categories.rs"
+      - "crates/rustok-product/docs/category-taxonomy-binding.md"
+      - "crates/rustok-product/docs/category-locale-contract.md"
+      - "scripts/verify/verify-product-taxonomy-category-create-sync.mjs"
+      - "scripts/verify/verify-product-taxonomy-category-read-cutover.mjs"
+      - ".github/workflows/product-taxonomy-category-create-sync.yml"
+      - ".github/workflows/product-taxonomy-category-read-cutover.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: product-taxonomy-category-read-cutover-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  read-cutover-contract:
+    name: Product Taxonomy Category read cutover
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: |
+          expected="${{ github.event.pull_request.head.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+      - name: Verify Product Category read cutover contract
+        run: node scripts/verify/verify-product-taxonomy-category-read-cutover.mjs
+      - name: Fetch exact PR base
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          git fetch --no-tags --depth=1 origin "$base"
+      - name: Assert bounded CAT-26 file set when CAT-26 changes
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          anchor='scripts/verify/verify-product-taxonomy-category-read-cutover.mjs'
+          changed="$(git diff --name-only "$base" "$head")"
+          printf '%s\n' "$changed"
+          if ! printf '%s\n' "$changed" | grep -Fxq "$anchor"; then
+            echo "CAT-26 verifier unchanged; PR-wide CAT-26 slice restriction is not applicable."
+            exit 0
+          fi
+          allowed='^(crates/rustok-product/src/services/catalog_schema_service/categories\.rs|crates/rustok-product/docs/category-taxonomy-binding\.md|crates/rustok-product/docs/category-locale-contract\.md|scripts/verify/verify-product-taxonomy-category-create-sync\.mjs|scripts/verify/verify-product-taxonomy-category-read-cutover\.mjs|\.github/workflows/product-taxonomy-category-create-sync\.yml|\.github/workflows/product-taxonomy-category-read-cutover\.yml)$'
+          unexpected="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
+          test -z "$unexpected"
+      - name: Check Product formatting
+        run: cargo fmt --check --manifest-path crates/rustok-product/Cargo.toml
+      - name: Run Product Category Taxonomy read unit regressions
+        run: cargo test -p rustok-product --lib category_taxonomy_read -- --nocapture
+      - name: Compile Product Category read projection
+        run: cargo check -p rustok-product --lib
+      - name: Check full PR whitespace
+        shell: bash
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git diff --check "$base" "$head"

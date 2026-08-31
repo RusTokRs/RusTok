@@ -19,9 +19,11 @@ const testPath =
 const configPath = "apps/next-admin/playwright.forum-category-taxonomy.config.ts";
 const contractPath =
   "crates/rustok-forum/contracts/evidence/forum-category-taxonomy-browser-execution-contract.json";
+const workflowPath = ".github/workflows/forum-category-taxonomy-browser-evidence.yml";
 const testSource = read(testPath);
 const config = read(configPath);
 const contract = JSON.parse(read(contractPath));
+const workflow = read(workflowPath);
 const packageJson = JSON.parse(read("apps/next-admin/package.json"));
 const adminUi = read("crates/rustok-forum/admin/src/ui/category_dnd.rs");
 const storefrontUi = read("crates/rustok-forum/storefront/src/ui/leptos.rs");
@@ -33,6 +35,9 @@ if (contract.status !== "source_ready_maintainer_execution_pending") {
 }
 if (contract.runner !== testPath || contract.config !== configPath) {
   throw new Error("CAT-5 browser contract must point to the retained Playwright source");
+}
+if (contract.workflow !== workflowPath) {
+  throw new Error("CAT-5 browser contract must point to the retained manual execution workflow");
 }
 for (const pending of [
   "browser execution",
@@ -96,6 +101,39 @@ if (packageJson.devDependencies?.["@playwright/test"] === undefined) {
 }
 
 for (const marker of [
+  "workflow_dispatch:",
+  "type: environment",
+  "if: github.event_name == 'workflow_dispatch'",
+  "environment: ${{ inputs.target_environment }}",
+  "ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}",
+  "state=\"$RUNNER_TEMP/forum-category-admin-storage-state.json\"",
+  "echo \"RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE=$state\" >> \"$GITHUB_ENV\"",
+  "npm ci --no-audit --no-fund",
+  "npx --no-install playwright install --with-deps chromium",
+  "npx --no-install playwright test --config=playwright.forum-category-taxonomy.config.ts --list",
+  "npx --no-install playwright test --config=playwright.forum-category-taxonomy.config.ts",
+  "rm -f \"$RUNNER_TEMP/forum-category-admin-storage-state.json\"",
+]) {
+  need(workflow, marker, "CAT-5 manual browser execution workflow");
+}
+for (const marker of (contract.required_environment ?? []).filter(
+  (name) => name !== "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE",
+)) {
+  need(
+    workflow,
+    marker + ": ${{ vars." + marker + " }}",
+    "CAT-5 manual browser execution workflow environment",
+  );
+}
+for (const forbidden of [
+  "pull_request_target:",
+  "contents: write",
+  "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON: ${{ vars.",
+]) {
+  forbid(workflow, forbidden, "CAT-5 manual browser execution workflow security boundary");
+}
+
+for (const marker of [
   'data-forum-target-localized=""',
   'lang=content_lang.clone()',
   'dir="auto"',
@@ -150,4 +188,4 @@ for (const legacy of [
   forbid(routeMount, legacy, "mounted Forum Category canonical route");
 }
 
-console.log("Forum Category Taxonomy multilingual/RTL browser evidence source: ok");
+console.log("Forum Category Taxonomy multilingual/RTL browser evidence source and manual execution workflow: ok");

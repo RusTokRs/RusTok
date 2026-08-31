@@ -36,7 +36,7 @@ operations, not request-locale selection.
 
 ## Planning status
 
-This is the active cross-cutting implementation plan. As of 2026-08-13:
+This is the active cross-cutting implementation plan. As of 2026-08-28:
 
 - the dependency boundary for machine translation now exists:
   `rustok-translation` owns `MachineTranslationPort`, `rustok-ai` owns
@@ -169,22 +169,26 @@ This is the active cross-cutting implementation plan. As of 2026-08-13:
 - `rustok-translation-targets` now defines the neutral provider/resource/field,
   exact-locale, revision, validation, apply, progress, change-cursor, and
   interchange contracts;
-- Media, Taxonomy, Blog category, Navigation menu, and Pages metadata are registered owner
-  providers. Media's exact-locale CAS apply, stable receipt, append-only tenant cursor, and content-free owner
-  event are transactional; every other Media translation write emits the same
-  repair evidence. Its aggregate progress counts only exact target-row values
-  for source-eligible active assets inside a stable cursor window. Translated-
-  asset deletion and failure emit deleted/unavailable cursor evidence, so
-  lifecycle changes cannot leave projection freshness falsely current.
-  Taxonomy's `taxonomy/term` provider exposes exact `name`, review-only `slug`,
-  and optional `description`, applies target-locale resource/source/target CAS,
-  uses the shared owner receipt ledger, and records an append-only owner change
-  cursor. Taxonomy does not claim a global owner-event contract. Blog's
-  `blog/category` provider exposes public `name`, review-only `slug`, and
-  optional `description`; it applies exact target-locale resource/source/target
-  CAS through `CategoryService`, uses the same durable owner receipt ledger,
-  records an append-only Blog change cursor, and publishes the existing Blog
-  Search reindex request transactionally. Navigation's `navigation/menu`
+- Media, Taxonomy, Navigation menu, and Pages metadata are registered owner
+  providers. Media's exact-locale CAS apply, stable receipt, append-only tenant
+  cursor, and content-free owner event are transactional; every other Media
+  translation write emits the same repair evidence. Its aggregate progress
+  counts only exact target-row values for source-eligible active assets inside a
+  stable cursor window. Translated-asset deletion and failure emit
+  deleted/unavailable cursor evidence, so lifecycle changes cannot leave
+  projection freshness falsely current. Taxonomy's `taxonomy/term` provider
+  exposes exact `name`, review-only `slug`, and optional `description`, applies
+  target-locale resource/source/target CAS, uses the shared owner receipt
+  ledger, and records an append-only owner change cursor. Taxonomy does not
+  claim a global owner-event contract. Blog Category copy now follows that
+  canonical Taxonomy provider through the same-ID Blog-to-Taxonomy Category
+  binding. Forum Category copy also follows the canonical Taxonomy provider
+  through the same-ID Forum-to-Taxonomy Category binding. The former
+  `blog/category` provider, Blog change cursor/journal, and Blog-local Category
+  translation storage were retired by TAXONOMY-CAT-8..12; the duplicate Forum
+  `forum/category` provider, change cursor/progress runtime, and donor translation
+  storage are retired after the verified CAT-5 cutover. Those consumer-local
+  provider/storage paths remain historical migration evidence only. Navigation's `navigation/menu`
   provider applies an exact locale aggregate containing the menu name and every
   item title through `MenuService`, with resource/source/target CAS, the shared
   receipt ledger, and a content-free owner cursor; it does not claim a generic
@@ -215,9 +219,14 @@ scaffold in `crates/rustok-translation/docs/implementation-plan.md`.
 
 ## Decisions fixed by this plan
 
-1. **Owner modules keep canonical localized data.** Product, Pages, Blog,
-   Forum, Taxonomy, Flex, settings owners, and every other domain continue to
-   own their base, translation, and body rows.
+1. **Canonical owners keep localized business data.** Product, Pages, Forum,
+   Taxonomy, Flex, settings owners, and every other canonical domain owner keep
+   their base, translation, and body rows. Consumer modules do not retain a
+   duplicate localized owner after an accepted ownership cutover: in particular,
+   Blog Category localized copy is Taxonomy-owned and Blog retains only its typed
+   Category binding plus Blog-specific state; Forum Category localized copy,
+   routes, hierarchy and presentation are Taxonomy-owned and Forum retains only
+   its typed same-ID binding plus Forum policy, counters and lifecycle state.
 2. **The translation module is a control plane.** It owns jobs, proposals,
    review state, progress projections, memory, glossaries, and application
    receipts. It never becomes a shared business-content table.
@@ -259,7 +268,7 @@ Four related planes must remain distinct:
 | Plane | Owner | Source of truth | Relationship to `translation` |
 | --- | --- | --- | --- |
 | Effective locale and fallback | tenant/runtime i18n contract | `tenant_locales`, request context, `rustok-api` locale primitives | Input policy only; never reimplemented |
-| Localized business data | each domain/settings owner | owner `*_translations`, `*_bodies`, or typed localized-value storage | Discovered and updated only through owner providers |
+| Localized business data | each canonical domain/settings owner | owner `*_translations`, `*_bodies`, or typed localized-value storage | Discovered and updated only through owner providers |
 | Translation workflow | `rustok-translation` | jobs, proposals, review, memory, glossary, receipts, derived progress | Core responsibility |
 | Static UI/system messages | host/module catalogs and future Fluent owner | source-controlled or signed build artifacts | Separate adapter track; not tenant DB fallback |
 
@@ -309,7 +318,7 @@ Four related planes must remain distinct:
 | Idempotency | Not every localized owner write is idempotent | Require idempotency keys and replay receipts before onboarding |
 | Owner events | Translation changes do not share a generic invalidation contract | Add owner adapters that publish typed target-change facts transactionally |
 | Baseline verification | Current i18n/DB verifiers contain stale paths and owner markers and are not all green | Repair the existing contract and documentation before adding translation-specific verification |
-| Owner identity | Pages/Navigation, Content/SEO, Product/Commerce Foundation, and Blog/Taxonomy contain ownership drift or duplicate schema evidence | Assign exactly one owner and remove superseded schema/entity paths before target registration |
+| Owner identity | Pages/Navigation, Content/SEO, and Product/Commerce Foundation still contain ownership drift or duplicate schema evidence; Blog Category/Taxonomy and Forum Category/Taxonomy ownership are resolved | Assign exactly one owner and remove superseded schema/entity paths before target registration; do not reintroduce a Blog- or Forum-local Category Translation owner |
 | Settings | Host/platform and tenant-module settings are unversioned JSON without localized-leaf semantics | Assign owners, add typed localization metadata, parallel localized storage, revisions, and events |
 | Richtext | Blog, Forum, and Comments use canonical owner profiles, while UI parity and obsolete shared-helper/migration cleanup remain open | Translate only validated canonical document segments; do not wait for editor-host parity or reintroduce a format/version branch |
 | Page Builder | Fly translation state is project-local and not a platform target provider | Add a Page Builder owner adapter with lossless segment identity and revision checks |
@@ -331,8 +340,9 @@ surfaces; it does not replace the storage audit.
 ### Current P0 cleanup ledger
 
 The following repository facts were confirmed during the 2026-07-26 planning
-audit. They are explicit preparation work, not implementation details to defer
-until after the module exists.
+audit and updated for the 2026-08-28 Blog and Forum Category cutovers. They are explicit
+preparation work, not implementation details to defer until after the module
+exists.
 
 | P0 item | Current evidence | Exit condition |
 | --- | --- | --- |
@@ -340,8 +350,8 @@ until after the module exists.
 | Split locale meanings | Completed: one normalizer now backs `RuntimeLocale`/`TenantLocale` (no `und`) and `StoredLocale` (explicit `und` provenance), with canonicalization and serde tests | Migrate remaining package-local locale DTOs to the canonical types |
 | Establish tenant locale ownership | Completed: `rustok-tenant` owns revisioned policy read/replace, CAS, durable idempotency receipts, canonical/default/fallback/cycle invariants, and server middleware consumes the port | Add the admin transport over the same owner service without restoring direct SQL |
 | Remove locale DTO drift | Media now converts translation writes to canonical `TenantLocale`; Content, Product, Shipping, and other candidate owners still apply different length/case rules | Every translatable owner accepts the canonical locale type instead of package-local five- or ten-character validators or whole-tag lowercasing |
-| Resolve owner/schema drift | Product translation entities are duplicated in `rustok-product` and `rustok-commerce-foundation`; Pages/Navigation, Content/SEO, and Blog/Taxonomy also have stale ownership evidence | Registry/docs/migrations/entities identify one physical and semantic owner per target kind; superseded internal paths are deleted atomically |
-| Make owner writes safe | Media, Taxonomy, Blog category, Navigation menu, and Pages metadata now have registered exact-locale providers. All use owner CAS, durable receipt replay, and append-only owner change cursors; Media also emits its neutral owner event, Blog emits its existing Search reindex request, Navigation applies its full menu locale aggregate without inventing a generic event, and Pages applies localized metadata through its existing `NodeUpdated` owner event. Product, Shipping, and other candidates still have full-set or unguarded writes | Each remaining onboarded owner provides atomic one-locale/field apply with source and target revisions, idempotency conflict detection, owner validation, durable owner change evidence, and bounded repair |
+| Resolve owner/schema drift | Blog Category/Taxonomy is completed through TAXONOMY-CAT-12: same-ID Taxonomy Category owns canonical localized copy, the separate `blog/category` provider is retired, and Blog donor translation storage/journal are removed. Forum Category/Taxonomy is completed through the verified CAT-5 cutover: same-ID Taxonomy Category owns canonical localized copy, routes, hierarchy and presentation; the duplicate `forum/category` provider and donor translation storage are retired. Product/Commerce Foundation, Pages/Navigation, and Content/SEO still have separate drift to resolve | Keep the Blog and Forum Category ownership guards green; for remaining surfaces, registry/docs/migrations/entities identify one physical and semantic owner and superseded internal paths are deleted atomically |
+| Make owner writes safe | Media, Taxonomy, Navigation menu, and Pages metadata have registered exact-locale providers. All use owner CAS, durable receipt replay, and append-only owner change cursors where their owner contract defines one; Media also emits its neutral owner event, Navigation applies its full menu locale aggregate without inventing a generic event, and Pages applies localized metadata through its existing `NodeUpdated` owner event. Blog and Forum Category copy are handled through the Taxonomy provider and neither consumer has a duplicate Category provider. Product, Shipping, and other candidates still have full-set or unguarded writes | Each remaining onboarded owner provides atomic one-locale/field apply with source and target revisions, idempotency conflict detection, owner validation, durable owner change evidence, and bounded repair |
 | Correct Flex exact semantics | Attached and standalone authoring reject invalid locales and prepare from an exact target-locale row; presentation fallback remains isolated to explicit read resolution | Add provider-facing exact source/target APIs, owner-local revision-safe apply, and field-policy exposure limited to schema-declared `is_localized` leaves |
 | Type localized settings | [`ModuleSettingSpec`](../../crates/rustok-modules/src/settings.rs) and host settings writes have no localized-leaf, sensitivity, or revision contract | A named owner exposes stable field IDs, `localized` and field-policy metadata, parallel localized rows, CAS, events, and secret-safe validation |
 | Finish semantic string classification | Product image alt text has base/translation drift; Search linguistic dictionaries, channel policy names, and transactional tax/order prose need explicit classification | Every candidate is classified as identifier, technical, secret, code-owned message, tenant-localized copy, immutable snapshot, search-linguistic data, or excluded with owner/reason |
@@ -363,12 +373,12 @@ and exclusion reason.
 | Owner/surface | Candidate localized data | Onboarding rule |
 | --- | --- | --- |
 | Content | node title/slug/excerpt and body | Register only live Content-owned target kinds; long body follows the canonical richtext profile |
-| Blog | post title/excerpt/body/SEO and category copy | Registered `blog/category` pilot supplies exact `name`, review-only `slug`, optional `description`, resource/source/target CAS, durable receipt replay, and an append-only owner cursor with transactional Search reindex. Posts join the editorial wave; Taxonomy-owned tags are not duplicated; production enablement requires PostgreSQL concurrency and cursor-recovery evidence |
+| Blog | post title/excerpt/body/SEO plus Category bindings | Blog Category canonical copy is not a Blog Translation target. TAXONOMY-CAT-1..12 moved same-ID Category localized copy/routes/hierarchy to Taxonomy and retired `blog/category`, its journal, and donor storage. Translation of Category copy goes through `taxonomy/term`; future Blog post copy joins the editorial wave under Blog ownership without recreating a Category provider |
 | Pages | title/slug/meta copy and localized body | Registered `pages/page_metadata` pilot supplies exact title, review-only slug, optional meta copy, resource/source/target CAS, durable receipt replay, existing Pages owner events, and a content-free cursor. Visual documents still require a lossless owner segment extractor/materializer and body-revision CAS; production enablement requires PostgreSQL concurrency and cursor-recovery evidence |
 | Navigation | menu name and item title | Registered `navigation/menu` pilot applies the full menu locale aggregate through Navigation-owned CAS, shared durable receipt replay, and content-free cursor evidence; production enablement still requires PostgreSQL concurrent-aggregate and cursor-recovery evidence |
-| Forum | category, topic, and reply copy | Category may onboard early; topic/reply are UGC and require opt-in, moderation, revisions, and no author-content overwrite |
+| Forum | Category binding plus topic/reply copy | Forum Category canonical copy is not a Forum Translation target. The verified CAT-5 cutover moved canonical localized copy, routes, hierarchy and presentation to Taxonomy and retired `forum/category`, its change/progress runtime, and donor translation storage. Category Translation goes through `taxonomy/term`; topic/reply are UGC and require opt-in, moderation, revisions, and no author-content overwrite |
 | Product/catalog | product/variant/options, attributes, category/schema labels, SEO, image alt, localized Flex values | Dedicated catalog wave after per-locale CAS, owner extraction cleanup, SEO precedence, and removal of base/translation image-alt drift |
-| Taxonomy | term name/slug/description | Registered `taxonomy/term` pilot with exact-locale snapshots, resource/source/target CAS, shared durable receipts, and an append-only owner cursor. Aliases remain curated search/SEO semantics rather than automatic MT by default; production enablement needs PostgreSQL concurrency and cursor-recovery evidence |
+| Taxonomy | term name/slug/description, including canonical Category copy consumed by Blog and Forum | Registered `taxonomy/term` pilot with exact-locale snapshots, resource/source/target CAS, shared durable receipts, and an append-only owner cursor. Aliases remain curated search/SEO semantics rather than automatic MT by default; Blog and Forum Category do not add a second provider or evidence gate |
 | Media | title/alt/caption | Provider registered for bounded exact discovery/read/validate/apply and tenant-scoped cursor repair with resource/source/target revisions, atomic receipt, and neutral owner event. Direct owner edits publish identical repair evidence; production enablement now waits on projection replay and multi-replica checkpoint recovery evidence |
 | SEO | title/description/keywords/Open Graph copy | Decide precedence between owner-embedded SEO and explicit SEO override before registration; media identifiers are preserved |
 | Flex | schema copy and attached/standalone localized values | Expose only schema-declared localized leaves through exact operations; never expose arbitrary payload JSON |
@@ -1310,8 +1320,9 @@ Deliverables:
 - [x] introduce canonical runtime/tenant versus stored-provenance locale types;
 - [x] give `rustok-tenant` ownership of revisioned enabled/default/fallback locale
   policy and its invariants;
-- [ ] resolve the known Pages/Navigation, Content/SEO, Product/Commerce Foundation,
-  and Blog/Taxonomy ownership drift;
+- [x] resolve Blog Category/Taxonomy ownership drift through TAXONOMY-CAT-1..12;
+- [ ] resolve the remaining Pages/Navigation, Content/SEO, and
+  Product/Commerce Foundation ownership drift;
 - [x] add the translatable-surface machine registry and verifier;
 - [x] freeze the first provider/resource/field/revision/apply contract in
   `rustok-translation-targets`;
@@ -1341,9 +1352,10 @@ Deliverables:
   manifest, migrations, permissions, workers, FBA evidence, and synchronized
   readiness records;
 - [x] implement provider-level exact-locale coverage and opaque-cursor
-  freshness, with Media, Taxonomy, Blog category, Navigation menu, and Pages
-  metadata registered
-  aggregates and Translation-side fact validation;
+  freshness, with Media, Taxonomy, Navigation menu, and Pages metadata
+  registered aggregates and Translation-side fact validation. Blog Category
+  copy is consumed through the canonical Taxonomy provider rather than a
+  duplicate Blog provider;
 - [x] complete required-target-locale policies and deterministic Phase 1 QA;
   job completion, safe
   blocked-item retry, rebuildable job workflow progress, jobs, items,
@@ -1372,13 +1384,16 @@ target:
    production inventory enablement.
 2. Taxonomy term name/slug/description: provider registration, exact
    resource/source/target CAS, shared durable receipts, and append-only
-   owner-cursor repair are present; retain PostgreSQL migration, concurrent
-   apply, and cursor-recovery evidence before production inventory enablement.
-3. Blog category copy: provider registration, exact resource/source/target CAS,
-   durable receipt replay, append-only change-cursor repair, and transactional
-   Search reindex are present without duplicating Taxonomy-owned tags; retain
-   PostgreSQL migration, concurrent apply, and cursor-recovery evidence before
-   production inventory enablement.
+   owner-cursor repair are present; this provider is also the only Translation
+   owner for canonical Blog Category copy after TAXONOMY-CAT-1..12. Retain
+   Taxonomy PostgreSQL migration, concurrent apply, and cursor-recovery evidence
+   before production inventory enablement.
+3. Blog Category consumer cutover: completed through TAXONOMY-CAT-12. Blog keeps
+   its typed same-ID Taxonomy Category binding and Blog-specific state; the
+   separate `blog/category` Translation provider, Blog Category change journal,
+   donor translation storage, and runtime bridge/provider sources are retired.
+   Do not create a second provider or a Blog-specific production evidence gate
+   for canonical Category copy.
 4. Navigation menu copy: provider registration, exact aggregate snapshots,
    resource/source/target CAS, durable receipt replay, and append-only
    change-cursor repair are present. The menu name and every item title apply
@@ -1635,7 +1650,8 @@ FFA/FBA status without provider/transport/runtime evidence.
 
 - replacing request locale negotiation or `tenant_locales`;
 - owning Product, Pages, Blog, Commerce, Flex, or any other module's localized
-  rows;
+  rows except where a separate accepted ownership ADR assigns canonical data to
+  another owner such as Taxonomy Category;
 - a universal shared `translations` business-content table;
 - direct database discovery or writes across owner schemas;
 - translating every JSON string or every string column;

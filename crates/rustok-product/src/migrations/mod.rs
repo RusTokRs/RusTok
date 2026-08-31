@@ -38,6 +38,12 @@ mod m20260807_000011_add_product_sales_channel_relation_freshness;
 mod m20260807_000012_add_product_sales_channel_relation_convergence;
 mod m20260812_000013_normalize_catalog_category_translation_locales;
 mod m20260813_000014_canonicalize_product_metadata_tags;
+mod m20260828_000015_add_product_taxonomy_category_binding;
+mod m20260829_000016_backfill_product_categories_to_taxonomy;
+mod m20260829_000017_add_product_category_seo_translations;
+mod m20260829_000018_retire_product_category_legacy_translations;
+mod m20260829_000019_retire_product_category_closure_invariant;
+mod m20260829_000020_retire_product_category_closure_storage;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -80,6 +86,12 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260807_000012_add_product_sales_channel_relation_convergence::Migration),
         Box::new(m20260812_000013_normalize_catalog_category_translation_locales::Migration),
         Box::new(m20260813_000014_canonicalize_product_metadata_tags::Migration),
+        Box::new(m20260828_000015_add_product_taxonomy_category_binding::Migration),
+        Box::new(m20260829_000016_backfill_product_categories_to_taxonomy::Migration),
+        Box::new(m20260829_000017_add_product_category_seo_translations::Migration),
+        Box::new(m20260829_000018_retire_product_category_legacy_translations::Migration),
+        Box::new(m20260829_000019_retire_product_category_closure_invariant::Migration),
+        Box::new(m20260829_000020_retire_product_category_closure_storage::Migration),
     ]
 }
 
@@ -103,6 +115,20 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260813_000014_canonicalize_product_metadata_tags",
             vec!["m20260812_000008_add_route_key_registry"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260828_000015_add_product_taxonomy_category_binding",
+            vec![
+                "m20260701_000002_add_product_catalog_tenant_consistency_constraints",
+                "m20260711_000001_add_tenant_identity_key",
+            ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260829_000016_backfill_product_categories_to_taxonomy",
+            vec![
+                "m20260822_000010_create_taxonomy_category_hierarchy",
+                "m20260828_000015_add_product_taxonomy_category_binding",
+            ],
         ),
     ]
 }

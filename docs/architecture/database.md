@@ -194,18 +194,28 @@ Principle:
 
 ## Blog-family Storage
 
-Blog category localization follows the same base-plus-exact-translation model:
+Blog Category storage follows the canonical Taxonomy ownership boundary rather
+than a live Blog-local translation mirror:
 
-- `blog_categories` owns language-agnostic hierarchy, settings, and a positive
-  resource revision;
-- `blog_category_translations` owns exact `name`, localized `slug`, optional
-  `description`, and a positive per-locale revision;
-- `blog_translation_changes` is Blog's append-only, content-free owner change
-  journal for Translation cursor repair. It records resource/target revisions,
-  operation, lifecycle, and locale but not copy values.
+- `blog_categories` remains Blog-owned for module membership, settings, positive
+  owner revision, and local command invariants;
+- the typed Blog-to-Taxonomy Category binding preserves the consumer ownership
+  boundary and rejects cross-tenant drift;
+- canonical Category localized `name`, `slug`, `description`, route aliases and
+  hierarchy projection live in Taxonomy-owned Category storage;
+- historical migration `m20260824_000020_backfill_blog_categories_to_taxonomy`
+  copies donor Category data into same-ID Taxonomy ownership for upgrades;
+- forward migration `m20260828_000021_retire_blog_category_legacy_storage`
+  fails closed until matching same-ID Taxonomy ownership is proven, then
+  irreversibly drops `blog_category_translations` and
+  `blog_translation_changes`;
+- the remaining crate-private Blog Category translation entity is an upgrade-only
+  donor seam for historical `000020`, not a runtime storage contract.
 
-Translation applies category copy through Blog's service; it does not obtain a
-cross-module foreign key or direct write path into these tables.
+The former Blog `blog/category` Translation provider and Blog Category change
+journal are retired. Translation of canonical Blog Category copy is Taxonomy-owned;
+no control-plane apply path should recreate direct writes to the dropped Blog
+donor tables.
 
 ## Navigation-family Storage
 
@@ -247,15 +257,25 @@ Native product catalog attributes extend this baseline through
 product-owned tables:
 
 - `product_attributes`, `product_attribute_translations`, `product_attribute_options`
-- `catalog_categories`, `catalog_category_translations`, `catalog_category_closure`
+- `catalog_categories`, `catalog_category_closure`
+- `catalog_category_seo_translations` for Product-owned localized Category SEO on PostgreSQL
 - `product_attribute_schemas` and schema/group/binding tables
 - `category_attribute_schema_assignments`, `category_attributes`, `category_attribute_groups`
 - `product_categories`, `virtual_category_product_assignments`
 - `product_attribute_values`, `product_variant_attribute_values` and related localized value/option tables (with detached values tracked across category/schema rebinding)
 - read-side projection tables such as `index_product_attribute_values`
 
-And the same principle applies: base rows are language-agnostic, localized
-fields are moved to parallel records.
+Product Category canonical localization is a cross-module ownership exception to the usual
+module-local `*_translations` pattern. On PostgreSQL, same-ID Product Category bindings point at
+Taxonomy-owned Category identity, localized `name`/`slug`/`description`, routes and hierarchy.
+Migration `m20260829_000018_retire_product_category_legacy_translations` fails closed on incompatible
+Taxonomy ownership or Product SEO drift and then irreversibly drops the historical
+`catalog_category_translations` donor. Product keeps localized `meta_title`/`meta_description` in
+`catalog_category_seo_translations`. Non-PostgreSQL backends retain the legacy Product Category
+translation donor/read/write path until they acquire an equivalent Taxonomy cutover.
+
+And the same principle applies elsewhere: base rows are language-agnostic, and localized fields
+remain in their demonstrated owner-specific storage rather than being duplicated across modules.
 
 ## Registry / Marketplace
 
