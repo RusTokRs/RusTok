@@ -386,3 +386,128 @@ retirement merely from the CAT-34 number. Any next Product slice must start from
 explicit backend and ownership boundary, and preserve the Product-owned contracts above. Later
 Category consumers continue one at a time under the same typed-binding/backfill/read-write-cutover
 evidence rules.
+
+**Product PostgreSQL done when:** the CAT-34 state remains green under focused and migration
+compatibility evidence, with Taxonomy canonical ownership and Product policy/navigation ownership
+both preserved. CAT-6 as a whole remains open only for separately accepted later-consumer or
+backend-compatibility work.
+
+## Lookup and Translation invariants
+
+The existing route and Translation machinery remains authoritative for both demonstrated kinds:
+
+- `taxonomy_term_route_keys` serializes localized slug/alias ownership;
+- module scope is preferred before global scope where module lookup semantics apply;
+- requested locale -> explicit fallback -> platform fallback remains the presentation order;
+- `requested_locale` and `effective_locale` must both survive owner projections;
+- localized authoring never copies fallback content into the target locale;
+- hard deletion releases canonical/route identities through owner-controlled persistence semantics;
+- Translation applies use resource/source/target revision CAS and durable owner change cursors.
+
+A richer bounded resolver must preserve each resolved term's `effective_locale`; consumers must not
+label fallback text with the requested/content locale when Taxonomy resolved another locale.
+
+Exactly one stale-revision candidate may commit for a same-snapshot Translation apply; competing
+stale candidates close as conflicts without advancing durable revision/change evidence twice.
+
+## PostgreSQL evidence policy
+
+`Taxonomy PostgreSQL Evidence` is the production-like runtime gate for the canonical migration graph,
+Category presentation storage guards/CAS, Category hierarchy concurrency, route-registry contention
+and Translation CAS/cursor behavior.
+
+Checked-in evidence snapshots are retained provenance, but runtime-input changes intentionally make
+them stale. Staleness must trigger a fresh PostgreSQL run; it must not prevent the runtime job from
+starting. The compatibility source wrapper may bridge only known superseded historical plan
+assertions and stale runtime fingerprints while validating the current Category plan markers. Any
+structural verifier failure remains fatal. The workflow gate remains closed unless the current-head
+PostgreSQL runtime job succeeds.
+
+The runtime job must continue to:
+
+- check out the exact PR head/push SHA;
+- assert Rust `1.96.0`;
+- apply the canonical server Migrator to PostgreSQL 16;
+- execute Category presentation storage-guard and same-revision CAS evidence;
+- execute Category hierarchy contention evidence;
+- execute route-registry contention evidence;
+- execute Translation-target CAS/change-cursor evidence;
+- archive exact-head metadata and logs.
+
+### Recorded route-registry contention evidence
+
+The route-registry contention test target is
+`crates/rustok-taxonomy/tests/route_registry_contention_postgres.rs`. The test proves
+two-writer route-key contention under real PostgreSQL 16 lock semantics: two independent writer
+connections both complete the route preflight before one is released, contention is forced after
+the translation row pre-lock, and the route registry primary key is the storage authority that
+ensures exactly one writer commits. The losing writer reports concurrent route claim; its
+translation update rolls back. The winner's translation and route reservation commit together, and
+exactly one durable route owner remains. This is the translation apply CAS boundary for route key
+ownership.
+
+Recorded runtime evidence:
+
+- Final exact-head pull-request run `33407161450` (HEAD `3c42235867036511eabeb87ed421d9d74b7ff997`):
+  source contract, canonical PostgreSQL 16 migrations, Category presentation CAS, Category hierarchy
+  contention, route-registry contention, Translation-target CAS/change-cursor evidence, artifact
+  upload and the final gate all succeeded. Artifact `9763777630`, named
+  `taxonomy-postgres-evidence-33407161450-3c42235867036511eabeb87ed421d9d74b7ff997`, has digest
+  `sha256:70d124fba72cf14c00f88330639ff8e70200a6f3919963ae0af5cf9760874854`.
+- Post-merge main run `33420044854` (HEAD `0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6`):
+  source contract, canonical PostgreSQL 16 migrations, Category presentation CAS, Category hierarchy
+  contention, route-registry contention, Translation-target CAS/change-cursor evidence, artifact
+  upload and the final gate all succeeded. Artifact `9768688596`, named
+  `taxonomy-postgres-evidence-33420044854-0ebb3f53aaa2b9ef62be7fea56cb462dcebbdcf6`, has digest
+  `sha256:bed3651b428a2e779cec8faca0bef804b079655608982ddb3de922549f195303`.
+- Result 4 is complete for the current runtime input fingerprints.
+
+The evidence runtime input fingerprints record the exact git object SHAs validated by the successful
+post-merge main run. Later changes to any fingerprinted runtime input require fresh PostgreSQL
+evidence; changes outside that runtime-input set do not silently invalidate the retained proof.
+
+## Verification
+
+Focused commands for the Category program:
+
+- `cargo xtask module validate taxonomy`
+- `node scripts/verify/verify-taxonomy-ownership-boundary-self-test.mjs`
+- `node scripts/verify/verify-taxonomy-ownership-boundary.mjs`
+- `node scripts/verify/verify-taxonomy-contract-matrix.test.mjs`
+- `node scripts/verify/verify-taxonomy-contract-matrix.mjs`
+- `node scripts/verify/verify-taxonomy-category-flex-donor.mjs`
+- `cargo test --locked -p rustok-taxonomy --test category_hierarchy --test category_presentation --test localized_route_lookup --test route_key_registry -- --nocapture`
+- `cargo test --locked -p rustok-taxonomy --test owner_identity -- --nocapture`
+- `cargo test --locked -p flex --test generic_attached_definitions --test generic_attached_storage -- --nocapture`
+- `cargo test --locked -p rustok-taxonomy --test category_presentation_postgres -- --nocapture` with `RUSTOK_TAXONOMY_TEST_DATABASE_URL` set to PostgreSQL;
+- `cargo test --locked -p flex --test postgres_generic_attached_storage -- --ignored --nocapture` with `RUSTOK_FLEX_TEST_POSTGRES_URL` set to PostgreSQL;
+- `cargo test --locked -p rustok-taxonomy --lib`
+- PostgreSQL commands retained in `.github/workflows/taxonomy-postgres-evidence.yml` and
+  `.github/workflows/taxonomy-category-flex-donor-contract.yml`.
+
+Consumer cutovers add their own focused owner, migration, transport, multilingual/RTL and browser
+evidence. Unrelated/common workspace CI failures are not a reason to expand a Category PR's scope.
+
+## Change rules
+
+1. Taxonomy owns shared Category identity, hierarchy, localized copy, aliases/routes and canonical
+   presentation.
+2. Consumer modules own typed bindings/relations and domain-specific policy/state.
+3. Do not add generic polymorphic `owner_type/owner_id` consumer persistence to Taxonomy.
+4. Do not create duplicate Forum/Blog/Product category Translation providers after Taxonomy is the
+   canonical owner.
+5. Flex is the only runtime custom-fields engine; `taxonomy.category` opts in rather than rebuilding
+   definitions/validation/localization/transport.
+6. Built-in business invariants remain normalized owner fields even for Flex-enabled entities.
+7. Preserve category UUIDs during consumer backfills where possible.
+8. Never drop legacy category data before deterministic backfill and read/write cutover evidence.
+9. Media owns binary lifecycle; Taxonomy/Flex store typed Media references.
+10. Every slice starts from fresh `main`, stays narrow, and fixes only failures caused by its own
+    boundary.
+
+## References
+
+- [`DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md`](../../../DECISIONS/2026-08-22-taxonomy-category-flex-ownership.md)
+- [`docs/architecture/taxonomy-flex-category-platform-plan.md`](../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
+- [`docs/route-registry-recovery.md`](./route-registry-recovery.md)
+- [`../README.md`](../README.md)
