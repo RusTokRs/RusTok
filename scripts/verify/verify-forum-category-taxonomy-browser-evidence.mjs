@@ -64,9 +64,9 @@ if (!contract.boundaries?.includes(mainOnlyDispatchBoundary)) {
   throw new Error("CAT-5 browser contract must retain the main-only mounted execution boundary");
 }
 const scopedAdminStateSecretBoundary =
-  "raw authenticated admin storage state is scoped only to the materialization step through the RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON environment secret; downstream steps receive only the RUNNER_TEMP file path";
+  "raw authenticated admin storage state is scoped only to the late materialization step; the credential file is created after source verification and browser setup, only the Playwright execution step receives its path through a step output, and cleanup runs always";
 if (!contract.boundaries?.includes(scopedAdminStateSecretBoundary)) {
-  throw new Error("CAT-5 browser contract must retain the step-scoped admin storage-state secret boundary");
+  throw new Error("CAT-5 browser contract must retain the bounded admin storage-state lifetime boundary");
 }
 
 for (const marker of contract.required_environment ?? []) {
@@ -126,8 +126,10 @@ for (const marker of [
   "if: github.event_name == 'workflow_dispatch'",
   "environment: ${{ inputs.target_environment }}",
   "run: test \"$GITHUB_REF\" = \"refs/heads/main\"",
+  "id: admin-storage-state",
   "state=\"$RUNNER_TEMP/forum-category-admin-storage-state.json\"",
-  "echo \"RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE=$state\" >> \"$GITHUB_ENV\"",
+  "echo \"path=$state\" >> \"$GITHUB_OUTPUT\"",
+  "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE: ${{ steps.admin-storage-state.outputs.path }}",
   "npm ci --no-audit --no-fund",
   "npx --no-install playwright install --with-deps chromium",
   "npx --no-install playwright test --config=playwright.forum-category-taxonomy.config.ts --list",
@@ -140,6 +142,7 @@ const adminStateSecretBinding =
   "ADMIN_STORAGE_STATE_JSON: ${{ secrets.RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON }}";
 const materializationSecretBlock = [
   "      - name: Materialize authenticated admin storage state",
+  "        id: admin-storage-state",
   "        shell: bash",
   "        env:",
   `          ${adminStateSecretBinding}`,
@@ -155,11 +158,49 @@ need(
 if (workflow.split(adminStateSecretBinding).length - 1 !== 1) {
   throw new Error("CAT-5 admin storage-state secret must be bound exactly once");
 }
+const storageStatePathBinding =
+  "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE: ${{ steps.admin-storage-state.outputs.path }}";
+if (workflow.split(storageStatePathBinding).length - 1 !== 1) {
+  throw new Error("CAT-5 admin storage-state file path must be exposed only to the browser execution step");
+}
 forbid(
   workflow,
   "environment: ${{ inputs.target_environment }}\n    env:\n      ADMIN_STORAGE_STATE_JSON:",
   "CAT-5 admin storage-state secret must not be exposed at mounted job scope",
 );
+forbid(
+  workflow,
+  'echo "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE=$state" >> "$GITHUB_ENV"',
+  "CAT-5 admin storage-state path must not be exported job-wide",
+);
+const mountedJobStart = workflow.indexOf("  mounted-browser-evidence:");
+const mountedStepIndex = (marker) => workflow.indexOf(marker, mountedJobStart);
+const mountedVerifierIndex = mountedStepIndex("      - name: Verify CAT-5 browser evidence source contract");
+const mountedInstallIndex = mountedStepIndex("      - name: Install next-admin dependencies");
+const mountedChromiumIndex = mountedStepIndex("      - name: Install Chromium");
+const mountedMaterializeIndex = mountedStepIndex("      - name: Materialize authenticated admin storage state");
+const mountedExecuteIndex = mountedStepIndex("      - name: Execute mounted multilingual RTL browser evidence");
+const mountedCleanupIndex = mountedStepIndex("      - name: Remove authenticated admin storage state");
+if (
+  mountedJobStart < 0 ||
+  mountedVerifierIndex < 0 ||
+  mountedInstallIndex < 0 ||
+  mountedChromiumIndex < 0 ||
+  mountedMaterializeIndex < 0 ||
+  mountedExecuteIndex < 0 ||
+  mountedCleanupIndex < 0 ||
+  !(
+    mountedVerifierIndex < mountedInstallIndex &&
+    mountedInstallIndex < mountedChromiumIndex &&
+    mountedChromiumIndex < mountedMaterializeIndex &&
+    mountedMaterializeIndex < mountedExecuteIndex &&
+    mountedExecuteIndex < mountedCleanupIndex
+  )
+) {
+  throw new Error(
+    "CAT-5 authenticated admin storage state must be materialized only after source/dependency/browser setup and immediately before browser execution",
+  );
+}
 for (const marker of (contract.required_environment ?? []).filter(
   (name) => name !== "RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE",
 )) {
