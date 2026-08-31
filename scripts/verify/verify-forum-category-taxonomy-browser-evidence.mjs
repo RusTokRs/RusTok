@@ -78,6 +78,11 @@ const mountedUrlPreflightBoundary =
 if (!contract.boundaries?.includes(mountedUrlPreflightBoundary)) {
   throw new Error("CAT-5 browser contract must retain the pre-auth mounted URL validation boundary");
 }
+const mountedFixtureRelationPreflightBoundary =
+  "mounted fixture locale/route relationships are preflighted before authenticated storage-state materialization: requested locales must appear in their configured admin/storefront URL paths, fallback requested/effective locales must differ, and alias/canonical URLs must differ";
+if (!contract.boundaries?.includes(mountedFixtureRelationPreflightBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the pre-auth fixture relation validation boundary");
+}
 const focusedPathClosureBoundary =
   "pull-request path filters cover every retained CAT-5 verifier input plus the next-admin package manifests so guarded source drift always runs the focused source contract";
 if (!contract.boundaries?.includes(focusedPathClosureBoundary)) {
@@ -121,6 +126,14 @@ for (const marker of [
   "must be a credential-free HTTP(S) URL without a fragment",
 ]) {
   need(testSource, marker, "CAT-5 browser runner URL validation");
+}
+for (const marker of [
+  "function requestedLocaleAppearsInPath(url: string, locale: string): boolean",
+  "expect(requestedLocaleAppearsInPath(url, requestedLocale)).toBe(true);",
+  "expect(requestedLocale).not.toBe(effectiveLocale);",
+  "expect(aliasUrl).not.toBe(canonicalUrl);",
+]) {
+  need(testSource, marker, "CAT-5 browser runner fixture relationship validation");
 }
 for (const forbidden of [
   "GraphqlRequest",
@@ -282,6 +295,7 @@ for (const marker of [
   "return raw.trim();",
   "requiredEnvironment(name);",
   "const urlNames = [",
+  "const validatedUrls = new Map();",
   "const raw = requiredEnvironment(name);",
   "new URL(raw)",
   '!["http:", "https:"].includes(parsed.protocol)',
@@ -289,6 +303,18 @@ for (const marker of [
   "parsed.password",
   "parsed.hash",
   "must be a credential-free HTTP(S) URL without a fragment",
+  "validatedUrls.set(name, parsed.toString());",
+  "const requestedLocaleAppearsInPath = (url, locale) =>",
+  "const localeUrlPairs = [",
+  '["RUSTOK_FORUM_CATEGORY_ADMIN_RTL_E2E_URL", rtlRequestedLocale]',
+  '["RUSTOK_FORUM_CATEGORY_STOREFRONT_RTL_E2E_URL", rtlRequestedLocale]',
+  '["RUSTOK_FORUM_CATEGORY_ADMIN_FALLBACK_E2E_URL", fallbackRequestedLocale]',
+  '["RUSTOK_FORUM_CATEGORY_STOREFRONT_FALLBACK_E2E_URL", fallbackRequestedLocale]',
+  "requestedLocaleAppearsInPath(validatedUrls.get(name), locale)",
+  "fallbackRequestedLocale === fallbackEffectiveLocale",
+  "CAT-5 fallback requested and effective locales must differ",
+  "aliasUrl === canonicalUrl",
+  "CAT-5 alias and canonical storefront URLs must differ",
 ]) {
   need(
     mountedFixtureValidationBlock,

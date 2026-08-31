@@ -52,6 +52,7 @@
     "authenticated admin state is maintainer supplied through Playwright storage state",
     "all non-secret mounted fixture values are preflighted with the runner's bounded non-empty environment contract before authenticated storage-state materialization",
     "mounted fixture URLs are preflighted before authenticated storage-state materialization and must be credential-free HTTP(S) URLs without fragments",
+    "mounted fixture locale/route relationships are preflighted before authenticated storage-state materialization: requested locales must appear in their configured admin/storefront URL paths, fallback requested/effective locales must differ, and alias/canonical URLs must differ",
     "production Forum and Taxonomy ownership behavior is unchanged by this evidence slice",
     "screenshots, video and tracing are disabled",
     "mounted browser execution is workflow_dispatch-only and requires a maintainer-selected GitHub environment",
