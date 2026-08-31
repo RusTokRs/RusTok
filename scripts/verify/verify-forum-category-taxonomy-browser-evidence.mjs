@@ -25,6 +25,7 @@ const config = read(configPath);
 const contract = JSON.parse(read(contractPath));
 const workflow = read(workflowPath);
 const packageJson = JSON.parse(read("apps/next-admin/package.json"));
+const adminRoot = read("crates/rustok-forum/admin/src/ui/root.rs");
 const adminUi = read("crates/rustok-forum/admin/src/ui/category_dnd.rs");
 const storefrontUi = read("crates/rustok-forum/storefront/src/ui/leptos.rs");
 const treeOwner = read("crates/rustok-forum/src/services/category_taxonomy_tree_read.rs");
@@ -133,6 +134,16 @@ for (const forbidden of [
   forbid(workflow, forbidden, "CAT-5 manual browser execution workflow security boundary");
 }
 
+for (const marker of [
+  "fn forum_category_route_locale",
+  'segments.next()? != "categories"',
+  "normalize_locale_tag(locale)",
+  "localized_route_context.locale = Some(route_locale)",
+  "provide_context(localized_route_context)",
+  'forum_category_route_locale(Some("categories/ar_sa"))',
+]) {
+  need(adminRoot, marker, "Forum admin Category locale-addressable mounted route");
+}
 for (const marker of [
   'data-forum-target-localized=""',
   'lang=content_lang.clone()',
