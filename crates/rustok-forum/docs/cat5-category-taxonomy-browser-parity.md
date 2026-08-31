@@ -41,7 +41,9 @@ The runner reuses the repository's existing `@playwright/test` dependency. It pe
 The manual workflow is deliberately split into two boundaries:
 
 - pull-request runs execute the source verifier and `playwright --list` only; they do not receive mounted credentials or run the mounted evidence;
-- `workflow_dispatch` selects a maintainer-configured GitHub environment and is the only path that executes the mounted browser cases.
+- `workflow_dispatch` selects a maintainer-configured GitHub environment and is the only path that executes the mounted browser cases, and the mounted run fails closed unless it was dispatched from `refs/heads/main`.
+
+Before authenticated admin state is materialized, the mounted workflow also validates every non-secret fixture value as bounded, non-empty and free of NUL/CR/LF control characters; validates all mounted targets as credential-free HTTP(S) URLs without fragments; and proves the static locale/URL, fallback-locale and alias/canonical relationships already required by the runner. The focused workflow path filter covers every runtime/source file read by the retained verifier plus the next-admin package manifests, so dependency or guarded-source drift re-runs the source contract.
 
 ## Maintainer fixture boundary
 
@@ -64,7 +66,7 @@ For GitHub Actions execution, store that JSON document only in the selected GitH
 RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE_JSON
 ```
 
-The workflow materializes it under `RUNNER_TEMP`, exports only the temporary file path to Playwright as `RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE`, validates that the file contains JSON, and removes it in an `always()` cleanup step.
+The raw secret is exposed only to the materialization step. Source verification, dependency installation and Chromium setup complete before the credential file exists. The workflow then creates the file under `RUNNER_TEMP` with `umask 077`, validates that it contains JSON, exposes its path only as a materialization-step output to the Playwright execution step, and removes it in an `always()` cleanup step. The file path is not exported job-wide through `$GITHUB_ENV`.
 
 ## Required environment
 
@@ -102,7 +104,7 @@ RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_SLUG
 RUSTOK_FORUM_CATEGORY_E2E_FALLBACK_CANONICAL_PATH
 ```
 
-For the manual GitHub Actions workflow, configure every value above except `RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE` as a variable on the selected GitHub environment. The supplied mounted URLs must be credential-free HTTP(S) URLs without fragments.
+For the manual GitHub Actions workflow, configure every value above except `RUSTOK_FORUM_CATEGORY_ADMIN_STORAGE_STATE` as a variable on the selected GitHub environment. Every configured value must be non-empty after trimming, at most 4096 bytes in the retained workflow/runner contract, and contain no NUL/CR/LF characters. The supplied mounted URLs must be credential-free HTTP(S) URLs without fragments. The RTL and fallback requested locales must occur as exact path segments in their respective admin/storefront URLs, the fallback requested/effective locales must differ, and the normalized storefront alias/canonical URLs must differ.
 
 ## Browser cases
 
@@ -143,8 +145,10 @@ The source guard pins both the mounted source and the manual execution boundary:
 - the Forum Category tree reader still consumes `TaxonomyOwnerCategoryReader` projections for copy/hierarchy/presentation;
 - the mounted storefront route retains canonical/redirect handling;
 - none of those retained owner/mount sources can regress to `forum_category_translations`, `forum_category_route_aliases` or `ForumCategoryTranslationTargetProvider`;
-- mounted execution remains `workflow_dispatch`-only and requires a maintainer-selected GitHub environment;
-- authenticated storage state comes from an environment secret and the credential-free fixture values come from environment variables;
+- the focused pull-request path set covers every guarded runtime/source seam and the next-admin package manifests;
+- mounted execution remains `workflow_dispatch`-only, requires `refs/heads/main` and uses a maintainer-selected GitHub environment;
+- every non-secret mounted fixture value is bounded and structurally preflighted before authenticated storage-state materialization, including URL safety and static locale/fallback/alias relationships;
+- the raw authenticated storage-state secret is step-scoped, the credential file is materialized late, only the Playwright execution step receives its path, and cleanup is unconditional;
 - ordinary pull requests can verify/compile-list the retained runner without receiving mounted credentials.
 
 ## Retained source-ready provenance
@@ -155,6 +159,14 @@ The execution packet has been hardened incrementally without changing its `maint
 - PR #3750 (`6cf7325a4f32a1cff6859792978523e21913e873`, merged as `287db4a8857663e0355712d9cb5893f118f65608`) added the credential-safe manual execution workflow. Focused run `33306801105` passed the exact-head source contract and Playwright compile-list while the mounted job was correctly skipped on the pull-request event.
 - PR #3752 (`448e50a2b499aedeea45c5d448b0f832a51f9da0`, merged as `2f5e03e8cb5c0577686e0cf527f93d8897b46fbe`) made the mounted Forum Category admin route locale-addressable through the exact normalized `categories/<locale>` subpath. Focused `Forum Category Taxonomy Browser Evidence` run `33365642047` passed on that exact head.
 - PR #3753 (`cfe009e9cfa10d0c78c7768489467669577003e0`, merged as `4471ef63d0f49f683b819b527baaf13d45ec8297`) strengthened RTL evidence so authenticated admin and storefront root/child localized headings must resolve to browser-computed `direction: rtl`, not merely retain `dir="auto"`. Focused run `33387441260` passed exact checkout, the source verifier and Playwright compile-list; the mounted job remained correctly skipped on the pull-request event.
+- PR #3755 (`c33b632710401a34caedab96fb384aff88d99c78`, merged as `f4de7c3ccbc1c0b32c9c6bcd6f0394e07981a063`) aligned the machine claims with the computed-RTL runner. Focused run `33389998207` passed exact checkout, source verification, dependency install and Playwright compile-list while mounted execution remained skipped.
+- PR #3757 (`4dd055b54e5d15f7329acff802688a74e52d3a7e`, merged as `246aadc49857bfd8442bb526d0da7713061d0b60`) made mounted evidence fail closed off `refs/heads/main`. Focused run `33393245584` passed the exact-head source contract; mounted execution remained skipped on the pull-request event.
+- PR #3758 (`362fd08972875cd20f0ff45487d56cd82daa77f5`, merged as `b04434a1172db0282eaf4afe45e603ba6f75edb2`) narrowed the raw authenticated storage-state secret to the materialization step. Focused run `33395511932` passed the retained source/compile-list contract.
+- PR #3759 (`5644a2ffd6c4836bb6d7a36178f65af87a8f0099`, merged as `befdc7f6ddcd506a24f5d069dbb4ad17a14556fb`) delayed credential-file creation until after source/dependency/browser setup, exposed its path only through the materialization step output to Playwright and retained unconditional cleanup. Focused run `33395884361` passed.
+- PR #3760 (`8f29938750c71cc41711eb5a8b39022fc64faa68`, merged as `14ffe3729870a929c2621ed68483ddaf10a3dfee`) moved credential-free HTTP(S)/no-fragment URL validation ahead of authenticated-state materialization while retaining runner-side validation. Focused run `33398827860` passed.
+- PR #3761 (`aff03fdf06df6529cc9176dff02a524d07b035ff`, merged as `2e2774e67bae5c7c8aef3db56f3d402771137d48`) closed the focused pull-request path set over every verifier-owned runtime/source seam plus the next-admin package manifests. Focused run `33403955051` passed.
+- PR #3762 (`067f6ec3c2c138a29265a172ae17632c9269827b`, merged as `a64f2b1c36112f6e8e4cd9166040bfcfaf11e877`) moved bounded non-empty/control-character validation for every non-secret fixture value before authenticated-state materialization. Focused run `33404692954` passed.
+- PR #3763 (`5bd030a05e5ca59dcd6b6c317cf22400fc20b1f9`, merged as `261ce7e00629b0759042d3ebca62e6c9e2f39216`) preflighted the four locale→URL relationships, fallback requested/effective inequality and storefront alias/canonical inequality before authenticated-state materialization. Focused run `33405293672` passed.
 
 No successful `Forum Category Taxonomy Browser Evidence` `workflow_dispatch` run is retained yet. The source-ready runs above prove the executable packet and its security/route/RTL contracts only; they do not prove deployment provenance, mounted browser execution, production rollout completion or TAXONOMY-CAT-5 completion.
 
@@ -164,7 +176,7 @@ Preferred repository execution after the workflow is present on `main`:
 
 1. configure a GitHub environment with the secret and variables documented above;
 2. open **Actions → Forum Category Taxonomy Browser Evidence → Run workflow**;
-3. select that environment and run against the intended `main` revision;
+3. run the workflow from `main`, select that environment and keep the prepared fixture values within the preflight contract above;
 4. retain the successful workflow run URL/ID and exact head SHA as CAT-5 mounted evidence before changing the CAT-5 status.
 
 The equivalent local execution remains available from the repository root after the environment above is populated:

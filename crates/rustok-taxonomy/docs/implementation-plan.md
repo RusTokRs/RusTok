@@ -240,8 +240,20 @@ Accepted CAT-5 slices already in `main`:
   localized headings must resolve to browser-computed `direction: rtl`, not merely retain source
   `dir="auto"`.
 - PR #3755 aligned the machine-readable CAT-5 execution claims with the computed RTL runner contract
-  and made the focused verifier reject regressions to weaker admin/storefront RTL claims. The
-  execution contract still remains `source_ready_maintainer_execution_pending`.
+  and made the focused verifier reject regressions to weaker admin/storefront RTL claims.
+- PR #3757 made the mounted `workflow_dispatch` fail closed outside `refs/heads/main`, so stale-branch
+  browser evidence cannot be mistaken for completion evidence.
+- PR #3758 scoped the raw authenticated admin storage-state JSON to the single materialization step;
+  PR #3759 delayed credential-file creation until after source verification, dependency install and
+  Chromium setup, passed only the step-output path to Playwright and retained unconditional cleanup.
+- PR #3760 preflighted all mounted targets as credential-free HTTP(S) URLs without fragments before
+  authenticated storage-state materialization while retaining runner-side URL validation.
+- PR #3761 closed the focused pull-request path set over every runtime/source seam guarded by the
+  retained verifier plus the next-admin package manifests.
+- PR #3762 moved bounded non-empty/control-character validation for every non-secret mounted fixture
+  value before authenticated-state materialization; PR #3763 moved the static locale→URL, fallback
+  requested/effective and storefront alias/canonical relationship checks to that same pre-auth
+  boundary. The execution contract remains `source_ready_maintainer_execution_pending`.
 
 Retained focused evidence for the foundation:
 
@@ -272,17 +284,33 @@ Retained focused evidence for the foundation:
   `Forum Category Taxonomy Browser Evidence` run `33389998207`: exact checkout, source contract,
   dependency install and retained Playwright compile-list succeeded while the mounted job was
   correctly skipped on the pull-request event. PR #3755 was squash-merged as
-  `f4de7c3ccbc1c0b32c9c6bcd6f0394e07981a063`.
+  `f4de7c3ccbc1c0b32c9c6bcd6f0394e07981a063`;
+- PR #3757 exact head `4dd055b54e5d15f7329acff802688a74e52d3a7e` passed focused run
+  `33393245584` and was squash-merged as `246aadc49857bfd8442bb526d0da7713061d0b60`;
+- PR #3758 exact head `362fd08972875cd20f0ff45487d56cd82daa77f5` passed focused run
+  `33395511932` and was squash-merged as `b04434a1172db0282eaf4afe45e603ba6f75edb2`;
+- PR #3759 exact head `5644a2ffd6c4836bb6d7a36178f65af87a8f0099` passed focused run
+  `33395884361` and was squash-merged as `befdc7f6ddcd506a24f5d069dbb4ad17a14556fb`;
+- PR #3760 exact head `8f29938750c71cc41711eb5a8b39022fc64faa68` passed focused run
+  `33398827860` and was squash-merged as `14ffe3729870a929c2621ed68483ddaf10a3dfee`;
+- PR #3761 exact head `aff03fdf06df6529cc9176dff02a524d07b035ff` passed focused run
+  `33403955051` and was squash-merged as `2e2774e67bae5c7c8aef3db56f3d402771137d48`;
+- PR #3762 exact head `067f6ec3c2c138a29265a172ae17632c9269827b` passed focused run
+  `33404692954` and was squash-merged as `a64f2b1c36112f6e8e4cd9166040bfcfaf11e877`;
+- PR #3763 exact head `5bd030a05e5ca59dcd6b6c317cf22400fc20b1f9` passed focused run
+  `33405293672` and was squash-merged as `261ce7e00629b0759042d3ebca62e6c9e2f39216`.
 
-The retained CAT-5 source packet is now hardened through PR #3755: PR #3708 provides the mounted
-browser runner, PR #3750 provides its credential-safe manual execution path, PR #3752 provides the
-locale-addressable admin seam, PR #3753 requires browser-computed RTL direction, and PR #3755 pins
-those claims in the machine contract. None of these merges substitutes for the still-required
-successful mounted browser execution against a prepared Taxonomy-backed fixture.
+The retained CAT-5 source packet is now hardened through PR #3763. The mounted execution path is
+main-only; the raw authenticated state is step-scoped and materialized late into a restricted
+`RUNNER_TEMP` file whose path is exposed only to Playwright; all non-secret fixture values, URL safety
+and static locale/fallback/alias relationships are checked before that credential exists; and focused
+pull-request triggers cover every verifier-owned source seam. None of those source-ready merges
+substitutes for the still-required successful mounted browser execution against a prepared
+Taxonomy-backed fixture.
 
 **Next:** configure the GitHub environment required by `Forum Category Taxonomy Browser Evidence` and
-run its `workflow_dispatch` mounted job against the prepared authenticated admin/storefront fixture,
-including requested/effective locale fallback, canonical localized routes, hierarchy/order,
+run its `workflow_dispatch` mounted job from `main` against the prepared authenticated admin/storefront
+fixture, including requested/effective locale fallback, canonical localized routes, hierarchy/order,
 presentation and alias redirect. No backend donor/storage cutover remains.
 
 **Done when:** the backend ownership/storage cutover above remains intact and a successful mounted
