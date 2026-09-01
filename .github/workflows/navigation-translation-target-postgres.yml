@@ -67,6 +67,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: navigation-translation-target-postgres
