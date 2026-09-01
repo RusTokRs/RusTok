@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, error::Error, io, sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
+use rustok_channel::ChannelModule;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_navigation::{
     CreateMenuInput, MenuItemInput, MenuItemTranslationInput, MenuLocation, MenuService,
@@ -35,8 +36,14 @@ impl TestDatabase {
             .await?;
 
         let migration = scoped_connection(&database_url, &schema_name).await?;
+        migration
+            .execute_unprepared("CREATE TABLE tenants (id UUID PRIMARY KEY NOT NULL)")
+            .await?;
         let manager = SchemaManager::new(&migration);
         SysEventsMigration.up(&manager).await?;
+        for step in ChannelModule.migrations() {
+            step.up(&manager).await?;
+        }
         for step in NavigationModule.migrations() {
             step.up(&manager).await?;
         }
