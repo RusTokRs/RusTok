@@ -97,10 +97,21 @@ async fn assessment_selects_listing_then_seller_rule_and_replays_before_provider
         .await
         .unwrap();
     assert_eq!(created.assessments.len(), 2);
-    assert_eq!(created.assessments[0].rate_bps, 1_000);
-    assert_eq!(created.assessments[0].commission_amount, 1_000);
-    assert_eq!(created.assessments[1].rate_bps, 500);
-    assert_eq!(created.assessments[1].commission_amount, 1_000);
+    let listing_assessment = created
+        .assessments
+        .iter()
+        .find(|item| item.listing_id == listing_id)
+        .expect("listing assessment should exist");
+    assert_eq!(listing_assessment.rate_bps, 1_000);
+    assert_eq!(listing_assessment.commission_amount, 1_000);
+
+    let seller_assessment = created
+        .assessments
+        .iter()
+        .find(|item| item.listing_id == other_listing_id)
+        .expect("seller assessment should exist");
+    assert_eq!(seller_assessment.rate_bps, 500);
+    assert_eq!(seller_assessment.commission_amount, 1_000);
     assert_eq!(created.commission_total_amount, 2_000);
     assert_eq!(created.seller_proceeds_total_amount, 28_000);
     assert_eq!(provider.read_count(), 1);

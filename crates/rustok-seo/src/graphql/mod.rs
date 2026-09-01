@@ -631,12 +631,21 @@ mod tests {
     }
 
     async fn run_forum_migrations(db: &DatabaseConnection) {
+        use sea_orm::ConnectionTrait as _;
         use sea_orm_migration::MigrationTrait as _;
         let manager = SchemaManager::new(db);
         rustok_outbox::SysEventsMigration
             .up(&manager)
             .await
             .expect("outbox migration should apply");
+        db.execute_unprepared(
+            "CREATE TABLE IF NOT EXISTS users (
+                id TEXT NOT NULL PRIMARY KEY,
+                tenant_id TEXT NOT NULL
+            );",
+        )
+        .await
+        .expect("users table fixture should apply");
         for migration in forum_migrations::migrations() {
             migration
                 .up(&manager)

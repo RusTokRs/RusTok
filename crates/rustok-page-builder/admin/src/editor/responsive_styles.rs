@@ -46,11 +46,12 @@ pub fn ResponsiveStylePanel(runtime: AdminEditorRuntime) -> impl IntoView {
     let breakpoint_id = RwSignal::new("mobile-down".to_string());
     let style_property = RwSignal::new("padding".to_string());
     let style_value = RwSignal::new(String::new());
-    let observed_key = RwSignal::new(None::<String>);
-
-    Effect::new({
-        let runtime = runtime.clone();
-        move |_| {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let observed_key = RwSignal::new(None::<String>);
+        Effect::new({
+            let runtime = runtime.clone();
+            move |_| {
             let selected_id = runtime
                 .controller
                 .with(|controller| controller.ui().state.selection.component_id.clone());
@@ -72,7 +73,8 @@ pub fn ResponsiveStylePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 &style_property.get_untracked(),
             ));
         }
-    });
+        });
+    }
 
     let breakpoint_runtime = runtime.clone();
     let property_runtime = runtime.clone();

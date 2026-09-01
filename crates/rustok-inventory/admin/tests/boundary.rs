@@ -122,7 +122,7 @@ fn native_write_path_targets_inventory_service() {
         "inventory/variant/check-availability requires the `ssr` feature",
         "inventory/variant/release-reservation requires the `ssr` feature",
         "shared_get::<rustok_outbox::TransactionalEventBus>()",
-        "inventory/admin native transport requires TransactionalEventBus in host runtime context",
+        "inventory admin transactional event bus is missing",
         "assert_requested_tenant",
         "Permission::INVENTORY_UPDATE",
         "Permission::INVENTORY_MANAGE",
@@ -216,7 +216,7 @@ fn native_write_facades_stay_native_without_graphql_fallback() {
             );
         }
         assert!(
-            write_facade.contains(".map_err(Into::into)"),
+            write_facade.contains("map_error"),
             "{} facade must map native server errors through InventoryTransportError",
             function_name
         );

@@ -1,7 +1,7 @@
 use crate::editor::AdminEditorRuntime;
-use crate::{
-    load_publish_scenario_selection, resolve_publish_scenario, save_publish_scenario_selection,
-};
+#[cfg(target_arch = "wasm32")]
+use crate::load_publish_scenario_selection;
+use crate::{resolve_publish_scenario, save_publish_scenario_selection};
 use fly::RuntimeScenarioReleaseBaseline;
 use leptos::ev::Event;
 use leptos::prelude::*;
@@ -15,14 +15,15 @@ pub fn PublishScenarioSelectorPanel(
         .controller
         .with(|controller| controller.page_id().to_string());
     let selected_scenario = RwSignal::new(None::<String>);
-    let sync_runtime = runtime.clone();
-    let sync_page_id = page_id.clone();
-
-    Effect::new(move |_| {
-        let Some(baseline) = baseline.get() else {
-            selected_scenario.set(None);
-            return;
-        };
+    #[cfg(target_arch = "wasm32")]
+    {
+        let sync_runtime = runtime.clone();
+        let sync_page_id = page_id.clone();
+        Effect::new(move |_| {
+            let Some(baseline) = baseline.get() else {
+                selected_scenario.set(None);
+                return;
+            };
         let stored = match load_publish_scenario_selection(&sync_page_id, &baseline.baseline_hash) {
             Ok(stored) => stored,
             Err(error) => {
@@ -46,7 +47,8 @@ pub fn PublishScenarioSelectorPanel(
             _ => None,
         };
         selected_scenario.set(selected);
-    });
+        });
+    }
 
     let select_runtime = runtime.clone();
     let select_page_id = page_id.clone();

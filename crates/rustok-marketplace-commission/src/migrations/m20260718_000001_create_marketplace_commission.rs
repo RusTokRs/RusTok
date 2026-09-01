@@ -9,58 +9,58 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(CommissionRules::Table)
+                    .table(MarketplaceCommissionRules::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(CommissionRules::Id)
+                        ColumnDef::new(MarketplaceCommissionRules::Id)
                             .uuid()
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(CommissionRules::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(CommissionRules::RuleKey).uuid().not_null())
+                    .col(ColumnDef::new(MarketplaceCommissionRules::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(MarketplaceCommissionRules::RuleKey).uuid().not_null())
                     .col(
-                        ColumnDef::new(CommissionRules::Version)
+                        ColumnDef::new(MarketplaceCommissionRules::Version)
                             .integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(CommissionRules::SellerId).uuid())
-                    .col(ColumnDef::new(CommissionRules::ListingId).uuid())
+                    .col(ColumnDef::new(MarketplaceCommissionRules::SellerId).uuid())
+                    .col(ColumnDef::new(MarketplaceCommissionRules::ListingId).uuid())
                     .col(
-                        ColumnDef::new(CommissionRules::RateBps)
+                        ColumnDef::new(MarketplaceCommissionRules::RateBps)
                             .integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionRules::FixedAmount)
+                        ColumnDef::new(MarketplaceCommissionRules::FixedAmount)
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(CommissionRules::CurrencyCode).string_len(3))
+                    .col(ColumnDef::new(MarketplaceCommissionRules::CurrencyCode).string_len(3))
                     .col(
-                        ColumnDef::new(CommissionRules::Priority)
+                        ColumnDef::new(MarketplaceCommissionRules::Priority)
                             .integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionRules::EffectiveFrom)
+                        ColumnDef::new(MarketplaceCommissionRules::EffectiveFrom)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(CommissionRules::EffectiveUntil).timestamp_with_time_zone())
+                    .col(ColumnDef::new(MarketplaceCommissionRules::EffectiveUntil).timestamp_with_time_zone())
                     .col(
-                        ColumnDef::new(CommissionRules::Status)
+                        ColumnDef::new(MarketplaceCommissionRules::Status)
                             .string_len(32)
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionRules::Metadata)
+                        ColumnDef::new(MarketplaceCommissionRules::Metadata)
                             .json_binary()
                             .not_null()
                             .default("{}"),
                     )
                     .col(
-                        ColumnDef::new(CommissionRules::CreatedAt)
+                        ColumnDef::new(MarketplaceCommissionRules::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(Expr::current_timestamp()),
@@ -71,34 +71,34 @@ impl MigrationTrait for Migration {
         for index in [
             Index::create()
                 .name("uq_marketplace_commission_rule_version")
-                .table(CommissionRules::Table)
-                .col(CommissionRules::TenantId)
-                .col(CommissionRules::RuleKey)
-                .col(CommissionRules::Version)
+                .table(MarketplaceCommissionRules::Table)
+                .col(MarketplaceCommissionRules::TenantId)
+                .col(MarketplaceCommissionRules::RuleKey)
+                .col(MarketplaceCommissionRules::Version)
                 .unique()
                 .to_owned(),
             Index::create()
                 .name("idx_marketplace_commission_rule_listing")
-                .table(CommissionRules::Table)
-                .col(CommissionRules::TenantId)
-                .col(CommissionRules::ListingId)
-                .col(CommissionRules::Status)
-                .col(CommissionRules::Priority)
+                .table(MarketplaceCommissionRules::Table)
+                .col(MarketplaceCommissionRules::TenantId)
+                .col(MarketplaceCommissionRules::ListingId)
+                .col(MarketplaceCommissionRules::Status)
+                .col(MarketplaceCommissionRules::Priority)
                 .to_owned(),
             Index::create()
                 .name("idx_marketplace_commission_rule_seller")
-                .table(CommissionRules::Table)
-                .col(CommissionRules::TenantId)
-                .col(CommissionRules::SellerId)
-                .col(CommissionRules::Status)
-                .col(CommissionRules::Priority)
+                .table(MarketplaceCommissionRules::Table)
+                .col(MarketplaceCommissionRules::TenantId)
+                .col(MarketplaceCommissionRules::SellerId)
+                .col(MarketplaceCommissionRules::Status)
+                .col(MarketplaceCommissionRules::Priority)
                 .to_owned(),
             Index::create()
                 .name("idx_marketplace_commission_rule_global")
-                .table(CommissionRules::Table)
-                .col(CommissionRules::TenantId)
-                .col(CommissionRules::Status)
-                .col(CommissionRules::EffectiveFrom)
+                .table(MarketplaceCommissionRules::Table)
+                .col(MarketplaceCommissionRules::TenantId)
+                .col(MarketplaceCommissionRules::Status)
+                .col(MarketplaceCommissionRules::EffectiveFrom)
                 .to_owned(),
         ] {
             manager.create_index(index).await?;
@@ -107,107 +107,107 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(CommissionAssessments::Table)
+                    .table(MarketplaceCommissionAssessments::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(CommissionAssessments::Id)
+                        ColumnDef::new(MarketplaceCommissionAssessments::Id)
                             .uuid()
                             .not_null()
                             .primary_key(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::TenantId)
+                        ColumnDef::new(MarketplaceCommissionAssessments::TenantId)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::AllocationId)
+                        ColumnDef::new(MarketplaceCommissionAssessments::AllocationId)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::OrderId)
+                        ColumnDef::new(MarketplaceCommissionAssessments::OrderId)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::OrderLineItemId)
+                        ColumnDef::new(MarketplaceCommissionAssessments::OrderLineItemId)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::SellerId)
+                        ColumnDef::new(MarketplaceCommissionAssessments::SellerId)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::ListingId)
+                        ColumnDef::new(MarketplaceCommissionAssessments::ListingId)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::RuleId)
+                        ColumnDef::new(MarketplaceCommissionAssessments::RuleId)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::RuleKey)
+                        ColumnDef::new(MarketplaceCommissionAssessments::RuleKey)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::RuleVersion)
+                        ColumnDef::new(MarketplaceCommissionAssessments::RuleVersion)
                             .integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::CurrencyCode)
+                        ColumnDef::new(MarketplaceCommissionAssessments::CurrencyCode)
                             .string_len(3)
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::AllocationTotalAmount)
+                        ColumnDef::new(MarketplaceCommissionAssessments::AllocationTotalAmount)
                             .big_integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::RateBps)
+                        ColumnDef::new(MarketplaceCommissionAssessments::RateBps)
                             .integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::FixedAmount)
+                        ColumnDef::new(MarketplaceCommissionAssessments::FixedAmount)
                             .big_integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::CommissionAmount)
+                        ColumnDef::new(MarketplaceCommissionAssessments::CommissionAmount)
                             .big_integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::SellerProceedsAmount)
+                        ColumnDef::new(MarketplaceCommissionAssessments::SellerProceedsAmount)
                             .big_integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::Status)
+                        ColumnDef::new(MarketplaceCommissionAssessments::Status)
                             .string_len(32)
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::Metadata)
+                        ColumnDef::new(MarketplaceCommissionAssessments::Metadata)
                             .json_binary()
                             .not_null()
                             .default("{}"),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::AssessedAt)
+                        ColumnDef::new(MarketplaceCommissionAssessments::AssessedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionAssessments::CreatedAt)
+                        ColumnDef::new(MarketplaceCommissionAssessments::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(Expr::current_timestamp()),
@@ -218,25 +218,25 @@ impl MigrationTrait for Migration {
         for index in [
             Index::create()
                 .name("uq_marketplace_commission_assessment_allocation")
-                .table(CommissionAssessments::Table)
-                .col(CommissionAssessments::TenantId)
-                .col(CommissionAssessments::AllocationId)
+                .table(MarketplaceCommissionAssessments::Table)
+                .col(MarketplaceCommissionAssessments::TenantId)
+                .col(MarketplaceCommissionAssessments::AllocationId)
                 .unique()
                 .to_owned(),
             Index::create()
                 .name("idx_marketplace_commission_assessment_order")
-                .table(CommissionAssessments::Table)
-                .col(CommissionAssessments::TenantId)
-                .col(CommissionAssessments::OrderId)
-                .col(CommissionAssessments::Id)
+                .table(MarketplaceCommissionAssessments::Table)
+                .col(MarketplaceCommissionAssessments::TenantId)
+                .col(MarketplaceCommissionAssessments::OrderId)
+                .col(MarketplaceCommissionAssessments::Id)
                 .to_owned(),
             Index::create()
                 .name("idx_marketplace_commission_assessment_seller")
-                .table(CommissionAssessments::Table)
-                .col(CommissionAssessments::TenantId)
-                .col(CommissionAssessments::SellerId)
-                .col(CommissionAssessments::Status)
-                .col(CommissionAssessments::AssessedAt)
+                .table(MarketplaceCommissionAssessments::Table)
+                .col(MarketplaceCommissionAssessments::TenantId)
+                .col(MarketplaceCommissionAssessments::SellerId)
+                .col(MarketplaceCommissionAssessments::Status)
+                .col(MarketplaceCommissionAssessments::AssessedAt)
                 .to_owned(),
         ] {
             manager.create_index(index).await?;
@@ -245,53 +245,53 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(CommissionReceipts::Table)
+                    .table(MarketplaceCommissionReceipts::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(CommissionReceipts::Id)
+                        ColumnDef::new(MarketplaceCommissionReceipts::Id)
                             .uuid()
                             .not_null()
                             .primary_key(),
                     )
                     .col(
-                        ColumnDef::new(CommissionReceipts::TenantId)
+                        ColumnDef::new(MarketplaceCommissionReceipts::TenantId)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionReceipts::ActorId)
+                        ColumnDef::new(MarketplaceCommissionReceipts::ActorId)
                             .uuid()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionReceipts::IdempotencyKey)
+                        ColumnDef::new(MarketplaceCommissionReceipts::IdempotencyKey)
                             .string_len(191)
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionReceipts::CommandKind)
+                        ColumnDef::new(MarketplaceCommissionReceipts::CommandKind)
                             .string_len(80)
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionReceipts::RequestHash)
+                        ColumnDef::new(MarketplaceCommissionReceipts::RequestHash)
                             .string_len(64)
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(CommissionReceipts::Status)
+                        ColumnDef::new(MarketplaceCommissionReceipts::Status)
                             .string_len(32)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(CommissionReceipts::ResponseKind).string_len(32))
-                    .col(ColumnDef::new(CommissionReceipts::ResponseJson).json_binary())
+                    .col(ColumnDef::new(MarketplaceCommissionReceipts::ResponseKind).string_len(32))
+                    .col(ColumnDef::new(MarketplaceCommissionReceipts::ResponseJson).json_binary())
                     .col(
-                        ColumnDef::new(CommissionReceipts::CreatedAt)
+                        ColumnDef::new(MarketplaceCommissionReceipts::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(ColumnDef::new(CommissionReceipts::CompletedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(MarketplaceCommissionReceipts::CompletedAt).timestamp_with_time_zone())
                     .to_owned(),
             )
             .await?;
@@ -299,9 +299,9 @@ impl MigrationTrait for Migration {
             .create_index(
                 Index::create()
                     .name("uq_marketplace_commission_receipt_key")
-                    .table(CommissionReceipts::Table)
-                    .col(CommissionReceipts::TenantId)
-                    .col(CommissionReceipts::IdempotencyKey)
+                    .table(MarketplaceCommissionReceipts::Table)
+                    .col(MarketplaceCommissionReceipts::TenantId)
+                    .col(MarketplaceCommissionReceipts::IdempotencyKey)
                     .unique()
                     .to_owned(),
             )
@@ -313,7 +313,7 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(
                 Table::drop()
-                    .table(CommissionReceipts::Table)
+                    .table(MarketplaceCommissionReceipts::Table)
                     .if_exists()
                     .to_owned(),
             )
@@ -321,7 +321,7 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(
                 Table::drop()
-                    .table(CommissionAssessments::Table)
+                    .table(MarketplaceCommissionAssessments::Table)
                     .if_exists()
                     .to_owned(),
             )
@@ -329,7 +329,7 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(
                 Table::drop()
-                    .table(CommissionRules::Table)
+                    .table(MarketplaceCommissionRules::Table)
                     .if_exists()
                     .to_owned(),
             )
@@ -339,7 +339,7 @@ impl MigrationTrait for Migration {
 }
 
 #[derive(Iden)]
-enum CommissionRules {
+enum MarketplaceCommissionRules {
     Table,
     Id,
     TenantId,
@@ -359,7 +359,7 @@ enum CommissionRules {
 }
 
 #[derive(Iden)]
-enum CommissionAssessments {
+enum MarketplaceCommissionAssessments {
     Table,
     Id,
     TenantId,
@@ -384,7 +384,7 @@ enum CommissionAssessments {
 }
 
 #[derive(Iden)]
-enum CommissionReceipts {
+enum MarketplaceCommissionReceipts {
     Table,
     Id,
     TenantId,

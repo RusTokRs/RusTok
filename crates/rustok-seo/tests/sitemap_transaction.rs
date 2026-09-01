@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use rustok_api::TenantContext;
 use rustok_core::{Error, EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_outbox::TransactionalEventBus;
-use rustok_seo::entities::{seo_event_delivery, seo_sitemap_file, seo_sitemap_job};
+use rustok_seo::entities::{seo_event_delivery, seo_sitemap_file};
 use rustok_seo::{SeoApplicationServices, SeoTargetRegistry};
 use rustok_tenant::entities::tenant_module;
 use sea_orm::ActiveValue::Set;
@@ -48,23 +48,28 @@ async fn sitemap_generation_rolls_back_when_transactional_event_fails() {
         Arc::new(SeoTargetRegistry::default()),
     );
 
-    let error = service
+    service
         .sitemaps()
         .generate_sitemaps(&tenant_context(tenant_id))
         .await
-        .expect_err("event failure must abort the sitemap transaction");
+        .expect("queueing sitemap generation should succeed");
 
+    let worker_auth =
+        rustok_seo::SeoWorkerAuthorization::from_runtime_config(true, true).expect("worker auth");
+
+    let job = service
+        .sitemaps()
+        .execute_next_sitemap_job(&worker_auth)
+        .await
+        .expect("worker execution should complete")
+        .expect("job should exist");
+
+    assert_eq!(job.status, "failed");
     assert!(
-        error
-            .to_string()
+        job.last_error
+            .as_deref()
+            .unwrap_or_default()
             .contains("failed to enqueue sitemap event transactionally")
-    );
-    assert_eq!(
-        seo_sitemap_job::Entity::find()
-            .count(&db)
-            .await
-            .expect("sitemap job count should load"),
-        0
     );
     assert_eq!(
         seo_sitemap_file::Entity::find()
@@ -95,6 +100,17 @@ async fn test_db() -> DatabaseConnection {
 
 async fn create_tables(db: &DatabaseConnection) {
     for sql in [
+        "CREATE TABLE tenants (
+            id TEXT PRIMARY KEY,
+            slug TEXT NOT NULL,
+            name TEXT NOT NULL,
+            default_locale TEXT NOT NULL,
+            domain TEXT NULL,
+            settings TEXT NOT NULL DEFAULT '{}',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )",
         "CREATE TABLE tenant_modules (
             id TEXT PRIMARY KEY,
             tenant_id TEXT NOT NULL,
@@ -150,6 +166,21 @@ async fn create_tables(db: &DatabaseConnection) {
 
 async fn insert_seo_settings(db: &DatabaseConnection, tenant_id: Uuid) {
     let now = chrono::Utc::now();
+    rustok_tenant::entities::tenant::ActiveModel {
+        id: Set(tenant_id),
+        slug: Set("seo-sitemap-test".to_string()),
+        name: Set("SEO sitemap test tenant".to_string()),
+        default_locale: Set("en".to_string()),
+        domain: Set(Some("store.example.com".to_string())),
+        settings: Set(json!({})),
+        is_active: Set(true),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(db)
+    .await
+    .expect("failed to insert tenant");
+
     tenant_module::ActiveModel {
         id: Set(Uuid::new_v4()),
         tenant_id: Set(tenant_id),

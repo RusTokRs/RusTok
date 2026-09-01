@@ -208,20 +208,6 @@ pub fn editing_post_id_if_editing_mode(editing_post_id: Option<String>) -> Optio
     }
 }
 
-#[allow(dead_code)]
-pub fn has_issue(issue: Option<WritePathIssueKind>) -> bool {
-    issue.is_some()
-}
-
-#[allow(dead_code)]
-pub fn issue_kind(issue: Option<&WritePathIssue>) -> Option<WritePathIssueKind> {
-    issue.map(|value| value.kind)
-}
-
-#[allow(dead_code)]
-pub fn has_items<T>(items: &[T]) -> bool {
-    !items.is_empty()
-}
 
 pub fn edit_action_label(is_editing: bool, editing_label: String, edit_label: String) -> String {
     if is_editing {
@@ -1563,15 +1549,6 @@ mod tests {
             Some("42".to_string())
         );
         assert_eq!(editing_post_id_if_editing_mode(None), None);
-        assert!(has_issue(Some(WritePathIssueKind::Runtime)));
-        assert!(!has_issue(None));
-        assert_eq!(
-            issue_kind(Some(&WritePathIssue::new("runtime issue"))),
-            Some(WritePathIssueKind::Runtime)
-        );
-        assert_eq!(issue_kind(None), None);
-        assert!(has_items(&[1, 2, 3]));
-        assert!(!has_items::<u8>(&[]));
         assert_eq!(
             edit_action_label(true, "Editing".to_string(), "Edit".to_string()),
             "Editing".to_string()

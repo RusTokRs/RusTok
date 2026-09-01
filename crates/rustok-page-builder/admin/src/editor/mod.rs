@@ -23,6 +23,7 @@ mod palette_layers;
 mod properties_assets;
 #[cfg(target_arch = "wasm32")]
 mod properties_section;
+#[cfg(target_arch = "wasm32")]
 mod property_helpers;
 mod publish_scenario_selector;
 mod resize_handles;

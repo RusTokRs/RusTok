@@ -87,32 +87,16 @@ pub fn status_badge_class(status: &str) -> &'static str {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct EditFormSeed {
-    pub locale: String,
     pub title: String,
-    pub slug: String,
     pub project_data_text: String,
-    pub channel_slugs_text: String,
-    pub publish_now: bool,
 }
 
-pub fn edit_form_seed_from_page(page: &PageDetail, default_locale: &str) -> EditFormSeed {
-    let locale = page
-        .translation
-        .as_ref()
-        .map(|translation| translation.locale.clone())
-        .or_else(|| page.body.as_ref().map(|page_body| page_body.locale.clone()))
-        .unwrap_or_else(|| default_locale.to_string());
+pub fn edit_form_seed_from_page(page: &PageDetail, _default_locale: &str) -> EditFormSeed {
     let title = page
         .translation
         .as_ref()
         .and_then(|translation| translation.title.clone())
-        .unwrap_or_default();
-    let slug = page
-        .translation
-        .as_ref()
-        .and_then(|translation| translation.slug.clone())
         .unwrap_or_default();
     let project_data_text = page
         .body
@@ -122,12 +106,8 @@ pub fn edit_form_seed_from_page(page: &PageDetail, default_locale: &str) -> Edit
         .unwrap_or_else(|| default_project_data_text(title.as_str()));
 
     EditFormSeed {
-        locale,
         title,
-        slug,
         project_data_text,
-        channel_slugs_text: page.channel_slugs.join(", "),
-        publish_now: page.status.eq_ignore_ascii_case("published"),
     }
 }
 

@@ -22,12 +22,7 @@ use crate::{SeoError, SeoResult};
 
 use super::SeoService;
 
-#[allow(dead_code)]
-const DELIVERY_STATUS_PENDING: &str = "pending";
-#[allow(dead_code)]
 const DELIVERY_STATUS_SENT: &str = "sent";
-#[allow(dead_code)]
-const DELIVERY_STATUS_FAILED: &str = "failed";
 
 const INDEX_DELIVERY_STATUS_PENDING: &str = "pending";
 const INDEX_DELIVERY_STATUS_SENT: &str = "sent";
@@ -103,13 +98,6 @@ fn build_seo_event_key(scope: &str, tenant_id: Uuid, parts: &[String]) -> String
     format!("{scope}:{:016x}", simple_hash(payload.as_str()))
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-struct SeoEventDeliveryMetadata {
-    idempotency_key: String,
-    source_kind: Option<String>,
-    source_id: Option<Uuid>,
-}
 
 #[derive(Debug, Clone)]
 struct SeoIndexReindexTrigger {
@@ -1039,216 +1027,6 @@ impl SeoService {
         })
     }
 
-    #[allow(dead_code)]
-    async fn publish_seo_event(&self, tenant_id: Uuid, event: DomainEvent) {
-        let event_type = event.event_type().to_string();
-        let Some(metadata) = event_delivery_metadata(&event) else {
-            self.publish_seo_event_without_delivery_tracking(tenant_id, event)
-                .await;
-            return;
-        };
-
-        match self
-            .load_delivery_by_idempotency_key(tenant_id, metadata.idempotency_key.as_str())
-            .await
-        {
-            Ok(Some(existing)) => {
-                tracing::debug!(
-                    tenant_id = %tenant_id,
-                    event_type = %event_type,
-                    idempotency_key = %existing.idempotency_key,
-                    "skipping duplicate SEO domain event emission"
-                );
-                return;
-            }
-            Ok(None) => {}
-            Err(error) => {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    event_type = %event_type,
-                    error = %error,
-                    "failed to query SEO event delivery tracker; publishing without duplicate guard"
-                );
-                self.publish_seo_event_without_delivery_tracking(tenant_id, event)
-                    .await;
-                return;
-            }
-        }
-
-        let delivery = match self
-            .insert_pending_delivery(tenant_id, event_type.as_str(), &metadata)
-            .await
-        {
-            Ok(delivery) => delivery,
-            Err(error) if is_duplicate_delivery_insert_error(&error) => {
-                tracing::debug!(
-                    tenant_id = %tenant_id,
-                    event_type = %event_type,
-                    idempotency_key = %metadata.idempotency_key,
-                    "skipping duplicate SEO domain event emission after delivery insert conflict"
-                );
-                return;
-            }
-            Err(error) => {
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    event_type = %event_type,
-                    error = %error,
-                    "failed to persist SEO event delivery tracker; publishing without duplicate guard"
-                );
-                self.publish_seo_event_without_delivery_tracking(tenant_id, event)
-                    .await;
-                return;
-            }
-        };
-
-        let index_reindex_event = event.clone();
-        let index_reindex_idempotency_key = metadata.idempotency_key.clone();
-
-        match self
-            .event_bus
-            .publish_with_envelope_id(tenant_id, None, event)
-            .await
-        {
-            Ok(outbox_event_id) => {
-                if let Err(error) = self.mark_delivery_sent(delivery.id, outbox_event_id).await {
-                    tracing::warn!(
-                        tenant_id = %tenant_id,
-                        event_type = %event_type,
-                        delivery_id = %delivery.id,
-                        outbox_event_id = %outbox_event_id,
-                        error = %error,
-                        "failed to mark SEO event delivery as sent"
-                    );
-                }
-                self.dispatch_index_reindex_for_event(
-                    tenant_id,
-                    event_type.as_str(),
-                    index_reindex_idempotency_key.as_str(),
-                    &index_reindex_event,
-                )
-                .await;
-            }
-            Err(error) => {
-                let error_message = limit_delivery_error_message(error.to_string());
-                if let Err(update_error) = self
-                    .mark_delivery_failed(delivery.id, error_message.as_str())
-                    .await
-                {
-                    tracing::warn!(
-                        tenant_id = %tenant_id,
-                        event_type = %event_type,
-                        delivery_id = %delivery.id,
-                        error = %update_error,
-                        "failed to mark SEO event delivery as failed"
-                    );
-                }
-                tracing::warn!(
-                    tenant_id = %tenant_id,
-                    event_type = %event_type,
-                    error = %error,
-                    "failed to publish SEO domain event"
-                );
-            }
-        }
-    }
-
-    #[allow(dead_code)]
-    async fn publish_seo_event_without_delivery_tracking(
-        &self,
-        tenant_id: Uuid,
-        event: DomainEvent,
-    ) {
-        if let Err(error) = self.event_bus.publish(tenant_id, None, event.clone()).await {
-            tracing::warn!(
-                tenant_id = %tenant_id,
-                event_type = event.event_type(),
-                error = %error,
-                "failed to publish SEO domain event"
-            );
-        }
-    }
-
-    #[allow(dead_code)]
-    async fn load_delivery_by_idempotency_key(
-        &self,
-        tenant_id: Uuid,
-        idempotency_key: &str,
-    ) -> Result<Option<seo_event_delivery::Model>, DbErr> {
-        seo_event_delivery::Entity::find()
-            .filter(seo_event_delivery::Column::TenantId.eq(tenant_id))
-            .filter(seo_event_delivery::Column::IdempotencyKey.eq(idempotency_key))
-            .one(&self.db)
-            .await
-    }
-
-    #[allow(dead_code)]
-    async fn insert_pending_delivery(
-        &self,
-        tenant_id: Uuid,
-        event_type: &str,
-        metadata: &SeoEventDeliveryMetadata,
-    ) -> Result<seo_event_delivery::Model, DbErr> {
-        let now = Utc::now().fixed_offset();
-        seo_event_delivery::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            tenant_id: Set(tenant_id),
-            event_type: Set(event_type.to_string()),
-            idempotency_key: Set(metadata.idempotency_key.clone()),
-            source_kind: Set(metadata.source_kind.clone()),
-            source_id: Set(metadata.source_id),
-            status: Set(DELIVERY_STATUS_PENDING.to_string()),
-            outbox_event_id: Set(None),
-            last_error: Set(None),
-            created_at: Set(now),
-            updated_at: Set(now),
-            dispatched_at: Set(None),
-        }
-        .insert(&self.db)
-        .await
-    }
-
-    #[allow(dead_code)]
-    async fn mark_delivery_sent(
-        &self,
-        delivery_id: Uuid,
-        outbox_event_id: Uuid,
-    ) -> Result<(), DbErr> {
-        let Some(delivery) = seo_event_delivery::Entity::find_by_id(delivery_id)
-            .one(&self.db)
-            .await?
-        else {
-            return Ok(());
-        };
-
-        let now = Utc::now().fixed_offset();
-        let mut active: seo_event_delivery::ActiveModel = delivery.into();
-        active.status = Set(DELIVERY_STATUS_SENT.to_string());
-        active.outbox_event_id = Set(Some(outbox_event_id));
-        active.last_error = Set(None);
-        active.updated_at = Set(now);
-        active.dispatched_at = Set(Some(now));
-        active.update(&self.db).await?;
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    async fn mark_delivery_failed(&self, delivery_id: Uuid, error: &str) -> Result<(), DbErr> {
-        let Some(delivery) = seo_event_delivery::Entity::find_by_id(delivery_id)
-            .one(&self.db)
-            .await?
-        else {
-            return Ok(());
-        };
-
-        let now = Utc::now().fixed_offset();
-        let mut active: seo_event_delivery::ActiveModel = delivery.into();
-        active.status = Set(DELIVERY_STATUS_FAILED.to_string());
-        active.last_error = Set(Some(error.to_string()));
-        active.updated_at = Set(now);
-        active.update(&self.db).await?;
-        Ok(())
-    }
 
     async fn dispatch_index_reindex_for_event(
         &self,
@@ -1700,81 +1478,6 @@ impl SeoService {
     }
 }
 
-#[allow(dead_code)]
-fn event_delivery_metadata(event: &DomainEvent) -> Option<SeoEventDeliveryMetadata> {
-    match event {
-        DomainEvent::SeoMetaUpserted {
-            target_kind,
-            target_id,
-            idempotency_key,
-            ..
-        }
-        | DomainEvent::SeoRevisionPublished {
-            target_kind,
-            target_id,
-            idempotency_key,
-            ..
-        }
-        | DomainEvent::SeoRevisionRolledBack {
-            target_kind,
-            target_id,
-            idempotency_key,
-            ..
-        } => Some(SeoEventDeliveryMetadata {
-            idempotency_key: idempotency_key.clone(),
-            source_kind: Some(target_kind.clone()),
-            source_id: Some(*target_id),
-        }),
-        DomainEvent::SeoRedirectUpserted {
-            redirect_id,
-            idempotency_key,
-            ..
-        }
-        | DomainEvent::SeoRedirectDisabled {
-            redirect_id,
-            idempotency_key,
-            ..
-        } => Some(SeoEventDeliveryMetadata {
-            idempotency_key: idempotency_key.clone(),
-            source_kind: Some("redirect".to_string()),
-            source_id: Some(*redirect_id),
-        }),
-        DomainEvent::SeoSitemapGenerated {
-            job_id,
-            idempotency_key,
-            ..
-        }
-        | DomainEvent::SeoSitemapSubmitted {
-            job_id,
-            idempotency_key,
-            ..
-        } => Some(SeoEventDeliveryMetadata {
-            idempotency_key: idempotency_key.clone(),
-            source_kind: Some("sitemap_job".to_string()),
-            source_id: Some(*job_id),
-        }),
-        DomainEvent::SeoBulkCompleted {
-            job_id,
-            idempotency_key,
-            ..
-        }
-        | DomainEvent::SeoBulkPartial {
-            job_id,
-            idempotency_key,
-            ..
-        }
-        | DomainEvent::SeoBulkFailed {
-            job_id,
-            idempotency_key,
-            ..
-        } => Some(SeoEventDeliveryMetadata {
-            idempotency_key: idempotency_key.clone(),
-            source_kind: Some("bulk_job".to_string()),
-            source_id: Some(*job_id),
-        }),
-        _ => None,
-    }
-}
 
 fn limit_delivery_error_message(message: String) -> String {
     if message.len() <= MAX_DELIVERY_ERROR_LEN {
@@ -1787,13 +1490,6 @@ fn limit_delivery_error_message(message: String) -> String {
         .collect::<String>()
 }
 
-#[allow(dead_code)]
-fn is_duplicate_delivery_insert_error(error: &DbErr) -> bool {
-    let lowered = error.to_string().to_ascii_lowercase();
-    lowered.contains("unique")
-        && (lowered.contains("seo_event_deliveries")
-            || lowered.contains("idx_seo_event_deliveries_idempotency"))
-}
 
 fn is_duplicate_index_delivery_insert_error(error: &DbErr) -> bool {
     let lowered = error.to_string().to_ascii_lowercase();
@@ -2361,22 +2057,32 @@ mod tests {
         let service = service_with_outbox(db.clone());
 
         let target_id = Uuid::new_v4();
-        let event = DomainEvent::SeoMetaUpserted {
-            target_kind: "product".to_string(),
-            target_id,
-            locale: "en-US".to_string(),
-            source: "explicit".to_string(),
-            idempotency_key: "shared-index-key".to_string(),
-        };
-
         let tenant_a = Uuid::new_v4();
         let tenant_b = Uuid::new_v4();
 
-        service.publish_seo_event(tenant_a, event.clone()).await;
-        service.publish_seo_event(tenant_b, event).await;
+        service
+            .publish_seo_meta_upserted_event(
+                tenant_a,
+                "product",
+                target_id,
+                "en-US",
+                "explicit",
+                Some("shared-index-key"),
+            )
+            .await;
+        service
+            .publish_seo_meta_upserted_event(
+                tenant_b,
+                "product",
+                target_id,
+                "en-US",
+                "explicit",
+                Some("shared-index-key"),
+            )
+            .await;
 
         let deliveries = seo_index_delivery::Entity::find()
-            .filter(seo_index_delivery::Column::IdempotencyKey.eq("shared-index-key"))
+            .filter(seo_index_delivery::Column::TargetId.eq(target_id))
             .all(&db)
             .await
             .expect("seo index deliveries should load");

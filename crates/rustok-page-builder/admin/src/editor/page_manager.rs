@@ -76,11 +76,12 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     let open_graph_description = RwSignal::new(String::new());
     let open_graph_image = RwSignal::new(String::new());
     let no_index = RwSignal::new(false);
-    let observed_page = RwSignal::new(None::<String>);
-
-    Effect::new({
-        let runtime = runtime.clone();
-        move |_| {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let observed_page = RwSignal::new(None::<String>);
+        Effect::new({
+            let runtime = runtime.clone();
+            move |_| {
             let key = runtime.controller.with(|controller| {
                 controller.active_page_summary().map(|summary| {
                     format!(
@@ -118,7 +119,8 @@ pub fn PageManagerPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 no_index.set(metadata.no_index);
             }
         }
-    });
+        });
+    }
 
     let list_runtime = runtime.clone();
     let edit_gate_runtime = runtime.clone();

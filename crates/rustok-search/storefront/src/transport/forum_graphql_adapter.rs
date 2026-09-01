@@ -5,14 +5,6 @@ use serde::{Deserialize, Serialize};
 use super::{ApiError, configured_tenant_slug};
 
 const FORUM_STOREFRONT_SEARCH_QUERY: &str = "query ForumStorefrontSearch($input: SearchPreviewInput!) { forumStorefrontSearch(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
-#[allow(dead_code)]
-const FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY: &str = "query ForumStorefrontSearchByAuthors($input: SearchPreviewInput!, $authorIds: [String!]!) { forumStorefrontSearch(input: $input, authorIds: $authorIds) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
-#[allow(dead_code)]
-const FORUM_STOREFRONT_SEARCH_BY_FILTERS_QUERY: &str = "query ForumStorefrontSearchByFilters($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
-#[allow(dead_code)]
-const FORUM_STOREFRONT_SEARCH_BY_DATE_WINDOW_QUERY: &str = "query ForumStorefrontSearchByDateWindow($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean, $publishedFrom: String, $publishedTo: String) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved, publishedFrom: $publishedFrom, publishedTo: $publishedTo) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
-#[allow(dead_code)]
-const FORUM_STOREFRONT_SEARCH_BY_CURRENT_CHANNEL_QUERY: &str = "query ForumStorefrontSearchByCurrentChannel($input: SearchPreviewInput!, $authorIds: [String!], $tags: [String!], $solved: Boolean, $publishedFrom: String, $publishedTo: String) { forumStorefrontSearch(input: $input, authorIds: $authorIds, tags: $tags, solved: $solved, publishedFrom: $publishedFrom, publishedTo: $publishedTo, currentChannelOnly: true) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 
 #[derive(Debug, Deserialize)]
 struct ForumStorefrontSearchResponse {
@@ -25,37 +17,6 @@ struct SearchPreviewVariables {
     input: SearchPreviewInput,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct AuthorSearchPreviewVariables {
-    input: SearchPreviewInput,
-    #[serde(rename = "authorIds")]
-    author_ids: Vec<String>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct FilterSearchPreviewVariables {
-    input: SearchPreviewInput,
-    #[serde(rename = "authorIds")]
-    author_ids: Option<Vec<String>>,
-    tags: Option<Vec<String>>,
-    solved: Option<bool>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct DateWindowSearchPreviewVariables {
-    input: SearchPreviewInput,
-    #[serde(rename = "authorIds")]
-    author_ids: Option<Vec<String>>,
-    tags: Option<Vec<String>>,
-    solved: Option<bool>,
-    #[serde(rename = "publishedFrom")]
-    published_from: Option<String>,
-    #[serde(rename = "publishedTo")]
-    published_to: Option<String>,
-}
 
 #[derive(Debug, Clone, Serialize)]
 struct SearchPreviewInput {
@@ -114,152 +75,6 @@ pub async fn fetch_search(
     Ok(response.forum_storefront_search)
 }
 
-#[allow(dead_code)]
-pub async fn fetch_search_with_authors(
-    query: String,
-    locale: Option<String>,
-    preset_key: Option<String>,
-    filters: SearchPreviewFilters,
-    author_ids: Vec<String>,
-) -> Result<SearchPreviewPayload, ApiError> {
-    let input = search_preview_input(query, locale, preset_key, filters);
-    let response: ForumStorefrontSearchResponse = execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(
-            FORUM_STOREFRONT_SEARCH_BY_AUTHORS_QUERY,
-            Some(AuthorSearchPreviewVariables { input, author_ids }),
-        ),
-        None,
-        configured_tenant_slug(),
-        None,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))?;
-
-    Ok(response.forum_storefront_search)
-}
-
-#[allow(dead_code)]
-pub async fn fetch_search_with_filters(
-    query: String,
-    locale: Option<String>,
-    preset_key: Option<String>,
-    filters: SearchPreviewFilters,
-    author_ids: Vec<String>,
-    tags: Vec<String>,
-    solved: Option<bool>,
-) -> Result<SearchPreviewPayload, ApiError> {
-    let input = search_preview_input(query, locale, preset_key, filters);
-    let response: ForumStorefrontSearchResponse = execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(
-            FORUM_STOREFRONT_SEARCH_BY_FILTERS_QUERY,
-            Some(FilterSearchPreviewVariables {
-                input,
-                author_ids: (!author_ids.is_empty()).then_some(author_ids),
-                tags: (!tags.is_empty()).then_some(tags),
-                solved,
-            }),
-        ),
-        None,
-        configured_tenant_slug(),
-        None,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))?;
-
-    Ok(response.forum_storefront_search)
-}
-
-#[allow(dead_code)]
-pub async fn fetch_search_with_date_window(
-    query: String,
-    locale: Option<String>,
-    preset_key: Option<String>,
-    filters: SearchPreviewFilters,
-    author_ids: Vec<String>,
-    tags: Vec<String>,
-    solved: Option<bool>,
-    published_from: Option<String>,
-    published_to: Option<String>,
-) -> Result<SearchPreviewPayload, ApiError> {
-    execute_extended_search(
-        FORUM_STOREFRONT_SEARCH_BY_DATE_WINDOW_QUERY,
-        query,
-        locale,
-        preset_key,
-        filters,
-        author_ids,
-        tags,
-        solved,
-        published_from,
-        published_to,
-    )
-    .await
-}
-
-#[allow(dead_code)]
-pub async fn fetch_search_with_current_channel(
-    query: String,
-    locale: Option<String>,
-    preset_key: Option<String>,
-    filters: SearchPreviewFilters,
-    author_ids: Vec<String>,
-    tags: Vec<String>,
-    solved: Option<bool>,
-    published_from: Option<String>,
-    published_to: Option<String>,
-) -> Result<SearchPreviewPayload, ApiError> {
-    execute_extended_search(
-        FORUM_STOREFRONT_SEARCH_BY_CURRENT_CHANNEL_QUERY,
-        query,
-        locale,
-        preset_key,
-        filters,
-        author_ids,
-        tags,
-        solved,
-        published_from,
-        published_to,
-    )
-    .await
-}
-
-async fn execute_extended_search(
-    operation: &'static str,
-    query: String,
-    locale: Option<String>,
-    preset_key: Option<String>,
-    filters: SearchPreviewFilters,
-    author_ids: Vec<String>,
-    tags: Vec<String>,
-    solved: Option<bool>,
-    published_from: Option<String>,
-    published_to: Option<String>,
-) -> Result<SearchPreviewPayload, ApiError> {
-    let input = search_preview_input(query, locale, preset_key, filters);
-    let response: ForumStorefrontSearchResponse = execute_graphql(
-        &graphql_url(),
-        GraphqlRequest::new(
-            operation,
-            Some(DateWindowSearchPreviewVariables {
-                input,
-                author_ids: (!author_ids.is_empty()).then_some(author_ids),
-                tags: (!tags.is_empty()).then_some(tags),
-                solved,
-                published_from,
-                published_to,
-            }),
-        ),
-        None,
-        configured_tenant_slug(),
-        None,
-    )
-    .await
-    .map_err(|error| ApiError::Graphql(error.to_string()))?;
-
-    Ok(response.forum_storefront_search)
-}
 
 fn search_preview_input(
     query: String,

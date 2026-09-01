@@ -2,12 +2,7 @@ use crate::model::{
     InventoryProductDetail, InventoryQuantityWriteResult, InventoryReservationReleaseWriteResult,
     InventoryReservationWriteResult, InventoryVariant,
 };
-use rustok_ui_core::normalize_optional_ui_text;
 
-#[allow(dead_code)]
-pub(crate) const DEFAULT_PRODUCT_PAGE: u64 = 1;
-#[allow(dead_code)]
-pub(crate) const DEFAULT_PRODUCT_PAGE_SIZE: u64 = 24;
 
 #[derive(Clone, Debug)]
 pub(crate) struct InventoryProductsRequest {
@@ -17,15 +12,6 @@ pub(crate) struct InventoryProductsRequest {
     pub status: Option<String>,
 }
 
-#[allow(dead_code)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct InventoryProductsFilter {
-    pub locale: Option<String>,
-    pub search: Option<String>,
-    pub status: Option<String>,
-    pub page: u64,
-    pub per_page: u64,
-}
 
 #[derive(Clone, Debug)]
 pub(crate) struct InventoryProductRequest {
@@ -34,12 +20,6 @@ pub(crate) struct InventoryProductRequest {
     pub locale: Option<String>,
 }
 
-#[allow(dead_code)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct InventoryProductSelector {
-    pub id: String,
-    pub locale: Option<String>,
-}
 
 #[derive(Clone, Debug)]
 pub(crate) struct InventorySetQuantityRequest {
@@ -136,31 +116,6 @@ pub(crate) struct InventorySummary {
     pub healthy: usize,
 }
 
-#[allow(dead_code)]
-pub(crate) fn normalized_products_filter(
-    locale: Option<String>,
-    search: Option<String>,
-    status: Option<String>,
-) -> InventoryProductsFilter {
-    InventoryProductsFilter {
-        locale: normalize_locale_filter(locale),
-        search: normalize_search_filter(search),
-        status: normalize_status_filter(status),
-        page: DEFAULT_PRODUCT_PAGE,
-        per_page: DEFAULT_PRODUCT_PAGE_SIZE,
-    }
-}
-
-#[allow(dead_code)]
-pub(crate) fn normalized_product_selector(
-    id: String,
-    locale: Option<String>,
-) -> InventoryProductSelector {
-    InventoryProductSelector {
-        id,
-        locale: normalize_locale_filter(locale),
-    }
-}
 
 pub(crate) fn normalized_set_quantity_input(
     tenant_id: String,
@@ -304,17 +259,6 @@ fn parse_non_negative_quantity(value: &str, label: &str) -> Result<i32, String> 
     Ok(quantity)
 }
 
-pub(crate) fn normalize_locale_filter(locale: Option<String>) -> Option<String> {
-    normalize_optional_ui_text(locale)
-}
-
-pub(crate) fn normalize_search_filter(search: Option<String>) -> Option<String> {
-    normalize_optional_ui_text(search)
-}
-
-pub(crate) fn normalize_status_filter(status: Option<String>) -> Option<String> {
-    normalize_optional_ui_text(status).map(|value| value.to_ascii_uppercase())
-}
 
 pub(crate) fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySummary {
     let health_counts = summarize_inventory_health_counts(variants);
@@ -605,62 +549,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn normalize_filters_keep_non_blank_and_drop_blank_values() {
-        assert_eq!(
-            normalize_locale_filter(Some("  value  ".to_string())),
-            Some("value".to_string())
-        );
-        assert_eq!(normalize_search_filter(Some("   ".to_string())), None);
-        assert_eq!(normalize_status_filter(None), None);
-    }
 
-    #[test]
-    fn normalized_products_filter_trims_status_locale_and_search() {
-        assert_eq!(
-            normalized_products_filter(
-                Some("  de-DE  ".to_string()),
-                Some("  winter jacket  ".to_string()),
-                Some(" active ".to_string()),
-            ),
-            InventoryProductsFilter {
-                locale: Some("de-DE".to_string()),
-                search: Some("winter jacket".to_string()),
-                status: Some("ACTIVE".to_string()),
-                page: DEFAULT_PRODUCT_PAGE,
-                per_page: DEFAULT_PRODUCT_PAGE_SIZE,
-            }
-        );
-    }
-
-    #[test]
-    fn normalized_products_filter_drops_blank_values() {
-        assert_eq!(
-            normalized_products_filter(
-                Some("   ".to_string()),
-                Some("   ".to_string()),
-                Some("   ".to_string())
-            ),
-            InventoryProductsFilter {
-                locale: None,
-                search: None,
-                status: None,
-                page: DEFAULT_PRODUCT_PAGE,
-                per_page: DEFAULT_PRODUCT_PAGE_SIZE,
-            }
-        );
-    }
-
-    #[test]
-    fn normalized_product_selector_trims_locale_without_rewriting_id() {
-        assert_eq!(
-            normalized_product_selector(" product-1 ".to_string(), Some("  en-US  ".to_string())),
-            InventoryProductSelector {
-                id: " product-1 ".to_string(),
-                locale: Some("en-US".to_string()),
-            }
-        );
-    }
 
     #[test]
     fn summary_keeps_low_stock_out_of_stock_and_backorder_disjoint() {
