@@ -15,7 +15,7 @@ impl MigrationTrait for Migration {
                     .to_string(),
             )),
             _ => unreachable!("unsupported SeaORM database backend"),
-        }
+}
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -24,7 +24,7 @@ impl MigrationTrait for Migration {
             DbBackend::Sqlite => sqlite_down(manager).await,
             DbBackend::MySql => Ok(()),
             _ => unreachable!("unsupported SeaORM database backend"),
-        }
+}
     }
 }
 
