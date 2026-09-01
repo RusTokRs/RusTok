@@ -1,0 +1,96 @@
+name: Groups Moderation Subject PostgreSQL Evidence
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "crates/rustok-groups/Cargo.toml"
+      - "crates/rustok-groups/src/moderation_subject.rs"
+      - "crates/rustok-groups/src/membership_enforcement_command.rs"
+      - "crates/rustok-groups/src/membership_enforcement_transaction.rs"
+      - "crates/rustok-groups/src/migrations/**"
+      - "crates/rustok-groups/tests/moderation_subject_postgres.rs"
+      - "crates/rustok-groups/docs/moderation-subject-postgres-contract.md"
+      - "crates/rustok-groups/docs/implementation-plan.md"
+      - "crates/rustok-moderation-api/src/model.rs"
+      - "crates/rustok-outbox/src/**"
+      - "scripts/verify/verify-groups-moderation-subject-postgres.mjs"
+      - ".github/workflows/groups-moderation-subject-postgres.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.lock"
+      - "crates/rustok-groups/Cargo.toml"
+      - "crates/rustok-groups/src/moderation_subject.rs"
+      - "crates/rustok-groups/src/membership_enforcement_command.rs"
+      - "crates/rustok-groups/src/membership_enforcement_transaction.rs"
+      - "crates/rustok-groups/src/migrations/**"
+      - "crates/rustok-groups/tests/moderation_subject_postgres.rs"
+      - "crates/rustok-groups/docs/moderation-subject-postgres-contract.md"
+      - "crates/rustok-groups/docs/implementation-plan.md"
+      - "crates/rustok-moderation-api/src/model.rs"
+      - "crates/rustok-outbox/src/**"
+      - "scripts/verify/verify-groups-moderation-subject-postgres.mjs"
+      - ".github/workflows/groups-moderation-subject-postgres.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: groups-moderation-subject-postgres-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  RUSTOK_GROUPS_TEST_POSTGRES_URL: postgres://postgres:postgres@localhost:5432/rustok_groups_moderation_evidence
+
+jobs:
+  postgres-evidence:
+    name: Groups moderation adapter PostgreSQL runtime/replay/concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_groups_moderation_evidence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_groups_moderation_evidence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Require exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: groups-moderation-subject-postgres
+      - name: Verify Groups moderation PostgreSQL evidence source
+        run: node scripts/verify/verify-groups-moderation-subject-postgres.mjs
+      - name: Check focused Rust formatting
+        run: rustfmt +1.96.0 --edition 2024 --check crates/rustok-groups/tests/moderation_subject_postgres.rs
+      - name: Execute Groups moderation PostgreSQL evidence
+        run: cargo test --locked -p rustok-groups --test moderation_subject_postgres -- --ignored --nocapture
+      - name: Compile Groups test targets with locked graph
+        run: cargo check --locked -p rustok-groups --tests
