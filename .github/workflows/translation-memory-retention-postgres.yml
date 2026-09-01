@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: translation-memory-retention-postgres-${{ github.event.pull_request.number || github.ref }}
+  group: translation-memory-retention-postgres
   cancel-in-progress: true
 
 env:
