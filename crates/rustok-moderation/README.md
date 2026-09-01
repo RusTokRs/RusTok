@@ -105,13 +105,23 @@ Groups is the reference membership-scoped integration:
 The current source provides:
 
 - report/case/decision owner services and FBA read/command ports;
-- neutral subject/scope/effect/application contracts;
-- explicit adapter/factory registries;
+- neutral subject/scope/effect/application contracts and explicit adapter/factory registries;
 - typed decision-effect validation, hash binding, persistence, and truthful legacy reads;
-- tables and migrations for reports, cases, links, decisions, effects, receipts, and events;
-- repository-backed receipt-first report/case/decision operations;
-- source boundary guard `scripts/verify/verify-moderation-api-boundary.mjs`.
+- durable decision-application operations with bounded exact adapter dispatch through the
+  shared `ModuleWorkScheduler`;
+- host materialization/composition for the accepted Forum producer integration;
+- moderation-specific `moderation_cases` RBAC plus authorized recovery and fresh-revision
+  re-review GraphQL transport;
+- idempotent operator recovery and truthful legacy-terminal reconciliation;
+- PostgreSQL/SQLite migration, application, dispatcher, lost-response, scheduler,
+  host-composition and Forum revision/effect/concurrency evidence retained in the repository;
+- source boundary guards under `scripts/verify/`.
 
-Durable decision-application operations, host materialization, RBAC, outbox, admin FFA,
-Groups enforcement adapter, appeals, and automated providers remain subsequent slices. See
-`docs/implementation-plan.md` for canonical order and evidence gates.
+The bounded FORUM-19 producer integration is complete. Remaining source/product work includes
+transactional/public Moderation application event contracts, the Groups membership-scoped
+expiry reference adapter and later accepted producer adapters, broader module-owned admin UI,
+versioned policies, appeals, automated providers and capability-scoped sanctions. Unsupported
+Forum effects remain fail-closed until exact owner semantics are accepted. Deployment-dependent
+promotion and release evidence belong to the final production-validation phase rather than
+keeping completed implementation slices open. See `docs/implementation-plan.md` for canonical
+order and evidence gates.

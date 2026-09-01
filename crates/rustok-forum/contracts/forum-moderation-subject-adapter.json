@@ -38,7 +38,10 @@
     ]
   },
   "application": {
-    "trusted_callers": ["service", "system"],
+    "trusted_callers": [
+      "service",
+      "system"
+    ],
     "direct_user_callers": "forbidden",
     "idempotency": "PortContext idempotency key equals decision UUID",
     "receipt_owner": "rustok-outbox owner_operation_receipts",
@@ -91,7 +94,15 @@
       "domain_idempotency": "immutable decision UUID; lease token is attempt/correlation identity only",
       "deadline_seconds": 30,
       "operation_lease_seconds": 60,
-      "retry_backoff_seconds": [5, 10, 20, 40, 80, 160, 300],
+      "retry_backoff_seconds": [
+        5,
+        10,
+        20,
+        40,
+        80,
+        160,
+        300
+      ],
       "missing_adapter": "retryable",
       "retryable_port_error": "retryable",
       "non_retryable_conflict_or_invariant": "operator_review, including stale reviewed revision conflicts",
@@ -139,7 +150,9 @@
         "case_legacy_terminal_reconciled"
       ],
       "domain_invocation_during_reconciliation": "forbidden",
-      "re_review": "stale reviewed revision requires a new case and new immutable decision using a freshly authorized producer revision; old decision is never retargeted"
+      "re_review": "stale reviewed revision requires a new case and new immutable decision using a freshly authorized producer revision; old decision is never retargeted",
+      "authorized_transport": "host-owned apps/server GraphQL transport requires tenant match, human user principal, moderation_cases:override effective authority, enabled moderation module and non-nil root idempotency",
+      "fresh_revision_rereview": "authorized GraphQL workflow composes read + open_case + assign_case + decide_case with deterministic receipt identities to create a new case and immutable decision at an explicit newer producer revision"
     }
   },
   "supported_effects": [
@@ -227,16 +240,14 @@
   "not_claimed": [
     "Moderation-owned bespoke polling loop outside the shared ModuleWorkScheduler",
     "typed cross-domain application lifecycle outbox event family",
-    "authorized admin transport or UI for operator recovery",
-    "automatic replacement decision or silent re-review after escalation",
-    "retained operator recovery execution evidence",
-    "retained host composition execution evidence",
-    "retained runtime decision application execution",
-    "retained multi-host scheduler race and graceful shutdown evidence",
-    "PostgreSQL concurrency evidence",
-    "SQLite evidence",
+    "module-owned Moderation admin UI for recovery",
+    "automatic replacement decision or silent retargeting after escalation",
     "SetVisibility Unpublished support",
-    "complete FORUM-19 effect coverage",
+    "all neutral Moderation effect coverage",
+    "production deployment or rollout validation",
     "release readiness"
-  ]
+  ],
+  "implementation_status": "complete",
+  "production_validation": "deferred",
+  "completion_boundary": "FORUM-19 bounded implementation is complete; deployment-dependent promotion is deferred to final production validation and does not reopen implementation unless it exposes a regression"
 }

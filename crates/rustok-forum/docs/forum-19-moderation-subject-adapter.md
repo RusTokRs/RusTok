@@ -1,6 +1,6 @@
 # FORUM-19 Moderation subject adapter
 
-Status: **bounded source-ready slice / maintainer execution pending**
+Status: **bounded implementation complete / production promotion deferred**
 
 ## Scope
 
@@ -11,7 +11,7 @@ Forum registers two `ModerationSubjectAdapterFactory` instances:
 - `forum/forum_topic` for Forum topics;
 - `forum/forum_post` for Forum replies.
 
-The factories remain producer-owned neutral runtime extensions. The selected server host materializes the shared Moderation subject-adapter registry only when the optional `mod-moderation` owner feature is selected. The Moderation owner has durable application-operation persistence/leases, a bounded one-attempt dispatcher, source-ready registration into the existing shared `rustok_runtime::ModuleWorkScheduler`, atomic application/case audit lifecycle and bounded replay-safe operator recovery. Authorized admin transport/RBAC, explicit fresh-revision re-review flow and retained runtime evidence remain pending owner/host work.
+The factories remain producer-owned neutral runtime extensions. The selected server host materializes the shared Moderation subject-adapter registry only when the optional `mod-moderation` owner feature is selected. The Moderation owner has durable application-operation persistence/leases, a bounded one-attempt dispatcher, source-ready registration into the existing shared `rustok_runtime::ModuleWorkScheduler`, atomic application/case audit lifecycle and bounded replay-safe operator recovery. Authorized recovery GraphQL transport/RBAC and explicit fresh-revision re-review are now present. Repository-executable PostgreSQL/SQLite, concurrency, host-composition and scheduler evidence is retained; only deployment-dependent production promotion is deferred.
 
 ## Host materialization boundary
 
@@ -198,33 +198,16 @@ Moderation remains authoritative for report intake, cases, queues, immutable dec
 
 This change is unrelated to Reactions ownership. It adds no reaction catalog, state, command, aggregate, transport or presentation code to Forum, and the moderation revision clock is not a second Reactions revision system.
 
-## Maintainer verification handoff
+## Verification and production handoff
 
-Suggested checks, intentionally not run while preparing this slice:
+The bounded FORUM-19 implementation is complete in repository source. The follow-up slices that were previously listed as pending are already merged:
 
-```bash
-node scripts/verify/verify-forum-moderation-subject-adapter.mjs
-node scripts/verify/verify-moderation-host-composition.mjs
-node scripts/verify/verify-moderation-application-operation.mjs
-node scripts/verify/verify-moderation-application-dispatch-once.mjs
-node scripts/verify/verify-moderation-application-work-scheduler.mjs
-node scripts/verify/verify-moderation-application-audit-lifecycle.mjs
-node scripts/verify/verify-moderation-application-operator-recovery.mjs
-cargo test -p rustok-forum moderation_subject -- --nocapture
-cargo check -p rustok-forum --all-targets
-cargo test -p rustok-moderation
-cargo check -p rustok-moderation --all-targets
-cargo test -p rustok-server --no-default-features --features mod-moderation --test moderation_composition_profiles
-cargo test -p rustok-server --no-default-features --features "mod-forum mod-moderation" --test moderation_composition_profiles
-cargo check -p rustok-server --no-default-features --features mod-moderation
-cargo check -p rustok-server --no-default-features --features "mod-forum mod-moderation"
-cargo xtask module validate forum
-cargo xtask module validate moderation
-git diff --check
-```
+- dedicated `moderation_cases` RBAC plus the authorized recovery command port (#3202);
+- host-owned authenticated GraphQL recovery transport (#3206);
+- replay-safe fresh-revision -> new case -> new immutable decision re-review (#3209);
+- PostgreSQL owner/recovery/application/dispatcher/lost-response/scheduler evidence (#3211, #3213, #3216, #3217, #3219, #3221);
+- SQLite/PostgreSQL migration parity, executable host-composition failure coverage and Forum revision/concurrency/effect evidence (#3225, #3226, #3230, #3232, #3234).
 
-Future retained evidence should cover selected-owner/missing-owner startup behavior, Moderation-only empty materialization and Forum+Moderation topic/reply materialization; Moderation module-work registration, background-worker-disabled no-dispatch, earliest-due candidate selection, two-host same-candidate CAS convergence, shared-stop no-new-claim/in-flight-finish behavior and missing-registry startup failure; first claim `decided -> applying_decision`, retry/reclaim without another case revision, application/case/audit rollback on owner-event failure, retry scheduling audit atomicity, applied operation + case close + active-key release + audit atomicity, rejected/operator-review + case escalation + audit atomicity and stale-token rollback; human-operator recovery gate, recovery command receipt replay/changed-request conflict, expected case revision contention, rejected/operator-review same-decision requeue, applied requeue denial, next scheduler claim with unchanged decision UUID domain idempotency, terminal evidence corruption fail-closed behavior, applied/rejected/operator-review legacy reconciliation, already-consistent reconciliation no-op, reconciliation-time close semantics, active-key release/preservation and proof that reconciliation performs no Forum/domain application; clean/upgraded application-operation migration on PostgreSQL/SQLite; typed-effect-only backfill; decision/effect/pending-operation/receipt atomicity; due ordering/bounds; concurrent lease claim; lease expiry/reclaim; exact command reconstruction and registry selection; missing-adapter retry; retryable timeout/unavailable backoff; non-retryable validation/not-found/forbidden rejection; stale-conflict/invariant operator-review; invalid-success-evidence operator-review; decision-UUID lost-response replay followed by exactly one case close and applied-evidence validation. Forum evidence still includes moderation-revision migration/backfill/trigger advancement, shared receipt replay/request conflict, stale reviewed revision, concurrent translation/body/lifecycle edit versus topic lock/reply hide/reply rejection/reply removal, trusted-caller enforcement and PostgreSQL serialization/reclaim. Retain approved-to-hidden and approved-to-rejected topic/category/author accounting plus status-event/projection atomicity, already-hidden/already-rejected no-op/replay behavior, and removed-reply tombstone/revision, accepted-solution cleanup, public/solution accounting, event/projection atomicity and receipt replay. `SetVisibility(Unpublished)` remains a distinct unsupported-effect evidence case.
+The repository still intentionally does **not** claim a module-owned Moderation admin UI, a typed public application-lifecycle event family, support for every neutral Moderation effect, or production rollout/release readiness. `SetVisibility(Unpublished)` remains a distinct unsupported effect, and temporary/restriction effects still require exact expiry-safe Forum owner semantics before any future admission.
 
-Authorized Moderation admin recovery transport/RBAC, explicit fresh-revision new-case/new-decision re-review, a typed public Moderation application event family and retained scheduler/runtime execution remain pending owner/product work. A bespoke Moderation polling loop outside the shared `ModuleWorkScheduler` remains forbidden.
-
-No tests, Cargo commands, Node verifiers, formatting, migrations, database scenarios, workflows or CI were executed while preparing this slice.
+Deployment-dependent promotion is tracked only by `PROD-FORUM-19` in the Forum plan. Pending production validation does not reopen FORUM-19 implementation unless it exposes a genuine source/backend regression.
