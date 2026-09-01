@@ -1,0 +1,44 @@
+name: Temporary Translation router protocol patch
+
+on:
+  push:
+    branches:
+      - test/translation-router-generated-client-protocol-20260901
+    paths:
+      - ".github/workflows/tmp-translation-router-protocol-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: test/translation-router-generated-client-protocol-20260901
+      - name: Patch generated-client Accept header
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("apps/server/src/services/app_router.rs")
+          source = path.read_text()
+          before = '''                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .header(header::AUTHORIZATION, format!("Bearer {access_token}"))'''
+          after = '''                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .header(header::ACCEPT, "application/json")
+                .header(header::AUTHORIZATION, format!("Bearer {access_token}"))'''
+          if source.count(before) != 1:
+              raise SystemExit(f"expected one exact request marker, found {source.count(before)}")
+          path.write_text(source.replace(before, after, 1))
+      - name: Commit focused test fix
+        shell: bash
+        run: |
+          git diff --check
+          git diff -- apps/server/src/services/app_router.rs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/server/src/services/app_router.rs
+          git commit -m "test(translation): match generated server-fn response protocol"
+          git push origin HEAD:test/translation-router-generated-client-protocol-20260901
