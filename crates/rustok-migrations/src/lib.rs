@@ -49,6 +49,9 @@ mod m20260723_000001_create_event_delivery_settings;
 mod m20260803_000001_create_owner_operation_receipts;
 mod m20260808_000099_create_module_operation_override_states;
 
+pub mod schema_diff;
+pub use schema_diff::*;
+
 #[cfg(test)]
 mod rbac_system_role_repair_tests;
 

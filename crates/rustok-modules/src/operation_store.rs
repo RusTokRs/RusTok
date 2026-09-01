@@ -219,7 +219,7 @@ impl ModuleOperationJournal {
                     ModuleOperationStatus::Failed.as_str().into(),
                 ],
             ),
-};
+        };
         db.query_all_raw(Statement::from_sql_and_values(backend, sql, values))
             .await
             .map_err(database_error)?

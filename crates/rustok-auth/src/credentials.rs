@@ -1,7 +1,8 @@
 use argon2::{
     Argon2,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
 };
+use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
 use crate::error::{AuthError, Result};
@@ -25,7 +26,6 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
 
 /// Generate a cryptographically secure 256-bit refresh token (64 hex chars).
 pub fn generate_refresh_token() -> String {
-    use argon2::password_hash::rand_core::RngCore;
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
     hex::encode(bytes)

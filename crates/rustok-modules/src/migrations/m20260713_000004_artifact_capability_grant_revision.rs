@@ -25,7 +25,7 @@ impl MigrationTrait for Migration {
                     "module artifact capability-grant migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         manager
             .get_connection()
             .execute_raw(Statement::from_string(

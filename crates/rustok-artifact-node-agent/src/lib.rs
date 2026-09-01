@@ -10,6 +10,8 @@
 mod agent;
 mod config;
 mod materializer;
+pub mod slot_supervisor;
+pub mod watchdog;
 
 pub use agent::{
     ArtifactNodeAgent, ArtifactNodeAgentError, ArtifactNodeAssignmentController,
@@ -17,3 +19,5 @@ pub use agent::{
 };
 pub use config::ArtifactNodeAgentConfig;
 pub use materializer::StorageArtifactNodeMaterializer;
+pub use slot_supervisor::{DeploymentSlot, SlotState, SlotSupervisor, SlotSupervisorError};
+pub use watchdog::{NodeWatchdog, WatchdogConfig, WatchdogRecoveryReceipt, WatchdogStatus};

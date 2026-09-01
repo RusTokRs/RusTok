@@ -252,7 +252,7 @@ fn placeholder_sql(backend: DbBackend, template: &str, value_count: usize) -> St
             DbBackend::MySql => "?".to_string(),
             DbBackend::Sqlite => format!("?{}", index + 1),
             _ => unreachable!("unsupported SeaORM database backend"),
-};
+        };
         sql = sql.replace(&format!("{{v{}}}", index + 1), &placeholder);
     }
     sql

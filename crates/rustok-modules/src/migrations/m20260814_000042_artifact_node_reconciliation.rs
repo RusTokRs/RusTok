@@ -172,7 +172,7 @@ impl MigrationTrait for Migration {
                     "artifact node reconciliation migration does not support {backend:?}"
                 )));
             }
-};
+        };
 
         for statement in statements {
             manager

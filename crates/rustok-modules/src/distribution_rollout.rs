@@ -2721,7 +2721,7 @@ fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Valu
         (DbBackend::Postgres, value) => sea_orm::Value::Uuid(value),
         (_, Some(value)) => value.to_string().into(),
         (_, None) => sea_orm::Value::String(None),
-}
+    }
 }
 
 fn optional_uuid_from_row(

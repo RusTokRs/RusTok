@@ -59,7 +59,7 @@ impl MigrationTrait for Migration {
                     "registry platform admission contracts do not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

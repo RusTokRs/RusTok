@@ -76,7 +76,7 @@ impl MigrationTrait for Migration {
                     "registry publish build staging does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

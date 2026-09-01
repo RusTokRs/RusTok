@@ -3361,7 +3361,7 @@ impl SeaOrmModuleGovernanceService {
             &self.infrastructure,
             &tx,
             backend,
-            &now,
+            now,
             &receipt,
             &result,
         )

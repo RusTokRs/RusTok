@@ -27,7 +27,7 @@ impl MigrationTrait for Migration {
                     "artifact UI contribution lock migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
 
         for statement in statements {
             manager

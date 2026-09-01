@@ -46,7 +46,7 @@ impl MigrationTrait for Migration {
                     "artifact data index migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

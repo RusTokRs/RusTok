@@ -4014,7 +4014,7 @@ async fn configure_rls_scope<C: ConnectionTrait>(
                     .await
                     .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
             }
-}
+        }
     }
     Ok(())
 }
@@ -4393,7 +4393,7 @@ async fn assert_artifact_ui_contributions_available<C: ConnectionTrait>(
                 uuid_value(*tenant_id, backend),
             ],
         ),
-};
+    };
     let rows = connection
         .query_all_raw(Statement::from_sql_and_values(backend, sql, values))
         .await

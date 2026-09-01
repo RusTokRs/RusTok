@@ -56,7 +56,7 @@ impl MigrationTrait for Migration {
                     "artifact schedule-delivery migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

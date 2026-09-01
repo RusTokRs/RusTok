@@ -26,7 +26,7 @@ impl MigrationTrait for Migration {
                     "artifact execution-audit metrics migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

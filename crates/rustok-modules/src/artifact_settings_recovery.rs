@@ -3064,7 +3064,7 @@ fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> SqlValue {
         (DbBackend::Postgres, None) => SqlValue::Uuid(None),
         (_, Some(value)) => value.to_string().into(),
         (_, None) => SqlValue::String(None),
-}
+    }
 }
 
 fn bytes_value(value: Vec<u8>) -> SqlValue {

@@ -83,7 +83,7 @@ impl MigrationTrait for Migration {
                     "module artifact installation migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
 
         for statement in statements {
             manager

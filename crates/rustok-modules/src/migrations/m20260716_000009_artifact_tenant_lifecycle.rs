@@ -83,7 +83,7 @@ impl MigrationTrait for Migration {
                     "artifact tenant lifecycle migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

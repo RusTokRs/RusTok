@@ -112,7 +112,7 @@ impl MigrationTrait for Migration {
                     "registry release artifact contracts do not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

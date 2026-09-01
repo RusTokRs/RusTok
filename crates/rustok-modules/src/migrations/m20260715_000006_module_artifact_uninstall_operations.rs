@@ -45,7 +45,7 @@ impl MigrationTrait for Migration {
                     "module artifact uninstall-operation migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

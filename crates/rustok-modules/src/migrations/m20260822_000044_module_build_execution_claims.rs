@@ -36,7 +36,7 @@ impl MigrationTrait for Migration {
                     "module build execution claim migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
 
         for statement in statements {
             connection

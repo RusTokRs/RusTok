@@ -56,7 +56,7 @@ impl MigrationTrait for Migration {
                     "module build request migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

@@ -59,7 +59,7 @@ impl MigrationTrait for Migration {
                     "module artifact rollback-operation migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

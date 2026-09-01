@@ -17,7 +17,8 @@ uuid.workspace = true
 chrono.workspace = true
 jsonwebtoken.workspace = true
 argon2.workspace = true
-password-hash.workspace = true
+password-hash = { workspace = true, features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
 sha2.workspace = true
 hex.workspace = true
 rand.workspace = true

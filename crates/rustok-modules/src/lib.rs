@@ -12,6 +12,7 @@ mod binding_idempotency;
 mod build;
 mod build_surface;
 mod composition;
+mod conflict_fences;
 mod contracts;
 mod control_plane;
 mod data;
@@ -34,6 +35,7 @@ mod lifecycle_writer;
 mod marketplace;
 mod marketplace_content;
 mod mcp;
+mod migration_preflight;
 mod migrations;
 #[cfg(feature = "oci-distribution")]
 mod oci;
@@ -54,10 +56,24 @@ mod runtime_handles;
 mod schedule_delivery;
 mod schedule_materializer;
 mod secrets;
+mod security_epoch;
 mod security_state;
 mod settings;
+mod settings_guard;
 mod static_package;
 mod trust;
+
+pub use conflict_fences::{ConflictFenceSet, ConflictKey, ConflictKeyKind};
+pub use migration_preflight::{
+    MigrationPreflightInput, MigrationPreflightReceipt, UpdateMode, evaluate_migration_preflight,
+};
+pub use security_epoch::{
+    GlobalSecurityEpoch, SecurityEpochConflictError, SecurityEpochRecord, SecurityEpochRegistry,
+};
+pub use settings_guard::{
+    SettingsCompatibilityGuard, SettingsGuardError, SettingsGuardState,
+    validate_settings_intersection,
+};
 
 use async_trait::async_trait;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, ModuleKind, RusToKModule};

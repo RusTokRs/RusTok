@@ -71,7 +71,7 @@ impl MigrationTrait for Migration {
                     "artifact security migration does not support {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

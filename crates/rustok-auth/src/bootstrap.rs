@@ -72,7 +72,7 @@ impl AuthUserBootstrapDbWriter {
             }
             DbBackend::MySql => unreachable!("unsupported backend rejected before SQL rendering"),
             _ => unreachable!("unsupported SeaORM database backend"),
-};
+        };
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 backend,
@@ -137,7 +137,7 @@ impl AuthUserBootstrapDbWriter {
             }
             DbBackend::MySql => unreachable!("unsupported backend rejected before SQL rendering"),
             _ => unreachable!("unsupported SeaORM database backend"),
-};
+        };
         let row = db
             .query_one_raw(Statement::from_sql_and_values(
                 backend,
@@ -169,7 +169,7 @@ fn ensure_supported_backend(backend: DbBackend) -> Result<(), AuthLifecycleMutat
             "auth user bootstrap does not support mysql".to_string(),
         )),
         _ => unreachable!("unsupported SeaORM database backend"),
-}
+    }
 }
 
 #[cfg(test)]

@@ -26,7 +26,7 @@ impl MigrationTrait for Migration {
                     "module artifact rollback-pointer migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         manager
             .get_connection()
             .execute_raw(Statement::from_string(
@@ -51,7 +51,7 @@ impl MigrationTrait for Migration {
                     "module artifact rollback-pointer migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         manager
             .get_connection()
             .execute_raw(Statement::from_string(

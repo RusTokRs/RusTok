@@ -936,7 +936,7 @@ pub fn json_field_eq(
     let expr = Expr::cust_with_exprs(
         "$1->>$2 = $3",
         [
-            column.into(),
+            column,
             Expr::val(key.to_string()),
             Expr::val(value.to_string()),
         ],
@@ -956,7 +956,7 @@ pub fn json_field_exists(
     let expr = Expr::cust_with_exprs(
         "$1 ? $2",
         [
-            column.into(),
+            column,
             Expr::val(key.to_string()),
         ],
     );
@@ -975,7 +975,7 @@ pub fn json_field_extract(
     Expr::cust_with_exprs(
         "$1->>$2",
         [
-            column.into(),
+            column,
             Expr::val(key.to_string()),
         ],
     )
@@ -996,7 +996,7 @@ pub fn json_field_contains(
     let expr = Expr::cust_with_exprs(
         "$1 @> $2::jsonb",
         [
-            column.into(),
+            column,
             Expr::val(payload),
         ],
     );

@@ -78,7 +78,7 @@ impl MigrationTrait for Migration {
                     "artifact data broker migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
         for statement in statements {
             manager
                 .get_connection()

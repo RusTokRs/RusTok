@@ -11169,6 +11169,10 @@ name = "password-hash"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aab41826031698d6ffcd9cff78ef56ef998e39dc7e5067cdfebe373842d4723b"
+dependencies = [
+ "phc",
+ "rand_core 0.10.1",
+]
 
 [[package]]
 name = "paste"
@@ -11333,6 +11337,17 @@ checksum = "e9567389417feee6ce15dd6527a8a1ecac205ef62c2932bcf3d9f6fc5b78b414"
 dependencies = [
  "futures",
  "rustc_version",
+]
+
+[[package]]
+name = "phc"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44dc769b75f93afdddd8c7fa12d685292ddeff1e66f7f0f3a234cf1818afe892"
+dependencies = [
+ "base64ct",
+ "ctutils",
+ "rand_core 0.10.1",
 ]
 
 [[package]]
@@ -14149,6 +14164,7 @@ dependencies = [
  "jsonwebtoken 11.0.0",
  "password-hash 0.6.1",
  "rand 0.10.2",
+ "rand_core 0.6.4",
  "rustok-api",
  "rustok-core",
  "rustok-telemetry",
@@ -15782,6 +15798,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "flex",
+ "hex",
  "rust_decimal",
  "rustok-api",
  "rustok-auth",
@@ -15827,7 +15844,10 @@ dependencies = [
  "rustok-workflow",
  "sea-orm",
  "sea-orm-migration",
+ "serde",
  "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.20",
  "tokio",
  "uuid",
 ]

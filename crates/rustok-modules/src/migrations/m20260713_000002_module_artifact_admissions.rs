@@ -49,7 +49,7 @@ impl MigrationTrait for Migration {
                     "module artifact admission migration does not support database backend {backend:?}"
                 )));
             }
-};
+        };
 
         for statement in statements {
             manager
