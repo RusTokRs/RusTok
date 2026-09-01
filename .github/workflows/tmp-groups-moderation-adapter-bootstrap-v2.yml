@@ -26,7 +26,30 @@ jobs:
           components: rustfmt
 
       - name: Apply fail-closed Groups moderation adapter patch
-        run: python3 scripts/tmp_groups_moderation_adapter.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/tmp_groups_moderation_adapter.py")
+          text = path.read_text()
+          replacements = [
+              (
+                  'use crate::error::{GroupsError, GroupsResult};',
+                  'use crate::error::GroupsError;',
+              ),
+              (
+                  '  "moderation_decision_id: Some(command.decision_id)",\n  "moderation_decision_hash: Some(command.decision_hash.clone())",',
+                  '  "provenance.moderation_decision_id = Some(command.decision_id);",\n  "provenance.moderation_decision_hash = Some(command.decision_hash.clone());",',
+              ),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"bootstrap normalization expected one match, found {count}: {old}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          python3 scripts/tmp_groups_moderation_adapter.py
 
       - name: Format touched Rust sources
         run: |
