@@ -1,7 +1,7 @@
 # Taxonomy category ownership and Flex extension plan
 
 **Status:** accepted architecture, staged implementation
-**Reviewed:** 2026-08-30
+**Reviewed:** 2026-09-01
 
 ## Decision
 
@@ -27,10 +27,10 @@ binding plus module-specific membership/settings/revision state. The former Blog
 provider, live donor mirror/journal, and their runtime source files are retired. Historical Blog
 backfill/migration records remain only for upgrade provenance.
 
-Forum established the first consumer migration precedent and its backend ownership/storage cutover is
-complete. TAXONOMY-CAT-5 remains open only for the retained mounted multilingual/RTL browser packet to
-be executed against prepared authenticated admin/storefront fixtures; the browser source already
-exists and no backend donor/storage cutover remains.
+Forum established the first consumer migration precedent and TAXONOMY-CAT-5 implementation is
+complete: its backend ownership/storage cutover is finished and no backend donor/storage cutover
+remains. The retained mounted multilingual/RTL browser packet is deferred to the final production-
+validation phase and no longer holds the implementation cursor open.
 
 Product PostgreSQL follows the same ownership model and is source-complete through
 TAXONOMY-CAT-34. Taxonomy owns canonical Product Category identity, localized copy, routes,
@@ -195,12 +195,13 @@ For each consumer:
 - update admin/storefront projections to use Taxonomy `requested_locale` / `effective_locale`;
 - run tenant-isolation, route, hierarchy and multilingual/RTL evidence.
 
-Forum established the first migration precedent. Its backend cutover is complete, with only the
-prepared mounted multilingual/RTL browser execution still pending. Blog has completed this consumer migration through
-TAXONOMY-CAT-12. Product PostgreSQL completed its canonical localized-copy and hierarchy donor
-retirement through TAXONOMY-CAT-34 while deliberately retaining Product-owned navigation/policy state
-and non-PostgreSQL compatibility. No later consumer is selected by this plan; selecting one is a
-separate accepted planning decision.
+Forum established the first migration precedent and its TAXONOMY-CAT-5 implementation cutover is
+complete. Its prepared mounted multilingual/RTL browser execution is retained only for final
+production validation. Blog has completed this consumer migration through TAXONOMY-CAT-12. Product
+PostgreSQL completed its canonical localized-copy and hierarchy donor retirement through
+TAXONOMY-CAT-34 while deliberately retaining Product-owned navigation/policy state and non-PostgreSQL
+compatibility. No later consumer is selected by this plan; selecting one is a separate accepted
+planning decision.
 
 ## Forum-specific target
 
@@ -242,10 +243,22 @@ its boundary. At minimum the completed program must prove:
 - Category Flex definitions/values are tenant-scoped and multilingual where configured;
 - consumer bindings reject cross-tenant Taxonomy category references;
 - legacy category UUID/data backfill is deterministic and rollback/recovery is documented;
-- Forum mounted multilingual/RTL admin/storefront evidence uses Taxonomy-owned category data;
+- the retained Forum mounted multilingual/RTL packet remains source-guarded against Taxonomy-owned category data and is executed only in final production validation;
 - Product PostgreSQL remains at the CAT-34 ownership boundary without reviving retired translation or
   closure authority, while non-PostgreSQL compatibility remains explicit;
 - no consumer reintroduces a local generic custom-fields engine.
+
+## Final production validation
+
+Deployment-dependent evidence is intentionally deferred until source/backend implementation work is
+otherwise exhausted. Live/mounted environments, maintainer credentials and observed tenant rollout do
+not keep implementation phases open; repository-executable focused/runtime/migration gates remain
+in-phase and must continue to pass normally.
+
+The first retained production item is the Forum Category multilingual/RTL browser packet. A successful
+`Forum Category Taxonomy Browser Evidence` `workflow_dispatch` from `main` must eventually execute the
+mounted job against prepared authenticated admin/storefront fixtures and be retained with its exact
+head SHA. That evidence closes final production validation, not TAXONOMY-CAT-5 implementation.
 
 ## Change rules
 

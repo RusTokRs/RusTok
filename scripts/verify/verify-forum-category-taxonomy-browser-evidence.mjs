@@ -44,7 +44,7 @@ for (const pending of [
   "browser execution",
   "deployment provenance",
   "production rollout completion",
-  "TAXONOMY-CAT-5 completion",
+  "final Category production validation completion",
 ]) {
   if (!contract.not_claimed?.includes(pending)) {
     throw new Error(`CAT-5 browser contract must keep ${pending} pending`);
@@ -87,6 +87,11 @@ const focusedPathClosureBoundary =
   "pull-request path filters cover every retained CAT-5 verifier input plus the next-admin package manifests so guarded source drift always runs the focused source contract";
 if (!contract.boundaries?.includes(focusedPathClosureBoundary)) {
   throw new Error("CAT-5 browser contract must retain focused pull-request path closure");
+}
+const deferredProductionValidationBoundary =
+  "CAT-5 implementation completion is source/backend scoped; mounted browser execution is deferred to the final Category production-validation phase";
+if (!contract.boundaries?.includes(deferredProductionValidationBoundary)) {
+  throw new Error("CAT-5 browser contract must retain the deferred final production-validation boundary");
 }
 
 for (const marker of contract.required_environment ?? []) {
