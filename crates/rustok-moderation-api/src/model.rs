@@ -77,6 +77,75 @@ impl ModerationScopeRef {
     }
 }
 
+/// Reserved trusted-context claim prefix for the immutable moderation case scope.
+///
+/// The scope deliberately stays outside `ApplyModerationDecisionCommand`: existing domain
+/// receipts bind that command's serialized shape, so extending it would change historical replay
+/// request digests. Domain adapters that need scope must bind this canonical claim alongside the
+/// command in their own owner receipt.
+pub const MODERATION_SCOPE_CLAIM_PREFIX: &str = "moderation.scope.v1:";
+
+#[derive(Debug, thiserror::Error, Clone, Copy, PartialEq, Eq)]
+pub enum ModerationScopeClaimError {
+    #[error("moderation scope is structurally invalid")]
+    InvalidScope,
+    #[error("moderation scope claim is missing")]
+    MissingClaim,
+    #[error("moderation scope claim is duplicated")]
+    DuplicateClaim,
+    #[error("moderation scope claim is invalid")]
+    InvalidClaim,
+}
+
+pub fn moderation_scope_claim(
+    scope: &ModerationScopeRef,
+) -> Result<String, ModerationScopeClaimError> {
+    match (scope.kind, scope.id) {
+        (ModerationScopeKind::Platform, None) => {
+            Ok(format!("{MODERATION_SCOPE_CLAIM_PREFIX}platform"))
+        }
+        (ModerationScopeKind::Platform, Some(_)) => Err(ModerationScopeClaimError::InvalidScope),
+        (kind, Some(id)) if !id.is_nil() => Ok(format!(
+            "{MODERATION_SCOPE_CLAIM_PREFIX}{}:{id}",
+            kind.as_str()
+        )),
+        _ => Err(ModerationScopeClaimError::InvalidScope),
+    }
+}
+
+pub fn moderation_scope_from_claims(
+    claims: &[String],
+) -> Result<ModerationScopeRef, ModerationScopeClaimError> {
+    let mut matching = claims
+        .iter()
+        .filter_map(|claim| claim.strip_prefix(MODERATION_SCOPE_CLAIM_PREFIX));
+    let encoded = matching
+        .next()
+        .ok_or(ModerationScopeClaimError::MissingClaim)?;
+    if matching.next().is_some() {
+        return Err(ModerationScopeClaimError::DuplicateClaim);
+    }
+    if encoded == "platform" {
+        return Ok(ModerationScopeRef::platform());
+    }
+
+    let (kind, id) = encoded
+        .split_once(':')
+        .ok_or(ModerationScopeClaimError::InvalidClaim)?;
+    if id.contains(':') {
+        return Err(ModerationScopeClaimError::InvalidClaim);
+    }
+    let kind = ModerationScopeKind::parse(kind).ok_or(ModerationScopeClaimError::InvalidClaim)?;
+    if kind == ModerationScopeKind::Platform {
+        return Err(ModerationScopeClaimError::InvalidClaim);
+    }
+    let id = Uuid::parse_str(id).map_err(|_| ModerationScopeClaimError::InvalidClaim)?;
+    if id.is_nil() {
+        return Err(ModerationScopeClaimError::InvalidClaim);
+    }
+    Ok(ModerationScopeRef { kind, id: Some(id) })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModerationSubjectRef {
     pub module: String,
@@ -345,6 +414,51 @@ pub struct ModerationDecisionApplication {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scope_claim_round_trips_group_identity() {
+        let id = Uuid::new_v4();
+        let scope = ModerationScopeRef {
+            kind: ModerationScopeKind::Group,
+            id: Some(id),
+        };
+        let claim = moderation_scope_claim(&scope).expect("scope claim");
+        assert_eq!(
+            moderation_scope_from_claims(&[claim]).expect("decoded scope"),
+            scope
+        );
+    }
+
+    #[test]
+    fn scope_claim_fails_closed_on_missing_duplicate_or_invalid_identity() {
+        assert_eq!(
+            moderation_scope_from_claims(&[]),
+            Err(ModerationScopeClaimError::MissingClaim)
+        );
+        let scope = ModerationScopeRef {
+            kind: ModerationScopeKind::Group,
+            id: Some(Uuid::new_v4()),
+        };
+        let claim = moderation_scope_claim(&scope).expect("scope claim");
+        assert_eq!(
+            moderation_scope_from_claims(&[claim.clone(), claim]),
+            Err(ModerationScopeClaimError::DuplicateClaim)
+        );
+        assert_eq!(
+            moderation_scope_from_claims(&[format!(
+                "{MODERATION_SCOPE_CLAIM_PREFIX}group:{}",
+                Uuid::nil()
+            )]),
+            Err(ModerationScopeClaimError::InvalidClaim)
+        );
+        assert_eq!(
+            moderation_scope_claim(&ModerationScopeRef {
+                kind: ModerationScopeKind::Platform,
+                id: Some(Uuid::new_v4()),
+            }),
+            Err(ModerationScopeClaimError::InvalidScope)
+        );
+    }
 
     #[test]
     fn suspension_requires_matching_decision_kind() {

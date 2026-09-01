@@ -28,7 +28,12 @@
     "localization_management_authorization": "transaction_aware_effective_manager",
     "governance_authorization": "transaction_aware_effective_manager",
     "direct_suspend_revoke_commands": "GroupMembershipEnforcementCommandPort",
-    "forum_audience_provider_acl": "GroupMembershipEnforcementReadPort via ServerForumAudienceGroupFactsPort"
+    "forum_audience_provider_acl": "GroupMembershipEnforcementReadPort via ServerForumAudienceGroupFactsPort",
+    "moderation_subject_adapter": [
+      "crates/rustok-groups/src/moderation_subject.rs",
+      "crates/rustok-moderation-api/src/model.rs",
+      "crates/rustok-moderation/src/application_dispatch.rs"
+    ]
   },
   "access_semantics": {
     "public_read_during_suspension": "preserved",
@@ -70,8 +75,7 @@
   },
   "remaining_paths": [
     "additional_provider_specific_acl_adapters",
-    "remote_and_degraded_provider_profiles",
-    "moderation_subject_adapter"
+    "remote_and_degraded_provider_profiles"
   ],
   "evidence": {
     "static_guard": "scripts/verify/verify-groups-effective-membership-access.mjs",
@@ -90,6 +94,8 @@
     "postgresql_runtime": null,
     "sqlite_runtime": null,
     "graphql_native_parity": null,
-    "provider_acl_runtime": null
+    "provider_acl_runtime": null,
+    "moderation_subject_adapter_static_boundary": "scripts/verify/verify-groups-moderation-subject-adapter.mjs",
+    "moderation_subject_adapter_runtime": null
   }
 }

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_moderation_api::register_moderation_subject_adapter_factory;
 use rustok_notifications_api::register_notification_source_provider_factory;
 use sea_orm_migration::MigrationTrait;
 
@@ -54,6 +55,7 @@ mod membership_enforcement_command;
 pub mod membership_enforcement_entities;
 mod membership_enforcement_transaction;
 pub mod migrations;
+mod moderation_subject;
 mod notification_source;
 pub mod policy_history;
 pub mod ports;
@@ -125,6 +127,7 @@ pub use membership_enforcement_command::{
     GroupMembershipEnforcementCommandService, GroupMembershipEnforcementMutationResult,
     RevokeGroupMembershipSuspensionRequest, SuspendGroupMembershipRequest,
 };
+pub use moderation_subject::GroupsModerationSubjectAdapterFactory;
 pub use policy_history::*;
 pub use ports::*;
 pub use targeted_invitations::*;
@@ -174,6 +177,15 @@ impl RusToKModule for GroupsModule {
         .map_err(|error| {
             rustok_core::Error::Validation(format!(
                 "groups notification source factory registration failed: {error}"
+            ))
+        })?;
+        register_moderation_subject_adapter_factory(
+            extensions,
+            moderation_subject::GroupsModerationSubjectAdapterFactory,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "groups moderation subject factory registration failed: {error}"
             ))
         })?;
         Ok(())

@@ -2,7 +2,8 @@ use std::time::Duration as StdDuration;
 
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_moderation_api::{
-    ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationSubjectAdapterRegistry,
+    ApplyModerationDecisionCommand, ModerationDecisionApplication,
+    ModerationSubjectAdapterRegistry, moderation_scope_claim,
 };
 use uuid::Uuid;
 
@@ -55,11 +56,11 @@ impl ModerationService {
             ));
         }
 
-        let command = match self
+        let (command, scope_claim) = match self
             .reconstruct_application_command(tenant_id, &operation)
             .await
         {
-            Ok(command) => command,
+            Ok(reconstructed) => reconstructed,
             Err(error @ ModerationError::Database(_)) => return Err(error),
             Err(error) => {
                 return self
@@ -89,7 +90,7 @@ impl ModerationService {
                 .map(Some);
         };
 
-        let context = application_port_context(tenant_id, decision_id, lease_token);
+        let context = application_port_context(tenant_id, decision_id, lease_token, scope_claim);
         match adapter.apply_moderation_decision(context, command).await {
             Ok(application) => self
                 .finish_adapter_success(tenant_id, decision_id, lease_token, application)
@@ -112,7 +113,7 @@ impl ModerationService {
         &self,
         tenant_id: Uuid,
         operation: &ModerationApplicationOperationRecord,
-    ) -> ModerationResult<ApplyModerationDecisionCommand> {
+    ) -> ModerationResult<(ApplyModerationDecisionCommand, String)> {
         let decision = self
             .get_decision(tenant_id, operation.decision_id)
             .await?
@@ -136,6 +137,8 @@ impl ModerationService {
                 "application operation subject does not match its moderation case".to_string(),
             ));
         }
+        let scope_claim = moderation_scope_claim(&case.scope)
+            .map_err(|error| ModerationError::Invariant(error.to_string()))?;
 
         let effect = decision.effect.ok_or_else(|| {
             ModerationError::Invariant(
@@ -146,14 +149,17 @@ impl ModerationService {
             .validate_for_decision_kind(decision.decision_kind)
             .map_err(|error| ModerationError::Invariant(error.to_string()))?;
 
-        Ok(ApplyModerationDecisionCommand {
-            decision_id: decision.id,
-            subject: operation.subject.clone(),
-            decision_kind: decision.decision_kind,
-            reason_code: decision.reason_code,
-            effect,
-            decision_hash: decision.decision_hash,
-        })
+        Ok((
+            ApplyModerationDecisionCommand {
+                decision_id: decision.id,
+                subject: operation.subject.clone(),
+                decision_kind: decision.decision_kind,
+                reason_code: decision.reason_code,
+                effect,
+                decision_hash: decision.decision_hash,
+            },
+            scope_claim,
+        ))
     }
 
     async fn finish_adapter_success(
@@ -227,7 +233,12 @@ impl ModerationService {
     }
 }
 
-fn application_port_context(tenant_id: Uuid, decision_id: Uuid, lease_token: Uuid) -> PortContext {
+fn application_port_context(
+    tenant_id: Uuid,
+    decision_id: Uuid,
+    lease_token: Uuid,
+    scope_claim: String,
+) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
         PortActor::service(APPLICATION_DISPATCH_ACTOR),
@@ -235,6 +246,7 @@ fn application_port_context(tenant_id: Uuid, decision_id: Uuid, lease_token: Uui
         format!("moderation-application:{decision_id}:{lease_token}"),
     )
     .with_causation_id(decision_id.to_string())
+    .with_claim(scope_claim)
     .with_idempotency_key(decision_id.to_string())
     .with_deadline(StdDuration::from_secs(APPLICATION_ADAPTER_DEADLINE_SECONDS))
 }
@@ -250,6 +262,7 @@ pub fn application_retry_delay_seconds(attempt_count: i32) -> i64 {
 mod tests {
     use super::*;
     use rustok_api::PortActorKind;
+    use rustok_moderation_api::ModerationScopeRef;
 
     #[test]
     fn retry_delay_is_bounded_exponential() {
@@ -266,8 +279,12 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let decision_id = Uuid::new_v4();
         let decision_id_text = decision_id.to_string();
-        let first = application_port_context(tenant_id, decision_id, Uuid::new_v4());
-        let second = application_port_context(tenant_id, decision_id, Uuid::new_v4());
+        let scope_claim =
+            moderation_scope_claim(&ModerationScopeRef::platform()).expect("platform scope claim");
+        let first =
+            application_port_context(tenant_id, decision_id, Uuid::new_v4(), scope_claim.clone());
+        let second =
+            application_port_context(tenant_id, decision_id, Uuid::new_v4(), scope_claim.clone());
 
         assert_eq!(first.tenant_id, tenant_id.to_string());
         assert_eq!(first.actor.kind, PortActorKind::Service);
@@ -277,6 +294,7 @@ mod tests {
             Some(decision_id_text.as_str())
         );
         assert_eq!(second.idempotency_key, first.idempotency_key);
+        assert_eq!(first.claims, vec![scope_claim]);
         assert_ne!(second.correlation_id, first.correlation_id);
         assert_eq!(
             first.deadline_ms,
