@@ -41,6 +41,10 @@ jobs:
                   '  "moderation_decision_id: Some(command.decision_id)",\n  "moderation_decision_hash: Some(command.decision_hash.clone())",',
                   '  "provenance.moderation_decision_id = Some(command.decision_id);",\n  "provenance.moderation_decision_hash = Some(command.decision_hash.clone());",',
               ),
+              (
+                  'const lockIndex = adapter.indexOf("lock_membership_enforcement_target_by_id_for_update");',
+                  'const lockIndex = adapter.indexOf("let target = lock_membership_enforcement_target_by_id_for_update");',
+              ),
           ]
           for old, new in replacements:
               count = text.count(old)
