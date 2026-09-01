@@ -7,7 +7,7 @@ description = "Neutral moderation subject, decision-effect, and adapter contract
 
 [features]
 default = ["server"]
-server = ["dep:async-trait", "dep:rustok-api", "dep:rustok-core"]
+server = ["dep:async-trait", "dep:rustok-api", "rustok-api/runtime", "dep:rustok-core"]
 
 [dependencies]
 async-trait = { workspace = true, optional = true }

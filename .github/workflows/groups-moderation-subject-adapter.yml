@@ -1,0 +1,104 @@
+name: Groups Moderation Subject Adapter Contract
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-groups/Cargo.toml"
+      - "crates/rustok-groups/src/lib.rs"
+      - "crates/rustok-groups/src/moderation_subject.rs"
+      - "crates/rustok-groups/src/membership_enforcement_command.rs"
+      - "crates/rustok-groups/src/membership_enforcement_transaction.rs"
+      - "crates/rustok-groups/contracts/groups-effective-membership-access.json"
+      - "crates/rustok-groups/docs/implementation-plan.md"
+      - "crates/rustok-moderation-api/Cargo.toml"
+      - "crates/rustok-moderation-api/src/model.rs"
+      - "crates/rustok-moderation/src/application_dispatch.rs"
+      - "crates/rustok-moderation/docs/implementation-plan.md"
+      - "scripts/verify/verify-groups-moderation-subject-adapter.mjs"
+      - ".github/workflows/groups-moderation-subject-adapter.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/rustok-groups/Cargo.toml"
+      - "crates/rustok-groups/src/lib.rs"
+      - "crates/rustok-groups/src/moderation_subject.rs"
+      - "crates/rustok-groups/src/membership_enforcement_command.rs"
+      - "crates/rustok-groups/src/membership_enforcement_transaction.rs"
+      - "crates/rustok-groups/contracts/groups-effective-membership-access.json"
+      - "crates/rustok-groups/docs/implementation-plan.md"
+      - "crates/rustok-moderation-api/Cargo.toml"
+      - "crates/rustok-moderation-api/src/model.rs"
+      - "crates/rustok-moderation/src/application_dispatch.rs"
+      - "crates/rustok-moderation/docs/implementation-plan.md"
+      - "scripts/verify/verify-groups-moderation-subject-adapter.mjs"
+      - ".github/workflows/groups-moderation-subject-adapter.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: groups-moderation-subject-adapter-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  source-contract:
+    name: Groups moderation subject adapter source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Verify Groups moderation subject adapter boundary
+        run: node scripts/verify/verify-groups-moderation-subject-adapter.mjs
+
+  rust-contract:
+    name: Groups moderation subject adapter Rust contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Assert exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check adapter leaf Rust formatting
+        shell: bash
+        run: |
+          rustfmt +1.96.0 --edition 2024 --check \
+            crates/rustok-groups/src/moderation_subject.rs \
+            crates/rustok-moderation-api/src/model.rs \
+            crates/rustok-moderation/src/application_dispatch.rs
+      - name: Test neutral moderation scope claim contract
+        run: cargo test --locked -p rustok-moderation-api --lib scope_claim
+      - name: Test Moderation dispatcher trusted scope propagation
+        run: cargo test --locked -p rustok-moderation --lib application_dispatch::tests
+      - name: Test Groups moderation adapter contract
+        run: cargo test --locked -p rustok-groups --lib moderation_subject::tests
+      - name: Compile focused owner crates with locked graph
+        shell: bash
+        run: |
+          cargo check --locked -p rustok-moderation-api --lib
+          cargo check --locked -p rustok-moderation --lib
+          cargo check --locked -p rustok-groups --lib

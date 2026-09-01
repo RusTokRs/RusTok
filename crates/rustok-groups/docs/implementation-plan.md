@@ -120,6 +120,9 @@ Source exists for:
 - direct `GroupMembershipEnforcementCommandPort` suspend/revoke with expected-revision CAS,
   receipt-first replay, hierarchy/owner protection, shared owner mutation, audit/events and bounded
   direct-local provenance;
+- neutral `groups/group_membership` Moderation subject adapter with trusted canonical group-scope
+  propagation, decision-ID/hash producer receipt binding before subject reads, exact membership
+  revision fencing and `SuspendSubject` reuse of the shared expiry-aware Groups owner mutation;
 - direct GraphQL suspend/revoke mutations composed into the stable final Groups mutation root and
   routed only through `GroupMembershipEnforcementCommandPort`;
 - stored lifecycle active member-count semantics that remain independent from temporary owner-clock
@@ -162,7 +165,7 @@ Evidence still open:
 - native/GraphQL parity, CAS, lifecycle, bulk-review, retry, recovery, security, and accessibility
   evidence for the broader module;
 - provider ACL integration and remote/degraded profiles;
-- neutral moderation adapter and durable moderation application orchestration.
+- moderation adapter runtime/replay/concurrency evidence and remaining durable producer/provider integration evidence.
 
 ## Program ledger
 
@@ -175,7 +178,7 @@ Evidence still open:
 | GROUPS-04 | in_progress | typed summary/membership/access/localization/invitation/application/governance/enforcement ports | consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, invitation acceptance/delivery | parity and Notifications evidence |
 | GROUPS-06 | in_progress | localized policy, CAS, lifecycle, focused/bulk review, FFA UX | profiles/events/parity/concurrency/accessibility |
-| GROUPS-07 | in_progress | revision, enforcement read/direct command/GraphQL, effective core/join/leave/feature/localization/governance access, transactional invitation/application authorization | moderation adapter, provider cutover, runtime/concurrency/parity evidence |
+| GROUPS-07 | in_progress | revision, enforcement read/direct command/GraphQL, neutral membership Moderation adapter, effective core/join/leave/feature/localization/governance access, transactional invitation/application authorization | provider cutover plus moderation/direct runtime/concurrency/replay/parity evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and navigation | registry/degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum integration evidence |
 | GROUPS-10 | planned | Blog and Pages/Wiki group contexts | owner/privacy evidence |
@@ -486,9 +489,9 @@ until this test is actually executed. The handoff is documented in
 `docs/governance-enforcement-sqlite-contract.md` and guarded by
 `scripts/verify/verify-groups-governance-enforcement-sqlite.mjs`.
 
-### Planned moderation adapter
+### Source-complete moderation adapter
 
-Initial mapping remains:
+Implemented bounded mapping:
 
 - `GroupMembership` plus `SuspendSubject { effective_until }` maps to the shared Groups owner
   suspension mutation;
@@ -500,9 +503,12 @@ Initial mapping remains:
 - unsupported effects and account sanctions are rejected without mutation;
 - moderation records applied evidence only after a matching adapter result.
 
-The adapter is the next moderation-specific source slice and requires the neutral
-`rustok-moderation-api` dependency plus producer receipt integration. It must reuse the owner mutation
-above rather than introduce a second Groups enforcement state path.
+The adapter now depends only on neutral `rustok-moderation-api` plus shared `rustok-outbox`
+producer receipts. Moderation carries the already-validated immutable case scope as a versioned
+trusted `PortContext` claim without changing the historical `ApplyModerationDecisionCommand` receipt
+shape. Groups binds that exact scope together with the command in its own receipt, then reuses the
+owner mutation above rather than introducing a second enforcement state path. Runtime/replay/race
+proof remains an explicit GROUPS-07 evidence gate.
 
 ### GROUPS-07 definition of done
 
@@ -569,6 +575,7 @@ node scripts/verify/verify-groups-application-lifecycle.mjs
 node scripts/verify/verify-groups-application-bulk-review.mjs
 node scripts/verify/verify-groups-membership-enforcement-read-path.mjs
 node scripts/verify/verify-groups-membership-enforcement-command.mjs
+node scripts/verify/verify-groups-moderation-subject-adapter.mjs
 node scripts/verify/verify-groups-membership-enforcement-graphql.mjs
 node scripts/verify/verify-groups-effective-membership-access.mjs
 node scripts/verify/verify-groups-effective-membership-invitations-applications.mjs
