@@ -163,4 +163,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('[forum-taxonomy-category-translation-owner] Forum Category ownership matches Taxonomy cutover');
+console.log(
+  '[forum-taxonomy-category-translation-owner] Forum Category implementation is complete; mounted production validation remains deferred',
+);
