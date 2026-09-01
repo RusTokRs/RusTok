@@ -54,6 +54,18 @@ jobs:
           path.write_text(text)
           PY
           python3 scripts/tmp_groups_moderation_adapter.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/rustok-moderation-api/Cargo.toml")
+          text = path.read_text()
+          old = 'server = ["dep:async-trait", "dep:rustok-api", "dep:rustok-core"]'
+          new = 'server = ["dep:async-trait", "dep:rustok-api", "rustok-api/runtime", "dep:rustok-core"]'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"moderation-api server feature expected one match, found {count}")
+          path.write_text(text.replace(old, new, 1))
+          PY
 
       - name: Format touched Rust sources
         run: |
@@ -67,7 +79,9 @@ jobs:
         run: cargo check -p rustok-groups --lib
 
       - name: Verify Groups moderation adapter source boundary
-        run: node scripts/verify/verify-groups-moderation-subject-adapter.mjs
+        run: |
+          node scripts/verify/verify-groups-moderation-subject-adapter.mjs
+          grep -F 'server = ["dep:async-trait", "dep:rustok-api", "rustok-api/runtime", "dep:rustok-core"]' crates/rustok-moderation-api/Cargo.toml
 
       - name: Test neutral moderation scope claim contract
         run: cargo test -p rustok-moderation-api --lib scope_claim
