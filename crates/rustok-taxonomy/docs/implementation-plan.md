@@ -260,6 +260,12 @@ Accepted CAT-5 slices already in `main`:
 - PR #3772 removed the unreachable private pre-cutover Category read-model donor path, including its
   legacy translation query and Category cursors, while preserving the Topic/Reply delegate and adding
   an executable exact-SHA ownership/compile/regression gate.
+- PR #3774 isolated the live Category mutation support used by import/projection-owner composition
+  from the narrow `CategoryService` persistence seam without changing mutation behavior, and closed
+  the focused binding verifier/path/formatting boundary over those support sources.
+- PR #3775 made the transactional Category metadata-update owner fail closed on placement changes,
+  removing the dormant direct `active.position` write so future internal callers cannot bypass the
+  atomic move/reorder commands and their Taxonomy hierarchy synchronization.
 
 Retained focused evidence for the foundation:
 
@@ -313,17 +319,29 @@ Retained focused evidence for the foundation:
   `Forum Read Model Category Taxonomy Copy` run `33437621508`: exact-SHA ownership verification,
   Rust formatting, full Forum library compile and retained Topic unread SQLite regression all
   succeeded; Browser E2E, Hardening Gates and Ecommerce Hardening also passed on that head. PR #3772
-  was squash-merged as `3b15ab139636d31dca027045d3a53a5769a62b1a`.
+  was squash-merged as `3b15ab139636d31dca027045d3a53a5769a62b1a`;
+- PR #3774 exact head `6815c17cffbac3f10db3f94a7058aba78201bef8` passed focused
+  `Forum Taxonomy Category Binding Contract` run `33468821321`: exact-SHA source verification,
+  focused Rust formatting, the runtime binding contract and full Forum library compilation all
+  succeeded; Browser E2E, Hardening Gates and Ecommerce Hardening also passed. PR #3774 was
+  squash-merged as `7ec72d3d890e3ead9d8618db179fa55bf50477e7`;
+- PR #3775 exact head `1d4db5dd40f0183f36c4802261b8193d377a3db8` passed focused
+  `Forum Taxonomy Category Binding Contract` run `33470821294`: exact-SHA source verification,
+  focused Rust formatting, the runtime binding contract and full Forum library compilation all
+  succeeded; Browser E2E run `33470821176`, Hardening Gates run `33470821175` and Ecommerce
+  Hardening run `33470821177` also passed. PR #3775 was squash-merged as
+  `95a25063b613105ce78eac13b3b025aaa3e17380`.
 
 The retained browser execution packet itself remains hardened through PR #3763. The CAT-5 backend
-handoff is actualized through PR #3772, including removal of the remaining public/runtime legacy
-Category translation relation and unreachable private Category donor read path. The mounted execution
-path is main-only; the raw authenticated state is step-scoped and materialized late into a restricted
-`RUNNER_TEMP` file whose path is exposed only to Playwright; all non-secret fixture values, URL safety
-and static locale/fallback/alias relationships are checked before that credential exists; and focused
-pull-request triggers cover every verifier-owned source seam. None of those source-ready or cleanup
-merges substitutes for the still-required successful mounted browser execution against a prepared
-Taxonomy-backed fixture.
+handoff is actualized through PR #3775: PR #3771/#3772 removed the remaining runtime legacy
+translation/read donors, PR #3774 isolated the still-live shared Category mutation support from the
+narrow persistence seam, and PR #3775 fail-closed transactional metadata updates against placement
+bypasses. The mounted execution path is main-only; the raw authenticated state is step-scoped and
+materialized late into a restricted `RUNNER_TEMP` file whose path is exposed only to Playwright; all
+non-secret fixture values, URL safety and static locale/fallback/alias relationships are checked
+before that credential exists; and focused pull-request triggers cover every verifier-owned source
+seam. None of those source-ready or cleanup merges substitutes for the still-required successful
+mounted browser execution against a prepared Taxonomy-backed fixture.
 
 **Next:** configure the GitHub environment required by `Forum Category Taxonomy Browser Evidence` and
 run its `workflow_dispatch` mounted job from `main` against the prepared authenticated admin/storefront
