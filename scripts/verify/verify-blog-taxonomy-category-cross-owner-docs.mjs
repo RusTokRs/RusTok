@@ -42,8 +42,8 @@ if (failures.length === 0) {
     'retired Blog provider boundary',
   );
   requireMarker(
-    platformPlan,
-    'Blog has completed this consumer migration through\nTAXONOMY-CAT-12.',
+    normalizedPlatformPlan,
+    'Blog has completed this consumer migration through TAXONOMY-CAT-12.',
     'Phase D Blog completion',
   );
   requireMarker(
@@ -58,8 +58,13 @@ if (failures.length === 0) {
   );
   requireMarker(
     normalizedPlatformPlan,
-    'Forum established the first consumer migration precedent and its backend ownership/storage cutover is complete.',
-    'Forum backend completion architecture status',
+    'Forum established the first consumer migration precedent and TAXONOMY-CAT-5 implementation is complete:',
+    'Forum implementation completion architecture status',
+  );
+  requireMarker(
+    normalizedPlatformPlan,
+    'The retained mounted multilingual/RTL browser packet is deferred to the final production- validation phase and no longer holds the implementation cursor open.',
+    'Forum deferred production-validation boundary',
   );
   requireMarker(
     normalizedPlatformPlan,
@@ -111,6 +116,16 @@ if (failures.length === 0) {
     normalizedTaxonomyPlan,
     '**Current Product cursor: TAXONOMY-CAT-34.**',
     'Taxonomy live plan current Product cursor',
+  );
+  requireMarker(
+    normalizedTaxonomyPlan,
+    '## Final production / mounted validation — DEFERRED',
+    'Taxonomy final production-validation phase',
+  );
+  requireMarker(
+    normalizedTaxonomyPlan,
+    '`source_ready_maintainer_execution_pending` without reopening TAXONOMY-CAT-5.',
+    'CAT-5 deferred mounted evidence boundary',
   );
   rejectMarker(
     normalizedTaxonomyPlan,
