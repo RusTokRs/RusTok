@@ -1,0 +1,42 @@
+name: Temporary rustok-api SeaORM Runtime Verify
+
+on:
+  push:
+    branches:
+      - fix/rustok-api-seaorm-query-one-borrow-20260901
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/rustok-api-seaorm-query-one-borrow-20260901
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format check touched source
+        run: rustfmt --edition 2024 --check crates/rustok-api/src/runtime.rs
+      - name: Compile rustok-api runtime
+        run: cargo check --locked -p rustok-api --lib --features runtime
+      - name: Execute runtime module tests
+        run: cargo test --locked -p rustok-api --lib --features runtime runtime::tests
+      - name: Confirm downstream Groups compile passes baseline blocker
+        run: cargo check --locked -p rustok-groups --lib
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Remove temporary workflow after success
+        run: |
+          rm .github/workflows/tmp-rustok-api-runtime-seaorm.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "chore(ci): remove temporary rustok-api verifier"
+          git push origin HEAD:fix/rustok-api-seaorm-query-one-borrow-20260901
