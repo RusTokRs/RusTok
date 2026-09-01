@@ -1,0 +1,78 @@
+name: Navigation Translation Target PostgreSQL Evidence
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "crates/rustok-navigation/**"
+      - "crates/rustok-translation-targets/**"
+      - "crates/rustok-outbox/**"
+      - "docs/modules/translation-implementation-plan.md"
+      - "crates/rustok-translation/docs/implementation-plan.md"
+      - ".github/workflows/navigation-translation-target-postgres.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.lock"
+      - "crates/rustok-navigation/**"
+      - "crates/rustok-translation-targets/**"
+      - "crates/rustok-outbox/**"
+      - "docs/modules/translation-implementation-plan.md"
+      - "crates/rustok-translation/docs/implementation-plan.md"
+      - ".github/workflows/navigation-translation-target-postgres.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: navigation-translation-target-postgres
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_TOOLCHAIN: "1.96.0"
+  TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  RUSTOK_NAVIGATION_TEST_POSTGRES_URL: postgres://postgres:postgres@localhost:5432/rustok_navigation_translation_evidence
+
+jobs:
+  postgres-evidence:
+    name: Navigation translation aggregate PostgreSQL concurrency/cursor evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_navigation_translation_evidence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_navigation_translation_evidence"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          persist-credentials: false
+      - name: Require exact checked-out SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: navigation-translation-target-postgres
+      - name: Check focused PostgreSQL test formatting
+        run: rustfmt +${RUST_TOOLCHAIN} --edition 2024 --check crates/rustok-navigation/tests/translation_target_postgres.rs
+      - name: Compile Navigation PostgreSQL translation evidence
+        run: cargo test --locked -p rustok-navigation --test translation_target_postgres --no-run
+      - name: Execute Navigation PostgreSQL translation evidence
+        run: cargo test --locked -p rustok-navigation --test translation_target_postgres -- --ignored --nocapture
